@@ -136,18 +136,23 @@ public class CopilotAcpClient implements Closeable {
         // Add the bundled MCP code intelligence server if available
         String mcpJarPath = findMcpServerJar();
         if (mcpJarPath != null) {
-            JsonObject codeTools = new JsonObject();
-            codeTools.addProperty("name", "intellij-code-tools");
-            codeTools.addProperty("command", System.getProperty("java.home") + 
-                java.io.File.separator + "bin" + java.io.File.separator + "java");
-            JsonArray args = new JsonArray();
-            args.add("-jar");
-            args.add(mcpJarPath);
-            if (cwd != null) args.add(cwd);
-            codeTools.add("args", args);
-            codeTools.add("env", new JsonArray());
-            mcpServers.add(codeTools);
-            LOG.info("MCP code-tools server: " + mcpJarPath);
+            String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
+            String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
+            if (new File(javaPath).exists()) {
+                JsonObject codeTools = new JsonObject();
+                codeTools.addProperty("name", "intellij-code-tools");
+                codeTools.addProperty("command", javaPath);
+                JsonArray args = new JsonArray();
+                args.add("-jar");
+                args.add(mcpJarPath);
+                if (cwd != null) args.add(cwd);
+                codeTools.add("args", args);
+                codeTools.add("env", new JsonArray());
+                mcpServers.add(codeTools);
+                LOG.info("MCP code-tools server: " + mcpJarPath);
+            } else {
+                LOG.warn("Java executable not found at: " + javaPath + ", MCP tools unavailable");
+            }
         }
         params.add("mcpServers", mcpServers);
 

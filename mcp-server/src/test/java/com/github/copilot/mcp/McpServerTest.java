@@ -224,6 +224,22 @@ class McpServerTest {
         assertNotNull(response.getAsJsonObject("result"));
     }
 
+    @Test
+    void testPathTraversalBlocked() {
+        JsonObject args = new JsonObject();
+        args.addProperty("path", "../../../etc/passwd");
+        assertThrows(IOException.class, () -> McpServer.getFileOutline(args),
+                "Should throw IOException for path traversal");
+    }
+
+    @Test
+    void testAbsolutePathOutsideProjectBlocked() {
+        JsonObject args = new JsonObject();
+        args.addProperty("path", "/etc/passwd");
+        assertThrows(IOException.class, () -> McpServer.getFileOutline(args),
+                "Should throw IOException for absolute paths outside project");
+    }
+
     private static JsonObject buildRequest(long id, String method, JsonObject params) {
         JsonObject request = new JsonObject();
         request.addProperty("jsonrpc", "2.0");

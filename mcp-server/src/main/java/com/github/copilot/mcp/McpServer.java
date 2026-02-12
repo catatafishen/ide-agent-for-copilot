@@ -353,10 +353,15 @@ public class McpServer {
 
     // --- Utility methods ---
 
-    private static Path resolvePath(String pathStr) {
+    private static Path resolvePath(String pathStr) throws IOException {
         Path path = Path.of(pathStr);
-        if (path.isAbsolute()) return path;
-        return Path.of(projectRoot).resolve(path);
+        Path resolved = path.isAbsolute() ? path : Path.of(projectRoot).resolve(path);
+        Path normalized = resolved.normalize();
+        Path rootPath = Path.of(projectRoot).normalize();
+        if (!normalized.startsWith(rootPath)) {
+            throw new IOException("Access denied: path outside project root");
+        }
+        return normalized;
     }
 
     private static boolean isSourceFile(String path) {
