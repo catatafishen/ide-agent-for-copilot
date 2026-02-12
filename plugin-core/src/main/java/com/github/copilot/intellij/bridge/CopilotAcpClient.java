@@ -49,7 +49,7 @@ public class CopilotAcpClient implements Closeable {
     /**
      * Start the copilot ACP process and perform the initialize handshake.
      */
-    public synchronized void start() throws SidecarException {
+    public synchronized void start() throws CopilotException {
         if (process != null && process.isAlive()) {
             LOG.debug("ACP client already running");
             return;
@@ -74,17 +74,17 @@ public class CopilotAcpClient implements Closeable {
             // Initialize handshake
             doInitialize();
 
-        } catch (SidecarException e) {
+        } catch (CopilotException e) {
             throw e;
         } catch (Exception e) {
-            throw new SidecarException("Failed to start Copilot ACP process", e);
+            throw new CopilotException("Failed to start Copilot ACP process", e);
         }
     }
 
     /**
      * Perform the ACP initialize handshake.
      */
-    private void doInitialize() throws SidecarException {
+    private void doInitialize() throws CopilotException {
         JsonObject params = new JsonObject();
         params.addProperty("protocolVersion", 1);
         params.add("clientCapabilities", new JsonObject());
@@ -108,7 +108,7 @@ public class CopilotAcpClient implements Closeable {
      * Create a new ACP session. Returns the session ID and populates available models.
      */
     @NotNull
-    public synchronized String createSession() throws SidecarException {
+    public synchronized String createSession() throws CopilotException {
         ensureStarted();
 
         JsonObject params = new JsonObject();
@@ -151,7 +151,7 @@ public class CopilotAcpClient implements Closeable {
      * List available models. Creates a session if needed (models come from session/new).
      */
     @NotNull
-    public List<Model> listModels() throws SidecarException {
+    public List<Model> listModels() throws CopilotException {
         if (availableModels == null) {
             createSession();
         }
@@ -171,7 +171,7 @@ public class CopilotAcpClient implements Closeable {
     @NotNull
     public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
                              @Nullable String model, @Nullable Consumer<String> onChunk)
-            throws SidecarException {
+            throws CopilotException {
         ensureStarted();
 
         // Register notification listener for streaming chunks
@@ -263,13 +263,13 @@ public class CopilotAcpClient implements Closeable {
      * Send a JSON-RPC request and wait for the response.
      */
     @NotNull
-    private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params) throws SidecarException {
+    private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params) throws CopilotException {
         return sendRequest(method, params, REQUEST_TIMEOUT_SECONDS);
     }
 
     @NotNull
-    private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params, long timeoutSeconds) throws SidecarException {
-        if (closed) throw new SidecarException("ACP client is closed", null, false);
+    private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params, long timeoutSeconds) throws CopilotException {
+        if (closed) throw new CopilotException("ACP client is closed", null, false);
 
         long id = requestIdCounter.getAndIncrement();
         CompletableFuture<JsonObject> future = new CompletableFuture<>();
@@ -296,19 +296,19 @@ public class CopilotAcpClient implements Closeable {
 
         } catch (TimeoutException e) {
             pendingRequests.remove(id);
-            throw new SidecarException("ACP request timed out: " + method, e, true);
+            throw new CopilotException("ACP request timed out: " + method, e, true);
         } catch (ExecutionException e) {
             pendingRequests.remove(id);
             Throwable cause = e.getCause();
-            if (cause instanceof SidecarException) throw (SidecarException) cause;
-            throw new SidecarException("ACP request failed: " + method + " - " + cause.getMessage(), e, false);
+            if (cause instanceof CopilotException) throw (CopilotException) cause;
+            throw new CopilotException("ACP request failed: " + method + " - " + cause.getMessage(), e, false);
         } catch (InterruptedException e) {
             pendingRequests.remove(id);
             Thread.currentThread().interrupt();
-            throw new SidecarException("ACP request interrupted: " + method, e, true);
+            throw new CopilotException("ACP request interrupted: " + method, e, true);
         } catch (IOException e) {
             pendingRequests.remove(id);
-            throw new SidecarException("ACP write failed: " + method, e, true);
+            throw new CopilotException("ACP write failed: " + method, e, true);
         }
     }
 
@@ -338,7 +338,7 @@ public class CopilotAcpClient implements Closeable {
                                         errorMessage = error.get("data").getAsString();
                                     } catch (Exception ignored) {}
                                 }
-                                future.completeExceptionally(new SidecarException("ACP error: " + errorMessage, null, false));
+                                future.completeExceptionally(new CopilotException("ACP error: " + errorMessage, null, false));
                             } else if (msg.has("result")) {
                                 future.complete(msg.getAsJsonObject("result"));
                             } else {
@@ -368,12 +368,12 @@ public class CopilotAcpClient implements Closeable {
         // Process ended — fail all pending requests
         for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
             entry.getValue().completeExceptionally(
-                    new SidecarException("ACP process terminated", null, false));
+                    new CopilotException("ACP process terminated", null, false));
         }
         pendingRequests.clear();
     }
 
-    private void ensureStarted() throws SidecarException {
+    private void ensureStarted() throws CopilotException {
         if (!initialized || process == null || !process.isAlive()) {
             start();
         }
@@ -383,7 +383,7 @@ public class CopilotAcpClient implements Closeable {
      * Find the copilot CLI executable.
      */
     @NotNull
-    private String findCopilotCli() throws SidecarException {
+    private String findCopilotCli() throws CopilotException {
         // Check PATH first
         try {
             Process check = new ProcessBuilder("where", "copilot").start();
@@ -398,7 +398,7 @@ public class CopilotAcpClient implements Closeable {
                 "\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe";
         if (new File(wingetPath).exists()) return wingetPath;
 
-        throw new SidecarException("Copilot CLI not found. Install with: winget install GitHub.Copilot", null, false);
+        throw new CopilotException("Copilot CLI not found. Install with: winget install GitHub.Copilot", null, false);
     }
 
     @Override

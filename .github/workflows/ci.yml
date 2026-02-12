@@ -7,52 +7,9 @@ on:
     branches: [ master, main ]
 
 jobs:
-  test-go:
-    name: Go Tests
-    runs-on: windows-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
-    
-    - name: Run Go tests
-      working-directory: ./copilot-bridge
-      run: go test ./... -v
-    
-    - name: Build sidecar
-      working-directory: ./copilot-bridge
-      run: go build -o bin/copilot-sidecar.exe cmd/sidecar/main.go
-  
-  test-sidecar-integration:
-    name: Sidecar Integration Tests
-    runs-on: windows-latest
-    needs: test-go
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
-    
-    - name: Build sidecar
-      working-directory: ./copilot-bridge
-      run: go build -o bin/copilot-sidecar.exe cmd/sidecar/main.go
-    
-    - name: Run integration tests
-      working-directory: ./copilot-bridge
-      run: |
-        pwsh -File test_sidecar.ps1
-  
   build-plugin:
     name: Build Plugin
     runs-on: windows-latest
-    needs: test-sidecar-integration
     
     steps:
     - uses: actions/checkout@v4
@@ -63,22 +20,13 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
     
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
-    
-    - name: Build sidecar
-      working-directory: ./copilot-bridge
-      run: go build -o bin/copilot-sidecar.exe cmd/sidecar/main.go
-    
-    - name: Copy sidecar to resources
-      run: |
-        Copy-Item "copilot-bridge\bin\copilot-sidecar.exe" "plugin-core\src\main\resources\bin\" -Force
-    
     - name: Build plugin
       run: |
         .\gradlew.bat --no-daemon :plugin-core:buildPlugin
+    
+    - name: Run tests
+      run: |
+        .\gradlew.bat --no-daemon :plugin-core:test
     
     - name: Upload plugin artifact
       uses: actions/upload-artifact@v4

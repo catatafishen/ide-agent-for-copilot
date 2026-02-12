@@ -12,19 +12,19 @@ import org.jetbrains.annotations.NotNull;
  * Starts the copilot --acp process on first use and stops it on IDE shutdown.
  */
 @Service(Service.Level.APP)
-public final class SidecarService implements Disposable {
-    private static final Logger LOG = Logger.getInstance(SidecarService.class);
+public final class CopilotService implements Disposable {
+    private static final Logger LOG = Logger.getInstance(CopilotService.class);
 
     private CopilotAcpClient acpClient;
     private volatile boolean started = false;
 
-    public SidecarService() {
+    public CopilotService() {
         LOG.info("Copilot ACP Service initialized");
     }
 
     @NotNull
-    public static SidecarService getInstance() {
-        return ApplicationManager.getApplication().getService(SidecarService.class);
+    public static CopilotService getInstance() {
+        return ApplicationManager.getApplication().getService(CopilotService.class);
     }
 
     /**

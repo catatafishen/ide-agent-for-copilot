@@ -1,7 +1,7 @@
 package com.github.copilot.intellij.ui
 
 import com.github.copilot.intellij.bridge.CopilotAcpClient
-import com.github.copilot.intellij.services.SidecarService
+import com.github.copilot.intellij.services.CopilotService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -76,7 +76,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 // Try to get auth method from ACP client
-                val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                 var authCommand: String? = null
                 var authArgs: List<String>? = null
 
@@ -230,7 +230,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             // Run in background thread
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
-                    val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
                     
                     // Create session if needed
@@ -278,7 +278,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             
             for (attempt in 1..maxRetries) {
                 try {
-                    val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
                     val models = client.listModels()
                     
@@ -793,7 +793,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             
             for (attempt in 1..maxRetries) {
                 try {
-                    val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
                     val models = client.listModels()
                     

@@ -27,8 +27,8 @@ public final class AgenticCopilotService implements Disposable {
      * Get the Copilot ACP service.
      */
     @NotNull
-    public SidecarService getCopilotService() {
-        return SidecarService.getInstance();
+    public CopilotService getCopilotService() {
+        return CopilotService.getInstance();
     }
 
     @Override
