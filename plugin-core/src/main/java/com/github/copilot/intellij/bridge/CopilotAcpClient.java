@@ -131,7 +131,25 @@ public class CopilotAcpClient implements Closeable {
 
         JsonObject params = new JsonObject();
         params.addProperty("cwd", cwd != null ? cwd : System.getProperty("user.home"));
-        params.add("mcpServers", new JsonArray());
+        
+        JsonArray mcpServers = new JsonArray();
+        // Add the bundled MCP code intelligence server if available
+        String mcpJarPath = findMcpServerJar();
+        if (mcpJarPath != null) {
+            JsonObject codeTools = new JsonObject();
+            codeTools.addProperty("name", "intellij-code-tools");
+            codeTools.addProperty("command", System.getProperty("java.home") + 
+                java.io.File.separator + "bin" + java.io.File.separator + "java");
+            JsonArray args = new JsonArray();
+            args.add("-jar");
+            args.add(mcpJarPath);
+            if (cwd != null) args.add(cwd);
+            codeTools.add("args", args);
+            codeTools.add("env", new JsonArray());
+            mcpServers.add(codeTools);
+            LOG.info("MCP code-tools server: " + mcpJarPath);
+        }
+        params.add("mcpServers", mcpServers);
 
         JsonObject result = sendRequest("session/new", params);
 
@@ -624,6 +642,35 @@ public class CopilotAcpClient implements Closeable {
         if (new File(wingetPath).exists()) return wingetPath;
 
         throw new CopilotException("Copilot CLI not found. Install with: winget install GitHub.Copilot", null, false);
+    }
+
+    /**
+     * Find the bundled MCP server JAR in the plugin's lib directory.
+     * Returns null if not found (MCP tools will be unavailable).
+     */
+    @Nullable
+    private String findMcpServerJar() {
+        try {
+            // The JAR is bundled in the plugin's lib directory alongside plugin-core
+            String pluginPath = com.intellij.ide.plugins.PluginManagerCore.getPlugins().length > 0 ?
+                java.util.Arrays.stream(com.intellij.ide.plugins.PluginManagerCore.getPlugins())
+                    .filter(p -> "com.github.copilot.intellij".equals(p.getPluginId().getIdString()))
+                    .findFirst()
+                    .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
+                    .orElse(null) : null;
+            if (pluginPath != null && new File(pluginPath).exists()) return pluginPath;
+
+            // Fallback: check relative to this class's JAR
+            java.net.URL url = getClass().getProtectionDomain().getCodeSource().getLocation();
+            if (url != null) {
+                File jarDir = new File(url.toURI()).getParentFile();
+                File mcpJar = new File(jarDir, "mcp-server.jar");
+                if (mcpJar.exists()) return mcpJar.getAbsolutePath();
+            }
+        } catch (Exception e) {
+            LOG.debug("Could not find MCP server JAR: " + e.getMessage());
+        }
+        return null;
     }
 
     @Override

@@ -11,6 +11,7 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/integration-tests" />
+            <option value="$PROJECT_DIR$/mcp-server" />
             <option value="$PROJECT_DIR$/plugin-core" />
           </set>
         </option>

@@ -30,6 +30,25 @@ dependencies {
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.1")
 }
 
+// Copy MCP server JAR into plugin lib for bundling
+tasks.named("prepareSandbox") {
+    dependsOn(project(":mcp-server").tasks.named("jar"))
+    doLast {
+        val mcpJar = project(":mcp-server").tasks.named("jar").get().outputs.files.singleFile
+        val sandboxLib = File(layout.buildDirectory.asFile.get(), "idea-sandbox/plugins/plugin-core/lib")
+        mcpJar.copyTo(File(sandboxLib, "mcp-server.jar"), overwrite = true)
+    }
+}
+
+// Also include in the distribution ZIP
+tasks.named<Zip>("buildPlugin") {
+    dependsOn(project(":mcp-server").tasks.named("jar"))
+    from(project(":mcp-server").tasks.named("jar")) {
+        into("lib")
+        rename { "mcp-server.jar" }
+    }
+}
+
 intellijPlatform {
     pluginConfiguration {
         id = "com.github.copilot.intellij"
