@@ -601,6 +601,10 @@ public final class PsiBridgeService implements Disposable {
                 Object data = getData.invoke(config);
                 if (args.has("test_class")) {
                     String testClass = args.get("test_class").getAsString();
+                    // Resolve simple name to FQN via PSI if not already qualified
+                    if (!testClass.contains(".")) {
+                        testClass = resolveFullyQualifiedName(testClass);
+                    }
                     data.getClass().getField("MAIN_CLASS_NAME").set(data, testClass);
                     // Set TEST_OBJECT to "class" (or "method" if test_method also provided)
                     data.getClass().getField("TEST_OBJECT").set(data,
@@ -670,6 +674,34 @@ public final class PsiBridgeService implements Disposable {
             if (label != null) changes.add(label);
         } catch (Exception ignored) {
         }
+    }
+
+    /** Resolve a simple class name like "McpServerTest" to its FQN using PSI index. */
+    private String resolveFullyQualifiedName(String simpleName) {
+        return ReadAction.compute(() -> {
+            List<String> matches = new ArrayList<>();
+            PsiSearchHelper.getInstance(project).processElementsWithWord(
+                    (element, offset) -> {
+                        String type = classifyElement(element);
+                        if ("class".equals(type) && element instanceof PsiNamedElement named
+                                && simpleName.equals(named.getName())) {
+                            try {
+                                var getQualifiedName = element.getClass().getMethod("getQualifiedName");
+                                String fqn = (String) getQualifiedName.invoke(element);
+                                if (fqn != null) matches.add(fqn);
+                            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                                     | IllegalAccessException ignored) {
+                            }
+                        }
+                        return true;
+                    },
+                    GlobalSearchScope.projectScope(project),
+                    simpleName,
+                    UsageSearchContext.IN_CODE,
+                    true
+            );
+            return matches.isEmpty() ? simpleName : matches.get(0);
+        });
     }
 
     // ---- Test Tools ----
