@@ -38,6 +38,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Shared model list (populated from ACP)
     private var loadedModels: List<CopilotAcpClient.Model> = emptyList()
     
+    // Current conversation session — reused for multi-turn
+    private var currentSessionId: String? = null
+    
     // Usage display components (updated after each prompt)
     private lateinit var usageLabel: JBLabel
     private lateinit var costLabel: JBLabel
@@ -312,8 +315,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val promptScrollPane = JBScrollPane(promptTextArea)
         promptPanel.add(promptScrollPane, BorderLayout.CENTER)
         
-        // Run button
+        // Run button and New Chat button
+        val buttonPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val runButton = JButton("Run")
+        val newChatButton = JButton("New Chat")
+        newChatButton.toolTipText = "Start a fresh conversation (clears session history)"
+        newChatButton.addActionListener {
+            currentSessionId = null
+            responseTextArea.text = "New conversation started.\n"
+        }
+        buttonPanel.add(runButton)
+        buttonPanel.add(newChatButton)
+        
         runButton.addActionListener {
             val prompt = promptTextArea.text.trim()
             if (prompt.isEmpty()) {
@@ -322,7 +335,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
             
             runButton.isEnabled = false
-            responseTextArea.text = "Connecting to Copilot...\n"
+            
+            // For first prompt or new chat, clear response area
+            val isNewSession = currentSessionId == null
+            if (isNewSession) {
+                responseTextArea.text = ""
+            }
+            
+            // Show the user's message in the conversation
+            appendResponse("\n>>> $prompt\n\n")
+            promptTextArea.text = ""
             
             // Run in background thread
             ApplicationManager.getApplication().executeOnPooledThread {
@@ -330,17 +352,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
                     
-                    // Create session if needed
-                    val sessionId = client.createSession()
-                    appendResponse("✅ Session created: $sessionId\n")
+                    // Reuse session for multi-turn conversation, create new if needed
+                    if (currentSessionId == null) {
+                        currentSessionId = client.createSession()
+                    }
+                    val sessionId = currentSessionId!!
                     
                     // Get selected model from loaded models list
                     val selIdx = modelComboBox.selectedIndex
                     val selectedModelObj = if (selIdx >= 0 && selIdx < loadedModels.size) loadedModels[selIdx] else null
                     val modelId = selectedModelObj?.id ?: ""
-                    val modelName = selectedModelObj?.name ?: "default"
-                    val modelMultiplier = selectedModelObj?.usage ?: "1x"
-                    appendResponse("🤖 Using model: $modelName ($modelMultiplier)\n\n")
                     // Build context references from Context tab
                     val references = mutableListOf<CopilotAcpClient.ResourceReference>()
                     for (i in 0 until contextListModel.size()) {
@@ -383,29 +404,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     }
                     
                     if (references.isNotEmpty()) {
-                        appendResponse("📎 ${references.size} context file(s) attached\n")
+                        appendResponse("📎 ${references.size} context file(s) attached\n\n")
                     }
-                    appendResponse("─".repeat(50) + "\n")
                     
                     // Send prompt with context and streaming
-                    val stopReason = client.sendPrompt(sessionId, prompt, modelId, 
+                    client.sendPrompt(sessionId, prompt, modelId, 
                         if (references.isNotEmpty()) references else null) { chunk ->
                         appendResponse(chunk)
                     }
                     
-                    // Show per-prompt estimated usage (like CLI does)
-                    val multiplierVal = try { modelMultiplier.replace("x", "").toDouble() } catch (_: Exception) { 1.0 }
-                    val estPremium = Math.ceil(multiplierVal).toInt()
-                    
-                    appendResponse("\n" + "─".repeat(50) + "\n")
-                    appendResponse("✅ Complete (${stopReason})\n")
-                    appendResponse("Est. $estPremium premium request(s) [$modelName $modelMultiplier]\n")
+                    appendResponse("\n") // clean separation after response
                     
                     // Refresh billing data after prompt
                     loadBillingData()
                     
                 } catch (e: Exception) {
                     appendResponse("\n❌ Error: ${e.message}\n")
+                    currentSessionId = null // reset session on error
                     e.printStackTrace()
                 } finally {
                     SwingUtilities.invokeLater {
@@ -414,7 +429,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             }
         }
-        promptPanel.add(runButton, BorderLayout.SOUTH)
+        promptPanel.add(buttonPanel, BorderLayout.SOUTH)
         
         splitPane.firstComponent = promptPanel
         splitPane.secondComponent = responsePanel
