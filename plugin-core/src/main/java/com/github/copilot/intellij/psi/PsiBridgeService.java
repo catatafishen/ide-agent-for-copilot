@@ -119,6 +119,8 @@ public final class PsiBridgeService implements Disposable {
         JsonObject arguments = request.has("arguments")
                 ? request.getAsJsonObject("arguments") : new JsonObject();
 
+        LOG.info("PSI Bridge tool call: " + toolName + " args=" + arguments);
+
         String result;
         try {
             result = switch (toolName) {
@@ -591,12 +593,32 @@ public final class PsiBridgeService implements Disposable {
         List<String> ignore = new ArrayList<>();
         if (args.has("main_class"))
             setViaReflection(config, "setMainClassName", args.get("main_class").getAsString(), ignore, null);
-        if (args.has("test_class")) {
-            // JUnit configs might use setMainClass or specific test setters
-            setViaReflection(config, "setMainClass", args.get("test_class").getAsString(), ignore, null);
+
+        // JUnit: test class/method via getPersistentData() which has public fields
+        if (args.has("test_class") || args.has("test_method")) {
+            try {
+                var getData = config.getClass().getMethod("getPersistentData");
+                Object data = getData.invoke(config);
+                if (args.has("test_class")) {
+                    String testClass = args.get("test_class").getAsString();
+                    data.getClass().getField("MAIN_CLASS_NAME").set(data, testClass);
+                    // Set TEST_OBJECT to "class" (or "method" if test_method also provided)
+                    data.getClass().getField("TEST_OBJECT").set(data,
+                            args.has("test_method") ? "method" : "class");
+                }
+                if (args.has("test_method")) {
+                    data.getClass().getField("METHOD_NAME").set(data,
+                            args.get("test_method").getAsString());
+                    data.getClass().getField("TEST_OBJECT").set(data, "method");
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
+                // Fallback: try direct setter
+                setViaReflection(config, "setMainClassName", 
+                        args.has("test_class") ? args.get("test_class").getAsString() : "", ignore, null);
+            }
         }
-        if (args.has("test_method"))
-            setViaReflection(config, "setMethodName", args.get("test_method").getAsString(), ignore, null);
+
         if (args.has("module_name")) {
             try {
                 Module module = ModuleManager.getInstance(project)
