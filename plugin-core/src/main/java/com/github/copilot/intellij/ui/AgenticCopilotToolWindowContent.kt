@@ -341,10 +341,55 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val modelName = selectedModelObj?.name ?: "default"
                     val modelMultiplier = selectedModelObj?.usage ?: "1x"
                     appendResponse("🤖 Using model: $modelName ($modelMultiplier)\n\n")
+                    // Build context references from Context tab
+                    val references = mutableListOf<CopilotAcpClient.ResourceReference>()
+                    for (i in 0 until contextListModel.size()) {
+                        val item = contextListModel.getElementAt(i)
+                        try {
+                            val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                                .findFileByPath(item.path)
+                            if (file != null) {
+                                val doc = com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
+                                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+                                }
+                                if (doc != null) {
+                                    val text = if (item.isSelection && item.startLine > 0) {
+                                        val startOffset = doc.getLineStartOffset(
+                                            (item.startLine - 1).coerceIn(0, doc.lineCount - 1))
+                                        val endOffset = doc.getLineEndOffset(
+                                            (item.endLine - 1).coerceIn(0, doc.lineCount - 1))
+                                        doc.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
+                                    } else {
+                                        doc.text
+                                    }
+                                    val uri = "file://${item.path.replace("\\", "/")}"
+                                    val mimeType = file.fileType.name.lowercase().let { ft ->
+                                        when (ft) {
+                                            "java" -> "text/x-java"
+                                            "kotlin" -> "text/x-kotlin"
+                                            "python" -> "text/x-python"
+                                            "javascript" -> "text/javascript"
+                                            "typescript" -> "text/typescript"
+                                            "xml", "html" -> "text/$ft"
+                                            else -> "text/plain"
+                                        }
+                                    }
+                                    references.add(CopilotAcpClient.ResourceReference(uri, mimeType, text))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            appendResponse("⚠ Could not read context: ${item.name}\n")
+                        }
+                    }
+                    
+                    if (references.isNotEmpty()) {
+                        appendResponse("📎 ${references.size} context file(s) attached\n")
+                    }
                     appendResponse("─".repeat(50) + "\n")
                     
-                    // Send prompt with streaming
-                    val stopReason = client.sendPrompt(sessionId, prompt, modelId) { chunk ->
+                    // Send prompt with context and streaming
+                    val stopReason = client.sendPrompt(sessionId, prompt, modelId, 
+                        if (references.isNotEmpty()) references else null) { chunk ->
                         appendResponse(chunk)
                     }
                     

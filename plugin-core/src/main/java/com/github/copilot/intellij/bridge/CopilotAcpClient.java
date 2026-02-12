@@ -177,6 +177,17 @@ public class CopilotAcpClient implements Closeable {
     public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
                              @Nullable String model, @Nullable Consumer<String> onChunk)
             throws CopilotException {
+        return sendPrompt(sessionId, prompt, model, null, onChunk);
+    }
+
+    /**
+     * Send a prompt with optional file/selection context references.
+     * References are included as ACP "resource" content blocks alongside the text.
+     */
+    public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
+                             @Nullable String model, @Nullable List<ResourceReference> references,
+                             @Nullable Consumer<String> onChunk)
+            throws CopilotException {
         ensureStarted();
 
         // Register notification listener for streaming chunks
@@ -210,6 +221,24 @@ public class CopilotAcpClient implements Closeable {
             params.addProperty("sessionId", sessionId);
 
             JsonArray promptArray = new JsonArray();
+
+            // Add resource references before text prompt
+            if (references != null) {
+                for (ResourceReference ref : references) {
+                    JsonObject resource = new JsonObject();
+                    resource.addProperty("type", "resource");
+                    JsonObject resourceData = new JsonObject();
+                    resourceData.addProperty("uri", ref.uri);
+                    if (ref.mimeType != null) {
+                        resourceData.addProperty("mimeType", ref.mimeType);
+                    }
+                    resourceData.addProperty("text", ref.text);
+                    resource.add("resource", resourceData);
+                    promptArray.add(resource);
+                }
+            }
+
+            // Add text prompt
             JsonObject promptContent = new JsonObject();
             promptContent.addProperty("type", "text");
             promptContent.addProperty("text", prompt);
@@ -453,6 +482,19 @@ public class CopilotAcpClient implements Closeable {
         public String name;
         public String description;
         public String usage; // e.g., "1x", "3x", "0.33x"
+    }
+
+    /** ACP resource reference — file or selection context sent with prompts. */
+    public static class ResourceReference {
+        public final String uri;
+        public final String mimeType;
+        public final String text;
+
+        public ResourceReference(@NotNull String uri, @Nullable String mimeType, @NotNull String text) {
+            this.uri = uri;
+            this.mimeType = mimeType;
+            this.text = text;
+        }
     }
 
     public static class AuthMethod {
