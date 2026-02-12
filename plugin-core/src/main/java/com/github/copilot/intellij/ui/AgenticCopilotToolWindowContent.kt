@@ -75,6 +75,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    // Track tool calls for Plans tab correlation
+    private val toolCallFiles = mutableMapOf<String, String>() // toolCallId -> file path
+
     /** Handle ACP session/update notifications — routes to timeline and plans. */
     private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
         val updateType = update.get("sessionUpdate")?.asString ?: return
@@ -87,7 +90,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val kind = update.get("kind")?.asString ?: ""
                 addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
                 
-                // Add tool call to Plans tab as activity
+                // Extract file path from locations or title
+                val locations = if (update.has("locations")) update.getAsJsonArray("locations") else null
+                var filePath: String? = null
+                if (locations != null && locations.size() > 0) {
+                    filePath = locations[0].asJsonObject.get("path")?.asString
+                }
+                if (filePath == null) {
+                    // Try to extract from title (e.g., "Creating /path/to/file.md")
+                    val pathMatch = Regex("""(?:Creating|Writing|Editing|Reading)\s+(.+\.\w+)""").find(title)
+                    filePath = pathMatch?.groupValues?.get(1)
+                }
+                if (filePath != null && toolCallId.isNotEmpty()) {
+                    toolCallFiles[toolCallId] = filePath
+                }
+                
+                // Add tool call to Plans tab
                 SwingUtilities.invokeLater {
                     val statusIcon = when (status) {
                         "completed" -> "✅"
@@ -96,9 +114,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         else -> "🔧"
                     }
                     val kindLabel = if (kind.isNotEmpty()) " [$kind]" else ""
-                    val node = javax.swing.tree.DefaultMutableTreeNode("$statusIcon $title$kindLabel")
+                    val nodeLabel = "$statusIcon $title$kindLabel"
+                    val node = javax.swing.tree.DefaultMutableTreeNode(nodeLabel)
                     
-                    // Find or create "Tool Calls" group
                     var toolGroup: javax.swing.tree.DefaultMutableTreeNode? = null
                     for (i in 0 until planRoot.childCount) {
                         val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
@@ -121,12 +139,45 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (status == "completed" || status == "failed") {
                     addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
                     
-                    // Update the corresponding tool call node status
+                    // If a file was written, try to read and show its content
+                    val filePath = toolCallFiles[toolCallId]
+                    if (status == "completed" && filePath != null) {
+                        ApplicationManager.getApplication().executeOnPooledThread {
+                            try {
+                                val file = java.io.File(filePath)
+                                if (file.exists() && file.length() < 100_000) {
+                                    val content = file.readText()
+                                    SwingUtilities.invokeLater {
+                                        // Add file content node under a "Created Files" group
+                                        var filesGroup: javax.swing.tree.DefaultMutableTreeNode? = null
+                                        for (i in 0 until planRoot.childCount) {
+                                            val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
+                                            if (child.userObject == "Created Files") {
+                                                filesGroup = child
+                                                break
+                                            }
+                                        }
+                                        if (filesGroup == null) {
+                                            filesGroup = javax.swing.tree.DefaultMutableTreeNode("Created Files")
+                                            planRoot.insert(filesGroup, 0) // show files first
+                                        }
+                                        val fileName = file.name
+                                        val fileNode = FileTreeNode(fileName, filePath, content)
+                                        filesGroup.add(fileNode)
+                                        planTreeModel.reload()
+                                        
+                                        // Auto-show the content in details
+                                        planDetailsArea.text = "📄 $fileName\n${"─".repeat(40)}\n\n$content"
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    
                     SwingUtilities.invokeLater {
                         for (i in 0 until planRoot.childCount) {
                             val group = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
                             if (group.userObject == "Agent Activity") {
-                                // Update last node with matching status
                                 val lastIdx = group.childCount - 1
                                 if (lastIdx >= 0) {
                                     val lastNode = group.getChildAt(lastIdx) as javax.swing.tree.DefaultMutableTreeNode
@@ -964,6 +1015,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val text = node?.userObject?.toString() ?: ""
                 
                 when {
+                    node is FileTreeNode -> icon = com.intellij.icons.AllIcons.FileTypes.Text
                     text.contains("[completed]") -> icon = com.intellij.icons.AllIcons.Actions.Commit
                     text.contains("[in_progress]") -> icon = com.intellij.icons.AllIcons.Actions.Execute
                     text.contains("[pending]") -> icon = com.intellij.icons.AllIcons.Actions.Pause
@@ -980,27 +1032,50 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         
         splitPane.firstComponent = treePanel
         
-        // Right: Plan details
+        // Right: Plan details with optional action button
         val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
         detailsPanel.border = JBUI.Borders.empty(5)
         
+        val detailsHeaderPanel = JBPanel<JBPanel<*>>(BorderLayout())
         val detailsLabel = JBLabel("Plan Details:")
-        detailsPanel.add(detailsLabel, BorderLayout.NORTH)
+        val openFileButton = JButton("Open in Editor")
+        openFileButton.isVisible = false
+        openFileButton.font = JBUI.Fonts.smallFont()
+        detailsHeaderPanel.add(detailsLabel, BorderLayout.WEST)
+        detailsHeaderPanel.add(openFileButton, BorderLayout.EAST)
+        detailsPanel.add(detailsHeaderPanel, BorderLayout.NORTH)
         
         planDetailsArea = JBTextArea()
         planDetailsArea.isEditable = false
         planDetailsArea.lineWrap = true
         planDetailsArea.wrapStyleWord = true
-        planDetailsArea.text = "Plans will appear here when the agent creates an execution plan.\n\nUse 'Plan' mode in the Prompt tab to encourage plan-based responses."
+        planDetailsArea.text = "Created files and plan details will appear here.\n\nSelect an item in the tree to see details."
         
         val detailsScrollPane = JBScrollPane(planDetailsArea)
         detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
         
-        // Selection listener
+        // Selection listener — show file content or node details
         tree.addTreeSelectionListener { event ->
             val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
-            val text = node?.userObject?.toString() ?: ""
-            planDetailsArea.text = text.ifEmpty { "Select a plan item to see details." }
+            if (node is FileTreeNode) {
+                planDetailsArea.text = "📄 ${node.fileName}\n${"─".repeat(40)}\n\n${node.fileContent}"
+                openFileButton.isVisible = true
+                // Remove old listeners and add new one for this file
+                openFileButton.actionListeners.forEach { openFileButton.removeActionListener(it) }
+                openFileButton.addActionListener {
+                    val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
+                        node.filePath.replace("\\", "/"))
+                    if (vFile != null) {
+                        ApplicationManager.getApplication().invokeLater {
+                            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vFile, true)
+                        }
+                    }
+                }
+            } else {
+                val text = node?.userObject?.toString() ?: ""
+                planDetailsArea.text = text.ifEmpty { "Select an item to see details." }
+                openFileButton.isVisible = false
+            }
         }
         
         splitPane.secondComponent = detailsPanel
@@ -1276,4 +1351,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         ERROR,
         TOOL_CALL
     }
+
+    /** Tree node that holds file content and path for the Plans tab. */
+    private class FileTreeNode(
+        val fileName: String,
+        val filePath: String,
+        val fileContent: String
+    ) : javax.swing.tree.DefaultMutableTreeNode("📄 $fileName")
 }
