@@ -1,0 +1,783 @@
+package com.github.copilot.intellij.ui
+
+import com.github.copilot.intellij.services.SidecarService
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComboBox
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBPanel
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTabbedPane
+import com.intellij.util.ui.JBUI
+import java.awt.BorderLayout
+import java.awt.FlowLayout
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import javax.swing.*
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
+
+/**
+ * Main content for the Agentic Copilot tool window.
+ * Uses Kotlin UI DSL for cleaner, more maintainable UI code.
+ */
+class AgenticCopilotToolWindowContent(private val project: Project) {
+
+    private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
+    private val tabbedPane = JBTabbedPane()
+    
+    // Shared context list across tabs
+    private val contextListModel = DefaultListModel<ContextItem>()
+
+    init {
+        setupUI()
+    }
+
+    private fun setupUI() {
+        // Create tabs
+        tabbedPane.addTab("Prompt", createPromptTab())
+        tabbedPane.addTab("Context", createContextTab())
+        tabbedPane.addTab("Plans", createPlansTab())
+        tabbedPane.addTab("Timeline", createTimelineTab())
+        tabbedPane.addTab("Settings", createSettingsTab())
+
+        mainPanel.add(tabbedPane, BorderLayout.CENTER)
+    }
+
+    private fun createPromptTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
+        panel.border = JBUI.Borders.empty(10)
+        
+        // Top toolbar with model selector and token counter
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
+        
+        // Model selector
+        toolbar.add(JBLabel("Model:"))
+        val modelComboBox = ComboBox(arrayOf("Loading models..."))
+        modelComboBox.preferredSize = JBUI.size(200, 30)
+        toolbar.add(modelComboBox)
+        
+        // Token counter
+        val tokenLabel = JBLabel("Tokens: 0")
+        tokenLabel.border = JBUI.Borders.emptyLeft(20)
+        toolbar.add(tokenLabel)
+        
+        panel.add(toolbar, BorderLayout.NORTH)
+        
+        // Center: Split pane with prompt input (top) and response output (bottom)
+        val splitPane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
+        splitPane.resizeWeight = 0.4 // 40% for input, 60% for output
+        
+        // Prompt input area
+        val promptPanel = JBPanel<JBPanel<*>>(BorderLayout())
+        promptPanel.border = JBUI.Borders.empty(5)
+        
+        val promptLabel = JBLabel("Prompt:")
+        promptPanel.add(promptLabel, BorderLayout.NORTH)
+        
+        val promptTextArea = JTextArea()
+        promptTextArea.lineWrap = true
+        promptTextArea.wrapStyleWord = true
+        promptTextArea.rows = 8
+        promptTextArea.border = JBUI.Borders.empty(5)
+        
+        // Response output area (declare before button listener needs it)
+        val responsePanel = JBPanel<JBPanel<*>>(BorderLayout())
+        responsePanel.border = JBUI.Borders.empty(5)
+        
+        val responseLabel = JBLabel("Response:")
+        responsePanel.add(responseLabel, BorderLayout.NORTH)
+        
+        val responseTextArea = JTextArea()
+        responseTextArea.isEditable = false
+        responseTextArea.lineWrap = true
+        responseTextArea.wrapStyleWord = true
+        responseTextArea.text = "Response will appear here after running a prompt...\n\nℹ️ First run will auto-start the sidecar process."
+        responseTextArea.border = JBUI.Borders.empty(5)
+        
+        val responseScrollPane = JBScrollPane(responseTextArea)
+        responsePanel.add(responseScrollPane, BorderLayout.CENTER)
+        
+        // Helper function to append to response area
+        fun appendResponse(text: String) {
+            SwingUtilities.invokeLater {
+                responseTextArea.append(text)
+                responseTextArea.caretPosition = responseTextArea.document.length
+            }
+        }
+        
+        // Add document listener for token counting
+        promptTextArea.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) = updateTokenCount()
+            override fun removeUpdate(e: DocumentEvent?) = updateTokenCount()
+            override fun changedUpdate(e: DocumentEvent?) = updateTokenCount()
+            
+            private fun updateTokenCount() {
+                val text = promptTextArea.text
+                val estimatedTokens = (text.length / 4).coerceAtLeast(0) // ~4 chars per token
+                tokenLabel.text = "Tokens: ~$estimatedTokens"
+            }
+        })
+        
+        val promptScrollPane = JBScrollPane(promptTextArea)
+        promptPanel.add(promptScrollPane, BorderLayout.CENTER)
+        
+        // Run button
+        val runButton = JButton("Run")
+        runButton.addActionListener {
+            val prompt = promptTextArea.text.trim()
+            if (prompt.isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "Please enter a prompt", "Empty Prompt", JOptionPane.WARNING_MESSAGE)
+                return@addActionListener
+            }
+            
+            runButton.isEnabled = false
+            responseTextArea.text = "Sending request to sidecar...\n"
+            
+            // Run in background thread
+            ApplicationManager.getApplication().executeOnPooledThread {
+                try {
+                    val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val client = sidecarService.getClient()
+                    
+                    // Create session if needed
+                    val sessionResponse = client.createSession()
+                    appendResponse("✅ Session created: ${sessionResponse.sessionId}\n")
+                    
+                    // Get selected model
+                    val selectedModel = modelComboBox.selectedItem?.toString() ?: "gpt-5-mini"
+                    appendResponse("🤖 Using model: $selectedModel\n\n")
+                    
+                    // Send message (this returns immediately with streamUrl)
+                    val messageResponse = client.sendMessage(sessionResponse.sessionId, prompt, selectedModel)
+                    appendResponse("📡 Streaming response...\n")
+                    appendResponse("─".repeat(50) + "\n")
+                    
+                    // Stream the response chunks
+                    client.streamResponse(sessionResponse.sessionId) { jsonChunk ->
+                        try {
+                            // Parse JSON chunk and extract content
+                            val parser = com.google.gson.JsonParser()
+                            val chunk = parser.parse(jsonChunk).asJsonObject
+                            
+                            when {
+                                chunk.has("type") && chunk.get("type").asString == "text" -> {
+                                    val content = chunk.get("content").asString
+                                    appendResponse(content) // Append without newline for streaming effect
+                                }
+                                chunk.has("type") && chunk.get("type").asString == "done" -> {
+                                    appendResponse("\n" + "─".repeat(50) + "\n")
+                                    appendResponse("✅ Stream complete!\n")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            appendResponse("⚠️ Parse error: ${e.message}\n")
+                        }
+                    }
+                    
+                } catch (e: Exception) {
+                    appendResponse("\n❌ Error: ${e.message}\n")
+                    e.printStackTrace()
+                } finally {
+                    SwingUtilities.invokeLater {
+                        runButton.isEnabled = true
+                    }
+                }
+            }
+        }
+        promptPanel.add(runButton, BorderLayout.SOUTH)
+        
+        splitPane.topComponent = promptPanel
+        splitPane.bottomComponent = responsePanel
+        
+        panel.add(splitPane, BorderLayout.CENTER)
+        
+        // Load models in background
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                val client = sidecarService.getClient()
+                val models = client.listModels()
+                
+                SwingUtilities.invokeLater {
+                    modelComboBox.removeAllItems()
+                    models.forEach { model ->
+                        modelComboBox.addItem(model.name)
+                    }
+                    if (models.isNotEmpty()) {
+                        modelComboBox.selectedIndex = 0
+                    }
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    modelComboBox.removeAllItems()
+                    modelComboBox.addItem("Error loading models")
+                }
+                e.printStackTrace()
+            }
+        }
+        
+        return panel
+    }
+
+    private fun createContextTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
+        panel.border = JBUI.Borders.empty(10)
+        
+        // Use class-level contextListModel
+        
+        // Top toolbar with Add button
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
+        
+        val addFileButton = JButton("Add Current File")
+        addFileButton.toolTipText = "Add the currently open file to context"
+        addFileButton.addActionListener {
+            // Get current editor and file
+            val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+            val currentFile = fileEditorManager.selectedFiles.firstOrNull()
+            
+            if (currentFile != null) {
+                val virtualFile = currentFile
+                val path = virtualFile.path
+                val name = virtualFile.name
+                val lineCount = try {
+                    val editor = fileEditorManager.selectedTextEditor
+                    editor?.document?.lineCount ?: 0
+                } catch (e: Exception) {
+                    0
+                }
+                
+                // Create context item
+                val item = ContextItem(
+                    path = path,
+                    name = name,
+                    startLine = 1,
+                    endLine = lineCount,
+                    fileType = virtualFile.fileType,
+                    isSelection = false
+                )
+                
+                // Check if already added
+                val exists = (0 until contextListModel.size()).any { 
+                    contextListModel.get(it).path == path 
+                }
+                
+                if (!exists) {
+                    contextListModel.addElement(item)
+                } else {
+                    JOptionPane.showMessageDialog(
+                        panel,
+                        "File already in context: $name",
+                        "Duplicate File",
+                        JOptionPane.INFORMATION_MESSAGE
+                    )
+                }
+            } else {
+                JOptionPane.showMessageDialog(
+                    panel,
+                    "No file is currently open in the editor",
+                    "No File",
+                    JOptionPane.WARNING_MESSAGE
+                )
+            }
+        }
+        toolbar.add(addFileButton)
+        
+        val addSelectionButton = JButton("Add Selection")
+        addSelectionButton.toolTipText = "Add the current text selection to context"
+        addSelectionButton.addActionListener {
+            val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+            val editor = fileEditorManager.selectedTextEditor
+            val currentFile = fileEditorManager.selectedFiles.firstOrNull()
+            
+            if (editor != null && currentFile != null) {
+                val selectionModel = editor.selectionModel
+                
+                if (selectionModel.hasSelection()) {
+                    val document = editor.document
+                    val startOffset = selectionModel.selectionStart
+                    val endOffset = selectionModel.selectionEnd
+                    val startLine = document.getLineNumber(startOffset) + 1
+                    val endLine = document.getLineNumber(endOffset) + 1
+                    
+                    val item = ContextItem(
+                        path = currentFile.path,
+                        name = "${currentFile.name}:$startLine-$endLine",
+                        startLine = startLine,
+                        endLine = endLine,
+                        fileType = currentFile.fileType,
+                        isSelection = true
+                    )
+                    
+                    contextListModel.addElement(item)
+                } else {
+                    JOptionPane.showMessageDialog(
+                        panel,
+                        "No text is selected. Select some code first.",
+                        "No Selection",
+                        JOptionPane.WARNING_MESSAGE
+                    )
+                }
+            } else {
+                JOptionPane.showMessageDialog(
+                    panel,
+                    "No editor is currently open",
+                    "No Editor",
+                    JOptionPane.WARNING_MESSAGE
+                )
+            }
+        }
+        toolbar.add(addSelectionButton)
+        
+        val clearButton = JButton("Clear All")
+        clearButton.addActionListener {
+            if (contextListModel.size() > 0) {
+                val result = JOptionPane.showConfirmDialog(
+                    panel,
+                    "Remove all ${contextListModel.size()} context items?",
+                    "Clear Context",
+                    JOptionPane.YES_NO_OPTION
+                )
+                if (result == JOptionPane.YES_OPTION) {
+                    contextListModel.clear()
+                }
+            }
+        }
+        toolbar.add(clearButton)
+        
+        panel.add(toolbar, BorderLayout.NORTH)
+        
+        // Context list with custom renderer
+        val contextList = com.intellij.ui.components.JBList(contextListModel)
+        contextList.cellRenderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?,
+                value: Any?,
+                index: Int,
+                isSelected: Boolean,
+                cellHasFocus: Boolean
+            ): java.awt.Component {
+                val item = value as? ContextItem
+                val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
+                
+                if (item != null) {
+                    // Set icon based on file type
+                    label.icon = item.fileType?.icon ?: com.intellij.icons.AllIcons.FileTypes.Text
+                    
+                    // Format display text
+                    val displayText = if (item.isSelection) {
+                        "${item.name} (${item.endLine - item.startLine + 1} lines)"
+                    } else {
+                        "${item.name} (${item.endLine} lines)"
+                    }
+                    label.text = displayText
+                    label.toolTipText = item.path
+                    label.border = JBUI.Borders.empty(5)
+                }
+                
+                return label
+            }
+        }
+        
+        val scrollPane = JBScrollPane(contextList)
+        panel.add(scrollPane, BorderLayout.CENTER)
+        
+        // Bottom info panel
+        val infoPanel = JBPanel<JBPanel<*>>(BorderLayout())
+        infoPanel.border = JBUI.Borders.empty(5)
+        val infoLabel = JBLabel("Context items will be sent with each prompt")
+        infoLabel.foreground = java.awt.Color.GRAY
+        infoPanel.add(infoLabel, BorderLayout.WEST)
+        
+        val countLabel = JBLabel("0 items")
+        countLabel.foreground = java.awt.Color.GRAY
+        infoPanel.add(countLabel, BorderLayout.EAST)
+        
+        // Update count when list changes
+        contextListModel.addListDataListener(object : javax.swing.event.ListDataListener {
+            override fun intervalAdded(e: javax.swing.event.ListDataEvent?) = updateCount()
+            override fun intervalRemoved(e: javax.swing.event.ListDataEvent?) = updateCount()
+            override fun contentsChanged(e: javax.swing.event.ListDataEvent?) = updateCount()
+            
+            private fun updateCount() {
+                countLabel.text = "${contextListModel.size()} items"
+            }
+        })
+        
+        panel.add(infoPanel, BorderLayout.SOUTH)
+        
+        return panel
+    }
+
+    private fun createPlansTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
+        panel.border = JBUI.Borders.empty(10)
+        
+        // Create split pane: tree on left, details on right
+        val splitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT)
+        splitPane.resizeWeight = 0.5
+        
+        // Left: Plans tree
+        val treePanel = JBPanel<JBPanel<*>>(BorderLayout())
+        treePanel.border = JBUI.Borders.empty(5)
+        
+        val treeLabel = JBLabel("Execution Plans:")
+        treePanel.add(treeLabel, BorderLayout.NORTH)
+        
+        // Create sample tree structure
+        val root = javax.swing.tree.DefaultMutableTreeNode("Agent Plans")
+        
+        val plan1 = javax.swing.tree.DefaultMutableTreeNode("✅ Setup Project Structure")
+        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Create build.gradle.kts"))
+        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Create plugin.xml"))
+        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Setup Go sidecar"))
+        root.add(plan1)
+        
+        val plan2 = javax.swing.tree.DefaultMutableTreeNode("🔄 Implement UI Features")
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("✅ Prompt tab"))
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("🔄 Context tab (in progress)"))
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Plans tab (pending)"))
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Timeline tab (pending)"))
+        root.add(plan2)
+        
+        val plan3 = javax.swing.tree.DefaultMutableTreeNode("⏳ Git Integration")
+        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Status display"))
+        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Commit with messages"))
+        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Branch management"))
+        root.add(plan3)
+        
+        val treeModel = javax.swing.tree.DefaultTreeModel(root)
+        val tree = com.intellij.ui.treeStructure.Tree(treeModel)
+        tree.isRootVisible = true
+        tree.showsRootHandles = true
+        
+        // Expand all nodes
+        for (i in 0 until tree.rowCount) {
+            tree.expandRow(i)
+        }
+        
+        // Custom cell renderer for status icons
+        tree.cellRenderer = object : javax.swing.tree.DefaultTreeCellRenderer() {
+            override fun getTreeCellRendererComponent(
+                tree: javax.swing.JTree?,
+                value: Any?,
+                sel: Boolean,
+                expanded: Boolean,
+                leaf: Boolean,
+                row: Int,
+                hasFocus: Boolean
+            ): java.awt.Component {
+                val label = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
+                val node = value as? javax.swing.tree.DefaultMutableTreeNode
+                val text = node?.userObject?.toString() ?: ""
+                
+                // Set icons based on status
+                when {
+                    text.startsWith("✅") -> icon = com.intellij.icons.AllIcons.Actions.Commit
+                    text.startsWith("🔄") -> icon = com.intellij.icons.AllIcons.Actions.Execute
+                    text.startsWith("⏳") -> icon = com.intellij.icons.AllIcons.Actions.Pause
+                    text.startsWith("❌") -> icon = com.intellij.icons.AllIcons.General.Error
+                    else -> icon = com.intellij.icons.AllIcons.Nodes.Folder
+                }
+                
+                return label
+            }
+        }
+        
+        val treeScrollPane = JBScrollPane(tree)
+        treePanel.add(treeScrollPane, BorderLayout.CENTER)
+        
+        splitPane.leftComponent = treePanel
+        
+        // Right: Plan details/diff preview
+        val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
+        detailsPanel.border = JBUI.Borders.empty(5)
+        
+        val detailsLabel = JBLabel("Plan Details:")
+        detailsPanel.add(detailsLabel, BorderLayout.NORTH)
+        
+        val detailsArea = JTextArea()
+        detailsArea.isEditable = false
+        detailsArea.lineWrap = true
+        detailsArea.wrapStyleWord = true
+        detailsArea.text = """
+            Select a plan item to see details.
+            
+            This panel will show:
+            • Plan description
+            • File changes (diffs)
+            • Status and timestamps
+            • Error messages (if any)
+            
+            Phase 3 will add:
+            • Approve/Reject buttons
+            • Diff syntax highlighting
+            • Real-time plan updates
+        """.trimIndent()
+        detailsArea.border = JBUI.Borders.empty(5)
+        
+        val detailsScrollPane = JBScrollPane(detailsArea)
+        detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
+        
+        // Add selection listener
+        tree.addTreeSelectionListener { event ->
+            val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
+            val text = node?.userObject?.toString() ?: ""
+            detailsArea.text = """
+                Selected: $text
+                
+                Status: ${when {
+                    text.startsWith("✅") -> "Completed"
+                    text.startsWith("🔄") -> "In Progress"
+                    text.startsWith("⏳") -> "Pending"
+                    text.startsWith("❌") -> "Failed"
+                    else -> "Plan Group"
+                }}
+                
+                Details will be populated from agent in Phase 3.
+            """.trimIndent()
+        }
+        
+        splitPane.rightComponent = detailsPanel
+        
+        panel.add(splitPane, BorderLayout.CENTER)
+        
+        return panel
+    }
+
+    private fun createTimelineTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
+        panel.border = JBUI.Borders.empty(10)
+        
+        // Timeline list
+        val timelineModel = DefaultListModel<TimelineEvent>()
+        val timelineList = com.intellij.ui.components.JBList(timelineModel)
+        
+        // Custom cell renderer for timeline events
+        timelineList.cellRenderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?,
+                value: Any?,
+                index: Int,
+                isSelected: Boolean,
+                cellHasFocus: Boolean
+            ): java.awt.Component {
+                val event = value as? TimelineEvent
+                val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
+                
+                if (event != null) {
+                    val icon = when (event.type) {
+                        EventType.SESSION_START -> com.intellij.icons.AllIcons.Actions.Execute
+                        EventType.MESSAGE_SENT -> com.intellij.icons.AllIcons.Actions.Upload
+                        EventType.RESPONSE_RECEIVED -> com.intellij.icons.AllIcons.Actions.Download
+                        EventType.ERROR -> com.intellij.icons.AllIcons.General.Error
+                        EventType.TOOL_CALL -> com.intellij.icons.AllIcons.Actions.Lightning
+                    }
+                    label.icon = icon
+                    
+                    val timeStr = java.text.SimpleDateFormat("HH:mm:ss").format(event.timestamp)
+                    label.text = "<html><b>$timeStr</b> - ${event.message}</html>"
+                    label.border = JBUI.Borders.empty(5)
+                }
+                
+                return label
+            }
+        }
+        
+        val scrollPane = JBScrollPane(timelineList)
+        panel.add(scrollPane, BorderLayout.CENTER)
+        
+        // Bottom toolbar
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
+        
+        val clearButton = JButton("Clear Timeline")
+        clearButton.addActionListener {
+            if (timelineModel.size() > 0) {
+                val result = JOptionPane.showConfirmDialog(
+                    panel,
+                    "Clear ${timelineModel.size()} timeline events?",
+                    "Clear Timeline",
+                    JOptionPane.YES_NO_OPTION
+                )
+                if (result == JOptionPane.YES_OPTION) {
+                    timelineModel.clear()
+                }
+            }
+        }
+        toolbar.add(clearButton)
+        
+        val exportButton = JButton("Export Timeline")
+        exportButton.isEnabled = false
+        exportButton.toolTipText = "Export timeline to file (coming soon)"
+        toolbar.add(exportButton)
+        
+        panel.add(toolbar, BorderLayout.SOUTH)
+        
+        // Add sample events for demonstration
+        timelineModel.addElement(TimelineEvent(
+            EventType.SESSION_START,
+            "Session initialized",
+            java.util.Date()
+        ))
+        timelineModel.addElement(TimelineEvent(
+            EventType.MESSAGE_SENT,
+            "User prompt sent to agent",
+            java.util.Date(System.currentTimeMillis() - 5000)
+        ))
+        timelineModel.addElement(TimelineEvent(
+            EventType.RESPONSE_RECEIVED,
+            "Agent response received (mock)",
+            java.util.Date(System.currentTimeMillis() - 3000)
+        ))
+        
+        return panel
+    }
+
+    private fun createSettingsTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(GridBagLayout())
+        panel.border = JBUI.Borders.empty(10)
+        
+        val gbc = GridBagConstraints()
+        gbc.gridx = 0
+        gbc.gridy = 0
+        gbc.anchor = GridBagConstraints.WEST
+        gbc.insets = JBUI.insets(5)
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        
+        // Model settings section
+        val modelLabel = JBLabel("<html><b>Model Settings</b></html>")
+        gbc.gridwidth = 2
+        panel.add(modelLabel, gbc)
+        
+        gbc.gridy++
+        gbc.gridwidth = 1
+        panel.add(JBLabel("Default Model:"), gbc)
+        
+        gbc.gridx = 1
+        val defaultModelCombo = ComboBox(arrayOf("Loading models..."))
+        defaultModelCombo.preferredSize = JBUI.size(250, 30)
+        panel.add(defaultModelCombo, gbc)
+        
+        // Load models from sidecar
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                val client = sidecarService.getClient()
+                val models = client.listModels()
+                
+                SwingUtilities.invokeLater {
+                    defaultModelCombo.removeAllItems()
+                    models.forEach { model ->
+                        defaultModelCombo.addItem(model.name)
+                    }
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    defaultModelCombo.removeAllItems()
+                    defaultModelCombo.addItem("Error loading models")
+                }
+            }
+        }
+        
+        // Tool permissions section
+        gbc.gridx = 0
+        gbc.gridy++
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(20, 5, 5, 5)
+        val permissionsLabel = JBLabel("<html><b>Tool Permissions</b></html>")
+        panel.add(permissionsLabel, gbc)
+        
+        gbc.gridy++
+        gbc.gridwidth = 1
+        gbc.insets = JBUI.insets(5)
+        
+        val toolPermissions = listOf(
+            "File Operations" to "Allow agent to read and write files",
+            "Code Execution" to "Allow agent to run commands",
+            "Git Operations" to "Allow agent to commit and push",
+            "Network Access" to "Allow agent to make HTTP requests"
+        )
+        
+        toolPermissions.forEach { (tool, description) ->
+            gbc.gridx = 0
+            val checkbox = JCheckBox(tool)
+            checkbox.isSelected = tool == "File Operations" // Default: only file ops allowed
+            checkbox.toolTipText = description
+            panel.add(checkbox, gbc)
+            
+            gbc.gridy++
+        }
+        
+        // Format settings section
+        gbc.gridx = 0
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(20, 5, 5, 5)
+        val formatLabel = JBLabel("<html><b>Code Formatting</b></html>")
+        panel.add(formatLabel, gbc)
+        
+        gbc.gridy++
+        gbc.gridwidth = 1
+        gbc.insets = JBUI.insets(5)
+        
+        val formatAfterEdit = JCheckBox("Format code after agent edits")
+        formatAfterEdit.isSelected = true
+        panel.add(formatAfterEdit, gbc)
+        
+        gbc.gridy++
+        val optimizeImports = JCheckBox("Optimize imports after edits")
+        optimizeImports.isSelected = true
+        panel.add(optimizeImports, gbc)
+        
+        // Save button
+        gbc.gridy++
+        gbc.gridx = 0
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(20, 5, 5, 5)
+        gbc.anchor = GridBagConstraints.CENTER
+        
+        val saveButton = JButton("Save Settings")
+        saveButton.addActionListener {
+            JOptionPane.showMessageDialog(
+                panel,
+                "Settings saved!\n\n(Settings persistence coming in Phase 3)",
+                "Success",
+                JOptionPane.INFORMATION_MESSAGE
+            )
+        }
+        panel.add(saveButton, gbc)
+        
+        // Add filler to push everything to top
+        gbc.gridy++
+        gbc.weighty = 1.0
+        gbc.fill = GridBagConstraints.BOTH
+        panel.add(JBPanel<JBPanel<*>>(), gbc)
+        
+        return panel
+    }
+
+    fun getComponent(): JComponent = mainPanel
+    
+    // Data classes
+    private data class ContextItem(
+        val path: String,
+        val name: String,
+        val startLine: Int,
+        val endLine: Int,
+        val fileType: com.intellij.openapi.fileTypes.FileType?,
+        val isSelection: Boolean
+    )
+    
+    private data class TimelineEvent(
+        val type: EventType,
+        val message: String,
+        val timestamp: java.util.Date
+    )
+    
+    private enum class EventType {
+        SESSION_START,
+        MESSAGE_SENT,
+        RESPONSE_RECEIVED,
+        ERROR,
+        TOOL_CALL
+    }
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel target="21" />
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="agentic-copilot-intellij.integration-tests" options="-parameters" />
+      <module name="agentic-copilot-intellij.integration-tests.main" options="-parameters" />
+      <module name="agentic-copilot-intellij.integration-tests.test" options="-parameters" />
+      <module name="agentic-copilot-intellij.plugin-core" options="-parameters" />
+      <module name="agentic-copilot-intellij.plugin-core.main" options="-parameters" />
+      <module name="agentic-copilot-intellij.plugin-core.test" options="-parameters" />
+    </option>
+  </component>
+</project>

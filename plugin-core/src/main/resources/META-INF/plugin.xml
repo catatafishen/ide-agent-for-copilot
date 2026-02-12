@@ -1,0 +1,67 @@
+<idea-plugin>
+    <id>com.github.copilot.intellij</id>
+    <name>Agentic Copilot</name>
+    <vendor email="support@example.com" url="https://github.com/yourusername/intellij-copilot-plugin">
+        Agentic Copilot Contributors
+    </vendor>
+
+    <description><![CDATA[
+    <p>Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE.</p>
+    
+    <h3>Features</h3>
+    <ul>
+        <li>AI-powered multi-step planning and execution via GitHub Copilot SDK</li>
+        <li>Rich context management with code selections and symbols</li>
+        <li>Visual plan tracking with real-time progress</li>
+        <li>Timeline view of agent reasoning and tool invocations</li>
+        <li>Git integration with Conventional Commits support</li>
+        <li>Smart code formatting and import optimization</li>
+    </ul>
+    
+    <h3>Requirements</h3>
+    <ul>
+        <li>GitHub Copilot subscription (or BYOK configuration)</li>
+        <li>GitHub Copilot CLI installed (managed by plugin sidecar)</li>
+    </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+    <h3>0.1.0-SNAPSHOT</h3>
+    <ul>
+        <li>Initial technical preview release</li>
+        <li>Tool Window with Prompt, Context, Plans, and Timeline views</li>
+        <li>Copilot SDK integration via Go sidecar</li>
+        <li>Git operations with approval gates</li>
+        <li>Conventional Commits support</li>
+    </ul>
+    ]]></change-notes>
+
+    <!-- Require IntelliJ Platform 2025.1+ (compatible through 2025.3) -->
+    <idea-version since-build="251" until-build="253.*"/>
+
+    <!-- Plugin dependencies -->
+    <depends>com.intellij.modules.platform</depends>
+    <!-- Commented out until bundledPlugins issue resolved -->
+    <!-- <depends>com.intellij.modules.java</depends> -->
+    <!-- <depends>Git4Idea</depends> -->
+
+    <!-- Extension points and implementations -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window -->
+        <toolWindow id="AgenticCopilot" 
+                    secondary="false" 
+                    anchor="right"
+                    icon="/icons/copilot.svg"
+                    factoryClass="com.github.copilot.intellij.ui.AgenticCopilotToolWindowFactory"/>
+        
+        <!-- Application Services -->
+        <applicationService 
+            serviceImplementation="com.github.copilot.intellij.services.AgenticCopilotService"/>
+        <applicationService 
+            serviceImplementation="com.github.copilot.intellij.services.SidecarService"/>
+    </extensions>
+
+    <actions>
+        <!-- Actions will be added here -->
+    </actions>
+</idea-plugin>

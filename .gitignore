@@ -1,0 +1,38 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ IDEA
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.idea/dictionaries/
+.idea/sonarlint/
+*.iml
+*.iws
+out/
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Go
+copilot-bridge/bin/
+copilot-bridge/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test output
+*.log
+test-output/
+
+# Plugin
+plugin-core/build/
+integration-tests/build/

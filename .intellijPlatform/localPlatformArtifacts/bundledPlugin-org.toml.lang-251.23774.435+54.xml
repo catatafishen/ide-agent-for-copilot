@@ -1,0 +1,13 @@
+<ivy-module version="2.0">
+  <info organisation="bundledPlugin" module="org.toml.lang" revision="251.23774.435+54"/>
+  <configurations>
+    <conf name="default" visibility="public"/>
+  </configurations>
+  <publications>
+    <artifact name="/Users/developer/.gradle/caches/8.11/transforms/9b33d819d0fdafb1c06874b6bc903c7a/transformed/ideaIC-2025.1-win/plugins/toml" type="directory" conf="default"/>
+  </publications>
+  <dependencies>
+    <dependency org="bundledPlugin" name="com.intellij.modules.json" rev="251.23774.435+52"/>
+    <dependency org="bundledPlugin" name="tanvd.grazi" rev="251.23774.435+756"/>
+  </dependencies>
+</ivy-module>
