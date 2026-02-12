@@ -180,6 +180,9 @@ public class CopilotAcpClient implements Closeable {
         JsonObject params = new JsonObject();
         params.addProperty("cwd", cwd != null ? cwd : System.getProperty("user.home"));
 
+        // mcpServers must be an array in session/new (agent validates this)
+        params.add("mcpServers", new JsonArray());
+
         JsonObject result = sendRequest("session/new", params);
 
         currentSessionId = result.get("sessionId").getAsString();
@@ -436,7 +439,7 @@ public class CopilotAcpClient implements Closeable {
             request.add("params", params);
 
             String json = gson.toJson(request);
-            LOG.debug("ACP request: " + method + " id=" + id);
+            LOG.info("ACP request: " + method + " id=" + id + " params=" + gson.toJson(params));
 
             synchronized (writer) {
                 writer.write(json);
@@ -587,6 +590,7 @@ public class CopilotAcpClient implements Closeable {
                             if (msg.has("error")) {
                                 JsonObject error = msg.getAsJsonObject("error");
                                 String errorMessage = error.has("message") ? error.get("message").getAsString() : "Unknown error";
+                                LOG.warn("ACP error response for request id=" + id + ": " + gson.toJson(error));
                                 if (error.has("data") && !error.get("data").isJsonNull()) {
                                     try {
                                         errorMessage = error.get("data").getAsString();
