@@ -14,7 +14,7 @@ if (-not (Test-Path $sidecarPath)) {
     exit 1
 }
 
-$sidecarProcess = Start-Process -FilePath $sidecarPath -ArgumentList "--port $FIXED_PORT" -PassThru -NoNewWindow
+$sidecarProcess = Start-Process -FilePath $sidecarPath -ArgumentList "--port", "$FIXED_PORT", "--mock" -PassThru -NoNewWindow
 Start-Sleep -Seconds 2
 
 try {
@@ -34,8 +34,8 @@ try {
     $body = '{"jsonrpc":"2.0","id":1,"method":"models.list","params":{}}'
     $modelsResp = Invoke-RestMethod -Method POST -Uri "$baseUrl/rpc" -ContentType "application/json" -Body $body
     $models = $modelsResp.result.models
-    if ($models.Count -eq 5) {
-        Write-Host "   ✓ Returned 5 models" -ForegroundColor Green
+    if ($models.Count -eq 3) {
+        Write-Host "   ✓ Returned 3 models (mock mode)" -ForegroundColor Green
         foreach ($model in $models) {
             Write-Host "     - $($model.name)" -ForegroundColor Gray
         }

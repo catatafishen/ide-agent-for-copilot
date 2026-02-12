@@ -25,27 +25,26 @@ type Server struct {
 }
 
 // New creates a new RPC server with default (SDK) client
+// Returns error if SDK client cannot be initialized
 func New(port int, callbackURL string) (*Server, error) {
 	return NewWithClient(port, callbackURL, nil)
 }
 
 // NewWithClient creates a new RPC server with a specific client
-// If client is nil, creates an SDK client (falling back to mock on error)
+// If client is nil, creates an SDK client (returns error if it fails)
 func NewWithClient(port int, callbackURL string, client copilot.Client) (*Server, error) {
-	// Use provided client or create default
 	var copilotClient copilot.Client
+	
 	if client != nil {
+		// Use provided client (for testing)
 		copilotClient = client
 	} else {
-		// Create real Copilot SDK client
+		// Create real Copilot SDK client for production
 		sdkClient, err := copilot.NewSDKClient()
 		if err != nil {
-			// Fall back to mock client if SDK fails
-			log.Printf("Warning: Failed to initialize Copilot SDK, using mock client: %v", err)
-			copilotClient = copilot.NewMockClient()
-		} else {
-			copilotClient = sdkClient
+			return nil, fmt.Errorf("failed to initialize Copilot SDK client: %w\n\nPlease ensure:\n1. GitHub Copilot CLI is installed\n2. You are authenticated (run: gh auth login)\n3. Copilot is enabled for your account", err)
 		}
+		copilotClient = sdkClient
 	}
 	
 	return &Server{

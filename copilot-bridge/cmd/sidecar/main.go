@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/yourusername/intellij-copilot-plugin/copilot-bridge/internal/copilot"
 	"github.com/yourusername/intellij-copilot-plugin/copilot-bridge/internal/server"
 )
 
@@ -19,6 +20,7 @@ func main() {
 	port := flag.Int("port", defaultPort, "Server port (0 for dynamic allocation)")
 	pluginCallbackURL := flag.String("callback", "", "Plugin callback URL for tool execution")
 	debug := flag.Bool("debug", false, "Enable debug logging")
+	mockMode := flag.Bool("mock", false, "Run in mock mode (for development/testing)")
 	flag.Parse()
 
 	if *debug {
@@ -31,10 +33,26 @@ func main() {
 	log.Printf("Port: %d (0 = dynamic)", *port)
 	log.Printf("Plugin callback URL: %s", *pluginCallbackURL)
 
-	// Create and start the RPC server
-	srv, err := server.New(*port, *pluginCallbackURL)
-	if err != nil {
-		log.Fatalf("Failed to create server: %v", err)
+	var srv *server.Server
+	var err error
+
+	if *mockMode {
+		// Development mode: use mock client
+		log.Printf("⚠️  Running in MOCK mode (for development only)")
+		mockClient := copilot.NewMockClient()
+		srv, err = server.NewWithClient(*port, *pluginCallbackURL, mockClient)
+		if err != nil {
+			log.Fatalf("Failed to create server with mock client: %v", err)
+		}
+	} else {
+		// Production mode: use real SDK client
+		log.Printf("🚀 Initializing GitHub Copilot SDK...")
+		srv, err = server.New(*port, *pluginCallbackURL)
+		if err != nil {
+			log.Fatalf("❌ Failed to initialize Copilot SDK:\n\n%v\n\n"+
+				"💡 To use mock mode for development, run with --mock flag", err)
+		}
+		log.Printf("✅ SDK initialized successfully")
 	}
 
 	if err := srv.Start(); err != nil {
