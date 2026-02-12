@@ -10,7 +10,9 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.FlowLayout
+import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import javax.swing.*
@@ -51,10 +53,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Top toolbar with model selector and token counter
         val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
         
-        // Model selector
-        toolbar.add(JBLabel("Model:"))
-        val modelComboBox = ComboBox(arrayOf("Loading models..."))
-        modelComboBox.preferredSize = JBUI.size(200, 30)
+        // Model selector (placeholder shown inside dropdown)
+        val modelComboBox = ComboBox(arrayOf("Model: Loading..."))
+        modelComboBox.preferredSize = JBUI.size(220, 30)
+        modelComboBox.isEnabled = false
         toolbar.add(modelComboBox)
         
         // Token counter
@@ -62,7 +64,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         tokenLabel.border = JBUI.Borders.emptyLeft(20)
         toolbar.add(tokenLabel)
         
-        panel.add(toolbar, BorderLayout.NORTH)
+        // Error label below toolbar (hidden by default)
+        val modelErrorLabel = JBLabel()
+        modelErrorLabel.foreground = Color(200, 80, 80)
+        modelErrorLabel.font = modelErrorLabel.font.deriveFont(Font.PLAIN, 11f)
+        modelErrorLabel.isVisible = false
+        modelErrorLabel.border = JBUI.Borders.emptyLeft(10)
+        
+        val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
+        topPanel.add(toolbar, BorderLayout.NORTH)
+        topPanel.add(modelErrorLabel, BorderLayout.SOUTH)
+        
+        panel.add(topPanel, BorderLayout.NORTH)
         
         // Center: Split pane with prompt input (top) and response output (bottom)
         val splitPane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
@@ -212,12 +225,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         if (models.isNotEmpty()) {
                             modelComboBox.selectedIndex = 0
                         }
+                        modelComboBox.isEnabled = true
+                        modelErrorLabel.isVisible = false
                     }
                     return@executeOnPooledThread
                 } catch (e: Exception) {
                     lastError = e
                     val msg = e.message ?: ""
-                    // Don't retry auth/SDK errors - they won't resolve on retry
                     val isAuthError = msg.contains("auth") || msg.contains("timed out") || 
                                      msg.contains("Copilot CLI") || msg.contains("authenticated")
                     if (isAuthError) break
@@ -230,11 +244,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                               errorMsg.contains("authenticated") || errorMsg.contains("timed out")
             SwingUtilities.invokeLater {
                 modelComboBox.removeAllItems()
-                if (isAuthError) {
-                    modelComboBox.addItem("⚠️ Not authenticated - run: gh auth login")
-                } else {
-                    modelComboBox.addItem("Error: $errorMsg")
-                }
+                modelComboBox.addItem("Model: unavailable")
+                modelComboBox.isEnabled = false
+                modelErrorLabel.text = if (isAuthError) "⚠️ Not authenticated — run: gh auth login" else "⚠️ $errorMsg"
+                modelErrorLabel.isVisible = true
             }
         }
         
@@ -675,9 +688,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.add(JBLabel("Default Model:"), gbc)
         
         gbc.gridx = 1
-        val defaultModelCombo = ComboBox(arrayOf("Loading models..."))
+        val defaultModelCombo = ComboBox(arrayOf("Loading..."))
         defaultModelCombo.preferredSize = JBUI.size(250, 30)
+        defaultModelCombo.isEnabled = false
         panel.add(defaultModelCombo, gbc)
+        
+        // Error label for settings model dropdown
+        gbc.gridx = 0
+        gbc.gridy++
+        gbc.gridwidth = 2
+        val settingsModelError = JBLabel()
+        settingsModelError.foreground = Color(200, 80, 80)
+        settingsModelError.font = settingsModelError.font.deriveFont(Font.PLAIN, 11f)
+        settingsModelError.isVisible = false
+        panel.add(settingsModelError, gbc)
         
         // Load models from sidecar - fail fast on auth errors
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -696,6 +720,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         models.forEach { model ->
                             defaultModelCombo.addItem(model.name)
                         }
+                        defaultModelCombo.isEnabled = true
+                        settingsModelError.isVisible = false
                     }
                     return@executeOnPooledThread
                 } catch (e: Exception) {
@@ -713,11 +739,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                               errorMsg.contains("authenticated") || errorMsg.contains("timed out")
             SwingUtilities.invokeLater {
                 defaultModelCombo.removeAllItems()
-                if (isAuthError) {
-                    defaultModelCombo.addItem("⚠️ Not authenticated - run: gh auth login")
-                } else {
-                    defaultModelCombo.addItem("Error: $errorMsg")
-                }
+                defaultModelCombo.addItem("Unavailable")
+                defaultModelCombo.isEnabled = false
+                settingsModelError.text = if (isAuthError) "⚠️ Not authenticated — run: gh auth login" else "⚠️ $errorMsg"
+                settingsModelError.isVisible = true
             }
         }
         
