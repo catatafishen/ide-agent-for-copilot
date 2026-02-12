@@ -11,6 +11,7 @@ import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Cursor
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.GridBagConstraints
@@ -51,29 +52,48 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.border = JBUI.Borders.empty(10)
         
         // Top toolbar with model selector and token counter
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 5))
         
         // Model selector (placeholder shown inside dropdown)
-        val modelComboBox = ComboBox(arrayOf("Model: Loading..."))
+        val modelComboBox = ComboBox(arrayOf("Loading..."))
         modelComboBox.preferredSize = JBUI.size(220, 30)
         modelComboBox.isEnabled = false
         toolbar.add(modelComboBox)
         
+        // Spinner shown during loading
+        val loadingSpinner = JProgressBar()
+        loadingSpinner.isIndeterminate = true
+        loadingSpinner.preferredSize = JBUI.size(16, 16)
+        toolbar.add(loadingSpinner)
+        
         // Token counter
         val tokenLabel = JBLabel("Tokens: 0")
-        tokenLabel.border = JBUI.Borders.emptyLeft(20)
+        tokenLabel.border = JBUI.Borders.emptyLeft(15)
         toolbar.add(tokenLabel)
         
-        // Error label below toolbar (hidden by default)
+        // Auth status panel below toolbar (hidden by default)
+        val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
+        authPanel.isVisible = false
+        authPanel.border = JBUI.Borders.emptyLeft(5)
+        
         val modelErrorLabel = JBLabel()
         modelErrorLabel.foreground = Color(200, 80, 80)
         modelErrorLabel.font = modelErrorLabel.font.deriveFont(Font.PLAIN, 11f)
-        modelErrorLabel.isVisible = false
-        modelErrorLabel.border = JBUI.Borders.emptyLeft(10)
+        authPanel.add(modelErrorLabel)
+        
+        val loginButton = JButton("Login")
+        loginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        loginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
+        loginButton.isVisible = false
+        loginButton.addActionListener {
+            ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login")
+                .start()
+        }
+        authPanel.add(loginButton)
         
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
         topPanel.add(toolbar, BorderLayout.NORTH)
-        topPanel.add(modelErrorLabel, BorderLayout.SOUTH)
+        topPanel.add(authPanel, BorderLayout.CENTER)
         
         panel.add(topPanel, BorderLayout.NORTH)
         
@@ -218,6 +238,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val models = client.listModels()
                     
                     SwingUtilities.invokeLater {
+                        loadingSpinner.isVisible = false
                         modelComboBox.removeAllItems()
                         models.forEach { model ->
                             modelComboBox.addItem(model.name)
@@ -226,7 +247,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             modelComboBox.selectedIndex = 0
                         }
                         modelComboBox.isEnabled = true
-                        modelErrorLabel.isVisible = false
+                        authPanel.isVisible = false
                     }
                     return@executeOnPooledThread
                 } catch (e: Exception) {
@@ -243,11 +264,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
                               errorMsg.contains("authenticated") || errorMsg.contains("timed out")
             SwingUtilities.invokeLater {
+                loadingSpinner.isVisible = false
                 modelComboBox.removeAllItems()
-                modelComboBox.addItem("Model: unavailable")
+                modelComboBox.addItem("Unavailable")
                 modelComboBox.isEnabled = false
-                modelErrorLabel.text = if (isAuthError) "⚠️ Not authenticated — run: gh auth login" else "⚠️ $errorMsg"
-                modelErrorLabel.isVisible = true
+                modelErrorLabel.text = if (isAuthError) "⚠️ Not authenticated" else "⚠️ $errorMsg"
+                loginButton.isVisible = isAuthError
+                authPanel.isVisible = true
             }
         }
         
@@ -688,20 +711,37 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.add(JBLabel("Default Model:"), gbc)
         
         gbc.gridx = 1
+        val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
         val defaultModelCombo = ComboBox(arrayOf("Loading..."))
         defaultModelCombo.preferredSize = JBUI.size(250, 30)
         defaultModelCombo.isEnabled = false
-        panel.add(defaultModelCombo, gbc)
+        settingsModelPanel.add(defaultModelCombo)
+        val settingsSpinner = JProgressBar()
+        settingsSpinner.isIndeterminate = true
+        settingsSpinner.preferredSize = JBUI.size(16, 16)
+        settingsModelPanel.add(settingsSpinner)
+        panel.add(settingsModelPanel, gbc)
         
-        // Error label for settings model dropdown
+        // Auth row for settings tab
         gbc.gridx = 0
         gbc.gridy++
         gbc.gridwidth = 2
+        val settingsAuthPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
+        settingsAuthPanel.isVisible = false
         val settingsModelError = JBLabel()
         settingsModelError.foreground = Color(200, 80, 80)
         settingsModelError.font = settingsModelError.font.deriveFont(Font.PLAIN, 11f)
-        settingsModelError.isVisible = false
-        panel.add(settingsModelError, gbc)
+        settingsAuthPanel.add(settingsModelError)
+        val settingsLoginButton = JButton("Login")
+        settingsLoginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        settingsLoginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
+        settingsLoginButton.isVisible = false
+        settingsLoginButton.addActionListener {
+            ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login")
+                .start()
+        }
+        settingsAuthPanel.add(settingsLoginButton)
+        panel.add(settingsAuthPanel, gbc)
         
         // Load models from sidecar - fail fast on auth errors
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -716,12 +756,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val models = client.listModels()
                     
                     SwingUtilities.invokeLater {
+                        settingsSpinner.isVisible = false
                         defaultModelCombo.removeAllItems()
                         models.forEach { model ->
                             defaultModelCombo.addItem(model.name)
                         }
                         defaultModelCombo.isEnabled = true
-                        settingsModelError.isVisible = false
+                        settingsAuthPanel.isVisible = false
                     }
                     return@executeOnPooledThread
                 } catch (e: Exception) {
@@ -738,11 +779,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
                               errorMsg.contains("authenticated") || errorMsg.contains("timed out")
             SwingUtilities.invokeLater {
+                settingsSpinner.isVisible = false
                 defaultModelCombo.removeAllItems()
                 defaultModelCombo.addItem("Unavailable")
                 defaultModelCombo.isEnabled = false
-                settingsModelError.text = if (isAuthError) "⚠️ Not authenticated — run: gh auth login" else "⚠️ $errorMsg"
-                settingsModelError.isVisible = true
+                settingsModelError.text = if (isAuthError) "⚠️ Not authenticated" else "⚠️ $errorMsg"
+                settingsLoginButton.isVisible = isAuthError
+                settingsAuthPanel.isVisible = true
             }
         }
         
