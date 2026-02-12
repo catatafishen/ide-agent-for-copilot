@@ -137,6 +137,9 @@ public final class PsiBridgeService implements Disposable {
                 case "run_configuration" -> runConfiguration(arguments);
                 case "create_run_configuration" -> createRunConfiguration(arguments);
                 case "edit_run_configuration" -> editRunConfiguration(arguments);
+                case "get_problems" -> getProblems(arguments);
+                case "optimize_imports" -> optimizeImports(arguments);
+                case "format_code" -> formatCode(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -723,6 +726,147 @@ public final class PsiBridgeService implements Disposable {
             if (label != null) changes.add(label);
         } catch (Exception ignored) {
         }
+    }
+
+    // ---- Code Quality Tools ----
+
+    private String getProblems(JsonObject args) throws Exception {
+        String pathStr = args.has("path") ? args.get("path").getAsString() : "";
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                ReadAction.run(() -> {
+                    List<String> problems = new ArrayList<>();
+                    String basePath = project.getBasePath();
+                    List<VirtualFile> filesToCheck = new ArrayList<>();
+
+                    if (!pathStr.isEmpty()) {
+                        VirtualFile vf = resolveVirtualFile(pathStr);
+                        if (vf != null) filesToCheck.add(vf);
+                        else {
+                            resultFuture.complete("File not found: " + pathStr);
+                            return;
+                        }
+                    } else {
+                        // Check all open files with highlights
+                        var fem = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                        filesToCheck.addAll(List.of(fem.getOpenFiles()));
+                    }
+
+                    for (VirtualFile vf : filesToCheck) {
+                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                        if (psiFile == null) continue;
+                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                        if (doc == null) continue;
+
+                        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+                        com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+                                doc, project,
+                                com.intellij.lang.annotation.HighlightSeverity.WARNING,
+                                0, doc.getTextLength(),
+                                highlights::add
+                        );
+
+                        for (var h : highlights) {
+                            if (h.getDescription() == null) continue;
+                            int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                            String severity = h.getSeverity().getName();
+                            problems.add(String.format("%s:%d [%s] %s",
+                                    relPath, line, severity, h.getDescription()));
+                        }
+                    }
+
+                    if (problems.isEmpty()) {
+                        resultFuture.complete("No problems found"
+                                + (pathStr.isEmpty() ? " in open files" : " in " + pathStr)
+                                + ". Analysis is based on IntelliJ's inspections — file must be open in editor for highlights to be available.");
+                    } else {
+                        resultFuture.complete(problems.size() + " problems:\n" + String.join("\n", problems));
+                    }
+                });
+            } catch (Exception e) {
+                resultFuture.complete("Error getting problems: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String optimizeImports(JsonObject args) throws Exception {
+        String pathStr = args.get("path").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("File not found: " + pathStr);
+                    return;
+                }
+
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) {
+                    resultFuture.complete("Cannot parse file: " + pathStr);
+                    return;
+                }
+
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                        new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                    }, "Optimize Imports", null);
+                });
+
+                String relPath = project.getBasePath() != null
+                        ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
+                resultFuture.complete("Imports optimized: " + relPath);
+            } catch (Exception e) {
+                resultFuture.complete("Error optimizing imports: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String formatCode(JsonObject args) throws Exception {
+        String pathStr = args.get("path").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("File not found: " + pathStr);
+                    return;
+                }
+
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) {
+                    resultFuture.complete("Cannot parse file: " + pathStr);
+                    return;
+                }
+
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                        new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
+                    }, "Reformat Code", null);
+                });
+
+                String relPath = project.getBasePath() != null
+                        ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
+                resultFuture.complete("Code formatted: " + relPath);
+            } catch (Exception e) {
+                resultFuture.complete("Error formatting code: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
     }
 
     /** Resolve a simple class name like "McpServerTest" to its FQN and containing module. */

@@ -96,6 +96,11 @@ public class McpServer {
         tools.addProperty("listChanged", false);
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
+        result.addProperty("instructions",
+                "IMPORTANT: After making ANY code changes to files, you MUST run both " +
+                "'optimize_imports' and 'format_code' on each changed file. This ensures " +
+                "imports are clean and code follows the project's style settings. " +
+                "Use 'get_problems' to check for warnings and errors after changes.");
         return result;
     }
 
@@ -225,6 +230,31 @@ public class McpServer {
                 List.of("name")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
+        tools.add(buildTool("get_problems",
+                "Get code problems, warnings, and errors reported by IntelliJ's inspections for a file or all open files. " +
+                "Returns severity, line number, and description for each problem. " +
+                "Files must be open in the editor for inspection results to be available.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all open files.", "default", "")
+                ),
+                List.of()));
+
+        tools.add(buildTool("optimize_imports",
+                "Run IntelliJ's import optimizer on a file. Removes unused imports and organizes remaining ones " +
+                "according to project code style settings. ALWAYS run this after making code changes.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
+                ),
+                List.of("path")));
+
+        tools.add(buildTool("format_code",
+                "Run IntelliJ's code formatter on a file. Formats the entire file according to the project's " +
+                "code style settings (including .editorconfig). ALWAYS run this after making code changes.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
+                ),
+                List.of("path")));
+
         result.add("tools", tools);
         return result;
     }
@@ -284,7 +314,8 @@ public class McpServer {
                     case "list_tests" -> listTestsFallback(arguments);
                     case "run_tests", "get_test_results", "get_coverage",
                          "get_project_info", "list_run_configurations", "run_configuration",
-                         "create_run_configuration", "edit_run_configuration" ->
+                         "create_run_configuration", "edit_run_configuration",
+                         "get_problems", "optimize_imports", "format_code" ->
                             "PSI bridge unavailable. These tools require IntelliJ to be running.";
                     default -> "Unknown tool: " + toolName;
                 };
