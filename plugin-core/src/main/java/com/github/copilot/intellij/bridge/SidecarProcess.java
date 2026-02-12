@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -77,6 +78,9 @@ public class SidecarProcess {
                 throw new SidecarException("Sidecar process died immediately after start");
             }
 
+            // Wait for HTTP server to be ready (poll /health endpoint)
+            waitForServerReady();
+
         } catch (IOException | ExecutionException e) {
             throw new SidecarException("Failed to start sidecar process", e);
         }
@@ -123,6 +127,39 @@ public class SidecarProcess {
 
         process = null;
         port = -1;
+    }
+
+    /**
+     * Poll the sidecar's /health endpoint until it responds or timeout.
+     */
+    private void waitForServerReady() throws SidecarException {
+        int maxAttempts = 20;
+        int delayMs = 250;
+        
+        for (int i = 0; i < maxAttempts; i++) {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) 
+                    new URL("http://localhost:" + port + "/health").openConnection();
+                conn.setConnectTimeout(1000);
+                conn.setReadTimeout(1000);
+                conn.setRequestMethod("GET");
+                int code = conn.getResponseCode();
+                conn.disconnect();
+                if (code == 200) {
+                    LOG.info("Sidecar HTTP server ready after " + (i + 1) + " attempts");
+                    return;
+                }
+            } catch (IOException ignored) {
+                // Server not ready yet
+            }
+            try {
+                Thread.sleep(delayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new SidecarException("Interrupted while waiting for sidecar");
+            }
+        }
+        LOG.warn("Sidecar health check did not respond within " + (maxAttempts * delayMs) + "ms, proceeding anyway");
     }
 
     /**

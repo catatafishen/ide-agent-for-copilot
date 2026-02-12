@@ -192,29 +192,49 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         
         panel.add(splitPane, BorderLayout.CENTER)
         
-        // Load models in background
+        // Load models in background with retry logic (sidecar may still be starting)
         ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
-                val client = sidecarService.getClient()
-                val models = client.listModels()
-                
-                SwingUtilities.invokeLater {
-                    modelComboBox.removeAllItems()
-                    models.forEach { model ->
-                        modelComboBox.addItem(model.name)
+            var lastError: Exception? = null
+            val maxRetries = 3
+            val retryDelayMs = 2000L
+            
+            for (attempt in 1..maxRetries) {
+                try {
+                    val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val client = sidecarService.getClient()
+                    val models = client.listModels()
+                    
+                    SwingUtilities.invokeLater {
+                        modelComboBox.removeAllItems()
+                        models.forEach { model ->
+                            modelComboBox.addItem(model.name)
+                        }
+                        if (models.isNotEmpty()) {
+                            modelComboBox.selectedIndex = 0
+                        }
                     }
-                    if (models.isNotEmpty()) {
-                        modelComboBox.selectedIndex = 0
+                    return@executeOnPooledThread // Success
+                } catch (e: Exception) {
+                    lastError = e
+                    if (attempt < maxRetries) {
+                        Thread.sleep(retryDelayMs)
                     }
                 }
-            } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    modelComboBox.removeAllItems()
-                    modelComboBox.addItem("Error loading models")
-                }
-                e.printStackTrace()
             }
+            
+            // All retries failed
+            val errorMsg = lastError?.message ?: "Unknown error"
+            val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
+                              errorMsg.contains("authenticated") || errorMsg.contains("timed out")
+            SwingUtilities.invokeLater {
+                modelComboBox.removeAllItems()
+                if (isAuthError) {
+                    modelComboBox.addItem("⚠️ Not authenticated - run: gh auth login")
+                } else {
+                    modelComboBox.addItem("Error: $errorMsg")
+                }
+            }
+            lastError?.printStackTrace()
         }
         
         return panel

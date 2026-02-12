@@ -34,7 +34,7 @@ class SidecarClientTest {
             throw new FileNotFoundException("Sidecar binary not found at: " + sidecarPath + ". Run 'go build' first.");
         }
         
-        ProcessBuilder pb = new ProcessBuilder(sidecarPath, "--port", String.valueOf(testPort));
+        ProcessBuilder pb = new ProcessBuilder(sidecarPath, "--port", String.valueOf(testPort), "--mock");
         mockServerProcess = pb.start();
         
         // Wait for server to start
@@ -61,7 +61,7 @@ class SidecarClientTest {
         List<SidecarClient.Model> models = client.listModels();
         
         assertNotNull(models, "Models list should not be null");
-        assertEquals(5, models.size(), "Should return 5 models");
+        assertEquals(3, models.size(), "Should return 3 mock models");
         
         SidecarClient.Model firstModel = models.get(0);
         assertNotNull(firstModel.id, "Model should have id");

@@ -94,19 +94,19 @@ func (m *MockClient) ListModels(ctx context.Context) ([]*Model, error) {
 	return []*Model{
 		{
 			ID:            "gpt-5-mini",
-			Name:          "GPT-5 Mini",
+			Name:          "GPT-5 Mini (Mock)",
 			Capabilities:  []string{"code", "chat"},
 			ContextWindow: 128000,
 		},
 		{
 			ID:            "gpt-5",
-			Name:          "GPT-5",
+			Name:          "GPT-5 (Mock)",
 			Capabilities:  []string{"code", "chat", "vision"},
 			ContextWindow: 200000,
 		},
 		{
 			ID:            "claude-opus-4",
-			Name:          "Claude Opus 4",
+			Name:          "Claude Opus 4 (Mock)",
 			Capabilities:  []string{"code", "chat", "vision"},
 			ContextWindow: 200000,
 		},

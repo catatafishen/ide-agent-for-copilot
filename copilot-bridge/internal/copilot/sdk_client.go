@@ -39,12 +39,13 @@ func (c *SDKClient) ensureStarted() error {
 		return nil // Already started
 	}
 	
-	// Start the Copilot CLI process
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Start the Copilot CLI process with a short timeout
+	// If this fails (e.g., not authenticated), return error quickly
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	
 	if err := c.client.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start Copilot CLI: %w", err)
+		return fmt.Errorf("failed to start Copilot CLI: %w\n\nPlease ensure:\n1. GitHub Copilot CLI is installed (gh extension install github/gh-copilot)\n2. You are authenticated (run: gh auth login)\n3. Copilot is enabled for your account", err)
 	}
 	
 	c.started = true

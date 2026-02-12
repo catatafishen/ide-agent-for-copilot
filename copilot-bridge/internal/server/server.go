@@ -24,10 +24,128 @@ type Server struct {
 	mu                sync.RWMutex
 }
 
+// sdkOperationTimeout is the hard deadline for any SDK operation (init + start + call)
+const sdkOperationTimeout = 8 * time.Second
+
+// sdkAuthError is the standard guidance message for authentication issues
+const sdkAuthError = "\n\n💡 Please ensure:\n1. GitHub Copilot CLI is installed\n2. You are authenticated (run: gh auth login)\n3. Copilot is enabled for your account"
+
+// LazySDKClient wraps SDKClient with lazy initialization
+type LazySDKClient struct {
+	client  *copilot.SDKClient
+	mu      sync.Mutex
+	initErr error
+}
+
+// ensureInitialized creates the SDK client on first use. Must be called with l.mu held.
+func (l *LazySDKClient) ensureInitializedLocked() error {
+	if l.client != nil {
+		return nil
+	}
+	if l.initErr != nil {
+		return l.initErr
+	}
+
+	client, err := copilot.NewSDKClient()
+	if err != nil {
+		l.initErr = fmt.Errorf("failed to initialize Copilot SDK: %w%s", err, sdkAuthError)
+		return l.initErr
+	}
+	l.client = client
+	return nil
+}
+
+// withTimeout runs fn in a goroutine with a hard timeout, returning error if it takes too long.
+func withTimeout[T any](timeout time.Duration, fn func() (T, error)) (T, error) {
+	type result struct {
+		val T
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, e := fn()
+		ch <- result{v, e}
+	}()
+	select {
+	case r := <-ch:
+		return r.val, r.err
+	case <-time.After(timeout):
+		var zero T
+		return zero, fmt.Errorf("operation timed out after %s%s", timeout, sdkAuthError)
+	}
+}
+
+func (l *LazySDKClient) ListModels(ctx context.Context) ([]*copilot.Model, error) {
+	return withTimeout(sdkOperationTimeout, func() ([]*copilot.Model, error) {
+		l.mu.Lock()
+		if err := l.ensureInitializedLocked(); err != nil {
+			l.mu.Unlock()
+			return nil, err
+		}
+		client := l.client
+		l.mu.Unlock()
+		return client.ListModels(ctx)
+	})
+}
+
+func (l *LazySDKClient) CreateSession(ctx context.Context) (*copilot.Session, error) {
+	return withTimeout(sdkOperationTimeout, func() (*copilot.Session, error) {
+		l.mu.Lock()
+		if err := l.ensureInitializedLocked(); err != nil {
+			l.mu.Unlock()
+			return nil, err
+		}
+		client := l.client
+		l.mu.Unlock()
+		return client.CreateSession(ctx)
+	})
+}
+
+func (l *LazySDKClient) CloseSession(ctx context.Context, sessionID string) error {
+	_, err := withTimeout(sdkOperationTimeout, func() (struct{}, error) {
+		l.mu.Lock()
+		if err := l.ensureInitializedLocked(); err != nil {
+			l.mu.Unlock()
+			return struct{}{}, err
+		}
+		client := l.client
+		l.mu.Unlock()
+		return struct{}{}, client.CloseSession(ctx, sessionID)
+	})
+	return err
+}
+
+func (l *LazySDKClient) SendMessage(ctx context.Context, req *copilot.MessageRequest) (*copilot.MessageResponse, error) {
+	return withTimeout(sdkOperationTimeout, func() (*copilot.MessageResponse, error) {
+		l.mu.Lock()
+		if err := l.ensureInitializedLocked(); err != nil {
+			l.mu.Unlock()
+			return nil, err
+		}
+		client := l.client
+		l.mu.Unlock()
+		return client.SendMessage(ctx, req)
+	})
+}
+
 // New creates a new RPC server with default (SDK) client
 // Returns error if SDK client cannot be initialized
+// DEPRECATED: Use NewWithLazySDK for better startup performance
 func New(port int, callbackURL string) (*Server, error) {
 	return NewWithClient(port, callbackURL, nil)
+}
+
+// NewWithLazySDK creates a new RPC server that initializes SDK on first request
+// This allows the server to start quickly and print its port before SDK init
+func NewWithLazySDK(port int, callbackURL string) (*Server, error) {
+	// Create a lazy SDK client that will initialize on first use
+	lazyClient := &LazySDKClient{}
+	
+	return &Server{
+		port:              port,
+		pluginCallbackURL: callbackURL,
+		sessionManager:    session.NewManager(lazyClient),
+	}, nil
 }
 
 // NewWithClient creates a new RPC server with a specific client
@@ -83,6 +201,11 @@ func (s *Server) Start() error {
 		}
 	}()
 
+	// Small delay to ensure goroutine has started accepting connections
+	// This is a scheduling guarantee - 50ms is more than enough for the goroutine
+	// to reach Serve() which immediately starts accepting connections
+	time.Sleep(50 * time.Millisecond)
+	
 	return nil
 }
 

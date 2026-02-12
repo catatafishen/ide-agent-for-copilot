@@ -45,14 +45,12 @@ func main() {
 			log.Fatalf("Failed to create server with mock client: %v", err)
 		}
 	} else {
-		// Production mode: use real SDK client
-		log.Printf("🚀 Initializing GitHub Copilot SDK...")
-		srv, err = server.New(*port, *pluginCallbackURL)
+		// Production mode: SDK client will be created and initialized lazily on first use
+		log.Printf("📡 Starting server (SDK will initialize on first request)...")
+		srv, err = server.NewWithLazySDK(*port, *pluginCallbackURL)
 		if err != nil {
-			log.Fatalf("❌ Failed to initialize Copilot SDK:\n\n%v\n\n"+
-				"💡 To use mock mode for development, run with --mock flag", err)
+			log.Fatalf("❌ Failed to create server: %v", err)
 		}
-		log.Printf("✅ SDK initialized successfully")
 	}
 
 	if err := srv.Start(); err != nil {
@@ -61,6 +59,11 @@ func main() {
 
 	log.Printf("Sidecar listening on http://localhost:%d", srv.Port())
 	fmt.Printf("SIDECAR_PORT=%d\n", srv.Port()) // For plugin to parse
+	
+	if !*mockMode {
+		log.Printf("✅ Server ready. SDK will initialize when needed.")
+		log.Printf("💡 If not authenticated, run: gh auth login")
+	}
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)

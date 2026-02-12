@@ -22,8 +22,8 @@ func TestMockClientListModels(t *testing.T) {
 		t.Errorf("Expected first model ID 'gpt-5-mini', got '%s'", models[0].ID)
 	}
 	
-	if models[0].Name != "GPT-5 Mini" {
-		t.Errorf("Expected first model name 'GPT-5 Mini', got '%s'", models[0].Name)
+	if models[0].Name != "GPT-5 Mini (Mock)" {
+		t.Errorf("Expected first model name 'GPT-5 Mini (Mock)', got '%s'", models[0].Name)
 	}
 }
 
