@@ -146,6 +146,10 @@ public class SidecarClient {
                 String errorMessage = error.has("message") 
                     ? error.get("message").getAsString() 
                     : "Unknown error";
+                // Include detailed error data if available (contains auth guidance)
+                if (error.has("data") && !error.get("data").isJsonNull()) {
+                    errorMessage = error.get("data").getAsString();
+                }
                 throw new SidecarException("RPC error: " + errorMessage, null, false);
             }
 
