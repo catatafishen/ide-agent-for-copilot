@@ -25,7 +25,7 @@ type Server struct {
 }
 
 // sdkOperationTimeout is the hard deadline for any SDK operation (init + start + call)
-const sdkOperationTimeout = 8 * time.Second
+const sdkOperationTimeout = 3 * time.Second
 
 // sdkAuthError is the standard guidance message for authentication issues
 const sdkAuthError = "\n\n💡 Please ensure:\n1. GitHub Copilot CLI is installed\n2. You are authenticated (run: gh auth login)\n3. Copilot is enabled for your account"

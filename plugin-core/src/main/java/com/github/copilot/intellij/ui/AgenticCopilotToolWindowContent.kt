@@ -192,11 +192,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         
         panel.add(splitPane, BorderLayout.CENTER)
         
-        // Load models in background with retry logic (sidecar may still be starting)
+        // Load models in background - fail fast on auth errors, retry only on connection errors
         ApplicationManager.getApplication().executeOnPooledThread {
             var lastError: Exception? = null
             val maxRetries = 3
-            val retryDelayMs = 2000L
+            val retryDelayMs = 1000L
             
             for (attempt in 1..maxRetries) {
                 try {
@@ -213,16 +213,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             modelComboBox.selectedIndex = 0
                         }
                     }
-                    return@executeOnPooledThread // Success
+                    return@executeOnPooledThread
                 } catch (e: Exception) {
                     lastError = e
-                    if (attempt < maxRetries) {
-                        Thread.sleep(retryDelayMs)
-                    }
+                    val msg = e.message ?: ""
+                    // Don't retry auth/SDK errors - they won't resolve on retry
+                    val isAuthError = msg.contains("auth") || msg.contains("timed out") || 
+                                     msg.contains("Copilot CLI") || msg.contains("authenticated")
+                    if (isAuthError) break
+                    if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                 }
             }
             
-            // All retries failed
             val errorMsg = lastError?.message ?: "Unknown error"
             val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
                               errorMsg.contains("authenticated") || errorMsg.contains("timed out")
@@ -234,7 +236,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     modelComboBox.addItem("Error: $errorMsg")
                 }
             }
-            lastError?.printStackTrace()
         }
         
         return panel
@@ -678,11 +679,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         defaultModelCombo.preferredSize = JBUI.size(250, 30)
         panel.add(defaultModelCombo, gbc)
         
-        // Load models from sidecar with retry logic
+        // Load models from sidecar - fail fast on auth errors
         ApplicationManager.getApplication().executeOnPooledThread {
             var lastError: Exception? = null
             val maxRetries = 3
-            val retryDelayMs = 2000L
+            val retryDelayMs = 1000L
             
             for (attempt in 1..maxRetries) {
                 try {
@@ -699,9 +700,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     return@executeOnPooledThread
                 } catch (e: Exception) {
                     lastError = e
-                    if (attempt < maxRetries) {
-                        Thread.sleep(retryDelayMs)
-                    }
+                    val msg = e.message ?: ""
+                    val isAuthError = msg.contains("auth") || msg.contains("timed out") || 
+                                     msg.contains("Copilot CLI") || msg.contains("authenticated")
+                    if (isAuthError) break
+                    if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                 }
             }
             
