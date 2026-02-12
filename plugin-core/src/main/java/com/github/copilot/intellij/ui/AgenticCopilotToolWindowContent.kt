@@ -48,20 +48,37 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
+     * Finds the gh CLI executable, checking PATH and known install locations.
+     */
+    private fun findGhCli(): String? {
+        // Check PATH first
+        try {
+            val check = ProcessBuilder("where", "gh").start()
+            if (check.waitFor() == 0) return "gh"
+        } catch (_: Exception) {}
+        
+        // Check known install locations
+        val knownPaths = listOf(
+            "C:\\Program Files\\GitHub CLI\\gh.exe",
+            "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
+            "C:\\Tools\\gh\\bin\\gh.exe",
+            System.getProperty("user.home") + "\\AppData\\Local\\GitHub CLI\\gh.exe"
+        )
+        return knownPaths.firstOrNull { java.io.File(it).exists() }
+    }
+
+    /**
      * Launches the GitHub CLI auth flow in a new command window.
      * Checks if gh is installed first, offers to install via winget if missing.
      */
     private fun startGhAuthLogin() {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                // Check if gh CLI is available
-                val checkProcess = ProcessBuilder("where", "gh").start()
-                val found = checkProcess.waitFor() == 0
+                val ghPath = findGhCli()
                 
-                if (found) {
-                    // Check if copilot extension is installed, install if not
+                if (ghPath != null) {
                     ProcessBuilder("cmd", "/c", "start", "cmd", "/k",
-                        "gh extension install github/gh-copilot 2>nul & gh auth login")
+                        "\"$ghPath\" auth login")
                         .start()
                 } else {
                     // gh not installed — offer to install via winget

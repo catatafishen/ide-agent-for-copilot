@@ -42,6 +42,9 @@ public class SidecarProcess {
                     .withParameters("--port", "0", "--debug")
                     .withRedirectErrorStream(false);
 
+            // Ensure gh CLI is on PATH for the sidecar (SDK needs it for auth)
+            ensureGhOnPath(commandLine);
+
             process = commandLine.createProcess();
 
             // Read stdout to get the port
@@ -230,5 +233,35 @@ public class SidecarProcess {
         }
         
         return tempBinary;
+    }
+
+    /**
+     * Ensure gh CLI is on PATH for the sidecar process.
+     * The Copilot SDK needs gh for authentication.
+     */
+    private void ensureGhOnPath(GeneralCommandLine commandLine) {
+        String[] knownGhDirs = {
+            "C:\\Program Files\\GitHub CLI",
+            "C:\\Program Files (x86)\\GitHub CLI",
+            "C:\\Tools\\gh\\bin",
+            System.getProperty("user.home") + "\\AppData\\Local\\GitHub CLI"
+        };
+
+        String currentPath = commandLine.getEnvironment().getOrDefault("PATH",
+                System.getenv("PATH"));
+
+        StringBuilder extraPaths = new StringBuilder();
+        for (String dir : knownGhDirs) {
+            if (new java.io.File(dir, SystemInfo.isWindows ? "gh.exe" : "gh").exists()) {
+                if (!currentPath.contains(dir)) {
+                    extraPaths.append(";").append(dir);
+                    LOG.info("Adding gh CLI to sidecar PATH: " + dir);
+                }
+            }
+        }
+
+        if (extraPaths.length() > 0) {
+            commandLine.getEnvironment().put("PATH", currentPath + extraPaths);
+        }
     }
 }
