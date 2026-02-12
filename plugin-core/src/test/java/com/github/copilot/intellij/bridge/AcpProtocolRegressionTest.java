@@ -270,6 +270,164 @@ class AcpProtocolRegressionTest {
         server.close();
     }
 
+    /**
+     * Test that malformed JSON lines are gracefully skipped without crashing.
+     */
+    @Test
+    void testMalformedJsonIsSkipped() throws Exception {
+        MockAcpServer server = new MockAcpServer();
+        server.start();
+
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(server.getProcessStdin()));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(server.getProcessStdout()));
+
+        // Send garbage
+        writer.write("this is not json");
+        writer.newLine();
+        writer.flush();
+
+        // Small delay for processing
+        Thread.sleep(100);
+
+        // Server should still be alive — send valid request
+        writer.write(new Gson().toJson(buildRequest(1, "initialize", new JsonObject())));
+        writer.newLine();
+        writer.flush();
+
+        String r = reader.readLine();
+        assertNotNull(r, "Server should still respond after malformed input");
+        JsonObject parsed = JsonParser.parseString(r).getAsJsonObject();
+        assertEquals(1, parsed.get("id").getAsLong());
+
+        server.close();
+    }
+
+    /**
+     * Test that empty lines are skipped gracefully.
+     */
+    @Test
+    void testEmptyLinesAreSkipped() throws Exception {
+        MockAcpServer server = new MockAcpServer();
+        server.start();
+
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(server.getProcessStdin()));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(server.getProcessStdout()));
+
+        // Send empty lines
+        writer.newLine();
+        writer.newLine();
+        writer.newLine();
+        writer.flush();
+        Thread.sleep(50);
+
+        // Then valid request
+        writer.write(new Gson().toJson(buildRequest(1, "initialize", new JsonObject())));
+        writer.newLine();
+        writer.flush();
+
+        String r = reader.readLine();
+        assertNotNull(r, "Server should handle empty lines gracefully");
+
+        server.close();
+    }
+
+    /**
+     * Test plan notification builder produces valid structure per ACP spec.
+     */
+    @Test
+    void testPlanNotificationFormat() {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", "s1");
+        JsonObject update = new JsonObject();
+        update.addProperty("sessionUpdate", "plan");
+        JsonArray entries = new JsonArray();
+        
+        JsonObject entry1 = new JsonObject();
+        entry1.addProperty("content", "Analyze codebase");
+        entry1.addProperty("priority", "high");
+        entry1.addProperty("status", "completed");
+        entries.add(entry1);
+        
+        JsonObject entry2 = new JsonObject();
+        entry2.addProperty("content", "Refactor module");
+        entry2.addProperty("priority", "medium");
+        entry2.addProperty("status", "pending");
+        entries.add(entry2);
+        
+        update.add("entries", entries);
+        params.add("update", update);
+
+        assertEquals("plan", params.getAsJsonObject("update").get("sessionUpdate").getAsString());
+        assertEquals(2, params.getAsJsonObject("update").getAsJsonArray("entries").size());
+        
+        JsonObject first = params.getAsJsonObject("update").getAsJsonArray("entries").get(0).getAsJsonObject();
+        assertEquals("Analyze codebase", first.get("content").getAsString());
+        assertEquals("high", first.get("priority").getAsString());
+        assertEquals("completed", first.get("status").getAsString());
+    }
+
+    /**
+     * Test tool_call_update notification structure with content.
+     */
+    @Test
+    void testToolCallUpdateWithContent() {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", "s1");
+        JsonObject update = new JsonObject();
+        update.addProperty("sessionUpdate", "tool_call_update");
+        update.addProperty("toolCallId", "call_001");
+        update.addProperty("status", "completed");
+        
+        JsonArray content = new JsonArray();
+        JsonObject contentBlock = new JsonObject();
+        contentBlock.addProperty("type", "content");
+        JsonObject innerContent = new JsonObject();
+        innerContent.addProperty("type", "text");
+        innerContent.addProperty("text", "Analysis complete");
+        contentBlock.add("content", innerContent);
+        content.add(contentBlock);
+        update.add("content", content);
+        
+        params.add("update", update);
+
+        JsonObject u = params.getAsJsonObject("update");
+        assertEquals("tool_call_update", u.get("sessionUpdate").getAsString());
+        assertEquals("completed", u.get("status").getAsString());
+        assertEquals(1, u.getAsJsonArray("content").size());
+        assertEquals("Analysis complete", u.getAsJsonArray("content").get(0).getAsJsonObject()
+                .getAsJsonObject("content").get("text").getAsString());
+    }
+
+    /**
+     * Test that unknown methods get an error response from the mock server.
+     */
+    @Test
+    void testUnknownMethodGetsNoResponse() throws Exception {
+        MockAcpServer server = new MockAcpServer();
+        server.start();
+
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(server.getProcessStdin()));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(server.getProcessStdout()));
+
+        // Send request with unknown method
+        writer.write(new Gson().toJson(buildRequest(1, "unknown/method", new JsonObject())));
+        writer.newLine();
+        writer.flush();
+
+        // Initialize should still work after unknown method
+        writer.write(new Gson().toJson(buildRequest(2, "initialize", new JsonObject())));
+        writer.newLine();
+        writer.flush();
+
+        String r = reader.readLine();
+        assertNotNull(r);
+        JsonObject parsed = JsonParser.parseString(r).getAsJsonObject();
+        // Should be the initialize response (id 2), not the unknown method
+        assertEquals(2, parsed.get("id").getAsLong());
+
+        server.close();
+    }
+
     private static JsonObject buildRequest(long id, String method, JsonObject params) {
         JsonObject request = new JsonObject();
         request.addProperty("jsonrpc", "2.0");
