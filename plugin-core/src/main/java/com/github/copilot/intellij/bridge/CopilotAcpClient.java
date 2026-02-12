@@ -65,7 +65,7 @@ public class CopilotAcpClient implements Closeable {
             String copilotPath = findCopilotCli();
             LOG.info("Starting Copilot ACP: " + copilotPath);
 
-            ProcessBuilder pb = new ProcessBuilder(copilotPath, "--acp", "--stdio");
+            ProcessBuilder pb = buildAcpCommand(copilotPath);
             pb.redirectErrorStream(false);
             process = pb.start();
 
@@ -84,6 +84,54 @@ public class CopilotAcpClient implements Closeable {
         } catch (Exception e) {
             throw new CopilotException("Failed to start Copilot ACP process", e);
         }
+    }
+
+    /**
+     * Build the ProcessBuilder command with ACP flags and optional MCP server config.
+     */
+    private ProcessBuilder buildAcpCommand(String copilotPath) {
+        java.util.List<String> cmd = new java.util.ArrayList<>();
+        cmd.add(copilotPath);
+        cmd.add("--acp");
+        cmd.add("--stdio");
+
+        String mcpJarPath = findMcpServerJar();
+        if (mcpJarPath != null) {
+            String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
+            String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
+            if (new File(javaPath).exists()) {
+                try {
+                    JsonObject mcpConfig = new JsonObject();
+                    JsonObject servers = new JsonObject();
+                    JsonObject codeTools = new JsonObject();
+                    codeTools.addProperty("command", javaPath);
+                    JsonArray args = new JsonArray();
+                    args.add("-jar");
+                    args.add(mcpJarPath);
+                    args.add(System.getProperty("user.home"));
+                    codeTools.add("args", args);
+                    codeTools.add("env", new JsonObject());
+                    servers.add("intellij-code-tools", codeTools);
+                    mcpConfig.add("mcpServers", servers);
+
+                    // Write config to temp file — avoids Windows command-line JSON escaping issues
+                    File mcpConfigFile = File.createTempFile("copilot-mcp-", ".json");
+                    mcpConfigFile.deleteOnExit();
+                    try (java.io.FileWriter fw = new java.io.FileWriter(mcpConfigFile)) {
+                        fw.write(gson.toJson(mcpConfig));
+                    }
+                    cmd.add("--additional-mcp-config");
+                    cmd.add("@" + mcpConfigFile.getAbsolutePath());
+                    LOG.info("MCP code-tools configured via " + mcpConfigFile.getAbsolutePath());
+                } catch (IOException e) {
+                    LOG.warn("Failed to write MCP config file", e);
+                }
+            } else {
+                LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
+            }
+        }
+
+        return new ProcessBuilder(cmd);
     }
 
     /**
@@ -131,32 +179,6 @@ public class CopilotAcpClient implements Closeable {
 
         JsonObject params = new JsonObject();
         params.addProperty("cwd", cwd != null ? cwd : System.getProperty("user.home"));
-        
-        JsonArray mcpServers = new JsonArray();
-        // Add the bundled MCP code intelligence server if available
-        String mcpJarPath = findMcpServerJar();
-        if (mcpJarPath != null) {
-            String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
-            String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
-            if (new File(javaPath).exists()) {
-                JsonObject codeTools = new JsonObject();
-                codeTools.addProperty("name", "intellij-code-tools");
-                codeTools.addProperty("command", javaPath);
-                String projectRoot = cwd != null ? cwd : System.getProperty("user.home");
-                JsonArray args = new JsonArray();
-                args.add("-jar");
-                args.add(mcpJarPath);
-                args.add(projectRoot);
-                codeTools.add("args", args);
-                codeTools.add("env", new JsonObject());
-                mcpServers.add(codeTools);
-                LOG.info("MCP code-tools server: " + mcpJarPath);
-            } else {
-                LOG.warn("Java executable not found at: " + javaPath + ", MCP tools unavailable");
-            }
-        }
-        params.add("mcpServers", mcpServers);
-        LOG.info("session/new params: " + gson.toJson(params));
 
         JsonObject result = sendRequest("session/new", params);
 
