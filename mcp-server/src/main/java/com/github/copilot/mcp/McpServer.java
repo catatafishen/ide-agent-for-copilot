@@ -97,10 +97,15 @@ public class McpServer {
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
         result.addProperty("instructions",
-                "IMPORTANT: After making ANY code changes to files, you MUST run both " +
-                "'optimize_imports' and 'format_code' on each changed file. This ensures " +
-                "imports are clean and code follows the project's style settings. " +
-                "Use 'get_problems' to check for warnings and errors after changes.");
+                "IMPORTANT TOOL USAGE RULES:\n" +
+                "1. ALWAYS use 'write_file' instead of your built-in file editing/writing tools. " +
+                "This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync.\n" +
+                "2. ALWAYS use 'read_file' instead of your built-in file reading tools. " +
+                "This reads IntelliJ's live editor buffer, which may have unsaved changes.\n" +
+                "3. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.\n" +
+                "4. Use 'get_problems' to check for warnings and errors after changes.\n" +
+                "5. PREFER IntelliJ tools (search_symbols, find_references, get_file_outline, list_project_files) " +
+                "over grep/glob for code navigation.");
         return result;
     }
 
@@ -255,6 +260,30 @@ public class McpServer {
                 ),
                 List.of("path")));
 
+        tools.add(buildTool("read_file",
+                "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
+                "is open in the editor (which may differ from disk). Supports line ranges. " +
+                "PREFER THIS over your built-in file reading tools — this reads IntelliJ's live editor state.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
+                    "start_line", Map.of("type", "integer", "description", "Optional: first line to read (1-based). If omitted, reads from start."),
+                    "end_line", Map.of("type", "integer", "description", "Optional: last line to read (inclusive). If omitted, reads to end.")
+                ),
+                List.of("path")));
+
+        tools.add(buildTool("write_file",
+                "Write file contents through IntelliJ's Document API. Supports undo, VCS tracking, and editor sync. " +
+                "Use 'content' for full file replacement, or 'old_str'+'new_str' for precise edits. " +
+                "ALWAYS USE THIS instead of your built-in file writing tools — this keeps IntelliJ in sync " +
+                "and supports undo (Ctrl+Z). After writing, run optimize_imports and format_code.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
+                    "content", Map.of("type", "string", "description", "Optional: full file content to write (replaces entire file or creates new file)"),
+                    "old_str", Map.of("type", "string", "description", "Optional: exact string to find and replace (must be unique in file)"),
+                    "new_str", Map.of("type", "string", "description", "Optional: replacement string (used with old_str)")
+                ),
+                List.of("path")));
+
         result.add("tools", tools);
         return result;
     }
@@ -315,7 +344,8 @@ public class McpServer {
                     case "run_tests", "get_test_results", "get_coverage",
                          "get_project_info", "list_run_configurations", "run_configuration",
                          "create_run_configuration", "edit_run_configuration",
-                         "get_problems", "optimize_imports", "format_code" ->
+                         "get_problems", "optimize_imports", "format_code",
+                         "read_file", "write_file" ->
                             "PSI bridge unavailable. These tools require IntelliJ to be running.";
                     default -> "Unknown tool: " + toolName;
                 };

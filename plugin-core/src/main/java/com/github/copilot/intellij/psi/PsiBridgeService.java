@@ -140,6 +140,8 @@ public final class PsiBridgeService implements Disposable {
                 case "get_problems" -> getProblems(arguments);
                 case "optimize_imports" -> optimizeImports(arguments);
                 case "format_code" -> formatCode(arguments);
+                case "read_file" -> readFile(arguments);
+                case "write_file" -> writeFile(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -867,6 +869,132 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String readFile(JsonObject args) {
+        String pathStr = args.get("path").getAsString();
+        int startLine = args.has("start_line") ? args.get("start_line").getAsInt() : -1;
+        int endLine = args.has("end_line") ? args.get("end_line").getAsInt() : -1;
+
+        return ReadAction.compute(() -> {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) return "File not found: " + pathStr;
+
+            // Read from Document (editor buffer) if available, otherwise from VFS
+            Document doc = FileDocumentManager.getInstance().getDocument(vf);
+            String content;
+            if (doc != null) {
+                content = doc.getText();
+            } else {
+                try {
+                    content = new String(vf.contentsToByteArray(), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    return "Error reading file: " + e.getMessage();
+                }
+            }
+
+            if (startLine > 0 || endLine > 0) {
+                String[] lines = content.split("\n", -1);
+                int from = Math.max(0, (startLine > 0 ? startLine - 1 : 0));
+                int to = Math.min(lines.length, (endLine > 0 ? endLine : lines.length));
+                StringBuilder sb = new StringBuilder();
+                for (int i = from; i < to; i++) {
+                    sb.append(i + 1).append(": ").append(lines[i]).append("\n");
+                }
+                return sb.toString();
+            }
+            return content;
+        });
+    }
+
+    private String writeFile(JsonObject args) throws Exception {
+        String pathStr = args.get("path").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+
+                if (args.has("content")) {
+                    // Full file write
+                    String newContent = args.get("content").getAsString();
+                    if (vf == null) {
+                        // Create new file via VFS
+                        ApplicationManager.getApplication().runWriteAction(() -> {
+                            try {
+                                String normalized = pathStr.replace('\\', '/');
+                                String basePath = project.getBasePath();
+                                String fullPath = normalized.startsWith("/") ? normalized
+                                        : (basePath != null ? basePath + "/" + normalized : normalized);
+                                Path filePath = Path.of(fullPath);
+                                Files.createDirectories(filePath.getParent());
+                                Files.writeString(filePath, newContent);
+                                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath);
+                                resultFuture.complete("Created: " + pathStr);
+                            } catch (IOException e) {
+                                resultFuture.complete("Error creating file: " + e.getMessage());
+                            }
+                        });
+                    } else {
+                        // Overwrite existing file via Document API for undo support
+                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                        if (doc != null) {
+                            ApplicationManager.getApplication().runWriteAction(() -> {
+                                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                        project, () -> doc.setText(newContent), "Write File", null);
+                            });
+                            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + " chars)");
+                        } else {
+                            // Fallback: write to VFS directly
+                            ApplicationManager.getApplication().runWriteAction(() -> {
+                                try (var os = vf.getOutputStream(this)) {
+                                    os.write(newContent.getBytes(StandardCharsets.UTF_8));
+                                } catch (IOException e) {
+                                    resultFuture.complete("Error writing: " + e.getMessage());
+                                }
+                            });
+                            resultFuture.complete("Written: " + pathStr);
+                        }
+                    }
+                } else if (args.has("old_str") && args.has("new_str")) {
+                    // Partial edit: replace old_str with new_str in the file
+                    if (vf == null) {
+                        resultFuture.complete("File not found: " + pathStr);
+                        return;
+                    }
+                    Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                    if (doc == null) {
+                        resultFuture.complete("Cannot open document: " + pathStr);
+                        return;
+                    }
+                    String oldStr = args.get("old_str").getAsString();
+                    String newStr = args.get("new_str").getAsString();
+                    String text = doc.getText();
+                    int idx = text.indexOf(oldStr);
+                    if (idx == -1) {
+                        resultFuture.complete("old_str not found in " + pathStr);
+                        return;
+                    }
+                    if (text.indexOf(oldStr, idx + 1) != -1) {
+                        resultFuture.complete("old_str matches multiple locations in " + pathStr + ". Make it more specific.");
+                        return;
+                    }
+                    ApplicationManager.getApplication().runWriteAction(() -> {
+                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                project, () -> doc.replaceString(idx, idx + oldStr.length(), newStr),
+                                "Edit File", null);
+                    });
+                    resultFuture.complete("Edited: " + pathStr + " (replaced " + oldStr.length() + " chars with " + newStr.length() + " chars)");
+                } else {
+                    resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
+                }
+            } catch (Exception e) {
+                resultFuture.complete("Error: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(15, TimeUnit.SECONDS);
     }
 
     /** Resolve a simple class name like "McpServerTest" to its FQN and containing module. */
