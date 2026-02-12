@@ -223,24 +223,30 @@ public class McpServer {
                 .collect(Collectors.toList());
 
             for (Path file : sourceFiles) {
-                List<String> lines = Files.readAllLines(file);
-                for (int i = 0; i < lines.size(); i++) {
-                    String line = lines.get(i);
-                    for (var entry : symbolPatterns.entrySet()) {
-                        if (!typeFilter.isEmpty() && !entry.getKey().equals(typeFilter)) continue;
-                        Matcher m = entry.getValue().matcher(line);
-                        if (m.find()) {
-                            String symbolName = m.group(1);
-                            if (queryPattern.matcher(symbolName).find()) {
-                                String relPath = root.relativize(file).toString();
-                                results.add(String.format("%s:%d [%s] %s", relPath, i + 1, entry.getKey(), line.trim()));
+                try {
+                    List<String> lines = Files.readAllLines(file);
+                    for (int i = 0; i < lines.size(); i++) {
+                        String line = lines.get(i);
+                        for (var entry : symbolPatterns.entrySet()) {
+                            if (!typeFilter.isEmpty() && !entry.getKey().equals(typeFilter)) continue;
+                            Matcher m = entry.getValue().matcher(line);
+                            if (m.find()) {
+                                String symbolName = m.group(1);
+                                if (queryPattern.matcher(symbolName).find()) {
+                                    String relPath = root.relativize(file).toString();
+                                    results.add(String.format("%s:%d [%s] %s", relPath, i + 1, entry.getKey(), line.trim()));
+                                }
                             }
                         }
+                        if (results.size() >= 50) break;
                     }
-                    if (results.size() >= 50) break;
+                } catch (Exception e) {
+                    // Skip unreadable files
                 }
                 if (results.size() >= 50) break;
             }
+        } catch (java.io.UncheckedIOException e) {
+            // AccessDeniedException from Files.walk on Windows junction points
         }
 
         if (results.isEmpty()) return "No symbols found matching '" + query + "'";
@@ -295,13 +301,12 @@ public class McpServer {
     static String findReferences(JsonObject args) throws IOException {
         String symbol = args.get("symbol").getAsString();
         String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
-        // Use word boundary to match exact symbol
         Pattern pattern = Pattern.compile("\\b" + Pattern.quote(symbol) + "\\b");
 
         List<String> results = new ArrayList<>();
         Path root = Path.of(projectRoot);
 
-        try (Stream<Path> files = Files.walk(root)) {
+        try (Stream<Path> files = Files.walk(root, FileVisitOption.FOLLOW_LINKS)) {
             List<Path> sourceFiles = files
                 .filter(Files::isRegularFile)
                 .filter(p -> isSourceFile(p.toString()))
@@ -310,15 +315,21 @@ public class McpServer {
                 .collect(Collectors.toList());
 
             for (Path file : sourceFiles) {
-                List<String> lines = Files.readAllLines(file);
-                for (int i = 0; i < lines.size(); i++) {
-                    if (pattern.matcher(lines.get(i)).find()) {
-                        String relPath = root.relativize(file).toString();
-                        results.add(String.format("%s:%d: %s", relPath, i + 1, lines.get(i).trim()));
+                try {
+                    List<String> lines = Files.readAllLines(file);
+                    for (int i = 0; i < lines.size(); i++) {
+                        if (pattern.matcher(lines.get(i)).find()) {
+                            String relPath = root.relativize(file).toString();
+                            results.add(String.format("%s:%d: %s", relPath, i + 1, lines.get(i).trim()));
+                        }
                     }
+                } catch (Exception e) {
+                    // Skip unreadable files
                 }
                 if (results.size() >= 100) break;
             }
+        } catch (java.io.UncheckedIOException e) {
+            // AccessDeniedException from Files.walk on Windows junction points
         }
 
         if (results.isEmpty()) return "No references found for '" + symbol + "'";
@@ -334,7 +345,7 @@ public class McpServer {
         if (!Files.exists(searchDir)) return "Directory not found: " + dir;
 
         List<String> results = new ArrayList<>();
-        try (Stream<Path> files = Files.walk(searchDir)) {
+        try (Stream<Path> files = Files.walk(searchDir, FileVisitOption.FOLLOW_LINKS)) {
             files.filter(Files::isRegularFile)
                 .filter(p -> !isExcluded(root, p))
                 .filter(p -> pattern.isEmpty() || matchesGlob(p.getFileName().toString(), pattern))
@@ -345,6 +356,8 @@ public class McpServer {
                     String type = getFileType(p.toString());
                     results.add(String.format("%s [%s]", relPath, type));
                 });
+        } catch (java.io.UncheckedIOException e) {
+            // AccessDeniedException from Files.walk on Windows junction points
         }
 
         if (results.isEmpty()) return "No files found";
@@ -380,7 +393,9 @@ public class McpServer {
         String rel = root.relativize(file).toString().replace('\\', '/');
         return rel.startsWith("build/") || rel.startsWith(".gradle/") || rel.startsWith(".git/") ||
                rel.startsWith("node_modules/") || rel.startsWith("target/") || rel.startsWith(".idea/") ||
-               rel.contains("/build/") || rel.contains("/.gradle/");
+               rel.startsWith("AppData/") || rel.startsWith(".copilot/") || rel.startsWith(".jdks/") ||
+               rel.startsWith(".nuget/") || rel.startsWith(".m2/") || rel.startsWith(".npm/") ||
+               rel.contains("/build/") || rel.contains("/.gradle/") || rel.contains("/node_modules/");
     }
 
     private static boolean matchesGlob(String fileName, String pattern) {
