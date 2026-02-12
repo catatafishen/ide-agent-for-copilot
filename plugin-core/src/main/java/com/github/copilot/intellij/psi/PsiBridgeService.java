@@ -133,6 +133,8 @@ public final class PsiBridgeService implements Disposable {
                 case "get_project_info" -> getProjectInfo();
                 case "list_run_configurations" -> listRunConfigurations();
                 case "run_configuration" -> runConfiguration(arguments);
+                case "create_run_configuration" -> createRunConfiguration(arguments);
+                case "edit_run_configuration" -> editRunConfiguration(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -455,6 +457,195 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String createRunConfiguration(JsonObject args) throws Exception {
+        String name = args.get("name").getAsString();
+        String type = args.get("type").getAsString().toLowerCase();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                RunManager runManager = RunManager.getInstance(project);
+
+                // Find the configuration type
+                var configType = findConfigurationType(type);
+                if (configType == null) {
+                    List<String> available = new ArrayList<>();
+                    for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
+                        available.add(ct.getDisplayName());
+                    }
+                    resultFuture.complete("Unknown configuration type: '" + type
+                            + "'. Available types: " + String.join(", ", available));
+                    return;
+                }
+
+                var factory = configType.getConfigurationFactories()[0];
+                var settings = runManager.createConfiguration(name, factory);
+                RunConfiguration config = settings.getConfiguration();
+
+                // Apply common properties
+                applyConfigProperties(config, args);
+
+                // Apply type-specific properties
+                applyTypeSpecificProperties(config, type, args);
+
+                runManager.addConfiguration(settings);
+                runManager.setSelectedConfiguration(settings);
+
+                resultFuture.complete("Created run configuration: " + name
+                        + " [" + configType.getDisplayName() + "]"
+                        + "\nUse run_configuration to execute it, or edit_run_configuration to modify it.");
+            } catch (Exception e) {
+                resultFuture.complete("Error creating run configuration: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String editRunConfiguration(JsonObject args) throws Exception {
+        String name = args.get("name").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var settings = RunManager.getInstance(project).findConfigurationByName(name);
+                if (settings == null) {
+                    resultFuture.complete("Run configuration not found: '" + name + "'");
+                    return;
+                }
+
+                RunConfiguration config = settings.getConfiguration();
+                List<String> changes = new ArrayList<>();
+
+                // Apply common properties
+                if (args.has("env")) {
+                    applyEnvVars(config, args.getAsJsonObject("env"), changes);
+                }
+                if (args.has("jvm_args")) {
+                    setViaReflection(config, "setVMParameters",
+                            args.get("jvm_args").getAsString(), changes, "JVM args");
+                }
+                if (args.has("program_args")) {
+                    setViaReflection(config, "setProgramParameters",
+                            args.get("program_args").getAsString(), changes, "program args");
+                }
+                if (args.has("working_dir")) {
+                    setViaReflection(config, "setWorkingDirectory",
+                            args.get("working_dir").getAsString(), changes, "working directory");
+                }
+
+                // Apply type-specific properties
+                String typeName = settings.getType().getDisplayName().toLowerCase();
+                applyTypeSpecificProperties(config, typeName, args);
+                if (args.has("main_class")) changes.add("main class");
+                if (args.has("test_class")) changes.add("test class");
+                if (args.has("tasks")) changes.add("Gradle tasks");
+
+                if (changes.isEmpty()) {
+                    resultFuture.complete("No changes applied. Available properties: "
+                            + "env (object), jvm_args, program_args, working_dir, "
+                            + "main_class, test_class, test_method, tasks");
+                } else {
+                    resultFuture.complete("Updated run configuration '" + name + "': "
+                            + String.join(", ", changes));
+                }
+            } catch (Exception e) {
+                resultFuture.complete("Error editing run configuration: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    // ---- Run Config Helper Methods ----
+
+    private com.intellij.execution.configurations.ConfigurationType findConfigurationType(String type) {
+        for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
+            String displayName = ct.getDisplayName().toLowerCase();
+            if (displayName.equals(type) || displayName.contains(type)
+                    || ct.getId().toLowerCase().contains(type)) {
+                return ct;
+            }
+        }
+        return null;
+    }
+
+    private void applyConfigProperties(RunConfiguration config, JsonObject args) {
+        List<String> ignore = new ArrayList<>();
+        if (args.has("env")) applyEnvVars(config, args.getAsJsonObject("env"), ignore);
+        if (args.has("jvm_args"))
+            setViaReflection(config, "setVMParameters", args.get("jvm_args").getAsString(), ignore, null);
+        if (args.has("program_args"))
+            setViaReflection(config, "setProgramParameters", args.get("program_args").getAsString(), ignore, null);
+        if (args.has("working_dir"))
+            setViaReflection(config, "setWorkingDirectory", args.get("working_dir").getAsString(), ignore, null);
+    }
+
+    private void applyTypeSpecificProperties(RunConfiguration config, String type, JsonObject args) {
+        List<String> ignore = new ArrayList<>();
+        if (args.has("main_class"))
+            setViaReflection(config, "setMainClassName", args.get("main_class").getAsString(), ignore, null);
+        if (args.has("test_class")) {
+            // JUnit configs might use setMainClass or specific test setters
+            setViaReflection(config, "setMainClass", args.get("test_class").getAsString(), ignore, null);
+        }
+        if (args.has("test_method"))
+            setViaReflection(config, "setMethodName", args.get("test_method").getAsString(), ignore, null);
+        if (args.has("module_name")) {
+            try {
+                Module module = ModuleManager.getInstance(project)
+                        .findModuleByName(args.get("module_name").getAsString());
+                if (module != null) {
+                    var setModule = config.getClass().getMethod("setModule", Module.class);
+                    setModule.invoke(config, module);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyEnvVars(RunConfiguration config, JsonObject envObj, List<String> changes) {
+        try {
+            // Get existing env vars
+            Map<String, String> envs;
+            try {
+                var getEnvs = config.getClass().getMethod("getEnvs");
+                envs = new HashMap<>((Map<String, String>) getEnvs.invoke(config));
+            } catch (Exception e) {
+                envs = new HashMap<>();
+            }
+
+            // Merge new values (null value removes the key)
+            for (var entry : envObj.entrySet()) {
+                if (entry.getValue().isJsonNull()) {
+                    envs.remove(entry.getKey());
+                    changes.add("removed env " + entry.getKey());
+                } else {
+                    envs.put(entry.getKey(), entry.getValue().getAsString());
+                    changes.add("env " + entry.getKey());
+                }
+            }
+
+            var setEnvs = config.getClass().getMethod("setEnvs", Map.class);
+            setEnvs.invoke(config, envs);
+        } catch (Exception e) {
+            changes.add("env vars (failed: " + e.getMessage() + ")");
+        }
+    }
+
+    private void setViaReflection(Object target, String methodName, String value,
+                                  List<String> changes, String label) {
+        try {
+            var method = target.getClass().getMethod(methodName, String.class);
+            method.invoke(target, value);
+            if (label != null) changes.add(label);
+        } catch (Exception ignored) {
+        }
     }
 
     // ---- Test Tools ----

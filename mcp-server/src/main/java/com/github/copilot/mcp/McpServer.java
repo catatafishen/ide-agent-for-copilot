@@ -194,6 +194,36 @@ public class McpServer {
                 ),
                 List.of("name")));
 
+        tools.add(buildTool("create_run_configuration",
+                "Create a new IntelliJ run configuration. Supports Application, JUnit, Gradle, and other types. " +
+                "Can set environment variables, JVM args, working directory, main class, test class, etc. " +
+                "The configuration is saved and selected in IntelliJ. Use run_configuration to execute it.",
+                Map.of(
+                    "name", Map.of("type", "string", "description", "Name for the new run configuration"),
+                    "type", Map.of("type", "string", "description", "Configuration type: 'application', 'junit', 'gradle', etc."),
+                    "env", Map.of("type", "string", "description", "Optional: JSON object of environment variables, e.g. {\"KEY\":\"value\"}"),
+                    "jvm_args", Map.of("type", "string", "description", "Optional: JVM arguments (e.g., '-Xmx2g -Dkey=value')"),
+                    "program_args", Map.of("type", "string", "description", "Optional: program arguments"),
+                    "working_dir", Map.of("type", "string", "description", "Optional: working directory path"),
+                    "main_class", Map.of("type", "string", "description", "Optional: main class (for Application configs)"),
+                    "test_class", Map.of("type", "string", "description", "Optional: test class (for JUnit configs)"),
+                    "module_name", Map.of("type", "string", "description", "Optional: IntelliJ module name (from get_project_info)")
+                ),
+                List.of("name", "type")));
+
+        tools.add(buildTool("edit_run_configuration",
+                "Edit an existing IntelliJ run configuration. Can modify environment variables, JVM args, " +
+                "working directory, program args, and type-specific properties. " +
+                "For env vars, pass a JSON object — set value to null to remove a variable.",
+                Map.of(
+                    "name", Map.of("type", "string", "description", "Name of the run configuration to edit"),
+                    "env", Map.of("type", "string", "description", "Optional: JSON object of env vars to set/update. Use null value to remove."),
+                    "jvm_args", Map.of("type", "string", "description", "Optional: new JVM arguments"),
+                    "program_args", Map.of("type", "string", "description", "Optional: new program arguments"),
+                    "working_dir", Map.of("type", "string", "description", "Optional: new working directory")
+                ),
+                List.of("name")));
+
         result.add("tools", tools);
         return result;
     }
@@ -239,7 +269,8 @@ public class McpServer {
                     case "list_project_files" -> listProjectFiles(arguments);
                     case "list_tests" -> listTestsFallback(arguments);
                     case "run_tests", "get_test_results", "get_coverage",
-                         "get_project_info", "list_run_configurations", "run_configuration" ->
+                         "get_project_info", "list_run_configurations", "run_configuration",
+                         "create_run_configuration", "edit_run_configuration" ->
                             "PSI bridge unavailable. These tools require IntelliJ to be running.";
                     default -> "Unknown tool: " + toolName;
                 };
