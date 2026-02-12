@@ -3,6 +3,8 @@ package com.github.copilot.mcp;
 import com.google.gson.*;
 
 import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.regex.*;
@@ -102,8 +104,9 @@ public class McpServer {
         JsonArray tools = new JsonArray();
 
         tools.add(buildTool("search_symbols",
-                "Search for class, method, function, or interface definitions across the project. " +
-                "Returns file path, line number, and the definition line. More precise than grep for code navigation.",
+                "Search for class, method, function, or interface definitions across the project using " +
+                "IntelliJ's code analysis engine (AST). Returns file path, line number, and the definition line. " +
+                "More accurate than grep — understands code structure. PREFER THIS over grep for finding definitions.",
                 Map.of(
                     "query", Map.of("type", "string", "description", "Symbol name or pattern to search for (supports regex)"),
                     "type", Map.of("type", "string", "description", "Optional: filter by type (class, method, function, interface, field)", "default", "")
@@ -111,14 +114,14 @@ public class McpServer {
                 List.of("query")));
 
         tools.add(buildTool("get_file_outline",
-                "Get the structural outline of a source file: classes, methods, fields, functions with line numbers. " +
-                "Useful for understanding file structure before making changes.",
+                "Get the structural outline of a source file using AST analysis: classes, methods, fields, " +
+                "functions with line numbers. PREFER THIS over grep for understanding file structure.",
                 Map.of("path", Map.of("type", "string", "description", "Absolute or project-relative path to the source file")),
                 List.of("path")));
 
         tools.add(buildTool("find_references",
-                "Find all files and lines where a symbol name is used (not just defined). " +
-                "Useful for impact analysis before refactoring.",
+                "Find all usages of a symbol using IntelliJ's reference resolution engine. " +
+                "Understands imports, type hierarchy, and overrides. PREFER THIS over grep for finding usages.",
                 Map.of(
                     "symbol", Map.of("type", "string", "description", "The exact symbol name to search for"),
                     "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.java', '*.kt')", "default", "")
@@ -162,13 +165,23 @@ public class McpServer {
         JsonObject arguments = params.has("arguments") ? params.getAsJsonObject("arguments") : new JsonObject();
 
         try {
-            String resultText = switch (toolName) {
-                case "search_symbols" -> searchSymbols(arguments);
-                case "get_file_outline" -> getFileOutline(arguments);
-                case "find_references" -> findReferences(arguments);
-                case "list_project_files" -> listProjectFiles(arguments);
-                default -> "Unknown tool: " + toolName;
-            };
+            // Try PSI bridge first for accurate AST-based analysis
+            String bridgeResult = tryPsiBridge(toolName, arguments);
+
+            String resultText;
+            if (bridgeResult != null) {
+                System.err.println("MCP: tool '" + toolName + "' handled by PSI bridge");
+                resultText = bridgeResult;
+            } else {
+                // Fall back to regex-based analysis
+                resultText = switch (toolName) {
+                    case "search_symbols" -> searchSymbols(arguments);
+                    case "get_file_outline" -> getFileOutline(arguments);
+                    case "find_references" -> findReferences(arguments);
+                    case "list_project_files" -> listProjectFiles(arguments);
+                    default -> "Unknown tool: " + toolName;
+                };
+            }
 
             JsonObject result = new JsonObject();
             JsonArray content = new JsonArray();
@@ -192,7 +205,58 @@ public class McpServer {
         }
     }
 
-    // --- Tool implementations ---
+    /**
+     * Try to delegate a tool call to the IntelliJ PSI bridge for accurate AST analysis.
+     * Falls back to null if bridge is unavailable.
+     */
+    private static String tryPsiBridge(String toolName, JsonObject arguments) {
+        try {
+            Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
+            if (!Files.exists(bridgeFile)) return null;
+
+            String content = Files.readString(bridgeFile);
+            JsonObject bridge = JsonParser.parseString(content).getAsJsonObject();
+            int port = bridge.get("port").getAsInt();
+
+            // Verify project path matches
+            if (bridge.has("projectPath")) {
+                String bridgeProject = bridge.get("projectPath").getAsString().replace('\\', '/');
+                String ourProject = projectRoot.replace('\\', '/');
+                if (!ourProject.startsWith(bridgeProject) && !bridgeProject.startsWith(ourProject)) {
+                    return null;
+                }
+            }
+
+            URL url = URI.create("http://127.0.0.1:" + port + "/tools/call").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(30000);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            JsonObject request = new JsonObject();
+            request.addProperty("name", toolName);
+            request.add("arguments", arguments);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(GSON.toJson(request).getBytes(StandardCharsets.UTF_8));
+            }
+
+            if (conn.getResponseCode() == 200) {
+                try (InputStream is = conn.getInputStream()) {
+                    String response = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    JsonObject result = JsonParser.parseString(response).getAsJsonObject();
+                    return result.get("result").getAsString();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("PSI Bridge unavailable (" + e.getMessage() + "), using regex fallback");
+        }
+        return null;
+    }
+
+    // --- Tool implementations (regex fallback) ---
 
     static String searchSymbols(JsonObject args) throws IOException {
         String query = args.get("query").getAsString();

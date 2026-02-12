@@ -64,6 +64,14 @@
             serviceImplementation="com.github.copilot.intellij.services.AgenticCopilotService"/>
         <applicationService 
             serviceImplementation="com.github.copilot.intellij.services.CopilotService"/>
+
+        <!-- Project Services -->
+        <projectService
+            serviceImplementation="com.github.copilot.intellij.psi.PsiBridgeService"/>
+
+        <!-- Start PSI Bridge when project opens -->
+        <postStartupActivity
+            implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
     </extensions>
 
     <actions>
