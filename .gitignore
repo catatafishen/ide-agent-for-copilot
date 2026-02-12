@@ -21,9 +21,7 @@ out/
 # Windows
 Thumbs.db
 
-# Go
-copilot-bridge/bin/
-copilot-bridge/dist/
+# Binaries
 *.exe
 *.dll
 *.so
