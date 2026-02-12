@@ -95,13 +95,6 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
 
-        // Deny built-in file I/O tools so the agent uses our MCP equivalents
-        // which go through IntelliJ's Document API for undo, VFS sync, and editor integration
-        for (String tool : new String[]{"read_file", "write_file", "edit_file", "create_file"}) {
-            cmd.add("--deny-tool");
-            cmd.add(tool);
-        }
-
         String mcpJarPath = findMcpServerJar();
         if (mcpJarPath != null) {
             String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
@@ -523,23 +516,32 @@ public class CopilotAcpClient implements Closeable {
                             response.add("result", result);
                             sendRawMessage(response);
                         } else if ("fs/read_text_file".equals(reqMethod)) {
-                            // Read file for agent
+                            // Read file — route through PSI bridge for editor buffer reads
                             JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
                             String filePath = reqParams != null && reqParams.has("path") ? reqParams.get("path").getAsString() : null;
                             JsonObject response = new JsonObject();
                             response.addProperty("jsonrpc", "2.0");
                             response.addProperty("id", reqId);
                             if (filePath != null) {
-                                try {
-                                    String content = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)));
+                                String bridgeResult = callPsiBridge("read_file",
+                                        createArgs("path", filePath));
+                                if (bridgeResult != null) {
                                     JsonObject result = new JsonObject();
-                                    result.addProperty("content", content);
+                                    result.addProperty("content", bridgeResult);
                                     response.add("result", result);
-                                } catch (IOException e) {
-                                    JsonObject error = new JsonObject();
-                                    error.addProperty("code", -32000);
-                                    error.addProperty("message", "File not found: " + filePath);
-                                    response.add("error", error);
+                                } else {
+                                    // PSI bridge unavailable — fall back to direct read
+                                    try {
+                                        String content = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)));
+                                        JsonObject result = new JsonObject();
+                                        result.addProperty("content", content);
+                                        response.add("result", result);
+                                    } catch (IOException e) {
+                                        JsonObject error = new JsonObject();
+                                        error.addProperty("code", -32000);
+                                        error.addProperty("message", "File not found: " + filePath);
+                                        response.add("error", error);
+                                    }
                                 }
                             } else {
                                 JsonObject error = new JsonObject();
@@ -549,7 +551,7 @@ public class CopilotAcpClient implements Closeable {
                             }
                             sendRawMessage(response);
                         } else if ("fs/write_text_file".equals(reqMethod)) {
-                            // Write file for agent
+                            // Write file — route through PSI bridge for Document API (undo, VFS sync)
                             JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
                             String filePath = reqParams != null && reqParams.has("path") ? reqParams.get("path").getAsString() : null;
                             String fileContent = reqParams != null && reqParams.has("content") ? reqParams.get("content").getAsString() : null;
@@ -557,14 +559,27 @@ public class CopilotAcpClient implements Closeable {
                             response.addProperty("jsonrpc", "2.0");
                             response.addProperty("id", reqId);
                             if (filePath != null && fileContent != null) {
-                                try {
-                                    java.nio.file.Files.writeString(java.nio.file.Paths.get(filePath), fileContent);
+                                JsonObject writeArgs = createArgs("path", filePath);
+                                writeArgs.addProperty("content", fileContent);
+                                String bridgeResult = callPsiBridge("write_file", writeArgs);
+                                if (bridgeResult != null) {
                                     response.add("result", new JsonObject());
-                                } catch (IOException e) {
-                                    JsonObject error = new JsonObject();
-                                    error.addProperty("code", -32000);
-                                    error.addProperty("message", "Failed to write file: " + e.getMessage());
-                                    response.add("error", error);
+                                    // Auto-run optimize_imports and format_code after write
+                                    JsonObject fmtArgs = createArgs("path", filePath);
+                                    callPsiBridge("optimize_imports", fmtArgs);
+                                    callPsiBridge("format_code", fmtArgs);
+                                    LOG.info("Auto-formatted after write: " + filePath);
+                                } else {
+                                    // PSI bridge unavailable — fall back to direct write
+                                    try {
+                                        java.nio.file.Files.writeString(java.nio.file.Paths.get(filePath), fileContent);
+                                        response.add("result", new JsonObject());
+                                    } catch (IOException e) {
+                                        JsonObject error = new JsonObject();
+                                        error.addProperty("code", -32000);
+                                        error.addProperty("message", "Failed to write file: " + e.getMessage());
+                                        response.add("error", error);
+                                    }
                                 }
                             } else {
                                 JsonObject error = new JsonObject();
@@ -711,6 +726,52 @@ public class CopilotAcpClient implements Closeable {
             LOG.debug("Could not find MCP server JAR: " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Call a tool on the PSI bridge HTTP server.
+     * Returns the result string, or null if bridge is unavailable.
+     */
+    private String callPsiBridge(String toolName, JsonObject arguments) {
+        try {
+            java.nio.file.Path bridgeFile = java.nio.file.Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
+            if (!java.nio.file.Files.exists(bridgeFile)) return null;
+
+            String content = java.nio.file.Files.readString(bridgeFile);
+            JsonObject bridge = JsonParser.parseString(content).getAsJsonObject();
+            int port = bridge.get("port").getAsInt();
+
+            java.net.URL url = java.net.URI.create("http://127.0.0.1:" + port + "/tools/call").toURL();
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(30000);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            JsonObject request = new JsonObject();
+            request.addProperty("name", toolName);
+            request.add("arguments", arguments);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(gson.toJson(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+
+            if (conn.getResponseCode() == 200) {
+                String resp = new String(conn.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                JsonObject result = JsonParser.parseString(resp).getAsJsonObject();
+                return result.has("result") ? result.get("result").getAsString() : null;
+            }
+        } catch (IOException e) {
+            LOG.debug("PSI bridge call failed for " + toolName + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static JsonObject createArgs(String key, String value) {
+        JsonObject args = new JsonObject();
+        args.addProperty(key, value);
+        return args;
     }
 
     @Override
