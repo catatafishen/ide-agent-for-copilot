@@ -1,7 +1,7 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "2.2.0"
-    id("org.jetbrains.intellij.platform") version "2.1.0"
+    id("org.jetbrains.kotlin.jvm") version "2.3.10"
+    id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
 repositories {
@@ -15,17 +15,16 @@ dependencies {
     intellijPlatform {
         // Use your locally installed IDE instead of downloading
         local(providers.gradleProperty("intellijPlatform.localPath"))
-        
-        instrumentationTools()
     }
 
     // Kotlin stdlib for UI layer
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     
     // JSON processing (Gson)
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.google.code.gson:gson:2.13.1")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation("junit:junit:4.13.2")  // Required by IntelliJ test framework
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -59,21 +58,6 @@ intellijPlatform {
 tasks {
     runIde {
         maxHeapSize = "2g"
-        
-        // Workaround for ProductInfo bug in Platform Plugin 2.1.0
-        // Try to bypass IDE home variable resolution
-        jvmArgs = listOf(
-            "-Xmx2048m",
-            "-Didea.plugins.path=${layout.buildDirectory.dir("idea-sandbox/plugins").get().asFile.absolutePath}",
-            "-Didea.system.path=${layout.buildDirectory.dir("idea-sandbox/system").get().asFile.absolutePath}",
-            "-Didea.config.path=${layout.buildDirectory.dir("idea-sandbox/config").get().asFile.absolutePath}",
-            "-Didea.log.path=${layout.buildDirectory.dir("idea-sandbox/system/log").get().asFile.absolutePath}"
-        )
-    }
-
-    // Disable searchable options to fix build
-    buildSearchableOptions {
-        enabled = false
     }
 
     // Copy sidecar binary into plugin distribution

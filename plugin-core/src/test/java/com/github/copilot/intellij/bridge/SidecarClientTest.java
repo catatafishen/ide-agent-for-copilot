@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.List;
@@ -24,8 +26,14 @@ class SidecarClientTest {
         }
         
         // Start mock sidecar server for testing
-        String projectDir = System.getProperty("user.dir");
-        String sidecarPath = projectDir + "\\copilot-bridge\\bin\\copilot-sidecar.exe";
+        // Navigate up from plugin-core/build/classes/... to project root
+        String projectDir = new File(System.getProperty("user.dir")).getParentFile().getAbsolutePath();
+        String sidecarPath = projectDir + File.separator + "copilot-bridge" + File.separator + "bin" + File.separator + "copilot-sidecar.exe";
+        
+        if (!new File(sidecarPath).exists()) {
+            throw new FileNotFoundException("Sidecar binary not found at: " + sidecarPath + ". Run 'go build' first.");
+        }
+        
         ProcessBuilder pb = new ProcessBuilder(sidecarPath, "--port", String.valueOf(testPort));
         mockServerProcess = pb.start();
         
