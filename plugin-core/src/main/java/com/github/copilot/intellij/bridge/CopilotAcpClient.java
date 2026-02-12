@@ -119,10 +119,18 @@ public class CopilotAcpClient implements Closeable {
      */
     @NotNull
     public synchronized String createSession() throws CopilotException {
+        return createSession(null);
+    }
+
+    /**
+     * Create a new ACP session with optional working directory.
+     * @param cwd The working directory for the session, or null to use user.home
+     */
+    public synchronized String createSession(@Nullable String cwd) throws CopilotException {
         ensureStarted();
 
         JsonObject params = new JsonObject();
-        params.addProperty("cwd", System.getProperty("user.dir"));
+        params.addProperty("cwd", cwd != null ? cwd : System.getProperty("user.home"));
         params.add("mcpServers", new JsonArray());
 
         JsonObject result = sendRequest("session/new", params);
@@ -433,12 +441,28 @@ public class CopilotAcpClient implements Closeable {
                         LOG.info("ACP agent request: " + reqMethod + " id=" + reqId);
 
                         if ("session/request_permission".equals(reqMethod)) {
-                            // Auto-approve all tool calls for now
+                            // Auto-approve: select the first "allow" option
+                            JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
+                            String selectedOptionId = "allow-once"; // default
+                            if (reqParams != null && reqParams.has("options")) {
+                                for (JsonElement opt : reqParams.getAsJsonArray("options")) {
+                                    JsonObject option = opt.getAsJsonObject();
+                                    String kind = option.has("kind") ? option.get("kind").getAsString() : "";
+                                    if ("allow_once".equals(kind) || "allow_always".equals(kind)) {
+                                        selectedOptionId = option.get("optionId").getAsString();
+                                        break;
+                                    }
+                                }
+                            }
+                            LOG.info("ACP request_permission: auto-approving with option=" + selectedOptionId);
                             JsonObject response = new JsonObject();
                             response.addProperty("jsonrpc", "2.0");
                             response.addProperty("id", reqId);
                             JsonObject result = new JsonObject();
-                            result.addProperty("outcome", "granted");
+                            JsonObject outcome = new JsonObject();
+                            outcome.addProperty("outcome", "selected");
+                            outcome.addProperty("optionId", selectedOptionId);
+                            result.add("outcome", outcome);
                             response.add("result", result);
                             sendRawMessage(response);
                         } else if ("fs/read_text_file".equals(reqMethod)) {

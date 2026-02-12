@@ -489,7 +489,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     
                     // Reuse session for multi-turn conversation, create new if needed
                     if (currentSessionId == null) {
-                        currentSessionId = client.createSession()
+                        currentSessionId = client.createSession(project.basePath)
                         addTimelineEvent(EventType.SESSION_START, "Session created")
                     }
                     val sessionId = currentSessionId!!
