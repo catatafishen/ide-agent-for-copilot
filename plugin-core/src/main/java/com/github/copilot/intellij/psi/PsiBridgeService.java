@@ -235,9 +235,11 @@ public final class PsiBridgeService implements Disposable {
             // Wildcard/empty query: iterate all project files to collect symbols by type
             if (query.isEmpty() || "*".equals(query)) {
                 if (typeFilter.isEmpty()) return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
+                int[] fileCount = {0};
                 ProjectFileIndex.getInstance(project).iterateContent(vf -> {
                     if (vf.isDirectory() || (!vf.getName().endsWith(".java") && !vf.getName().endsWith(".kt")))
                         return true;
+                    fileCount[0]++;
                     PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                     if (psiFile == null) return true;
                     Document doc = FileDocumentManager.getInstance().getDocument(vf);
@@ -265,7 +267,9 @@ public final class PsiBridgeService implements Disposable {
                     });
                     return results.size() < 200;
                 });
-                if (results.isEmpty()) return "No " + typeFilter + " symbols found in project";
+                if (results.isEmpty())
+                    return "No " + typeFilter + " symbols found (scanned " + fileCount[0]
+                            + " source files using AST analysis). This is a definitive result — no grep needed.";
                 return results.size() + " " + typeFilter + " symbols:\n" + String.join("\n", results);
             }
 
