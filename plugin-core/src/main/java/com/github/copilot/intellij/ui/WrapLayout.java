@@ -1,5 +1,7 @@
 package com.github.copilot.intellij.ui;
 
+import com.intellij.util.ui.JBUI;
+
 import java.awt.*;
 
 /**

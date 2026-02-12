@@ -6,21 +6,22 @@ import com.github.copilot.intellij.services.CopilotSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.ui.JBColor
+import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
+import com.intellij.ui.components.JBTextArea
+import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
-import java.awt.Color
 import java.awt.Cursor
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import javax.swing.*
-import javax.swing.event.DocumentEvent
-import javax.swing.event.DocumentListener
 
 /**
  * Main content for the Agentic Copilot tool window.
@@ -108,7 +109,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             } else {
                                 "Quota exceeded - overages not permitted"
                             }
-                            costLabel.foreground = Color(220, 50, 50)
+                            costLabel.foreground = JBColor.RED
                         } else {
                             costLabel.text = ""
                         }
@@ -190,7 +191,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.border = JBUI.Borders.empty(10)
         
         // Top toolbar with model selector and mode toggle — wraps on narrow windows
-        val toolbar = JBPanel<JBPanel<*>>(WrapLayout(FlowLayout.LEFT, 5, 5))
+        val toolbar = JBPanel<JBPanel<*>>(WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)))
         toolbar.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         
         // Model selector (placeholder shown inside dropdown)
@@ -209,8 +210,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         toolbar.add(modelComboBox)
         
         // Spinner shown during loading
-        val loadingSpinner = JProgressBar()
-        loadingSpinner.isIndeterminate = true
+        val loadingSpinner = AsyncProcessIcon("loading-models")
         loadingSpinner.preferredSize = JBUI.size(16, 16)
         toolbar.add(loadingSpinner)
         
@@ -225,14 +225,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         toolbar.add(modeCombo)
         
         // Auth status panel below toolbar (hidden by default)
-        val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
+        val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         authPanel.isVisible = false
         authPanel.border = JBUI.Borders.emptyLeft(5)
         authPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         
         val modelErrorLabel = JBLabel()
-        modelErrorLabel.foreground = Color(200, 80, 80)
-        modelErrorLabel.font = modelErrorLabel.font.deriveFont(Font.PLAIN, 11f)
+        modelErrorLabel.foreground = JBColor.RED
+        modelErrorLabel.font = JBUI.Fonts.smallFont()
         authPanel.add(modelErrorLabel)
         
         val loginButton = JButton("Login")
@@ -249,12 +249,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         usagePanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         
         usageLabel = JBLabel("")
-        usageLabel.font = usageLabel.font.deriveFont(Font.PLAIN, 11f)
+        usageLabel.font = JBUI.Fonts.smallFont()
         usageLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         usagePanel.add(usageLabel)
         
         costLabel = JBLabel("")
-        costLabel.font = costLabel.font.deriveFont(Font.BOLD, 11f)
+        costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
         costLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         usagePanel.add(costLabel)
         
@@ -270,8 +270,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         loadBillingData()
         
         // Center: Split pane with prompt input (top) and response output (bottom)
-        val splitPane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
-        splitPane.resizeWeight = 0.4 // 40% for input, 60% for output
+        val splitPane = OnePixelSplitter(true, 0.4f)
         
         // Prompt input area
         val promptPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -280,11 +279,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val promptLabel = JBLabel("Prompt:")
         promptPanel.add(promptLabel, BorderLayout.NORTH)
         
-        val promptTextArea = JTextArea()
+        val promptTextArea = JBTextArea()
         promptTextArea.lineWrap = true
         promptTextArea.wrapStyleWord = true
         promptTextArea.rows = 8
-        promptTextArea.border = JBUI.Borders.empty(5)
         
         // Response output area (declare before button listener needs it)
         val responsePanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -293,12 +291,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val responseLabel = JBLabel("Response:")
         responsePanel.add(responseLabel, BorderLayout.NORTH)
         
-        val responseTextArea = JTextArea()
+        val responseTextArea = JBTextArea()
         responseTextArea.isEditable = false
         responseTextArea.lineWrap = true
         responseTextArea.wrapStyleWord = true
-        responseTextArea.text = "Response will appear here after running a prompt...\n\nℹ️ First run will auto-start the sidecar process."
-        responseTextArea.border = JBUI.Borders.empty(5)
+        responseTextArea.text = "Response will appear here after running a prompt...\n\nFirst run will auto-start the Copilot process."
         
         val responseScrollPane = JBScrollPane(responseTextArea)
         responsePanel.add(responseScrollPane, BorderLayout.CENTER)
@@ -374,8 +371,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
         promptPanel.add(runButton, BorderLayout.SOUTH)
         
-        splitPane.topComponent = promptPanel
-        splitPane.bottomComponent = responsePanel
+        splitPane.firstComponent = promptPanel
+        splitPane.secondComponent = responsePanel
         
         panel.add(splitPane, BorderLayout.CENTER)
         
@@ -639,8 +636,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.border = JBUI.Borders.empty(10)
         
         // Create split pane: tree on left, details on right
-        val splitPane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT)
-        splitPane.resizeWeight = 0.5
+        val splitPane = OnePixelSplitter(false, 0.5f)
         
         // Left: Plans tree
         val treePanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -712,7 +708,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val treeScrollPane = JBScrollPane(tree)
         treePanel.add(treeScrollPane, BorderLayout.CENTER)
         
-        splitPane.leftComponent = treePanel
+        splitPane.firstComponent = treePanel
         
         // Right: Plan details/diff preview
         val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -721,7 +717,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val detailsLabel = JBLabel("Plan Details:")
         detailsPanel.add(detailsLabel, BorderLayout.NORTH)
         
-        val detailsArea = JTextArea()
+        val detailsArea = JBTextArea()
         detailsArea.isEditable = false
         detailsArea.lineWrap = true
         detailsArea.wrapStyleWord = true
@@ -756,7 +752,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             """.trimIndent()
         }
         
-        splitPane.rightComponent = detailsPanel
+        splitPane.secondComponent = detailsPanel
         
         panel.add(splitPane, BorderLayout.CENTER)
         
@@ -877,13 +873,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.add(JBLabel("Default Model:"), gbc)
         
         gbc.gridx = 1
-        val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
+        val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val defaultModelCombo = ComboBox(arrayOf("Loading..."))
         defaultModelCombo.preferredSize = JBUI.size(250, 30)
         defaultModelCombo.isEnabled = false
         settingsModelPanel.add(defaultModelCombo)
-        val settingsSpinner = JProgressBar()
-        settingsSpinner.isIndeterminate = true
+        val settingsSpinner = AsyncProcessIcon("loading-settings-models")
         settingsSpinner.preferredSize = JBUI.size(16, 16)
         settingsModelPanel.add(settingsSpinner)
         panel.add(settingsModelPanel, gbc)
@@ -892,11 +887,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.gridx = 0
         gbc.gridy++
         gbc.gridwidth = 2
-        val settingsAuthPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
+        val settingsAuthPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         settingsAuthPanel.isVisible = false
         val settingsModelError = JBLabel()
-        settingsModelError.foreground = Color(200, 80, 80)
-        settingsModelError.font = settingsModelError.font.deriveFont(Font.PLAIN, 11f)
+        settingsModelError.foreground = JBColor.RED
+        settingsModelError.font = JBUI.Fonts.smallFont()
         settingsAuthPanel.add(settingsModelError)
         val settingsLoginButton = JButton("Login")
         settingsLoginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
