@@ -15,6 +15,7 @@ dependencies {
     intellijPlatform {
         // Use your locally installed IDE instead of downloading
         local(providers.gradleProperty("intellijPlatform.localPath"))
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 
     // Kotlin stdlib for UI layer
@@ -26,6 +27,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("junit:junit:4.13.2")  // Required by IntelliJ test framework
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.1")
 }
 
 intellijPlatform {
