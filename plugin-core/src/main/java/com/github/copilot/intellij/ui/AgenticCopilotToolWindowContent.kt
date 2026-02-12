@@ -527,25 +527,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         treePanel.add(treeLabel, BorderLayout.NORTH)
         
         // Create sample tree structure
-        val root = javax.swing.tree.DefaultMutableTreeNode("Agent Plans")
+        val root = javax.swing.tree.DefaultMutableTreeNode("Agent Plans (Mock)")
         
-        val plan1 = javax.swing.tree.DefaultMutableTreeNode("✅ Setup Project Structure")
-        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Create build.gradle.kts"))
-        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Create plugin.xml"))
-        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Setup Go sidecar"))
+        val plan1 = javax.swing.tree.DefaultMutableTreeNode("✅ Bake a Cake (Mock)")
+        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Preheat oven to 180°C (Mock)"))
+        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Mix flour, sugar, eggs (Mock)"))
+        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Pour batter into pan (Mock)"))
         root.add(plan1)
         
-        val plan2 = javax.swing.tree.DefaultMutableTreeNode("🔄 Implement UI Features")
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("✅ Prompt tab"))
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("🔄 Context tab (in progress)"))
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Plans tab (pending)"))
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Timeline tab (pending)"))
+        val plan2 = javax.swing.tree.DefaultMutableTreeNode("🔄 Launch Rocket (Mock)")
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("✅ Build rocket (Mock)"))
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("🔄 Fuel rocket (Mock, in progress)"))
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Countdown (Mock, pending)"))
+        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Liftoff! (Mock, pending)"))
         root.add(plan2)
         
-        val plan3 = javax.swing.tree.DefaultMutableTreeNode("⏳ Git Integration")
-        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Status display"))
-        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Commit with messages"))
-        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Branch management"))
+        val plan3 = javax.swing.tree.DefaultMutableTreeNode("⏳ Teach Cat to Code (Mock)")
+        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Open laptop (Mock)"))
+        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Sit cat on keyboard (Mock)"))
+        plan3.add(javax.swing.tree.DefaultMutableTreeNode("❌ Cat walks away (Mock)"))
         root.add(plan3)
         
         val treeModel = javax.swing.tree.DefaultTreeModel(root)
@@ -605,16 +605,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         detailsArea.text = """
             Select a plan item to see details.
             
-            This panel will show:
-            • Plan description
-            • File changes (diffs)
-            • Status and timestamps
-            • Error messages (if any)
-            
-            Phase 3 will add:
-            • Approve/Reject buttons
-            • Diff syntax highlighting
-            • Real-time plan updates
+            ⚠️ This tab shows MOCK data.
+            Plans will be populated from the Copilot agent
+            when plan mode is implemented.
         """.trimIndent()
         detailsArea.border = JBUI.Borders.empty(5)
         
@@ -718,18 +711,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Add sample events for demonstration
         timelineModel.addElement(TimelineEvent(
             EventType.SESSION_START,
-            "Session initialized",
+            "(Mock) Session initialized",
             java.util.Date()
         ))
         timelineModel.addElement(TimelineEvent(
             EventType.MESSAGE_SENT,
-            "User prompt sent to agent",
+            "(Mock) User asked: 'How do I bake a cake?'",
             java.util.Date(System.currentTimeMillis() - 5000)
         ))
         timelineModel.addElement(TimelineEvent(
             EventType.RESPONSE_RECEIVED,
-            "Agent response received (mock)",
+            "(Mock) Agent replied with cake recipe",
             java.util.Date(System.currentTimeMillis() - 3000)
+        ))
+        timelineModel.addElement(TimelineEvent(
+            EventType.TOOL_CALL,
+            "(Mock) Agent called: read_file('recipe.txt')",
+            java.util.Date(System.currentTimeMillis() - 1000)
         ))
         
         return panel
