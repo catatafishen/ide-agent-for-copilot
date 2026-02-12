@@ -47,6 +47,52 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         mainPanel.add(tabbedPane, BorderLayout.CENTER)
     }
 
+    /**
+     * Launches the GitHub CLI auth flow in a new command window.
+     * Checks if gh is installed first, offers to install via winget if missing.
+     */
+    private fun startGhAuthLogin() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                // Check if gh CLI is available
+                val checkProcess = ProcessBuilder("where", "gh").start()
+                val found = checkProcess.waitFor() == 0
+                
+                if (found) {
+                    // Check if copilot extension is installed, install if not
+                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k",
+                        "gh extension install github/gh-copilot 2>nul & gh auth login")
+                        .start()
+                } else {
+                    // gh not installed — offer to install via winget
+                    SwingUtilities.invokeAndWait {
+                        val result = JOptionPane.showConfirmDialog(
+                            mainPanel,
+                            "GitHub CLI (gh) is required but not installed.\n\nInstall it now via winget?",
+                            "GitHub CLI Required",
+                            JOptionPane.YES_NO_OPTION,
+                            JOptionPane.QUESTION_MESSAGE
+                        )
+                        if (result == JOptionPane.YES_OPTION) {
+                            ProcessBuilder("cmd", "/c", "start", "cmd", "/k",
+                                "winget install --id GitHub.cli -e --accept-source-agreements && echo. && echo GitHub CLI installed! Now run: gh auth login && echo. && gh auth login")
+                                .start()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    JOptionPane.showMessageDialog(
+                        mainPanel,
+                        "Failed to start auth flow: ${e.message}\n\nPlease install GitHub CLI manually:\nhttps://cli.github.com",
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE
+                    )
+                }
+            }
+        }
+    }
+
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
@@ -85,10 +131,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         loginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         loginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
         loginButton.isVisible = false
-        loginButton.addActionListener {
-            ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login")
-                .start()
-        }
+        loginButton.addActionListener { startGhAuthLogin() }
         authPanel.add(loginButton)
         
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -736,10 +779,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         settingsLoginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         settingsLoginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
         settingsLoginButton.isVisible = false
-        settingsLoginButton.addActionListener {
-            ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login")
-                .start()
-        }
+        settingsLoginButton.addActionListener { startGhAuthLogin() }
         settingsAuthPanel.add(settingsLoginButton)
         panel.add(settingsAuthPanel, gbc)
         
