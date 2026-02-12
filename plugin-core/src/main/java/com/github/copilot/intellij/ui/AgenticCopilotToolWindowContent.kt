@@ -339,14 +339,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val promptTextArea = JBTextArea()
         promptTextArea.lineWrap = true
         promptTextArea.wrapStyleWord = true
-        promptTextArea.rows = 8
+        promptTextArea.rows = 3
         
         // Response output area (declare before button listener needs it)
         val responsePanel = JBPanel<JBPanel<*>>(BorderLayout())
         responsePanel.border = JBUI.Borders.empty(5)
         
+        val responseHeaderPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val responseLabel = JBLabel("Response:")
-        responsePanel.add(responseLabel, BorderLayout.NORTH)
+        val responseSpinner = AsyncProcessIcon("response-loading")
+        responseSpinner.preferredSize = JBUI.size(16, 16)
+        responseSpinner.isVisible = false
+        val responseStatus = JBLabel("")
+        responseStatus.font = JBUI.Fonts.smallFont()
+        responseStatus.foreground = com.intellij.ui.JBColor.GRAY
+        responseHeaderPanel.add(responseLabel)
+        responseHeaderPanel.add(responseSpinner)
+        responseHeaderPanel.add(responseStatus)
+        responsePanel.add(responseHeaderPanel, BorderLayout.NORTH)
         
         val responseTextArea = JBTextArea()
         responseTextArea.isEditable = false
@@ -365,13 +375,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         
+        // Helper to update response status indicator
+        fun setResponseStatus(text: String, loading: Boolean = true) {
+            SwingUtilities.invokeLater {
+                responseStatus.text = text
+                responseSpinner.isVisible = loading
+            }
+        }
+        
         // Add document listener for token counting
         val promptScrollPane = JBScrollPane(promptTextArea)
         promptPanel.add(promptScrollPane, BorderLayout.CENTER)
         
-        // Run button and New Chat button
+        // Run button, Stop button, and New Chat button
         val buttonPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val runButton = JButton("Run")
+        runButton.toolTipText = "Send prompt (Enter)"
+        val stopButton = JButton("Stop")
+        stopButton.isVisible = false
+        stopButton.toolTipText = "Cancel the current request"
         val newChatButton = JButton("New Chat")
         newChatButton.toolTipText = "Start a fresh conversation (clears session history)"
         newChatButton.addActionListener {
@@ -380,16 +402,73 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             addTimelineEvent(EventType.SESSION_START, "New conversation started")
         }
         buttonPanel.add(runButton)
+        buttonPanel.add(stopButton)
         buttonPanel.add(newChatButton)
         
+        // Enter sends prompt, Shift+Enter inserts newline (standard chat UX)
+        val enterKey = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
+        val shiftEnterKey = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, java.awt.event.InputEvent.SHIFT_DOWN_MASK)
+        promptTextArea.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
+        promptTextArea.actionMap.put("sendPrompt", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                if (promptTextArea.text.isNotBlank() && runButton.isEnabled) {
+                    runButton.doClick()
+                }
+            }
+        })
+        promptTextArea.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
+        promptTextArea.actionMap.put("insertNewline", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                promptTextArea.insert("\n", promptTextArea.caretPosition)
+            }
+        })
+        
+        // Placeholder hint text
+        promptTextArea.addFocusListener(object : java.awt.event.FocusListener {
+            private val placeholder = "Ask Copilot... (Shift+Enter for new line)"
+            override fun focusGained(e: java.awt.event.FocusEvent) {
+                if (promptTextArea.text == placeholder) {
+                    promptTextArea.text = ""
+                    promptTextArea.foreground = javax.swing.UIManager.getColor("TextArea.foreground")
+                }
+            }
+            override fun focusLost(e: java.awt.event.FocusEvent) {
+                if (promptTextArea.text.isBlank()) {
+                    promptTextArea.text = placeholder
+                    promptTextArea.foreground = com.intellij.ui.JBColor.GRAY
+                }
+            }
+        })
+        promptTextArea.text = "Ask Copilot... (Shift+Enter for new line)"
+        promptTextArea.foreground = com.intellij.ui.JBColor.GRAY
+        
+        // Track current prompt thread for cancellation
+        var currentPromptThread: Thread? = null
+        
+        stopButton.addActionListener {
+            val sessionId = currentSessionId
+            if (sessionId != null) {
+                try {
+                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                    service.getClient().cancelSession(sessionId)
+                } catch (_: Exception) {}
+            }
+            currentPromptThread?.interrupt()
+            appendResponse("\n⏹ Stopped by user\n")
+            setResponseStatus("Stopped", loading = false)
+            addTimelineEvent(EventType.ERROR, "Prompt cancelled by user")
+        }
+        
         runButton.addActionListener {
+            val placeholderText = "Ask Copilot... (Shift+Enter for new line)"
             val prompt = promptTextArea.text.trim()
-            if (prompt.isEmpty()) {
-                JOptionPane.showMessageDialog(panel, "Please enter a prompt", "Empty Prompt", JOptionPane.WARNING_MESSAGE)
+            if (prompt.isEmpty() || prompt == placeholderText) {
                 return@addActionListener
             }
             
             runButton.isEnabled = false
+            stopButton.isVisible = true
+            setResponseStatus("Thinking...")
             
             // For first prompt or new chat, clear response area
             val isNewSession = currentSessionId == null
@@ -403,6 +482,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             
             // Run in background thread
             ApplicationManager.getApplication().executeOnPooledThread {
+                currentPromptThread = Thread.currentThread()
                 try {
                     val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
@@ -465,27 +545,73 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         appendResponse("📎 ${references.size} context file(s) attached\n\n")
                     }
                     
+                    // Track if we've received any content chunks
+                    var receivedContent = false
+                    
                     // Send prompt with context, streaming, and update handler
                     client.sendPrompt(sessionId, prompt, modelId, 
                         if (references.isNotEmpty()) references else null,
-                        { chunk -> appendResponse(chunk) },
-                        { update -> handleAcpUpdate(update) }
+                        { chunk -> 
+                            if (!receivedContent) {
+                                receivedContent = true
+                                setResponseStatus("Responding...")
+                            }
+                            appendResponse(chunk)
+                        },
+                        { update -> 
+                            val updateType = update.get("sessionUpdate")?.asString ?: ""
+                            when (updateType) {
+                                "tool_call" -> {
+                                    val title = update.get("title")?.asString ?: "tool"
+                                    val status = update.get("status")?.asString ?: ""
+                                    setResponseStatus("Running: $title")
+                                    if (status != "completed") {
+                                        appendResponse("🔧 $title\n")
+                                    }
+                                }
+                                "tool_call_update" -> {
+                                    val status = update.get("status")?.asString ?: ""
+                                    if (status == "completed") {
+                                        setResponseStatus("Thinking...")
+                                    } else if (status == "failed") {
+                                        val toolId = update.get("toolCallId")?.asString ?: ""
+                                        appendResponse("⚠ Tool failed: $toolId\n")
+                                    }
+                                }
+                                "agent_thought_chunk" -> {
+                                    // Agent is thinking — keep spinner active
+                                    if (!receivedContent) {
+                                        setResponseStatus("Thinking...")
+                                    }
+                                }
+                            }
+                            handleAcpUpdate(update)
+                        }
                     )
                     
                     appendResponse("\n") // clean separation after response
+                    setResponseStatus("Done", loading = false)
                     addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
                     
                     // Refresh billing data after prompt
                     loadBillingData()
                     
                 } catch (e: Exception) {
-                    appendResponse("\n❌ Error: ${e.message}\n")
-                    addTimelineEvent(EventType.ERROR, "Error: ${e.message?.take(80)}")
+                    val msg = if (e is InterruptedException || e.cause is InterruptedException) {
+                        "Request cancelled"
+                    } else {
+                        e.message ?: "Unknown error"
+                    }
+                    appendResponse("\n❌ Error: $msg\n")
+                    setResponseStatus("Error", loading = false)
+                    addTimelineEvent(EventType.ERROR, "Error: ${msg.take(80)}")
                     currentSessionId = null // reset session on error
                     e.printStackTrace()
                 } finally {
+                    currentPromptThread = null
                     SwingUtilities.invokeLater {
                         runButton.isEnabled = true
+                        stopButton.isVisible = false
                     }
                 }
             }

@@ -92,7 +92,12 @@ public class CopilotAcpClient implements Closeable {
     private void doInitialize() throws CopilotException {
         JsonObject params = new JsonObject();
         params.addProperty("protocolVersion", 1);
-        params.add("clientCapabilities", new JsonObject());
+        JsonObject clientCapabilities = new JsonObject();
+        JsonObject fsCapabilities = new JsonObject();
+        fsCapabilities.addProperty("readTextFile", true);
+        fsCapabilities.addProperty("writeTextFile", true);
+        clientCapabilities.add("fs", fsCapabilities);
+        params.add("clientCapabilities", clientCapabilities);
 
         JsonObject clientInfo = new JsonObject();
         clientInfo.addProperty("name", "intellij-copilot");
@@ -203,6 +208,8 @@ public class CopilotAcpClient implements Closeable {
             throws CopilotException {
         ensureStarted();
 
+        LOG.info("sendPrompt: sessionId=" + sessionId + " model=" + model + " refs=" + (references != null ? references.size() : 0));
+
         // Register notification listener for streaming chunks
         final CompletableFuture<Void> streamDone = new CompletableFuture<>();
         Consumer<JsonObject> listener = notification -> {
@@ -213,11 +220,15 @@ public class CopilotAcpClient implements Closeable {
             if (params == null) return;
 
             String sid = params.has("sessionId") ? params.get("sessionId").getAsString() : "";
-            if (!sessionId.equals(sid)) return;
+            if (!sessionId.equals(sid)) {
+                LOG.info("sendPrompt: ignoring update for different session: " + sid + " (expected " + sessionId + ")");
+                return;
+            }
 
             if (params.has("update")) {
                 JsonObject update = params.getAsJsonObject("update");
                 String updateType = update.has("sessionUpdate") ? update.get("sessionUpdate").getAsString() : "";
+                LOG.debug("sendPrompt: received update type=" + updateType);
 
                 if ("agent_message_chunk".equals(updateType) && onChunk != null) {
                     JsonObject content = update.has("content") ? update.getAsJsonObject("content") : null;
@@ -268,11 +279,32 @@ public class CopilotAcpClient implements Closeable {
             }
 
             // Send request - response comes after all streaming chunks
+            LOG.info("sendPrompt: sending session/prompt request");
             JsonObject result = sendRequest("session/prompt", params, 300);
+            LOG.info("sendPrompt: got result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
 
             return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
         } finally {
             notificationListeners.remove(listener);
+        }
+    }
+
+    /**
+     * Send session/cancel notification to abort the current prompt turn.
+     */
+    public void cancelSession(@NotNull String sessionId) {
+        if (closed) return;
+        try {
+            JsonObject notification = new JsonObject();
+            notification.addProperty("jsonrpc", "2.0");
+            notification.addProperty("method", "session/cancel");
+            JsonObject params = new JsonObject();
+            params.addProperty("sessionId", sessionId);
+            notification.add("params", params);
+            sendRawMessage(notification);
+            LOG.info("Sent session/cancel for session " + sessionId);
+        } catch (Exception e) {
+            LOG.warn("Failed to send session/cancel", e);
         }
     }
 
@@ -317,6 +349,20 @@ public class CopilotAcpClient implements Closeable {
     @NotNull
     private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params) throws CopilotException {
         return sendRequest(method, params, REQUEST_TIMEOUT_SECONDS);
+    }
+
+    /** Send a raw JSON-RPC message (used for responding to agent-to-client requests). */
+    private void sendRawMessage(@NotNull JsonObject message) {
+        try {
+            String json = gson.toJson(message);
+            synchronized (writer) {
+                writer.write(json);
+                writer.newLine();
+                writer.flush();
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to send raw message", e);
+        }
     }
 
     @NotNull
@@ -377,8 +423,93 @@ public class CopilotAcpClient implements Closeable {
                 try {
                     JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
 
-                    if (msg.has("id") && !msg.get("id").isJsonNull()) {
-                        // Response to a request
+                    boolean hasId = msg.has("id") && !msg.get("id").isJsonNull();
+                    boolean hasMethod = msg.has("method");
+
+                    if (hasId && hasMethod) {
+                        // Agent-to-client request (e.g., session/request_permission)
+                        String reqMethod = msg.get("method").getAsString();
+                        long reqId = msg.get("id").getAsLong();
+                        LOG.info("ACP agent request: " + reqMethod + " id=" + reqId);
+
+                        if ("session/request_permission".equals(reqMethod)) {
+                            // Auto-approve all tool calls for now
+                            JsonObject response = new JsonObject();
+                            response.addProperty("jsonrpc", "2.0");
+                            response.addProperty("id", reqId);
+                            JsonObject result = new JsonObject();
+                            result.addProperty("outcome", "granted");
+                            response.add("result", result);
+                            sendRawMessage(response);
+                        } else if ("fs/read_text_file".equals(reqMethod)) {
+                            // Read file for agent
+                            JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
+                            String filePath = reqParams != null && reqParams.has("path") ? reqParams.get("path").getAsString() : null;
+                            JsonObject response = new JsonObject();
+                            response.addProperty("jsonrpc", "2.0");
+                            response.addProperty("id", reqId);
+                            if (filePath != null) {
+                                try {
+                                    String content = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)));
+                                    JsonObject result = new JsonObject();
+                                    result.addProperty("content", content);
+                                    response.add("result", result);
+                                } catch (Exception e) {
+                                    JsonObject error = new JsonObject();
+                                    error.addProperty("code", -32000);
+                                    error.addProperty("message", "File not found: " + filePath);
+                                    response.add("error", error);
+                                }
+                            } else {
+                                JsonObject error = new JsonObject();
+                                error.addProperty("code", -32602);
+                                error.addProperty("message", "Missing path parameter");
+                                response.add("error", error);
+                            }
+                            sendRawMessage(response);
+                        } else if ("fs/write_text_file".equals(reqMethod)) {
+                            // Write file for agent
+                            JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
+                            String filePath = reqParams != null && reqParams.has("path") ? reqParams.get("path").getAsString() : null;
+                            String fileContent = reqParams != null && reqParams.has("content") ? reqParams.get("content").getAsString() : null;
+                            JsonObject response = new JsonObject();
+                            response.addProperty("jsonrpc", "2.0");
+                            response.addProperty("id", reqId);
+                            if (filePath != null && fileContent != null) {
+                                try {
+                                    java.nio.file.Files.writeString(java.nio.file.Paths.get(filePath), fileContent);
+                                    response.add("result", new JsonObject());
+                                } catch (Exception e) {
+                                    JsonObject error = new JsonObject();
+                                    error.addProperty("code", -32000);
+                                    error.addProperty("message", "Failed to write file: " + e.getMessage());
+                                    response.add("error", error);
+                                }
+                            } else {
+                                JsonObject error = new JsonObject();
+                                error.addProperty("code", -32602);
+                                error.addProperty("message", "Missing path or content parameter");
+                                response.add("error", error);
+                            }
+                            sendRawMessage(response);
+                        } else {
+                            // Unknown request — respond with error
+                            JsonObject response = new JsonObject();
+                            response.addProperty("jsonrpc", "2.0");
+                            response.addProperty("id", reqId);
+                            JsonObject error = new JsonObject();
+                            error.addProperty("code", -32601);
+                            error.addProperty("message", "Method not supported: " + reqMethod);
+                            response.add("error", error);
+                            sendRawMessage(response);
+                        }
+
+                        // Also forward to notification listeners for timeline tracking
+                        for (Consumer<JsonObject> listener : notificationListeners) {
+                            try { listener.accept(msg); } catch (Exception e) { LOG.warn("Listener error", e); }
+                        }
+                    } else if (hasId) {
+                        // Response to a request we sent
                         long id = msg.get("id").getAsLong();
                         CompletableFuture<JsonObject> future = pendingRequests.remove(id);
                         if (future != null) {
@@ -397,7 +528,7 @@ public class CopilotAcpClient implements Closeable {
                                 future.complete(new JsonObject());
                             }
                         }
-                    } else if (msg.has("method")) {
+                    } else if (hasMethod) {
                         // Notification (no id) — e.g., session/update
                         for (Consumer<JsonObject> listener : notificationListeners) {
                             try {

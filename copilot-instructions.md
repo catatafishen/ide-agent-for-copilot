@@ -174,17 +174,7 @@ agentic-copilot-intellij/
 ## 9) UX flows
 
 - **Add selection to context**: user selects code → context menu → item appears with file+range; token estimate updates.
-- **Run plan**: prompt → choose model → **Run** → plan/steps stream in **Plans/Timeline**; tool approvals appear when needed; after completion, “Apply edits” writes patches and runs **format‑changed‑ranges**.
-- **Commit**: agent proposes a **Conventional Commit** message based on diff; user reviews → **Commit**; optional **Push** with confirmation for `--force`.
-
----
-
-## 10) Testing strategy
-
-- **Unit**: Git adapter (mock VCS), formatter adapter (mock), settings persistence, PSI selection → file+range, protocol contracts.
-- **Functional (headless)**: sandbox project; verify “format‑changed‑ranges after agent edit” and “conventional commit” assembly.
-- **Coverage goal**: **≥85%** for core services; UI covered by smoke tests.
-
+- **Run plan**: prompt → chooI'm developing a copilot plugin for intellij. I'm talking with you through the plugin
 ---
 
 ## 11) CI/CD
