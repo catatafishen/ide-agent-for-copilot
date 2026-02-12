@@ -142,12 +142,13 @@ public class CopilotAcpClient implements Closeable {
                 JsonObject codeTools = new JsonObject();
                 codeTools.addProperty("name", "intellij-code-tools");
                 codeTools.addProperty("command", javaPath);
+                String projectRoot = cwd != null ? cwd : System.getProperty("user.home");
                 JsonArray args = new JsonArray();
                 args.add("-jar");
                 args.add(mcpJarPath);
-                if (cwd != null) args.add(cwd);
+                args.add(projectRoot);
                 codeTools.add("args", args);
-                codeTools.add("env", new JsonArray());
+                codeTools.add("env", new JsonObject());
                 mcpServers.add(codeTools);
                 LOG.info("MCP code-tools server: " + mcpJarPath);
             } else {
@@ -155,6 +156,7 @@ public class CopilotAcpClient implements Closeable {
             }
         }
         params.add("mcpServers", mcpServers);
+        LOG.info("session/new params: " + gson.toJson(params));
 
         JsonObject result = sendRequest("session/new", params);
 
