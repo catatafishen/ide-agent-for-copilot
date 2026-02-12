@@ -1,86 +1,70 @@
 # TODO - Next Steps
 
-## Immediate (This Session or Next)
-- [ ] **Test Fixed Sidecar Integration**
-  - Install new plugin: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
-  - Verify models dropdown loads
-  - Verify prompt execution works
-  - Check logs: `C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\log\idea.log`
+## ✅ Done This Session
+- [x] Fixed all mock mode issues (models, session, send)
+- [x] Added "(Mock)" labels to all models
+- [x] Created first git commit with conventional commit format
+- [x] Added automated sidecar test script
+- [x] Verified complete flow works end-to-end
 
-## High Priority
-- [ ] **Fix Build System**
-  - Disable `buildSearchableOptions` in `build.gradle.kts`
-  - Fix `runIde` task (investigate "Index: 1, Size: 1" error)
-  - Automate binary bundling properly in Gradle
+## 🎯 Next Phase: Automated Testing & Real SDK
 
-- [ ] **Improve Development Workflow**
-  - Enable sandbox IDE for testing (fix runIde)
-  - Add dynamic plugin reloading support
-  - Document fast iteration workflow
+### Phase 3A: Test Automation (NEXT)
+- [ ] **Add Integration Tests**
+  - Create gradle test task that runs sidecar tests
+  - Add JUnit tests for Java bridge components
+  - Add Go tests for sidecar handlers
+  - Set up CI/CD pipeline (GitHub Actions)
 
-## Medium Priority
-- [ ] **Real Copilot SDK Integration**
-  - Replace mock responses in sidecar
-  - Integrate with GitHub Copilot authentication
-  - Test with real agent conversations
-  - Implement proper conversation state
+### Phase 3B: Real Copilot SDK Integration
+- [ ] **Connect to Real Copilot**
+  - Remove mock fallback mode
+  - Implement actual SDK initialization
+  - Add authentication flow
+  - Test with real Copilot CLI
+  - Handle SDK errors gracefully
 
-- [ ] **Polish UI**
-  - Remove demo/placeholder data
-  - Add proper error handling
-  - Improve loading states
-  - Add status indicators
+### Phase 4: Enhanced Features
+- [ ] **Streaming Improvements**
+  - Implement proper SSE in Java client
+  - Add progress indicators in UI
+  - Handle partial responses
+  - Add cancel functionality
 
-## Low Priority (Future Phases)
-- [ ] **Phase 3: Git Integration**
-  - Git status display in tool window
-  - Commit with Conventional Commits format
-  - Branch management UI
-  - Approval dialogs for dangerous operations
+- [ ] **Context Management**
+  - Implement file context picker
+  - Add directory/workspace context
+  - Support @-mentions in prompts
+  - Add context preview
 
-- [ ] **Phase 4: Code Quality**
+### Phase 5: Git Integration
+- [ ] **Version Control Features**
+  - Show git status in tool window
+  - Auto-commit with conventional commit format
+  - Add branch management
+  - Implement approval dialogs for dangerous ops
+
+### Phase 6: Code Quality
+- [ ] **Formatting & Organization**
   - Format on save integration
-  - Format after agent edits
+  - Auto-format after agent edits
   - Import optimization
   - Pre-commit hooks
 
-- [ ] **Phase 5: Advanced Features**
-  - Multi-session support
-  - Session history/persistence
-  - Export/import conversations
-  - Custom model configuration
-
-## Technical Debt
-- [ ] Make plugin dynamic-reload capable
+## Technical Improvements
 - [ ] Add comprehensive error handling
-- [ ] Add unit tests for core services
-- [ ] Add integration tests
-- [ ] Performance optimization (binary extraction caching)
-- [ ] Security review (temp file handling)
+- [ ] Implement proper logging
+- [ ] Add configuration UI
+- [ ] Performance optimization
+- [ ] Security hardening
 
 ## Documentation
-- [ ] Update README with installation instructions
-- [ ] Add screenshots to docs
-- [ ] Create user guide
-- [ ] Document troubleshooting steps
-- [ ] Add contributing guidelines
+- [x] CHECKPOINT.md for session continuity
+- [x] Development workflow docs
+- [ ] User guide with screenshots
+- [ ] API documentation
+- [ ] Troubleshooting guide
 
 ---
 
-## Blocked / Waiting
-- ⏸️ Copilot SDK availability (need GitHub SDK documentation)
-- ⏸️ User testing results (current session fixes)
-
-## Done This Session ✅
-- ✅ Diagnosed sidecar binary loading failure
-- ✅ Implemented multi-path binary search
-- ✅ Added resource extraction from JAR
-- ✅ Fixed compilation errors (imports)
-- ✅ Built new plugin with embedded binary
-- ✅ Created CHECKPOINT.md for continuity
-- ✅ Created DEVELOPMENT.md for workflow
-- ✅ Updated plan.md with current status
-
----
-
-*Last Updated: 2026-02-11 21:52 UTC*
+*Last Updated: 2026-02-12 05:35 UTC*
