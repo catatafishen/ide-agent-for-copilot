@@ -135,22 +135,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 if (file.exists() && file.length() < 100_000) {
                                     val content = file.readText()
                                     SwingUtilities.invokeLater {
-                                        var filesGroup: javax.swing.tree.DefaultMutableTreeNode? = null
-                                        for (i in 0 until planRoot.childCount) {
-                                            val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
-                                            if (child.userObject == "Files") {
-                                                filesGroup = child
-                                                break
-                                            }
-                                        }
-                                        if (filesGroup == null) {
-                                            filesGroup = javax.swing.tree.DefaultMutableTreeNode("Files")
-                                            planRoot.insert(filesGroup, 0)
-                                        }
                                         val fileNode = FileTreeNode(file.name, filePath, content)
-                                        filesGroup.add(fileNode)
+                                        planRoot.add(fileNode)
                                         planTreeModel.reload()
-                                        planDetailsArea.text = "📄 ${file.name}\n${"─".repeat(40)}\n\n$content"
+                                        planDetailsArea.text = "${file.name}\n${"─".repeat(40)}\n\n$content"
                                     }
                                 }
                             } catch (_: Exception) {}
@@ -980,10 +968,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         planRoot = javax.swing.tree.DefaultMutableTreeNode("Session")
         planTreeModel = javax.swing.tree.DefaultTreeModel(planRoot)
         val tree = com.intellij.ui.treeStructure.Tree(planTreeModel)
-        tree.isRootVisible = true
+        tree.isRootVisible = false
         tree.showsRootHandles = true
         
-        // Custom cell renderer for status icons
+        // Custom cell renderer for plan status icons only
         tree.cellRenderer = object : javax.swing.tree.DefaultTreeCellRenderer() {
             override fun getTreeCellRendererComponent(
                 tree: javax.swing.JTree?,
@@ -999,54 +987,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val text = node?.userObject?.toString() ?: ""
                 
                 when {
-                    node is FileTreeNode -> icon = com.intellij.icons.AllIcons.FileTypes.Text
                     text.contains("[completed]") -> icon = com.intellij.icons.AllIcons.Actions.Commit
                     text.contains("[in_progress]") -> icon = com.intellij.icons.AllIcons.Actions.Execute
                     text.contains("[pending]") -> icon = com.intellij.icons.AllIcons.Actions.Pause
                     text.contains("[failed]") -> icon = com.intellij.icons.AllIcons.General.Error
-                    node?.parent == planRoot -> icon = com.intellij.icons.AllIcons.Nodes.Folder
                 }
                 
                 return label
             }
         }
         
-        val treeScrollPane = JBScrollPane(tree)
-        treePanel.add(treeScrollPane, BorderLayout.CENTER)
-        
-        splitPane.firstComponent = treePanel
-        
-        // Right: Details with optional action button
-        val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        detailsPanel.border = JBUI.Borders.empty(5)
-        
-        val detailsHeaderPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        val detailsLabel = JBLabel("Details:")
-        val openFileButton = JButton("Open in Editor")
-        openFileButton.isVisible = false
-        openFileButton.font = JBUI.Fonts.smallFont()
-        detailsHeaderPanel.add(detailsLabel, BorderLayout.WEST)
-        detailsHeaderPanel.add(openFileButton, BorderLayout.EAST)
-        detailsPanel.add(detailsHeaderPanel, BorderLayout.NORTH)
-        
-        planDetailsArea = JBTextArea()
-        planDetailsArea.isEditable = false
-        planDetailsArea.lineWrap = true
-        planDetailsArea.wrapStyleWord = true
-        planDetailsArea.text = "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
-        
-        val detailsScrollPane = JBScrollPane(planDetailsArea)
-        detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
-        
-        // Selection listener — show file content or node details
-        tree.addTreeSelectionListener { event ->
-            val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
-            if (node is FileTreeNode) {
-                planDetailsArea.text = "📄 ${node.fileName}\n${"─".repeat(40)}\n\n${node.fileContent}"
-                openFileButton.isVisible = true
-                // Remove old listeners and add new one for this file
-                openFileButton.actionListeners.forEach { openFileButton.removeActionListener(it) }
-                openFileButton.addActionListener {
+        // Double-click opens file in editor
+        tree.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                if (e.clickCount == 2) {
+                    val node = tree.lastSelectedPathComponent as? FileTreeNode ?: return
                     val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
                         node.filePath.replace("\\", "/"))
                     if (vFile != null) {
@@ -1055,10 +1010,35 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         }
                     }
                 }
+            }
+        })
+        
+        val treeScrollPane = JBScrollPane(tree)
+        treePanel.add(treeScrollPane, BorderLayout.CENTER)
+        
+        splitPane.firstComponent = treePanel
+        
+        // Right: Details panel
+        val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
+        detailsPanel.border = JBUI.Borders.empty(5)
+        
+        planDetailsArea = JBTextArea()
+        planDetailsArea.isEditable = false
+        planDetailsArea.lineWrap = true
+        planDetailsArea.wrapStyleWord = true
+        planDetailsArea.text = "Select a file to preview its content.\nDouble-click to open in editor."
+        
+        val detailsScrollPane = JBScrollPane(planDetailsArea)
+        detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
+        
+        // Selection listener — show file content preview
+        tree.addTreeSelectionListener { event ->
+            val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
+            if (node is FileTreeNode) {
+                planDetailsArea.text = "${node.fileName}\n${"─".repeat(40)}\n\n${node.fileContent}"
             } else {
                 val text = node?.userObject?.toString() ?: ""
                 planDetailsArea.text = text.ifEmpty { "Select an item to see details." }
-                openFileButton.isVisible = false
             }
         }
         
