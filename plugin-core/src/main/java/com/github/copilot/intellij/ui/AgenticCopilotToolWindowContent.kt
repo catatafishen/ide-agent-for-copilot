@@ -997,24 +997,51 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         
-        // Double-click opens file in editor
+        // Double-click or Enter opens file in editor
+        fun openSelectedFile() {
+            val node = tree.lastSelectedPathComponent as? FileTreeNode ?: return
+            val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
+                node.filePath.replace("\\", "/"))
+            if (vFile != null) {
+                ApplicationManager.getApplication().invokeLater {
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vFile, true)
+                }
+            }
+        }
         tree.addMouseListener(object : java.awt.event.MouseAdapter() {
             override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                if (e.clickCount == 2) {
-                    val node = tree.lastSelectedPathComponent as? FileTreeNode ?: return
-                    val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
-                        node.filePath.replace("\\", "/"))
-                    if (vFile != null) {
-                        ApplicationManager.getApplication().invokeLater {
-                            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vFile, true)
-                        }
-                    }
-                }
+                if (e.clickCount == 2) openSelectedFile()
+            }
+        })
+        tree.addKeyListener(object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: java.awt.event.KeyEvent) {
+                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) openSelectedFile()
             }
         })
         
+        // Empty state label shown when tree has no items
+        val emptyLabel = JBLabel("No session files yet")
+        emptyLabel.foreground = JBColor.GRAY
+        emptyLabel.horizontalAlignment = javax.swing.SwingConstants.CENTER
+        
         val treeScrollPane = JBScrollPane(tree)
-        treePanel.add(treeScrollPane, BorderLayout.CENTER)
+        val treeCardPanel = JBPanel<JBPanel<*>>(java.awt.CardLayout())
+        treeCardPanel.add(emptyLabel, "empty")
+        treeCardPanel.add(treeScrollPane, "tree")
+        treePanel.add(treeCardPanel, BorderLayout.CENTER)
+        
+        // Show empty/tree based on content
+        fun updateTreeVisibility() {
+            val cl = treeCardPanel.layout as java.awt.CardLayout
+            cl.show(treeCardPanel, if (planRoot.childCount > 0) "tree" else "empty")
+        }
+        planTreeModel.addTreeModelListener(object : javax.swing.event.TreeModelListener {
+            override fun treeNodesChanged(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
+            override fun treeNodesInserted(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
+            override fun treeNodesRemoved(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
+            override fun treeStructureChanged(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
+        })
+        updateTreeVisibility()
         
         splitPane.firstComponent = treePanel
         
@@ -1026,16 +1053,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         planDetailsArea.isEditable = false
         planDetailsArea.lineWrap = true
         planDetailsArea.wrapStyleWord = true
-        planDetailsArea.text = "Select a file to preview its content.\nDouble-click to open in editor."
+        planDetailsArea.text = "Select a file to preview its content.\nDouble-click or Enter to open in editor."
         
         val detailsScrollPane = JBScrollPane(planDetailsArea)
         detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
         
-        // Selection listener — show file content preview
+        // Selection listener — show file content preview (truncated for large files)
         tree.addTreeSelectionListener { event ->
             val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
             if (node is FileTreeNode) {
-                planDetailsArea.text = "${node.fileName}\n${"─".repeat(40)}\n\n${node.fileContent}"
+                val content = node.fileContent
+                val lines = content.lines()
+                val preview = if (lines.size > 200) {
+                    lines.take(200).joinToString("\n") + "\n\n--- Truncated (${lines.size} lines total, showing first 200) ---"
+                } else content
+                planDetailsArea.text = "${node.fileName}\n${"─".repeat(40)}\n\n$preview"
+                planDetailsArea.caretPosition = 0
             } else {
                 val text = node?.userObject?.toString() ?: ""
                 planDetailsArea.text = text.ifEmpty { "Select an item to see details." }
