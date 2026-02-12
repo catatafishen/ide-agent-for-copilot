@@ -41,6 +41,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Current conversation session — reused for multi-turn
     private var currentSessionId: String? = null
     
+    // Timeline events (populated from ACP session/update notifications)
+    private val timelineModel = DefaultListModel<TimelineEvent>()
+    
+    // Plans tree (populated from ACP plan updates)
+    private lateinit var planTreeModel: javax.swing.tree.DefaultTreeModel
+    private lateinit var planRoot: javax.swing.tree.DefaultMutableTreeNode
+    private lateinit var planDetailsArea: JBTextArea
+    
     // Usage display components (updated after each prompt)
     private lateinit var usageLabel: JBLabel
     private lateinit var costLabel: JBLabel
@@ -58,6 +66,52 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         tabbedPane.addTab("Settings", createSettingsTab())
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER)
+    }
+
+    /** Record an event in the Timeline tab. Thread-safe. */
+    private fun addTimelineEvent(type: EventType, message: String) {
+        SwingUtilities.invokeLater {
+            timelineModel.addElement(TimelineEvent(type, message, java.util.Date()))
+        }
+    }
+
+    /** Handle ACP session/update notifications — routes to timeline and plans. */
+    private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
+        val updateType = update.get("sessionUpdate")?.asString ?: return
+        
+        when (updateType) {
+            "tool_call" -> {
+                val title = update.get("title")?.asString ?: "Unknown tool"
+                val status = update.get("status")?.asString ?: ""
+                addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
+            }
+            "tool_call_update" -> {
+                val status = update.get("status")?.asString ?: ""
+                val toolCallId = update.get("toolCallId")?.asString ?: ""
+                if (status == "completed" || status == "failed") {
+                    addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
+                }
+            }
+            "plan" -> {
+                val entries = update.getAsJsonArray("entries") ?: return
+                SwingUtilities.invokeLater {
+                    // Replace plan tree with latest plan
+                    planRoot.removeAllChildren()
+                    val planNode = javax.swing.tree.DefaultMutableTreeNode("Current Plan")
+                    for (entry in entries) {
+                        val obj = entry.asJsonObject
+                        val content = obj.get("content")?.asString ?: "Step"
+                        val status = obj.get("status")?.asString ?: "pending"
+                        val priority = obj.get("priority")?.asString ?: ""
+                        val label = "$content [$status]${if (priority.isNotEmpty()) " ($priority)" else ""}"
+                        planNode.add(javax.swing.tree.DefaultMutableTreeNode(label))
+                    }
+                    planRoot.add(planNode)
+                    planTreeModel.reload()
+                    addTimelineEvent(EventType.TOOL_CALL, "Plan updated (${entries.size()} steps)")
+                }
+            }
+        }
     }
 
     /**
@@ -323,6 +377,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         newChatButton.addActionListener {
             currentSessionId = null
             responseTextArea.text = "New conversation started.\n"
+            addTimelineEvent(EventType.SESSION_START, "New conversation started")
         }
         buttonPanel.add(runButton)
         buttonPanel.add(newChatButton)
@@ -355,8 +410,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     // Reuse session for multi-turn conversation, create new if needed
                     if (currentSessionId == null) {
                         currentSessionId = client.createSession()
+                        addTimelineEvent(EventType.SESSION_START, "Session created")
                     }
                     val sessionId = currentSessionId!!
+                    
+                    addTimelineEvent(EventType.MESSAGE_SENT, "Prompt: ${prompt.take(80)}${if (prompt.length > 80) "..." else ""}")
                     
                     // Get selected model from loaded models list
                     val selIdx = modelComboBox.selectedIndex
@@ -407,19 +465,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         appendResponse("📎 ${references.size} context file(s) attached\n\n")
                     }
                     
-                    // Send prompt with context and streaming
+                    // Send prompt with context, streaming, and update handler
                     client.sendPrompt(sessionId, prompt, modelId, 
-                        if (references.isNotEmpty()) references else null) { chunk ->
-                        appendResponse(chunk)
-                    }
+                        if (references.isNotEmpty()) references else null,
+                        { chunk -> appendResponse(chunk) },
+                        { update -> handleAcpUpdate(update) }
+                    )
                     
                     appendResponse("\n") // clean separation after response
+                    addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
                     
                     // Refresh billing data after prompt
                     loadBillingData()
                     
                 } catch (e: Exception) {
                     appendResponse("\n❌ Error: ${e.message}\n")
+                    addTimelineEvent(EventType.ERROR, "Error: ${e.message?.take(80)}")
                     currentSessionId = null // reset session on error
                     e.printStackTrace()
                 } finally {
@@ -705,37 +766,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val treeLabel = JBLabel("Execution Plans:")
         treePanel.add(treeLabel, BorderLayout.NORTH)
         
-        // Create sample tree structure
-        val root = javax.swing.tree.DefaultMutableTreeNode("Agent Plans (Mock)")
-        
-        val plan1 = javax.swing.tree.DefaultMutableTreeNode("✅ Bake a Cake (Mock)")
-        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Preheat oven to 180°C (Mock)"))
-        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Mix flour, sugar, eggs (Mock)"))
-        plan1.add(javax.swing.tree.DefaultMutableTreeNode("✅ Pour batter into pan (Mock)"))
-        root.add(plan1)
-        
-        val plan2 = javax.swing.tree.DefaultMutableTreeNode("🔄 Launch Rocket (Mock)")
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("✅ Build rocket (Mock)"))
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("🔄 Fuel rocket (Mock, in progress)"))
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Countdown (Mock, pending)"))
-        plan2.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Liftoff! (Mock, pending)"))
-        root.add(plan2)
-        
-        val plan3 = javax.swing.tree.DefaultMutableTreeNode("⏳ Teach Cat to Code (Mock)")
-        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Open laptop (Mock)"))
-        plan3.add(javax.swing.tree.DefaultMutableTreeNode("⏳ Sit cat on keyboard (Mock)"))
-        plan3.add(javax.swing.tree.DefaultMutableTreeNode("❌ Cat walks away (Mock)"))
-        root.add(plan3)
-        
-        val treeModel = javax.swing.tree.DefaultTreeModel(root)
-        val tree = com.intellij.ui.treeStructure.Tree(treeModel)
+        // Live tree — starts empty, populated from ACP plan events
+        planRoot = javax.swing.tree.DefaultMutableTreeNode("Agent Plans")
+        planTreeModel = javax.swing.tree.DefaultTreeModel(planRoot)
+        val tree = com.intellij.ui.treeStructure.Tree(planTreeModel)
         tree.isRootVisible = true
         tree.showsRootHandles = true
-        
-        // Expand all nodes
-        for (i in 0 until tree.rowCount) {
-            tree.expandRow(i)
-        }
         
         // Custom cell renderer for status icons
         tree.cellRenderer = object : javax.swing.tree.DefaultTreeCellRenderer() {
@@ -752,13 +788,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val node = value as? javax.swing.tree.DefaultMutableTreeNode
                 val text = node?.userObject?.toString() ?: ""
                 
-                // Set icons based on status
                 when {
-                    text.startsWith("✅") -> icon = com.intellij.icons.AllIcons.Actions.Commit
-                    text.startsWith("🔄") -> icon = com.intellij.icons.AllIcons.Actions.Execute
-                    text.startsWith("⏳") -> icon = com.intellij.icons.AllIcons.Actions.Pause
-                    text.startsWith("❌") -> icon = com.intellij.icons.AllIcons.General.Error
-                    else -> icon = com.intellij.icons.AllIcons.Nodes.Folder
+                    text.contains("[completed]") -> icon = com.intellij.icons.AllIcons.Actions.Commit
+                    text.contains("[in_progress]") -> icon = com.intellij.icons.AllIcons.Actions.Execute
+                    text.contains("[pending]") -> icon = com.intellij.icons.AllIcons.Actions.Pause
+                    text.contains("[failed]") -> icon = com.intellij.icons.AllIcons.General.Error
+                    node?.parent == planRoot -> icon = com.intellij.icons.AllIcons.Nodes.Folder
                 }
                 
                 return label
@@ -770,46 +805,27 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         
         splitPane.firstComponent = treePanel
         
-        // Right: Plan details/diff preview
+        // Right: Plan details
         val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
         detailsPanel.border = JBUI.Borders.empty(5)
         
         val detailsLabel = JBLabel("Plan Details:")
         detailsPanel.add(detailsLabel, BorderLayout.NORTH)
         
-        val detailsArea = JBTextArea()
-        detailsArea.isEditable = false
-        detailsArea.lineWrap = true
-        detailsArea.wrapStyleWord = true
-        detailsArea.text = """
-            Select a plan item to see details.
-            
-            ⚠️ This tab shows MOCK data.
-            Plans will be populated from the Copilot agent
-            when plan mode is implemented.
-        """.trimIndent()
-        detailsArea.border = JBUI.Borders.empty(5)
+        planDetailsArea = JBTextArea()
+        planDetailsArea.isEditable = false
+        planDetailsArea.lineWrap = true
+        planDetailsArea.wrapStyleWord = true
+        planDetailsArea.text = "Plans will appear here when the agent creates an execution plan.\n\nUse 'Plan' mode in the Prompt tab to encourage plan-based responses."
         
-        val detailsScrollPane = JBScrollPane(detailsArea)
+        val detailsScrollPane = JBScrollPane(planDetailsArea)
         detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
         
-        // Add selection listener
+        // Selection listener
         tree.addTreeSelectionListener { event ->
             val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
             val text = node?.userObject?.toString() ?: ""
-            detailsArea.text = """
-                Selected: $text
-                
-                Status: ${when {
-                    text.startsWith("✅") -> "Completed"
-                    text.startsWith("🔄") -> "In Progress"
-                    text.startsWith("⏳") -> "Pending"
-                    text.startsWith("❌") -> "Failed"
-                    else -> "Plan Group"
-                }}
-                
-                Details will be populated from agent in Phase 3.
-            """.trimIndent()
+            planDetailsArea.text = text.ifEmpty { "Select a plan item to see details." }
         }
         
         splitPane.secondComponent = detailsPanel
@@ -823,8 +839,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
         
-        // Timeline list
-        val timelineModel = DefaultListModel<TimelineEvent>()
+        // Timeline list — uses shared timelineModel populated from real events
         val timelineList = com.intellij.ui.components.JBList(timelineModel)
         
         // Custom cell renderer for timeline events
@@ -862,52 +877,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.add(scrollPane, BorderLayout.CENTER)
         
         // Bottom toolbar
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(10), JBUI.scale(5)))
         
         val clearButton = JButton("Clear Timeline")
         clearButton.addActionListener {
             if (timelineModel.size() > 0) {
-                val result = JOptionPane.showConfirmDialog(
-                    panel,
-                    "Clear ${timelineModel.size()} timeline events?",
-                    "Clear Timeline",
-                    JOptionPane.YES_NO_OPTION
-                )
-                if (result == JOptionPane.YES_OPTION) {
-                    timelineModel.clear()
-                }
+                timelineModel.clear()
             }
         }
         toolbar.add(clearButton)
         
-        val exportButton = JButton("Export Timeline")
-        exportButton.isEnabled = false
-        exportButton.toolTipText = "Export timeline to file (coming soon)"
-        toolbar.add(exportButton)
-        
         panel.add(toolbar, BorderLayout.SOUTH)
-        
-        // Add sample events for demonstration
-        timelineModel.addElement(TimelineEvent(
-            EventType.SESSION_START,
-            "(Mock) Session initialized",
-            java.util.Date()
-        ))
-        timelineModel.addElement(TimelineEvent(
-            EventType.MESSAGE_SENT,
-            "(Mock) User asked: 'How do I bake a cake?'",
-            java.util.Date(System.currentTimeMillis() - 5000)
-        ))
-        timelineModel.addElement(TimelineEvent(
-            EventType.RESPONSE_RECEIVED,
-            "(Mock) Agent replied with cake recipe",
-            java.util.Date(System.currentTimeMillis() - 3000)
-        ))
-        timelineModel.addElement(TimelineEvent(
-            EventType.TOOL_CALL,
-            "(Mock) Agent called: read_file('recipe.txt')",
-            java.util.Date(System.currentTimeMillis() - 1000)
-        ))
         
         return panel
     }

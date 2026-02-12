@@ -188,6 +188,19 @@ public class CopilotAcpClient implements Closeable {
                              @Nullable String model, @Nullable List<ResourceReference> references,
                              @Nullable Consumer<String> onChunk)
             throws CopilotException {
+        return sendPrompt(sessionId, prompt, model, references, onChunk, null);
+    }
+
+    /**
+     * Send a prompt with full control over ACP session/update notifications.
+     * @param onChunk receives text chunks for streaming display
+     * @param onUpdate receives raw update JSON objects for plan events, tool calls, etc.
+     */
+    public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
+                             @Nullable String model, @Nullable List<ResourceReference> references,
+                             @Nullable Consumer<String> onChunk,
+                             @Nullable Consumer<JsonObject> onUpdate)
+            throws CopilotException {
         ensureStarted();
 
         // Register notification listener for streaming chunks
@@ -211,6 +224,11 @@ public class CopilotAcpClient implements Closeable {
                     if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
                         onChunk.accept(content.get("text").getAsString());
                     }
+                }
+
+                // Forward all updates to onUpdate listener (plan events, tool calls, etc.)
+                if (onUpdate != null) {
+                    onUpdate.accept(update);
                 }
             }
         };
