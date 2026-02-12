@@ -601,14 +601,20 @@ public final class PsiBridgeService implements Disposable {
                 Object data = getData.invoke(config);
                 if (args.has("test_class")) {
                     String testClass = args.get("test_class").getAsString();
-                    // Resolve simple name to FQN via PSI if not already qualified
-                    if (!testClass.contains(".")) {
-                        testClass = resolveFullyQualifiedName(testClass);
-                    }
-                    data.getClass().getField("MAIN_CLASS_NAME").set(data, testClass);
-                    // Set TEST_OBJECT to "class" (or "method" if test_method also provided)
+                    // Resolve class name to FQN and module via PSI
+                    ClassInfo classInfo = resolveClass(testClass);
+                    data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
                     data.getClass().getField("TEST_OBJECT").set(data,
                             args.has("test_method") ? "method" : "class");
+                    // Auto-set module if not explicitly provided
+                    if (!args.has("module_name") && classInfo.module() != null) {
+                        try {
+                            var setModule = config.getClass().getMethod("setModule", Module.class);
+                            setModule.invoke(config, classInfo.module());
+                        } catch (NoSuchMethodException e) {
+                            LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
+                        }
+                    }
                 }
                 if (args.has("test_method")) {
                     data.getClass().getField("METHOD_NAME").set(data,
@@ -676,19 +682,28 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    /** Resolve a simple class name like "McpServerTest" to its FQN using PSI index. */
-    private String resolveFullyQualifiedName(String simpleName) {
+    /** Resolve a simple class name like "McpServerTest" to its FQN and containing module. */
+    private record ClassInfo(String fqn, Module module) {}
+
+    private ClassInfo resolveClass(String className) {
         return ReadAction.compute(() -> {
-            List<String> matches = new ArrayList<>();
+            String searchName = className.contains(".") ? className.substring(className.lastIndexOf('.') + 1) : className;
+            List<ClassInfo> matches = new ArrayList<>();
             PsiSearchHelper.getInstance(project).processElementsWithWord(
                     (element, offset) -> {
                         String type = classifyElement(element);
                         if ("class".equals(type) && element instanceof PsiNamedElement named
-                                && simpleName.equals(named.getName())) {
+                                && searchName.equals(named.getName())) {
                             try {
                                 var getQualifiedName = element.getClass().getMethod("getQualifiedName");
                                 String fqn = (String) getQualifiedName.invoke(element);
-                                if (fqn != null) matches.add(fqn);
+                                if (fqn != null && (className.contains(".") ? fqn.equals(className) : true)) {
+                                    VirtualFile vf = element.getContainingFile().getVirtualFile();
+                                    Module mod = vf != null
+                                            ? ProjectFileIndex.getInstance(project).getModuleForFile(vf)
+                                            : null;
+                                    matches.add(new ClassInfo(fqn, mod));
+                                }
                             } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
                                      | IllegalAccessException ignored) {
                             }
@@ -696,11 +711,11 @@ public final class PsiBridgeService implements Disposable {
                         return true;
                     },
                     GlobalSearchScope.projectScope(project),
-                    simpleName,
+                    searchName,
                     UsageSearchContext.IN_CODE,
                     true
             );
-            return matches.isEmpty() ? simpleName : matches.get(0);
+            return matches.isEmpty() ? new ClassInfo(className, null) : matches.get(0);
         });
     }
 
