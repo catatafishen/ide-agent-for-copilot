@@ -82,14 +82,63 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         when (updateType) {
             "tool_call" -> {
                 val title = update.get("title")?.asString ?: "Unknown tool"
-                val status = update.get("status")?.asString ?: ""
+                val status = update.get("status")?.asString ?: "pending"
+                val toolCallId = update.get("toolCallId")?.asString ?: ""
+                val kind = update.get("kind")?.asString ?: ""
                 addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
+                
+                // Add tool call to Plans tab as activity
+                SwingUtilities.invokeLater {
+                    val statusIcon = when (status) {
+                        "completed" -> "✅"
+                        "failed" -> "❌"
+                        "in_progress" -> "⏳"
+                        else -> "🔧"
+                    }
+                    val kindLabel = if (kind.isNotEmpty()) " [$kind]" else ""
+                    val node = javax.swing.tree.DefaultMutableTreeNode("$statusIcon $title$kindLabel")
+                    
+                    // Find or create "Tool Calls" group
+                    var toolGroup: javax.swing.tree.DefaultMutableTreeNode? = null
+                    for (i in 0 until planRoot.childCount) {
+                        val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
+                        if (child.userObject == "Agent Activity") {
+                            toolGroup = child
+                            break
+                        }
+                    }
+                    if (toolGroup == null) {
+                        toolGroup = javax.swing.tree.DefaultMutableTreeNode("Agent Activity")
+                        planRoot.add(toolGroup)
+                    }
+                    toolGroup.add(node)
+                    planTreeModel.reload()
+                }
             }
             "tool_call_update" -> {
                 val status = update.get("status")?.asString ?: ""
                 val toolCallId = update.get("toolCallId")?.asString ?: ""
                 if (status == "completed" || status == "failed") {
                     addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
+                    
+                    // Update the corresponding tool call node status
+                    SwingUtilities.invokeLater {
+                        for (i in 0 until planRoot.childCount) {
+                            val group = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
+                            if (group.userObject == "Agent Activity") {
+                                // Update last node with matching status
+                                val lastIdx = group.childCount - 1
+                                if (lastIdx >= 0) {
+                                    val lastNode = group.getChildAt(lastIdx) as javax.swing.tree.DefaultMutableTreeNode
+                                    val label = lastNode.userObject.toString()
+                                    val icon = if (status == "completed") "✅" else "❌"
+                                    lastNode.userObject = label.replaceFirst("^[⏳🔧]".toRegex(), icon)
+                                    planTreeModel.reload()
+                                }
+                                break
+                            }
+                        }
+                    }
                 }
             }
             "plan" -> {
@@ -101,9 +150,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     for (entry in entries) {
                         val obj = entry.asJsonObject
                         val content = obj.get("content")?.asString ?: "Step"
-                        val status = obj.get("status")?.asString ?: "pending"
+                        val entryStatus = obj.get("status")?.asString ?: "pending"
                         val priority = obj.get("priority")?.asString ?: ""
-                        val label = "$content [$status]${if (priority.isNotEmpty()) " ($priority)" else ""}"
+                        val label = "$content [$entryStatus]${if (priority.isNotEmpty()) " ($priority)" else ""}"
                         planNode.add(javax.swing.tree.DefaultMutableTreeNode(label))
                     }
                     planRoot.add(planNode)
