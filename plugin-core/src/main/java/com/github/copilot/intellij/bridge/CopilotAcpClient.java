@@ -50,9 +50,15 @@ public class CopilotAcpClient implements Closeable {
      * Start the copilot ACP process and perform the initialize handshake.
      */
     public synchronized void start() throws CopilotException {
-        if (process != null && process.isAlive()) {
-            LOG.debug("ACP client already running");
-            return;
+        // Clean up previous process if it died
+        if (process != null) {
+            LOG.info("Restarting ACP client (previous process died)");
+            closed = false; // Reset closed flag for restart
+            try { if (writer != null) writer.close(); } catch (Exception ignored) {}
+            if (process.isAlive()) process.destroyForcibly();
+            pendingRequests.clear();
+            availableModels = null;
+            currentSessionId = null;
         }
 
         try {
@@ -61,7 +67,6 @@ public class CopilotAcpClient implements Closeable {
 
             ProcessBuilder pb = new ProcessBuilder(copilotPath, "--acp", "--stdio");
             pb.redirectErrorStream(false);
-            // Inherit environment (includes PATH with gh CLI)
             process = pb.start();
 
             writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
@@ -374,9 +379,27 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private void ensureStarted() throws CopilotException {
+        if (closed) {
+            throw new CopilotException("ACP client is closed", null, false);
+        }
         if (!initialized || process == null || !process.isAlive()) {
+            initialized = false;
             start();
         }
+    }
+
+    /**
+     * Get the usage multiplier for a model ID (e.g., "1x", "3x", "0.33x").
+     * Returns "1x" if model not found.
+     */
+    @NotNull
+    public String getModelMultiplier(@NotNull String modelId) {
+        if (availableModels == null) return "1x";
+        return availableModels.stream()
+                .filter(m -> modelId.equals(m.id))
+                .findFirst()
+                .map(m -> m.usage != null ? m.usage : "1x")
+                .orElse("1x");
     }
 
     /**

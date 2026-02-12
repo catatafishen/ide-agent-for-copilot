@@ -2,6 +2,7 @@ package com.github.copilot.intellij.ui
 
 import com.github.copilot.intellij.bridge.CopilotAcpClient
 import com.github.copilot.intellij.services.CopilotService
+import com.github.copilot.intellij.services.CopilotSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -32,6 +33,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     
     // Shared context list across tabs
     private val contextListModel = DefaultListModel<ContextItem>()
+    
+    // Shared model list (populated from ACP)
+    private var loadedModels: List<CopilotAcpClient.Model> = emptyList()
+    
+    // Usage display components (updated after each prompt)
+    private lateinit var usageLabel: JBLabel
+    private lateinit var costLabel: JBLabel
 
     init {
         setupUI()
@@ -46,6 +54,73 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         tabbedPane.addTab("Settings", createSettingsTab())
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER)
+    }
+
+    /**
+     * Loads real billing data from GitHub's internal Copilot API via gh CLI.
+     * Shows premium request quota, usage, and overage info.
+     */
+    private fun loadBillingData() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val ghCli = findGhCli() ?: run {
+                    SwingUtilities.invokeLater {
+                        usageLabel.text = ""
+                        costLabel.text = ""
+                    }
+                    return@executeOnPooledThread
+                }
+                
+                val process = ProcessBuilder(
+                    ghCli, "api", "/copilot_internal/user"
+                ).redirectErrorStream(true).start()
+                
+                val json = process.inputStream.bufferedReader().readText()
+                process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+                
+                val gson = com.google.gson.Gson()
+                val obj = gson.fromJson(json, com.google.gson.JsonObject::class.java) ?: return@executeOnPooledThread
+                
+                val snapshots = obj.getAsJsonObject("quota_snapshots") ?: return@executeOnPooledThread
+                val premium = snapshots.getAsJsonObject("premium_interactions") ?: return@executeOnPooledThread
+                
+                val entitlement = premium.get("entitlement")?.asInt ?: 0
+                val remaining = premium.get("remaining")?.asInt ?: 0
+                val unlimited = premium.get("unlimited")?.asBoolean ?: false
+                val overagePermitted = premium.get("overage_permitted")?.asBoolean ?: false
+                val resetDate = obj.get("quota_reset_date")?.asString ?: ""
+                
+                val used = entitlement - remaining
+                
+                SwingUtilities.invokeLater {
+                    if (unlimited) {
+                        usageLabel.text = "Unlimited premium requests"
+                        usageLabel.toolTipText = "Resets $resetDate"
+                        costLabel.text = ""
+                    } else {
+                        usageLabel.text = "$used / $entitlement premium requests"
+                        usageLabel.toolTipText = "Resets $resetDate"
+                        
+                        if (remaining < 0) {
+                            val overageCost = -remaining * 0.04
+                            costLabel.text = if (overagePermitted) {
+                                "Est. overage: $${String.format("%.2f", overageCost)}"
+                            } else {
+                                "Quota exceeded - overages not permitted"
+                            }
+                            costLabel.foreground = Color(220, 50, 50)
+                        } else {
+                            costLabel.text = ""
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    usageLabel.text = ""
+                    costLabel.text = ""
+                }
+            }
+        }
     }
 
     /**
@@ -114,13 +189,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
         
-        // Top toolbar with model selector and token counter
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 5))
+        // Top toolbar with model selector and mode toggle — wraps on narrow windows
+        val toolbar = JBPanel<JBPanel<*>>(WrapLayout(FlowLayout.LEFT, 5, 5))
+        toolbar.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         
         // Model selector (placeholder shown inside dropdown)
         val modelComboBox = ComboBox(arrayOf("Loading..."))
-        modelComboBox.preferredSize = JBUI.size(220, 30)
+        modelComboBox.preferredSize = JBUI.size(280, 30)
         modelComboBox.isEnabled = false
+        // Custom renderer to show model name + cost
+        modelComboBox.renderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
+            ): java.awt.Component {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                return this
+            }
+        }
         toolbar.add(modelComboBox)
         
         // Spinner shown during loading
@@ -129,15 +214,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         loadingSpinner.preferredSize = JBUI.size(16, 16)
         toolbar.add(loadingSpinner)
         
-        // Token counter
-        val tokenLabel = JBLabel("Tokens: 0")
-        tokenLabel.border = JBUI.Borders.emptyLeft(15)
-        toolbar.add(tokenLabel)
+        // Mode toggle (Agent / Plan)
+        val modeCombo = ComboBox(arrayOf("Agent", "Plan"))
+        modeCombo.preferredSize = JBUI.size(90, 30)
+        modeCombo.selectedItem = if (CopilotSettings.getSessionMode() == "plan") "Plan" else "Agent"
+        modeCombo.addActionListener {
+            val mode = if (modeCombo.selectedItem == "Plan") "plan" else "agent"
+            CopilotSettings.setSessionMode(mode)
+        }
+        toolbar.add(modeCombo)
         
         // Auth status panel below toolbar (hidden by default)
         val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 5, 0))
         authPanel.isVisible = false
         authPanel.border = JBUI.Borders.emptyLeft(5)
+        authPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         
         val modelErrorLabel = JBLabel()
         modelErrorLabel.foreground = Color(200, 80, 80)
@@ -151,11 +242,32 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         loginButton.addActionListener { startCopilotLogin() }
         authPanel.add(loginButton)
         
-        val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        topPanel.add(toolbar, BorderLayout.NORTH)
-        topPanel.add(authPanel, BorderLayout.CENTER)
+        // Usage panel — shows real billing data from GitHub API
+        val usagePanel = JBPanel<JBPanel<*>>()
+        usagePanel.layout = BoxLayout(usagePanel, BoxLayout.Y_AXIS)
+        usagePanel.border = JBUI.Borders.emptyLeft(10)
+        usagePanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        
+        usageLabel = JBLabel("")
+        usageLabel.font = usageLabel.font.deriveFont(Font.PLAIN, 11f)
+        usageLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        usagePanel.add(usageLabel)
+        
+        costLabel = JBLabel("")
+        costLabel.font = costLabel.font.deriveFont(Font.BOLD, 11f)
+        costLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        usagePanel.add(costLabel)
+        
+        val topPanel = JBPanel<JBPanel<*>>()
+        topPanel.layout = BoxLayout(topPanel, BoxLayout.Y_AXIS)
+        topPanel.add(toolbar)
+        topPanel.add(authPanel)
+        topPanel.add(usagePanel)
         
         panel.add(topPanel, BorderLayout.NORTH)
+        
+        // Fetch real billing data in background
+        loadBillingData()
         
         // Center: Split pane with prompt input (top) and response output (bottom)
         val splitPane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
@@ -200,18 +312,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
         
         // Add document listener for token counting
-        promptTextArea.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent?) = updateTokenCount()
-            override fun removeUpdate(e: DocumentEvent?) = updateTokenCount()
-            override fun changedUpdate(e: DocumentEvent?) = updateTokenCount()
-            
-            private fun updateTokenCount() {
-                val text = promptTextArea.text
-                val estimatedTokens = (text.length / 4).coerceAtLeast(0) // ~4 chars per token
-                tokenLabel.text = "Tokens: ~$estimatedTokens"
-            }
-        })
-        
         val promptScrollPane = JBScrollPane(promptTextArea)
         promptPanel.add(promptScrollPane, BorderLayout.CENTER)
         
@@ -237,12 +337,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val sessionId = client.createSession()
                     appendResponse("✅ Session created: $sessionId\n")
                     
-                    // Get selected model
-                    val selectedModel = modelComboBox.selectedItem?.toString() ?: ""
-                    // Find model ID from name
-                    val models = client.listModels()
-                    val modelId = models.find { it.name == selectedModel }?.id ?: selectedModel
-                    appendResponse("🤖 Using model: $selectedModel\n\n")
+                    // Get selected model from loaded models list
+                    val selIdx = modelComboBox.selectedIndex
+                    val selectedModelObj = if (selIdx >= 0 && selIdx < loadedModels.size) loadedModels[selIdx] else null
+                    val modelId = selectedModelObj?.id ?: ""
+                    val modelName = selectedModelObj?.name ?: "default"
+                    val modelMultiplier = selectedModelObj?.usage ?: "1x"
+                    appendResponse("🤖 Using model: $modelName ($modelMultiplier)\n\n")
                     appendResponse("─".repeat(50) + "\n")
                     
                     // Send prompt with streaming
@@ -250,8 +351,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         appendResponse(chunk)
                     }
                     
+                    // Show per-prompt estimated usage (like CLI does)
+                    val multiplierVal = try { modelMultiplier.replace("x", "").toDouble() } catch (_: Exception) { 1.0 }
+                    val estPremium = Math.ceil(multiplierVal).toInt()
+                    
                     appendResponse("\n" + "─".repeat(50) + "\n")
                     appendResponse("✅ Complete (${stopReason})\n")
+                    appendResponse("Est. $estPremium premium request(s) [$modelName $modelMultiplier]\n")
+                    
+                    // Refresh billing data after prompt
+                    loadBillingData()
                     
                 } catch (e: Exception) {
                     appendResponse("\n❌ Error: ${e.message}\n")
@@ -281,17 +390,31 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
                     val models = client.listModels()
+                    loadedModels = models
                     
                     SwingUtilities.invokeLater {
                         loadingSpinner.isVisible = false
                         modelComboBox.removeAllItems()
                         models.forEach { model ->
-                            modelComboBox.addItem(model.name)
+                            val cost = model.usage ?: "1x"
+                            modelComboBox.addItem("${model.name}  ($cost)")
                         }
-                        if (models.isNotEmpty()) {
+                        // Restore persisted model selection
+                        val savedModel = CopilotSettings.getSelectedModel()
+                        if (savedModel != null) {
+                            val idx = models.indexOfFirst { it.id == savedModel }
+                            if (idx >= 0) modelComboBox.selectedIndex = idx
+                        } else if (models.isNotEmpty()) {
                             modelComboBox.selectedIndex = 0
                         }
                         modelComboBox.isEnabled = true
+                        // Save selection on change
+                        modelComboBox.addActionListener {
+                            val selIdx = modelComboBox.selectedIndex
+                            if (selIdx >= 0 && selIdx < loadedModels.size) {
+                                CopilotSettings.setSelectedModel(loadedModels[selIdx].id)
+                            }
+                        }
                         authPanel.isVisible = false
                     }
                     return@executeOnPooledThread
@@ -799,9 +922,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         settingsSpinner.isVisible = false
                         defaultModelCombo.removeAllItems()
                         models.forEach { model ->
-                            defaultModelCombo.addItem(model.name)
+                            val cost = model.usage ?: "1x"
+                            defaultModelCombo.addItem("${model.name}  ($cost)")
+                        }
+                        // Restore persisted selection
+                        val savedModel = CopilotSettings.getSelectedModel()
+                        if (savedModel != null) {
+                            val idx = models.indexOfFirst { it.id == savedModel }
+                            if (idx >= 0) defaultModelCombo.selectedIndex = idx
                         }
                         defaultModelCombo.isEnabled = true
+                        defaultModelCombo.addActionListener {
+                            val selIdx = defaultModelCombo.selectedIndex
+                            if (selIdx >= 0 && selIdx < models.size) {
+                                CopilotSettings.setSelectedModel(models[selIdx].id)
+                            }
+                        }
                         settingsAuthPanel.isVisible = false
                     }
                     return@executeOnPooledThread
