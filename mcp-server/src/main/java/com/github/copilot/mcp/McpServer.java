@@ -172,6 +172,28 @@ public class McpServer {
                 ),
                 List.of()));
 
+        tools.add(buildTool("get_project_info",
+                "Get project environment info: SDK/JDK path and version, modules, build system, " +
+                "and run configurations. ALWAYS call this first before running any build/test commands " +
+                "to get the correct JAVA_HOME and build tool paths. Do NOT search for java or gradle yourself.",
+                Map.of(),
+                List.of()));
+
+        tools.add(buildTool("list_run_configurations",
+                "List all IntelliJ run configurations in the project. " +
+                "Shows configuration name, type (JUnit, Gradle, Application, etc.), and whether it's temporary.",
+                Map.of(),
+                List.of()));
+
+        tools.add(buildTool("run_configuration",
+                "Execute an existing IntelliJ run configuration by name. " +
+                "The run will appear in IntelliJ's Run panel with full output. " +
+                "PREFER THIS over running commands manually. Use list_run_configurations to find available configs.",
+                Map.of(
+                    "name", Map.of("type", "string", "description", "Exact name of the run configuration to execute")
+                ),
+                List.of("name")));
+
         result.add("tools", tools);
         return result;
     }
@@ -216,7 +238,8 @@ public class McpServer {
                     case "find_references" -> findReferences(arguments);
                     case "list_project_files" -> listProjectFiles(arguments);
                     case "list_tests" -> listTestsFallback(arguments);
-                    case "run_tests", "get_test_results", "get_coverage" ->
+                    case "run_tests", "get_test_results", "get_coverage",
+                         "get_project_info", "list_run_configurations", "run_configuration" ->
                             "PSI bridge unavailable. These tools require IntelliJ to be running.";
                     default -> "Unknown tool: " + toolName;
                 };

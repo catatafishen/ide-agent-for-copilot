@@ -9,14 +9,23 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectFileIndex;
+import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.execution.RunContentExecutor;
+import com.intellij.execution.*;
 import com.intellij.execution.configurations.GeneralCommandLine;
+import com.intellij.execution.configurations.RunConfiguration;
+import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.process.OSProcessHandler;
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
+import com.intellij.execution.runners.ExecutionUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.search.*;
 import com.intellij.psi.search.searches.ReferencesSearch;
@@ -121,6 +130,9 @@ public final class PsiBridgeService implements Disposable {
                 case "run_tests" -> runTests(arguments);
                 case "get_test_results" -> getTestResults(arguments);
                 case "get_coverage" -> getCoverage(arguments);
+                case "get_project_info" -> getProjectInfo();
+                case "list_run_configurations" -> listRunConfigurations();
+                case "run_configuration" -> runConfiguration(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -312,6 +324,139 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
+    // ---- Project Environment Tools ----
+
+    private String getProjectInfo() {
+        return ReadAction.compute(() -> {
+            StringBuilder sb = new StringBuilder();
+            String basePath = project.getBasePath();
+            sb.append("Project: ").append(project.getName()).append("\n");
+            sb.append("Path: ").append(basePath).append("\n");
+
+            // SDK / JDK
+            try {
+                Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
+                if (sdk != null) {
+                    sb.append("SDK: ").append(sdk.getName()).append("\n");
+                    sb.append("SDK Path: ").append(sdk.getHomePath()).append("\n");
+                    sb.append("SDK Version: ").append(sdk.getVersionString()).append("\n");
+                }
+            } catch (Exception e) {
+                sb.append("SDK: unavailable (").append(e.getMessage()).append(")\n");
+            }
+
+            // Modules
+            try {
+                Module[] modules = ModuleManager.getInstance(project).getModules();
+                sb.append("\nModules (").append(modules.length).append("):\n");
+                for (Module module : modules) {
+                    sb.append("  - ").append(module.getName());
+                    try {
+                        Sdk moduleSdk = ModuleRootManager.getInstance(module).getSdk();
+                        if (moduleSdk != null) {
+                            sb.append(" [SDK: ").append(moduleSdk.getName()).append("]");
+                        }
+                        VirtualFile[] sourceRoots = ModuleRootManager.getInstance(module)
+                                .getSourceRoots(false);
+                        if (sourceRoots.length > 0) {
+                            sb.append(" (").append(sourceRoots.length).append(" source roots)");
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    sb.append("\n");
+                }
+            } catch (Exception e) {
+                sb.append("Modules: unavailable\n");
+            }
+
+            // Build system
+            if (basePath != null) {
+                if (Files.exists(Path.of(basePath, "build.gradle.kts"))
+                        || Files.exists(Path.of(basePath, "build.gradle"))) {
+                    sb.append("\nBuild System: Gradle\n");
+                    Path gradlew = Path.of(basePath,
+                            System.getProperty("os.name").contains("Win") ? "gradlew.bat" : "gradlew");
+                    sb.append("Gradle Wrapper: ").append(gradlew).append("\n");
+                } else if (Files.exists(Path.of(basePath, "pom.xml"))) {
+                    sb.append("\nBuild System: Maven\n");
+                }
+            }
+
+            // Run configurations
+            try {
+                var configs = RunManager.getInstance(project).getAllSettings();
+                if (!configs.isEmpty()) {
+                    sb.append("\nRun Configurations (").append(configs.size()).append("):\n");
+                    for (var config : configs) {
+                        sb.append("  - ").append(config.getName())
+                                .append(" [").append(config.getType().getDisplayName()).append("]\n");
+                    }
+                }
+            } catch (Exception e) {
+                sb.append("Run Configurations: unavailable\n");
+            }
+
+            return sb.toString().trim();
+        });
+    }
+
+    private String listRunConfigurations() {
+        return ReadAction.compute(() -> {
+            try {
+                var configs = RunManager.getInstance(project).getAllSettings();
+                if (configs.isEmpty()) return "No run configurations found";
+
+                List<String> results = new ArrayList<>();
+                for (var config : configs) {
+                    RunConfiguration rc = config.getConfiguration();
+                    String entry = String.format("%s [%s]%s",
+                            config.getName(),
+                            config.getType().getDisplayName(),
+                            config.isTemporary() ? " (temporary)" : "");
+                    results.add(entry);
+                }
+                return results.size() + " run configurations:\n" + String.join("\n", results);
+            } catch (Exception e) {
+                return "Error listing run configurations: " + e.getMessage();
+            }
+        });
+    }
+
+    private String runConfiguration(JsonObject args) throws Exception {
+        String name = args.get("name").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var settings = RunManager.getInstance(project).findConfigurationByName(name);
+                if (settings == null) {
+                    resultFuture.complete("Run configuration not found: '" + name
+                            + "'. Use list_run_configurations to see available configs.");
+                    return;
+                }
+
+                var executor = DefaultRunExecutor.getRunExecutorInstance();
+                var envBuilder = ExecutionEnvironmentBuilder.createOrNull(executor, settings);
+                if (envBuilder == null) {
+                    resultFuture.complete("Cannot create execution environment for: " + name);
+                    return;
+                }
+
+                var env = envBuilder.build();
+                ExecutionManager.getInstance(project).restartRunProfile(env);
+                resultFuture.complete("Started run configuration: " + name
+                        + " [" + settings.getType().getDisplayName() + "]"
+                        + "\nResults will appear in the IntelliJ Run panel."
+                        + "\nUse get_test_results to check results after completion.");
+            } catch (Exception e) {
+                resultFuture.complete("Error running configuration: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
     // ---- Test Tools ----
 
     private String listTests(JsonObject args) {
@@ -368,17 +513,25 @@ public final class PsiBridgeService implements Disposable {
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
 
-        // Build Gradle command
+        // Try to find matching run config first
+        String configResult = tryRunTestConfig(target);
+        if (configResult != null) return configResult;
+
+        // Fall back to Gradle
         String gradlew = basePath + (System.getProperty("os.name").contains("Win")
                 ? "\\gradlew.bat" : "/gradlew");
         String taskPrefix = module.isEmpty() ? "" : ":" + module + ":";
+
+        // Get JAVA_HOME from project SDK
+        String javaHome = getProjectJavaHome();
 
         GeneralCommandLine cmd = new GeneralCommandLine();
         cmd.setExePath(gradlew);
         cmd.addParameters(taskPrefix + "test", "--tests", target);
         cmd.setWorkDirectory(basePath);
-        cmd.withEnvironment("JAVA_HOME",
-                System.getProperty("java.home", System.getenv("JAVA_HOME")));
+        if (javaHome != null) {
+            cmd.withEnvironment("JAVA_HOME", javaHome);
+        }
 
         CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
         StringBuilder output = new StringBuilder();
@@ -473,7 +626,40 @@ public final class PsiBridgeService implements Disposable {
                 + "  - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`";
     }
 
-    // ---- Test Helper Methods ----
+    // ---- Test & Run Helper Methods ----
+
+    private String tryRunTestConfig(String target) {
+        try {
+            // Look for a matching test run configuration
+            var configs = RunManager.getInstance(project).getAllSettings();
+            for (var config : configs) {
+                String typeName = config.getType().getDisplayName().toLowerCase();
+                if ((typeName.contains("junit") || typeName.contains("test"))
+                        && config.getName().contains(target)) {
+                    return runConfiguration(createJsonWithName(config.getName()));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private String getProjectJavaHome() {
+        try {
+            Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
+            if (sdk != null && sdk.getHomePath() != null) {
+                return sdk.getHomePath();
+            }
+        } catch (Exception ignored) {
+        }
+        return System.getProperty("java.home", System.getenv("JAVA_HOME"));
+    }
+
+    private static JsonObject createJsonWithName(String name) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("name", name);
+        return obj;
+    }
 
     private boolean hasTestAnnotation(PsiElement element) {
         // Use reflection to access PsiModifierListOwner (Java PSI, not compile-time available)

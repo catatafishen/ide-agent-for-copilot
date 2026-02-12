@@ -46,8 +46,7 @@
 
     <!-- Plugin dependencies -->
     <depends>com.intellij.modules.platform</depends>
-    <!-- Commented out until bundledPlugins issue resolved -->
-    <!-- <depends>com.intellij.modules.java</depends> -->
+    <depends optional="true" config-file="java-features.xml">com.intellij.modules.java</depends>
     <!-- <depends>Git4Idea</depends> -->
 
     <!-- Extension points and implementations -->

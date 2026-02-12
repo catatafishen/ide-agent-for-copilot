@@ -34,3 +34,4 @@ test-output/
 # Plugin
 plugin-core/build/
 integration-tests/build/
+.intellijPlatform/

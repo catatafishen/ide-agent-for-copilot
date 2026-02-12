@@ -16,6 +16,7 @@ dependencies {
         // Use your locally installed IDE instead of downloading
         local(providers.gradleProperty("intellijPlatform.localPath"))
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+        bundledPlugin("com.intellij.java")
     }
 
     // Kotlin stdlib for UI layer
