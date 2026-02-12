@@ -136,6 +136,42 @@ public class McpServer {
                 ),
                 List.of()));
 
+        tools.add(buildTool("list_tests",
+                "Discover test classes and test methods in the project using AST analysis. " +
+                "Finds methods annotated with @Test, @ParameterizedTest, @RepeatedTest. " +
+                "PREFER THIS over grep for finding tests.",
+                Map.of(
+                    "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter test files (e.g., '*.java', '*Test.kt')", "default", "")
+                ),
+                List.of()));
+
+        tools.add(buildTool("run_tests",
+                "Run tests through IntelliJ's test runner. Tests appear in the IDE's Run panel. " +
+                "Returns structured results with pass/fail counts and failure details. " +
+                "PREFER THIS over running gradle/maven commands directly.",
+                Map.of(
+                    "target", Map.of("type", "string", "description", "Test target: fully qualified class name (e.g., 'com.example.MyTest'), " +
+                            "class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"),
+                    "module", Map.of("type", "string", "description", "Optional Gradle module name (e.g., 'mcp-server', 'plugin-core')", "default", "")
+                ),
+                List.of("target")));
+
+        tools.add(buildTool("get_test_results",
+                "Get the results from the last test run without re-running tests. " +
+                "Returns pass/fail counts, failure details, and timing from JUnit XML reports.",
+                Map.of(
+                    "module", Map.of("type", "string", "description", "Optional Gradle module name to get results for", "default", "")
+                ),
+                List.of()));
+
+        tools.add(buildTool("get_coverage",
+                "Get code coverage data for the project or a specific file. " +
+                "Reads JaCoCo reports or IntelliJ coverage data. Run tests with coverage first.",
+                Map.of(
+                    "file", Map.of("type", "string", "description", "Optional file or class name to filter coverage for", "default", "")
+                ),
+                List.of()));
+
         result.add("tools", tools);
         return result;
     }
@@ -179,6 +215,9 @@ public class McpServer {
                     case "get_file_outline" -> getFileOutline(arguments);
                     case "find_references" -> findReferences(arguments);
                     case "list_project_files" -> listProjectFiles(arguments);
+                    case "list_tests" -> listTestsFallback(arguments);
+                    case "run_tests", "get_test_results", "get_coverage" ->
+                            "PSI bridge unavailable. These tools require IntelliJ to be running.";
                     default -> "Unknown tool: " + toolName;
                 };
             }
@@ -257,6 +296,51 @@ public class McpServer {
     }
 
     // --- Tool implementations (regex fallback) ---
+
+    static String listTestsFallback(JsonObject args) throws IOException {
+        String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
+        Pattern testAnnotation = Pattern.compile("^\\s*@(Test|ParameterizedTest|RepeatedTest)");
+        Pattern methodPattern = Pattern.compile("^\\s*(?:public|private|protected)?\\s*(?:void|fun)\\s+(\\w+)\\s*\\(");
+
+        List<String> results = new ArrayList<>();
+        Path root = Path.of(projectRoot);
+
+        try (Stream<Path> files = Files.walk(root)) {
+            List<Path> testFiles = files
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String name = p.getFileName().toString();
+                        return (name.endsWith(".java") || name.endsWith(".kt"))
+                                && (filePattern.isEmpty() || matchesGlob(name, filePattern));
+                    })
+                    .filter(p -> !isExcluded(root, p))
+                    .collect(Collectors.toList());
+
+            for (Path file : testFiles) {
+                try {
+                    List<String> lines = Files.readAllLines(file);
+                    for (int i = 0; i < lines.size() - 1; i++) {
+                        if (testAnnotation.matcher(lines.get(i)).find()) {
+                            for (int j = i + 1; j < Math.min(i + 5, lines.size()); j++) {
+                                Matcher m = methodPattern.matcher(lines.get(j));
+                                if (m.find()) {
+                                    String relPath = root.relativize(file).toString();
+                                    results.add(String.format("%s (%s:%d)", m.group(1), relPath, j + 1));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+                if (results.size() >= 500) break;
+            }
+        } catch (java.io.UncheckedIOException ignored) {
+        }
+
+        if (results.isEmpty()) return "No tests found";
+        return results.size() + " tests:\n" + String.join("\n", results);
+    }
 
     static String searchSymbols(JsonObject args) throws IOException {
         String query = args.get("query").getAsString();

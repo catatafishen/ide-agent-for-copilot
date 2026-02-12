@@ -2,6 +2,7 @@ package com.github.copilot.intellij.psi;
 
 import com.google.gson.*;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
@@ -11,6 +12,11 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.execution.RunContentExecutor;
+import com.intellij.execution.configurations.GeneralCommandLine;
+import com.intellij.execution.process.OSProcessHandler;
+import com.intellij.execution.process.ProcessAdapter;
+import com.intellij.execution.process.ProcessEvent;
 import com.intellij.psi.*;
 import com.intellij.psi.search.*;
 import com.intellij.psi.search.searches.ReferencesSearch;
@@ -23,7 +29,8 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 /**
  * Lightweight HTTP bridge exposing IntelliJ PSI/AST analysis to the MCP server.
@@ -59,7 +66,7 @@ public final class PsiBridgeService implements Disposable {
             httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             httpServer.createContext("/tools/call", this::handleToolCall);
             httpServer.createContext("/health", this::handleHealth);
-            httpServer.setExecutor(Executors.newFixedThreadPool(4));
+            httpServer.setExecutor(Executors.newFixedThreadPool(8));
             httpServer.start();
             port = httpServer.getAddress().getPort();
             writeBridgeFile();
@@ -110,6 +117,10 @@ public final class PsiBridgeService implements Disposable {
                 case "get_file_outline" -> getFileOutline(arguments);
                 case "find_references" -> findReferences(arguments);
                 case "list_project_files" -> listProjectFiles(arguments);
+                case "list_tests" -> listTests(arguments);
+                case "run_tests" -> runTests(arguments);
+                case "get_test_results" -> getTestResults(arguments);
+                case "get_coverage" -> getCoverage(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -299,6 +310,351 @@ public final class PsiBridgeService implements Disposable {
             if (results.isEmpty()) return "No references found for '" + symbol + "'";
             return results.size() + " references found:\n" + String.join("\n", results);
         });
+    }
+
+    // ---- Test Tools ----
+
+    private String listTests(JsonObject args) {
+        String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
+
+        return ReadAction.compute(() -> {
+            List<String> tests = new ArrayList<>();
+            String basePath = project.getBasePath();
+
+            ProjectFileIndex.getInstance(project).iterateContent(vf -> {
+                if (vf.isDirectory()) return true;
+                String name = vf.getName();
+                if (!name.endsWith(".java") && !name.endsWith(".kt")) return true;
+                if (!filePattern.isEmpty() && !matchGlob(name, filePattern)) return true;
+
+                // Only scan test source directories
+                String relPath = relativize(basePath, vf.getPath());
+                if (relPath == null || !relPath.contains("/test/")) return true;
+
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) return true;
+                Document doc = FileDocumentManager.getInstance().getDocument(vf);
+
+                psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+                    @Override
+                    public void visitElement(@NotNull PsiElement element) {
+                        if (element instanceof PsiNamedElement named) {
+                            String type = classifyElement(element);
+                            if (("method".equals(type) || "function".equals(type))
+                                    && hasTestAnnotation(element)) {
+                                String methodName = named.getName();
+                                String className = getContainingClassName(element);
+                                String relPath = relativize(basePath, vf.getPath());
+                                int line = doc != null
+                                        ? doc.getLineNumber(element.getTextOffset()) + 1 : 0;
+                                tests.add(String.format("%s.%s (%s:%d)",
+                                        className, methodName, relPath, line));
+                            }
+                        }
+                        super.visitElement(element);
+                    }
+                });
+                return tests.size() < 500;
+            });
+
+            if (tests.isEmpty()) return "No tests found";
+            return tests.size() + " tests:\n" + String.join("\n", tests);
+        });
+    }
+
+    private String runTests(JsonObject args) throws Exception {
+        String target = args.get("target").getAsString();
+        String module = args.has("module") ? args.get("module").getAsString() : "";
+        String basePath = project.getBasePath();
+        if (basePath == null) return "No project base path";
+
+        // Build Gradle command
+        String gradlew = basePath + (System.getProperty("os.name").contains("Win")
+                ? "\\gradlew.bat" : "/gradlew");
+        String taskPrefix = module.isEmpty() ? "" : ":" + module + ":";
+
+        GeneralCommandLine cmd = new GeneralCommandLine();
+        cmd.setExePath(gradlew);
+        cmd.addParameters(taskPrefix + "test", "--tests", target);
+        cmd.setWorkDirectory(basePath);
+        cmd.withEnvironment("JAVA_HOME",
+                System.getProperty("java.home", System.getenv("JAVA_HOME")));
+
+        CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
+        StringBuilder output = new StringBuilder();
+
+        OSProcessHandler processHandler = new OSProcessHandler(cmd);
+        processHandler.addProcessListener(new ProcessAdapter() {
+            @Override
+            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
+                output.append(event.getText());
+            }
+
+            @Override
+            public void processTerminated(@NotNull ProcessEvent event) {
+                exitFuture.complete(event.getExitCode());
+            }
+        });
+
+        // Show in IntelliJ Run panel
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                new RunContentExecutor(project, processHandler)
+                        .withTitle("Test: " + target)
+                        .withActivateToolWindow(true)
+                        .run();
+            } catch (Exception e) {
+                LOG.warn("Could not show in Run panel, starting headless", e);
+                processHandler.startNotify();
+            }
+        });
+
+        // Wait for completion (up to 120 seconds)
+        int exitCode;
+        try {
+            exitCode = exitFuture.get(120, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            processHandler.destroyProcess();
+            return "Tests timed out after 120 seconds. Partial output:\n"
+                    + truncateOutput(output.toString());
+        }
+
+        // Parse JUnit XML results
+        String xmlResults = parseJunitXmlResults(basePath, module);
+        if (!xmlResults.isEmpty()) {
+            return xmlResults;
+        }
+
+        // Fall back to process output summary
+        return (exitCode == 0 ? "✓ Tests PASSED" : "✗ Tests FAILED (exit code " + exitCode + ")")
+                + "\n\n" + truncateOutput(output.toString());
+    }
+
+    private String getTestResults(JsonObject args) {
+        String module = args.has("module") ? args.get("module").getAsString() : "";
+        String basePath = project.getBasePath();
+        if (basePath == null) return "No project base path";
+
+        String results = parseJunitXmlResults(basePath, module);
+        return results.isEmpty() ? "No test results found. Run tests first." : results;
+    }
+
+    private String getCoverage(JsonObject args) {
+        String file = args.has("file") ? args.get("file").getAsString() : "";
+        String basePath = project.getBasePath();
+        if (basePath == null) return "No project base path";
+
+        // Try JaCoCo XML report
+        for (String module : List.of("", "plugin-core", "mcp-server")) {
+            Path jacocoXml = module.isEmpty()
+                    ? Path.of(basePath, "build", "reports", "jacoco", "test", "jacocoTestReport.xml")
+                    : Path.of(basePath, module, "build", "reports", "jacoco", "test", "jacocoTestReport.xml");
+            if (Files.exists(jacocoXml)) {
+                return parseJacocoXml(jacocoXml, file);
+            }
+        }
+
+        // Try IntelliJ's CoverageDataManager via reflection
+        try {
+            Class<?> cdmClass = Class.forName("com.intellij.coverage.CoverageDataManager");
+            Object manager = project.getService(cdmClass);
+            if (manager != null) {
+                var getCurrentBundle = cdmClass.getMethod("getCurrentSuitesBundle");
+                Object bundle = getCurrentBundle.invoke(manager);
+                if (bundle != null) {
+                    return "Coverage data available in IntelliJ. Use View > Tool Windows > Coverage to inspect.";
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return "No coverage data found. Run tests with coverage first:\n"
+                + "  - IntelliJ: Right-click test → Run with Coverage\n"
+                + "  - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`";
+    }
+
+    // ---- Test Helper Methods ----
+
+    private boolean hasTestAnnotation(PsiElement element) {
+        // Use reflection to access PsiModifierListOwner (Java PSI, not compile-time available)
+        try {
+            var getModifierList = element.getClass().getMethod("getModifierList");
+            Object modList = getModifierList.invoke(element);
+            if (modList != null) {
+                var getAnnotations = modList.getClass().getMethod("getAnnotations");
+                Object[] annotations = (Object[]) getAnnotations.invoke(modList);
+                for (Object anno : annotations) {
+                    var getQualifiedName = anno.getClass().getMethod("getQualifiedName");
+                    String qname = (String) getQualifiedName.invoke(anno);
+                    if (qname != null && (qname.endsWith(".Test")
+                            || qname.endsWith(".ParameterizedTest")
+                            || qname.endsWith(".RepeatedTest"))) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // Text-based fallback (catches Kotlin and edge cases)
+        PsiElement prev = element.getPrevSibling();
+        int depth = 0;
+        while (prev != null && depth < 5) {
+            // Stop at previous method/class/field declaration (don't look past it)
+            if (prev instanceof PsiNamedElement && classifyElement(prev) != null) break;
+            String text = prev.getText().trim();
+            if (text.startsWith("@Test") || text.startsWith("@ParameterizedTest")
+                    || text.startsWith("@RepeatedTest")
+                    || text.startsWith("@org.junit")) {
+                return true;
+            }
+            prev = prev.getPrevSibling();
+            depth++;
+        }
+        return false;
+    }
+
+    private String getContainingClassName(PsiElement element) {
+        PsiElement parent = element.getParent();
+        while (parent != null) {
+            if (parent instanceof PsiNamedElement named) {
+                String type = classifyElement(parent);
+                if ("class".equals(type)) return named.getName();
+            }
+            parent = parent.getParent();
+        }
+        return "UnknownClass";
+    }
+
+    private String parseJunitXmlResults(String basePath, String module) {
+        List<Path> reportDirs = new ArrayList<>();
+        if (module.isEmpty()) {
+            // Search all modules
+            try (var dirs = Files.walk(Path.of(basePath), 4)) {
+                dirs.filter(p -> p.endsWith("test-results/test") && Files.isDirectory(p))
+                        .forEach(reportDirs::add);
+            } catch (IOException ignored) {
+            }
+        } else {
+            Path dir = Path.of(basePath, module, "build", "test-results", "test");
+            if (Files.isDirectory(dir)) reportDirs.add(dir);
+        }
+
+        if (reportDirs.isEmpty()) return "";
+
+        int totalTests = 0, totalFailed = 0, totalErrors = 0, totalSkipped = 0;
+        double totalTime = 0;
+        List<String> failures = new ArrayList<>();
+
+        for (Path reportDir : reportDirs) {
+            try (var xmlFiles = Files.list(reportDir)) {
+                for (Path xmlFile : xmlFiles.filter(p -> p.toString().endsWith(".xml")).toList()) {
+                    try {
+                        var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                                .parse(xmlFile.toFile());
+                        var suites = doc.getElementsByTagName("testsuite");
+                        for (int i = 0; i < suites.getLength(); i++) {
+                            var suite = suites.item(i);
+                            totalTests += intAttr(suite, "tests");
+                            totalFailed += intAttr(suite, "failures");
+                            totalErrors += intAttr(suite, "errors");
+                            totalSkipped += intAttr(suite, "skipped");
+                            totalTime += doubleAttr(suite, "time");
+
+                            // Collect failure details
+                            var testcases = ((org.w3c.dom.Element) suite)
+                                    .getElementsByTagName("testcase");
+                            for (int j = 0; j < testcases.getLength(); j++) {
+                                var tc = testcases.item(j);
+                                var failNodes = ((org.w3c.dom.Element) tc)
+                                        .getElementsByTagName("failure");
+                                if (failNodes.getLength() > 0) {
+                                    String tcName = tc.getAttributes().getNamedItem("name")
+                                            .getNodeValue();
+                                    String cls = tc.getAttributes().getNamedItem("classname")
+                                            .getNodeValue();
+                                    String msg = failNodes.item(0).getAttributes()
+                                            .getNamedItem("message").getNodeValue();
+                                    failures.add(String.format("  ✗ %s.%s: %s", cls, tcName, msg));
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+
+        if (totalTests == 0) return "";
+
+        int passed = totalTests - totalFailed - totalErrors - totalSkipped;
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Test Results: %d tests, %d passed, %d failed, %d errors, %d skipped (%.1fs)\n",
+                totalTests, passed, totalFailed, totalErrors, totalSkipped, totalTime));
+
+        if (!failures.isEmpty()) {
+            sb.append("\nFailures:\n");
+            failures.forEach(f -> sb.append(f).append("\n"));
+        }
+        return sb.toString().trim();
+    }
+
+    private String parseJacocoXml(Path xmlPath, String fileFilter) {
+        try {
+            var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                    .parse(xmlPath.toFile());
+            var packages = doc.getElementsByTagName("package");
+            List<String> lines = new ArrayList<>();
+            int totalLines = 0, coveredLines = 0;
+
+            for (int i = 0; i < packages.getLength(); i++) {
+                var pkg = (org.w3c.dom.Element) packages.item(i);
+                var classes = pkg.getElementsByTagName("class");
+                for (int j = 0; j < classes.getLength(); j++) {
+                    var cls = (org.w3c.dom.Element) classes.item(j);
+                    String name = cls.getAttribute("name").replace('/', '.');
+                    if (!fileFilter.isEmpty() && !name.contains(fileFilter)) continue;
+
+                    var counters = cls.getElementsByTagName("counter");
+                    for (int k = 0; k < counters.getLength(); k++) {
+                        var counter = counters.item(k);
+                        if ("LINE".equals(counter.getAttributes().getNamedItem("type")
+                                .getNodeValue())) {
+                            int missed = intAttr(counter, "missed");
+                            int covered = intAttr(counter, "covered");
+                            totalLines += missed + covered;
+                            coveredLines += covered;
+                            double pct = covered * 100.0 / Math.max(1, missed + covered);
+                            lines.add(String.format("  %s: %.1f%% (%d/%d lines)",
+                                    name, pct, covered, missed + covered));
+                        }
+                    }
+                }
+            }
+
+            if (lines.isEmpty()) return "No line coverage data in JaCoCo report";
+            double totalPct = coveredLines * 100.0 / Math.max(1, totalLines);
+            return String.format("Coverage: %.1f%% overall (%d/%d lines)\n\n%s",
+                    totalPct, coveredLines, totalLines, String.join("\n", lines));
+        } catch (Exception e) {
+            return "Error parsing JaCoCo report: " + e.getMessage();
+        }
+    }
+
+    private static int intAttr(org.w3c.dom.Node node, String attr) {
+        var item = node.getAttributes().getNamedItem(attr);
+        return item != null ? Integer.parseInt(item.getNodeValue()) : 0;
+    }
+
+    private static double doubleAttr(org.w3c.dom.Node node, String attr) {
+        var item = node.getAttributes().getNamedItem(attr);
+        return item != null ? Double.parseDouble(item.getNodeValue()) : 0.0;
+    }
+
+    private static String truncateOutput(String output) {
+        if (output.length() <= 2000) return output;
+        return "..." + output.substring(output.length() - 2000);
     }
 
     // ---- Helper Methods ----
