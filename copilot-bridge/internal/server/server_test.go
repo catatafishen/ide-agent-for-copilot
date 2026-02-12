@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	
+	"github.com/yourusername/intellij-copilot-plugin/copilot-bridge/internal/copilot"
 )
 
 func TestHealthCheck(t *testing.T) {
-	server, _ := New(0, "")
+	// Use mock client for testing
+	mockClient := copilot.NewMockClient()
+	server, _ := NewWithClient(0, "", mockClient)
 	
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -29,7 +33,9 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestModelsListRPC(t *testing.T) {
-	server, _ := New(0, "")
+	// Use mock client for testing
+	mockClient := copilot.NewMockClient()
+	server, _ := NewWithClient(0, "", mockClient)
 	
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -59,13 +65,16 @@ func TestModelsListRPC(t *testing.T) {
 	result := response.Result.(map[string]interface{})
 	models := result["models"].([]interface{})
 	
-	if len(models) != 5 {
-		t.Errorf("Expected 5 models, got %d", len(models))
+	// MockClient returns 3 models (not 5 like SDKClient would)
+	if len(models) != 3 {
+		t.Errorf("Expected 3 models from MockClient, got %d", len(models))
 	}
 }
 
 func TestSessionCreateRPC(t *testing.T) {
-	server, _ := New(0, "")
+	// Use mock client for testing
+	mockClient := copilot.NewMockClient()
+	server, _ := NewWithClient(0, "", mockClient)
 	
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -101,7 +110,9 @@ func TestSessionCreateRPC(t *testing.T) {
 }
 
 func TestSessionSendRPC(t *testing.T) {
-	server, _ := New(0, "")
+	// Use mock client for testing
+	mockClient := copilot.NewMockClient()
+	server, _ := NewWithClient(0, "", mockClient)
 	
 	// First create a session
 	createReqBody := map[string]interface{}{
@@ -161,7 +172,9 @@ func TestSessionSendRPC(t *testing.T) {
 }
 
 func TestSessionCloseRPC(t *testing.T) {
-	server, _ := New(0, "")
+	// Use mock client for testing
+	mockClient := copilot.NewMockClient()
+	server, _ := NewWithClient(0, "", mockClient)
 	
 	// First create a session
 	createReqBody := map[string]interface{}{
@@ -245,7 +258,9 @@ func TestInvalidMethod(t *testing.T) {
 }
 
 func TestInvalidJSON(t *testing.T) {
-	server, _ := New(0, "")
+	// Use mock client for testing
+	mockClient := copilot.NewMockClient()
+	server, _ := NewWithClient(0, "", mockClient)
 	
 	req := httptest.NewRequest("POST", "/rpc", bytes.NewBufferString("{invalid json"))
 	req.Header.Set("Content-Type", "application/json")

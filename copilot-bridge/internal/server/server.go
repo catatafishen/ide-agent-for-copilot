@@ -24,17 +24,28 @@ type Server struct {
 	mu                sync.RWMutex
 }
 
-// New creates a new RPC server
+// New creates a new RPC server with default (SDK) client
 func New(port int, callbackURL string) (*Server, error) {
-	// Create real Copilot SDK client
+	return NewWithClient(port, callbackURL, nil)
+}
+
+// NewWithClient creates a new RPC server with a specific client
+// If client is nil, creates an SDK client (falling back to mock on error)
+func NewWithClient(port int, callbackURL string, client copilot.Client) (*Server, error) {
+	// Use provided client or create default
 	var copilotClient copilot.Client
-	sdkClient, err := copilot.NewSDKClient()
-	if err != nil {
-		// Fall back to mock client if SDK fails
-		log.Printf("Warning: Failed to initialize Copilot SDK, using mock client: %v", err)
-		copilotClient = copilot.NewMockClient()
+	if client != nil {
+		copilotClient = client
 	} else {
-		copilotClient = sdkClient
+		// Create real Copilot SDK client
+		sdkClient, err := copilot.NewSDKClient()
+		if err != nil {
+			// Fall back to mock client if SDK fails
+			log.Printf("Warning: Failed to initialize Copilot SDK, using mock client: %v", err)
+			copilotClient = copilot.NewMockClient()
+		} else {
+			copilotClient = sdkClient
+		}
 	}
 	
 	return &Server{
