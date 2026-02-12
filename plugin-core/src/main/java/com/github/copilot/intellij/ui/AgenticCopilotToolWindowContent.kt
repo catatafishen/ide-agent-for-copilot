@@ -1,5 +1,6 @@
 package com.github.copilot.intellij.ui
 
+import com.github.copilot.intellij.bridge.CopilotAcpClient
 import com.github.copilot.intellij.services.SidecarService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -68,40 +69,39 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
-     * Launches the GitHub CLI auth flow in a new command window.
-     * Checks if gh is installed first, offers to install via winget if missing.
+     * Launches the Copilot CLI auth flow in a new command window.
+     * Uses the auth method from the ACP initialize response if available.
      */
-    private fun startGhAuthLogin() {
+    private fun startCopilotLogin() {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val ghPath = findGhCli()
-                
-                if (ghPath != null) {
-                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k",
-                        "\"$ghPath\" auth login")
-                        .start()
-                } else {
-                    // gh not installed — offer to install via winget
-                    SwingUtilities.invokeAndWait {
-                        val result = JOptionPane.showConfirmDialog(
-                            mainPanel,
-                            "GitHub CLI (gh) is required but not installed.\n\nInstall it now via winget?",
-                            "GitHub CLI Required",
-                            JOptionPane.YES_NO_OPTION,
-                            JOptionPane.QUESTION_MESSAGE
-                        )
-                        if (result == JOptionPane.YES_OPTION) {
-                            ProcessBuilder("cmd", "/c", "start", "cmd", "/k",
-                                "winget install --id GitHub.cli -e --accept-source-agreements && echo. && echo GitHub CLI installed! Now run: gh auth login && echo. && gh auth login")
-                                .start()
-                        }
+                // Try to get auth method from ACP client
+                val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                var authCommand: String? = null
+                var authArgs: List<String>? = null
+
+                try {
+                    val client = service.getClient()
+                    val authMethod = client.authMethod
+                    if (authMethod?.command != null) {
+                        authCommand = authMethod.command
+                        authArgs = authMethod.args
                     }
+                } catch (_: Exception) {}
+
+                if (authCommand != null) {
+                    val cmd = mutableListOf("cmd", "/c", "start", "cmd", "/k", "\"$authCommand\"")
+                    authArgs?.forEach { cmd.add(it) }
+                    ProcessBuilder(cmd).start()
+                } else {
+                    // Fallback: try copilot login
+                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "copilot login").start()
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
                     JOptionPane.showMessageDialog(
                         mainPanel,
-                        "Failed to start auth flow: ${e.message}\n\nPlease install GitHub CLI manually:\nhttps://cli.github.com",
+                        "Failed to start auth flow: ${e.message}\n\nPlease run 'copilot login' in your terminal.",
                         "Error",
                         JOptionPane.ERROR_MESSAGE
                     )
@@ -148,7 +148,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         loginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         loginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
         loginButton.isVisible = false
-        loginButton.addActionListener { startGhAuthLogin() }
+        loginButton.addActionListener { startCopilotLogin() }
         authPanel.add(loginButton)
         
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -225,48 +225,33 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
             
             runButton.isEnabled = false
-            responseTextArea.text = "Sending request to sidecar...\n"
+            responseTextArea.text = "Connecting to Copilot...\n"
             
             // Run in background thread
             ApplicationManager.getApplication().executeOnPooledThread {
                 try {
-                    val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
-                    val client = sidecarService.getClient()
+                    val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val client = service.getClient()
                     
                     // Create session if needed
-                    val sessionResponse = client.createSession()
-                    appendResponse("✅ Session created: ${sessionResponse.sessionId}\n")
+                    val sessionId = client.createSession()
+                    appendResponse("✅ Session created: $sessionId\n")
                     
                     // Get selected model
-                    val selectedModel = modelComboBox.selectedItem?.toString() ?: "gpt-5-mini"
+                    val selectedModel = modelComboBox.selectedItem?.toString() ?: ""
+                    // Find model ID from name
+                    val models = client.listModels()
+                    val modelId = models.find { it.name == selectedModel }?.id ?: selectedModel
                     appendResponse("🤖 Using model: $selectedModel\n\n")
-                    
-                    // Send message (this returns immediately with streamUrl)
-                    val messageResponse = client.sendMessage(sessionResponse.sessionId, prompt, selectedModel)
-                    appendResponse("📡 Streaming response...\n")
                     appendResponse("─".repeat(50) + "\n")
                     
-                    // Stream the response chunks
-                    client.streamResponse(sessionResponse.sessionId) { jsonChunk ->
-                        try {
-                            // Parse JSON chunk and extract content
-                            val parser = com.google.gson.JsonParser()
-                            val chunk = parser.parse(jsonChunk).asJsonObject
-                            
-                            when {
-                                chunk.has("type") && chunk.get("type").asString == "text" -> {
-                                    val content = chunk.get("content").asString
-                                    appendResponse(content) // Append without newline for streaming effect
-                                }
-                                chunk.has("type") && chunk.get("type").asString == "done" -> {
-                                    appendResponse("\n" + "─".repeat(50) + "\n")
-                                    appendResponse("✅ Stream complete!\n")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            appendResponse("⚠️ Parse error: ${e.message}\n")
-                        }
+                    // Send prompt with streaming
+                    val stopReason = client.sendPrompt(sessionId, prompt, modelId) { chunk ->
+                        appendResponse(chunk)
                     }
+                    
+                    appendResponse("\n" + "─".repeat(50) + "\n")
+                    appendResponse("✅ Complete (${stopReason})\n")
                     
                 } catch (e: Exception) {
                     appendResponse("\n❌ Error: ${e.message}\n")
@@ -293,8 +278,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             
             for (attempt in 1..maxRetries) {
                 try {
-                    val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
-                    val client = sidecarService.getClient()
+                    val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val client = service.getClient()
                     val models = client.listModels()
                     
                     SwingUtilities.invokeLater {
@@ -796,11 +781,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         settingsLoginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         settingsLoginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
         settingsLoginButton.isVisible = false
-        settingsLoginButton.addActionListener { startGhAuthLogin() }
+        settingsLoginButton.addActionListener { startCopilotLogin() }
         settingsAuthPanel.add(settingsLoginButton)
         panel.add(settingsAuthPanel, gbc)
         
-        // Load models from sidecar - fail fast on auth errors
+        // Load models from ACP - fail fast on auth errors
         ApplicationManager.getApplication().executeOnPooledThread {
             var lastError: Exception? = null
             val maxRetries = 3
@@ -808,8 +793,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             
             for (attempt in 1..maxRetries) {
                 try {
-                    val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
-                    val client = sidecarService.getClient()
+                    val service = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val client = service.getClient()
                     val models = client.listModels()
                     
                     SwingUtilities.invokeLater {

@@ -59,23 +59,4 @@ tasks {
     runIde {
         maxHeapSize = "2g"
     }
-
-    // Copy sidecar binary into plugin distribution
-    val copySidecarBinary by registering(Copy::class) {
-        from(layout.projectDirectory.dir("../copilot-bridge/bin"))
-        into(layout.buildDirectory.dir("resources/main/bin"))
-        include("copilot-sidecar.exe", "copilot-sidecar")
-    }
-
-    processResources {
-        dependsOn(copySidecarBinary)
-    }
-
-    prepareSandbox {
-        dependsOn(copySidecarBinary)
-        from(layout.projectDirectory.dir("../copilot-bridge/bin")) {
-            into("${intellijPlatform.pluginConfiguration.name.get()}/bin")
-            include("copilot-sidecar.exe", "copilot-sidecar")
-        }
-    }
 }

@@ -4,24 +4,22 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
-import com.github.copilot.intellij.bridge.SidecarProcess;
-import com.github.copilot.intellij.bridge.SidecarClient;
+import com.github.copilot.intellij.bridge.CopilotAcpClient;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Service for managing the lifecycle of the Go sidecar process.
- * Ensures the sidecar starts when needed and stops cleanly on IDE shutdown.
+ * Service for managing the Copilot ACP client lifecycle.
+ * Starts the copilot --acp process on first use and stops it on IDE shutdown.
  */
 @Service(Service.Level.APP)
 public final class SidecarService implements Disposable {
     private static final Logger LOG = Logger.getInstance(SidecarService.class);
 
-    private SidecarProcess sidecarProcess;
-    private SidecarClient sidecarClient;
+    private CopilotAcpClient acpClient;
     private volatile boolean started = false;
 
     public SidecarService() {
-        LOG.info("Sidecar Service initialized");
+        LOG.info("Copilot ACP Service initialized");
     }
 
     @NotNull
@@ -30,61 +28,51 @@ public final class SidecarService implements Disposable {
     }
 
     /**
-     * Start the sidecar process if not already running.
-     * This is called lazily on first use.
+     * Start the Copilot ACP process if not already running.
      */
     public synchronized void start() {
-        if (started) {
-            LOG.debug("Sidecar already started");
+        if (started && acpClient != null && acpClient.isHealthy()) {
+            LOG.debug("ACP client already running");
             return;
         }
 
         try {
-            LOG.info("Starting sidecar process...");
-            sidecarProcess = new SidecarProcess();
-            sidecarProcess.start();
-
-            int port = sidecarProcess.getPort();
-            LOG.info("Sidecar started on port " + port);
-
-            sidecarClient = new SidecarClient("http://localhost:" + port);
+            LOG.info("Starting Copilot ACP client...");
+            if (acpClient != null) {
+                acpClient.close();
+            }
+            acpClient = new CopilotAcpClient();
+            acpClient.start();
             started = true;
+            LOG.info("Copilot ACP client started");
 
         } catch (Exception e) {
-            LOG.error("Failed to start sidecar", e);
-            throw new RuntimeException("Failed to start Copilot sidecar", e);
+            LOG.error("Failed to start Copilot ACP client", e);
+            throw new RuntimeException("Failed to start Copilot ACP client", e);
         }
     }
 
     /**
-     * Get the sidecar client for making RPC calls.
-     * Starts the sidecar if not already running.
+     * Get the ACP client for making calls.
+     * Starts the client if not already running.
      */
     @NotNull
-    public SidecarClient getClient() {
-        if (!started) {
+    public CopilotAcpClient getClient() {
+        if (!started || acpClient == null || !acpClient.isHealthy()) {
             start();
         }
-        return sidecarClient;
+        return acpClient;
     }
 
     /**
-     * Check if the sidecar is running and healthy.
+     * Check if the ACP client is running and healthy.
      */
     public boolean isHealthy() {
-        if (!started || sidecarClient == null) {
-            return false;
-        }
-        try {
-            return sidecarClient.healthCheck();
-        } catch (Exception e) {
-            LOG.warn("Health check failed", e);
-            return false;
-        }
+        return started && acpClient != null && acpClient.isHealthy();
     }
 
     /**
-     * Stop the sidecar process.
+     * Stop the ACP client.
      */
     public synchronized void stop() {
         if (!started) {
@@ -92,20 +80,20 @@ public final class SidecarService implements Disposable {
         }
 
         try {
-            LOG.info("Stopping sidecar process...");
-            if (sidecarProcess != null) {
-                sidecarProcess.stop();
+            LOG.info("Stopping Copilot ACP client...");
+            if (acpClient != null) {
+                acpClient.close();
             }
             started = false;
-            sidecarClient = null;
+            acpClient = null;
         } catch (Exception e) {
-            LOG.error("Failed to stop sidecar", e);
+            LOG.error("Failed to stop ACP client", e);
         }
     }
 
     @Override
     public void dispose() {
-        LOG.info("Sidecar Service disposed");
+        LOG.info("Copilot ACP Service disposed");
         stop();
     }
 }

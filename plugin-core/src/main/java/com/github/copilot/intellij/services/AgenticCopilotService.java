@@ -24,10 +24,10 @@ public final class AgenticCopilotService implements Disposable {
     }
 
     /**
-     * Get the sidecar service for managing the Go sidecar process.
+     * Get the Copilot ACP service.
      */
     @NotNull
-    public SidecarService getSidecarService() {
+    public SidecarService getCopilotService() {
         return SidecarService.getInstance();
     }
 
