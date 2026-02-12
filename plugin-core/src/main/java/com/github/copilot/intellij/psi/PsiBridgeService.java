@@ -162,13 +162,15 @@ public final class PsiBridgeService implements Disposable {
             if (basePath == null) return "No project base path";
 
             List<String> files = new ArrayList<>();
-            ProjectFileIndex.getInstance(project).iterateContent(vf -> {
+            ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
+            fileIndex.iterateContent(vf -> {
                 if (!vf.isDirectory()) {
                     String relPath = relativize(basePath, vf.getPath());
                     if (relPath == null) return true;
                     if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
                     if (!pattern.isEmpty() && !matchGlob(vf.getName(), pattern)) return true;
-                    files.add(String.format("%s [%s]", relPath, fileType(vf.getName())));
+                    String tag = fileIndex.isInTestSourceContent(vf) ? "test " : "";
+                    files.add(String.format("%s [%s%s]", relPath, tag, fileType(vf.getName())));
                 }
                 return files.size() < 500;
             });
@@ -656,16 +658,16 @@ public final class PsiBridgeService implements Disposable {
         return ReadAction.compute(() -> {
             List<String> tests = new ArrayList<>();
             String basePath = project.getBasePath();
+            ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
 
-            ProjectFileIndex.getInstance(project).iterateContent(vf -> {
+            fileIndex.iterateContent(vf -> {
                 if (vf.isDirectory()) return true;
                 String name = vf.getName();
                 if (!name.endsWith(".java") && !name.endsWith(".kt")) return true;
                 if (!filePattern.isEmpty() && !matchGlob(name, filePattern)) return true;
 
-                // Only scan test source directories
-                String relPath = relativize(basePath, vf.getPath());
-                if (relPath == null || !relPath.contains("/test/")) return true;
+                // Use IntelliJ's own test source classification (green background in project view)
+                if (!fileIndex.isInTestSourceContent(vf)) return true;
 
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) return true;

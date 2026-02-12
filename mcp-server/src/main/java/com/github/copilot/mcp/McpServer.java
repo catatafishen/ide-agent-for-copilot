@@ -201,7 +201,6 @@ public class McpServer {
                 Map.of(
                     "name", Map.of("type", "string", "description", "Name for the new run configuration"),
                     "type", Map.of("type", "string", "description", "Configuration type: 'application', 'junit', 'gradle', etc."),
-                    "env", Map.of("type", "string", "description", "Optional: JSON object of environment variables, e.g. {\"KEY\":\"value\"}"),
                     "jvm_args", Map.of("type", "string", "description", "Optional: JVM arguments (e.g., '-Xmx2g -Dkey=value')"),
                     "program_args", Map.of("type", "string", "description", "Optional: program arguments"),
                     "working_dir", Map.of("type", "string", "description", "Optional: working directory path"),
@@ -210,6 +209,7 @@ public class McpServer {
                     "module_name", Map.of("type", "string", "description", "Optional: IntelliJ module name (from get_project_info)")
                 ),
                 List.of("name", "type")));
+        addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
         tools.add(buildTool("edit_run_configuration",
                 "Edit an existing IntelliJ run configuration. Can modify environment variables, JVM args, " +
@@ -217,12 +217,12 @@ public class McpServer {
                 "For env vars, pass a JSON object — set value to null to remove a variable.",
                 Map.of(
                     "name", Map.of("type", "string", "description", "Name of the run configuration to edit"),
-                    "env", Map.of("type", "string", "description", "Optional: JSON object of env vars to set/update. Use null value to remove."),
                     "jvm_args", Map.of("type", "string", "description", "Optional: new JVM arguments"),
                     "program_args", Map.of("type", "string", "description", "Optional: new program arguments"),
                     "working_dir", Map.of("type", "string", "description", "Optional: new working directory")
                 ),
                 List.of("name")));
+        addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
         result.add("tools", tools);
         return result;
@@ -246,6 +246,19 @@ public class McpServer {
         inputSchema.add("required", req);
         tool.add("inputSchema", inputSchema);
         return tool;
+    }
+
+    /** Add an 'env' property with correct object schema to a tool's inputSchema. */
+    private static void addEnvProperty(JsonObject tool) {
+        JsonObject schema = tool.getAsJsonObject("inputSchema");
+        JsonObject props = schema.getAsJsonObject("properties");
+        JsonObject envProp = new JsonObject();
+        envProp.addProperty("type", "object");
+        envProp.addProperty("description", "Environment variables as key-value pairs. Set value to null to remove a variable.");
+        JsonObject additionalProps = new JsonObject();
+        additionalProps.addProperty("type", "string");
+        envProp.add("additionalProperties", additionalProps);
+        props.add("env", envProp);
     }
 
     private static JsonObject handleToolsCall(JsonObject params) {
