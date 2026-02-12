@@ -678,23 +678,42 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         defaultModelCombo.preferredSize = JBUI.size(250, 30)
         panel.add(defaultModelCombo, gbc)
         
-        // Load models from sidecar
+        // Load models from sidecar with retry logic
         ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
-                val client = sidecarService.getClient()
-                val models = client.listModels()
-                
-                SwingUtilities.invokeLater {
-                    defaultModelCombo.removeAllItems()
-                    models.forEach { model ->
-                        defaultModelCombo.addItem(model.name)
+            var lastError: Exception? = null
+            val maxRetries = 3
+            val retryDelayMs = 2000L
+            
+            for (attempt in 1..maxRetries) {
+                try {
+                    val sidecarService = ApplicationManager.getApplication().getService(SidecarService::class.java)
+                    val client = sidecarService.getClient()
+                    val models = client.listModels()
+                    
+                    SwingUtilities.invokeLater {
+                        defaultModelCombo.removeAllItems()
+                        models.forEach { model ->
+                            defaultModelCombo.addItem(model.name)
+                        }
+                    }
+                    return@executeOnPooledThread
+                } catch (e: Exception) {
+                    lastError = e
+                    if (attempt < maxRetries) {
+                        Thread.sleep(retryDelayMs)
                     }
                 }
-            } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    defaultModelCombo.removeAllItems()
-                    defaultModelCombo.addItem("Error loading models")
+            }
+            
+            val errorMsg = lastError?.message ?: "Unknown error"
+            val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
+                              errorMsg.contains("authenticated") || errorMsg.contains("timed out")
+            SwingUtilities.invokeLater {
+                defaultModelCombo.removeAllItems()
+                if (isAuthError) {
+                    defaultModelCombo.addItem("⚠️ Not authenticated - run: gh auth login")
+                } else {
+                    defaultModelCombo.addItem("Error: $errorMsg")
                 }
             }
         }
