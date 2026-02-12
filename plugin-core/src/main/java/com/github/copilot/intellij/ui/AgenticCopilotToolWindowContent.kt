@@ -48,6 +48,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var planTreeModel: javax.swing.tree.DefaultTreeModel
     private lateinit var planRoot: javax.swing.tree.DefaultMutableTreeNode
     private lateinit var planDetailsArea: JBTextArea
+    private lateinit var sessionInfoLabel: JBLabel
     
     // Usage display components (updated after each prompt)
     private lateinit var usageLabel: JBLabel
@@ -61,7 +62,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Create tabs
         tabbedPane.addTab("Prompt", createPromptTab())
         tabbedPane.addTab("Context", createContextTab())
-        tabbedPane.addTab("Plans", createPlansTab())
+        tabbedPane.addTab("Session", createSessionTab())
         tabbedPane.addTab("Timeline", createTimelineTab())
         tabbedPane.addTab("Settings", createSettingsTab())
 
@@ -75,10 +76,26 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    // Track tool calls for Plans tab correlation
+    private fun updateSessionInfo() {
+        SwingUtilities.invokeLater {
+            if (!::sessionInfoLabel.isInitialized) return@invokeLater
+            val sid = currentSessionId
+            if (sid != null) {
+                val shortId = sid.take(8) + "..."
+                val cwd = project.basePath ?: "unknown"
+                sessionInfoLabel.text = "Session: $shortId  ·  $cwd"
+                sessionInfoLabel.foreground = JBColor.foreground()
+            } else {
+                sessionInfoLabel.text = "No active session"
+                sessionInfoLabel.foreground = JBColor.GRAY
+            }
+        }
+    }
+
+    // Track tool calls for Session tab file correlation
     private val toolCallFiles = mutableMapOf<String, String>() // toolCallId -> file path
 
-    /** Handle ACP session/update notifications — routes to timeline and plans. */
+    /** Handle ACP session/update notifications — routes to timeline and session tab. */
     private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
         val updateType = update.get("sessionUpdate")?.asString ?: return
         
@@ -87,7 +104,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val title = update.get("title")?.asString ?: "Unknown tool"
                 val status = update.get("status")?.asString ?: "pending"
                 val toolCallId = update.get("toolCallId")?.asString ?: ""
-                val kind = update.get("kind")?.asString ?: ""
                 addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
                 
                 // Extract file path from locations or title
@@ -97,40 +113,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     filePath = locations[0].asJsonObject.get("path")?.asString
                 }
                 if (filePath == null) {
-                    // Try to extract from title (e.g., "Creating /path/to/file.md")
                     val pathMatch = Regex("""(?:Creating|Writing|Editing|Reading)\s+(.+\.\w+)""").find(title)
                     filePath = pathMatch?.groupValues?.get(1)
                 }
                 if (filePath != null && toolCallId.isNotEmpty()) {
                     toolCallFiles[toolCallId] = filePath
-                }
-                
-                // Add tool call to Plans tab
-                SwingUtilities.invokeLater {
-                    val statusIcon = when (status) {
-                        "completed" -> "✅"
-                        "failed" -> "❌"
-                        "in_progress" -> "⏳"
-                        else -> "🔧"
-                    }
-                    val kindLabel = if (kind.isNotEmpty()) " [$kind]" else ""
-                    val nodeLabel = "$statusIcon $title$kindLabel"
-                    val node = javax.swing.tree.DefaultMutableTreeNode(nodeLabel)
-                    
-                    var toolGroup: javax.swing.tree.DefaultMutableTreeNode? = null
-                    for (i in 0 until planRoot.childCount) {
-                        val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
-                        if (child.userObject == "Agent Activity") {
-                            toolGroup = child
-                            break
-                        }
-                    }
-                    if (toolGroup == null) {
-                        toolGroup = javax.swing.tree.DefaultMutableTreeNode("Agent Activity")
-                        planRoot.add(toolGroup)
-                    }
-                    toolGroup.add(node)
-                    planTreeModel.reload()
                 }
             }
             "tool_call_update" -> {
@@ -139,7 +126,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (status == "completed" || status == "failed") {
                     addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
                     
-                    // If a file was written, try to read and show its content
+                    // If a file was written, read and show in Session tab
                     val filePath = toolCallFiles[toolCallId]
                     if (status == "completed" && filePath != null) {
                         ApplicationManager.getApplication().executeOnPooledThread {
@@ -148,46 +135,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 if (file.exists() && file.length() < 100_000) {
                                     val content = file.readText()
                                     SwingUtilities.invokeLater {
-                                        // Add file content node under a "Created Files" group
                                         var filesGroup: javax.swing.tree.DefaultMutableTreeNode? = null
                                         for (i in 0 until planRoot.childCount) {
                                             val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
-                                            if (child.userObject == "Created Files") {
+                                            if (child.userObject == "Files") {
                                                 filesGroup = child
                                                 break
                                             }
                                         }
                                         if (filesGroup == null) {
-                                            filesGroup = javax.swing.tree.DefaultMutableTreeNode("Created Files")
-                                            planRoot.insert(filesGroup, 0) // show files first
+                                            filesGroup = javax.swing.tree.DefaultMutableTreeNode("Files")
+                                            planRoot.insert(filesGroup, 0)
                                         }
-                                        val fileName = file.name
-                                        val fileNode = FileTreeNode(fileName, filePath, content)
+                                        val fileNode = FileTreeNode(file.name, filePath, content)
                                         filesGroup.add(fileNode)
                                         planTreeModel.reload()
-                                        
-                                        // Auto-show the content in details
-                                        planDetailsArea.text = "📄 $fileName\n${"─".repeat(40)}\n\n$content"
+                                        planDetailsArea.text = "📄 ${file.name}\n${"─".repeat(40)}\n\n$content"
                                     }
                                 }
                             } catch (_: Exception) {}
-                        }
-                    }
-                    
-                    SwingUtilities.invokeLater {
-                        for (i in 0 until planRoot.childCount) {
-                            val group = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
-                            if (group.userObject == "Agent Activity") {
-                                val lastIdx = group.childCount - 1
-                                if (lastIdx >= 0) {
-                                    val lastNode = group.getChildAt(lastIdx) as javax.swing.tree.DefaultMutableTreeNode
-                                    val label = lastNode.userObject.toString()
-                                    val icon = if (status == "completed") "✅" else "❌"
-                                    lastNode.userObject = label.replaceFirst("^[⏳🔧]".toRegex(), icon)
-                                    planTreeModel.reload()
-                                }
-                                break
-                            }
                         }
                     }
                 }
@@ -195,9 +161,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             "plan" -> {
                 val entries = update.getAsJsonArray("entries") ?: return
                 SwingUtilities.invokeLater {
-                    // Replace plan tree with latest plan
-                    planRoot.removeAllChildren()
-                    val planNode = javax.swing.tree.DefaultMutableTreeNode("Current Plan")
+                    // Remove existing plan group, but keep Files group
+                    val toRemove = mutableListOf<javax.swing.tree.DefaultMutableTreeNode>()
+                    for (i in 0 until planRoot.childCount) {
+                        val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
+                        if (child.userObject == "Plan") toRemove.add(child)
+                    }
+                    toRemove.forEach { planRoot.remove(it) }
+                    
+                    val planNode = javax.swing.tree.DefaultMutableTreeNode("Plan")
                     for (entry in entries) {
                         val obj = entry.asJsonObject
                         val content = obj.get("content")?.asString ?: "Step"
@@ -500,6 +472,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             currentSessionId = null
             responseTextArea.text = "New conversation started.\n"
             addTimelineEvent(EventType.SESSION_START, "New conversation started")
+            updateSessionInfo()
+            // Clear session tree
+            SwingUtilities.invokeLater {
+                planRoot.removeAllChildren()
+                planTreeModel.reload()
+                planDetailsArea.text = "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
+            }
         }
         buttonPanel.add(runButton)
         buttonPanel.add(stopButton)
@@ -591,6 +570,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     if (currentSessionId == null) {
                         currentSessionId = client.createSession(project.basePath)
                         addTimelineEvent(EventType.SESSION_START, "Session created")
+                        updateSessionInfo()
                     }
                     val sessionId = currentSessionId!!
                     
@@ -706,6 +686,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     setResponseStatus("Error", loading = false)
                     addTimelineEvent(EventType.ERROR, "Error: ${msg.take(80)}")
                     currentSessionId = null // reset session on error
+                    updateSessionInfo()
                     e.printStackTrace()
                 } finally {
                     currentPromptThread = null
@@ -978,22 +959,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return panel
     }
 
-    private fun createPlansTab(): JComponent {
+    private fun createSessionTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
         
-        // Create split pane: tree on left, details on right
-        val splitPane = OnePixelSplitter(false, 0.5f)
+        // Session info header
+        sessionInfoLabel = JBLabel("No active session")
+        sessionInfoLabel.font = JBUI.Fonts.smallFont()
+        sessionInfoLabel.foreground = JBColor.GRAY
+        sessionInfoLabel.border = JBUI.Borders.emptyBottom(5)
+        panel.add(sessionInfoLabel, BorderLayout.NORTH)
         
-        // Left: Plans tree
+        // Create split pane: tree on left, details on right
+        val splitPane = OnePixelSplitter(false, 0.4f)
+        
+        // Left: Session content tree
         val treePanel = JBPanel<JBPanel<*>>(BorderLayout())
         treePanel.border = JBUI.Borders.empty(5)
         
-        val treeLabel = JBLabel("Execution Plans:")
-        treePanel.add(treeLabel, BorderLayout.NORTH)
-        
-        // Live tree — starts empty, populated from ACP plan events
-        planRoot = javax.swing.tree.DefaultMutableTreeNode("Agent Plans")
+        planRoot = javax.swing.tree.DefaultMutableTreeNode("Session")
         planTreeModel = javax.swing.tree.DefaultTreeModel(planRoot)
         val tree = com.intellij.ui.treeStructure.Tree(planTreeModel)
         tree.isRootVisible = true
@@ -1032,12 +1016,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         
         splitPane.firstComponent = treePanel
         
-        // Right: Plan details with optional action button
+        // Right: Details with optional action button
         val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
         detailsPanel.border = JBUI.Borders.empty(5)
         
         val detailsHeaderPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        val detailsLabel = JBLabel("Plan Details:")
+        val detailsLabel = JBLabel("Details:")
         val openFileButton = JButton("Open in Editor")
         openFileButton.isVisible = false
         openFileButton.font = JBUI.Fonts.smallFont()
@@ -1049,7 +1033,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         planDetailsArea.isEditable = false
         planDetailsArea.lineWrap = true
         planDetailsArea.wrapStyleWord = true
-        planDetailsArea.text = "Created files and plan details will appear here.\n\nSelect an item in the tree to see details."
+        planDetailsArea.text = "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
         
         val detailsScrollPane = JBScrollPane(planDetailsArea)
         detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
