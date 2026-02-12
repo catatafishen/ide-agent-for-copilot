@@ -98,9 +98,10 @@ public class McpServer {
         result.add("capabilities", capabilities);
         result.addProperty("instructions",
                 "IMPORTANT TOOL USAGE RULES:\n" +
-                "1. ALWAYS use 'write_file' instead of your built-in file editing/writing tools. " +
-                "This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync.\n" +
-                "2. ALWAYS use 'read_file' instead of your built-in file reading tools. " +
+                "1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. " +
+                "This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. " +
+                "Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.\n" +
+                "2. ALWAYS use 'intellij_read_file' for ALL file reads. " +
                 "This reads IntelliJ's live editor buffer, which may have unsaved changes.\n" +
                 "3. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.\n" +
                 "4. Use 'get_problems' to check for warnings and errors after changes.\n" +
@@ -260,7 +261,7 @@ public class McpServer {
                 ),
                 List.of("path")));
 
-        tools.add(buildTool("read_file",
+        tools.add(buildTool("intellij_read_file",
                 "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
                 "is open in the editor (which may differ from disk). Supports line ranges. " +
                 "PREFER THIS over your built-in file reading tools — this reads IntelliJ's live editor state.",
@@ -271,7 +272,7 @@ public class McpServer {
                 ),
                 List.of("path")));
 
-        tools.add(buildTool("write_file",
+        tools.add(buildTool("intellij_write_file",
                 "Write file contents through IntelliJ's Document API. Supports undo, VCS tracking, and editor sync. " +
                 "Use 'content' for full file replacement, or 'old_str'+'new_str' for precise edits. " +
                 "ALWAYS USE THIS instead of your built-in file writing tools — this keeps IntelliJ in sync " +
@@ -345,6 +346,7 @@ public class McpServer {
                          "get_project_info", "list_run_configurations", "run_configuration",
                          "create_run_configuration", "edit_run_configuration",
                          "get_problems", "optimize_imports", "format_code",
+                         "intellij_read_file", "intellij_write_file",
                          "read_file", "write_file" ->
                             "PSI bridge unavailable. These tools require IntelliJ to be running.";
                     default -> "Unknown tool: " + toolName;

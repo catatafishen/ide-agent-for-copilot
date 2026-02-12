@@ -140,8 +140,8 @@ public final class PsiBridgeService implements Disposable {
                 case "get_problems" -> getProblems(arguments);
                 case "optimize_imports" -> optimizeImports(arguments);
                 case "format_code" -> formatCode(arguments);
-                case "read_file" -> readFile(arguments);
-                case "write_file" -> writeFile(arguments);
+                case "read_file", "intellij_read_file" -> readFile(arguments);
+                case "write_file", "intellij_write_file" -> writeFile(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {

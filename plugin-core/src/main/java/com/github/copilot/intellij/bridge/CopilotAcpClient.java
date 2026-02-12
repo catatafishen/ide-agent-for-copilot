@@ -54,7 +54,7 @@ public class CopilotAcpClient implements Closeable {
         if (process != null) {
             LOG.info("Restarting ACP client (previous process died)");
             closed = false; // Reset closed flag for restart
-            try { if (writer != null) writer.close(); } catch (Exception ignored) {}
+            try { if (writer != null) writer.close(); } catch (IOException ignored) {}
             if (process.isAlive()) process.destroyForcibly();
             pendingRequests.clear();
             availableModels = null;
@@ -81,7 +81,7 @@ public class CopilotAcpClient implements Closeable {
 
         } catch (CopilotException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (IOException e) {
             throw new CopilotException("Failed to start Copilot ACP process", e);
         }
     }
@@ -94,6 +94,13 @@ public class CopilotAcpClient implements Closeable {
         cmd.add(copilotPath);
         cmd.add("--acp");
         cmd.add("--stdio");
+
+        // Deny built-in file I/O tools so the agent uses our MCP equivalents
+        // which go through IntelliJ's Document API for undo, VFS sync, and editor integration
+        for (String tool : new String[]{"read_file", "write_file", "edit_file", "create_file"}) {
+            cmd.add("--deny-tool");
+            cmd.add(tool);
+        }
 
         String mcpJarPath = findMcpServerJar();
         if (mcpJarPath != null) {
@@ -361,7 +368,7 @@ public class CopilotAcpClient implements Closeable {
             notification.add("params", params);
             sendRawMessage(notification);
             LOG.info("Sent session/cancel for session " + sessionId);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             LOG.warn("Failed to send session/cancel", e);
         }
     }
@@ -528,7 +535,7 @@ public class CopilotAcpClient implements Closeable {
                                     JsonObject result = new JsonObject();
                                     result.addProperty("content", content);
                                     response.add("result", result);
-                                } catch (Exception e) {
+                                } catch (IOException e) {
                                     JsonObject error = new JsonObject();
                                     error.addProperty("code", -32000);
                                     error.addProperty("message", "File not found: " + filePath);
@@ -553,7 +560,7 @@ public class CopilotAcpClient implements Closeable {
                                 try {
                                     java.nio.file.Files.writeString(java.nio.file.Paths.get(filePath), fileContent);
                                     response.add("result", new JsonObject());
-                                } catch (Exception e) {
+                                } catch (IOException e) {
                                     JsonObject error = new JsonObject();
                                     error.addProperty("code", -32000);
                                     error.addProperty("message", "Failed to write file: " + e.getMessage());
@@ -580,7 +587,7 @@ public class CopilotAcpClient implements Closeable {
 
                         // Also forward to notification listeners for timeline tracking
                         for (Consumer<JsonObject> listener : notificationListeners) {
-                            try { listener.accept(msg); } catch (Exception e) { LOG.warn("Listener error", e); }
+                            try { listener.accept(msg); } catch (RuntimeException e) { LOG.warn("Listener error", e); }
                         }
                     } else if (hasId) {
                         // Response to a request we sent
@@ -594,7 +601,7 @@ public class CopilotAcpClient implements Closeable {
                                 if (error.has("data") && !error.get("data").isJsonNull()) {
                                     try {
                                         errorMessage = error.get("data").getAsString();
-                                    } catch (Exception ignored) {}
+                                    } catch (ClassCastException | IllegalStateException ignored) {}
                                 }
                                 future.completeExceptionally(new CopilotException("ACP error: " + errorMessage, null, false));
                             } else if (msg.has("result")) {
@@ -608,12 +615,12 @@ public class CopilotAcpClient implements Closeable {
                         for (Consumer<JsonObject> listener : notificationListeners) {
                             try {
                                 listener.accept(msg);
-                            } catch (Exception e) {
+                            } catch (RuntimeException e) {
                                 LOG.warn("Notification listener error", e);
                             }
                         }
                     }
-                } catch (Exception e) {
+                } catch (com.google.gson.JsonParseException | IllegalStateException e) {
                     LOG.warn("Failed to parse ACP message: " + line, e);
                 }
             }
@@ -667,7 +674,7 @@ public class CopilotAcpClient implements Closeable {
                 String path = new String(check.getInputStream().readAllBytes()).trim().split("\\r?\\n")[0];
                 if (new File(path).exists()) return path;
             }
-        } catch (Exception ignored) {}
+        } catch (IOException | InterruptedException ignored) {}
 
         // Check known winget install location
         String wingetPath = System.getenv("LOCALAPPDATA") +
@@ -700,7 +707,7 @@ public class CopilotAcpClient implements Closeable {
                 File mcpJar = new File(jarDir, "mcp-server.jar");
                 if (mcpJar.exists()) return mcpJar.getAbsolutePath();
             }
-        } catch (Exception e) {
+        } catch (java.net.URISyntaxException | SecurityException e) {
             LOG.debug("Could not find MCP server JAR: " + e.getMessage());
         }
         return null;
@@ -710,7 +717,7 @@ public class CopilotAcpClient implements Closeable {
     public void close() {
         closed = true;
         if (writer != null) {
-            try { writer.close(); } catch (Exception ignored) {}
+            try { writer.close(); } catch (IOException ignored) {}
         }
         if (process != null && process.isAlive()) {
             process.destroy();
