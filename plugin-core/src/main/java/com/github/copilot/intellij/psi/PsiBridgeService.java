@@ -223,7 +223,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String searchSymbols(JsonObject args) {
-        String query = args.get("query").getAsString();
+        String query = args.has("query") ? args.get("query").getAsString() : "";
         String typeFilter = args.has("type") ? args.get("type").getAsString() : "";
 
         return ReadAction.compute(() -> {
@@ -231,6 +231,45 @@ public final class PsiBridgeService implements Disposable {
             Set<String> seen = new HashSet<>();
             String basePath = project.getBasePath();
             GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
+
+            // Wildcard/empty query: iterate all project files to collect symbols by type
+            if (query.isEmpty() || "*".equals(query)) {
+                if (typeFilter.isEmpty()) return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
+                ProjectFileIndex.getInstance(project).iterateContent(vf -> {
+                    if (vf.isDirectory() || (!vf.getName().endsWith(".java") && !vf.getName().endsWith(".kt")))
+                        return true;
+                    PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                    if (psiFile == null) return true;
+                    Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                    if (doc == null) return true;
+
+                    psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+                        @Override
+                        public void visitElement(@NotNull PsiElement element) {
+                            if (results.size() >= 200) return;
+                            if (element instanceof PsiNamedElement named) {
+                                String name = named.getName();
+                                String type = classifyElement(element);
+                                if (name != null && type != null && type.equals(typeFilter)) {
+                                    int line = doc.getLineNumber(element.getTextOffset()) + 1;
+                                    String relPath = relativize(basePath, vf.getPath());
+                                    String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;
+                                    if (seen.add(key)) {
+                                        results.add(String.format("%s:%d [%s] %s",
+                                                relPath != null ? relPath : vf.getPath(), line, type, name));
+                                    }
+                                }
+                            }
+                            super.visitElement(element);
+                        }
+                    });
+                    return results.size() < 200;
+                });
+                if (results.isEmpty()) return "No " + typeFilter + " symbols found in project";
+                return results.size() + " " + typeFilter + " symbols:\n" + String.join("\n", results);
+            }
+
+            // Exact word search via PSI index
 
             PsiSearchHelper.getInstance(project).processElementsWithWord(
                     (element, offsetInElement) -> {
@@ -1135,13 +1174,34 @@ public final class PsiBridgeService implements Disposable {
         String cls = element.getClass().getSimpleName();
 
         // Java PSI
-        if (cls.contains("PsiClass") && !cls.contains("Initializer")) return "class";
+        if (cls.contains("PsiClass") && !cls.contains("Initializer")) {
+            // Distinguish interfaces and enums from regular classes via reflection
+            try {
+                if ((boolean) element.getClass().getMethod("isInterface").invoke(element)) return "interface";
+                if ((boolean) element.getClass().getMethod("isEnum").invoke(element)) return "enum";
+            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                     | IllegalAccessException ignored) {
+            }
+            return "class";
+        }
         if (cls.contains("PsiMethod")) return "method";
         if (cls.contains("PsiField")) return "field";
         if (cls.contains("PsiEnumConstant")) return "field";
 
         // Kotlin PSI
-        if (cls.equals("KtClass") || cls.equals("KtObjectDeclaration")) return "class";
+        if (cls.equals("KtClass") || cls.equals("KtObjectDeclaration")) {
+            // KtClass can be class, interface, or enum — check via hasModifier or text
+            try {
+                // KtClass has isInterface() and isEnum() methods
+                var isInterface = element.getClass().getMethod("isInterface");
+                if ((boolean) isInterface.invoke(element)) return "interface";
+                var isEnum = element.getClass().getMethod("isEnum");
+                if ((boolean) isEnum.invoke(element)) return "enum";
+            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                     | IllegalAccessException ignored) {
+            }
+            return "class";
+        }
         if (cls.equals("KtNamedFunction")) return "function";
         if (cls.equals("KtProperty")) return "field";
         if (cls.equals("KtParameter")) return null; // skip parameters

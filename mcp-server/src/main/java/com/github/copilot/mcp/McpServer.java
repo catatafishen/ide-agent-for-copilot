@@ -106,9 +106,10 @@ public class McpServer {
         tools.add(buildTool("search_symbols",
                 "Search for class, method, function, or interface definitions across the project using " +
                 "IntelliJ's code analysis engine (AST). Returns file path, line number, and the definition line. " +
-                "More accurate than grep — understands code structure. PREFER THIS over grep for finding definitions.",
+                "More accurate than grep — understands code structure. PREFER THIS over grep for finding definitions. " +
+                "Use query='*' with a type filter to list ALL symbols of that type (e.g., all interfaces).",
                 Map.of(
-                    "query", Map.of("type", "string", "description", "Symbol name or pattern to search for (supports regex)"),
+                    "query", Map.of("type", "string", "description", "Symbol name to search for, or '*' to list all symbols of a given type"),
                     "type", Map.of("type", "string", "description", "Optional: filter by type (class, method, function, interface, field)", "default", "")
                 ),
                 List.of("query")));
