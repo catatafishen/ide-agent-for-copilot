@@ -424,7 +424,7 @@ public class McpServer {
         JsonObject arguments = params.has("arguments") ? params.getAsJsonObject("arguments") : new JsonObject();
 
         try {
-            // Try PSI bridge first for accurate AST-based analysis
+            // All tools go through the PSI bridge — no silent fallbacks
             String bridgeResult = tryPsiBridge(toolName, arguments);
 
             String resultText;
@@ -432,32 +432,10 @@ public class McpServer {
                 System.err.println("MCP: tool '" + toolName + "' handled by PSI bridge");
                 resultText = bridgeResult;
             } else {
-                // Fall back to regex-based analysis
-                resultText = switch (toolName) {
-                    case "search_symbols" -> searchSymbols(arguments);
-                    case "get_file_outline" -> getFileOutline(arguments);
-                    case "find_references" -> findReferences(arguments);
-                    case "list_project_files" -> listProjectFiles(arguments);
-                    case "list_tests" -> listTestsFallback(arguments);
-                    case "git_status" -> runGitFallback("status", arguments.has("verbose") && arguments.get("verbose").getAsBoolean() ? new String[]{} : new String[]{"-s"});
-                    case "git_diff" -> runGitDiffFallback(arguments);
-                    case "git_log" -> runGitLogFallback(arguments);
-                    case "git_blame" -> runGitBlameFallback(arguments);
-                    case "git_commit" -> runGitCommitFallback(arguments);
-                    case "git_stage" -> runGitStageFallback(arguments);
-                    case "git_unstage" -> runGitUnstageFallback(arguments);
-                    case "git_branch" -> runGitBranchFallback(arguments);
-                    case "git_stash" -> runGitStashFallback(arguments);
-                    case "git_show" -> runGitShowFallback(arguments);
-                    case "run_tests", "get_test_results", "get_coverage",
-                         "get_project_info", "list_run_configurations", "run_configuration",
-                         "create_run_configuration", "edit_run_configuration",
-                         "get_problems", "optimize_imports", "format_code",
-                         "intellij_read_file", "intellij_write_file",
-                         "read_file", "write_file" ->
-                            "PSI bridge unavailable. These tools require IntelliJ to be running.";
-                    default -> "Unknown tool: " + toolName;
-                };
+                resultText = "ERROR: IntelliJ PSI bridge is unavailable. " +
+                    "The tool '" + toolName + "' requires IntelliJ to be running with the Agentic Copilot plugin active. " +
+                    "Please check that IntelliJ is open and the plugin is enabled.";
+                System.err.println("MCP: PSI bridge unavailable for tool '" + toolName + "'");
             }
 
             JsonObject result = new JsonObject();
@@ -804,138 +782,5 @@ public class McpServer {
         if (lower.endsWith(".gradle") || lower.endsWith(".gradle.kts")) return "Gradle";
         if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "YAML";
         return "Other";
-    }
-
-    // --- Git tool fallbacks (CLI-based, no PSI bridge needed) ---
-
-    private static String runGit(String... args) throws IOException {
-        List<String> cmd = new ArrayList<>();
-        cmd.add("git");
-        cmd.add("--no-pager");
-        cmd.addAll(List.of(args));
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.directory(new File(projectRoot));
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        try { p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        return output.isBlank() ? "(no output)" : output;
-    }
-
-    private static String runGitFallback(String subcommand, String[] extraArgs) throws IOException {
-        String[] args = new String[1 + extraArgs.length];
-        args[0] = subcommand;
-        System.arraycopy(extraArgs, 0, args, 1, extraArgs.length);
-        return runGit(args);
-    }
-
-    private static String runGitDiffFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("diff");
-        if (args.has("staged") && args.get("staged").getAsBoolean()) gitArgs.add("--cached");
-        if (args.has("path")) gitArgs.add(args.get("path").getAsString());
-        if (args.has("commit")) gitArgs.add(args.get("commit").getAsString());
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitLogFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("log");
-        int maxCount = args.has("max_count") ? args.get("max_count").getAsInt() : 10;
-        gitArgs.add("-n");
-        gitArgs.add(String.valueOf(maxCount));
-        gitArgs.add("--format=%h %ad %an: %s");
-        gitArgs.add("--date=short");
-        if (args.has("path")) { gitArgs.add("--"); gitArgs.add(args.get("path").getAsString()); }
-        if (args.has("author")) { gitArgs.add("--author=" + args.get("author").getAsString()); }
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitBlameFallback(JsonObject args) throws IOException {
-        if (!args.has("path")) return "Error: 'path' parameter is required";
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("blame");
-        if (args.has("start_line") && args.has("end_line")) {
-            gitArgs.add("-L");
-            gitArgs.add(args.get("start_line").getAsInt() + "," + args.get("end_line").getAsInt());
-        }
-        gitArgs.add(args.get("path").getAsString());
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitCommitFallback(JsonObject args) throws IOException {
-        if (!args.has("message")) return "Error: 'message' parameter is required";
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("commit");
-        gitArgs.add("-m");
-        gitArgs.add(args.get("message").getAsString());
-        if (args.has("amend") && args.get("amend").getAsBoolean()) gitArgs.add("--amend");
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitStageFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("add");
-        if (args.has("paths")) {
-            args.getAsJsonArray("paths").forEach(p -> gitArgs.add(p.getAsString()));
-        } else if (args.has("all") && args.get("all").getAsBoolean()) {
-            gitArgs.add("-A");
-        } else {
-            return "Error: 'paths' array or 'all: true' is required";
-        }
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitUnstageFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("restore");
-        gitArgs.add("--staged");
-        if (args.has("paths")) {
-            args.getAsJsonArray("paths").forEach(p -> gitArgs.add(p.getAsString()));
-        } else {
-            gitArgs.add(".");
-        }
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitBranchFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        if (args.has("create") && !args.get("create").getAsString().isEmpty()) {
-            gitArgs.add("checkout");
-            gitArgs.add("-b");
-            gitArgs.add(args.get("create").getAsString());
-        } else if (args.has("switch_to") && !args.get("switch_to").getAsString().isEmpty()) {
-            gitArgs.add("checkout");
-            gitArgs.add(args.get("switch_to").getAsString());
-        } else if (args.has("delete") && !args.get("delete").getAsString().isEmpty()) {
-            gitArgs.add("branch");
-            gitArgs.add("-d");
-            gitArgs.add(args.get("delete").getAsString());
-        } else {
-            gitArgs.add("branch");
-            gitArgs.add("-a");
-        }
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitStashFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("stash");
-        String action = args.has("action") ? args.get("action").getAsString() : "push";
-        gitArgs.add(action);
-        if ("push".equals(action) && args.has("message")) {
-            gitArgs.add("-m");
-            gitArgs.add(args.get("message").getAsString());
-        }
-        return runGit(gitArgs.toArray(String[]::new));
-    }
-
-    private static String runGitShowFallback(JsonObject args) throws IOException {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("show");
-        String ref = args.has("ref") ? args.get("ref").getAsString() : "HEAD";
-        gitArgs.add(ref);
-        gitArgs.add("--stat");
-        return runGit(gitArgs.toArray(String[]::new));
     }
 }
