@@ -1503,7 +1503,8 @@ public final class PsiBridgeService implements Disposable {
 
     private String runInTerminal(JsonObject args) {
         String command = args.get("command").getAsString();
-        String shellPath = args.has("shell") ? args.get("shell").getAsString() : null;
+        String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
+        boolean newTab = args.has("new_tab") && args.get("new_tab").getAsBoolean();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
@@ -1513,29 +1514,31 @@ public final class PsiBridgeService implements Disposable {
                 var getInstance = terminalViewClass.getMethod("getInstance", Project.class);
                 var manager = getInstance.invoke(null, project);
 
-                // Create a new terminal tab with the command
-                if (shellPath != null) {
-                    // Use specified shell
-                    var createShellWidget = terminalViewClass.getMethod(
-                            "createLocalShellWidget", String.class, String.class);
-                    var widget = createShellWidget.invoke(manager, project.getBasePath(),
-                            "Agent: " + truncateForTitle(command));
+                Object widget = null;
+                String usedTab = null;
 
-                    // Send command to the widget
-                    var executeCommand = widget.getClass().getMethod("executeCommand", String.class);
-                    executeCommand.invoke(widget, command);
-                    resultFuture.complete("Terminal opened with shell and command sent: " + command);
-                } else {
-                    // Use default shell
-                    var createShellWidget = terminalViewClass.getMethod(
-                            "createLocalShellWidget", String.class, String.class);
-                    var widget = createShellWidget.invoke(manager, project.getBasePath(),
-                            "Agent: " + truncateForTitle(command));
-
-                    var executeCommand = widget.getClass().getMethod("executeCommand", String.class);
-                    executeCommand.invoke(widget, command);
-                    resultFuture.complete("Terminal opened and command sent: " + command);
+                // Try to reuse existing terminal tab if tab_name specified and not forcing new
+                if (tabName != null && !newTab) {
+                    widget = findTerminalWidget(manager, tabName);
+                    if (widget != null) usedTab = tabName;
                 }
+
+                // Create new tab if no existing tab found or new_tab requested
+                if (widget == null) {
+                    String title = tabName != null ? tabName : "Agent: " + truncateForTitle(command);
+                    var createShellWidget = terminalViewClass.getMethod(
+                            "createLocalShellWidget", String.class, String.class);
+                    widget = createShellWidget.invoke(manager, project.getBasePath(), title);
+                    usedTab = title + " (new)";
+                }
+
+                // Send command to the widget
+                var executeCommand = widget.getClass().getMethod("executeCommand", String.class);
+                executeCommand.invoke(widget, command);
+                resultFuture.complete("Command sent to terminal '" + usedTab + "': " + command +
+                        "\n\nNote: Terminal output is visible to the user in IntelliJ but not captured here. " +
+                        "Use run_command if you need the output returned to you.");
+
             } catch (ClassNotFoundException e) {
                 resultFuture.complete("Terminal plugin not available. Use run_command tool instead.");
             } catch (Exception e) {
@@ -1551,13 +1554,82 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    private String listTerminals() {
-        StringBuilder result = new StringBuilder("Available terminals:\n\n");
+    /** Find an existing terminal widget by tab name. */
+    private Object findTerminalWidget(Object manager, String tabName) {
+        try {
+            // Try to get the ToolWindow content and find matching tab
+            var toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+            var toolWindow = toolWindowManager.getToolWindow("Terminal");
+            if (toolWindow == null) return null;
 
-        // Detect available shells on the system
+            var contentManager = toolWindow.getContentManager();
+            for (var content : contentManager.getContents()) {
+                String displayName = content.getDisplayName();
+                if (displayName != null && displayName.contains(tabName)) {
+                    // Try to get the widget from the content component
+                    var component = content.getComponent();
+                    if (component != null) {
+                        // Walk component tree to find ShellTerminalWidget
+                        return findWidgetInComponent(component);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Could not find terminal tab: " + tabName, e);
+        }
+        return null;
+    }
+
+    /** Recursively find a terminal widget in a component tree. */
+    private Object findWidgetInComponent(java.awt.Component component) {
+        String className = component.getClass().getName();
+        if (className.contains("ShellTerminalWidget") || className.contains("TerminalWidget")) {
+            try {
+                component.getClass().getMethod("executeCommand", String.class);
+                return component;
+            } catch (NoSuchMethodException ignored) {
+            }
+        }
+        if (component instanceof java.awt.Container container) {
+            for (var child : container.getComponents()) {
+                Object found = findWidgetInComponent(child);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private String listTerminals() {
+        StringBuilder result = new StringBuilder();
+
+        // 1. Show currently open terminal tabs
+        result.append("Open terminal tabs:\n");
+        try {
+            var toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+            var toolWindow = toolWindowManager.getToolWindow("Terminal");
+            if (toolWindow != null) {
+                var contentManager = toolWindow.getContentManager();
+                var contents = contentManager.getContents();
+                if (contents.length == 0) {
+                    result.append("  (none)\n");
+                } else {
+                    for (var content : contents) {
+                        String name = content.getDisplayName();
+                        boolean selected = content == contentManager.getSelectedContent();
+                        result.append(selected ? "  ▸ " : "  • ").append(name).append("\n");
+                    }
+                }
+            } else {
+                result.append("  (Terminal tool window not available)\n");
+            }
+        } catch (Exception e) {
+            result.append("  (Could not list open terminals)\n");
+        }
+
+        // 2. Available shells
+        result.append("\nAvailable shells:\n");
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("win")) {
-            // Windows shells
             checkShell(result, "PowerShell", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
             checkShell(result, "PowerShell 7", "C:\\Program Files\\PowerShell\\7\\pwsh.exe");
             checkShell(result, "Command Prompt", "C:\\Windows\\System32\\cmd.exe");
@@ -1570,7 +1642,7 @@ public final class PsiBridgeService implements Disposable {
             checkShell(result, "sh", "/bin/sh");
         }
 
-        // Show IntelliJ's configured default shell
+        // 3. IntelliJ default shell
         try {
             var settingsClass = Class.forName("org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider");
             var getInstance = settingsClass.getMethod("getInstance", Project.class);
@@ -1582,6 +1654,7 @@ public final class PsiBridgeService implements Disposable {
             result.append("\nCould not determine IntelliJ default shell.");
         }
 
+        result.append("\n\nTip: Use run_in_terminal with tab_name to reuse an existing tab, or new_tab=true to force a new one.");
         return result.toString();
     }
 

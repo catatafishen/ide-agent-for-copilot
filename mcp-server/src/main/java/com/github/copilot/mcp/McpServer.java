@@ -441,13 +441,15 @@ public class McpServer {
         // ---- Terminal tools ----
 
         tools.add(buildTool("run_in_terminal",
-                "Open a new IntelliJ Terminal tab and execute a command. The terminal is interactive and visible " +
-                        "to the user. Use this for commands that need an interactive shell, long-running processes, " +
-                        "or when you want the user to see live output in a terminal. " +
-                        "Use list_terminals to see available shells.",
+                "Open an IntelliJ Terminal tab and execute a command. The terminal is interactive and visible " +
+                        "to the user. Use this for interactive commands or when the user wants to see live output. " +
+                        "Note: terminal output is NOT captured — use run_command if you need output returned. " +
+                        "Use list_terminals to see open tabs and available shells. " +
+                        "Specify tab_name to reuse an existing terminal tab.",
                 Map.of(
                         "command", Map.of("type", "string", "description", "Command to execute in the terminal"),
-                        "shell", Map.of("type", "string", "description", "Shell executable path (e.g., 'powershell.exe', 'cmd.exe'). Uses IntelliJ's default shell if not specified.")
+                        "tab_name", Map.of("type", "string", "description", "Name of existing terminal tab to reuse, or name for a new tab"),
+                        "new_tab", Map.of("type", "boolean", "description", "Force opening a new terminal tab even if tab_name matches an existing one (default: false)")
                 ),
                 List.of("command")));
 
