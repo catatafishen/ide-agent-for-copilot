@@ -27,7 +27,7 @@ public class CopilotAcpClient implements Closeable {
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
 
     /** Permission kinds that are denied so the agent uses IntelliJ MCP tools instead. */
-    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create");
+    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create", "runInTerminal");
 
     private final Gson gson = new Gson();
     private final AtomicLong requestIdCounter = new AtomicLong(1);
@@ -50,8 +50,9 @@ public class CopilotAcpClient implements Closeable {
     private List<Model> availableModels;
     private String currentModelId;
 
-    // Flag: set when a built-in write permission (edit/create) is denied during a prompt turn
-    private volatile boolean builtInWriteDeniedDuringTurn = false;
+    // Flag: set when a built-in permission (edit/create/runInTerminal) is denied during a prompt turn
+    private volatile boolean builtInActionDeniedDuringTurn = false;
+    private volatile String lastDeniedKind = "";
 
     /**
      * Start the copilot ACP process and perform the initialize handshake.
@@ -341,16 +342,17 @@ public class CopilotAcpClient implements Closeable {
             }
 
             // Send request - response comes after all streaming chunks
-            builtInWriteDeniedDuringTurn = false;
+            builtInActionDeniedDuringTurn = false;
             LOG.info("sendPrompt: sending session/prompt request");
             JsonObject result = sendRequest("session/prompt", params, 300);
             LOG.info("sendPrompt: got result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
 
-            // If a built-in write was denied, send a retry prompt telling agent to use MCP tools
-            if (builtInWriteDeniedDuringTurn) {
-                builtInWriteDeniedDuringTurn = false;
-                LOG.info("sendPrompt: built-in write denied, sending retry with MCP tool instruction");
-                result = sendRetryPrompt(sessionId, model);
+            // If a built-in action was denied, send a retry prompt telling agent to use MCP tools
+            if (builtInActionDeniedDuringTurn) {
+                String deniedKind = lastDeniedKind;
+                builtInActionDeniedDuringTurn = false;
+                LOG.info("sendPrompt: built-in " + deniedKind + " denied, sending retry with MCP tool instruction");
+                result = sendRetryPrompt(sessionId, model, deniedKind);
             }
 
             return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
@@ -598,7 +600,8 @@ public class CopilotAcpClient implements Closeable {
         if (DENIED_PERMISSION_KINDS.contains(permKind)) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
-            builtInWriteDeniedDuringTurn = true;
+            builtInActionDeniedDuringTurn = true;
+            lastDeniedKind = permKind;
             sendPermissionResponse(reqId, rejectOptionId);
         } else {
             String allowOptionId = findAllowOption(reqParams);
@@ -608,20 +611,29 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
-     * Build and send a retry prompt after a built-in write was denied,
-     * instructing the agent to use IntelliJ MCP tools.
+     * Build and send a retry prompt after a built-in action was denied,
+     * instructing the agent to use IntelliJ MCP tools instead.
      */
-    private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model) throws CopilotException {
+    private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
         JsonObject retryParams = new JsonObject();
         retryParams.addProperty("sessionId", sessionId);
         JsonArray retryPrompt = new JsonArray();
         JsonObject retryContent = new JsonObject();
         retryContent.addProperty("type", "text");
-        retryContent.addProperty("text",
-            "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
-            "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +
-            "For edits, use intellij_write_file with old_str/new_str parameters. " +
-            "For new files, use intellij_write_file with the full content parameter.");
+
+        String instruction = switch (deniedKind) {
+            case "runInTerminal" ->
+                "The terminal command was denied because this environment requires using IntelliJ tools for command execution. " +
+                "Please retry using the run_command MCP tool, which executes commands through IntelliJ's process management. " +
+                "The output will be visible in IntelliJ's Run panel and returned to you. " +
+                "You can also use read_run_output to read the Run panel content afterward.";
+            default ->
+                "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
+                "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +
+                "For edits, use intellij_write_file with old_str/new_str parameters. " +
+                "For new files, use intellij_write_file with the full content parameter.";
+        };
+        retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
         retryParams.add("prompt", retryPrompt);
         if (model != null) {

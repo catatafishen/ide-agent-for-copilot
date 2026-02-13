@@ -1505,10 +1505,23 @@ public final class PsiBridgeService implements Disposable {
         return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
             try {
                 var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
-                var descriptors = manager.getAllDescriptors();
+                var descriptors = new java.util.ArrayList<>(manager.getAllDescriptors());
+
+                // Also include debug session descriptors
+                try {
+                    var debugManager = com.intellij.xdebugger.XDebuggerManager.getInstance(project);
+                    for (var session : debugManager.getDebugSessions()) {
+                        var rd = session.getRunContentDescriptor();
+                        if (rd != null && !descriptors.contains(rd)) {
+                            descriptors.add(rd);
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // XDebugger may not be available
+                }
 
                 if (descriptors.isEmpty()) {
-                    return "No Run panel tabs available.";
+                    return "No Run or Debug panel tabs available.";
                 }
 
                 // Find the matching descriptor (by tab name or most recent)
@@ -1533,36 +1546,13 @@ public final class PsiBridgeService implements Disposable {
 
                 var console = target.getExecutionConsole();
                 if (console == null) {
-                    return "Run tab '" + target.getDisplayName() + "' has no console.";
+                    return "Tab '" + target.getDisplayName() + "' has no console.";
                 }
 
-                // Try to extract text from ConsoleView
-                String text = null;
-                if (console instanceof com.intellij.execution.ui.ConsoleView consoleView) {
-                    // ConsoleViewImpl exposes getText() but ConsoleView interface doesn't
-                    // Use reflection to access getText() if available
-                    try {
-                        var getTextMethod = console.getClass().getMethod("getText");
-                        text = (String) getTextMethod.invoke(console);
-                    } catch (NoSuchMethodException e) {
-                        // Fall back to editor document if available
-                        try {
-                            var getEditorMethod = console.getClass().getMethod("getEditor");
-                            var editor = getEditorMethod.invoke(console);
-                            if (editor != null) {
-                                var getDocMethod = editor.getClass().getMethod("getDocument");
-                                var doc = getDocMethod.invoke(editor);
-                                if (doc instanceof Document document) {
-                                    text = document.getText();
-                                }
-                            }
-                        } catch (Exception ignored) {
-                        }
-                    }
-                }
+                String text = extractConsoleText(console);
 
                 if (text == null || text.isEmpty()) {
-                    return "Run tab '" + target.getDisplayName() + "' has no text content (console may still be loading or is an unsupported type).";
+                    return "Tab '" + target.getDisplayName() + "' has no text content (console may still be loading or is an unsupported type).";
                 }
 
                 StringBuilder result = new StringBuilder();
@@ -1581,6 +1571,103 @@ public final class PsiBridgeService implements Disposable {
                 return "Error reading Run output: " + e.getMessage();
             }
         });
+    }
+
+    /** Extract text from any type of ExecutionConsole (regular, test runner, etc.) */
+    private String extractConsoleText(com.intellij.execution.ui.ExecutionConsole console) {
+        // 1. Try SMTRunnerConsoleView (test runner) — get both test tree and console output
+        try {
+            var getResultsViewer = console.getClass().getMethod("getResultsViewer");
+            var viewer = getResultsViewer.invoke(console);
+            if (viewer != null) {
+                StringBuilder testOutput = new StringBuilder();
+                // Get test tree summary via reflection
+                var getAllTests = viewer.getClass().getMethod("getAllTests");
+                @SuppressWarnings("unchecked")
+                var tests = (java.util.List<?>) getAllTests.invoke(viewer);
+                if (tests != null && !tests.isEmpty()) {
+                    testOutput.append("=== Test Results ===\n");
+                    for (var test : tests) {
+                        var getName = test.getClass().getMethod("getPresentableName");
+                        var isPassed = test.getClass().getMethod("isPassed");
+                        var isDefect = test.getClass().getMethod("isDefect");
+                        String name = (String) getName.invoke(test);
+                        boolean passed = (boolean) isPassed.invoke(test);
+                        boolean defect = (boolean) isDefect.invoke(test);
+                        String status = passed ? "✓ PASSED" : (defect ? "✗ FAILED" : "? UNKNOWN");
+                        testOutput.append("  ").append(status).append(" ").append(name).append("\n");
+
+                        // For failed tests, try to get the error message
+                        if (defect) {
+                            try {
+                                var getErrorMessage = test.getClass().getMethod("getErrorMessage");
+                                String errorMsg = (String) getErrorMessage.invoke(test);
+                                if (errorMsg != null && !errorMsg.isEmpty()) {
+                                    testOutput.append("    Error: ").append(errorMsg).append("\n");
+                                }
+                                var getStacktrace = test.getClass().getMethod("getStacktrace");
+                                String stacktrace = (String) getStacktrace.invoke(test);
+                                if (stacktrace != null && !stacktrace.isEmpty()) {
+                                    testOutput.append("    Stacktrace:\n").append(stacktrace).append("\n");
+                                }
+                            } catch (NoSuchMethodException ignored) {
+                            }
+                        }
+                    }
+                }
+
+                // Also get the console text portion of the test runner
+                try {
+                    var getConsole = console.getClass().getMethod("getConsole");
+                    var innerConsole = getConsole.invoke(console);
+                    if (innerConsole != null) {
+                        String consoleText = extractPlainConsoleText(innerConsole);
+                        if (consoleText != null && !consoleText.isEmpty()) {
+                            testOutput.append("\n=== Console Output ===\n").append(consoleText);
+                        }
+                    }
+                } catch (NoSuchMethodException ignored) {
+                }
+
+                if (!testOutput.isEmpty()) return testOutput.toString();
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Not an SMTRunnerConsoleView
+        } catch (Exception e) {
+            LOG.warn("Failed to extract test runner output", e);
+        }
+
+        // 2. Try plain ConsoleView getText()
+        return extractPlainConsoleText(console);
+    }
+
+    /** Extract plain text from a ConsoleView via getText() or editor document. */
+    private String extractPlainConsoleText(Object console) {
+        // Try getText()
+        try {
+            var getTextMethod = console.getClass().getMethod("getText");
+            String text = (String) getTextMethod.invoke(console);
+            if (text != null && !text.isEmpty()) return text;
+        } catch (NoSuchMethodException ignored) {
+        } catch (Exception e) {
+            LOG.warn("getText() failed", e);
+        }
+
+        // Try editor → document
+        try {
+            var getEditorMethod = console.getClass().getMethod("getEditor");
+            var editor = getEditorMethod.invoke(console);
+            if (editor != null) {
+                var getDocMethod = editor.getClass().getMethod("getDocument");
+                var doc = getDocMethod.invoke(editor);
+                if (doc instanceof Document document) {
+                    return document.getText();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return null;
     }
 
     private record ClassInfo(String fqn, Module module) {
