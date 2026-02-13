@@ -96,6 +96,11 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private void writeBridgeFile() {
+        // Don't overwrite the bridge file when running inside unit tests
+        if (ApplicationManager.getApplication().isUnitTestMode()) {
+            LOG.info("Skipping bridge file write in unit test mode");
+            return;
+        }
         try {
             Path bridgeDir = Path.of(System.getProperty("user.home"), ".copilot");
             Files.createDirectories(bridgeDir);
@@ -152,6 +157,17 @@ public final class PsiBridgeService implements Disposable {
                 case "format_code" -> formatCode(arguments);
                 case "read_file", "intellij_read_file" -> readFile(arguments);
                 case "write_file", "intellij_write_file" -> writeFile(arguments);
+                // Git tools
+                case "git_status" -> gitStatus(arguments);
+                case "git_diff" -> gitDiff(arguments);
+                case "git_log" -> gitLog(arguments);
+                case "git_blame" -> gitBlame(arguments);
+                case "git_commit" -> gitCommit(arguments);
+                case "git_stage" -> gitStage(arguments);
+                case "git_unstage" -> gitUnstage(arguments);
+                case "git_branch" -> gitBranch(arguments);
+                case "git_stash" -> gitStash(arguments);
+                case "git_show" -> gitShow(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -1036,6 +1052,253 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
+    // ---- Git tools ----
+
+    /**
+     * Execute a git command in the project root directory.
+     * Returns stdout on success, or "Error: ..." on failure.
+     */
+    private String runGit(String... args) throws Exception {
+        String basePath = project.getBasePath();
+        if (basePath == null) return "Error: no project base path";
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add("git");
+        cmd.add("--no-pager");
+        cmd.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new java.io.File(basePath));
+        pb.redirectErrorStream(false);
+        Process p = pb.start();
+
+        String stdout = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String stderr = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+
+        boolean finished = p.waitFor(30, TimeUnit.SECONDS);
+        if (!finished) {
+            p.destroyForcibly();
+            return "Error: git command timed out";
+        }
+
+        if (p.exitValue() != 0) {
+            return "Error (exit " + p.exitValue() + "): " + stderr.trim();
+        }
+        return stdout;
+    }
+
+    private String gitStatus(JsonObject args) throws Exception {
+        boolean verbose = args.has("verbose") && args.get("verbose").getAsBoolean();
+        if (verbose) {
+            return runGit("status");
+        }
+        return runGit("status", "--short", "--branch");
+    }
+
+    private String gitDiff(JsonObject args) throws Exception {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("diff");
+
+        if (args.has("staged") && args.get("staged").getAsBoolean()) {
+            gitArgs.add("--cached");
+        }
+        if (args.has("commit")) {
+            gitArgs.add(args.get("commit").getAsString());
+        }
+        if (args.has("path")) {
+            gitArgs.add("--");
+            gitArgs.add(args.get("path").getAsString());
+        }
+        if (args.has("stat_only") && args.get("stat_only").getAsBoolean()) {
+            gitArgs.add(1, "--stat");
+        }
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    private String gitLog(JsonObject args) throws Exception {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("log");
+
+        int maxCount = args.has("max_count") ? args.get("max_count").getAsInt() : 20;
+        gitArgs.add("-" + maxCount);
+
+        String format = args.has("format") ? args.get("format").getAsString() : "medium";
+        switch (format) {
+            case "oneline" -> gitArgs.add("--oneline");
+            case "short" -> gitArgs.add("--format=%h %s (%an, %ar)");
+            case "full" -> gitArgs.add("--format=commit %H%nAuthor: %an <%ae>%nDate:   %ad%n%n    %s%n%n%b");
+            default -> {} // "medium" is git default
+        }
+
+        if (args.has("author")) {
+            gitArgs.add("--author=" + args.get("author").getAsString());
+        }
+        if (args.has("since")) {
+            gitArgs.add("--since=" + args.get("since").getAsString());
+        }
+        if (args.has("path")) {
+            gitArgs.add("--");
+            gitArgs.add(args.get("path").getAsString());
+        }
+        if (args.has("branch")) {
+            gitArgs.add(2, args.get("branch").getAsString());
+        }
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    private String gitBlame(JsonObject args) throws Exception {
+        if (!args.has("path")) return "Error: 'path' parameter is required";
+
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("blame");
+
+        if (args.has("line_start") && args.has("line_end")) {
+            gitArgs.add("-L");
+            gitArgs.add(args.get("line_start").getAsInt() + "," + args.get("line_end").getAsInt());
+        }
+
+        gitArgs.add(args.get("path").getAsString());
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    private String gitCommit(JsonObject args) throws Exception {
+        if (!args.has("message")) return "Error: 'message' parameter is required";
+
+        // Save all documents before committing to ensure disk matches editor state
+        ApplicationManager.getApplication().invokeAndWait(() ->
+            ApplicationManager.getApplication().runWriteAction(() ->
+                FileDocumentManager.getInstance().saveAllDocuments()));
+
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("commit");
+
+        if (args.has("amend") && args.get("amend").getAsBoolean()) {
+            gitArgs.add("--amend");
+        }
+        if (args.has("all") && args.get("all").getAsBoolean()) {
+            gitArgs.add("--all");
+        }
+
+        gitArgs.add("-m");
+        gitArgs.add(args.get("message").getAsString());
+
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    private String gitStage(JsonObject args) throws Exception {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("add");
+
+        if (args.has("all") && args.get("all").getAsBoolean()) {
+            gitArgs.add("--all");
+        } else if (args.has("paths")) {
+            for (var elem : args.getAsJsonArray("paths")) {
+                gitArgs.add(elem.getAsString());
+            }
+        } else if (args.has("path")) {
+            gitArgs.add(args.get("path").getAsString());
+        } else {
+            return "Error: 'path', 'paths', or 'all' parameter is required";
+        }
+
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    private String gitUnstage(JsonObject args) throws Exception {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("restore");
+        gitArgs.add("--staged");
+
+        if (args.has("paths")) {
+            for (var elem : args.getAsJsonArray("paths")) {
+                gitArgs.add(elem.getAsString());
+            }
+        } else if (args.has("path")) {
+            gitArgs.add(args.get("path").getAsString());
+        } else {
+            return "Error: 'path' or 'paths' parameter is required";
+        }
+
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    private String gitBranch(JsonObject args) throws Exception {
+        String action = args.has("action") ? args.get("action").getAsString() : "list";
+
+        return switch (action) {
+            case "list" -> {
+                boolean all = args.has("all") && args.get("all").getAsBoolean();
+                yield runGit("branch", all ? "--all" : "--list", "-v");
+            }
+            case "create" -> {
+                if (!args.has("name")) yield "Error: 'name' required for create";
+                String base = args.has("base") ? args.get("base").getAsString() : "HEAD";
+                yield runGit("branch", args.get("name").getAsString(), base);
+            }
+            case "switch", "checkout" -> {
+                if (!args.has("name")) yield "Error: 'name' required for switch";
+                yield runGit("switch", args.get("name").getAsString());
+            }
+            case "delete" -> {
+                if (!args.has("name")) yield "Error: 'name' required for delete";
+                boolean force = args.has("force") && args.get("force").getAsBoolean();
+                yield runGit("branch", force ? "-D" : "-d", args.get("name").getAsString());
+            }
+            default -> "Error: unknown action '" + action + "'. Use: list, create, switch, delete";
+        };
+    }
+
+    private String gitStash(JsonObject args) throws Exception {
+        String action = args.has("action") ? args.get("action").getAsString() : "list";
+
+        return switch (action) {
+            case "list" -> runGit("stash", "list");
+            case "push", "save" -> {
+                List<String> gitArgs = new ArrayList<>(List.of("stash", "push"));
+                if (args.has("message")) {
+                    gitArgs.add("-m");
+                    gitArgs.add(args.get("message").getAsString());
+                }
+                if (args.has("include_untracked") && args.get("include_untracked").getAsBoolean()) {
+                    gitArgs.add("--include-untracked");
+                }
+                yield runGit(gitArgs.toArray(new String[0]));
+            }
+            case "pop" -> {
+                String index = args.has("index") ? args.get("index").getAsString() : "";
+                yield index.isEmpty() ? runGit("stash", "pop") : runGit("stash", "pop", "stash@{" + index + "}");
+            }
+            case "apply" -> {
+                String index = args.has("index") ? args.get("index").getAsString() : "";
+                yield index.isEmpty() ? runGit("stash", "apply") : runGit("stash", "apply", "stash@{" + index + "}");
+            }
+            case "drop" -> {
+                String index = args.has("index") ? args.get("index").getAsString() : "";
+                yield index.isEmpty() ? runGit("stash", "drop") : runGit("stash", "drop", "stash@{" + index + "}");
+            }
+            default -> "Error: unknown stash action '" + action + "'. Use: list, push, pop, apply, drop";
+        };
+    }
+
+    private String gitShow(JsonObject args) throws Exception {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("show");
+
+        String ref = args.has("ref") ? args.get("ref").getAsString() : "HEAD";
+        gitArgs.add(ref);
+
+        if (args.has("stat_only") && args.get("stat_only").getAsBoolean()) {
+            gitArgs.add("--stat");
+        }
+        if (args.has("path")) {
+            gitArgs.add("--");
+            gitArgs.add(args.get("path").getAsString());
+        }
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    // ---- End git tools ----
+
     private record ClassInfo(String fqn, Module module) {
     }
 
@@ -1580,6 +1843,8 @@ public final class PsiBridgeService implements Disposable {
             httpServer = null;
             LOG.info("PSI Bridge stopped");
         }
+        // Don't delete the bridge file in unit test mode (we didn't write it)
+        if (ApplicationManager.getApplication().isUnitTestMode()) return;
         try {
             Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
             Files.deleteIfExists(bridgeFile);

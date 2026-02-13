@@ -11,14 +11,10 @@ import java.util.regex.*;
 import java.util.stream.*;
 
 /**
- * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence tools.
+ * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
  *
- * Provides tools:
- * - search_symbols: Find class/method/function definitions across the project
- * - get_file_outline: Extract structure (classes, methods, fields) from a source file
- * - find_references: Find usages of a symbol name across the project
- * - list_project_files: List source files in the project with type info
+ * Provides 28 tools: code navigation, file I/O, testing, code quality, run configs, and git operations.
  */
 public class McpServer {
 
@@ -285,6 +281,107 @@ public class McpServer {
                 ),
                 List.of("path")));
 
+        // ---- Git tools ----
+
+        tools.add(buildTool("git_status",
+                "Show the working tree status: changed, staged, and untracked files. " +
+                "Returns short format by default (M/A/D/?? markers).",
+                Map.of(
+                    "verbose", Map.of("type", "boolean", "description", "If true, show full 'git status' output instead of short format")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_diff",
+                "Show changes between working tree, staging area, or commits. " +
+                "By default shows unstaged changes. Use 'staged' for staged changes.",
+                Map.of(
+                    "staged", Map.of("type", "boolean", "description", "If true, show staged (cached) changes instead of working tree"),
+                    "commit", Map.of("type", "string", "description", "Compare against this commit (e.g., 'HEAD~1', a commit SHA, or 'main')"),
+                    "path", Map.of("type", "string", "description", "Limit diff to this file path"),
+                    "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats (insertions/deletions), not full diff")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_log",
+                "Show commit history. Returns last 20 commits by default in short format.",
+                Map.of(
+                    "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show (default: 20)"),
+                    "format", Map.of("type", "string", "description", "Output format: 'oneline', 'short', 'medium' (default), 'full'"),
+                    "author", Map.of("type", "string", "description", "Filter commits by author name or email"),
+                    "since", Map.of("type", "string", "description", "Show commits after this date (e.g., '2024-01-01', '1 week ago')"),
+                    "path", Map.of("type", "string", "description", "Show only commits touching this file"),
+                    "branch", Map.of("type", "string", "description", "Show commits from this branch (default: current)")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_blame",
+                "Show line-by-line authorship (blame/annotate) for a file. " +
+                "Shows who last modified each line, when, and in which commit.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "File path to blame"),
+                    "line_start", Map.of("type", "integer", "description", "Start line number for partial blame"),
+                    "line_end", Map.of("type", "integer", "description", "End line number for partial blame")
+                ),
+                List.of("path")));
+
+        tools.add(buildTool("git_commit",
+                "Commit staged changes with a message. Supports amend and commit-all. " +
+                "Stage files first with git_stage, or use 'all' to commit all tracked changes.",
+                Map.of(
+                    "message", Map.of("type", "string", "description", "Commit message (use conventional commits format)"),
+                    "amend", Map.of("type", "boolean", "description", "If true, amend the previous commit instead of creating a new one"),
+                    "all", Map.of("type", "boolean", "description", "If true, automatically stage all modified/deleted tracked files before committing")
+                ),
+                List.of("message")));
+
+        tools.add(buildTool("git_stage",
+                "Stage files for commit (git add). Stage specific files or all changes.",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Single file path to stage"),
+                    "paths", Map.of("type", "array", "description", "Multiple file paths to stage"),
+                    "all", Map.of("type", "boolean", "description", "If true, stage all changes (including untracked files)")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_unstage",
+                "Unstage files from the staging area (git restore --staged).",
+                Map.of(
+                    "path", Map.of("type", "string", "description", "Single file path to unstage"),
+                    "paths", Map.of("type", "array", "description", "Multiple file paths to unstage")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_branch",
+                "Manage branches: list, create, switch, or delete.",
+                Map.of(
+                    "action", Map.of("type", "string", "description", "Action: 'list' (default), 'create', 'switch', 'delete'"),
+                    "name", Map.of("type", "string", "description", "Branch name (required for create/switch/delete)"),
+                    "base", Map.of("type", "string", "description", "Base ref for create (default: HEAD)"),
+                    "all", Map.of("type", "boolean", "description", "For list: include remote branches"),
+                    "force", Map.of("type", "boolean", "description", "For delete: force delete unmerged branch (-D)")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_stash",
+                "Manage stashes: save, list, pop, apply, or drop working changes.",
+                Map.of(
+                    "action", Map.of("type", "string", "description", "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"),
+                    "message", Map.of("type", "string", "description", "Stash message (for push action)"),
+                    "index", Map.of("type", "string", "description", "Stash index (for pop/apply/drop, e.g., '0')"),
+                    "include_untracked", Map.of("type", "boolean", "description", "For push: include untracked files")
+                ),
+                List.of()));
+
+        tools.add(buildTool("git_show",
+                "Show details of a commit: message, author, date, and diff. " +
+                "Defaults to HEAD if no ref given.",
+                Map.of(
+                    "ref", Map.of("type", "string", "description", "Commit SHA, branch, tag, or ref (default: HEAD)"),
+                    "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not full diff"),
+                    "path", Map.of("type", "string", "description", "Limit output to this file path")
+                ),
+                List.of()));
+
         result.add("tools", tools);
         return result;
     }
@@ -342,6 +439,16 @@ public class McpServer {
                     case "find_references" -> findReferences(arguments);
                     case "list_project_files" -> listProjectFiles(arguments);
                     case "list_tests" -> listTestsFallback(arguments);
+                    case "git_status" -> runGitFallback("status", arguments.has("verbose") && arguments.get("verbose").getAsBoolean() ? new String[]{} : new String[]{"-s"});
+                    case "git_diff" -> runGitDiffFallback(arguments);
+                    case "git_log" -> runGitLogFallback(arguments);
+                    case "git_blame" -> runGitBlameFallback(arguments);
+                    case "git_commit" -> runGitCommitFallback(arguments);
+                    case "git_stage" -> runGitStageFallback(arguments);
+                    case "git_unstage" -> runGitUnstageFallback(arguments);
+                    case "git_branch" -> runGitBranchFallback(arguments);
+                    case "git_stash" -> runGitStashFallback(arguments);
+                    case "git_show" -> runGitShowFallback(arguments);
                     case "run_tests", "get_test_results", "get_coverage",
                          "get_project_info", "list_run_configurations", "run_configuration",
                          "create_run_configuration", "edit_run_configuration",
@@ -697,5 +804,138 @@ public class McpServer {
         if (lower.endsWith(".gradle") || lower.endsWith(".gradle.kts")) return "Gradle";
         if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "YAML";
         return "Other";
+    }
+
+    // --- Git tool fallbacks (CLI-based, no PSI bridge needed) ---
+
+    private static String runGit(String... args) throws IOException {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("git");
+        cmd.add("--no-pager");
+        cmd.addAll(List.of(args));
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File(projectRoot));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        try { p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+        return output.isBlank() ? "(no output)" : output;
+    }
+
+    private static String runGitFallback(String subcommand, String[] extraArgs) throws IOException {
+        String[] args = new String[1 + extraArgs.length];
+        args[0] = subcommand;
+        System.arraycopy(extraArgs, 0, args, 1, extraArgs.length);
+        return runGit(args);
+    }
+
+    private static String runGitDiffFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("diff");
+        if (args.has("staged") && args.get("staged").getAsBoolean()) gitArgs.add("--cached");
+        if (args.has("path")) gitArgs.add(args.get("path").getAsString());
+        if (args.has("commit")) gitArgs.add(args.get("commit").getAsString());
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitLogFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("log");
+        int maxCount = args.has("max_count") ? args.get("max_count").getAsInt() : 10;
+        gitArgs.add("-n");
+        gitArgs.add(String.valueOf(maxCount));
+        gitArgs.add("--format=%h %ad %an: %s");
+        gitArgs.add("--date=short");
+        if (args.has("path")) { gitArgs.add("--"); gitArgs.add(args.get("path").getAsString()); }
+        if (args.has("author")) { gitArgs.add("--author=" + args.get("author").getAsString()); }
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitBlameFallback(JsonObject args) throws IOException {
+        if (!args.has("path")) return "Error: 'path' parameter is required";
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("blame");
+        if (args.has("start_line") && args.has("end_line")) {
+            gitArgs.add("-L");
+            gitArgs.add(args.get("start_line").getAsInt() + "," + args.get("end_line").getAsInt());
+        }
+        gitArgs.add(args.get("path").getAsString());
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitCommitFallback(JsonObject args) throws IOException {
+        if (!args.has("message")) return "Error: 'message' parameter is required";
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("commit");
+        gitArgs.add("-m");
+        gitArgs.add(args.get("message").getAsString());
+        if (args.has("amend") && args.get("amend").getAsBoolean()) gitArgs.add("--amend");
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitStageFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("add");
+        if (args.has("paths")) {
+            args.getAsJsonArray("paths").forEach(p -> gitArgs.add(p.getAsString()));
+        } else if (args.has("all") && args.get("all").getAsBoolean()) {
+            gitArgs.add("-A");
+        } else {
+            return "Error: 'paths' array or 'all: true' is required";
+        }
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitUnstageFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("restore");
+        gitArgs.add("--staged");
+        if (args.has("paths")) {
+            args.getAsJsonArray("paths").forEach(p -> gitArgs.add(p.getAsString()));
+        } else {
+            gitArgs.add(".");
+        }
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitBranchFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        if (args.has("create") && !args.get("create").getAsString().isEmpty()) {
+            gitArgs.add("checkout");
+            gitArgs.add("-b");
+            gitArgs.add(args.get("create").getAsString());
+        } else if (args.has("switch_to") && !args.get("switch_to").getAsString().isEmpty()) {
+            gitArgs.add("checkout");
+            gitArgs.add(args.get("switch_to").getAsString());
+        } else if (args.has("delete") && !args.get("delete").getAsString().isEmpty()) {
+            gitArgs.add("branch");
+            gitArgs.add("-d");
+            gitArgs.add(args.get("delete").getAsString());
+        } else {
+            gitArgs.add("branch");
+            gitArgs.add("-a");
+        }
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitStashFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("stash");
+        String action = args.has("action") ? args.get("action").getAsString() : "push";
+        gitArgs.add(action);
+        if ("push".equals(action) && args.has("message")) {
+            gitArgs.add("-m");
+            gitArgs.add(args.get("message").getAsString());
+        }
+        return runGit(gitArgs.toArray(String[]::new));
+    }
+
+    private static String runGitShowFallback(JsonObject args) throws IOException {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("show");
+        String ref = args.has("ref") ? args.get("ref").getAsString() : "HEAD";
+        gitArgs.add(ref);
+        gitArgs.add("--stat");
+        return runGit(gitArgs.toArray(String[]::new));
     }
 }

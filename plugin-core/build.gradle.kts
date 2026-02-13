@@ -17,6 +17,7 @@ dependencies {
         local(providers.gradleProperty("intellijPlatform.localPath"))
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
+        bundledPlugin("Git4Idea")
     }
 
     // Kotlin stdlib for UI layer

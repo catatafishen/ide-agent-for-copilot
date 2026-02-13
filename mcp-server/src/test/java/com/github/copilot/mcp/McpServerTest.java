@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -77,7 +78,7 @@ class McpServerTest {
 
     @Test
     void testInitialize() {
-        JsonObject request = buildRequest(1, "initialize", new JsonObject());
+        JsonObject request = buildRequest("initialize", new JsonObject());
         JsonObject response = McpServer.handleMessage(request);
 
         assertNotNull(response);
@@ -89,20 +90,31 @@ class McpServerTest {
 
     @Test
     void testToolsList() {
-        JsonObject request = buildRequest(1, "tools/list", new JsonObject());
+        JsonObject request = buildRequest("tools/list", new JsonObject());
         JsonObject response = McpServer.handleMessage(request);
 
         assertNotNull(response);
         JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
-        assertTrue(tools.size() >= 4, "Should have at least 4 tools");
+        assertEquals(28, tools.size(), "Should have 28 tools (code nav + file I/O + testing + quality + run configs + git)");
 
         // Verify tool names
-        var toolNames = new java.util.ArrayList<String>();
+        var toolNames = new ArrayList<String>();
         tools.forEach(t -> toolNames.add(t.getAsJsonObject().get("name").getAsString()));
         assertTrue(toolNames.contains("search_symbols"));
         assertTrue(toolNames.contains("get_file_outline"));
         assertTrue(toolNames.contains("find_references"));
         assertTrue(toolNames.contains("list_project_files"));
+        // Git tools
+        assertTrue(toolNames.contains("git_status"));
+        assertTrue(toolNames.contains("git_diff"));
+        assertTrue(toolNames.contains("git_log"));
+        assertTrue(toolNames.contains("git_blame"));
+        assertTrue(toolNames.contains("git_commit"));
+        assertTrue(toolNames.contains("git_stage"));
+        assertTrue(toolNames.contains("git_unstage"));
+        assertTrue(toolNames.contains("git_branch"));
+        assertTrue(toolNames.contains("git_stash"));
+        assertTrue(toolNames.contains("git_show"));
     }
 
     @Test
@@ -197,7 +209,7 @@ class McpServerTest {
 
     @Test
     void testUnknownMethodReturnsError() {
-        JsonObject request = buildRequest(1, "unknown/method", new JsonObject());
+        JsonObject request = buildRequest("unknown/method", new JsonObject());
         JsonObject response = McpServer.handleMessage(request);
 
         assertNotNull(response);
@@ -217,7 +229,7 @@ class McpServerTest {
 
     @Test
     void testPingReturnsEmptyResult() {
-        JsonObject request = buildRequest(1, "ping", new JsonObject());
+        JsonObject request = buildRequest("ping", new JsonObject());
         JsonObject response = McpServer.handleMessage(request);
 
         assertNotNull(response);
@@ -240,10 +252,10 @@ class McpServerTest {
                 "Should throw IOException for absolute paths outside project");
     }
 
-    private static JsonObject buildRequest(long id, String method, JsonObject params) {
+    private static JsonObject buildRequest(String method, JsonObject params) {
         JsonObject request = new JsonObject();
         request.addProperty("jsonrpc", "2.0");
-        request.addProperty("id", id);
+        request.addProperty("id", 1);
         request.addProperty("method", method);
         request.add("params", params);
         return request;

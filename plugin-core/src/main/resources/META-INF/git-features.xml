@@ -1,0 +1,4 @@
+<idea-plugin>
+    <!-- Git4Idea optional dependency extensions -->
+    <!-- Git tools are registered at runtime when Git4Idea is available -->
+</idea-plugin>
