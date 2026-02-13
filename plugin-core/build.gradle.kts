@@ -82,5 +82,7 @@ intellijPlatform {
 tasks {
     runIde {
         maxHeapSize = "2g"
+        // Enable auto-reload of plugin when changes are built
+        autoReload = true
     }
 }

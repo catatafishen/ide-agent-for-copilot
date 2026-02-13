@@ -31,6 +31,27 @@ Expand-Archive "plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip" 
 Start-Process "C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3\bin\idea64.exe"
 ```
 
+### Sandbox IDE (Development)
+
+Run the plugin in a sandboxed IntelliJ instance (separate config/data, doesn't touch your main IDE):
+
+```powershell
+$env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+.\gradlew.bat :plugin-core:runIde
+```
+
+- First launch takes ~90s (Gradle configuration + dependency resolution)
+- Opens a fresh IntelliJ with the plugin pre-installed
+- Sandbox data stored in `plugin-core/build/idea-sandbox/`
+- Open a **different project** than the one open in your main IDE to avoid conflicts
+
+**Auto-reload (Linux only):** `autoReload = true` is configured in `build.gradle.kts`. On Linux, after code changes run `prepareSandbox` and the plugin reloads without restarting the sandbox IDE. On Windows, file locks prevent this — close the sandbox IDE first, then re-run `runIde`.
+
+**Iterating on changes:**
+1. Close the sandbox IDE
+2. `.\gradlew.bat :plugin-core:prepareSandbox` (rebuilds plugin into sandbox)
+3. `.\gradlew.bat :plugin-core:runIde` (relaunches sandbox)
+
 ### Run Tests
 
 ```powershell
@@ -101,9 +122,9 @@ This runs inside a single undoable command group on the EDT.
 | File | Purpose |
 |------|---------|
 | `plugin-core/.../bridge/CopilotAcpClient.java` | ACP client, permission handler, retry logic |
-| `plugin-core/.../psi/PsiBridgeService.java` | 19 MCP tools via IntelliJ APIs |
+| `plugin-core/.../psi/PsiBridgeService.java` | 36 MCP tools via IntelliJ APIs |
 | `plugin-core/.../services/CopilotService.java` | Service entry point, starts ACP client |
-| `plugin-core/.../ui/CopilotToolWindowContent.java` | Main UI (Swing) |
+| `plugin-core/.../ui/AgenticCopilotToolWindowContent.kt` | Main UI (Kotlin Swing) |
 | `mcp-server/.../mcp/McpServer.java` | MCP stdio server, tool registrations |
 
 ## Debugging
@@ -116,6 +137,7 @@ Add to `Help > Diagnostic Tools > Debug Log Settings`:
 
 ### Log Locations
 - Main IDE: `%LOCALAPPDATA%\JetBrains\IntelliJIdea2025.3\log\idea.log`
+- Sandbox IDE: `plugin-core/build/idea-sandbox/IU-2025.3.1.1/log/idea.log`
 - PSI bridge port: `~/.copilot/psi-bridge.json`
 
 ### Common Issues
