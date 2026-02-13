@@ -3,31 +3,54 @@
 ## Build & Deploy
 
 ### Prerequisites
-- JDK 21 (e.g., `C:\Users\developer\.jdks\temurin-21.0.6`)
-- GitHub Copilot CLI installed and authenticated (`winget install GitHub.Copilot`)
+- JDK 21 (Gradle JVM pinned via `gradle.properties` → `org.gradle.java.home`)
+- GitHub Copilot CLI installed and authenticated
+  - **Windows**: `winget install GitHub.Copilot`
+  - **Linux**: `sudo npm install -g @anthropic-ai/copilot-cli` or download from GitHub releases
 
 ### Build Plugin
 
-```powershell
-$env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+```bash
+# Linux
+./gradlew :plugin-core:clean :plugin-core:buildPlugin
+
+# Windows (PowerShell)
 .\gradlew.bat :plugin-core:clean :plugin-core:buildPlugin
 ```
 
-Output: `plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip`
+Output: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
+
+> **Note**: If `clean` fails due to locked sandbox files (Windows), omit `:plugin-core:clean`.
 
 ### Deploy to IntelliJ
 
+The plugin ZIP must be extracted into IntelliJ's plugin directory.
+
+**Linux:**
+```bash
+# Find your IntelliJ config directory (adjust version as needed)
+PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3/plugins
+
+# Stop IntelliJ if running
+pkill -f idea 2>/dev/null; sleep 3
+
+# Install
+rm -rf "$PLUGIN_DIR/plugin-core"
+unzip -o plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip -d "$PLUGIN_DIR"
+
+# Launch IntelliJ
+idea &  # or full path to idea.sh
+```
+
+**Windows (PowerShell):**
 ```powershell
-# Stop IntelliJ
 $ij = Get-Process -Name "idea64" -ErrorAction SilentlyContinue
 if ($ij) { Stop-Process -Id $ij.Id -Force; Start-Sleep -Seconds 5 }
 
-# Install
 Remove-Item "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins\plugin-core" -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive "plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip" `
     "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins" -Force
 
-# Launch
 Start-Process "C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3\bin\idea64.exe"
 ```
 
@@ -35,8 +58,11 @@ Start-Process "C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3
 
 Run the plugin in a sandboxed IntelliJ instance (separate config/data, doesn't touch your main IDE):
 
-```powershell
-$env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+```bash
+# Linux
+./gradlew :plugin-core:runIde
+
+# Windows (PowerShell)
 .\gradlew.bat :plugin-core:runIde
 ```
 
@@ -45,20 +71,21 @@ $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
 - Sandbox data stored in `plugin-core/build/idea-sandbox/`
 - Open a **different project** than the one open in your main IDE to avoid conflicts
 
-**Auto-reload (Linux only):** `autoReload = true` is configured in `build.gradle.kts`. On Linux, after code changes run `prepareSandbox` and the plugin reloads without restarting the sandbox IDE. On Windows, file locks prevent this — close the sandbox IDE first, then re-run `runIde`.
+**Auto-reload (Linux only):** `autoReload = true` is configured in `build.gradle.kts`. On Linux, after code changes run `./gradlew :plugin-core:prepareSandbox` and the plugin reloads without restarting the sandbox IDE. On Windows, file locks prevent this — close the sandbox IDE first, then re-run `runIde`.
 
 **Iterating on changes:**
-1. Close the sandbox IDE
-2. `.\gradlew.bat :plugin-core:prepareSandbox` (rebuilds plugin into sandbox)
-3. `.\gradlew.bat :plugin-core:runIde` (relaunches sandbox)
+1. Close the sandbox IDE (Windows) or leave it open (Linux)
+2. `./gradlew :plugin-core:prepareSandbox` (rebuilds plugin into sandbox)
+3. On Windows: `./gradlew :plugin-core:runIde` (relaunches sandbox)
+4. On Linux: plugin auto-reloads in the running sandbox IDE
 
 ### Run Tests
 
-```powershell
-.\gradlew.bat test                              # All tests
-.\gradlew.bat :plugin-core:test                 # Plugin unit tests only
-.\gradlew.bat :mcp-server:test                  # MCP server tests only
-.\gradlew.bat :plugin-core:test -Dinclude.integration=true  # Include integration tests
+```bash
+./gradlew test                              # All tests
+./gradlew :plugin-core:test                 # Plugin unit tests only
+./gradlew :mcp-server:test                  # MCP server tests only
+./gradlew :plugin-core:test -Dinclude.integration=true  # Include integration tests
 ```
 
 ## Architecture
@@ -122,7 +149,7 @@ This runs inside a single undoable command group on the EDT.
 | File | Purpose |
 |------|---------|
 | `plugin-core/.../bridge/CopilotAcpClient.java` | ACP client, permission handler, retry logic |
-| `plugin-core/.../psi/PsiBridgeService.java` | 36 MCP tools via IntelliJ APIs |
+| `plugin-core/.../psi/PsiBridgeService.java` | 38 MCP tools via IntelliJ APIs |
 | `plugin-core/.../services/CopilotService.java` | Service entry point, starts ACP client |
 | `plugin-core/.../ui/AgenticCopilotToolWindowContent.kt` | Main UI (Kotlin Swing) |
 | `mcp-server/.../mcp/McpServer.java` | MCP stdio server, tool registrations |
@@ -136,9 +163,10 @@ Add to `Help > Diagnostic Tools > Debug Log Settings`:
 ```
 
 ### Log Locations
-- Main IDE: `%LOCALAPPDATA%\JetBrains\IntelliJIdea2025.3\log\idea.log`
-- Sandbox IDE: `plugin-core/build/idea-sandbox/IU-2025.3.1.1/log/idea.log`
-- PSI bridge port: `~/.copilot/psi-bridge.json`
+- **Linux IDE**: `~/.local/share/JetBrains/IntelliJIdea2025.3/log/idea.log`
+- **Windows IDE**: `%LOCALAPPDATA%\JetBrains\IntelliJIdea2025.3\log\idea.log`
+- **Sandbox IDE**: `plugin-core/build/idea-sandbox/IU-2025.3.1.1/log/idea.log`
+- **PSI bridge port**: `~/.copilot/psi-bridge.json`
 
 ### Common Issues
 
