@@ -181,6 +181,7 @@ public final class PsiBridgeService implements Disposable {
                 // Terminal tools
                 case "run_in_terminal" -> runInTerminal(arguments);
                 case "list_terminals" -> listTerminals();
+                case "read_terminal_output" -> readTerminalOutput(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -1505,39 +1506,38 @@ public final class PsiBridgeService implements Disposable {
         String command = args.get("command").getAsString();
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
         boolean newTab = args.has("new_tab") && args.get("new_tab").getAsBoolean();
+        String shell = args.has("shell") ? args.get("shell").getAsString() : null;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                var terminalViewClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
-                var getInstance = terminalViewClass.getMethod("getInstance", Project.class);
-                var manager = getInstance.invoke(null, project);
+                var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
+                var manager = managerClass.getMethod("getInstance", Project.class).invoke(null, project);
 
                 Object widget = null;
                 String usedTab = null;
 
-                // Try to reuse existing terminal tab if tab_name specified and not forcing new
+                // Try to reuse existing terminal tab via Content userData
                 if (tabName != null && !newTab) {
-                    widget = findTerminalWidget(manager, tabName);
+                    widget = findTerminalWidgetByTabName(managerClass, tabName);
                     if (widget != null) usedTab = tabName;
                 }
 
                 // Create new tab if no existing tab found or new_tab requested
                 if (widget == null) {
                     String title = tabName != null ? tabName : "Agent: " + truncateForTitle(command);
-                    var createShellWidget = terminalViewClass.getMethod(
-                            "createLocalShellWidget", String.class, String.class);
-                    widget = createShellWidget.invoke(manager, project.getBasePath(), title);
+                    List<String> shellCommand = shell != null ? List.of(shell) : null;
+                    var createSession = managerClass.getMethod("createNewSession",
+                            String.class, String.class, List.class, boolean.class, boolean.class);
+                    widget = createSession.invoke(manager, project.getBasePath(), title, shellCommand, true, true);
                     usedTab = title + " (new)";
                 }
 
-                // Send command to the widget
-                var executeCommand = widget.getClass().getMethod("executeCommand", String.class);
-                executeCommand.invoke(widget, command);
+                // Send command via TerminalWidget.sendCommandToExecute (works for both classic and block terminal)
+                sendTerminalCommand(widget, command);
                 resultFuture.complete("Command sent to terminal '" + usedTab + "': " + command +
-                        "\n\nNote: Terminal output is visible to the user in IntelliJ but not captured here. " +
-                        "Use run_command if you need the output returned to you.");
+                        "\n\nNote: Use read_terminal_output to read terminal content, or run_command if you need output returned directly.");
 
             } catch (ClassNotFoundException e) {
                 resultFuture.complete("Terminal plugin not available. Use run_command tool instead.");
@@ -1554,24 +1554,35 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    /** Find an existing terminal widget by tab name. */
-    private Object findTerminalWidget(Object manager, String tabName) {
+    /** Send a command to a TerminalWidget, using the interface method to avoid IllegalAccessException. */
+    private void sendTerminalCommand(Object widget, String command) throws Exception {
+        // Resolve method via the interface class, not the implementation (avoids IllegalAccessException on inner classes)
+        var widgetInterface = Class.forName("com.intellij.terminal.ui.TerminalWidget");
         try {
-            // Try to get the ToolWindow content and find matching tab
-            var toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
-            var toolWindow = toolWindowManager.getToolWindow("Terminal");
+            widgetInterface.getMethod("sendCommandToExecute", String.class).invoke(widget, command);
+        } catch (NoSuchMethodException e) {
+            widget.getClass().getMethod("executeCommand", String.class).invoke(widget, command);
+        }
+    }
+
+    /** Find a TerminalWidget by tab name using Content userData. */
+    private Object findTerminalWidgetByTabName(Class<?> managerClass, String tabName) {
+        try {
+            var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Terminal");
             if (toolWindow == null) return null;
 
-            var contentManager = toolWindow.getContentManager();
-            for (var content : contentManager.getContents()) {
+            var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
+                    com.intellij.ui.content.Content.class);
+
+            for (var content : toolWindow.getContentManager().getContents()) {
                 String displayName = content.getDisplayName();
                 if (displayName != null && displayName.contains(tabName)) {
-                    // Try to get the widget from the content component
-                    var component = content.getComponent();
-                    if (component != null) {
-                        // Walk component tree to find ShellTerminalWidget
-                        return findWidgetInComponent(component);
+                    Object widget = findWidgetByContent.invoke(null, content);
+                    if (widget != null) {
+                        LOG.info("Reusing terminal tab '" + displayName + "'");
+                        return widget;
                     }
+                    // Reworked terminal (IntelliJ 2025+) may not set userData — tab not reusable
                 }
             }
         } catch (Exception e) {
@@ -1580,23 +1591,82 @@ public final class PsiBridgeService implements Disposable {
         return null;
     }
 
-    /** Recursively find a terminal widget in a component tree. */
-    private Object findWidgetInComponent(java.awt.Component component) {
-        String className = component.getClass().getName();
-        if (className.contains("ShellTerminalWidget") || className.contains("TerminalWidget")) {
+    /** Read terminal output from a named tab using TerminalWidget.getText(). */
+    private String readTerminalOutput(JsonObject args) {
+        String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                component.getClass().getMethod("executeCommand", String.class);
-                return component;
-            } catch (NoSuchMethodException ignored) {
+                var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
+                var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Terminal");
+                if (toolWindow == null) {
+                    resultFuture.complete("Terminal tool window not available.");
+                    return;
+                }
+
+                var contentManager = toolWindow.getContentManager();
+
+                // Find the target content - by name or use selected
+                com.intellij.ui.content.Content targetContent = null;
+                if (tabName != null) {
+                    for (var content : contentManager.getContents()) {
+                        String displayName = content.getDisplayName();
+                        if (displayName != null && displayName.contains(tabName)) {
+                            targetContent = content;
+                            break;
+                        }
+                    }
+                }
+                if (targetContent == null) {
+                    targetContent = contentManager.getSelectedContent();
+                }
+                if (targetContent == null) {
+                    resultFuture.complete("No terminal tab found" +
+                            (tabName != null ? " matching '" + tabName + "'" : "") + ".");
+                    return;
+                }
+
+                // Find widget via findWidgetByContent
+                var manager = managerClass.getMethod("getInstance", Project.class).invoke(null, project);
+                var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
+                        com.intellij.ui.content.Content.class);
+                Object widget = findWidgetByContent.invoke(null, targetContent);
+                if (widget == null) {
+                    resultFuture.complete("No terminal widget found for tab '" + targetContent.getDisplayName() +
+                            "'. The auto-created default tab may not be readable — use agent-created tabs instead.");
+                    return;
+                }
+
+                // Call getText() via the TerminalWidget interface to avoid IllegalAccessException
+                try {
+                    var widgetInterface = Class.forName("com.intellij.terminal.ui.TerminalWidget");
+                    var getText = widgetInterface.getMethod("getText");
+                    CharSequence text = (CharSequence) getText.invoke(widget);
+                    String output = text != null ? text.toString().strip() : "";
+                    if (output.isEmpty()) {
+                        resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' has no output.");
+                    } else {
+                        resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' output:\n" +
+                                truncateOutput(output));
+                    }
+                } catch (NoSuchMethodException e) {
+                    resultFuture.complete("getText() not available on this terminal type (" +
+                            widget.getClass().getSimpleName() + "). Terminal output reading not supported.");
+                }
+
+            } catch (Exception e) {
+                LOG.warn("Failed to read terminal output", e);
+                resultFuture.complete("Failed to read terminal output: " + e.getMessage());
             }
+        });
+
+        try {
+            return resultFuture.get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return "Timed out reading terminal output.";
         }
-        if (component instanceof java.awt.Container container) {
-            for (var child : container.getComponents()) {
-                Object found = findWidgetInComponent(child);
-                if (found != null) return found;
-            }
-        }
-        return null;
     }
 
     private String listTerminals() {

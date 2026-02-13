@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 /**
  * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
- * Provides 35 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
+ * Provides 36 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
  */
 public class McpServer {
 
@@ -440,23 +440,34 @@ public class McpServer {
 
         // ---- Terminal tools ----
 
+        // Use a LinkedHashMap to preserve insertion order (Map.of has random order)
+        var runInTerminalProps = new java.util.LinkedHashMap<String, Map<String, String>>();
+        runInTerminalProps.put("command", Map.of("type", "string", "description", "Command to execute in the terminal"));
+        runInTerminalProps.put("tab_name", Map.of("type", "string", "description", "Name of existing terminal tab to reuse, or name for a new tab"));
+        runInTerminalProps.put("shell", Map.of("type", "string", "description", "Shell executable path for new tabs (e.g. cmd.exe, pwsh.exe, bash.exe). Use list_terminals to see available shells. Only used when creating a new tab."));
+        runInTerminalProps.put("new_tab", Map.of("type", "boolean", "description", "Force opening a new terminal tab even if tab_name matches an existing one (default: false)"));
         tools.add(buildTool("run_in_terminal",
                 "Open an IntelliJ Terminal tab and execute a command. The terminal is interactive and visible " +
                         "to the user. Use this for interactive commands or when the user wants to see live output. " +
-                        "Note: terminal output is NOT captured — use run_command if you need output returned. " +
+                        "Use read_terminal_output to read the output afterwards. " +
                         "Use list_terminals to see open tabs and available shells. " +
-                        "Specify tab_name to reuse an existing terminal tab.",
-                Map.of(
-                        "command", Map.of("type", "string", "description", "Command to execute in the terminal"),
-                        "tab_name", Map.of("type", "string", "description", "Name of existing terminal tab to reuse, or name for a new tab"),
-                        "new_tab", Map.of("type", "boolean", "description", "Force opening a new terminal tab even if tab_name matches an existing one (default: false)")
-                ),
+                        "Specify tab_name to reuse an existing terminal tab, or shell to open a specific shell type.",
+                runInTerminalProps,
                 List.of("command")));
 
         tools.add(buildTool("list_terminals",
                 "List available terminal shells on this system (PowerShell, cmd, bash, etc.) " +
                         "and IntelliJ's configured default shell. Use before run_in_terminal to choose a shell.",
                 Map.of(),
+                List.of()));
+
+        tools.add(buildTool("read_terminal_output",
+                "Read the text content from an IntelliJ Terminal tab. " +
+                        "If tab_name is specified, reads from that tab; otherwise reads from the currently selected terminal tab. " +
+                        "Use after run_in_terminal to check command output.",
+                Map.of(
+                        "tab_name", Map.of("type", "string", "description", "Name of the terminal tab to read from (optional, defaults to selected tab)")
+                ),
                 List.of()));
 
         result.add("tools", tools);
