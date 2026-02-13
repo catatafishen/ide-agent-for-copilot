@@ -13,6 +13,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -24,6 +25,9 @@ import java.util.function.Consumer;
 public class CopilotAcpClient implements Closeable {
     private static final Logger LOG = Logger.getInstance(CopilotAcpClient.class);
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
+
+    /** Permission kinds that are denied so the agent uses IntelliJ MCP tools instead. */
+    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create");
 
     private final Gson gson = new Gson();
     private final AtomicLong requestIdCounter = new AtomicLong(1);
@@ -46,8 +50,8 @@ public class CopilotAcpClient implements Closeable {
     private List<Model> availableModels;
     private String currentModelId;
 
-    // Flag: set when a built-in edit permission is denied during a prompt turn
-    private volatile boolean editDeniedDuringTurn = false;
+    // Flag: set when a built-in write permission (edit/create) is denied during a prompt turn
+    private volatile boolean builtInWriteDeniedDuringTurn = false;
 
     /**
      * Start the copilot ACP process and perform the initialize handshake.
@@ -144,10 +148,6 @@ public class CopilotAcpClient implements Closeable {
         JsonObject params = new JsonObject();
         params.addProperty("protocolVersion", 1);
         JsonObject clientCapabilities = new JsonObject();
-        JsonObject fsCapabilities = new JsonObject();
-        fsCapabilities.addProperty("readTextFile", true);
-        fsCapabilities.addProperty("writeTextFile", true);
-        clientCapabilities.add("fs", fsCapabilities);
         params.add("clientCapabilities", clientCapabilities);
 
         JsonObject clientInfo = new JsonObject();
@@ -341,31 +341,16 @@ public class CopilotAcpClient implements Closeable {
             }
 
             // Send request - response comes after all streaming chunks
-            editDeniedDuringTurn = false;
+            builtInWriteDeniedDuringTurn = false;
             LOG.info("sendPrompt: sending session/prompt request");
             JsonObject result = sendRequest("session/prompt", params, 300);
             LOG.info("sendPrompt: got result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
 
-            // If a built-in edit was denied, send a retry prompt telling agent to use MCP tools
-            if (editDeniedDuringTurn) {
-                editDeniedDuringTurn = false;
-                LOG.info("sendPrompt: edit was denied, sending retry with MCP tool instruction");
-                JsonObject retryParams = new JsonObject();
-                retryParams.addProperty("sessionId", sessionId);
-                JsonArray retryPrompt = new JsonArray();
-                JsonObject retryContent = new JsonObject();
-                retryContent.addProperty("type", "text");
-                retryContent.addProperty("text",
-                    "The file edit was denied because this environment requires using IntelliJ tools. " +
-                    "Please retry the same change using the intellij_write_file MCP tool instead of the built-in edit tool. " +
-                    "Use intellij_read_file to read the file first, then intellij_write_file with old_str/new_str to make the edit.");
-                retryPrompt.add(retryContent);
-                retryParams.add("prompt", retryPrompt);
-                if (model != null) {
-                    retryParams.addProperty("model", model);
-                }
-                result = sendRequest("session/prompt", retryParams, 300);
-                LOG.info("sendPrompt: retry result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
+            // If a built-in write was denied, send a retry prompt telling agent to use MCP tools
+            if (builtInWriteDeniedDuringTurn) {
+                builtInWriteDeniedDuringTurn = false;
+                LOG.info("sendPrompt: built-in write denied, sending retry with MCP tool instruction");
+                result = sendRetryPrompt(sessionId, model);
             }
 
             return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
@@ -513,116 +498,7 @@ public class CopilotAcpClient implements Closeable {
 
                     if (hasId && hasMethod) {
                         // Agent-to-client request (e.g., session/request_permission)
-                        String reqMethod = msg.get("method").getAsString();
-                        long reqId = msg.get("id").getAsLong();
-                        LOG.info("ACP agent request: " + reqMethod + " id=" + reqId);
-
-                        if ("session/request_permission".equals(reqMethod)) {
-                            JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
-                            String permKind = "";
-                            if (reqParams != null && reqParams.has("toolCall")) {
-                                JsonObject toolCall = reqParams.getAsJsonObject("toolCall");
-                                permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
-                                LOG.info("ACP request_permission: " + permKind + " " +
-                                    (toolCall.has("title") ? toolCall.get("title").getAsString() : ""));
-                            }
-
-                            if ("edit".equals(permKind)) {
-                                // Deny built-in file edit — will retry with MCP tools
-                                String rejectOptionId = findRejectOption(reqParams);
-                                LOG.info("ACP request_permission: DENYING built-in edit, option=" + rejectOptionId);
-                                editDeniedDuringTurn = true;
-                                sendPermissionResponse(reqId, rejectOptionId);
-                            } else {
-                                // Non-edit permission (MCP tools, shell, etc.): auto-approve
-                                String selectedOptionId = findAllowOption(reqParams);
-                                LOG.info("ACP request_permission: auto-approving with option=" + selectedOptionId);
-                                sendPermissionResponse(reqId, selectedOptionId);
-                            }
-                        } else if ("fs/read_text_file".equals(reqMethod)) {
-                            // Read file — route through PSI bridge for editor buffer reads
-                            JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
-                            String filePath = reqParams != null && reqParams.has("path") ? reqParams.get("path").getAsString() : null;
-                            JsonObject response = new JsonObject();
-                            response.addProperty("jsonrpc", "2.0");
-                            response.addProperty("id", reqId);
-                            if (filePath != null) {
-                                String bridgeResult = callPsiBridge("read_file",
-                                        createArgs("path", filePath));
-                                if (bridgeResult != null) {
-                                    JsonObject result = new JsonObject();
-                                    result.addProperty("content", bridgeResult);
-                                    response.add("result", result);
-                                } else {
-                                    // PSI bridge unavailable — fall back to direct read
-                                    try {
-                                        String content = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)));
-                                        JsonObject result = new JsonObject();
-                                        result.addProperty("content", content);
-                                        response.add("result", result);
-                                    } catch (IOException e) {
-                                        JsonObject error = new JsonObject();
-                                        error.addProperty("code", -32000);
-                                        error.addProperty("message", "File not found: " + filePath);
-                                        response.add("error", error);
-                                    }
-                                }
-                            } else {
-                                JsonObject error = new JsonObject();
-                                error.addProperty("code", -32602);
-                                error.addProperty("message", "Missing path parameter");
-                                response.add("error", error);
-                            }
-                            sendRawMessage(response);
-                        } else if ("fs/write_text_file".equals(reqMethod)) {
-                            // Write file — route through PSI bridge for Document API (undo, VFS sync)
-                            JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
-                            String filePath = reqParams != null && reqParams.has("path") ? reqParams.get("path").getAsString() : null;
-                            String fileContent = reqParams != null && reqParams.has("content") ? reqParams.get("content").getAsString() : null;
-                            JsonObject response = new JsonObject();
-                            response.addProperty("jsonrpc", "2.0");
-                            response.addProperty("id", reqId);
-                            if (filePath != null && fileContent != null) {
-                                JsonObject writeArgs = createArgs("path", filePath);
-                                writeArgs.addProperty("content", fileContent);
-                                String bridgeResult = callPsiBridge("write_file", writeArgs);
-                                if (bridgeResult != null) {
-                                    response.add("result", new JsonObject());
-                                    // Auto-run optimize_imports and format_code after write
-                                    JsonObject fmtArgs = createArgs("path", filePath);
-                                    callPsiBridge("optimize_imports", fmtArgs);
-                                    callPsiBridge("format_code", fmtArgs);
-                                    LOG.info("Auto-formatted after write: " + filePath);
-                                } else {
-                                    // PSI bridge unavailable — fall back to direct write
-                                    try {
-                                        java.nio.file.Files.writeString(java.nio.file.Paths.get(filePath), fileContent);
-                                        response.add("result", new JsonObject());
-                                    } catch (IOException e) {
-                                        JsonObject error = new JsonObject();
-                                        error.addProperty("code", -32000);
-                                        error.addProperty("message", "Failed to write file: " + e.getMessage());
-                                        response.add("error", error);
-                                    }
-                                }
-                            } else {
-                                JsonObject error = new JsonObject();
-                                error.addProperty("code", -32602);
-                                error.addProperty("message", "Missing path or content parameter");
-                                response.add("error", error);
-                            }
-                            sendRawMessage(response);
-                        } else {
-                            // Unknown request — respond with error
-                            JsonObject response = new JsonObject();
-                            response.addProperty("jsonrpc", "2.0");
-                            response.addProperty("id", reqId);
-                            JsonObject error = new JsonObject();
-                            error.addProperty("code", -32601);
-                            error.addProperty("message", "Method not supported: " + reqMethod);
-                            response.add("error", error);
-                            sendRawMessage(response);
-                        }
+                        handleAgentRequest(msg);
 
                         // Also forward to notification listeners for timeline tracking
                         for (Consumer<JsonObject> listener : notificationListeners) {
@@ -686,6 +562,88 @@ public class CopilotAcpClient implements Closeable {
             start();
         }
     }
+
+    // ---- Agent request handlers (extracted from readLoop) ----
+
+    /**
+     * Route an agent-to-client request to the appropriate handler.
+     */
+    private void handleAgentRequest(JsonObject msg) {
+        String reqMethod = msg.get("method").getAsString();
+        long reqId = msg.get("id").getAsLong();
+        LOG.info("ACP agent request: " + reqMethod + " id=" + reqId);
+
+        if ("session/request_permission".equals(reqMethod)) {
+            handlePermissionRequest(reqId, msg.has("params") ? msg.getAsJsonObject("params") : null);
+        } else {
+            sendErrorResponse(reqId, -32601, "Method not supported: " + reqMethod);
+        }
+    }
+
+    /**
+     * Handle permission requests from the Copilot agent.
+     * Denies built-in write operations (edit, create) so the agent retries with IntelliJ MCP tools.
+     * Auto-approves everything else (MCP tool calls, shell, reads).
+     */
+    private void handlePermissionRequest(long reqId, @Nullable JsonObject reqParams) {
+        String permKind = "";
+        String permTitle = "";
+        if (reqParams != null && reqParams.has("toolCall")) {
+            JsonObject toolCall = reqParams.getAsJsonObject("toolCall");
+            permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
+            permTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
+        }
+        LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
+
+        if (DENIED_PERMISSION_KINDS.contains(permKind)) {
+            String rejectOptionId = findRejectOption(reqParams);
+            LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
+            builtInWriteDeniedDuringTurn = true;
+            sendPermissionResponse(reqId, rejectOptionId);
+        } else {
+            String allowOptionId = findAllowOption(reqParams);
+            LOG.info("ACP request_permission: auto-approving " + permKind + ", option=" + allowOptionId);
+            sendPermissionResponse(reqId, allowOptionId);
+        }
+    }
+
+    /**
+     * Build and send a retry prompt after a built-in write was denied,
+     * instructing the agent to use IntelliJ MCP tools.
+     */
+    private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model) throws CopilotException {
+        JsonObject retryParams = new JsonObject();
+        retryParams.addProperty("sessionId", sessionId);
+        JsonArray retryPrompt = new JsonArray();
+        JsonObject retryContent = new JsonObject();
+        retryContent.addProperty("type", "text");
+        retryContent.addProperty("text",
+            "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
+            "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +
+            "For edits, use intellij_write_file with old_str/new_str parameters. " +
+            "For new files, use intellij_write_file with the full content parameter.");
+        retryPrompt.add(retryContent);
+        retryParams.add("prompt", retryPrompt);
+        if (model != null) {
+            retryParams.addProperty("model", model);
+        }
+        JsonObject result = sendRequest("session/prompt", retryParams, 300);
+        LOG.info("sendPrompt: retry result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
+        return result;
+    }
+
+    private void sendErrorResponse(long reqId, int code, String message) {
+        JsonObject response = new JsonObject();
+        response.addProperty("jsonrpc", "2.0");
+        response.addProperty("id", reqId);
+        JsonObject error = new JsonObject();
+        error.addProperty("code", code);
+        error.addProperty("message", message);
+        response.add("error", error);
+        sendRawMessage(response);
+    }
+
+    // ---- End agent request handlers ----
 
     /**
      * Get the usage multiplier for a model ID (e.g., "1x", "3x", "0.33x").

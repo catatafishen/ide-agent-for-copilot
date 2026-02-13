@@ -1,196 +1,70 @@
 # Project Roadmap
 
 ## Overview
-This plugin brings agentic capabilities to IntelliJ IDEA through GitHub Copilot SDK integration. The project follows a phased approach with mock functionality first, then real SDK integration.
+IntelliJ plugin providing agentic GitHub Copilot capabilities via ACP protocol, with IntelliJ-native MCP tools for code intelligence, formatting, and file operations.
 
 ---
 
 ## ✅ Phase 1: Foundation (COMPLETE)
-**Goal**: Basic plugin structure with working UI and mock backend
+- ✅ Multi-module Gradle project (plugin-core, mcp-server, integration-tests)
+- ✅ Tool Window UI with 4 tabs (Prompt, Context, Session, Settings)
+- ✅ Go sidecar prototype (later replaced with direct ACP integration)
 
-### Completed
-- ✅ IntelliJ plugin with 5-tab interface
-- ✅ Go sidecar with JSON-RPC 2.0 protocol
-- ✅ Process lifecycle management
-- ✅ Binary discovery and JAR extraction
-- ✅ Mock streaming responses
-- ✅ Session management
-- ✅ Automated integration tests
+## ✅ Phase 2: ACP Integration (COMPLETE)
+- ✅ Direct ACP protocol integration (replaced Go sidecar)
+- ✅ JSON-RPC 2.0 over stdin/stdout with Copilot CLI
+- ✅ Session lifecycle, model selection, streaming responses
+- ✅ Authentication via Copilot CLI
 
-**Git Tag**: `v0.1.0-mock`
+## ✅ Phase 3: MCP Code Intelligence (COMPLETE)
+- ✅ MCP server with 19 IntelliJ-native tools
+- ✅ PSI bridge HTTP server for tool execution inside IntelliJ process
+- ✅ Symbol search, file outline, reference finding
+- ✅ Test runner, coverage, run configurations
+- ✅ IntelliJ read/write via Document API
+- ✅ Code problems, optimize imports, format code
 
----
+## ✅ Phase 4: IntelliJ-Native File Operations (COMPLETE)
+- ✅ Deny built-in edit/create permissions
+- ✅ Auto-retry with MCP tool instruction
+- ✅ Auto-format (optimize imports + reformat) after every write
+- ✅ All writes through IntelliJ Document API (undo support)
+- ✅ No "file changed externally" dialog
 
-## 🎯 Phase 2: Testing & Quality (CURRENT)
-**Goal**: Automated testing and robust error handling
+## ✅ Phase 5: Polish & Usage Tracking (COMPLETE)
+- ✅ Reconnect logic (auto-restart dead ACP process)
+- ✅ Model persistence, cost multiplier display
+- ✅ Real GitHub billing data (premium requests, entitlement)
+- ✅ Agent/Plan mode toggle
+- ✅ IntelliJ platform UI conventions (JBColor, JBUI, etc.)
 
-### In Progress
-- [x] Automated sidecar tests (PowerShell)
-- [ ] JUnit tests for Java components
-- [ ] Go unit tests for handlers
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Error handling improvements
-- [ ] Logging infrastructure
-
-### Deliverables
-- Comprehensive test suite
-- CI/CD pipeline running on every commit
-- Error handling with user-friendly messages
-- Structured logging with levels
-
-**Target**: End of Week 1 (Feb 2026)
-
----
-
-## 📋 Phase 3: Real SDK Integration
-**Goal**: Replace mock with actual GitHub Copilot SDK
-
-### Tasks
-- [ ] Research Copilot CLI SDK API
-- [ ] Implement SDK client initialization
-- [ ] Add authentication flow
-- [ ] Connect to real agent sessions
-- [ ] Handle SDK errors and retries
-- [ ] Remove "(Mock)" labels
-- [ ] Add SDK status indicator in UI
-
-### Technical Challenges
-- SDK authentication
-- Error handling for network issues
-- Rate limiting / quota management
-- Session persistence across restarts
-
-**Target**: End of Week 2 (Feb 2026)
+## ✅ Phase 6: Feature Completion (COMPLETE)
+- ✅ Context tab wired to ACP resource references
+- ✅ Multi-turn conversation (session reuse)
+- ✅ Plans/Timeline from real ACP events
+- ✅ Test infrastructure (48 tests across 4 test classes)
 
 ---
 
-## 🚀 Phase 4: Enhanced Features
-**Goal**: Improve UX and add power features
+## 🎯 Future Work
 
-### Features
-- [ ] **Context Management**
-  - File/directory picker
-  - @-mentions for files/symbols
-  - Context preview in UI
-  - Workspace-aware context
+### UI Improvements
+- [ ] Markdown rendering in response area
+- [ ] IntelliJ notifications (replace JOptionPane)
+- [ ] Kotlin UI DSL migration for Settings tab
+- [ ] Tool permissions in Settings tab
 
-- [ ] **Streaming Improvements**
-  - Real-time SSE in Java client
-  - Progress indicators
-  - Cancel in-progress requests
-  - Partial response handling
+### Agent Capabilities
+- [ ] Terminal support (ACP terminal capability)
+- [ ] Redirect built-in file reads through IntelliJ (read from editor buffer)
+- [ ] Git integration (commit, branch, diff tools)
 
-- [ ] **UI Polish**
-  - Better loading states
-  - Error recovery flows
-  - Response formatting (markdown)
-  - Syntax highlighting in responses
-
-**Target**: End of Week 3 (Feb 2026)
+### Quality
+- [ ] Cross-platform testing (macOS, Linux)
+- [ ] E2E integration tests with mock Copilot agent
+- [ ] Dynamic plugin reload support
+- [ ] CI/CD pipeline
 
 ---
 
-## 🔧 Phase 5: Git Integration
-**Goal**: Deep integration with version control
-
-### Features
-- [ ] Git status display in tool window
-- [ ] Conventional commit message generation
-- [ ] Branch management UI
-- [ ] Approval dialogs for dangerous operations
-- [ ] Commit history integration
-- [ ] Diff preview before commit
-
-**Target**: End of Week 4 (Feb 2026)
-
----
-
-## 🎨 Phase 6: Code Quality Tools
-**Goal**: Automatic code formatting and quality
-
-### Features
-- [ ] Format on save integration
-- [ ] Auto-format after agent edits
-- [ ] Import optimization
-- [ ] Pre-commit hooks
-- [ ] Code smell detection
-- [ ] Custom formatting rules
-
-**Target**: Month 2 (March 2026)
-
----
-
-## 🔮 Future Phases
-
-### Phase 7: Advanced Agent Features
-- Multi-session support
-- Session history/persistence
-- Export/import conversations
-- Custom model configuration
-- Agent memory/context
-
-### Phase 8: Collaboration
-- Share sessions between team members
-- Code review integration
-- Team knowledge base
-- Custom agent prompts
-
-### Phase 9: Performance & Scale
-- Optimize binary size
-- Lazy loading
-- Resource usage optimization
-- Multi-project support
-
----
-
-## Success Metrics
-
-### Phase 2
-- ✅ All tests pass in CI
-- ✅ Code coverage > 70%
-- ✅ Zero crashes in manual testing
-
-### Phase 3
-- ✅ Successful SDK authentication
-- ✅ Real responses from Copilot
-- ✅ < 5s response time for simple queries
-
-### Phase 4
-- ✅ User can select files for context
-- ✅ Streaming responses render smoothly
-- ✅ No UI freezes during long operations
-
-### Phase 5
-- ✅ Git operations work reliably
-- ✅ Conventional commits generated correctly
-- ✅ Dangerous operations require approval
-
----
-
-## Developer Notes
-
-### Testing Strategy
-1. Unit tests for business logic
-2. Integration tests for RPC layer
-3. E2E tests for critical flows
-4. Manual testing checklist before releases
-
-### Release Process
-1. Run full test suite
-2. Update CHANGELOG.md
-3. Tag with semantic version
-4. Build plugin ZIP
-5. Test installation manually
-6. Push to GitHub releases
-
-### Code Review Guidelines
-- All changes require tests
-- Use conventional commit messages
-- Keep functions < 50 lines
-- Document complex logic
-- Update docs with code changes
-
----
-
-*Last Updated: 2026-02-12*
-*Next Review: End of Week 1*
+*Last Updated: 2026-02-13*

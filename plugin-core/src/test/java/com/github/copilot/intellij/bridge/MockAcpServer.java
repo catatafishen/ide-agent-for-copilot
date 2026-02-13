@@ -236,10 +236,19 @@ public class MockAcpServer implements Closeable {
      * Helper to build a request_permission request from the agent.
      */
     public static JsonObject buildRequestPermission(String sessionId, String toolCallId) {
+        return buildRequestPermission(sessionId, toolCallId, "other", "Tool call");
+    }
+
+    /**
+     * Helper to build a request_permission request with a specific kind and title.
+     */
+    public static JsonObject buildRequestPermission(String sessionId, String toolCallId, String kind, String title) {
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", sessionId);
         JsonObject toolCall = new JsonObject();
         toolCall.addProperty("toolCallId", toolCallId);
+        toolCall.addProperty("kind", kind);
+        toolCall.addProperty("title", title);
         params.add("toolCall", toolCall);
 
         JsonArray options = new JsonArray();

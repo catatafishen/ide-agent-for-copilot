@@ -40,25 +40,34 @@
 ## 3) Architecture
 
 ### 3.1 Modules
-- `plugin-core` (Java): UI (Tool Window), settings, services, Git/format integrations.
-- `copilot-bridge` (Java): sidecar process lifecycle, protocol, streaming.
-- `integration-tests` (Java): UI‑less functional tests using IntelliJ test framework where feasible.
+- `plugin-core` (Java): UI (Tool Window), settings, services, ACP client, PSI bridge.
+- `mcp-server` (Java): Standalone MCP stdio server bundled as JAR, routes tool calls to PSI bridge.
+- `integration-tests` (Java): UI‑less functional tests (placeholder).
 
-### 3.2 Copilot SDK embedding (sidecar)
-- Because no stable **Java** binding exists in the tech preview, we run a small **Go** sidecar using the **Copilot SDK** and talk over localhost using a compact JSON‑RPC/gRPC schema (sessions, messages, tools, events). This keeps footprint small and coupling low.
-- Sidecar responsibilities:
-    - Create/close **agent sessions**; stream **plan/timeline** events.
-    - `/send(prompt, contextRefs, model, policy)` endpoint.
-    - Register **git.* tools** and call back into the plugin for actual execution (the plugin uses IDE Git APIs).
-    - `/models` endpoint to list available models (as exposed by SDK).
+### 3.2 ACP Integration (direct, no sidecar)
+- The plugin spawns **Copilot CLI** (`copilot --acp --stdio`) and communicates via **JSON-RPC 2.0** over stdin/stdout using the **Agent Client Protocol (ACP)**.
+- CopilotAcpClient responsibilities:
+    - Initialize handshake, create/close **agent sessions**, stream **plan/timeline** events.
+    - Send prompts with context references and model selection.
+    - Handle **permission requests** from the agent (deny built-in edits, auto-approve MCP tools).
+    - Auto-retry denied operations with instruction to use IntelliJ MCP tools.
 - The plugin owns user policy (approvals, allow/deny), persists settings, and renders UI.
 
-### 3.3 Data flow
-1. User prepares **Prompt** and **Context**; clicks **Run**.
-2. Plugin → sidecar: `send(...)`.
-3. Sidecar (SDK) plans; emits **events** (steps/tool‑calls/diffs).
-4. Plugin renders **Plans/Timeline**; requests approval on privileged tool calls.
-5. Approved tool calls are executed via the plugin (Git/FS), result sent back to sidecar → agent continues.
+### 3.3 MCP Tools (IntelliJ-native)
+- 19 tools registered via MCP stdio server, executed through PSI bridge HTTP server inside IntelliJ process.
+- **File operations**: `intellij_read_file` (editor buffer), `intellij_write_file` (Document API with undo).
+- **Code quality**: `get_problems`, `optimize_imports`, `format_code`.
+- **Navigation**: `search_symbols`, `get_file_outline`, `find_references`, `list_project_files`.
+- **Testing**: `list_tests`, `run_tests`, `get_test_results`, `get_coverage`.
+- All writes auto-trigger optimize imports + reformat code.
+
+### 3.4 Data flow
+1. User prepares **Prompt** and **Context**; clicks **Send**.
+2. Plugin → Copilot CLI: `session/prompt(...)` via ACP.
+3. Agent plans; emits **events** (chunks/tool_calls/plan updates).
+4. If agent requests built-in file edit → **denied** → auto-retry with MCP tools.
+5. MCP tools execute through PSI bridge → IntelliJ Document API.
+6. Auto-format runs after every write.
 
 ---
 

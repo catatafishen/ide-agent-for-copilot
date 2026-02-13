@@ -1,242 +1,132 @@
 # Agentic GitHub Copilot for JetBrains
 
-A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE, enabling AI-powered code assistance with full context awareness, planning, and Git integration.
+A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE via the **Agent Client Protocol (ACP)**, with **MCP-based code intelligence tools** that leverage IntelliJ's native APIs for symbol search, code formatting, test execution, and file operations.
 
-## 🚧 Development Status
+## Status
 
-**Current Phase**: Infrastructure Setup (Phase 1)
+**Working** — Plugin is functional with full Copilot agent integration.
 
-- [ ] Multi-module Gradle project structure
-- [ ] JSON-RPC protocol definitions
-- [ ] Go sidecar scaffold with Copilot SDK integration
-- [ ] Basic plugin skeleton with Tool Window
-- [ ] Sidecar lifecycle management
+### What Works
+- Multi-turn conversation with GitHub Copilot agent
+- 19 IntelliJ-native MCP tools (symbol search, file outline, references, test runner, code formatting, etc.)
+- Built-in file operations redirected through IntelliJ Document API (undo support, no external file conflicts)
+- Auto-format (optimize imports + reformat code) after every write
+- Model selection with usage multiplier display
+- Context management (attach files/selections to prompts)
+- Session info panel with plan visualization and timeline
+- Real-time streaming responses
 
-## ✨ Features (Planned for v1)
-
-### Core Capabilities
-- **Agentic Workflow**: Multi-step planning and execution via GitHub Copilot SDK
-- **Context Management**: Add code selections, files, and symbols to provide rich context
-- **Interactive Planning**: Visual step-by-step plans with real-time progress
-- **Timeline View**: Chronological view of agent reasoning and tool invocations
-- **Git Integration**: Conventional Commits, branch management, push/pull with approval gates
-- **Smart Formatting**: Automatic code formatting and import optimization after agent edits
-
-### Tool Window Components
-1. **Prompt Editor**: Multi-line Markdown editor with token estimates
-2. **Context Bag**: Manage files, ranges, and symbols for context
-3. **Plans View**: Hierarchical plan visualization with status indicators
-4. **Timeline**: Expandable event stream showing agent actions
-5. **Settings**: Model selection, tool permissions, formatting options
-
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│         IntelliJ IDEA Plugin (Java 21)          │
-│  ┌──────────────┐  ┌──────────────────────────┐ │
-│  │ Tool Window  │  │   Services & Adapters    │ │
-│  │   (Swing)    │  │  - Git (VCS API)         │ │
-│  │              │  │  - Formatter             │ │
-│  │ - Prompt     │  │  - Settings Persistence  │ │
-│  │ - Context    │  │  - Approval Manager      │ │
-│  │ - Plans      │  │                          │ │
-│  │ - Timeline   │  │                          │ │
-│  └──────┬───────┘  └────────┬─────────────────┘ │
-│         │                   │                    │
-│         └─────────┬─────────┘                    │
-│                   │ JSON-RPC/HTTP                │
-└───────────────────┼──────────────────────────────┘
-                    │
-         ┌──────────▼──────────┐
-         │   Go Sidecar        │
-         │  (Copilot SDK)      │
-         │                     │
-         │ - Session Mgmt      │
-         │ - Model Selection   │
-         │ - Event Streaming   │
-         │ - Tool Registration │
-         └─────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                 IntelliJ IDEA Plugin (Java 21)               │
+│  ┌────────────────┐  ┌──────────────────────────────────────┐│
+│  │   Tool Window   │  │          CopilotAcpClient            ││
+│  │    (Swing)      │  │  - JSON-RPC 2.0 over stdin/stdout   ││
+│  │                 │  │  - Permission handler (deny edits)   ││
+│  │  - Prompt       │  │  - Retry with MCP tool instruction   ││
+│  │  - Context      │  │  - Streaming chunk delivery          ││
+│  │  - Session      │  └──────────────┬───────────────────────┘│
+│  │  - Settings     │                 │ spawns                  │
+│  └─────────────────┘                 │                         │
+│                                      ▼                         │
+│  ┌──────────────────┐    ┌───────────────────────┐            │
+│  │ PsiBridgeService │◄───│  Copilot CLI (--acp)  │            │
+│  │  (HTTP server)   │    │                       │            │
+│  │  19 MCP tools    │    │  - Agent reasoning    │            │
+│  │  - read/write    │    │  - Tool selection     │            │
+│  │  - format        │    │  - Permission reqs    │            │
+│  │  - search        │    └───────────┬───────────┘            │
+│  │  - test runner   │               │                         │
+│  └──────────────────┘               ▼                         │
+│                          ┌──────────────────────┐             │
+│                          │  MCP Server (JAR)    │             │
+│                          │  intellij-code-tools │             │
+│                          │  (stdio bridge)      │             │
+│                          └──────────────────────┘             │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+### Key Design: IntelliJ-Native File Operations
+
+Built-in Copilot file edits are **denied** at the permission level. The agent automatically retries using `intellij_write_file` MCP tool, which:
+- Writes through IntelliJ's Document API (supports undo/redo)
+- Auto-runs optimize imports + reformat code after every write
+- Changes appear immediately in the editor (no "file changed externally" dialog)
+- New files are created through VFS for proper project indexing
 
 ### Module Structure
 
 ```
 intellij-copilot-plugin/
-├── plugin-core/              # Main plugin module (Java 21)
-│   ├── src/main/java/
-│   │   └── com/github/copilot/intellij/
-│   │       ├── ui/           # Tool Window, actions, editors
-│   │       ├── services/     # Application/project services
-│   │       ├── git/          # Git VCS integration
-│   │       ├── format/       # Code formatting hooks
-│   │       └── settings/     # Configuration & persistence
-│   └── src/main/resources/
-│       └── META-INF/plugin.xml
-│
-├── copilot-bridge/           # Sidecar process (Go)
-│   ├── protocol/             # JSON-RPC schemas
-│   ├── cmd/sidecar/          # Main entry point
-│   ├── internal/
-│   │   ├── server/           # HTTP JSON-RPC server
-│   │   ├── copilot/          # SDK integration
-│   │   └── session/          # Session lifecycle
-│   └── Makefile
-│
-└── integration-tests/        # Functional tests (Java 21)
-    └── src/test/java/
+├── plugin-core/          # Main plugin (Java 21)
+│   └── src/main/java/com/github/copilot/intellij/
+│       ├── ui/           # Tool Window (Swing)
+│       ├── services/     # CopilotService, CopilotSettings
+│       ├── bridge/       # CopilotAcpClient (ACP protocol)
+│       └── psi/          # PsiBridgeService (19 MCP tools)
+├── mcp-server/           # MCP stdio server (bundled JAR)
+│   └── src/main/java/com/github/copilot/mcp/
+│       └── McpServer.java
+└── integration-tests/    # (placeholder)
 ```
 
-## 🛠️ Technology Stack
+## MCP Tools (19 tools)
 
-- **Plugin**: Java 21, IntelliJ Platform SDK 2025.x
-- **Build System**: Gradle 8.x with Kotlin DSL
-- **Sidecar**: Go 1.22+, GitHub Copilot SDK (technical preview)
-- **Protocol**: JSON-RPC over HTTP/1.1
-- **Testing**: JUnit 5, AssertJ (optional), Mockito (optional)
+| Category | Tools |
+|----------|-------|
+| **Code Navigation** | `search_symbols`, `get_file_outline`, `find_references`, `list_project_files` |
+| **File I/O** | `intellij_read_file`, `intellij_write_file` |
+| **Code Quality** | `get_problems`, `optimize_imports`, `format_code` |
+| **Testing** | `list_tests`, `run_tests`, `get_test_results`, `get_coverage` |
+| **Project** | `get_project_info`, `list_run_configurations`, `run_configuration`, `create_run_configuration`, `edit_run_configuration` |
 
-## 📋 Requirements
+## Requirements
 
-### For Development
-- **JDK 21** (IntelliJ plugin development)
-- **Go 1.22+** (sidecar development)
-- **IntelliJ IDEA 2025.x** (Community or Ultimate)
-- **GitHub Copilot CLI** (installed and authenticated)
+- **JDK 21** (for plugin development)
+- **IntelliJ IDEA 2024.3+** (any JetBrains IDE)
+- **GitHub Copilot CLI** (`winget install GitHub.Copilot`)
 - **GitHub Copilot Subscription** (active)
 
-### For Users (Runtime)
-- **IntelliJ IDEA 2024.3 - 2025.2** (any JetBrains IDE on IntelliJ Platform)
-- **GitHub Copilot CLI** (managed by sidecar installation)
-- **GitHub Copilot Subscription**
+## Quick Start
 
-## 🚀 Getting Started
+### Building
 
-### Building the Plugin
+```powershell
+$env:JAVA_HOME = "path\to\jdk-21"
+.\gradlew.bat :plugin-core:clean :plugin-core:buildPlugin
+```
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/intellij-copilot-plugin.git
-cd intellij-copilot-plugin
+### Installing
 
-# Build the Go sidecar
-cd copilot-bridge
-make build
-
-# Build the plugin
-cd ..
-./gradlew buildPlugin
-
-# Run in a sandboxed IDE
-./gradlew runIde
+```powershell
+# Close IntelliJ first, then:
+Remove-Item "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins\plugin-core" -Recurse -Force
+Expand-Archive "plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip" `
+    "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins" -Force
 ```
 
 ### Running Tests
 
-```bash
-# Run all tests
-./gradlew test
-
-# Run with coverage
-./gradlew test jacocoTestReport
+```powershell
+.\gradlew.bat test    # All tests (unit + MCP)
 ```
 
-## 🔧 Configuration
+## Technology Stack
 
-Plugin settings are stored per-project in `.idea/copilot-agent.json`:
+- **Plugin**: Java 21, IntelliJ Platform SDK 2025.x, Swing
+- **Protocol**: ACP (Agent Client Protocol) over JSON-RPC 2.0 / stdin+stdout
+- **MCP Tools**: Model Context Protocol over stdio
+- **Build**: Gradle 8.x with Kotlin DSL
+- **Testing**: JUnit 5
 
-```json
-{
-  "model": "gpt-5-mini",
-  "toolPermissions": {
-    "git.commit": "ask",
-    "git.push": "ask",
-    "git.forcePush": "deny",
-    "fs.write": "ask"
-  },
-  "formatting": {
-    "formatOnSave": true,
-    "optimizeImportsOnSave": true,
-    "formatAfterAgentEdits": true,
-    "preCommitReformat": true
-  },
-  "conventionalCommits": {
-    "enabled": true,
-    "defaultType": "chore",
-    "enforceScopes": false
-  }
-}
-```
+## Documentation
 
-## 📖 Documentation
+- [Development Guide](DEVELOPMENT.md) — Build, deploy, architecture details
+- [Quick Start](QUICK-START.md) — Fast setup instructions
+- [Architecture](docs/ARCHITECTURE.md) — Detailed component descriptions
 
-- [Architecture Details](docs/ARCHITECTURE.md) *(coming soon)*
-- [Contributing Guide](docs/CONTRIBUTING.md) *(coming soon)*
-- [API Reference](docs/API.md) *(coming soon)*
-
-## 🧪 Development Roadmap
-
-### Phase 1: Infrastructure (Current) - **90% COMPLETE** 🎉
-- [x] Project setup decisions documented
-- [x] Multi-module Gradle build (plugin-core, integration-tests)
-- [x] JSON-RPC protocol definitions
-- [x] Go 1.22.5 installed and configured
-- [x] Gradle 8.11 installed
-- [x] **Go sidecar fully implemented and tested** ✨
-  - Mock Copilot client with clean interface
-  - Session management working
-  - All RPC endpoints functional
-  - Binary size: 7.2 MB, fully tested
-- [x] **Tool Window UI complete** ✨
-  - Factory (Java) + Content (Kotlin hybrid approach)
-  - 5 tabs: Prompt, Context, Plans, Timeline, Settings
-  - Icon and registrations in plugin.xml
-- [x] **Java bridge layer complete** ✨
-  - SidecarProcess (lifecycle management)
-  - SidecarClient (HTTP JSON-RPC with Gson)
-  - SidecarException (error handling)
-- [x] **Services layer complete** ✨
-  - AgenticCopilotService (application service)
-  - SidecarService (sidecar lifecycle)
-- [x] Comprehensive documentation (Architecture, Development Guide, Plan)
-- [x] Go plugin installed in IntelliJ
-- [x] Hybrid UI approach implemented (Java core + Kotlin UI DSL)
-- [x] All dependencies added (Gson, Kotlin stdlib)
-- [ ] Gradle wrapper generation (IntelliJ SDK download ~95% complete)
-- [ ] First plugin build and test in sandbox IDE
-
-### Phase 2: Core Features
-- [ ] Prompt editor with context management
-- [ ] Plans and Timeline visualization
-- [ ] Model selection and settings UI
-- [ ] Session lifecycle management
-
-### Phase 3: Git Integration
-- [ ] Git status, branch, commit operations
-- [ ] Conventional Commits support
-- [ ] Approval/permission system
-- [ ] Push with safety checks
-
-### Phase 4: Code Quality
-- [ ] Format-on-save integration
-- [ ] Format-after-edit (changed ranges)
-- [ ] Import optimization
-- [ ] Pre-commit hooks
-
-### Phase 5: Testing & Polish
-- [ ] Unit tests (≥85% coverage)
-- [ ] Integration tests
-- [ ] Cross-platform support (macOS, Linux)
-- [ ] Performance optimization
-- [ ] Documentation
-
-## 📝 License
+## License
 
 *(License TBD)*
-
-## 🤝 Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
-
----
-
-**Note**: This plugin uses the GitHub Copilot SDK which is currently in technical preview. Features and APIs may change.
