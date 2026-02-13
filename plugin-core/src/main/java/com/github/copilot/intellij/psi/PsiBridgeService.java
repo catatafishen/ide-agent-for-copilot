@@ -1451,13 +1451,16 @@ public final class PsiBridgeService implements Disposable {
                     + truncateOutput(output.toString());
         }
 
-        // Parse JUnit XML results
-        String xmlResults = parseJunitXmlResults(basePath, module);
-        if (!xmlResults.isEmpty()) {
-            return xmlResults;
+        // Only use JUnit XML results if the build actually succeeded or tests ran
+        // (exit code 0 or XML was freshly generated)
+        if (exitCode == 0) {
+            String xmlResults = parseJunitXmlResults(basePath, module);
+            if (!xmlResults.isEmpty()) {
+                return xmlResults;
+            }
         }
 
-        // Fall back to process output summary
+        // Report failure with process output
         return (exitCode == 0 ? "✓ Tests PASSED" : "✗ Tests FAILED (exit code " + exitCode + ")")
                 + "\n\n" + truncateOutput(output.toString());
     }
@@ -1531,7 +1534,8 @@ public final class PsiBridgeService implements Disposable {
             }
         } catch (Exception ignored) {
         }
-        return System.getProperty("java.home", System.getenv("JAVA_HOME"));
+        // Don't fall back to IDE's JBR — let the system JAVA_HOME take effect
+        return System.getenv("JAVA_HOME");
     }
 
     private static JsonObject createJsonWithName(String name) {
