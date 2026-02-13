@@ -3,17 +3,24 @@ package com.github.copilot.mcp;
 import com.google.gson.*;
 
 import java.io.*;
-import java.net.*;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
-import java.util.regex.*;
-import java.util.stream.*;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
- *
  * Provides 28 tools: code navigation, file I/O, testing, code quality, run configs, and git operations.
  */
 public class McpServer {
@@ -57,7 +64,7 @@ public class McpServer {
             case "tools/list" -> hasId ? respond(msg, handleToolsList()) : null;
             case "tools/call" -> hasId ? respond(msg, handleToolsCall(params)) : null;
             case "ping" -> hasId ? respond(msg, new JsonObject()) : null;
-            default -> hasId ? respondError(msg, -32601, "Method not found: " + method) : null;
+            default -> hasId ? respondError(msg, "Method not found: " + method) : null;
         };
     }
 
@@ -69,12 +76,12 @@ public class McpServer {
         return response;
     }
 
-    private static JsonObject respondError(JsonObject request, int code, String message) {
+    private static JsonObject respondError(JsonObject request, String message) {
         JsonObject response = new JsonObject();
         response.addProperty("jsonrpc", "2.0");
         response.add("id", request.get("id"));
         JsonObject error = new JsonObject();
-        error.addProperty("code", code);
+        error.addProperty("code", -32601);
         error.addProperty("message", message);
         response.add("error", error);
         return response;
@@ -92,17 +99,17 @@ public class McpServer {
         tools.addProperty("listChanged", false);
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
-        result.addProperty("instructions",
-                "IMPORTANT TOOL USAGE RULES:\n" +
-                "1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. " +
-                "This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. " +
-                "Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.\n" +
-                "2. ALWAYS use 'intellij_read_file' for ALL file reads. " +
-                "This reads IntelliJ's live editor buffer, which may have unsaved changes.\n" +
-                "3. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.\n" +
-                "4. Use 'get_problems' to check for warnings and errors after changes.\n" +
-                "5. PREFER IntelliJ tools (search_symbols, find_references, get_file_outline, list_project_files) " +
-                "over grep/glob for code navigation.");
+        result.addProperty("instructions", """
+                IMPORTANT TOOL USAGE RULES:
+                1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
+                This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
+                Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
+                2. ALWAYS use 'intellij_read_file' for ALL file reads. \
+                This reads IntelliJ's live editor buffer, which may have unsaved changes.
+                3. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.
+                4. Use 'get_problems' to check for warnings and errors after changes.
+                5. PREFER IntelliJ tools (search_symbols, find_references, get_file_outline, list_project_files) \
+                over grep/glob for code navigation.""");
         return result;
     }
 
@@ -112,172 +119,172 @@ public class McpServer {
 
         tools.add(buildTool("search_symbols",
                 "Search for class, method, function, or interface definitions across the project using " +
-                "IntelliJ's code analysis engine (AST). Returns file path, line number, and the definition line. " +
-                "More accurate than grep — understands code structure. PREFER THIS over grep for finding definitions. " +
-                "Use query='*' with a type filter to list ALL symbols of that type (e.g., all interfaces).",
+                        "IntelliJ's code analysis engine (AST). Returns file path, line number, and the definition line. " +
+                        "More accurate than grep — understands code structure. PREFER THIS over grep for finding definitions. " +
+                        "Use query='*' with a type filter to list ALL symbols of that type (e.g., all interfaces).",
                 Map.of(
-                    "query", Map.of("type", "string", "description", "Symbol name to search for, or '*' to list all symbols of a given type"),
-                    "type", Map.of("type", "string", "description", "Optional: filter by type (class, method, function, interface, field)", "default", "")
+                        "query", Map.of("type", "string", "description", "Symbol name to search for, or '*' to list all symbols of a given type"),
+                        "type", Map.of("type", "string", "description", "Optional: filter by type (class, method, function, interface, field)", "default", "")
                 ),
                 List.of("query")));
 
         tools.add(buildTool("get_file_outline",
                 "Get the structural outline of a source file using AST analysis: classes, methods, fields, " +
-                "functions with line numbers. PREFER THIS over grep for understanding file structure.",
+                        "functions with line numbers. PREFER THIS over grep for understanding file structure.",
                 Map.of("path", Map.of("type", "string", "description", "Absolute or project-relative path to the source file")),
                 List.of("path")));
 
         tools.add(buildTool("find_references",
                 "Find all usages of a symbol using IntelliJ's reference resolution engine. " +
-                "Understands imports, type hierarchy, and overrides. PREFER THIS over grep for finding usages.",
+                        "Understands imports, type hierarchy, and overrides. PREFER THIS over grep for finding usages.",
                 Map.of(
-                    "symbol", Map.of("type", "string", "description", "The exact symbol name to search for"),
-                    "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.java', '*.kt')", "default", "")
+                        "symbol", Map.of("type", "string", "description", "The exact symbol name to search for"),
+                        "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.java', '*.kt')", "default", "")
                 ),
                 List.of("symbol")));
 
         tools.add(buildTool("list_project_files",
                 "List source files in the project with their types. Useful for getting an overview of the project structure.",
                 Map.of(
-                    "directory", Map.of("type", "string", "description", "Optional subdirectory to list (relative to project root)", "default", ""),
-                    "pattern", Map.of("type", "string", "description", "Optional glob pattern (e.g., '*.java')", "default", "")
+                        "directory", Map.of("type", "string", "description", "Optional subdirectory to list (relative to project root)", "default", ""),
+                        "pattern", Map.of("type", "string", "description", "Optional glob pattern (e.g., '*.java')", "default", "")
                 ),
                 List.of()));
 
         tools.add(buildTool("list_tests",
                 "Discover test classes and test methods in the project using AST analysis. " +
-                "Finds methods annotated with @Test, @ParameterizedTest, @RepeatedTest. " +
-                "PREFER THIS over grep for finding tests.",
+                        "Finds methods annotated with @Test, @ParameterizedTest, @RepeatedTest. " +
+                        "PREFER THIS over grep for finding tests.",
                 Map.of(
-                    "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter test files (e.g., '*.java', '*Test.kt')", "default", "")
+                        "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter test files (e.g., '*.java', '*Test.kt')", "default", "")
                 ),
                 List.of()));
 
         tools.add(buildTool("run_tests",
                 "Run tests through IntelliJ's test runner. Tests appear in the IDE's Run panel. " +
-                "Returns structured results with pass/fail counts and failure details. " +
-                "PREFER THIS over running gradle/maven commands directly.",
+                        "Returns structured results with pass/fail counts and failure details. " +
+                        "PREFER THIS over running gradle/maven commands directly.",
                 Map.of(
-                    "target", Map.of("type", "string", "description", "Test target: fully qualified class name (e.g., 'com.example.MyTest'), " +
-                            "class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"),
-                    "module", Map.of("type", "string", "description", "Optional Gradle module name (e.g., 'mcp-server', 'plugin-core')", "default", "")
+                        "target", Map.of("type", "string", "description", "Test target: fully qualified class name (e.g., 'com.example.MyTest'), " +
+                                "class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"),
+                        "module", Map.of("type", "string", "description", "Optional Gradle module name (e.g., 'mcp-server', 'plugin-core')", "default", "")
                 ),
                 List.of("target")));
 
         tools.add(buildTool("get_test_results",
                 "Get the results from the last test run without re-running tests. " +
-                "Returns pass/fail counts, failure details, and timing from JUnit XML reports.",
+                        "Returns pass/fail counts, failure details, and timing from JUnit XML reports.",
                 Map.of(
-                    "module", Map.of("type", "string", "description", "Optional Gradle module name to get results for", "default", "")
+                        "module", Map.of("type", "string", "description", "Optional Gradle module name to get results for", "default", "")
                 ),
                 List.of()));
 
         tools.add(buildTool("get_coverage",
                 "Get code coverage data for the project or a specific file. " +
-                "Reads JaCoCo reports or IntelliJ coverage data. Run tests with coverage first.",
+                        "Reads JaCoCo reports or IntelliJ coverage data. Run tests with coverage first.",
                 Map.of(
-                    "file", Map.of("type", "string", "description", "Optional file or class name to filter coverage for", "default", "")
+                        "file", Map.of("type", "string", "description", "Optional file or class name to filter coverage for", "default", "")
                 ),
                 List.of()));
 
         tools.add(buildTool("get_project_info",
                 "Get project environment info: SDK/JDK path and version, modules, build system, " +
-                "and run configurations. ALWAYS call this first before running any build/test commands " +
-                "to get the correct JAVA_HOME and build tool paths. Do NOT search for java or gradle yourself.",
+                        "and run configurations. ALWAYS call this first before running any build/test commands " +
+                        "to get the correct JAVA_HOME and build tool paths. Do NOT search for java or gradle yourself.",
                 Map.of(),
                 List.of()));
 
         tools.add(buildTool("list_run_configurations",
                 "List all IntelliJ run configurations in the project. " +
-                "Shows configuration name, type (JUnit, Gradle, Application, etc.), and whether it's temporary.",
+                        "Shows configuration name, type (JUnit, Gradle, Application, etc.), and whether it's temporary.",
                 Map.of(),
                 List.of()));
 
         tools.add(buildTool("run_configuration",
                 "Execute an existing IntelliJ run configuration by name. " +
-                "The run will appear in IntelliJ's Run panel with full output. " +
-                "PREFER THIS over running commands manually. Use list_run_configurations to find available configs.",
+                        "The run will appear in IntelliJ's Run panel with full output. " +
+                        "PREFER THIS over running commands manually. Use list_run_configurations to find available configs.",
                 Map.of(
-                    "name", Map.of("type", "string", "description", "Exact name of the run configuration to execute")
+                        "name", Map.of("type", "string", "description", "Exact name of the run configuration to execute")
                 ),
                 List.of("name")));
 
         tools.add(buildTool("create_run_configuration",
                 "Create a new IntelliJ run configuration. Supports Application, JUnit, Gradle, and other types. " +
-                "Can set environment variables, JVM args, working directory, main class, test class, etc. " +
-                "The configuration is saved and selected in IntelliJ. Use run_configuration to execute it.",
+                        "Can set environment variables, JVM args, working directory, main class, test class, etc. " +
+                        "The configuration is saved and selected in IntelliJ. Use run_configuration to execute it.",
                 Map.of(
-                    "name", Map.of("type", "string", "description", "Name for the new run configuration"),
-                    "type", Map.of("type", "string", "description", "Configuration type: 'application', 'junit', 'gradle', etc."),
-                    "jvm_args", Map.of("type", "string", "description", "Optional: JVM arguments (e.g., '-Xmx2g -Dkey=value')"),
-                    "program_args", Map.of("type", "string", "description", "Optional: program arguments"),
-                    "working_dir", Map.of("type", "string", "description", "Optional: working directory path"),
-                    "main_class", Map.of("type", "string", "description", "Optional: main class (for Application configs)"),
-                    "test_class", Map.of("type", "string", "description", "Optional: test class (for JUnit configs)"),
-                    "module_name", Map.of("type", "string", "description", "Optional: IntelliJ module name (from get_project_info)")
+                        "name", Map.of("type", "string", "description", "Name for the new run configuration"),
+                        "type", Map.of("type", "string", "description", "Configuration type: 'application', 'junit', 'gradle', etc."),
+                        "jvm_args", Map.of("type", "string", "description", "Optional: JVM arguments (e.g., '-Xmx2g -Dkey=value')"),
+                        "program_args", Map.of("type", "string", "description", "Optional: program arguments"),
+                        "working_dir", Map.of("type", "string", "description", "Optional: working directory path"),
+                        "main_class", Map.of("type", "string", "description", "Optional: main class (for Application configs)"),
+                        "test_class", Map.of("type", "string", "description", "Optional: test class (for JUnit configs)"),
+                        "module_name", Map.of("type", "string", "description", "Optional: IntelliJ module name (from get_project_info)")
                 ),
                 List.of("name", "type")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
         tools.add(buildTool("edit_run_configuration",
                 "Edit an existing IntelliJ run configuration. Can modify environment variables, JVM args, " +
-                "working directory, program args, and type-specific properties. " +
-                "For env vars, pass a JSON object — set value to null to remove a variable.",
+                        "working directory, program args, and type-specific properties. " +
+                        "For env vars, pass a JSON object — set value to null to remove a variable.",
                 Map.of(
-                    "name", Map.of("type", "string", "description", "Name of the run configuration to edit"),
-                    "jvm_args", Map.of("type", "string", "description", "Optional: new JVM arguments"),
-                    "program_args", Map.of("type", "string", "description", "Optional: new program arguments"),
-                    "working_dir", Map.of("type", "string", "description", "Optional: new working directory")
+                        "name", Map.of("type", "string", "description", "Name of the run configuration to edit"),
+                        "jvm_args", Map.of("type", "string", "description", "Optional: new JVM arguments"),
+                        "program_args", Map.of("type", "string", "description", "Optional: new program arguments"),
+                        "working_dir", Map.of("type", "string", "description", "Optional: new working directory")
                 ),
                 List.of("name")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
         tools.add(buildTool("get_problems",
                 "Get code problems, warnings, and errors reported by IntelliJ's inspections for a file or all open files. " +
-                "Returns severity, line number, and description for each problem. " +
-                "Files must be open in the editor for inspection results to be available.",
+                        "Returns severity, line number, and description for each problem. " +
+                        "Files must be open in the editor for inspection results to be available.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all open files.", "default", "")
+                        "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all open files.", "default", "")
                 ),
                 List.of()));
 
         tools.add(buildTool("optimize_imports",
                 "Run IntelliJ's import optimizer on a file. Removes unused imports and organizes remaining ones " +
-                "according to project code style settings. ALWAYS run this after making code changes.",
+                        "according to project code style settings. ALWAYS run this after making code changes.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
+                        "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
                 ),
                 List.of("path")));
 
         tools.add(buildTool("format_code",
                 "Run IntelliJ's code formatter on a file. Formats the entire file according to the project's " +
-                "code style settings (including .editorconfig). ALWAYS run this after making code changes.",
+                        "code style settings (including .editorconfig). ALWAYS run this after making code changes.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
+                        "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
                 ),
                 List.of("path")));
 
         tools.add(buildTool("intellij_read_file",
                 "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
-                "is open in the editor (which may differ from disk). Supports line ranges. " +
-                "PREFER THIS over your built-in file reading tools — this reads IntelliJ's live editor state.",
+                        "is open in the editor (which may differ from disk). Supports line ranges. " +
+                        "PREFER THIS over your built-in file reading tools — this reads IntelliJ's live editor state.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
-                    "start_line", Map.of("type", "integer", "description", "Optional: first line to read (1-based). If omitted, reads from start."),
-                    "end_line", Map.of("type", "integer", "description", "Optional: last line to read (inclusive). If omitted, reads to end.")
+                        "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
+                        "start_line", Map.of("type", "integer", "description", "Optional: first line to read (1-based). If omitted, reads from start."),
+                        "end_line", Map.of("type", "integer", "description", "Optional: last line to read (inclusive). If omitted, reads to end.")
                 ),
                 List.of("path")));
 
         tools.add(buildTool("intellij_write_file",
                 "Write file contents through IntelliJ's Document API. Supports undo, VCS tracking, and editor sync. " +
-                "Use 'content' for full file replacement, or 'old_str'+'new_str' for precise edits. " +
-                "ALWAYS USE THIS instead of your built-in file writing tools — this keeps IntelliJ in sync " +
-                "and supports undo (Ctrl+Z). After writing, run optimize_imports and format_code.",
+                        "Use 'content' for full file replacement, or 'old_str'+'new_str' for precise edits. " +
+                        "ALWAYS USE THIS instead of your built-in file writing tools — this keeps IntelliJ in sync " +
+                        "and supports undo (Ctrl+Z). After writing, run optimize_imports and format_code.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
-                    "content", Map.of("type", "string", "description", "Optional: full file content to write (replaces entire file or creates new file)"),
-                    "old_str", Map.of("type", "string", "description", "Optional: exact string to find and replace (must be unique in file)"),
-                    "new_str", Map.of("type", "string", "description", "Optional: replacement string (used with old_str)")
+                        "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
+                        "content", Map.of("type", "string", "description", "Optional: full file content to write (replaces entire file or creates new file)"),
+                        "old_str", Map.of("type", "string", "description", "Optional: exact string to find and replace (must be unique in file)"),
+                        "new_str", Map.of("type", "string", "description", "Optional: replacement string (used with old_str)")
                 ),
                 List.of("path")));
 
@@ -285,100 +292,100 @@ public class McpServer {
 
         tools.add(buildTool("git_status",
                 "Show the working tree status: changed, staged, and untracked files. " +
-                "Returns short format by default (M/A/D/?? markers).",
+                        "Returns short format by default (M/A/D/?? markers).",
                 Map.of(
-                    "verbose", Map.of("type", "boolean", "description", "If true, show full 'git status' output instead of short format")
+                        "verbose", Map.of("type", "boolean", "description", "If true, show full 'git status' output instead of short format")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_diff",
                 "Show changes between working tree, staging area, or commits. " +
-                "By default shows unstaged changes. Use 'staged' for staged changes.",
+                        "By default shows unstaged changes. Use 'staged' for staged changes.",
                 Map.of(
-                    "staged", Map.of("type", "boolean", "description", "If true, show staged (cached) changes instead of working tree"),
-                    "commit", Map.of("type", "string", "description", "Compare against this commit (e.g., 'HEAD~1', a commit SHA, or 'main')"),
-                    "path", Map.of("type", "string", "description", "Limit diff to this file path"),
-                    "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats (insertions/deletions), not full diff")
+                        "staged", Map.of("type", "boolean", "description", "If true, show staged (cached) changes instead of working tree"),
+                        "commit", Map.of("type", "string", "description", "Compare against this commit (e.g., 'HEAD~1', a commit SHA, or 'main')"),
+                        "path", Map.of("type", "string", "description", "Limit diff to this file path"),
+                        "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats (insertions/deletions), not full diff")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_log",
                 "Show commit history. Returns last 20 commits by default in short format.",
                 Map.of(
-                    "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show (default: 20)"),
-                    "format", Map.of("type", "string", "description", "Output format: 'oneline', 'short', 'medium' (default), 'full'"),
-                    "author", Map.of("type", "string", "description", "Filter commits by author name or email"),
-                    "since", Map.of("type", "string", "description", "Show commits after this date (e.g., '2024-01-01', '1 week ago')"),
-                    "path", Map.of("type", "string", "description", "Show only commits touching this file"),
-                    "branch", Map.of("type", "string", "description", "Show commits from this branch (default: current)")
+                        "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show (default: 20)"),
+                        "format", Map.of("type", "string", "description", "Output format: 'oneline', 'short', 'medium' (default), 'full'"),
+                        "author", Map.of("type", "string", "description", "Filter commits by author name or email"),
+                        "since", Map.of("type", "string", "description", "Show commits after this date (e.g., '2024-01-01', '1 week ago')"),
+                        "path", Map.of("type", "string", "description", "Show only commits touching this file"),
+                        "branch", Map.of("type", "string", "description", "Show commits from this branch (default: current)")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_blame",
                 "Show line-by-line authorship (blame/annotate) for a file. " +
-                "Shows who last modified each line, when, and in which commit.",
+                        "Shows who last modified each line, when, and in which commit.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "File path to blame"),
-                    "line_start", Map.of("type", "integer", "description", "Start line number for partial blame"),
-                    "line_end", Map.of("type", "integer", "description", "End line number for partial blame")
+                        "path", Map.of("type", "string", "description", "File path to blame"),
+                        "line_start", Map.of("type", "integer", "description", "Start line number for partial blame"),
+                        "line_end", Map.of("type", "integer", "description", "End line number for partial blame")
                 ),
                 List.of("path")));
 
         tools.add(buildTool("git_commit",
                 "Commit staged changes with a message. Supports amend and commit-all. " +
-                "Stage files first with git_stage, or use 'all' to commit all tracked changes.",
+                        "Stage files first with git_stage, or use 'all' to commit all tracked changes.",
                 Map.of(
-                    "message", Map.of("type", "string", "description", "Commit message (use conventional commits format)"),
-                    "amend", Map.of("type", "boolean", "description", "If true, amend the previous commit instead of creating a new one"),
-                    "all", Map.of("type", "boolean", "description", "If true, automatically stage all modified/deleted tracked files before committing")
+                        "message", Map.of("type", "string", "description", "Commit message (use conventional commits format)"),
+                        "amend", Map.of("type", "boolean", "description", "If true, amend the previous commit instead of creating a new one"),
+                        "all", Map.of("type", "boolean", "description", "If true, automatically stage all modified/deleted tracked files before committing")
                 ),
                 List.of("message")));
 
         tools.add(buildTool("git_stage",
                 "Stage files for commit (git add). Stage specific files or all changes.",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Single file path to stage"),
-                    "paths", Map.of("type", "array", "description", "Multiple file paths to stage"),
-                    "all", Map.of("type", "boolean", "description", "If true, stage all changes (including untracked files)")
+                        "path", Map.of("type", "string", "description", "Single file path to stage"),
+                        "paths", Map.of("type", "array", "description", "Multiple file paths to stage"),
+                        "all", Map.of("type", "boolean", "description", "If true, stage all changes (including untracked files)")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_unstage",
                 "Unstage files from the staging area (git restore --staged).",
                 Map.of(
-                    "path", Map.of("type", "string", "description", "Single file path to unstage"),
-                    "paths", Map.of("type", "array", "description", "Multiple file paths to unstage")
+                        "path", Map.of("type", "string", "description", "Single file path to unstage"),
+                        "paths", Map.of("type", "array", "description", "Multiple file paths to unstage")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_branch",
                 "Manage branches: list, create, switch, or delete.",
                 Map.of(
-                    "action", Map.of("type", "string", "description", "Action: 'list' (default), 'create', 'switch', 'delete'"),
-                    "name", Map.of("type", "string", "description", "Branch name (required for create/switch/delete)"),
-                    "base", Map.of("type", "string", "description", "Base ref for create (default: HEAD)"),
-                    "all", Map.of("type", "boolean", "description", "For list: include remote branches"),
-                    "force", Map.of("type", "boolean", "description", "For delete: force delete unmerged branch (-D)")
+                        "action", Map.of("type", "string", "description", "Action: 'list' (default), 'create', 'switch', 'delete'"),
+                        "name", Map.of("type", "string", "description", "Branch name (required for create/switch/delete)"),
+                        "base", Map.of("type", "string", "description", "Base ref for create (default: HEAD)"),
+                        "all", Map.of("type", "boolean", "description", "For list: include remote branches"),
+                        "force", Map.of("type", "boolean", "description", "For delete: force delete unmerged branch (-D)")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_stash",
                 "Manage stashes: save, list, pop, apply, or drop working changes.",
                 Map.of(
-                    "action", Map.of("type", "string", "description", "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"),
-                    "message", Map.of("type", "string", "description", "Stash message (for push action)"),
-                    "index", Map.of("type", "string", "description", "Stash index (for pop/apply/drop, e.g., '0')"),
-                    "include_untracked", Map.of("type", "boolean", "description", "For push: include untracked files")
+                        "action", Map.of("type", "string", "description", "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"),
+                        "message", Map.of("type", "string", "description", "Stash message (for push action)"),
+                        "index", Map.of("type", "string", "description", "Stash index (for pop/apply/drop, e.g., '0')"),
+                        "include_untracked", Map.of("type", "boolean", "description", "For push: include untracked files")
                 ),
                 List.of()));
 
         tools.add(buildTool("git_show",
                 "Show details of a commit: message, author, date, and diff. " +
-                "Defaults to HEAD if no ref given.",
+                        "Defaults to HEAD if no ref given.",
                 Map.of(
-                    "ref", Map.of("type", "string", "description", "Commit SHA, branch, tag, or ref (default: HEAD)"),
-                    "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not full diff"),
-                    "path", Map.of("type", "string", "description", "Limit output to this file path")
+                        "ref", Map.of("type", "string", "description", "Commit SHA, branch, tag, or ref (default: HEAD)"),
+                        "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not full diff"),
+                        "path", Map.of("type", "string", "description", "Limit output to this file path")
                 ),
                 List.of()));
 
@@ -406,7 +413,9 @@ public class McpServer {
         return tool;
     }
 
-    /** Add an 'env' property with correct object schema to a tool's inputSchema. */
+    /**
+     * Add an 'env' property with correct object schema to a tool's inputSchema.
+     */
     private static void addEnvProperty(JsonObject tool) {
         JsonObject schema = tool.getAsJsonObject("inputSchema");
         JsonObject props = schema.getAsJsonObject("properties");
@@ -433,8 +442,8 @@ public class McpServer {
                 resultText = bridgeResult;
             } else {
                 resultText = "ERROR: IntelliJ PSI bridge is unavailable. " +
-                    "The tool '" + toolName + "' requires IntelliJ to be running with the Agentic Copilot plugin active. " +
-                    "Please check that IntelliJ is open and the plugin is enabled.";
+                        "The tool '" + toolName + "' requires IntelliJ to be running with the Agentic Copilot plugin active. " +
+                        "Please check that IntelliJ is open and the plugin is enabled.";
                 System.err.println("MCP: PSI bridge unavailable for tool '" + toolName + "'");
             }
 
@@ -513,51 +522,6 @@ public class McpServer {
 
     // --- Tool implementations (regex fallback) ---
 
-    static String listTestsFallback(JsonObject args) throws IOException {
-        String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
-        Pattern testAnnotation = Pattern.compile("^\\s*@(Test|ParameterizedTest|RepeatedTest)");
-        Pattern methodPattern = Pattern.compile("^\\s*(?:public|private|protected)?\\s*(?:void|fun)\\s+(\\w+)\\s*\\(");
-
-        List<String> results = new ArrayList<>();
-        Path root = Path.of(projectRoot);
-
-        try (Stream<Path> files = Files.walk(root)) {
-            List<Path> testFiles = files
-                    .filter(Files::isRegularFile)
-                    .filter(p -> {
-                        String name = p.getFileName().toString();
-                        return (name.endsWith(".java") || name.endsWith(".kt"))
-                                && (filePattern.isEmpty() || matchesGlob(name, filePattern));
-                    })
-                    .filter(p -> !isExcluded(root, p))
-                    .collect(Collectors.toList());
-
-            for (Path file : testFiles) {
-                try {
-                    List<String> lines = Files.readAllLines(file);
-                    for (int i = 0; i < lines.size() - 1; i++) {
-                        if (testAnnotation.matcher(lines.get(i)).find()) {
-                            for (int j = i + 1; j < Math.min(i + 5, lines.size()); j++) {
-                                Matcher m = methodPattern.matcher(lines.get(j));
-                                if (m.find()) {
-                                    String relPath = root.relativize(file).toString();
-                                    results.add(String.format("%s (%s:%d)", m.group(1), relPath, j + 1));
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-                if (results.size() >= 500) break;
-            }
-        } catch (java.io.UncheckedIOException ignored) {
-        }
-
-        if (results.isEmpty()) return "No tests found";
-        return results.size() + " tests:\n" + String.join("\n", results);
-    }
-
     static String searchSymbols(JsonObject args) throws IOException {
         String query = args.get("query").getAsString();
         String typeFilter = args.has("type") ? args.get("type").getAsString() : "";
@@ -569,22 +533,22 @@ public class McpServer {
         // Patterns for different symbol types across languages
         Map<String, Pattern> symbolPatterns = new LinkedHashMap<>();
         symbolPatterns.put("class", Pattern.compile(
-            "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum)\\s+(\\w+)"));
+                "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum)\\s+(\\w+)"));
         symbolPatterns.put("interface", Pattern.compile(
-            "^\\s*(?:public|private|protected)?\\s*interface\\s+(\\w+)"));
+                "^\\s*(?:public|private|protected)?\\s*interface\\s+(\\w+)"));
         symbolPatterns.put("method", Pattern.compile(
-            "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)"));
+                "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)"));
         symbolPatterns.put("function", Pattern.compile(
-            "^\\s*(?:public|private|protected|static|final|synchronized)?\\s*(?:\\w+(?:<[^>]+>)?\\s+)+(\\w+)\\s*\\("));
+                "^\\s*(?:public|private|protected|static|final|synchronized)?\\s*(?:\\w+(?:<[^>]+>)?\\s+)+(\\w+)\\s*\\("));
         symbolPatterns.put("field", Pattern.compile(
-            "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var|let|const)?\\s+(\\w+)\\s*[:=]"));
+                "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var|let|const)?\\s+(\\w+)\\s*[:=]"));
 
         try (Stream<Path> files = Files.walk(root)) {
             List<Path> sourceFiles = files
-                .filter(Files::isRegularFile)
-                .filter(p -> isSourceFile(p.toString()))
-                .filter(p -> !isExcluded(root, p))
-                .collect(Collectors.toList());
+                    .filter(Files::isRegularFile)
+                    .filter(p -> isSourceFile(p.toString()))
+                    .filter(p -> isIncluded(root, p))
+                    .toList();
 
             for (Path file : sourceFiles) {
                 try {
@@ -626,13 +590,13 @@ public class McpServer {
         List<String> outline = new ArrayList<>();
 
         Pattern classPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum|interface)\\s+(\\w+)");
+                "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum|interface)\\s+(\\w+)");
         Pattern methodPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)");
+                "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)");
         Pattern javaMethodPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|static|final|synchronized|abstract)?\\s*(?:(?:void|int|long|boolean|String|\\w+(?:<[^>]+>)?)\\s+)(\\w+)\\s*\\(");
+                "^\\s*(?:public|private|protected|static|final|synchronized|abstract)?\\s*(?:void|int|long|boolean|String|\\w+(?:<[^>]+>)?)\\s+(\\w+)\\s*\\(");
         Pattern fieldPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var)?\\s+(\\w+)\\s*[:=]");
+                "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var)?\\s+(\\w+)\\s*[:=]");
 
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
@@ -672,11 +636,11 @@ public class McpServer {
 
         try (Stream<Path> files = Files.walk(root, FileVisitOption.FOLLOW_LINKS)) {
             List<Path> sourceFiles = files
-                .filter(Files::isRegularFile)
-                .filter(p -> isSourceFile(p.toString()))
-                .filter(p -> !isExcluded(root, p))
-                .filter(p -> filePattern.isEmpty() || matchesGlob(p.getFileName().toString(), filePattern))
-                .collect(Collectors.toList());
+                    .filter(Files::isRegularFile)
+                    .filter(p -> isSourceFile(p.toString()))
+                    .filter(p -> isIncluded(root, p))
+                    .filter(p -> filePattern.isEmpty() || matchesGlob(p.getFileName().toString(), filePattern))
+                    .toList();
 
             for (Path file : sourceFiles) {
                 try {
@@ -711,15 +675,15 @@ public class McpServer {
         List<String> results = new ArrayList<>();
         try (Stream<Path> files = Files.walk(searchDir, FileVisitOption.FOLLOW_LINKS)) {
             files.filter(Files::isRegularFile)
-                .filter(p -> !isExcluded(root, p))
-                .filter(p -> pattern.isEmpty() || matchesGlob(p.getFileName().toString(), pattern))
-                .sorted()
-                .limit(200)
-                .forEach(p -> {
-                    String relPath = root.relativize(p).toString();
-                    String type = getFileType(p.toString());
-                    results.add(String.format("%s [%s]", relPath, type));
-                });
+                    .filter(p -> isIncluded(root, p))
+                    .filter(p -> pattern.isEmpty() || matchesGlob(p.getFileName().toString(), pattern))
+                    .sorted()
+                    .limit(200)
+                    .forEach(p -> {
+                        String relPath = root.relativize(p).toString();
+                        String type = getFileType(p.toString());
+                        results.add(String.format("%s [%s]", relPath, type));
+                    });
         } catch (java.io.UncheckedIOException e) {
             // AccessDeniedException from Files.walk on Windows junction points
         }
@@ -744,22 +708,22 @@ public class McpServer {
     private static boolean isSourceFile(String path) {
         String lower = path.toLowerCase();
         return lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".kts") ||
-               lower.endsWith(".py") || lower.endsWith(".js") || lower.endsWith(".ts") ||
-               lower.endsWith(".tsx") || lower.endsWith(".jsx") || lower.endsWith(".go") ||
-               lower.endsWith(".rs") || lower.endsWith(".c") || lower.endsWith(".cpp") ||
-               lower.endsWith(".h") || lower.endsWith(".cs") || lower.endsWith(".rb") ||
-               lower.endsWith(".scala") || lower.endsWith(".groovy") || lower.endsWith(".xml") ||
-               lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".json") ||
-               lower.endsWith(".md") || lower.endsWith(".gradle") || lower.endsWith(".gradle.kts");
+                lower.endsWith(".py") || lower.endsWith(".js") || lower.endsWith(".ts") ||
+                lower.endsWith(".tsx") || lower.endsWith(".jsx") || lower.endsWith(".go") ||
+                lower.endsWith(".rs") || lower.endsWith(".c") || lower.endsWith(".cpp") ||
+                lower.endsWith(".h") || lower.endsWith(".cs") || lower.endsWith(".rb") ||
+                lower.endsWith(".scala") || lower.endsWith(".groovy") || lower.endsWith(".xml") ||
+                lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".json") ||
+                lower.endsWith(".md") || lower.endsWith(".gradle") || lower.endsWith(".gradle.kts");
     }
 
-    private static boolean isExcluded(Path root, Path file) {
+    private static boolean isIncluded(Path root, Path file) {
         String rel = root.relativize(file).toString().replace('\\', '/');
-        return rel.startsWith("build/") || rel.startsWith(".gradle/") || rel.startsWith(".git/") ||
-               rel.startsWith("node_modules/") || rel.startsWith("target/") || rel.startsWith(".idea/") ||
-               rel.startsWith("AppData/") || rel.startsWith(".copilot/") || rel.startsWith(".jdks/") ||
-               rel.startsWith(".nuget/") || rel.startsWith(".m2/") || rel.startsWith(".npm/") ||
-               rel.contains("/build/") || rel.contains("/.gradle/") || rel.contains("/node_modules/");
+        return !(rel.startsWith("build/") || rel.startsWith(".gradle/") || rel.startsWith(".git/") ||
+                rel.startsWith("node_modules/") || rel.startsWith("target/") || rel.startsWith(".idea/") ||
+                rel.startsWith("AppData/") || rel.startsWith(".copilot/") || rel.startsWith(".jdks/") ||
+                rel.startsWith(".nuget/") || rel.startsWith(".m2/") || rel.startsWith(".npm/") ||
+                rel.contains("/build/") || rel.contains("/.gradle/") || rel.contains("/node_modules/"));
     }
 
     private static boolean matchesGlob(String fileName, String pattern) {
