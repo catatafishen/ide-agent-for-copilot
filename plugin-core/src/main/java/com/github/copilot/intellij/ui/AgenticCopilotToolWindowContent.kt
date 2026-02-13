@@ -358,6 +358,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         loginButton.isVisible = false
         loginButton.addActionListener { startCopilotLogin() }
         authPanel.add(loginButton)
+
+        val retryButton = JButton("Retry")
+        retryButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        retryButton.toolTipText = "Retry loading models"
+        retryButton.isVisible = false
+        authPanel.add(retryButton)
         
         // Usage panel — shows real billing data from GitHub API
         val usagePanel = JBPanel<JBPanel<*>>()
@@ -692,68 +698,88 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         
         panel.add(splitPane, BorderLayout.CENTER)
         
-        // Load models in background - fail fast on auth errors, retry only on connection errors
-        ApplicationManager.getApplication().executeOnPooledThread {
-            var lastError: Exception? = null
-            val maxRetries = 3
-            val retryDelayMs = 1000L
-            
-            for (attempt in 1..maxRetries) {
-                try {
-                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
-                    val client = service.getClient()
-                    val models = client.listModels()
-                    loadedModels = models
-                    
-                    SwingUtilities.invokeLater {
-                        loadingSpinner.isVisible = false
-                        modelComboBox.removeAllItems()
-                        models.forEach { model ->
-                            val cost = model.usage ?: "1x"
-                            modelComboBox.addItem("${model.name}  ($cost)")
-                        }
-                        // Restore persisted model selection
-                        val savedModel = CopilotSettings.getSelectedModel()
-                        if (savedModel != null) {
-                            val idx = models.indexOfFirst { it.id == savedModel }
-                            if (idx >= 0) modelComboBox.selectedIndex = idx
-                        } else if (models.isNotEmpty()) {
-                            modelComboBox.selectedIndex = 0
-                        }
-                        modelComboBox.isEnabled = true
-                        // Save selection on change
-                        modelComboBox.addActionListener {
-                            val selIdx = modelComboBox.selectedIndex
-                            if (selIdx >= 0 && selIdx < loadedModels.size) {
-                                CopilotSettings.setSelectedModel(loadedModels[selIdx].id)
+        // Reusable model loading function
+        fun loadModels() {
+            SwingUtilities.invokeLater {
+                loadingSpinner.isVisible = true
+                authPanel.isVisible = false
+                retryButton.isVisible = false
+                loginButton.isVisible = false
+                modelComboBox.removeAllItems()
+                modelComboBox.addItem("Loading...")
+                modelComboBox.isEnabled = false
+            }
+            ApplicationManager.getApplication().executeOnPooledThread {
+                var lastError: Exception? = null
+                val maxRetries = 3
+                val retryDelayMs = 2000L
+                
+                for (attempt in 1..maxRetries) {
+                    try {
+                        val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                        val client = service.getClient()
+                        val models = client.listModels()
+                        loadedModels = models
+                        
+                        SwingUtilities.invokeLater {
+                            loadingSpinner.isVisible = false
+                            modelComboBox.removeAllItems()
+                            models.forEach { model ->
+                                val cost = model.usage ?: "1x"
+                                modelComboBox.addItem("${model.name}  ($cost)")
                             }
+                            // Restore persisted model selection
+                            val savedModel = CopilotSettings.getSelectedModel()
+                            if (savedModel != null) {
+                                val idx = models.indexOfFirst { it.id == savedModel }
+                                if (idx >= 0) modelComboBox.selectedIndex = idx
+                            } else if (models.isNotEmpty()) {
+                                modelComboBox.selectedIndex = 0
+                            }
+                            modelComboBox.isEnabled = true
+                            // Save selection on change
+                            modelComboBox.addActionListener {
+                                val selIdx = modelComboBox.selectedIndex
+                                if (selIdx >= 0 && selIdx < loadedModels.size) {
+                                    CopilotSettings.setSelectedModel(loadedModels[selIdx].id)
+                                }
+                            }
+                            authPanel.isVisible = false
                         }
-                        authPanel.isVisible = false
+                        return@executeOnPooledThread
+                    } catch (e: Exception) {
+                        lastError = e
+                        val msg = e.message ?: ""
+                        val isAuthError = msg.contains("auth") || 
+                                         msg.contains("Copilot CLI") || msg.contains("authenticated")
+                        if (isAuthError) break
+                        if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                     }
-                    return@executeOnPooledThread
-                } catch (e: Exception) {
-                    lastError = e
-                    val msg = e.message ?: ""
-                    val isAuthError = msg.contains("auth") || msg.contains("timed out") || 
-                                     msg.contains("Copilot CLI") || msg.contains("authenticated")
-                    if (isAuthError) break
-                    if (attempt < maxRetries) Thread.sleep(retryDelayMs)
+                }
+                
+                val errorMsg = lastError?.message ?: "Unknown error"
+                val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
+                                  errorMsg.contains("authenticated")
+                val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
+                SwingUtilities.invokeLater {
+                    loadingSpinner.isVisible = false
+                    modelComboBox.removeAllItems()
+                    modelComboBox.addItem("Unavailable")
+                    modelComboBox.isEnabled = false
+                    modelErrorLabel.text = when {
+                        isAuthError -> "⚠️ Not authenticated"
+                        isTimeout -> "⚠️ Connection timed out"
+                        else -> "⚠️ $errorMsg"
+                    }
+                    loginButton.isVisible = isAuthError
+                    retryButton.isVisible = !isAuthError
+                    authPanel.isVisible = true
                 }
             }
-            
-            val errorMsg = lastError?.message ?: "Unknown error"
-            val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
-                              errorMsg.contains("authenticated") || errorMsg.contains("timed out")
-            SwingUtilities.invokeLater {
-                loadingSpinner.isVisible = false
-                modelComboBox.removeAllItems()
-                modelComboBox.addItem("Unavailable")
-                modelComboBox.isEnabled = false
-                modelErrorLabel.text = if (isAuthError) "⚠️ Not authenticated" else "⚠️ $errorMsg"
-                loginButton.isVisible = isAuthError
-                authPanel.isVisible = true
-            }
         }
+
+        retryButton.addActionListener { loadModels() }
+        loadModels()
         
         return panel
     }
@@ -1186,66 +1212,91 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         settingsLoginButton.isVisible = false
         settingsLoginButton.addActionListener { startCopilotLogin() }
         settingsAuthPanel.add(settingsLoginButton)
+        val settingsRetryButton = JButton("Retry")
+        settingsRetryButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        settingsRetryButton.toolTipText = "Retry loading models"
+        settingsRetryButton.isVisible = false
+        settingsAuthPanel.add(settingsRetryButton)
         panel.add(settingsAuthPanel, gbc)
         
-        // Load models from ACP - fail fast on auth errors
-        ApplicationManager.getApplication().executeOnPooledThread {
-            var lastError: Exception? = null
-            val maxRetries = 3
-            val retryDelayMs = 1000L
-            
-            for (attempt in 1..maxRetries) {
-                try {
-                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
-                    val client = service.getClient()
-                    val models = client.listModels()
-                    
-                    SwingUtilities.invokeLater {
-                        settingsSpinner.isVisible = false
-                        defaultModelCombo.removeAllItems()
-                        models.forEach { model ->
-                            val cost = model.usage ?: "1x"
-                            defaultModelCombo.addItem("${model.name}  ($cost)")
-                        }
-                        // Restore persisted selection
-                        val savedModel = CopilotSettings.getSelectedModel()
-                        if (savedModel != null) {
-                            val idx = models.indexOfFirst { it.id == savedModel }
-                            if (idx >= 0) defaultModelCombo.selectedIndex = idx
-                        }
-                        defaultModelCombo.isEnabled = true
-                        defaultModelCombo.addActionListener {
-                            val selIdx = defaultModelCombo.selectedIndex
-                            if (selIdx >= 0 && selIdx < models.size) {
-                                CopilotSettings.setSelectedModel(models[selIdx].id)
+        // Reusable settings model loading function
+        fun loadSettingsModels() {
+            SwingUtilities.invokeLater {
+                settingsSpinner.isVisible = true
+                settingsAuthPanel.isVisible = false
+                settingsRetryButton.isVisible = false
+                settingsLoginButton.isVisible = false
+                defaultModelCombo.removeAllItems()
+                defaultModelCombo.addItem("Loading...")
+                defaultModelCombo.isEnabled = false
+            }
+            ApplicationManager.getApplication().executeOnPooledThread {
+                var lastError: Exception? = null
+                val maxRetries = 3
+                val retryDelayMs = 2000L
+                
+                for (attempt in 1..maxRetries) {
+                    try {
+                        val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                        val client = service.getClient()
+                        val models = client.listModels()
+                        
+                        SwingUtilities.invokeLater {
+                            settingsSpinner.isVisible = false
+                            defaultModelCombo.removeAllItems()
+                            models.forEach { model ->
+                                val cost = model.usage ?: "1x"
+                                defaultModelCombo.addItem("${model.name}  ($cost)")
                             }
+                            // Restore persisted selection
+                            val savedModel = CopilotSettings.getSelectedModel()
+                            if (savedModel != null) {
+                                val idx = models.indexOfFirst { it.id == savedModel }
+                                if (idx >= 0) defaultModelCombo.selectedIndex = idx
+                            }
+                            defaultModelCombo.isEnabled = true
+                            defaultModelCombo.addActionListener {
+                                val selIdx = defaultModelCombo.selectedIndex
+                                if (selIdx >= 0 && selIdx < models.size) {
+                                    CopilotSettings.setSelectedModel(models[selIdx].id)
+                                }
+                            }
+                            settingsAuthPanel.isVisible = false
                         }
-                        settingsAuthPanel.isVisible = false
+                        return@executeOnPooledThread
+                    } catch (e: Exception) {
+                        lastError = e
+                        val msg = e.message ?: ""
+                        val isAuthError = msg.contains("auth") || 
+                                         msg.contains("Copilot CLI") || msg.contains("authenticated")
+                        if (isAuthError) break
+                        if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                     }
-                    return@executeOnPooledThread
-                } catch (e: Exception) {
-                    lastError = e
-                    val msg = e.message ?: ""
-                    val isAuthError = msg.contains("auth") || msg.contains("timed out") || 
-                                     msg.contains("Copilot CLI") || msg.contains("authenticated")
-                    if (isAuthError) break
-                    if (attempt < maxRetries) Thread.sleep(retryDelayMs)
+                }
+                
+                val errorMsg = lastError?.message ?: "Unknown error"
+                val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
+                                  errorMsg.contains("authenticated")
+                val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
+                SwingUtilities.invokeLater {
+                    settingsSpinner.isVisible = false
+                    defaultModelCombo.removeAllItems()
+                    defaultModelCombo.addItem("Unavailable")
+                    defaultModelCombo.isEnabled = false
+                    settingsModelError.text = when {
+                        isAuthError -> "⚠️ Not authenticated"
+                        isTimeout -> "⚠️ Connection timed out"
+                        else -> "⚠️ $errorMsg"
+                    }
+                    settingsLoginButton.isVisible = isAuthError
+                    settingsRetryButton.isVisible = !isAuthError
+                    settingsAuthPanel.isVisible = true
                 }
             }
-            
-            val errorMsg = lastError?.message ?: "Unknown error"
-            val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
-                              errorMsg.contains("authenticated") || errorMsg.contains("timed out")
-            SwingUtilities.invokeLater {
-                settingsSpinner.isVisible = false
-                defaultModelCombo.removeAllItems()
-                defaultModelCombo.addItem("Unavailable")
-                defaultModelCombo.isEnabled = false
-                settingsModelError.text = if (isAuthError) "⚠️ Not authenticated" else "⚠️ $errorMsg"
-                settingsLoginButton.isVisible = isAuthError
-                settingsAuthPanel.isVisible = true
-            }
         }
+
+        settingsRetryButton.addActionListener { loadSettingsModels() }
+        loadSettingsModels()
         
         // Tool permissions section
         gbc.gridx = 0
