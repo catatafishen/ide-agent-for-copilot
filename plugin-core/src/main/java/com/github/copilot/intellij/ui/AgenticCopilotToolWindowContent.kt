@@ -679,8 +679,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     appendResponse("\n❌ Error: $msg\n")
                     setResponseStatus("Error", loading = false)
                     addTimelineEvent(EventType.ERROR, "Error: ${msg.take(80)}")
-                    currentSessionId = null // reset session on error
-                    updateSessionInfo()
+                    // Only reset session on non-recoverable errors (process died, closed)
+                    // Keep session alive for timeouts/interrupts so conversation can continue
+                    val isRecoverable = e is InterruptedException || e.cause is InterruptedException ||
+                        (e is com.github.copilot.intellij.bridge.CopilotException && e.isRecoverable)
+                    if (!isRecoverable) {
+                        currentSessionId = null
+                        updateSessionInfo()
+                    }
                     e.printStackTrace()
                 } finally {
                     currentPromptThread = null
