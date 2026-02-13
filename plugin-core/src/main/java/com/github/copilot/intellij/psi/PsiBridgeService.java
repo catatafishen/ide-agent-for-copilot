@@ -47,6 +47,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -2598,109 +2599,28 @@ public final class PsiBridgeService implements Disposable {
         String library = args.has("library") ? args.get("library").getAsString() : "";
 
         try {
-            // Detect build system and trigger source download
-            String basePath = project.getBasePath();
-            if (basePath == null) return "Error: no project base path";
-
-            VirtualFile baseDir = LocalFileSystem.getInstance().findFileByPath(basePath);
-            if (baseDir == null) return "Error: cannot find project directory";
-
-            boolean isGradle = baseDir.findChild("build.gradle") != null
-                    || baseDir.findChild("build.gradle.kts") != null;
-            boolean isMaven = baseDir.findChild("pom.xml") != null;
-
-            if (!isGradle && !isMaven) {
-                return "Error: no Gradle or Maven build file found. Only Gradle and Maven projects are supported.";
-            }
-
-            // Build the command to download sources
-            String command;
-            String workDir = basePath;
-
-            if (isGradle) {
-                // Gradle: use idea plugin to download sources
-                boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
-                String gradlew = isWindows ? "gradlew.bat" : "./gradlew";
-                VirtualFile wrapper = baseDir.findChild(isWindows ? "gradlew.bat" : "gradlew");
-                if (wrapper == null) {
-                    return "Error: Gradle wrapper not found. Run 'gradle wrapper' first.";
-                }
-
-                if (library.isEmpty()) {
-                    command = wrapper.getPath() + " dependencies --write-locks 2>&1 || true";
-                    // Actually, the best way for Gradle is to trigger IDEA's own source download
-                    return triggerIdeSourceDownload(library);
-                } else {
-                    return triggerIdeSourceDownload(library);
-                }
-            } else {
-                // Maven: download sources
-                boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
-                String mvn = isWindows ? "mvn.cmd" : "mvn";
-                if (library.isEmpty()) {
-                    command = mvn + " dependency:sources dependency:resolve -Dclassifier=javadoc";
-                } else {
-                    command = mvn + " dependency:sources -Dartifact=" + library;
-                }
-
-                // Execute the command
-                GeneralCommandLine cmdLine = new GeneralCommandLine("cmd", "/c", command);
-                cmdLine.setWorkDirectory(workDir);
-
-                java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    try {
-                        OSProcessHandler handler = new OSProcessHandler(cmdLine);
-                        StringBuilder output = new StringBuilder();
-                        handler.addProcessListener(new ProcessAdapter() {
-                            @Override
-                            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
-                                output.append(event.getText());
-                            }
-                            @Override
-                            public void processTerminated(@NotNull ProcessEvent event) {
-                                future.complete(truncateOutput(output.toString()));
-                            }
-                        });
-                        handler.startNotify();
-                    } catch (Exception e) {
-                        future.complete("Error: " + e.getMessage());
-                    }
-                });
-
-                return future.get(120, java.util.concurrent.TimeUnit.SECONDS);
-            }
-        } catch (Exception e) {
-            LOG.warn("download_sources error", e);
-            return "Error: " + e.getMessage();
-        }
-    }
-
-    private String triggerIdeSourceDownload(String library) {
-        try {
-            // Use IntelliJ's library manager to find and download sources
             java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 try {
-                    StringBuilder result = new StringBuilder();
-                    Class<?> orderEnumeratorClass = Class.forName("com.intellij.openapi.roots.OrderEnumerator");
+                    StringBuilder sb = new StringBuilder();
 
-                    // Get all library entries
+                    // Step 1: Enable "Download sources" in Gradle/Maven settings via ExternalSystem API
+                    boolean settingChanged = enableDownloadSources(sb);
+
+                    // Step 2: List current library source status
                     Module[] modules = ModuleManager.getInstance(project).getModules();
-                    List<String> librariesFound = new ArrayList<>();
                     List<String> withSources = new ArrayList<>();
                     List<String> withoutSources = new ArrayList<>();
 
                     for (Module module : modules) {
                         ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
                         for (var entry : rootManager.getOrderEntries()) {
-                            String entryName = entry.getPresentableName();
                             if (entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry) {
                                 var lib = libEntry.getLibrary();
                                 if (lib == null) continue;
+                                String entryName = entry.getPresentableName();
 
-                                // Filter by library name if specified
                                 if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
                                     continue;
                                 }
@@ -2710,46 +2630,31 @@ public final class PsiBridgeService implements Disposable {
                                     withSources.add(entryName);
                                 } else {
                                     withoutSources.add(entryName);
-                                    // Try to trigger source download via the library's modifiable model
-                                    tryAttachSources(lib, entryName, result);
                                 }
-                                librariesFound.add(entryName);
                             }
                         }
                     }
 
-                    if (librariesFound.isEmpty()) {
-                        future.complete(library.isEmpty()
-                                ? "No libraries found in project."
-                                : "No library matching '" + library + "' found.");
-                        return;
-                    }
-
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("Libraries found: ").append(librariesFound.size()).append("\n");
-                    sb.append("With sources: ").append(withSources.size()).append("\n");
-                    sb.append("Without sources: ").append(withoutSources.size()).append("\n\n");
+                    sb.append("Libraries with sources: ").append(withSources.size()).append("\n");
+                    sb.append("Libraries without sources: ").append(withoutSources.size()).append("\n");
 
                     if (!withoutSources.isEmpty()) {
-                        sb.append("Missing sources for:\n");
+                        sb.append("\nMissing sources:\n");
                         for (String lib : withoutSources) {
                             sb.append("  - ").append(lib).append("\n");
                         }
-                        sb.append("\nTo download sources, use your build tool:\n");
-                        sb.append("  Gradle: ./gradlew dependencies (sources are downloaded automatically with IDE sync)\n");
-                        sb.append("  Maven: mvn dependency:sources\n");
-                        sb.append("\nOr in IntelliJ: right-click a library → Download Sources\n");
                     }
 
                     if (!withSources.isEmpty() && !library.isEmpty()) {
-                        sb.append("\nLibraries with sources available:\n");
+                        sb.append("\nWith sources:\n");
                         for (String lib : withSources) {
                             sb.append("  ✓ ").append(lib).append("\n");
                         }
                     }
 
-                    if (result.length() > 0) {
-                        sb.append("\n").append(result);
+                    // Step 3: Trigger Gradle/Maven re-sync if setting was changed
+                    if (settingChanged) {
+                        triggerProjectResync(sb);
                     }
 
                     future.complete(truncateOutput(sb.toString()));
@@ -2760,19 +2665,174 @@ public final class PsiBridgeService implements Disposable {
 
             return future.get(30, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
-            LOG.warn("triggerIdeSourceDownload error", e);
+            LOG.warn("download_sources error", e);
             return "Error: " + e.getMessage();
         }
     }
 
-    private void tryAttachSources(Object lib, String name, StringBuilder result) {
+    private boolean enableDownloadSources(StringBuilder sb) {
         try {
-            // Try to use JavaLibraryAttachSourcesProvider or similar
-            Class<?> attacherClass = Class.forName("com.intellij.codeInsight.AttachSourcesProvider");
-            // This requires UI interaction, so we just note it
-            result.append("  Note: '").append(name).append("' needs manual source attachment via IDE\n");
-        } catch (ClassNotFoundException ignored) {
-            // AttachSourcesProvider not available
+            // Access GradleSettings or ExternalSystemSettings to enable source download
+            Class<?> gradleSettingsClass = Class.forName(
+                    "org.jetbrains.plugins.gradle.settings.GradleSettings");
+            Object gradleSettings = gradleSettingsClass.getMethod("getInstance", Project.class)
+                    .invoke(null, project);
+
+            // Get linked project settings
+            @SuppressWarnings("unchecked")
+            java.util.Collection<?> linkedSettings = (java.util.Collection<?>)
+                    gradleSettingsClass.getMethod("getLinkedProjectsSettings").invoke(gradleSettings);
+
+            if (linkedSettings == null || linkedSettings.isEmpty()) {
+                sb.append("No Gradle project settings found.\n");
+                return false;
+            }
+
+            boolean anyChanged = false;
+            for (Object projectSettings : linkedSettings) {
+                // Check current state
+                Class<?> settingsClass = projectSettings.getClass();
+                // The method is on ExternalProjectSettings (parent class)
+                Class<?> externalSettingsClass = Class.forName(
+                        "com.intellij.openapi.externalSystem.settings.ExternalProjectSettings");
+
+                boolean currentDownloadSources = (boolean) externalSettingsClass
+                        .getMethod("isResolveExternalAnnotations").invoke(projectSettings);
+
+                // Try the Gradle-specific isDownloadSources if available, 
+                // otherwise use the resolve annotations approach
+                boolean downloadSourcesEnabled = false;
+                try {
+                    // In newer IntelliJ, the setting is "Resolve external annotations" + separate download
+                    // For Gradle projects, try setResolveExternalAnnotations
+                    Method resolveMethod = externalSettingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
+                    if (!currentDownloadSources) {
+                        resolveMethod.invoke(projectSettings, true);
+                        sb.append("Enabled 'Resolve external annotations' for Gradle project.\n");
+                        anyChanged = true;
+                    }
+                } catch (NoSuchMethodException ignored) {}
+
+                // Also try the direct download sources setting (may be in AdvancedSettings or GradleProjectSettings)
+                try {
+                    // GradleProjectSettings has isResolveModulePerSourceSet etc.
+                    // Check for download sources via AdvancedSettings registry
+                    Class<?> advancedSettingsClass = Class.forName(
+                            "com.intellij.openapi.options.advanced.AdvancedSettings");
+                    Method getBoolean = advancedSettingsClass.getMethod("getBoolean", String.class);
+                    boolean currentValue = (boolean) getBoolean.invoke(null, "gradle.download.sources.on.sync");
+                    
+                    if (!currentValue) {
+                        Method setBoolean = advancedSettingsClass.getMethod("setBoolean", String.class, boolean.class);
+                        setBoolean.invoke(null, "gradle.download.sources.on.sync", true);
+                        sb.append("Enabled 'Download sources on sync' in Advanced Settings.\n");
+                        anyChanged = true;
+                    } else {
+                        sb.append("'Download sources on sync' is already enabled.\n");
+                    }
+                } catch (Exception e) {
+                    LOG.info("AdvancedSettings download sources not available: " + e.getMessage());
+                    // Try older API path
+                    try {
+                        Method setDownload = settingsClass.getMethod("setDownloadSources", boolean.class);
+                        Method getDownload = settingsClass.getMethod("isDownloadSources");
+                        boolean current = (boolean) getDownload.invoke(projectSettings);
+                        if (!current) {
+                            setDownload.invoke(projectSettings, true);
+                            sb.append("Enabled 'Download sources' for Gradle project.\n");
+                            anyChanged = true;
+                        } else {
+                            sb.append("'Download sources' is already enabled.\n");
+                        }
+                    } catch (NoSuchMethodException ex) {
+                        sb.append("Download sources setting not found in this IntelliJ version.\n");
+                    }
+                }
+            }
+            return anyChanged;
+        } catch (ClassNotFoundException e) {
+            // Not a Gradle project or Gradle plugin not available
+            sb.append("Gradle plugin not available. ");
+            // Try Maven
+            return enableMavenDownloadSources(sb);
+        } catch (Exception e) {
+            LOG.warn("enableDownloadSources error", e);
+            sb.append("Error enabling download sources: ").append(e.getMessage()).append("\n");
+            return false;
+        }
+    }
+
+    private boolean enableMavenDownloadSources(StringBuilder sb) {
+        try {
+            Class<?> mavenSettingsClass = Class.forName(
+                    "org.jetbrains.idea.maven.project.MavenImportingSettings");
+            // Maven has a different settings path
+            Class<?> mavenProjectsManagerClass = Class.forName(
+                    "org.jetbrains.idea.maven.project.MavenProjectsManager");
+            Object manager = mavenProjectsManagerClass.getMethod("getInstance", Project.class)
+                    .invoke(null, project);
+            Object importingSettings = mavenProjectsManagerClass.getMethod("getImportingSettings")
+                    .invoke(manager);
+
+            Method setDownloadSources = mavenSettingsClass.getMethod("setDownloadSourcesAutomatically", boolean.class);
+            Method getDownloadSources = mavenSettingsClass.getMethod("isDownloadSourcesAutomatically");
+            Method setDownloadDocs = mavenSettingsClass.getMethod("setDownloadDocsAutomatically", boolean.class);
+
+            boolean current = (boolean) getDownloadSources.invoke(importingSettings);
+            if (!current) {
+                setDownloadSources.invoke(importingSettings, true);
+                setDownloadDocs.invoke(importingSettings, true);
+                sb.append("Enabled 'Download sources and docs automatically' for Maven project.\n");
+                return true;
+            } else {
+                sb.append("Maven 'Download sources automatically' is already enabled.\n");
+                return false;
+            }
+        } catch (ClassNotFoundException e) {
+            sb.append("Neither Gradle nor Maven plugin available.\n");
+            return false;
+        } catch (Exception e) {
+            LOG.warn("enableMavenDownloadSources error", e);
+            sb.append("Error enabling Maven source download: ").append(e.getMessage()).append("\n");
+            return false;
+        }
+    }
+
+    private void triggerProjectResync(StringBuilder sb) {
+        try {
+            // Trigger ExternalSystem project refresh (works for both Gradle and Maven)
+            Class<?> externalProjectsManagerClass = Class.forName(
+                    "com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManager");
+            Object manager = externalProjectsManagerClass.getMethod("getInstance", Project.class)
+                    .invoke(null, project);
+
+            // Schedule a project refresh
+            Class<?> importSpecClass = Class.forName(
+                    "com.intellij.openapi.externalSystem.importing.ImportSpecBuilder");
+            Class<?> gradleConstantsClass = Class.forName(
+                    "org.jetbrains.plugins.gradle.util.GradleConstants");
+            Object gradleSystemId = gradleConstantsClass.getField("SYSTEM_ID").get(null);
+
+            Object importSpec = importSpecClass.getConstructor(Project.class, 
+                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"))
+                    .newInstance(project, gradleSystemId);
+
+            // Trigger refresh
+            Class<?> externalSystemUtil = Class.forName(
+                    "com.intellij.openapi.externalSystem.util.ExternalSystemUtil");
+            externalSystemUtil.getMethod("refreshProject", Project.class,
+                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"),
+                    String.class, boolean.class, boolean.class)
+                    .invoke(null, project, gradleSystemId, project.getBasePath(), false, true);
+
+            sb.append("\nTriggered Gradle project re-sync to download sources.\n");
+            sb.append("Sources will be downloaded in the background. Check back shortly.\n");
+        } catch (Exception e) {
+            // Fallback: suggest manual resync
+            LOG.info("Auto-resync not available: " + e.getMessage());
+            sb.append("\nTo download sources, please re-sync the project:\n");
+            sb.append("  Gradle: click 'Reload All Gradle Projects' in the Gradle tool window\n");
+            sb.append("  Or: File → Reload All from Disk\n");
         }
     }
 
