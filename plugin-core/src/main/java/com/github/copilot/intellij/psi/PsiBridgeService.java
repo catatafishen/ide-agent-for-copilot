@@ -1,23 +1,12 @@
 package com.github.copilot.intellij.psi;
 
-import com.google.gson.*;
-import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ReadAction;
-import com.intellij.openapi.components.Service;
-import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.roots.ModuleRootManager;
-import com.intellij.openapi.roots.ProjectFileIndex;
-import com.intellij.openapi.roots.ProjectRootManager;
-import com.intellij.openapi.module.Module;
-import com.intellij.openapi.module.ModuleManager;
-import com.intellij.openapi.vfs.LocalFileSystem;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.execution.*;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.intellij.execution.ExecutionManager;
+import com.intellij.execution.RunContentExecutor;
+import com.intellij.execution.RunManager;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.executors.DefaultRunExecutor;
@@ -25,27 +14,48 @@ import com.intellij.execution.process.OSProcessHandler;
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
-import com.intellij.execution.runners.ExecutionUtil;
+import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.components.Service;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.module.ModuleManager;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.roots.ProjectFileIndex;
+import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.psi.search.*;
+import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.PsiSearchHelper;
+import com.intellij.psi.search.UsageSearchContext;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.*;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.*;
-import javax.xml.parsers.DocumentBuilderFactory;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Lightweight HTTP bridge exposing IntelliJ PSI/AST analysis to the MCP server.
  * The MCP server (running as a separate process) delegates tool calls here for
  * accurate code intelligence instead of regex-based scanning.
- *
+ * <p>
  * Architecture: Copilot Agent → MCP Server (stdio) → PSI Bridge (HTTP) → IntelliJ PSI
  */
 @Service(Service.Level.PROJECT)
@@ -239,7 +249,8 @@ public final class PsiBridgeService implements Disposable {
 
             // Wildcard/empty query: iterate all project files to collect symbols by type
             if (query.isEmpty() || "*".equals(query)) {
-                if (typeFilter.isEmpty()) return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
+                if (typeFilter.isEmpty())
+                    return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
                 int[] fileCount = {0};
                 ProjectFileIndex.getInstance(project).iterateContent(vf -> {
                     if (vf.isDirectory() || (!vf.getName().endsWith(".java") && !vf.getName().endsWith(".kt")))
@@ -672,7 +683,7 @@ public final class PsiBridgeService implements Disposable {
             } catch (Exception e) {
                 LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
                 // Fallback: try direct setter
-                setViaReflection(config, "setMainClassName", 
+                setViaReflection(config, "setMainClassName",
                         args.has("test_class") ? args.get("test_class").getAsString() : "", ignore, null);
             }
         }
@@ -944,6 +955,7 @@ public final class PsiBridgeService implements Disposable {
                                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                                         project, () -> doc.setText(newContent), "Write File", null);
                             });
+                            autoFormatAfterWrite(pathStr);
                             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + " chars)");
                         } else {
                             // Fallback: write to VFS directly
@@ -985,6 +997,7 @@ public final class PsiBridgeService implements Disposable {
                                 project, () -> doc.replaceString(idx, idx + oldStr.length(), newStr),
                                 "Edit File", null);
                     });
+                    autoFormatAfterWrite(pathStr);
                     resultFuture.complete("Edited: " + pathStr + " (replaced " + oldStr.length() + " chars with " + newStr.length() + " chars)");
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
@@ -997,8 +1010,34 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(15, TimeUnit.SECONDS);
     }
 
-    /** Resolve a simple class name like "McpServerTest" to its FQN and containing module. */
-    private record ClassInfo(String fqn, Module module) {}
+    /**
+     * Auto-format and optimize imports on a file after a write operation.
+     * Runs asynchronously on EDT — does not block the caller.
+     */
+    private void autoFormatAfterWrite(String pathStr) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) return;
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) return;
+
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                        new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                        new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
+                    }, "Auto-format after write", null);
+                });
+                LOG.info("Auto-formatted after write: " + pathStr);
+            } catch (Exception e) {
+                LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
+            }
+        });
+    }
+
+    private record ClassInfo(String fqn, Module module) {
+    }
 
     private ClassInfo resolveClass(String className) {
         return ReadAction.compute(() -> {
@@ -1535,7 +1574,6 @@ public final class PsiBridgeService implements Disposable {
         return "Other";
     }
 
-    @Override
     public void dispose() {
         if (httpServer != null) {
             httpServer.stop(0);

@@ -46,6 +46,9 @@ public class CopilotAcpClient implements Closeable {
     private List<Model> availableModels;
     private String currentModelId;
 
+    // Flag: set when a built-in edit permission is denied during a prompt turn
+    private volatile boolean editDeniedDuringTurn = false;
+
     /**
      * Start the copilot ACP process and perform the initialize handshake.
      */
@@ -159,7 +162,8 @@ public class CopilotAcpClient implements Closeable {
         authMethods = result.has("authMethods") ? result.getAsJsonArray("authMethods") : null;
 
         initialized = true;
-        LOG.info("ACP initialized: " + (agentInfo != null ? agentInfo : "unknown agent"));
+        LOG.info("ACP initialized: " + (agentInfo != null ? agentInfo : "unknown agent")
+                + " capabilities=" + (agentCapabilities != null ? agentCapabilities : "none"));
     }
 
     /**
@@ -337,9 +341,32 @@ public class CopilotAcpClient implements Closeable {
             }
 
             // Send request - response comes after all streaming chunks
+            editDeniedDuringTurn = false;
             LOG.info("sendPrompt: sending session/prompt request");
             JsonObject result = sendRequest("session/prompt", params, 300);
             LOG.info("sendPrompt: got result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
+
+            // If a built-in edit was denied, send a retry prompt telling agent to use MCP tools
+            if (editDeniedDuringTurn) {
+                editDeniedDuringTurn = false;
+                LOG.info("sendPrompt: edit was denied, sending retry with MCP tool instruction");
+                JsonObject retryParams = new JsonObject();
+                retryParams.addProperty("sessionId", sessionId);
+                JsonArray retryPrompt = new JsonArray();
+                JsonObject retryContent = new JsonObject();
+                retryContent.addProperty("type", "text");
+                retryContent.addProperty("text",
+                    "The file edit was denied because this environment requires using IntelliJ tools. " +
+                    "Please retry the same change using the intellij_write_file MCP tool instead of the built-in edit tool. " +
+                    "Use intellij_read_file to read the file first, then intellij_write_file with old_str/new_str to make the edit.");
+                retryPrompt.add(retryContent);
+                retryParams.add("prompt", retryPrompt);
+                if (model != null) {
+                    retryParams.addProperty("model", model);
+                }
+                result = sendRequest("session/prompt", retryParams, 300);
+                LOG.info("sendPrompt: retry result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
+            }
 
             return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
         } finally {
@@ -491,30 +518,27 @@ public class CopilotAcpClient implements Closeable {
                         LOG.info("ACP agent request: " + reqMethod + " id=" + reqId);
 
                         if ("session/request_permission".equals(reqMethod)) {
-                            // Auto-approve: select the first "allow" option
                             JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
-                            String selectedOptionId = "allow-once"; // default
-                            if (reqParams != null && reqParams.has("options")) {
-                                for (JsonElement opt : reqParams.getAsJsonArray("options")) {
-                                    JsonObject option = opt.getAsJsonObject();
-                                    String kind = option.has("kind") ? option.get("kind").getAsString() : "";
-                                    if ("allow_once".equals(kind) || "allow_always".equals(kind)) {
-                                        selectedOptionId = option.get("optionId").getAsString();
-                                        break;
-                                    }
-                                }
+                            String permKind = "";
+                            if (reqParams != null && reqParams.has("toolCall")) {
+                                JsonObject toolCall = reqParams.getAsJsonObject("toolCall");
+                                permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
+                                LOG.info("ACP request_permission: " + permKind + " " +
+                                    (toolCall.has("title") ? toolCall.get("title").getAsString() : ""));
                             }
-                            LOG.info("ACP request_permission: auto-approving with option=" + selectedOptionId);
-                            JsonObject response = new JsonObject();
-                            response.addProperty("jsonrpc", "2.0");
-                            response.addProperty("id", reqId);
-                            JsonObject result = new JsonObject();
-                            JsonObject outcome = new JsonObject();
-                            outcome.addProperty("outcome", "selected");
-                            outcome.addProperty("optionId", selectedOptionId);
-                            result.add("outcome", outcome);
-                            response.add("result", result);
-                            sendRawMessage(response);
+
+                            if ("edit".equals(permKind)) {
+                                // Deny built-in file edit — will retry with MCP tools
+                                String rejectOptionId = findRejectOption(reqParams);
+                                LOG.info("ACP request_permission: DENYING built-in edit, option=" + rejectOptionId);
+                                editDeniedDuringTurn = true;
+                                sendPermissionResponse(reqId, rejectOptionId);
+                            } else {
+                                // Non-edit permission (MCP tools, shell, etc.): auto-approve
+                                String selectedOptionId = findAllowOption(reqParams);
+                                LOG.info("ACP request_permission: auto-approving with option=" + selectedOptionId);
+                                sendPermissionResponse(reqId, selectedOptionId);
+                            }
                         } else if ("fs/read_text_file".equals(reqMethod)) {
                             // Read file — route through PSI bridge for editor buffer reads
                             JsonObject reqParams = msg.has("params") ? msg.getAsJsonObject("params") : null;
@@ -772,6 +796,45 @@ public class CopilotAcpClient implements Closeable {
         JsonObject args = new JsonObject();
         args.addProperty(key, value);
         return args;
+    }
+
+    private String findAllowOption(JsonObject reqParams) {
+        if (reqParams != null && reqParams.has("options")) {
+            for (JsonElement opt : reqParams.getAsJsonArray("options")) {
+                JsonObject option = opt.getAsJsonObject();
+                String kind = option.has("kind") ? option.get("kind").getAsString() : "";
+                if ("allow_once".equals(kind) || "allow_always".equals(kind)) {
+                    return option.get("optionId").getAsString();
+                }
+            }
+        }
+        return "allow_once";
+    }
+
+    private String findRejectOption(JsonObject reqParams) {
+        if (reqParams != null && reqParams.has("options")) {
+            for (JsonElement opt : reqParams.getAsJsonArray("options")) {
+                JsonObject option = opt.getAsJsonObject();
+                String kind = option.has("kind") ? option.get("kind").getAsString() : "";
+                if ("reject_once".equals(kind) || "reject_always".equals(kind)) {
+                    return option.get("optionId").getAsString();
+                }
+            }
+        }
+        return "reject_once";
+    }
+
+    private void sendPermissionResponse(long reqId, String optionId) {
+        JsonObject response = new JsonObject();
+        response.addProperty("jsonrpc", "2.0");
+        response.addProperty("id", reqId);
+        JsonObject result = new JsonObject();
+        JsonObject outcome = new JsonObject();
+        outcome.addProperty("outcome", "selected");
+        outcome.addProperty("optionId", optionId);
+        result.add("outcome", outcome);
+        response.add("result", result);
+        sendRawMessage(response);
     }
 
     @Override
