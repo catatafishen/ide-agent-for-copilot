@@ -41,7 +41,11 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -168,6 +172,11 @@ public final class PsiBridgeService implements Disposable {
                 case "git_branch" -> gitBranch(arguments);
                 case "git_stash" -> gitStash(arguments);
                 case "git_show" -> gitShow(arguments);
+                // Infrastructure tools
+                case "http_request" -> httpRequest(arguments);
+                case "run_command" -> runCommand(arguments);
+                case "read_ide_log" -> readIdeLog(arguments);
+                case "get_notifications" -> getNotifications();
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -1299,6 +1308,195 @@ public final class PsiBridgeService implements Disposable {
 
     // ---- End git tools ----
 
+    // ---- Infrastructure tools ----
+
+    private String httpRequest(JsonObject args) throws Exception {
+        String urlStr = args.get("url").getAsString();
+        String method = args.has("method") ? args.get("method").getAsString().toUpperCase() : "GET";
+        String body = args.has("body") ? args.get("body").getAsString() : null;
+
+        URL url = URI.create(urlStr).toURL();
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+        conn.setRequestMethod(method);
+        conn.setConnectTimeout(10_000);
+        conn.setReadTimeout(30_000);
+
+        // Set headers
+        if (args.has("headers")) {
+            JsonObject headers = args.getAsJsonObject("headers");
+            for (String key : headers.keySet()) {
+                conn.setRequestProperty(key, headers.get(key).getAsString());
+            }
+        }
+
+        // Write body
+        if (body != null && ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method))) {
+            if (!args.has("headers") || !args.getAsJsonObject("headers").has("Content-Type")) {
+                conn.setRequestProperty("Content-Type", "application/json");
+            }
+            conn.setDoOutput(true);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+        }
+
+        int status = conn.getResponseCode();
+        StringBuilder result = new StringBuilder();
+        result.append("HTTP ").append(status).append(" ").append(conn.getResponseMessage()).append("\n");
+
+        // Response headers
+        result.append("\n--- Headers ---\n");
+        conn.getHeaderFields().forEach((k, v) -> {
+            if (k != null) result.append(k).append(": ").append(String.join(", ", v)).append("\n");
+        });
+
+        // Response body
+        result.append("\n--- Body ---\n");
+        try (InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream()) {
+            if (is != null) {
+                String responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                result.append(truncateOutput(responseBody));
+            }
+        }
+        return result.toString();
+    }
+
+    private String runCommand(JsonObject args) throws Exception {
+        String command = args.get("command").getAsString();
+        String basePath = project.getBasePath();
+        if (basePath == null) return "No project base path";
+        int timeoutSec = args.has("timeout") ? args.get("timeout").getAsInt() : 60;
+
+        GeneralCommandLine cmd;
+        if (System.getProperty("os.name").contains("Win")) {
+            cmd = new GeneralCommandLine("cmd", "/c", command);
+        } else {
+            cmd = new GeneralCommandLine("sh", "-c", command);
+        }
+        cmd.setWorkDirectory(basePath);
+
+        // Set JAVA_HOME from project SDK if available
+        String javaHome = getProjectJavaHome();
+        if (javaHome != null) {
+            cmd.withEnvironment("JAVA_HOME", javaHome);
+        }
+
+        CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
+        StringBuilder output = new StringBuilder();
+
+        OSProcessHandler processHandler = new OSProcessHandler(cmd);
+        processHandler.addProcessListener(new ProcessAdapter() {
+            @Override
+            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
+                output.append(event.getText());
+            }
+
+            @Override
+            public void processTerminated(@NotNull ProcessEvent event) {
+                exitFuture.complete(event.getExitCode());
+            }
+        });
+
+        // Show in IntelliJ Run panel
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                new RunContentExecutor(project, processHandler)
+                        .withTitle("Command: " + truncateForTitle(command))
+                        .withActivateToolWindow(true)
+                        .run();
+            } catch (Exception e) {
+                LOG.warn("Could not show in Run panel", e);
+                processHandler.startNotify();
+            }
+        });
+
+        int exitCode;
+        try {
+            exitCode = exitFuture.get(timeoutSec, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            processHandler.destroyProcess();
+            return "Command timed out after " + timeoutSec + " seconds.\n\n" + truncateOutput(output.toString());
+        }
+
+        return (exitCode == 0 ? "✓ Command succeeded" : "✗ Command failed (exit code " + exitCode + ")")
+                + "\n\n" + truncateOutput(output.toString());
+    }
+
+    private static String truncateForTitle(String command) {
+        return command.length() > 40 ? command.substring(0, 37) + "..." : command;
+    }
+
+    private String readIdeLog(JsonObject args) throws IOException {
+        int lines = args.has("lines") ? args.get("lines").getAsInt() : 50;
+        String filter = args.has("filter") ? args.get("filter").getAsString() : null;
+        String level = args.has("level") ? args.get("level").getAsString().toUpperCase() : null;
+
+        Path logFile = Path.of(System.getProperty("idea.log.path", ""),  "idea.log");
+        if (!Files.exists(logFile)) {
+            // Try standard location
+            String logDir = System.getProperty("idea.system.path");
+            if (logDir != null) {
+                logFile = Path.of(logDir, "..", "log", "idea.log");
+            }
+        }
+        if (!Files.exists(logFile)) {
+            // Try via PathManager
+            try {
+                Class<?> pm = Class.forName("com.intellij.openapi.application.PathManager");
+                String logPath = (String) pm.getMethod("getLogPath").invoke(null);
+                logFile = Path.of(logPath, "idea.log");
+            } catch (Exception ignored) {
+            }
+        }
+        if (!Files.exists(logFile)) {
+            return "Could not locate idea.log";
+        }
+
+        List<String> allLines = Files.readAllLines(logFile);
+        List<String> filtered = allLines;
+
+        if (level != null) {
+            final String lvl = level;
+            filtered = filtered.stream()
+                    .filter(l -> l.contains(lvl))
+                    .toList();
+        }
+        if (filter != null) {
+            final String f = filter;
+            filtered = filtered.stream()
+                    .filter(l -> l.contains(f))
+                    .toList();
+        }
+
+        int start = Math.max(0, filtered.size() - lines);
+        List<String> result = filtered.subList(start, filtered.size());
+        return String.join("\n", result);
+    }
+
+    private String getNotifications() {
+        StringBuilder result = new StringBuilder();
+        try {
+            // Get notifications via EventLog / NotificationsManager
+            var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()
+                    .getNotificationsOfType(com.intellij.notification.Notification.class, project);
+            if (notifications.length == 0) {
+                return "No recent notifications.";
+            }
+            for (var notification : notifications) {
+                result.append("[").append(notification.getType()).append("] ");
+                if (notification.getTitle() != null && !notification.getTitle().isEmpty()) {
+                    result.append(notification.getTitle()).append(": ");
+                }
+                result.append(notification.getContent()).append("\n");
+            }
+        } catch (Exception e) {
+            return "Could not read notifications: " + e.getMessage();
+        }
+        return result.toString();
+    }
+
+    // ---- End infrastructure tools ----
+
     private record ClassInfo(String fqn, Module module) {
     }
 
@@ -1722,8 +1920,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private static String truncateOutput(String output) {
-        if (output.length() <= 2000) return output;
-        return "..." + output.substring(output.length() - 2000);
+        if (output.length() <= 8000) return output;
+        return "...(truncated)\n" + output.substring(output.length() - 8000);
     }
 
     // ---- Helper Methods ----

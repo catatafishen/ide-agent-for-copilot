@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 /**
  * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
- * Provides 28 tools: code navigation, file I/O, testing, code quality, run configs, and git operations.
+ * Provides 32 tools: code navigation, file I/O, testing, code quality, run configs, git, and infrastructure.
  */
 public class McpServer {
 
@@ -387,6 +387,45 @@ public class McpServer {
                         "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not full diff"),
                         "path", Map.of("type", "string", "description", "Limit output to this file path")
                 ),
+                List.of()));
+
+        // ---- Infrastructure tools ----
+
+        tools.add(buildTool("http_request",
+                "Make an HTTP request and return the response. Supports GET, POST, PUT, DELETE, PATCH. " +
+                        "Useful for testing APIs, health checks, and inspecting endpoints.",
+                Map.of(
+                        "url", Map.of("type", "string", "description", "Full URL to request (e.g., http://localhost:8080/api/health)"),
+                        "method", Map.of("type", "string", "description", "HTTP method: GET (default), POST, PUT, DELETE, PATCH"),
+                        "body", Map.of("type", "string", "description", "Request body (for POST/PUT/PATCH)"),
+                        "headers", Map.of("type", "object", "description", "Request headers as key-value pairs")
+                ),
+                List.of("url")));
+
+        tools.add(buildTool("run_command",
+                "Execute a shell command in the project directory and return its output. " +
+                        "The command runs through IntelliJ's process management and its output is visible " +
+                        "in the Run panel. Use for builds, scripts, or any CLI operation.",
+                Map.of(
+                        "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'npm test', 'ls -la')"),
+                        "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)")
+                ),
+                List.of("command")));
+
+        tools.add(buildTool("read_ide_log",
+                "Read recent entries from IntelliJ's idea.log file. Useful for debugging plugin issues, " +
+                        "checking for errors, and understanding IDE behavior.",
+                Map.of(
+                        "lines", Map.of("type", "integer", "description", "Number of recent lines to return (default: 50)"),
+                        "filter", Map.of("type", "string", "description", "Only return lines containing this text"),
+                        "level", Map.of("type", "string", "description", "Filter by log level: INFO, WARN, ERROR")
+                ),
+                List.of()));
+
+        tools.add(buildTool("get_notifications",
+                "Get recent IntelliJ IDE notifications from the Event Log. " +
+                        "Shows warnings, errors, and info messages displayed to the user.",
+                Map.of(),
                 List.of()));
 
         result.add("tools", tools);
