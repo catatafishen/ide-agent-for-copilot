@@ -177,6 +177,7 @@ public final class PsiBridgeService implements Disposable {
                 case "run_command" -> runCommand(arguments);
                 case "read_ide_log" -> readIdeLog(arguments);
                 case "get_notifications" -> getNotifications();
+                case "read_run_output" -> readRunOutput(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -1496,6 +1497,91 @@ public final class PsiBridgeService implements Disposable {
     }
 
     // ---- End infrastructure tools ----
+
+    private String readRunOutput(JsonObject args) {
+        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
+        String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
+
+        return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
+            try {
+                var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
+                var descriptors = manager.getAllDescriptors();
+
+                if (descriptors.isEmpty()) {
+                    return "No Run panel tabs available.";
+                }
+
+                // Find the matching descriptor (by tab name or most recent)
+                com.intellij.execution.ui.RunContentDescriptor target = null;
+                if (tabName != null) {
+                    for (var d : descriptors) {
+                        if (d.getDisplayName() != null && d.getDisplayName().contains(tabName)) {
+                            target = d;
+                            break;
+                        }
+                    }
+                    if (target == null) {
+                        StringBuilder available = new StringBuilder("No tab matching '").append(tabName).append("'. Available tabs:\n");
+                        for (var d : descriptors) {
+                            available.append("  - ").append(d.getDisplayName()).append("\n");
+                        }
+                        return available.toString();
+                    }
+                } else {
+                    target = descriptors.get(descriptors.size() - 1);
+                }
+
+                var console = target.getExecutionConsole();
+                if (console == null) {
+                    return "Run tab '" + target.getDisplayName() + "' has no console.";
+                }
+
+                // Try to extract text from ConsoleView
+                String text = null;
+                if (console instanceof com.intellij.execution.ui.ConsoleView consoleView) {
+                    // ConsoleViewImpl exposes getText() but ConsoleView interface doesn't
+                    // Use reflection to access getText() if available
+                    try {
+                        var getTextMethod = console.getClass().getMethod("getText");
+                        text = (String) getTextMethod.invoke(console);
+                    } catch (NoSuchMethodException e) {
+                        // Fall back to editor document if available
+                        try {
+                            var getEditorMethod = console.getClass().getMethod("getEditor");
+                            var editor = getEditorMethod.invoke(console);
+                            if (editor != null) {
+                                var getDocMethod = editor.getClass().getMethod("getDocument");
+                                var doc = getDocMethod.invoke(editor);
+                                if (doc instanceof Document document) {
+                                    text = document.getText();
+                                }
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+
+                if (text == null || text.isEmpty()) {
+                    return "Run tab '" + target.getDisplayName() + "' has no text content (console may still be loading or is an unsupported type).";
+                }
+
+                StringBuilder result = new StringBuilder();
+                result.append("Tab: ").append(target.getDisplayName()).append("\n");
+                result.append("Total length: ").append(text.length()).append(" chars\n\n");
+
+                if (text.length() > maxChars) {
+                    result.append("...(truncated, showing last ").append(maxChars).append(" of ").append(text.length()).append(" chars. Use max_chars parameter to read more.)\n");
+                    result.append(text.substring(text.length() - maxChars));
+                } else {
+                    result.append(text);
+                }
+
+                return result.toString();
+            } catch (Exception e) {
+                return "Error reading Run output: " + e.getMessage();
+            }
+        });
+    }
 
     private record ClassInfo(String fqn, Module module) {
     }

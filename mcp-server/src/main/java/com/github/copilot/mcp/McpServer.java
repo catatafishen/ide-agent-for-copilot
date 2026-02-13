@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 /**
  * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
- * Provides 32 tools: code navigation, file I/O, testing, code quality, run configs, git, and infrastructure.
+ * Provides 33 tools: code navigation, file I/O, testing, code quality, run configs, git, and infrastructure.
  */
 public class McpServer {
 
@@ -426,6 +426,16 @@ public class McpServer {
                 "Get recent IntelliJ IDE notifications from the Event Log. " +
                         "Shows warnings, errors, and info messages displayed to the user.",
                 Map.of(),
+                List.of()));
+
+        tools.add(buildTool("read_run_output",
+                "Read the text output from IntelliJ's Run panel. Returns the console text from the most recent " +
+                        "run tab, or a specific tab by name. Useful for reading build output, test results, " +
+                        "or any command output visible to the user in the Run panel.",
+                Map.of(
+                        "tab_name", Map.of("type", "string", "description", "Name of the Run tab to read (default: most recent tab)"),
+                        "max_chars", Map.of("type", "integer", "description", "Maximum characters to return (default: 8000). Output is truncated from the end if exceeded.")
+                ),
                 List.of()));
 
         result.add("tools", tools);
