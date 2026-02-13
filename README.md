@@ -1,6 +1,6 @@
 # Agentic GitHub Copilot for JetBrains
 
-A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE via the **Agent Client Protocol (ACP)**, with **MCP-based code intelligence tools** that leverage IntelliJ's native APIs for symbol search, code formatting, test execution, and file operations.
+A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE via the **Agent Client Protocol (ACP)**, with **MCP-based code intelligence tools** that leverage IntelliJ's native APIs for symbol search, code formatting, test execution, git operations, and file operations.
 
 ## Status
 
@@ -8,7 +8,7 @@ A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabi
 
 ### What Works
 - Multi-turn conversation with GitHub Copilot agent
-- 19 IntelliJ-native MCP tools (symbol search, file outline, references, test runner, code formatting, etc.)
+- 32 IntelliJ-native MCP tools (symbol search, file outline, references, test runner, code formatting, git, infrastructure, etc.)
 - Built-in file operations redirected through IntelliJ Document API (undo support, no external file conflicts)
 - Auto-format (optimize imports + reformat code) after every write
 - Model selection with usage multiplier display
@@ -34,7 +34,7 @@ A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabi
 │  ┌──────────────────┐    ┌───────────────────────┐            │
 │  │ PsiBridgeService │◄───│  Copilot CLI (--acp)  │            │
 │  │  (HTTP server)   │    │                       │            │
-│  │  19 MCP tools    │    │  - Agent reasoning    │            │
+│  │  32 MCP tools    │    │  - Agent reasoning    │            │
 │  │  - read/write    │    │  - Tool selection     │            │
 │  │  - format        │    │  - Permission reqs    │            │
 │  │  - search        │    └───────────┬───────────┘            │
@@ -65,14 +65,14 @@ intellij-copilot-plugin/
 │       ├── ui/           # Tool Window (Swing)
 │       ├── services/     # CopilotService, CopilotSettings
 │       ├── bridge/       # CopilotAcpClient (ACP protocol)
-│       └── psi/          # PsiBridgeService (19 MCP tools)
+│       └── psi/          # PsiBridgeService (32 MCP tools)
 ├── mcp-server/           # MCP stdio server (bundled JAR)
 │   └── src/main/java/com/github/copilot/mcp/
 │       └── McpServer.java
 └── integration-tests/    # (placeholder)
 ```
 
-## MCP Tools (19 tools)
+## MCP Tools (32 tools)
 
 | Category | Tools |
 |----------|-------|
@@ -81,6 +81,8 @@ intellij-copilot-plugin/
 | **Code Quality** | `get_problems`, `optimize_imports`, `format_code` |
 | **Testing** | `list_tests`, `run_tests`, `get_test_results`, `get_coverage` |
 | **Project** | `get_project_info`, `list_run_configurations`, `run_configuration`, `create_run_configuration`, `edit_run_configuration` |
+| **Git** | `git_status`, `git_diff`, `git_log`, `git_blame`, `git_commit`, `git_stage`, `git_unstage`, `git_branch`, `git_stash`, `git_show` |
+| **Infrastructure** | `http_request`, `run_command`, `read_ide_log`, `get_notifications` |
 
 ## Requirements
 
