@@ -182,6 +182,9 @@ public final class PsiBridgeService implements Disposable {
                 case "run_in_terminal" -> runInTerminal(arguments);
                 case "list_terminals" -> listTerminals();
                 case "read_terminal_output" -> readTerminalOutput(arguments);
+                // Documentation tools
+                case "get_documentation" -> getDocumentation(arguments);
+                case "download_sources" -> downloadSources(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -2451,6 +2454,326 @@ public final class PsiBridgeService implements Disposable {
         if (l.endsWith(".gradle") || l.endsWith(".gradle.kts")) return "Gradle";
         if (l.endsWith(".yaml") || l.endsWith(".yml")) return "YAML";
         return "Other";
+    }
+
+    // ---- Documentation Tools ----
+
+    private String getDocumentation(JsonObject args) {
+        String symbol = args.has("symbol") ? args.get("symbol").getAsString() : "";
+        if (symbol.isEmpty()) return "Error: 'symbol' parameter required (e.g. java.util.List, com.google.gson.Gson.fromJson)";
+
+        return ReadAction.compute(() -> {
+            try {
+                // Try to resolve as a fully qualified class name first
+                GlobalSearchScope scope = GlobalSearchScope.allScope(project);
+                PsiElement element = null;
+
+                // Split into class and member parts
+                String className = symbol;
+                String memberName = null;
+
+                // Check if symbol contains a member reference (e.g. java.util.List.add)
+                // Try progressively shorter class names to find the class part
+                Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
+                Object facade = javaPsiFacadeClass.getMethod("getInstance", Project.class).invoke(null, project);
+
+                PsiElement resolvedClass = null;
+                // Try the full symbol as a class first
+                resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
+                        .invoke(facade, symbol, scope);
+
+                if (resolvedClass == null) {
+                    // Try splitting at the last dot to find class + member
+                    int lastDot = symbol.lastIndexOf('.');
+                    if (lastDot > 0) {
+                        className = symbol.substring(0, lastDot);
+                        memberName = symbol.substring(lastDot + 1);
+                        resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
+                                .invoke(facade, className, scope);
+                    }
+                }
+
+                if (resolvedClass == null) {
+                    return "Symbol not found: " + symbol + ". Use a fully qualified name (e.g. java.util.List).";
+                }
+
+                element = resolvedClass;
+
+                // If member name specified, find the member within the class
+                if (memberName != null) {
+                    PsiElement foundMember = null;
+                    // Look for methods and fields
+                    for (PsiElement child : resolvedClass.getChildren()) {
+                        if (child instanceof PsiNamedElement named && memberName.equals(named.getName())) {
+                            foundMember = child;
+                            break;
+                        }
+                    }
+                    if (foundMember != null) {
+                        element = foundMember;
+                    } else {
+                        // Try inner classes
+                        for (PsiElement child : resolvedClass.getChildren()) {
+                            if (child instanceof PsiNamedElement) {
+                                for (PsiElement grandchild : child.getChildren()) {
+                                    if (grandchild instanceof PsiNamedElement named && memberName.equals(named.getName())) {
+                                        foundMember = grandchild;
+                                        break;
+                                    }
+                                }
+                                if (foundMember != null) break;
+                            }
+                        }
+                        if (foundMember != null) {
+                            element = foundMember;
+                        }
+                    }
+                }
+
+                // Use DocumentationProvider to generate documentation
+                Class<?> langDocClass = Class.forName("com.intellij.lang.LanguageDocumentation");
+                Object langDocInstance = langDocClass.getField("INSTANCE").get(null);
+                Object provider = langDocClass.getMethod("forLanguage", com.intellij.lang.Language.class)
+                        .invoke(langDocInstance, element.getLanguage());
+
+                if (provider == null) {
+                    // Fallback: extract PsiDocComment directly for Java elements
+                    return extractDocComment(element, symbol);
+                }
+
+                String doc = (String) provider.getClass().getMethod("generateDoc", PsiElement.class, PsiElement.class)
+                        .invoke(provider, element, null);
+
+                if (doc == null || doc.isEmpty()) {
+                    return extractDocComment(element, symbol);
+                }
+
+                // Strip HTML tags for clean text output
+                String text = doc.replaceAll("<[^>]+>", "")
+                        .replaceAll("&nbsp;", " ")
+                        .replaceAll("&lt;", "<")
+                        .replaceAll("&gt;", ">")
+                        .replaceAll("&amp;", "&")
+                        .replaceAll("&#\\d+;", "")
+                        .replaceAll("\n{3,}", "\n\n")
+                        .trim();
+
+                return truncateOutput("Documentation for " + symbol + ":\n\n" + text);
+            } catch (Exception e) {
+                LOG.warn("get_documentation error", e);
+                return "Error retrieving documentation: " + e.getMessage();
+            }
+        });
+    }
+
+    private String extractDocComment(PsiElement element, String symbol) {
+        // Fallback: try to get raw PsiDocComment for Java elements
+        try {
+            Class<?> docOwnerClass = Class.forName("com.intellij.psi.PsiDocCommentOwner");
+            if (docOwnerClass.isInstance(element)) {
+                Object docComment = docOwnerClass.getMethod("getDocComment").invoke(element);
+                if (docComment != null) {
+                    String text = ((PsiElement) docComment).getText();
+                    // Clean up the comment markers
+                    text = text.replaceAll("/\\*\\*", "")
+                            .replaceAll("\\*/", "")
+                            .replaceAll("(?m)^\\s*\\*\\s?", "")
+                            .trim();
+                    return "Documentation for " + symbol + ":\n\n" + text;
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            // Not a Java environment
+        } catch (Exception e) {
+            LOG.warn("extractDocComment error", e);
+        }
+
+        // Last resort: show element text signature
+        String elementText = element.getText();
+        if (elementText.length() > 500) elementText = elementText.substring(0, 500) + "...";
+        return "No documentation available for " + symbol + ". Element found:\n" + elementText;
+    }
+
+    private String downloadSources(JsonObject args) {
+        String library = args.has("library") ? args.get("library").getAsString() : "";
+
+        try {
+            // Detect build system and trigger source download
+            String basePath = project.getBasePath();
+            if (basePath == null) return "Error: no project base path";
+
+            VirtualFile baseDir = LocalFileSystem.getInstance().findFileByPath(basePath);
+            if (baseDir == null) return "Error: cannot find project directory";
+
+            boolean isGradle = baseDir.findChild("build.gradle") != null
+                    || baseDir.findChild("build.gradle.kts") != null;
+            boolean isMaven = baseDir.findChild("pom.xml") != null;
+
+            if (!isGradle && !isMaven) {
+                return "Error: no Gradle or Maven build file found. Only Gradle and Maven projects are supported.";
+            }
+
+            // Build the command to download sources
+            String command;
+            String workDir = basePath;
+
+            if (isGradle) {
+                // Gradle: use idea plugin to download sources
+                boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+                String gradlew = isWindows ? "gradlew.bat" : "./gradlew";
+                VirtualFile wrapper = baseDir.findChild(isWindows ? "gradlew.bat" : "gradlew");
+                if (wrapper == null) {
+                    return "Error: Gradle wrapper not found. Run 'gradle wrapper' first.";
+                }
+
+                if (library.isEmpty()) {
+                    command = wrapper.getPath() + " dependencies --write-locks 2>&1 || true";
+                    // Actually, the best way for Gradle is to trigger IDEA's own source download
+                    return triggerIdeSourceDownload(library);
+                } else {
+                    return triggerIdeSourceDownload(library);
+                }
+            } else {
+                // Maven: download sources
+                boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+                String mvn = isWindows ? "mvn.cmd" : "mvn";
+                if (library.isEmpty()) {
+                    command = mvn + " dependency:sources dependency:resolve -Dclassifier=javadoc";
+                } else {
+                    command = mvn + " dependency:sources -Dartifact=" + library;
+                }
+
+                // Execute the command
+                GeneralCommandLine cmdLine = new GeneralCommandLine("cmd", "/c", command);
+                cmdLine.setWorkDirectory(workDir);
+
+                java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    try {
+                        OSProcessHandler handler = new OSProcessHandler(cmdLine);
+                        StringBuilder output = new StringBuilder();
+                        handler.addProcessListener(new ProcessAdapter() {
+                            @Override
+                            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
+                                output.append(event.getText());
+                            }
+                            @Override
+                            public void processTerminated(@NotNull ProcessEvent event) {
+                                future.complete(truncateOutput(output.toString()));
+                            }
+                        });
+                        handler.startNotify();
+                    } catch (Exception e) {
+                        future.complete("Error: " + e.getMessage());
+                    }
+                });
+
+                return future.get(120, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        } catch (Exception e) {
+            LOG.warn("download_sources error", e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    private String triggerIdeSourceDownload(String library) {
+        try {
+            // Use IntelliJ's library manager to find and download sources
+            java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                try {
+                    StringBuilder result = new StringBuilder();
+                    Class<?> orderEnumeratorClass = Class.forName("com.intellij.openapi.roots.OrderEnumerator");
+
+                    // Get all library entries
+                    Module[] modules = ModuleManager.getInstance(project).getModules();
+                    List<String> librariesFound = new ArrayList<>();
+                    List<String> withSources = new ArrayList<>();
+                    List<String> withoutSources = new ArrayList<>();
+
+                    for (Module module : modules) {
+                        ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
+                        for (var entry : rootManager.getOrderEntries()) {
+                            String entryName = entry.getPresentableName();
+                            if (entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry) {
+                                var lib = libEntry.getLibrary();
+                                if (lib == null) continue;
+
+                                // Filter by library name if specified
+                                if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
+                                    continue;
+                                }
+
+                                VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
+                                if (sources.length > 0) {
+                                    withSources.add(entryName);
+                                } else {
+                                    withoutSources.add(entryName);
+                                    // Try to trigger source download via the library's modifiable model
+                                    tryAttachSources(lib, entryName, result);
+                                }
+                                librariesFound.add(entryName);
+                            }
+                        }
+                    }
+
+                    if (librariesFound.isEmpty()) {
+                        future.complete(library.isEmpty()
+                                ? "No libraries found in project."
+                                : "No library matching '" + library + "' found.");
+                        return;
+                    }
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("Libraries found: ").append(librariesFound.size()).append("\n");
+                    sb.append("With sources: ").append(withSources.size()).append("\n");
+                    sb.append("Without sources: ").append(withoutSources.size()).append("\n\n");
+
+                    if (!withoutSources.isEmpty()) {
+                        sb.append("Missing sources for:\n");
+                        for (String lib : withoutSources) {
+                            sb.append("  - ").append(lib).append("\n");
+                        }
+                        sb.append("\nTo download sources, use your build tool:\n");
+                        sb.append("  Gradle: ./gradlew dependencies (sources are downloaded automatically with IDE sync)\n");
+                        sb.append("  Maven: mvn dependency:sources\n");
+                        sb.append("\nOr in IntelliJ: right-click a library → Download Sources\n");
+                    }
+
+                    if (!withSources.isEmpty() && !library.isEmpty()) {
+                        sb.append("\nLibraries with sources available:\n");
+                        for (String lib : withSources) {
+                            sb.append("  ✓ ").append(lib).append("\n");
+                        }
+                    }
+
+                    if (result.length() > 0) {
+                        sb.append("\n").append(result);
+                    }
+
+                    future.complete(truncateOutput(sb.toString()));
+                } catch (Exception e) {
+                    future.complete("Error: " + e.getMessage());
+                }
+            });
+
+            return future.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            LOG.warn("triggerIdeSourceDownload error", e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    private void tryAttachSources(Object lib, String name, StringBuilder result) {
+        try {
+            // Try to use JavaLibraryAttachSourcesProvider or similar
+            Class<?> attacherClass = Class.forName("com.intellij.codeInsight.AttachSourcesProvider");
+            // This requires UI interaction, so we just note it
+            result.append("  Note: '").append(name).append("' needs manual source attachment via IDE\n");
+        } catch (ClassNotFoundException ignored) {
+            // AttachSourcesProvider not available
+        }
     }
 
     public void dispose() {

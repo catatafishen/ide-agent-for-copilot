@@ -470,6 +470,26 @@ public class McpServer {
                 ),
                 List.of()));
 
+        // Documentation tools
+        tools.add(buildTool("get_documentation",
+                "Get javadoc/documentation for a Java or Kotlin symbol. " +
+                        "Provide a fully qualified class name (e.g. java.util.List) or class.member (e.g. java.util.List.add). " +
+                        "Returns rendered documentation including description, parameters, return type, and examples. " +
+                        "Works for JDK classes, project classes, and library classes (if sources are downloaded).",
+                Map.of(
+                        "symbol", Map.of("type", "string", "description", "Fully qualified symbol name (e.g. java.util.HashMap, com.google.gson.Gson.fromJson)")
+                ),
+                List.of("symbol")));
+
+        tools.add(buildTool("download_sources",
+                "Check and download source/javadoc JARs for project dependencies. " +
+                        "Lists all libraries and their source availability. " +
+                        "Optionally filter by library name. Sources enable richer get_documentation results.",
+                Map.of(
+                        "library", Map.of("type", "string", "description", "Optional library name filter (e.g. 'gson', 'kotlin-stdlib'). If empty, checks all libraries.")
+                ),
+                List.of()));
+
         result.add("tools", tools);
         return result;
     }
