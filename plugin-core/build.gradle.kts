@@ -18,6 +18,7 @@ dependencies {
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
+        bundledPlugin("org.jetbrains.plugins.terminal")
     }
 
     // Kotlin stdlib for UI layer

@@ -27,7 +27,7 @@ public class CopilotAcpClient implements Closeable {
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
 
     /** Permission kinds that are denied so the agent uses IntelliJ MCP tools instead. */
-    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create", "runInTerminal");
+    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create", "execute", "runInTerminal");
 
     private final Gson gson = new Gson();
     private final AtomicLong requestIdCounter = new AtomicLong(1);
@@ -622,11 +622,15 @@ public class CopilotAcpClient implements Closeable {
         retryContent.addProperty("type", "text");
 
         String instruction = switch (deniedKind) {
-            case "runInTerminal" ->
-                "The terminal command was denied because this environment requires using IntelliJ tools for command execution. " +
-                "Please retry using the run_command MCP tool, which executes commands through IntelliJ's process management. " +
-                "The output will be visible in IntelliJ's Run panel and returned to you. " +
+            case "execute" ->
+                "The command execution was denied because this environment requires using IntelliJ tools. " +
+                "Please retry using the run_command MCP tool, which executes commands through IntelliJ's Run panel. " +
+                "The output will be visible to the user in IntelliJ and returned to you. " +
                 "You can also use read_run_output to read the Run panel content afterward.";
+            case "runInTerminal" ->
+                "The terminal command was denied because this environment requires using IntelliJ's built-in terminal. " +
+                "Please retry using the run_in_terminal MCP tool, which opens an IntelliJ Terminal tab. " +
+                "Use list_terminals to see available shells (PowerShell, cmd, bash, etc.).";
             default ->
                 "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
                 "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +

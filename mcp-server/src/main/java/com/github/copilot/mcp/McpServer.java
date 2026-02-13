@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 /**
  * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
- * Provides 33 tools: code navigation, file I/O, testing, code quality, run configs, git, and infrastructure.
+ * Provides 35 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
  */
 public class McpServer {
 
@@ -436,6 +436,25 @@ public class McpServer {
                         "tab_name", Map.of("type", "string", "description", "Name of the Run tab to read (default: most recent tab)"),
                         "max_chars", Map.of("type", "integer", "description", "Maximum characters to return (default: 8000). Output is truncated from the end if exceeded.")
                 ),
+                List.of()));
+
+        // ---- Terminal tools ----
+
+        tools.add(buildTool("run_in_terminal",
+                "Open a new IntelliJ Terminal tab and execute a command. The terminal is interactive and visible " +
+                        "to the user. Use this for commands that need an interactive shell, long-running processes, " +
+                        "or when you want the user to see live output in a terminal. " +
+                        "Use list_terminals to see available shells.",
+                Map.of(
+                        "command", Map.of("type", "string", "description", "Command to execute in the terminal"),
+                        "shell", Map.of("type", "string", "description", "Shell executable path (e.g., 'powershell.exe', 'cmd.exe'). Uses IntelliJ's default shell if not specified.")
+                ),
+                List.of("command")));
+
+        tools.add(buildTool("list_terminals",
+                "List available terminal shells on this system (PowerShell, cmd, bash, etc.) " +
+                        "and IntelliJ's configured default shell. Use before run_in_terminal to choose a shell.",
+                Map.of(),
                 List.of()));
 
         result.add("tools", tools);

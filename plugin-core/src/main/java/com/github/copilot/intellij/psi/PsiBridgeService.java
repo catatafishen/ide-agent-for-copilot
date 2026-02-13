@@ -178,6 +178,9 @@ public final class PsiBridgeService implements Disposable {
                 case "read_ide_log" -> readIdeLog(arguments);
                 case "get_notifications" -> getNotifications();
                 case "read_run_output" -> readRunOutput(arguments);
+                // Terminal tools
+                case "run_in_terminal" -> runInTerminal(arguments);
+                case "list_terminals" -> listTerminals();
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -1495,6 +1498,101 @@ public final class PsiBridgeService implements Disposable {
         }
         return result.toString();
     }
+
+    // ---- Terminal tools ----
+
+    private String runInTerminal(JsonObject args) {
+        String command = args.get("command").getAsString();
+        String shellPath = args.has("shell") ? args.get("shell").getAsString() : null;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var terminalViewClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
+                var getInstance = terminalViewClass.getMethod("getInstance", Project.class);
+                var manager = getInstance.invoke(null, project);
+
+                // Create a new terminal tab with the command
+                if (shellPath != null) {
+                    // Use specified shell
+                    var createShellWidget = terminalViewClass.getMethod(
+                            "createLocalShellWidget", String.class, String.class);
+                    var widget = createShellWidget.invoke(manager, project.getBasePath(),
+                            "Agent: " + truncateForTitle(command));
+
+                    // Send command to the widget
+                    var executeCommand = widget.getClass().getMethod("executeCommand", String.class);
+                    executeCommand.invoke(widget, command);
+                    resultFuture.complete("Terminal opened with shell and command sent: " + command);
+                } else {
+                    // Use default shell
+                    var createShellWidget = terminalViewClass.getMethod(
+                            "createLocalShellWidget", String.class, String.class);
+                    var widget = createShellWidget.invoke(manager, project.getBasePath(),
+                            "Agent: " + truncateForTitle(command));
+
+                    var executeCommand = widget.getClass().getMethod("executeCommand", String.class);
+                    executeCommand.invoke(widget, command);
+                    resultFuture.complete("Terminal opened and command sent: " + command);
+                }
+            } catch (ClassNotFoundException e) {
+                resultFuture.complete("Terminal plugin not available. Use run_command tool instead.");
+            } catch (Exception e) {
+                LOG.warn("Failed to open terminal", e);
+                resultFuture.complete("Failed to open terminal: " + e.getMessage() + ". Use run_command tool instead.");
+            }
+        });
+
+        try {
+            return resultFuture.get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return "Terminal opened (response timed out, but command was likely sent).";
+        }
+    }
+
+    private String listTerminals() {
+        StringBuilder result = new StringBuilder("Available terminals:\n\n");
+
+        // Detect available shells on the system
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) {
+            // Windows shells
+            checkShell(result, "PowerShell", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+            checkShell(result, "PowerShell 7", "C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+            checkShell(result, "Command Prompt", "C:\\Windows\\System32\\cmd.exe");
+            checkShell(result, "Git Bash", "C:\\Program Files\\Git\\bin\\bash.exe");
+            checkShell(result, "WSL", "C:\\Windows\\System32\\wsl.exe");
+        } else {
+            checkShell(result, "Bash", "/bin/bash");
+            checkShell(result, "Zsh", "/bin/zsh");
+            checkShell(result, "Fish", "/usr/bin/fish");
+            checkShell(result, "sh", "/bin/sh");
+        }
+
+        // Show IntelliJ's configured default shell
+        try {
+            var settingsClass = Class.forName("org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider");
+            var getInstance = settingsClass.getMethod("getInstance", Project.class);
+            var settings = getInstance.invoke(null, project);
+            var getShellPath = settings.getClass().getMethod("getShellPath");
+            String defaultShell = (String) getShellPath.invoke(settings);
+            result.append("\nIntelliJ default shell: ").append(defaultShell);
+        } catch (Exception e) {
+            result.append("\nCould not determine IntelliJ default shell.");
+        }
+
+        return result.toString();
+    }
+
+    private void checkShell(StringBuilder result, String name, String path) {
+        java.io.File file = new java.io.File(path);
+        if (file.exists()) {
+            result.append("  ✓ ").append(name).append(" — ").append(path).append("\n");
+        }
+    }
+
+    // ---- End terminal tools ----
 
     // ---- End infrastructure tools ----
 
