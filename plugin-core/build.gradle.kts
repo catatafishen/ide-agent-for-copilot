@@ -38,8 +38,13 @@ tasks.named("prepareSandbox") {
     dependsOn(project(":mcp-server").tasks.named("jar"))
     doLast {
         val mcpJar = project(":mcp-server").tasks.named("jar").get().outputs.files.singleFile
-        val sandboxLib = File(layout.buildDirectory.asFile.get(), "idea-sandbox/plugins/plugin-core/lib")
-        mcpJar.copyTo(File(sandboxLib, "mcp-server.jar"), overwrite = true)
+        // Copy to the versioned sandbox directory where the IDE actually runs
+        val ideDirs = File(layout.buildDirectory.asFile.get(), "idea-sandbox").listFiles { f -> f.isDirectory && f.name.startsWith("IU-") }
+        ideDirs?.forEach { ideDir ->
+            val sandboxLib = File(ideDir, "plugins/plugin-core/lib")
+            sandboxLib.mkdirs()
+            mcpJar.copyTo(File(sandboxLib, "mcp-server.jar"), overwrite = true)
+        }
     }
 }
 
