@@ -864,6 +864,11 @@ public final class PsiBridgeService implements Disposable {
         String scope = args.has("scope") ? args.get("scope").getAsString() : "project";
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
 
+        // Check if IDE is fully initialized
+        if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
+            return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+        }
+
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
         ApplicationManager.getApplication().invokeLater(() -> {
