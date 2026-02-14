@@ -89,6 +89,9 @@ tasks {
         maxHeapSize = "2g"
         // Enable auto-reload of plugin when changes are built
         autoReload = true
+
+        // Auto-open this project in the sandbox IDE (skips welcome screen)
+        args = listOf(project.rootDir.absolutePath)
         
         // System properties to skip setup and preserve state
         jvmArgs = listOf(
