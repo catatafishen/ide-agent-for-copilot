@@ -2,6 +2,7 @@ package com.github.copilot.intellij.psi;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.execution.ExecutionManager;
@@ -103,6 +104,7 @@ public final class PsiBridgeService implements Disposable {
         try {
             httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             httpServer.createContext("/tools/call", this::handleToolCall);
+            httpServer.createContext("/tools/list", this::handleToolsList);
             httpServer.createContext("/health", this::handleHealth);
             httpServer.setExecutor(Executors.newFixedThreadPool(8));
             httpServer.start();
@@ -138,6 +140,43 @@ public final class PsiBridgeService implements Disposable {
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, resp.length);
         exchange.getResponseBody().write(resp);
+        exchange.getResponseBody().close();
+    }
+
+    private void handleToolsList(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            return;
+        }
+
+        JsonArray tools = new JsonArray();
+        String[] toolNames = {
+            "search_symbols", "get_file_outline", "find_references",
+            "list_project_files", "list_tests", "run_tests", "get_test_results",
+            "get_coverage", "get_project_info", "list_run_configurations",
+            "run_configuration", "create_run_configuration", "edit_run_configuration",
+            "get_problems", "get_highlights", "run_inspections",
+            "add_to_dictionary", "suppress_inspection", "run_qodana",
+            "optimize_imports", "format_code", "read_file", "write_file",
+            "git_status", "git_diff", "git_log", "git_blame", "git_commit",
+            "git_stage", "git_unstage", "git_branch", "git_stash", "git_show",
+            "http_request", "run_command", "read_ide_log", "get_notifications",
+            "read_run_output", "run_in_terminal", "list_terminals",
+            "read_terminal_output", "get_documentation", "download_sources",
+            "create_scratch_file"
+        };
+        for (String name : toolNames) {
+            JsonObject tool = new JsonObject();
+            tool.addProperty("name", name);
+            tools.add(tool);
+        }
+
+        JsonObject response = new JsonObject();
+        response.add("tools", tools);
+        byte[] bytes = GSON.toJson(response).getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, bytes.length);
+        exchange.getResponseBody().write(bytes);
         exchange.getResponseBody().close();
     }
 
@@ -323,7 +362,7 @@ public final class PsiBridgeService implements Disposable {
                             if (element instanceof PsiNamedElement named) {
                                 String name = named.getName();
                                 String type = classifyElement(element);
-                            if (name != null && type != null && type.equals(typeFilter)) {
+                                if (name != null && type != null && type.equals(typeFilter)) {
                                     int line = doc.getLineNumber(element.getTextOffset()) + 1;
                                     String relPath = relativize(basePath, vf.getPath());
                                     String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;

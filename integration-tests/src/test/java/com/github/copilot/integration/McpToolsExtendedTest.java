@@ -3,7 +3,11 @@ package com.github.copilot.integration;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.IOException;
 import java.net.URI;
@@ -13,7 +17,10 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Extended integration tests for MCP tools via PSI Bridge.
@@ -56,7 +63,7 @@ public class McpToolsExtendedTest {
     @Test
     @Order(1)
     void testGetOutline() throws Exception {
-        String result = callTool("get_outline",
+        String result = callTool("get_file_outline",
             "{\"path\":\"mcp-server/src/main/java/com/github/copilot/mcp/McpServer.java\"}");
 
         assertTrue(result.contains("McpServer") || result.contains("class"),
@@ -119,7 +126,7 @@ public class McpToolsExtendedTest {
                 "{\"path\":\"nonexistent/file/that/does/not/exist.java\"}");
             // Should return error message, not throw
             assertTrue(result.toLowerCase().contains("not found") || result.toLowerCase().contains("error")
-                || result.toLowerCase().contains("does not exist"),
+                    || result.toLowerCase().contains("does not exist"),
                 "Should indicate file not found");
         } catch (RuntimeException e) {
             // HTTP error is also acceptable
@@ -171,7 +178,7 @@ public class McpToolsExtendedTest {
         assertNotNull(result);
         // Result format should be either "No highlights" or problem listings
         assertTrue(result.contains("highlight") || result.contains("problem")
-            || result.contains("No") || result.contains("analyzed"),
+                || result.contains("No") || result.contains("analyzed"),
             "Should return analysis result");
     }
 
@@ -183,8 +190,8 @@ public class McpToolsExtendedTest {
         assertNotNull(result);
         // Should return either problems or "no problems found"
         assertTrue(result.contains("problem") || result.contains("inspection")
-            || result.contains("No") || result.contains("passed")
-            || result.contains("Found"),
+                || result.contains("No") || result.contains("passed")
+                || result.contains("Found"),
             "Should return inspection results");
     }
 
