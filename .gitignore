@@ -18,6 +18,7 @@ out/
 
 # IntelliJ Platform Plugin
 .intellijPlatform/
+.sandbox-config/
 
 # Mac
 .DS_Store
