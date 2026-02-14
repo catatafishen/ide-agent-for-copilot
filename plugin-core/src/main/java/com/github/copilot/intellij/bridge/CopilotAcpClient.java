@@ -680,21 +680,29 @@ public class CopilotAcpClient implements Closeable {
      */
     @NotNull
     private String findCopilotCli() throws CopilotException {
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        
         // Check PATH first
         try {
-            Process check = new ProcessBuilder("where", "copilot").start();
+            String command = isWindows ? "where" : "which";
+            Process check = new ProcessBuilder(command, "copilot").start();
             if (check.waitFor() == 0) {
                 String path = new String(check.getInputStream().readAllBytes()).trim().split("\\r?\\n")[0];
                 if (new File(path).exists()) return path;
             }
         } catch (IOException | InterruptedException ignored) {}
 
-        // Check known winget install location
-        String wingetPath = System.getenv("LOCALAPPDATA") +
-                "\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe";
-        if (new File(wingetPath).exists()) return wingetPath;
+        // Check known Windows winget install location
+        if (isWindows) {
+            String wingetPath = System.getenv("LOCALAPPDATA") +
+                    "\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe";
+            if (new File(wingetPath).exists()) return wingetPath;
+        }
 
-        throw new CopilotException("Copilot CLI not found. Install with: winget install GitHub.Copilot", null, false);
+        String installInstructions = isWindows 
+            ? "Install with: winget install GitHub.Copilot"
+            : "Install with: npm install -g @anthropic-ai/copilot-cli";
+        throw new CopilotException("Copilot CLI not found. " + installInstructions, null, false);
     }
 
     /**
@@ -711,17 +719,24 @@ public class CopilotAcpClient implements Closeable {
                     .findFirst()
                     .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
                     .orElse(null) : null;
-            if (pluginPath != null && new File(pluginPath).exists()) return pluginPath;
+            if (pluginPath != null && new File(pluginPath).exists()) {
+                LOG.info("Found MCP server JAR: " + pluginPath);
+                return pluginPath;
+            }
 
             // Fallback: check relative to this class's JAR
             java.net.URL url = getClass().getProtectionDomain().getCodeSource().getLocation();
             if (url != null) {
                 File jarDir = new File(url.toURI()).getParentFile();
                 File mcpJar = new File(jarDir, "mcp-server.jar");
-                if (mcpJar.exists()) return mcpJar.getAbsolutePath();
+                if (mcpJar.exists()) {
+                    LOG.info("Found MCP server JAR (fallback): " + mcpJar.getAbsolutePath());
+                    return mcpJar.getAbsolutePath();
+                }
             }
+            LOG.warn("MCP server JAR not found - MCP tools will be unavailable");
         } catch (java.net.URISyntaxException | SecurityException e) {
-            LOG.debug("Could not find MCP server JAR: " + e.getMessage());
+            LOG.warn("Could not find MCP server JAR: " + e.getMessage());
         }
         return null;
     }
