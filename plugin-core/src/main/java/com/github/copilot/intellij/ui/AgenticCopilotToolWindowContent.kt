@@ -334,8 +334,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Top toolbar with model selector and mode toggle — wraps on narrow windows
         val toolbar = JBPanel<JBPanel<*>>()
-        toolbar.layout = WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)) as java.awt.LayoutManager
-        toolbar.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        toolbar.layout = WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)) as LayoutManager
+        toolbar.alignmentX = Component.LEFT_ALIGNMENT
 
         // Model selector (placeholder shown inside dropdown)
         val modelComboBox = ComboBox(arrayOf("Loading..."))
@@ -345,7 +345,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         modelComboBox.renderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
                 list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
-            ): java.awt.Component {
+            ): Component {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
                 return this
             }
@@ -371,7 +371,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         authPanel.isVisible = false
         authPanel.border = JBUI.Borders.emptyLeft(5)
-        authPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        authPanel.alignmentX = Component.LEFT_ALIGNMENT
 
         val modelErrorLabel = JBLabel()
         modelErrorLabel.foreground = JBColor.RED
@@ -395,16 +395,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val usagePanel = JBPanel<JBPanel<*>>()
         usagePanel.layout = BoxLayout(usagePanel, BoxLayout.Y_AXIS)
         usagePanel.border = JBUI.Borders.emptyLeft(10)
-        usagePanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        usagePanel.alignmentX = Component.LEFT_ALIGNMENT
 
         usageLabel = JBLabel("")
         usageLabel.font = JBUI.Fonts.smallFont()
-        usageLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        usageLabel.alignmentX = Component.LEFT_ALIGNMENT
         usagePanel.add(usageLabel)
 
         costLabel = JBLabel("")
         costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-        costLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+        costLabel.alignmentX = Component.LEFT_ALIGNMENT
         usagePanel.add(costLabel)
 
         val topPanel = JBPanel<JBPanel<*>>()
@@ -444,7 +444,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         responseSpinner.isVisible = false
         val responseStatus = JBLabel("")
         responseStatus.font = JBUI.Fonts.smallFont()
-        responseStatus.foreground = com.intellij.ui.JBColor.GRAY
+        responseStatus.foreground = JBColor.GRAY
         responseHeaderPanel.add(responseLabel)
         responseHeaderPanel.add(responseSpinner)
         responseHeaderPanel.add(responseStatus)
@@ -507,21 +507,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         buttonPanel.add(newChatButton)
 
         // Enter sends prompt, Shift+Enter inserts newline (standard chat UX)
-        val enterKey = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
-        val shiftEnterKey = javax.swing.KeyStroke.getKeyStroke(
+        val enterKey = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
+        val shiftEnterKey = KeyStroke.getKeyStroke(
             java.awt.event.KeyEvent.VK_ENTER,
             java.awt.event.InputEvent.SHIFT_DOWN_MASK
         )
-        promptTextArea.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
-        promptTextArea.actionMap.put("sendPrompt", object : javax.swing.AbstractAction() {
+        promptTextArea.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
+        promptTextArea.actionMap.put("sendPrompt", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
                 if (promptTextArea.text.isNotBlank() && runButton.isEnabled) {
                     runButton.doClick()
                 }
             }
         })
-        promptTextArea.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
-        promptTextArea.actionMap.put("insertNewline", object : javax.swing.AbstractAction() {
+        promptTextArea.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
+        promptTextArea.actionMap.put("insertNewline", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
                 promptTextArea.insert("\n", promptTextArea.caretPosition)
             }
@@ -533,19 +533,19 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             override fun focusGained(e: java.awt.event.FocusEvent) {
                 if (promptTextArea.text == placeholder) {
                     promptTextArea.text = ""
-                    promptTextArea.foreground = javax.swing.UIManager.getColor("TextArea.foreground")
+                    promptTextArea.foreground = UIManager.getColor("TextArea.foreground")
                 }
             }
 
             override fun focusLost(e: java.awt.event.FocusEvent) {
                 if (promptTextArea.text.isBlank()) {
                     promptTextArea.text = placeholder
-                    promptTextArea.foreground = com.intellij.ui.JBColor.GRAY
+                    promptTextArea.foreground = JBColor.GRAY
                 }
             }
         })
         promptTextArea.text = "Ask Copilot... (Shift+Enter for new line)"
-        promptTextArea.foreground = com.intellij.ui.JBColor.GRAY
+        promptTextArea.foreground = JBColor.GRAY
 
         // Track current prompt thread for cancellation
         var currentPromptThread: Thread? = null
@@ -665,7 +665,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     // Send prompt with context, streaming, and update handler
                     client.sendPrompt(
                         sessionId, prompt, modelId,
-                        if (references.isNotEmpty()) references else null,
+                        references.ifEmpty { null },
                         { chunk ->
                             if (!receivedContent) {
                                 receivedContent = true
@@ -968,7 +968,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 index: Int,
                 isSelected: Boolean,
                 cellHasFocus: Boolean
-            ): java.awt.Component {
+            ): Component {
                 val item = value as? ContextItem
                 val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
 

@@ -294,7 +294,7 @@ public final class PsiBridgeService implements Disposable {
                     String relPath = relativize(basePath, vf.getPath());
                     if (relPath == null) return true;
                     if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
-                    if (!pattern.isEmpty() && !matchGlob(vf.getName(), pattern)) return true;
+                    if (!pattern.isEmpty() && doesNotMatchGlob(vf.getName(), pattern)) return true;
                     String tag = fileIndex.isInTestSourceContent(vf) ? "test " : "";
                     files.add(String.format("%s [%s%s]", relPath, tag, fileType(vf.getName())));
                 }
@@ -456,7 +456,7 @@ public final class PsiBridgeService implements Disposable {
                     PsiElement refEl = ref.getElement();
                     PsiFile file = refEl.getContainingFile();
                     if (file == null || file.getVirtualFile() == null) continue;
-                    if (!filePattern.isEmpty() && !matchGlob(file.getName(), filePattern)) continue;
+                    if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern)) continue;
 
                     Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
                     if (doc != null) {
@@ -477,7 +477,7 @@ public final class PsiBridgeService implements Disposable {
                     (element, offsetInElement) -> {
                         PsiFile file = element.getContainingFile();
                         if (file == null || file.getVirtualFile() == null) return true;
-                        if (!filePattern.isEmpty() && !matchGlob(file.getName(), filePattern))
+                        if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern))
                             return true;
 
                         Document doc = FileDocumentManager.getInstance()
@@ -1239,9 +1239,7 @@ public final class PsiBridgeService implements Disposable {
                                                 }
                                             }
                                         }
-                                        if (pd.getHighlightType() != null) {
-                                            severity = pd.getHighlightType().toString();
-                                        }
+                                        severity = pd.getHighlightType().toString();
                                     }
 
                                     // Filter by minimum severity
@@ -2719,6 +2717,7 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
 
+        // Cast needed: runReadAction is overloaded (Computable vs ThrowableComputable) — removing causes ambiguity
         return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
             try {
                 var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
@@ -2729,7 +2728,7 @@ public final class PsiBridgeService implements Disposable {
                     var debugManager = com.intellij.xdebugger.XDebuggerManager.getInstance(project);
                     for (var session : debugManager.getDebugSessions()) {
                         var rd = session.getRunContentDescriptor();
-                        if (rd != null && !descriptors.contains(rd)) {
+                        if (!descriptors.contains(rd)) {
                             descriptors.add(rd);
                         }
                     }
@@ -2941,7 +2940,7 @@ public final class PsiBridgeService implements Disposable {
                 if (vf.isDirectory()) return true;
                 String name = vf.getName();
                 if (!name.endsWith(".java") && !name.endsWith(".kt")) return true;
-                if (!filePattern.isEmpty() && !matchGlob(name, filePattern)) return true;
+                if (!filePattern.isEmpty() && doesNotMatchGlob(name, filePattern)) return true;
 
                 // Use IntelliJ's own test source classification (green background in project view)
                 if (!fileIndex.isInTestSourceContent(vf)) return true;
@@ -3413,9 +3412,9 @@ public final class PsiBridgeService implements Disposable {
         return doc.getText().substring(start, end).trim();
     }
 
-    private static boolean matchGlob(String fileName, String pattern) {
+    private static boolean doesNotMatchGlob(String fileName, String pattern) {
         String regex = pattern.replace(".", "\\.").replace("*", ".*").replace("?", ".");
-        return fileName.matches(regex);
+        return !fileName.matches(regex);
     }
 
     private static String fileType(String name) {
@@ -3822,6 +3821,7 @@ public final class PsiBridgeService implements Disposable {
                         com.intellij.ide.scratch.ScratchRootType.getInstance();
 
                     // Create scratch file in write action (now on EDT)
+                    // Cast needed: runWriteAction is overloaded (Computable vs ThrowableComputable)
                     resultFile[0] = ApplicationManager.getApplication().runWriteAction(
                         (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
                             try {

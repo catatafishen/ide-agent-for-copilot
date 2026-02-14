@@ -355,7 +355,7 @@ public class CopilotAcpClient implements Closeable {
             // Send request - response comes after all streaming chunks
             builtInActionDeniedDuringTurn = false;
             LOG.info("sendPrompt: sending session/prompt request");
-            JsonObject result = sendRequest("session/prompt", params, 300);
+            JsonObject result = sendRequest("session/prompt", params, 600);
             LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
             // If a built-in action was denied, send a retry prompt telling agent to use MCP tools
@@ -660,7 +660,7 @@ public class CopilotAcpClient implements Closeable {
         if (model != null) {
             retryParams.addProperty("model", model);
         }
-        JsonObject result = sendRequest("session/prompt", retryParams, 300);
+        JsonObject result = sendRequest("session/prompt", retryParams, 600);
         LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
         return result;
     }

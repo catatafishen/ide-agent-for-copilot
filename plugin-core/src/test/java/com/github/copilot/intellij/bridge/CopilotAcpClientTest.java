@@ -110,16 +110,18 @@ class CopilotAcpClientTest {
 
     @Test
     void testClientIsNotHealthyBeforeStart() {
-        CopilotAcpClient client = new CopilotAcpClient();
-        assertFalse(client.isHealthy(), "Client should not be healthy before start");
+        try (CopilotAcpClient client = new CopilotAcpClient()) {
+            assertFalse(client.isHealthy(), "Client should not be healthy before start");
+        }
     }
 
     @Test
     void testCloseIdempotent() {
-        CopilotAcpClient client = new CopilotAcpClient();
-        // Should not throw even if never started
-        assertDoesNotThrow(client::close);
-        assertDoesNotThrow(client::close);
+        try (CopilotAcpClient client = new CopilotAcpClient()) {
+            // Should not throw even if never started
+            assertDoesNotThrow(client::close);
+            assertDoesNotThrow(client::close);
+        }
     }
 
     // ========================
