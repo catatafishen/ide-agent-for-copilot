@@ -89,5 +89,14 @@ tasks {
         maxHeapSize = "2g"
         // Enable auto-reload of plugin when changes are built
         autoReload = true
+        
+        // System properties to skip setup and preserve state
+        jvmArgs = listOf(
+            "-Didea.trust.all.projects=true",           // Skip trust dialog
+            "-Didea.is.internal=true",                   // Enable internal mode
+            "-Deap.require.license=false",               // Skip license checks
+            "-Didea.suppressed.plugins.id=",             // Don't suppress any plugins
+            "-Didea.plugin.in.sandbox.mode=true"         // Sandbox mode
+        )
     }
 }
