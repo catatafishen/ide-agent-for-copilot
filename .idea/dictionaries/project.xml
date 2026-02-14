@@ -13,8 +13,11 @@
       <w>cygpath</w>
       <w>datetime</w>
       <w>dest</w>
+      <w>dirname</w>
       <w>editorconfig</w>
+      <w>endlocal</w>
       <w>envs</w>
+      <w>errorlevel</w>
       <w>failsafe</w>
       <w>goroot</w>
       <w>gradle</w>
@@ -33,8 +36,10 @@
       <w>jsonrpc</w>
       <w>jvmargs</w>
       <w>kotlin</w>
+      <w>lastexitcode</w>
       <w>lifecycle</w>
       <w>localhost</w>
+      <w>mainend</w>
       <w>mcp</w>
       <w>mcpserver</w>
       <w>ndjson</w>
@@ -46,6 +51,7 @@
       <w>quickfix</w>
       <w>readarray</w>
       <w>refactor</w>
+      <w>restful</w>
       <w>roundtrip</w>
       <w>rsync</w>
       <w>runnable</w>
@@ -53,6 +59,7 @@
       <w>sandbox</w>
       <w>sdk</w>
       <w>serializable</w>
+      <w>setlocal</w>
       <w>shellness</w>
       <w>sonarlint</w>
       <w>sonarqube</w>
