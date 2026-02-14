@@ -292,7 +292,8 @@ public class McpServer {
                         "offset", Map.of("type", "integer", "description",
                                 "Number of problems to skip (default: 0). Use with limit to paginate through results."),
                         "min_severity", Map.of("type", "string", "description",
-                                "Minimum severity to include. Options: ERROR, WARNING, WEAK_WARNING, INFO (default: all).")
+                                "Minimum severity filter. Options: ERROR, WARNING, WEAK_WARNING, INFO. " +
+                                        "Default: all severities included. Only set this if the user explicitly asks to filter by severity.")
                 ),
                 List.of()));
 
