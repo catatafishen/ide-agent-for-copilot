@@ -1849,21 +1849,41 @@ public final class PsiBridgeService implements Disposable {
                     String newStr = args.get("new_str").getAsString();
                     String text = doc.getText();
                     int idx = text.indexOf(oldStr);
+                    int matchLen = oldStr.length();
                     if (idx == -1) {
-                        resultFuture.complete("old_str not found in " + pathStr);
+                        // Fallback: normalize Unicode chars and retry
+                        String normText = normalizeForMatch(text);
+                        String normOld = normalizeForMatch(oldStr);
+                        idx = normText.indexOf(normOld);
+                        if (idx != -1) {
+                            // Find the actual end position in the original text
+                            matchLen = findOriginalLength(text, idx, normOld.length());
+                        }
+                    }
+                    if (idx == -1) {
+                        // Show a snippet of the document to help debug
+                        String preview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
+                        resultFuture.complete("old_str not found in " + pathStr +
+                            ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
+                            "\nFile starts with: " + preview.replace("\n", "\\n").substring(0, Math.min(preview.length(), 150)));
                         return;
                     }
-                    if (text.indexOf(oldStr, idx + 1) != -1) {
+                    // Check for multiple matches using same strategy
+                    String checkText = (matchLen == oldStr.length()) ? text : normalizeForMatch(text);
+                    String checkOld = (matchLen == oldStr.length()) ? oldStr : normalizeForMatch(oldStr);
+                    if (checkText.indexOf(checkOld, idx + 1) != -1) {
                         resultFuture.complete("old_str matches multiple locations in " + pathStr + ". Make it more specific.");
                         return;
                     }
+                    final int finalIdx = idx;
+                    final int finalLen = matchLen;
                     ApplicationManager.getApplication().runWriteAction(() -> {
                         com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                            project, () -> doc.replaceString(idx, idx + oldStr.length(), newStr),
+                            project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
                             "Edit File", null);
                     });
                     autoFormatAfterWrite(pathStr);
-                    resultFuture.complete("Edited: " + pathStr + " (replaced " + oldStr.length() + " chars with " + newStr.length() + " chars)");
+                    resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + " chars)");
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
                 }
@@ -1899,6 +1919,42 @@ public final class PsiBridgeService implements Disposable {
                 LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
             }
         });
+    }
+
+    /**
+     * Normalize text for fuzzy matching: replace common Unicode variants with ASCII equivalents.
+     * This handles em-dashes, smart quotes, non-breaking spaces, etc. that LLMs often can't reproduce exactly.
+     */
+    private static String normalizeForMatch(String s) {
+        return s.replace('\u2014', '-')   // em-dash → hyphen
+                .replace('\u2013', '-')   // en-dash → hyphen
+                .replace('\u2018', '\'')  // left single quote
+                .replace('\u2019', '\'')  // right single quote
+                .replace('\u201C', '"')   // left double quote
+                .replace('\u201D', '"')   // right double quote
+                .replace('\u00A0', ' ')   // non-breaking space
+                .replace("\r\n", "\n")    // CRLF → LF
+                .replace('\r', '\n');     // CR → LF
+    }
+
+    /**
+     * Find the length in the original text that corresponds to a given length in the normalized text,
+     * starting from the given position. This accounts for multi-byte chars that normalize to single chars.
+     */
+    private static int findOriginalLength(String original, int startIdx, int normalizedLen) {
+        int origPos = startIdx;
+        int normCount = 0;
+        while (normCount < normalizedLen && origPos < original.length()) {
+            char c = original.charAt(origPos);
+            // CRLF counts as 1 normalized char
+            if (c == '\r' && origPos + 1 < original.length() && original.charAt(origPos + 1) == '\n') {
+                origPos += 2;
+            } else {
+                origPos++;
+            }
+            normCount++;
+        }
+        return origPos - startIdx;
     }
 
     // ---- Git tools ----
