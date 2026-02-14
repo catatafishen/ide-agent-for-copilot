@@ -284,16 +284,15 @@ public class McpServer {
                         "Triggers comprehensive analysis using the current inspection profile. " +
                         "Finds code quality issues, security vulnerabilities, typos, complexity warnings, " +
                         "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Inspection Results view. " +
-                        "This is SLOW (may take minutes) but thorough. Use filters to focus on actionable issues.",
+                        "This is SLOW (may take minutes) but thorough. Response includes total count metadata — " +
+                        "use offset and limit to paginate through all results.",
                 Map.of(
-                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)"),
+                        "limit", Map.of("type", "integer", "description",
+                                "Page size — maximum number of problems to return per call (default: 100)."),
+                        "offset", Map.of("type", "integer", "description",
+                                "Number of problems to skip (default: 0). Use with limit to paginate through results."),
                         "min_severity", Map.of("type", "string", "description",
-                                "Minimum severity to include. Options: ERROR, WARNING, WEAK_WARNING, INFO (default: all). " +
-                                        "Typos are typically INFO or WEAK_WARNING level — include them unless asked to skip."),
-                        "exclude_inspections", Map.of("type", "string", "description",
-                                "Comma-separated inspection IDs to exclude (e.g. 'MarkdownNoTableBorders,HtmlUnknownTag'). " +
-                                        "Use to filter out false positives or noisy inspections. " +
-                                        "Do NOT exclude SpellCheckingInspection or GrazieInspection unless explicitly asked.")
+                                "Minimum severity to include. Options: ERROR, WARNING, WEAK_WARNING, INFO (default: all).")
                 ),
                 List.of()));
 

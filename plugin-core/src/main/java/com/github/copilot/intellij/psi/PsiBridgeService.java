@@ -942,14 +942,8 @@ public final class PsiBridgeService implements Disposable {
      */
     private String runInspections(JsonObject args) throws Exception {
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+        int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
         String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
-        Set<String> excludeInspections = new HashSet<>();
-        if (args.has("exclude_inspections")) {
-            for (String id : args.get("exclude_inspections").getAsString().split(",")) {
-                String trimmed = id.trim();
-                if (!trimmed.isEmpty()) excludeInspections.add(trimmed);
-            }
-        }
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
@@ -960,7 +954,7 @@ public final class PsiBridgeService implements Disposable {
         // doInspections() internally uses invokeLater + Task.Backgroundable,
         // so it can be called from any thread
         try {
-            runInspectionAnalysis(limit, minSeverity, excludeInspections, resultFuture);
+            runInspectionAnalysis(limit, offset, minSeverity, resultFuture);
         } catch (Exception e) {
             LOG.error("Error running inspections", e);
             resultFuture.complete("Error running inspections: " + e.getMessage());
@@ -1066,7 +1060,7 @@ public final class PsiBridgeService implements Disposable {
      * Implementation follows JetBrains' own InspectionCommandEx pattern.
      */
     @SuppressWarnings({"TestOnlyProblems", "UnstableApiUsage"})
-    private void runInspectionAnalysis(int limit, String minSeverity, Set<String> excludeInspections,
+    private void runInspectionAnalysis(int limit, int offset, String minSeverity,
                                        CompletableFuture<String> resultFuture) {
         // Severity ranking for filtering
         Map<String, Integer> severityRank = Map.of(
@@ -1106,19 +1100,13 @@ public final class PsiBridgeService implements Disposable {
                     LOG.info("Inspection analysis completed, collecting results...");
 
                     try {
-                        List<String> problems = new ArrayList<>();
-                        int count = 0;
+                        List<String> allProblems = new ArrayList<>();
                         Set<String> filesSet = new HashSet<>();
 
                         var usedTools = getUsedTools();
                         for (var tools : usedTools) {
-                            if (count >= limit) break;
-
                             var toolWrapper = tools.getTool();
                             String toolId = toolWrapper.getShortName();
-
-                            // Skip excluded inspections
-                            if (excludeInspections.contains(toolId)) continue;
 
                             var presentation = getPresentation(toolWrapper);
                             if (presentation == null) continue;
@@ -1127,14 +1115,10 @@ public final class PsiBridgeService implements Disposable {
                             if (problemElements == null || problemElements.isEmpty()) continue;
 
                             for (var refEntity : problemElements.keys()) {
-                                if (count >= limit) break;
-
                                 var descriptors = problemElements.get(refEntity);
                                 if (descriptors == null) continue;
 
                                 for (var descriptor : descriptors) {
-                                    if (count >= limit) break;
-
                                     String description = descriptor.getDescriptionTemplate();
                                     if (description == null || description.isEmpty()) continue;
 
@@ -1189,25 +1173,33 @@ public final class PsiBridgeService implements Disposable {
                                         if (rank < requiredRank) continue;
                                     }
 
-                                    problems.add(String.format("%s:%d [%s/%s] %s",
+                                    allProblems.add(String.format("%s:%d [%s/%s] %s",
                                         filePath, line, severity, toolId, description));
-                                    count++;
                                 }
                             }
                         }
 
+                        int total = allProblems.size();
                         int filesWithProblems = filesSet.size();
 
-                        if (problems.isEmpty()) {
+                        if (total == 0) {
                             resultFuture.complete("No inspection problems found. " +
                                 "The code passed all enabled inspections in the current profile (" +
                                 profileName + "). Results are also visible in the IDE's Inspection Results view.");
                         } else {
+                            int effectiveOffset = Math.min(offset, total);
+                            int end = Math.min(effectiveOffset + limit, total);
+                            List<String> page = allProblems.subList(effectiveOffset, end);
+                            boolean hasMore = end < total;
+
                             String summary = String.format(
-                                "Found %d problems across %d files (profile: %s, showing up to %d).\n" +
+                                "Found %d total problems across %d files (profile: %s).\n" +
+                                    "Showing %d-%d of %d.%s\n" +
                                     "Results are also visible in the IDE's Inspection Results view.\n\n",
-                                problems.size(), filesWithProblems, profileName, limit);
-                            resultFuture.complete(summary + String.join("\n", problems));
+                                total, filesWithProblems, profileName,
+                                effectiveOffset + 1, end, total,
+                                hasMore ? String.format(" Use offset=%d to see more.", end) : "");
+                            resultFuture.complete(summary + String.join("\n", page));
                         }
                     } catch (Exception e) {
                         LOG.error("Error collecting inspection results", e);
