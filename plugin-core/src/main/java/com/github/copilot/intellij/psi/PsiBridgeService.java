@@ -1081,12 +1081,24 @@ public final class PsiBridgeService implements Disposable {
                                     String description = descriptor.getDescriptionTemplate();
                                     if (description == null || description.isEmpty()) continue;
 
+                                    // Resolve #ref placeholder with actual element text
+                                    String refText = "";
+                                    if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+                                        var psiEl = pd.getPsiElement();
+                                        if (psiEl != null) {
+                                            refText = psiEl.getText();
+                                            if (refText != null && refText.length() > 80) {
+                                                refText = refText.substring(0, 80) + "...";
+                                            }
+                                        }
+                                    }
+
                                     // Clean up HTML/template markers from description
                                     description = description.replaceAll("<[^>]+>", "")
                                         .replaceAll("&lt;", "<")
                                         .replaceAll("&gt;", ">")
                                         .replaceAll("&amp;", "&")
-                                        .replaceAll("#ref", "")
+                                        .replace("#ref", refText != null ? refText : "")
                                         .replaceAll("#loc", "")
                                         .trim();
 
