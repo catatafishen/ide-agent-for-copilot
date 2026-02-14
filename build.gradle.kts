@@ -2,6 +2,16 @@ plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.3.10" apply false
     id("org.jetbrains.intellij.platform") version "2.11.0" apply false
+    idea
+}
+
+idea {
+    module {
+        excludeDirs.addAll(listOf(
+            file(".sandbox-config"),
+            file(".intellijPlatform"),
+        ))
+    }
 }
 
 allprojects {
