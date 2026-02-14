@@ -490,6 +490,17 @@ public class McpServer {
                 ),
                 List.of()));
 
+        tools.add(buildTool("create_scratch_file",
+                "Create a scratch file in IntelliJ for longer content like markdown documentation, code snippets, or formatted output. " +
+                        "Scratch files support syntax highlighting based on file extension and persist in the IDE. " +
+                        "Use this when responses are too long for chat or when user needs formatted code/markdown. " +
+                        "The file will be automatically opened in the editor.",
+                Map.of(
+                        "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'analysis.md', 'snippet.java', 'output.json'). Extension determines syntax highlighting."),
+                        "content", Map.of("type", "string", "description", "The content to write to the scratch file")
+                ),
+                List.of("name", "content")));
+
         result.add("tools", tools);
         return result;
     }

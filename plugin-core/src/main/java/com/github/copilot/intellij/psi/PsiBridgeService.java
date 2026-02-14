@@ -28,6 +28,7 @@ import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
@@ -186,6 +187,8 @@ public final class PsiBridgeService implements Disposable {
                 // Documentation tools
                 case "get_documentation" -> getDocumentation(arguments);
                 case "download_sources" -> downloadSources(arguments);
+                // Scratch file tools
+                case "create_scratch_file" -> createScratchFile(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (Exception e) {
@@ -2833,6 +2836,74 @@ public final class PsiBridgeService implements Disposable {
             sb.append("\nTo download sources, please re-sync the project:\n");
             sb.append("  Gradle: click 'Reload All Gradle Projects' in the Gradle tool window\n");
             sb.append("  Or: File → Reload All from Disk\n");
+        }
+    }
+
+    /**
+     * Create a scratch file with the given content and open it in the editor.
+     * Supports syntax highlighting based on file extension.
+     */
+    private String createScratchFile(JsonObject args) {
+        String name = args.has("name") ? args.get("name").getAsString() : "scratch.txt";
+        String content = args.has("content") ? args.get("content").getAsString() : "";
+
+        try {
+            // Execute on EDT using invokeAndWait to block until completion
+            final com.intellij.openapi.vfs.VirtualFile[] resultFile = new com.intellij.openapi.vfs.VirtualFile[1];
+            final String[] errorMsg = new String[1];
+            
+            ApplicationManager.getApplication().invokeAndWait(() -> {
+                try {
+                    // Get scratch file service
+                    com.intellij.ide.scratch.ScratchFileService scratchService = 
+                        com.intellij.ide.scratch.ScratchFileService.getInstance();
+                    com.intellij.ide.scratch.ScratchRootType scratchRoot = 
+                        com.intellij.ide.scratch.ScratchRootType.getInstance();
+
+                    // Create scratch file in write action (now on EDT)
+                    resultFile[0] = ApplicationManager.getApplication().runWriteAction(
+                        (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
+                            try {
+                                com.intellij.openapi.vfs.VirtualFile file = scratchService.findFile(
+                                    scratchRoot,
+                                    name,
+                                    com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
+                                );
+                                
+                                if (file != null) {
+                                    java.io.OutputStream out = file.getOutputStream(null);
+                                    out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                    out.close();
+                                }
+                                return file;
+                            } catch (java.io.IOException e) {
+                                LOG.warn("Failed to create/write scratch file", e);
+                                errorMsg[0] = e.getMessage();
+                                return null;
+                            }
+                        }
+                    );
+
+                    // Open in editor (already on EDT)
+                    if (resultFile[0] != null) {
+                        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                            .openFile(resultFile[0], true);
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Failed in EDT execution", e);
+                    errorMsg[0] = e.getMessage();
+                }
+            });
+
+            if (resultFile[0] == null) {
+                return "Error: Failed to create scratch file" + 
+                    (errorMsg[0] != null ? ": " + errorMsg[0] : "");
+            }
+
+            return "Created scratch file: " + resultFile[0].getPath() + " (" + content.length() + " chars)";
+        } catch (Exception e) {
+            LOG.warn("Failed to create scratch file", e);
+            return "Error creating scratch file: " + e.getMessage();
         }
     }
 
