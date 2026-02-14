@@ -2,6 +2,7 @@ package com.github.copilot.intellij.bridge;
 
 import org.junit.jupiter.api.*;
 
+import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;

@@ -2,6 +2,11 @@ package com.github.copilot.intellij.ui;
 
 import org.junit.jupiter.api.Test;
 
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
