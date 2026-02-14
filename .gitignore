@@ -11,9 +11,13 @@ build/
 .idea/shelf/
 .idea/dictionaries/
 .idea/sonarlint/
+.idea/.idea/
 *.iml
 *.iws
 out/
+
+# IntelliJ Platform Plugin
+.intellijPlatform/
 
 # Mac
 .DS_Store
@@ -27,11 +31,23 @@ Thumbs.db
 *.so
 *.dylib
 
-# Test output
+# Logs
 *.log
+ide_launch.log
+
+# Test output
 test-output/
 
-# Plugin
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# Git bundles (for repo transfer)
+*.bundle
+
+# Plugin builds
 plugin-core/build/
 integration-tests/build/
-.intellijPlatform/
+mcp-server/build/
+
