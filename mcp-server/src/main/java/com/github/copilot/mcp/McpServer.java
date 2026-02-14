@@ -289,10 +289,11 @@ public class McpServer {
                         "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)"),
                         "min_severity", Map.of("type", "string", "description",
                                 "Minimum severity to include. Options: ERROR, WARNING, WEAK_WARNING, INFO (default: all). " +
-                                        "Use WARNING to skip typos and minor style hints."),
+                                        "Typos are typically INFO or WEAK_WARNING level — include them unless asked to skip."),
                         "exclude_inspections", Map.of("type", "string", "description",
-                                "Comma-separated inspection IDs to exclude (e.g. 'SpellCheckingInspection,GrazieInspection'). " +
-                                        "Use to filter out false positives or noisy inspections.")
+                                "Comma-separated inspection IDs to exclude (e.g. 'MarkdownNoTableBorders,HtmlUnknownTag'). " +
+                                        "Use to filter out false positives or noisy inspections. " +
+                                        "Do NOT exclude SpellCheckingInspection or GrazieInspection unless explicitly asked.")
                 ),
                 List.of()));
 
