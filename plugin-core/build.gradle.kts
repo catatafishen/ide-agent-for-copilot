@@ -85,6 +85,10 @@ intellijPlatform {
 }
 
 tasks {
+    withType<JavaCompile> {
+        options.compilerArgs.add("-Xlint:deprecation")
+    }
+
     test {
         useJUnitPlatform {
             excludeTags("integration")

@@ -11,7 +11,7 @@ import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.process.OSProcessHandler;
-import com.intellij.execution.process.ProcessAdapter;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.openapi.Disposable;
@@ -1678,7 +1678,7 @@ public final class PsiBridgeService implements Disposable {
         StringBuilder output = new StringBuilder();
 
         OSProcessHandler processHandler = new OSProcessHandler(cmd);
-        processHandler.addProcessListener(new ProcessAdapter() {
+        processHandler.addProcessListener(new ProcessListener() {
             @Override
             public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
                 output.append(event.getText());
@@ -2325,7 +2325,7 @@ public final class PsiBridgeService implements Disposable {
         StringBuilder output = new StringBuilder();
 
         OSProcessHandler processHandler = new OSProcessHandler(cmd);
-        processHandler.addProcessListener(new ProcessAdapter() {
+        processHandler.addProcessListener(new ProcessListener() {
             @Override
             public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
                 output.append(event.getText());
