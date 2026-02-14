@@ -190,11 +190,26 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
 
                 val process = ProcessBuilder(
+                    ghCli, "auth", "status"
+                ).redirectErrorStream(true).start()
+                val authOutput = process.inputStream.bufferedReader().readText()
+                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+
+                if (process.exitValue() != 0 || "not logged in" in authOutput.lowercase() || "gh auth login" in authOutput) {
+                    SwingUtilities.invokeLater {
+                        usageLabel.text = "Usage info unavailable (not authenticated)"
+                        usageLabel.toolTipText = "Run 'gh auth login' in a terminal to authenticate with GitHub"
+                        costLabel.text = ""
+                    }
+                    return@executeOnPooledThread
+                }
+
+                val apiProcess = ProcessBuilder(
                     ghCli, "api", "/copilot_internal/user"
                 ).redirectErrorStream(true).start()
 
-                val json = process.inputStream.bufferedReader().readText()
-                process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+                val json = apiProcess.inputStream.bufferedReader().readText()
+                apiProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
 
                 val gson = com.google.gson.Gson()
                 val obj = gson.fromJson(json, com.google.gson.JsonObject::class.java) ?: return@executeOnPooledThread
