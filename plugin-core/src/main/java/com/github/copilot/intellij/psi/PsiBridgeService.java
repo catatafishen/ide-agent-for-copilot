@@ -248,6 +248,9 @@ public final class PsiBridgeService implements Disposable {
                 case "create_scratch_file" -> createScratchFile(arguments);
                 default -> "Unknown tool: " + toolName;
             };
+        } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
+            // Control-flow exception — retry or report, but don't log (IntelliJ forbids logging these)
+            result = "Error: IDE is busy, please retry. " + e.getMessage();
         } catch (Exception e) {
             LOG.warn("PSI tool error: " + toolName, e);
             result = "Error: " + e.getMessage();
@@ -1740,7 +1743,7 @@ public final class PsiBridgeService implements Disposable {
             }
         });
 
-        return resultFuture.get(10, TimeUnit.SECONDS);
+        return resultFuture.get(30, TimeUnit.SECONDS);
     }
 
     private String readFile(JsonObject args) {
