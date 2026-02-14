@@ -475,7 +475,10 @@ public class McpServer {
                         "in the Run panel. Use for builds, scripts, or any CLI operation.",
                 Map.of(
                         "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'npm test', 'ls -la')"),
-                        "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)")
+                        "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),
+                        "title", Map.of("type", "string", "description",
+                                "Human-readable title for the Run panel tab (e.g., 'Build project', 'Run tests'). " +
+                                        "If not set, defaults to the command text. ALWAYS set this to a short descriptive name.")
                 ),
                 List.of("command")));
 

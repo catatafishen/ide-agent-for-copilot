@@ -1179,6 +1179,8 @@ public final class PsiBridgeService implements Disposable {
                     try {
                         List<String> allProblems = new ArrayList<>();
                         Set<String> filesSet = new HashSet<>();
+                        int skippedNoDescription = 0;
+                        int skippedNoFile = 0;
 
                         var usedTools = getUsedTools();
                         for (var tools : usedTools) {
@@ -1197,7 +1199,10 @@ public final class PsiBridgeService implements Disposable {
 
                                 for (var descriptor : descriptors) {
                                     String description = descriptor.getDescriptionTemplate();
-                                    if (description == null || description.isEmpty()) continue;
+                                    if (description == null || description.isEmpty()) {
+                                        skippedNoDescription++;
+                                        continue;
+                                    }
 
                                     // Resolve #ref placeholder with actual element text
                                     String refText = "";
@@ -1220,6 +1225,11 @@ public final class PsiBridgeService implements Disposable {
                                         .replaceAll("#loc", "")
                                         .trim();
 
+                                    if (description.isEmpty()) {
+                                        skippedNoDescription++;
+                                        continue;
+                                    }
+
                                     int line = -1;
                                     String filePath = "";
                                     String severity = "WARNING";
@@ -1240,6 +1250,8 @@ public final class PsiBridgeService implements Disposable {
                                             }
                                         }
                                         severity = pd.getHighlightType().toString();
+                                    } else {
+                                        skippedNoFile++;
                                     }
 
                                     // Filter by minimum severity
@@ -1262,7 +1274,9 @@ public final class PsiBridgeService implements Disposable {
                         cachedInspectionFileCount = filesWithProblems;
                         cachedInspectionProfile = profileName;
                         cachedInspectionTimestamp = System.currentTimeMillis();
-                        LOG.info("Cached " + total + " inspection results for pagination");
+                        LOG.info("Cached " + total + " inspection results for pagination" +
+                            " (skipped: " + skippedNoDescription + " no-description, " +
+                            skippedNoFile + " no-file)");
 
                         if (total == 0) {
                             resultFuture.complete("No inspection problems found. " +
@@ -1596,6 +1610,17 @@ public final class PsiBridgeService implements Disposable {
             try {
                 serviceClass = Class.forName("org.jetbrains.qodana.run.QodanaRunInIdeService");
             } catch (ClassNotFoundException e) {
+                // Qodana service not available — wait for analysis and look for SARIF output
+                LOG.info("QodanaRunInIdeService not available, waiting for SARIF output...");
+                // Wait up to 5 minutes for SARIF output to appear
+                for (int i = 0; i < 300; i++) {
+                    String fallbackResult = tryFindSarifOutput(limit);
+                    if (fallbackResult != null) {
+                        resultFuture.complete(fallbackResult);
+                        return;
+                    }
+                    Thread.sleep(1000);
+                }
                 resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
                     "(Qodana service class not available for result polling)");
                 return;
@@ -1603,8 +1628,14 @@ public final class PsiBridgeService implements Disposable {
 
             var qodanaService = project.getService(serviceClass);
             if (qodanaService == null) {
-                resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
-                    "(Could not access Qodana service to poll results)");
+                // Fall back to looking for SARIF output files
+                String fallbackResult = tryFindSarifOutput(limit);
+                if (fallbackResult != null) {
+                    resultFuture.complete(fallbackResult);
+                } else {
+                    resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                        "(Could not access Qodana service to poll results)");
+                }
                 return;
             }
 
@@ -1662,6 +1693,56 @@ public final class PsiBridgeService implements Disposable {
             resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
                 "Polling error: " + e.getMessage());
         }
+    }
+
+    private String tryFindSarifOutput(int limit) {
+        // Look for SARIF output in common Qodana output locations
+        String basePath = project.getBasePath();
+        java.nio.file.Path[] candidates = {
+            basePath != null ? java.nio.file.Path.of(basePath, ".qodana", "results", "qodana.sarif.json") : null,
+            java.nio.file.Path.of("/tmp/qodana_output/qodana.sarif.json"),
+            java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "qodana_output", "qodana.sarif.json"),
+        };
+        for (var candidate : candidates) {
+            if (candidate != null && java.nio.file.Files.exists(candidate)) {
+                try {
+                    String sarif = java.nio.file.Files.readString(candidate);
+                    if (sarif.length() > 10) {
+                        LOG.info("Found Qodana SARIF output at " + candidate);
+                        return parseSarifResults(sarif, limit);
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Failed to read SARIF file at " + candidate, e);
+                }
+            }
+        }
+        // Also search recursively under project .qodana directory
+        if (basePath != null) {
+            try {
+                var qodanaDir = java.nio.file.Path.of(basePath, ".qodana");
+                if (java.nio.file.Files.isDirectory(qodanaDir)) {
+                    try (var stream = java.nio.file.Files.walk(qodanaDir, 5)) {
+                        var sarifFile = stream
+                            .filter(p -> p.getFileName().toString().endsWith(".sarif.json"))
+                            .sorted((a, b) -> {
+                                try {
+                                    return java.nio.file.Files.getLastModifiedTime(b)
+                                        .compareTo(java.nio.file.Files.getLastModifiedTime(a));
+                                } catch (Exception e) { return 0; }
+                            })
+                            .findFirst();
+                        if (sarifFile.isPresent()) {
+                            String sarif = java.nio.file.Files.readString(sarifFile.get());
+                            LOG.info("Found Qodana SARIF output at " + sarifFile.get());
+                            return parseSarifResults(sarif, limit);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warn("Error searching for SARIF files", e);
+            }
+        }
+        return null;
     }
 
     private String parseSarifResults(String sarifJson, int limit) {
@@ -2338,9 +2419,11 @@ public final class PsiBridgeService implements Disposable {
 
     private String runCommand(JsonObject args) throws Exception {
         String command = args.get("command").getAsString();
+        String title = args.has("title") ? args.get("title").getAsString() : null;
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
         int timeoutSec = args.has("timeout") ? args.get("timeout").getAsInt() : 60;
+        String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
 
         GeneralCommandLine cmd;
         if (System.getProperty("os.name").contains("Win")) {
@@ -2376,7 +2459,7 @@ public final class PsiBridgeService implements Disposable {
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 new RunContentExecutor(project, processHandler)
-                    .withTitle("Command: " + truncateForTitle(command))
+                    .withTitle(tabTitle)
                     .withActivateToolWindow(true)
                     .run();
             } catch (Exception e) {
