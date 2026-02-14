@@ -899,14 +899,14 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try {
-                runInspectionAnalysis(limit, resultFuture);
-            } catch (Exception e) {
-                LOG.error("Error running inspections", e);
-                resultFuture.complete("Error running inspections: " + e.getMessage());
-            }
-        });
+        // doInspections() internally uses invokeLater + Task.Backgroundable,
+        // so it can be called from any thread
+        try {
+            runInspectionAnalysis(limit, resultFuture);
+        } catch (Exception e) {
+            LOG.error("Error running inspections", e);
+            resultFuture.complete("Error running inspections: " + e.getMessage());
+        }
 
         // Full inspection can take a while
         return resultFuture.get(600, TimeUnit.SECONDS);
@@ -1002,131 +1002,132 @@ public final class PsiBridgeService implements Disposable {
     /**
      * Run full IntelliJ code inspections using the proper inspection engine.
      * This is the same as "Analyze > Inspect Code" in the IDE menu.
-     * Results populate the Problems tool window and are returned as text.
+     * Uses doInspections() which handles ProgressWindow, threading, and UI automatically.
+     * Results appear in the IDE's Inspection Results view AND are returned as text.
+     *
+     * Implementation follows JetBrains' own InspectionCommandEx pattern.
      */
+    @SuppressWarnings("TestOnlyProblems")
     private void runInspectionAnalysis(int limit, CompletableFuture<String> resultFuture) {
         try {
             LOG.info("Starting full inspection analysis...");
 
-            var inspectionManager = com.intellij.codeInspection.InspectionManager.getInstance(project);
+            var inspectionManagerEx = (com.intellij.codeInspection.ex.InspectionManagerEx)
+                    com.intellij.codeInspection.InspectionManager.getInstance(project);
             var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
-            var profile = profileManager.getCurrentProfile();
+            var currentProfile = profileManager.getCurrentProfile();
             var scope = new com.intellij.analysis.AnalysisScope(project);
 
-            LOG.info("Using inspection profile: " + profile.getName());
+            LOG.info("Using inspection profile: " + currentProfile.getName());
             LOG.info("Analysis scope: entire project");
 
-            var context = (com.intellij.codeInspection.ex.GlobalInspectionContextImpl)
-                    inspectionManager.createNewGlobalContext();
-
-            List<String> problems = new ArrayList<>();
             String basePath = project.getBasePath();
+            String profileName = currentProfile.getName();
 
-            // performInspectionsWithProgress runs synchronously with a progress indicator,
-            // so we execute it on a pooled thread to avoid blocking the EDT
-            ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                try {
-                    // args: scope, runGlobalToolsOnly=false, isOfflineInspections=false
-                    context.performInspectionsWithProgress(scope, false, false);
+            // Create context following JetBrains' InspectionCommandEx pattern:
+            // Use GlobalInspectionContextImpl with contentManager, override notifyInspectionsFinished
+            var context = new com.intellij.codeInspection.ex.GlobalInspectionContextImpl(
+                    project, inspectionManagerEx.getContentManager()) {
 
-                    // After completion, gather results from the context
-                    ReadAction.run(() -> {
-                        try {
-                            int count = 0;
-                            Set<String> filesSet = new HashSet<>();
+                @Override
+                protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope scope) {
+                    super.notifyInspectionsFinished(scope);
 
-                            var usedTools = context.getUsedTools();
-                            for (var tools : usedTools) {
+                    LOG.info("Inspection analysis completed, collecting results...");
+
+                    try {
+                        List<String> problems = new ArrayList<>();
+                        int count = 0;
+                        Set<String> filesSet = new HashSet<>();
+
+                        var usedTools = getUsedTools();
+                        for (var tools : usedTools) {
+                            if (count >= limit) break;
+
+                            var toolWrapper = tools.getTool();
+                            String toolId = toolWrapper.getShortName();
+
+                            var presentation = getPresentation(toolWrapper);
+                            if (presentation == null) continue;
+
+                            var problemElements = presentation.getProblemElements();
+                            if (problemElements == null || problemElements.isEmpty()) continue;
+
+                            for (var refEntity : problemElements.keys()) {
                                 if (count >= limit) break;
 
-                                var toolWrapper = tools.getTool();
-                                String toolId = toolWrapper.getShortName();
+                                var descriptors = problemElements.get(refEntity);
+                                if (descriptors == null) continue;
 
-                                var presentation = context.getPresentation(toolWrapper);
-                                if (presentation == null) continue;
-
-                                var problemElements = presentation.getProblemElements();
-                                if (problemElements == null || problemElements.isEmpty()) continue;
-
-                                // SynchronizedBidiMultiMap uses keys() and get(key)
-                                for (var refEntity : problemElements.keys()) {
+                                for (var descriptor : descriptors) {
                                     if (count >= limit) break;
 
-                                    var descriptors = problemElements.get(refEntity);
-                                    if (descriptors == null) continue;
+                                    String description = descriptor.getDescriptionTemplate();
+                                    if (description == null || description.isEmpty()) continue;
 
-                                    for (var descriptor : descriptors) {
-                                        if (count >= limit) break;
+                                    // Clean up HTML/template markers from description
+                                    description = description.replaceAll("<[^>]+>", "")
+                                                            .replaceAll("&lt;", "<")
+                                                            .replaceAll("&gt;", ">")
+                                                            .replaceAll("&amp;", "&")
+                                                            .replaceAll("#ref", "")
+                                                            .replaceAll("#loc", "")
+                                                            .trim();
 
-                                        String description = descriptor.getDescriptionTemplate();
-                                        if (description == null || description.isEmpty()) continue;
+                                    int line = -1;
+                                    String filePath = "";
+                                    String severity = "WARNING";
 
-                                        // Clean up HTML/template markers from description
-                                        description = description.replaceAll("<[^>]+>", "")
-                                                                .replaceAll("&lt;", "<")
-                                                                .replaceAll("&gt;", ">")
-                                                                .replaceAll("&amp;", "&")
-                                                                .replaceAll("#ref", "")
-                                                                .replaceAll("#loc", "")
-                                                                .trim();
-
-                                        int line = -1;
-                                        String filePath = "";
-                                        String severity = "WARNING";
-
-                                        // ProblemDescriptor has line/file info; CommonProblemDescriptor does not
-                                        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-                                            line = pd.getLineNumber() + 1;
-                                            var psiElement = pd.getPsiElement();
-                                            if (psiElement != null) {
-                                                var containingFile = psiElement.getContainingFile();
-                                                if (containingFile != null) {
-                                                    var vf = containingFile.getVirtualFile();
-                                                    if (vf != null) {
-                                                        filePath = basePath != null
-                                                                ? relativize(basePath, vf.getPath())
-                                                                : vf.getName();
-                                                        filesSet.add(filePath);
-                                                    }
+                                    if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+                                        line = pd.getLineNumber() + 1;
+                                        var psiElement = pd.getPsiElement();
+                                        if (psiElement != null) {
+                                            var containingFile = psiElement.getContainingFile();
+                                            if (containingFile != null) {
+                                                var vf = containingFile.getVirtualFile();
+                                                if (vf != null) {
+                                                    filePath = basePath != null
+                                                            ? relativize(basePath, vf.getPath())
+                                                            : vf.getName();
+                                                    filesSet.add(filePath);
                                                 }
                                             }
-                                            if (pd.getHighlightType() != null) {
-                                                severity = pd.getHighlightType().toString();
-                                            }
                                         }
-
-                                        problems.add(String.format("%s:%d [%s/%s] %s",
-                                                filePath, line, severity, toolId, description));
-                                        count++;
+                                        if (pd.getHighlightType() != null) {
+                                            severity = pd.getHighlightType().toString();
+                                        }
                                     }
+
+                                    problems.add(String.format("%s:%d [%s/%s] %s",
+                                            filePath, line, severity, toolId, description));
+                                    count++;
                                 }
                             }
-
-                            int filesWithProblems = filesSet.size();
-
-                            if (problems.isEmpty()) {
-                                resultFuture.complete("No inspection problems found. " +
-                                        "The code passed all enabled inspections in the current profile (" +
-                                        profile.getName() + ").");
-                            } else {
-                                String summary = String.format(
-                                        "Found %d problems across %d files (profile: %s, showing up to %d):\n\n",
-                                        problems.size(), filesWithProblems, profile.getName(), limit);
-                                resultFuture.complete(summary + String.join("\n", problems));
-                            }
-                        } catch (Exception e) {
-                            LOG.error("Error collecting inspection results", e);
-                            resultFuture.complete("Error collecting results: " + e.getMessage());
                         }
-                    });
 
-                    context.close(true);
+                        int filesWithProblems = filesSet.size();
 
-                } catch (Exception e) {
-                    LOG.error("Error during inspection execution", e);
-                    resultFuture.complete("Error during inspection: " + e.getMessage());
+                        if (problems.isEmpty()) {
+                            resultFuture.complete("No inspection problems found. " +
+                                    "The code passed all enabled inspections in the current profile (" +
+                                    profileName + "). Results are also visible in the IDE's Inspection Results view.");
+                        } else {
+                            String summary = String.format(
+                                    "Found %d problems across %d files (profile: %s, showing up to %d).\n" +
+                                    "Results are also visible in the IDE's Inspection Results view.\n\n",
+                                    problems.size(), filesWithProblems, profileName, limit);
+                            resultFuture.complete(summary + String.join("\n", problems));
+                        }
+                    } catch (Exception e) {
+                        LOG.error("Error collecting inspection results", e);
+                        resultFuture.complete("Error collecting results: " + e.getMessage());
+                    }
                 }
-            });
+            };
+
+            // doInspections handles everything: EDT dispatch, ProgressWindow creation,
+            // background thread execution, and UI view creation
+            context.doInspections(scope);
 
         } catch (Exception e) {
             LOG.error("Error setting up inspections", e);
