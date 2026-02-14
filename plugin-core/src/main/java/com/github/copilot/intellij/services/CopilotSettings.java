@@ -14,7 +14,8 @@ public final class CopilotSettings {
     private static final String KEY_MONTHLY_COST = "copilot.monthlyCost";
     private static final String KEY_USAGE_RESET_MONTH = "copilot.usageResetMonth";
 
-    private CopilotSettings() {}
+    private CopilotSettings() {
+    }
 
     @Nullable
     public static String getSelectedModel() {
@@ -44,7 +45,11 @@ public final class CopilotSettings {
 
     public static double getMonthlyCost() {
         String val = PropertiesComponent.getInstance().getValue(KEY_MONTHLY_COST, "0.0");
-        try { return Double.parseDouble(val); } catch (NumberFormatException e) { return 0.0; }
+        try {
+            return Double.parseDouble(val);
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
     }
 
     public static void setMonthlyCost(double cost) {

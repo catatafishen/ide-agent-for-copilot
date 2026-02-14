@@ -1,10 +1,10 @@
 package com.github.copilot.intellij.services;
 
+import com.github.copilot.intellij.bridge.CopilotAcpClient;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
-import com.github.copilot.intellij.bridge.CopilotAcpClient;
 import org.jetbrains.annotations.NotNull;
 
 /**

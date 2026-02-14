@@ -2,15 +2,13 @@ package com.github.copilot.intellij.bridge;
 
 import org.junit.jupiter.api.*;
 
-import java.io.*;
 import java.util.List;
-import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for CopilotAcpClient.
- * 
+ * <p>
  * Tests are split into:
  * - Unit tests using a mock ACP process (always run)
  * - Integration tests using real copilot CLI (require copilot installed + authenticated)

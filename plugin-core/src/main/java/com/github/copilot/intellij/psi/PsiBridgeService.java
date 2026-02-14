@@ -44,14 +44,13 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -1148,7 +1147,8 @@ public final class PsiBridgeService implements Disposable {
             case "oneline" -> gitArgs.add("--oneline");
             case "short" -> gitArgs.add("--format=%h %s (%an, %ar)");
             case "full" -> gitArgs.add("--format=commit %H%nAuthor: %an <%ae>%nDate:   %ad%n%n    %s%n%n%b");
-            default -> {} // "medium" is git default
+            default -> {
+            } // "medium" is git default
         }
 
         if (args.has("author")) {
@@ -1187,8 +1187,8 @@ public final class PsiBridgeService implements Disposable {
 
         // Save all documents before committing to ensure disk matches editor state
         ApplicationManager.getApplication().invokeAndWait(() ->
-            ApplicationManager.getApplication().runWriteAction(() ->
-                FileDocumentManager.getInstance().saveAllDocuments()));
+                ApplicationManager.getApplication().runWriteAction(() ->
+                        FileDocumentManager.getInstance().saveAllDocuments()));
 
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("commit");
@@ -1443,7 +1443,7 @@ public final class PsiBridgeService implements Disposable {
         String filter = args.has("filter") ? args.get("filter").getAsString() : null;
         String level = args.has("level") ? args.get("level").getAsString().toUpperCase() : null;
 
-        Path logFile = Path.of(System.getProperty("idea.log.path", ""),  "idea.log");
+        Path logFile = Path.of(System.getProperty("idea.log.path", ""), "idea.log");
         if (!Files.exists(logFile)) {
             // Try standard location
             String logDir = System.getProperty("idea.system.path");
@@ -1561,7 +1561,9 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    /** Send a command to a TerminalWidget, using the interface method to avoid IllegalAccessException. */
+    /**
+     * Send a command to a TerminalWidget, using the interface method to avoid IllegalAccessException.
+     */
     private void sendTerminalCommand(Object widget, String command) throws Exception {
         // Resolve method via the interface class, not the implementation (avoids IllegalAccessException on inner classes)
         var widgetInterface = Class.forName("com.intellij.terminal.ui.TerminalWidget");
@@ -1572,7 +1574,9 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    /** Find a TerminalWidget by tab name using Content userData. */
+    /**
+     * Find a TerminalWidget by tab name using Content userData.
+     */
     private Object findTerminalWidgetByTabName(Class<?> managerClass, String tabName) {
         try {
             var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Terminal");
@@ -1598,7 +1602,9 @@ public final class PsiBridgeService implements Disposable {
         return null;
     }
 
-    /** Read terminal output from a named tab using TerminalWidget.getText(). */
+    /**
+     * Read terminal output from a named tab using TerminalWidget.getText().
+     */
     private String readTerminalOutput(JsonObject args) {
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
 
@@ -1821,7 +1827,9 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
-    /** Extract text from any type of ExecutionConsole (regular, test runner, etc.) */
+    /**
+     * Extract text from any type of ExecutionConsole (regular, test runner, etc.)
+     */
     private String extractConsoleText(com.intellij.execution.ui.ExecutionConsole console) {
         // 1. Try SMTRunnerConsoleView (test runner) — get both test tree and console output
         try {
@@ -1889,7 +1897,9 @@ public final class PsiBridgeService implements Disposable {
         return extractPlainConsoleText(console);
     }
 
-    /** Extract plain text from a ConsoleView via getText() or editor document. */
+    /**
+     * Extract plain text from a ConsoleView via getText() or editor document.
+     */
     private String extractPlainConsoleText(Object console) {
         // Try getText()
         try {
@@ -2464,7 +2474,8 @@ public final class PsiBridgeService implements Disposable {
 
     private String getDocumentation(JsonObject args) {
         String symbol = args.has("symbol") ? args.get("symbol").getAsString() : "";
-        if (symbol.isEmpty()) return "Error: 'symbol' parameter required (e.g. java.util.List, com.google.gson.Gson.fromJson)";
+        if (symbol.isEmpty())
+            return "Error: 'symbol' parameter required (e.g. java.util.List, com.google.gson.Gson.fromJson)";
 
         return ReadAction.compute(() -> {
             try {
@@ -2702,7 +2713,7 @@ public final class PsiBridgeService implements Disposable {
                 boolean currentDownloadSources = (boolean) externalSettingsClass
                         .getMethod("isResolveExternalAnnotations").invoke(projectSettings);
 
-                // Try the Gradle-specific isDownloadSources if available, 
+                // Try the Gradle-specific isDownloadSources if available,
                 // otherwise use the resolve annotations approach
                 boolean downloadSourcesEnabled = false;
                 try {
@@ -2714,7 +2725,8 @@ public final class PsiBridgeService implements Disposable {
                         sb.append("Enabled 'Resolve external annotations' for Gradle project.\n");
                         anyChanged = true;
                     }
-                } catch (NoSuchMethodException ignored) {}
+                } catch (NoSuchMethodException ignored) {
+                }
 
                 // Also try the direct download sources setting (may be in AdvancedSettings or GradleProjectSettings)
                 try {
@@ -2724,7 +2736,7 @@ public final class PsiBridgeService implements Disposable {
                             "com.intellij.openapi.options.advanced.AdvancedSettings");
                     Method getBoolean = advancedSettingsClass.getMethod("getBoolean", String.class);
                     boolean currentValue = (boolean) getBoolean.invoke(null, "gradle.download.sources.on.sync");
-                    
+
                     if (!currentValue) {
                         Method setBoolean = advancedSettingsClass.getMethod("setBoolean", String.class, boolean.class);
                         setBoolean.invoke(null, "gradle.download.sources.on.sync", true);
@@ -2816,16 +2828,16 @@ public final class PsiBridgeService implements Disposable {
                     "org.jetbrains.plugins.gradle.util.GradleConstants");
             Object gradleSystemId = gradleConstantsClass.getField("SYSTEM_ID").get(null);
 
-            Object importSpec = importSpecClass.getConstructor(Project.class, 
-                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"))
+            Object importSpec = importSpecClass.getConstructor(Project.class,
+                            Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"))
                     .newInstance(project, gradleSystemId);
 
             // Trigger refresh
             Class<?> externalSystemUtil = Class.forName(
                     "com.intellij.openapi.externalSystem.util.ExternalSystemUtil");
             externalSystemUtil.getMethod("refreshProject", Project.class,
-                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"),
-                    String.class, boolean.class, boolean.class)
+                            Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"),
+                            String.class, boolean.class, boolean.class)
                     .invoke(null, project, gradleSystemId, project.getBasePath(), false, true);
 
             sb.append("\nTriggered Gradle project re-sync to download sources.\n");
@@ -2838,7 +2850,8 @@ public final class PsiBridgeService implements Disposable {
             sb.append("  Or: File → Reload All from Disk\n");
         }
     }
-
+
+
     /**
      * Create a scratch file with the given content and open it in the editor.
      * Supports syntax highlighting based on file extension.
@@ -2851,43 +2864,43 @@ public final class PsiBridgeService implements Disposable {
             // Execute on EDT using invokeAndWait to block until completion
             final com.intellij.openapi.vfs.VirtualFile[] resultFile = new com.intellij.openapi.vfs.VirtualFile[1];
             final String[] errorMsg = new String[1];
-            
+
             ApplicationManager.getApplication().invokeAndWait(() -> {
                 try {
                     // Get scratch file service
-                    com.intellij.ide.scratch.ScratchFileService scratchService = 
-                        com.intellij.ide.scratch.ScratchFileService.getInstance();
-                    com.intellij.ide.scratch.ScratchRootType scratchRoot = 
-                        com.intellij.ide.scratch.ScratchRootType.getInstance();
+                    com.intellij.ide.scratch.ScratchFileService scratchService =
+                            com.intellij.ide.scratch.ScratchFileService.getInstance();
+                    com.intellij.ide.scratch.ScratchRootType scratchRoot =
+                            com.intellij.ide.scratch.ScratchRootType.getInstance();
 
                     // Create scratch file in write action (now on EDT)
                     resultFile[0] = ApplicationManager.getApplication().runWriteAction(
-                        (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
-                            try {
-                                com.intellij.openapi.vfs.VirtualFile file = scratchService.findFile(
-                                    scratchRoot,
-                                    name,
-                                    com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
-                                );
-                                
-                                if (file != null) {
-                                    java.io.OutputStream out = file.getOutputStream(null);
-                                    out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                                    out.close();
+                            (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
+                                try {
+                                    com.intellij.openapi.vfs.VirtualFile file = scratchService.findFile(
+                                            scratchRoot,
+                                            name,
+                                            com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
+                                    );
+
+                                    if (file != null) {
+                                        java.io.OutputStream out = file.getOutputStream(null);
+                                        out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                        out.close();
+                                    }
+                                    return file;
+                                } catch (java.io.IOException e) {
+                                    LOG.warn("Failed to create/write scratch file", e);
+                                    errorMsg[0] = e.getMessage();
+                                    return null;
                                 }
-                                return file;
-                            } catch (java.io.IOException e) {
-                                LOG.warn("Failed to create/write scratch file", e);
-                                errorMsg[0] = e.getMessage();
-                                return null;
                             }
-                        }
                     );
 
                     // Open in editor (already on EDT)
                     if (resultFile[0] != null) {
                         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-                            .openFile(resultFile[0], true);
+                                .openFile(resultFile[0], true);
                     }
                 } catch (Exception e) {
                     LOG.warn("Failed in EDT execution", e);
@@ -2896,8 +2909,8 @@ public final class PsiBridgeService implements Disposable {
             });
 
             if (resultFile[0] == null) {
-                return "Error: Failed to create scratch file" + 
-                    (errorMsg[0] != null ? ": " + errorMsg[0] : "");
+                return "Error: Failed to create scratch file" +
+                        (errorMsg[0] != null ? ": " + errorMsg[0] : "");
             }
 
             return "Created scratch file: " + resultFile[0].getPath() + " (" + content.length() + " chars)";

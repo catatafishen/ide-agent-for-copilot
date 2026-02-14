@@ -1,9 +1,5 @@
 package com.github.copilot.intellij.ui;
 
-import com.intellij.util.ui.JBUI;
-
-import java.awt.*;
-
 /**
  * FlowLayout subclass that fully supports wrapping of components.
  * Unlike FlowLayout, preferred/minimum size accounts for wrapping

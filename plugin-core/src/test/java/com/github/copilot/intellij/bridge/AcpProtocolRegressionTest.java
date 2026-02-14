@@ -1,10 +1,10 @@
 package com.github.copilot.intellij.bridge;
 
-import com.google.gson.*;
-import org.junit.jupiter.api.*;
-
-import java.io.*;
-import java.util.concurrent.*;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,11 +18,11 @@ class AcpProtocolRegressionTest {
      * Regression: Agent-to-client requests (which have both "id" and "method")
      * were being silently dropped because the read loop treated all messages
      * with "id" as responses to our requests.
-     *
+     * <p>
      * Bug: When agent sent session/request_permission, it was matched against
      * pendingRequests (no match found), silently dropped, and the agent hung
      * waiting for a response indefinitely.
-     *
+     * <p>
      * Fix: Check for hasId && hasMethod first to route agent-to-client requests.
      */
     @Test
@@ -122,7 +122,7 @@ class AcpProtocolRegressionTest {
      * Regression: Permission response format was wrong.
      * We were sending {outcome: "granted"} but ACP spec requires
      * {outcome: {outcome: "selected", optionId: "allow_once"}}.
-     *
+     * <p>
      * This test verifies the mock server's request_permission helper
      * produces the correct options structure that the client should parse.
      */
@@ -341,25 +341,25 @@ class AcpProtocolRegressionTest {
         JsonObject update = new JsonObject();
         update.addProperty("sessionUpdate", "plan");
         JsonArray entries = new JsonArray();
-        
+
         JsonObject entry1 = new JsonObject();
         entry1.addProperty("content", "Analyze codebase");
         entry1.addProperty("priority", "high");
         entry1.addProperty("status", "completed");
         entries.add(entry1);
-        
+
         JsonObject entry2 = new JsonObject();
         entry2.addProperty("content", "Refactor module");
         entry2.addProperty("priority", "medium");
         entry2.addProperty("status", "pending");
         entries.add(entry2);
-        
+
         update.add("entries", entries);
         params.add("update", update);
 
         assertEquals("plan", params.getAsJsonObject("update").get("sessionUpdate").getAsString());
         assertEquals(2, params.getAsJsonObject("update").getAsJsonArray("entries").size());
-        
+
         JsonObject first = params.getAsJsonObject("update").getAsJsonArray("entries").get(0).getAsJsonObject();
         assertEquals("Analyze codebase", first.get("content").getAsString());
         assertEquals("high", first.get("priority").getAsString());
@@ -377,7 +377,7 @@ class AcpProtocolRegressionTest {
         update.addProperty("sessionUpdate", "tool_call_update");
         update.addProperty("toolCallId", "call_001");
         update.addProperty("status", "completed");
-        
+
         JsonArray content = new JsonArray();
         JsonObject contentBlock = new JsonObject();
         contentBlock.addProperty("type", "content");
@@ -387,7 +387,7 @@ class AcpProtocolRegressionTest {
         contentBlock.add("content", innerContent);
         content.add(contentBlock);
         update.add("content", content);
-        
+
         params.add("update", update);
 
         JsonObject u = params.getAsJsonObject("update");
@@ -520,7 +520,7 @@ class AcpProtocolRegressionTest {
         // Look for messages that are responses (have "result" and "id" matching the permission request)
         var received = server.getReceivedRequests();
         boolean foundPermissionResponse = received.stream().anyMatch(r ->
-            r.has("id") && r.get("id").getAsLong() == 100 && r.has("result")
+                r.has("id") && r.get("id").getAsLong() == 100 && r.has("result")
         );
 
         // If we can check the response, verify it rejected

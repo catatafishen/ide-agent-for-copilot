@@ -1,20 +1,14 @@
 package com.github.copilot.intellij.bridge;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.google.gson.*;
 import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -26,7 +20,9 @@ public class CopilotAcpClient implements Closeable {
     private static final Logger LOG = Logger.getInstance(CopilotAcpClient.class);
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
 
-    /** Permission kinds that are denied so the agent uses IntelliJ MCP tools instead. */
+    /**
+     * Permission kinds that are denied so the agent uses IntelliJ MCP tools instead.
+     */
     private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create", "execute", "runInTerminal");
 
     private final Gson gson = new Gson();
@@ -62,7 +58,10 @@ public class CopilotAcpClient implements Closeable {
         if (process != null) {
             LOG.info("Restarting ACP client (previous process died)");
             closed = false; // Reset closed flag for restart
-            try { if (writer != null) writer.close(); } catch (IOException ignored) {}
+            try {
+                if (writer != null) writer.close();
+            } catch (IOException ignored) {
+            }
             if (process.isAlive()) process.destroyForcibly();
             pendingRequests.clear();
             availableModels = null;
@@ -177,6 +176,7 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Create a new ACP session with optional working directory.
+     *
      * @param cwd The working directory for the session, or null to use user.home
      */
     public synchronized String createSession(@Nullable String cwd) throws CopilotException {
@@ -261,7 +261,8 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Send a prompt with full control over ACP session/update notifications.
-     * @param onChunk receives text chunks for streaming display
+     *
+     * @param onChunk  receives text chunks for streaming display
      * @param onUpdate receives raw update JSON objects for plan events, tool calls, etc.
      */
     public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
@@ -423,7 +424,9 @@ public class CopilotAcpClient implements Closeable {
         return sendRequest(method, params, REQUEST_TIMEOUT_SECONDS);
     }
 
-    /** Send a raw JSON-RPC message (used for responding to agent-to-client requests). */
+    /**
+     * Send a raw JSON-RPC message (used for responding to agent-to-client requests).
+     */
     private void sendRawMessage(@NotNull JsonObject message) {
         try {
             String json = gson.toJson(message);
@@ -504,7 +507,11 @@ public class CopilotAcpClient implements Closeable {
 
                         // Also forward to notification listeners for timeline tracking
                         for (Consumer<JsonObject> listener : notificationListeners) {
-                            try { listener.accept(msg); } catch (RuntimeException e) { LOG.warn("Listener error", e); }
+                            try {
+                                listener.accept(msg);
+                            } catch (RuntimeException e) {
+                                LOG.warn("Listener error", e);
+                            }
                         }
                     } else if (hasId) {
                         // Response to a request we sent
@@ -518,7 +525,8 @@ public class CopilotAcpClient implements Closeable {
                                 if (error.has("data") && !error.get("data").isJsonNull()) {
                                     try {
                                         errorMessage = error.get("data").getAsString();
-                                    } catch (ClassCastException | IllegalStateException ignored) {}
+                                    } catch (ClassCastException | IllegalStateException ignored) {
+                                    }
                                 }
                                 future.completeExceptionally(new CopilotException("ACP error: " + errorMessage, null, false));
                             } else if (msg.has("result")) {
@@ -623,19 +631,19 @@ public class CopilotAcpClient implements Closeable {
 
         String instruction = switch (deniedKind) {
             case "execute" ->
-                "The command execution was denied because this environment requires using IntelliJ tools. " +
-                "Please retry using the run_command MCP tool, which executes commands through IntelliJ's Run panel. " +
-                "The output will be visible to the user in IntelliJ and returned to you. " +
-                "You can also use read_run_output to read the Run panel content afterward.";
+                    "The command execution was denied because this environment requires using IntelliJ tools. " +
+                            "Please retry using the run_command MCP tool, which executes commands through IntelliJ's Run panel. " +
+                            "The output will be visible to the user in IntelliJ and returned to you. " +
+                            "You can also use read_run_output to read the Run panel content afterward.";
             case "runInTerminal" ->
-                "The terminal command was denied because this environment requires using IntelliJ's built-in terminal. " +
-                "Please retry using the run_in_terminal MCP tool, which opens an IntelliJ Terminal tab. " +
-                "Use list_terminals to see available shells (PowerShell, cmd, bash, etc.).";
+                    "The terminal command was denied because this environment requires using IntelliJ's built-in terminal. " +
+                            "Please retry using the run_in_terminal MCP tool, which opens an IntelliJ Terminal tab. " +
+                            "Use list_terminals to see available shells (PowerShell, cmd, bash, etc.).";
             default ->
-                "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
-                "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +
-                "For edits, use intellij_write_file with old_str/new_str parameters. " +
-                "For new files, use intellij_write_file with the full content parameter.";
+                    "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
+                            "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +
+                            "For edits, use intellij_write_file with old_str/new_str parameters. " +
+                            "For new files, use intellij_write_file with the full content parameter.";
         };
         retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
@@ -681,7 +689,7 @@ public class CopilotAcpClient implements Closeable {
     @NotNull
     private String findCopilotCli() throws CopilotException {
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        
+
         // Check PATH first
         try {
             String command = isWindows ? "where" : "which";
@@ -690,7 +698,8 @@ public class CopilotAcpClient implements Closeable {
                 String path = new String(check.getInputStream().readAllBytes()).trim().split("\\r?\\n")[0];
                 if (new File(path).exists()) return path;
             }
-        } catch (IOException | InterruptedException ignored) {}
+        } catch (IOException | InterruptedException ignored) {
+        }
 
         // Check known Windows winget install location
         if (isWindows) {
@@ -699,9 +708,9 @@ public class CopilotAcpClient implements Closeable {
             if (new File(wingetPath).exists()) return wingetPath;
         }
 
-        String installInstructions = isWindows 
-            ? "Install with: winget install GitHub.Copilot"
-            : "Install with: npm install -g @anthropic-ai/copilot-cli";
+        String installInstructions = isWindows
+                ? "Install with: winget install GitHub.Copilot"
+                : "Install with: npm install -g @anthropic-ai/copilot-cli";
         throw new CopilotException("Copilot CLI not found. " + installInstructions, null, false);
     }
 
@@ -714,11 +723,11 @@ public class CopilotAcpClient implements Closeable {
         try {
             // The JAR is bundled in the plugin's lib directory alongside plugin-core
             String pluginPath = com.intellij.ide.plugins.PluginManagerCore.getPlugins().length > 0 ?
-                java.util.Arrays.stream(com.intellij.ide.plugins.PluginManagerCore.getPlugins())
-                    .filter(p -> "com.github.copilot.intellij".equals(p.getPluginId().getIdString()))
-                    .findFirst()
-                    .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
-                    .orElse(null) : null;
+                    java.util.Arrays.stream(com.intellij.ide.plugins.PluginManagerCore.getPlugins())
+                            .filter(p -> "com.github.copilot.intellij".equals(p.getPluginId().getIdString()))
+                            .findFirst()
+                            .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
+                            .orElse(null) : null;
             if (pluginPath != null && new File(pluginPath).exists()) {
                 LOG.info("Found MCP server JAR: " + pluginPath);
                 return pluginPath;
@@ -830,7 +839,10 @@ public class CopilotAcpClient implements Closeable {
     public void close() {
         closed = true;
         if (writer != null) {
-            try { writer.close(); } catch (IOException ignored) {}
+            try {
+                writer.close();
+            } catch (IOException ignored) {
+            }
         }
         if (process != null && process.isAlive()) {
             process.destroy();
@@ -857,7 +869,9 @@ public class CopilotAcpClient implements Closeable {
         public String usage; // e.g., "1x", "3x", "0.33x"
     }
 
-    /** ACP resource reference — file or selection context sent with prompts. */
+    /**
+     * ACP resource reference — file or selection context sent with prompts.
+     */
     public static class ResourceReference {
         public final String uri;
         public final String mimeType;

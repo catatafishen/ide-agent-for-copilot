@@ -8,11 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBPanel
-import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTabbedPane
-import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.components.*
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
@@ -31,25 +27,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
     private val tabbedPane = JBTabbedPane()
-    
+
     // Shared context list across tabs
     private val contextListModel = DefaultListModel<ContextItem>()
-    
+
     // Shared model list (populated from ACP)
     private var loadedModels: List<CopilotAcpClient.Model> = emptyList()
-    
+
     // Current conversation session — reused for multi-turn
     private var currentSessionId: String? = null
-    
+
     // Timeline events (populated from ACP session/update notifications)
     private val timelineModel = DefaultListModel<TimelineEvent>()
-    
+
     // Plans tree (populated from ACP plan updates)
     private lateinit var planTreeModel: javax.swing.tree.DefaultTreeModel
     private lateinit var planRoot: javax.swing.tree.DefaultMutableTreeNode
     private lateinit var planDetailsArea: JBTextArea
     private lateinit var sessionInfoLabel: JBLabel
-    
+
     // Usage display components (updated after each prompt)
     private lateinit var usageLabel: JBLabel
     private lateinit var costLabel: JBLabel
@@ -98,14 +94,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     /** Handle ACP session/update notifications — routes to timeline and session tab. */
     private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
         val updateType = update.get("sessionUpdate")?.asString ?: return
-        
+
         when (updateType) {
             "tool_call" -> {
                 val title = update.get("title")?.asString ?: "Unknown tool"
                 val status = update.get("status")?.asString ?: "pending"
                 val toolCallId = update.get("toolCallId")?.asString ?: ""
                 addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
-                
+
                 // Extract file path from locations or title
                 val locations = if (update.has("locations")) update.getAsJsonArray("locations") else null
                 var filePath: String? = null
@@ -120,12 +116,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     toolCallFiles[toolCallId] = filePath
                 }
             }
+
             "tool_call_update" -> {
                 val status = update.get("status")?.asString ?: ""
                 val toolCallId = update.get("toolCallId")?.asString ?: ""
                 if (status == "completed" || status == "failed") {
                     addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
-                    
+
                     // If a file was written, read and show in Session tab
                     val filePath = toolCallFiles[toolCallId]
                     if (status == "completed" && filePath != null) {
@@ -141,11 +138,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                         planDetailsArea.text = "${file.name}\n${"─".repeat(40)}\n\n$content"
                                     }
                                 }
-                            } catch (_: Exception) {}
+                            } catch (_: Exception) {
+                            }
                         }
                     }
                 }
             }
+
             "plan" -> {
                 val entries = update.getAsJsonArray("entries") ?: return
                 SwingUtilities.invokeLater {
@@ -156,7 +155,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         if (child.userObject == "Plan") toRemove.add(child)
                     }
                     toRemove.forEach { planRoot.remove(it) }
-                    
+
                     val planNode = javax.swing.tree.DefaultMutableTreeNode("Plan")
                     for (entry in entries) {
                         val obj = entry.asJsonObject
@@ -188,28 +187,28 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     }
                     return@executeOnPooledThread
                 }
-                
+
                 val process = ProcessBuilder(
                     ghCli, "api", "/copilot_internal/user"
                 ).redirectErrorStream(true).start()
-                
+
                 val json = process.inputStream.bufferedReader().readText()
                 process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-                
+
                 val gson = com.google.gson.Gson()
                 val obj = gson.fromJson(json, com.google.gson.JsonObject::class.java) ?: return@executeOnPooledThread
-                
+
                 val snapshots = obj.getAsJsonObject("quota_snapshots") ?: return@executeOnPooledThread
                 val premium = snapshots.getAsJsonObject("premium_interactions") ?: return@executeOnPooledThread
-                
+
                 val entitlement = premium.get("entitlement")?.asInt ?: 0
                 val remaining = premium.get("remaining")?.asInt ?: 0
                 val unlimited = premium.get("unlimited")?.asBoolean ?: false
                 val overagePermitted = premium.get("overage_permitted")?.asBoolean ?: false
                 val resetDate = obj.get("quota_reset_date")?.asString ?: ""
-                
+
                 val used = entitlement - remaining
-                
+
                 SwingUtilities.invokeLater {
                     if (unlimited) {
                         usageLabel.text = "Unlimited premium requests"
@@ -218,7 +217,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     } else {
                         usageLabel.text = "$used / $entitlement premium requests"
                         usageLabel.toolTipText = "Resets $resetDate"
-                        
+
                         if (remaining < 0) {
                             val overageCost = -remaining * 0.04
                             costLabel.text = if (overagePermitted) {
@@ -249,8 +248,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         try {
             val check = ProcessBuilder("where", "gh").start()
             if (check.waitFor() == 0) return "gh"
-        } catch (_: Exception) {}
-        
+        } catch (_: Exception) {
+        }
+
         // Check known install locations
         val knownPaths = listOf(
             "C:\\Program Files\\GitHub CLI\\gh.exe",
@@ -280,7 +280,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         authCommand = authMethod.command
                         authArgs = authMethod.args
                     }
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
 
                 if (authCommand != null) {
                     val cmd = mutableListOf("cmd", "/c", "start", "cmd", "/k", "\"$authCommand\"")
@@ -306,11 +307,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
-        
+
         // Top toolbar with model selector and mode toggle — wraps on narrow windows
         val toolbar = JBPanel<JBPanel<*>>(WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)))
         toolbar.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-        
+
         // Model selector (placeholder shown inside dropdown)
         val modelComboBox = ComboBox(arrayOf("Loading..."))
         modelComboBox.preferredSize = JBUI.size(280, 30)
@@ -325,12 +326,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         toolbar.add(modelComboBox)
-        
+
         // Spinner shown during loading
         val loadingSpinner = AsyncProcessIcon("loading-models")
         loadingSpinner.preferredSize = JBUI.size(16, 16)
         toolbar.add(loadingSpinner)
-        
+
         // Mode toggle (Agent / Plan)
         val modeCombo = ComboBox(arrayOf("Agent", "Plan"))
         modeCombo.preferredSize = JBUI.size(90, 30)
@@ -340,18 +341,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             CopilotSettings.setSessionMode(mode)
         }
         toolbar.add(modeCombo)
-        
+
         // Auth status panel below toolbar (hidden by default)
         val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         authPanel.isVisible = false
         authPanel.border = JBUI.Borders.emptyLeft(5)
         authPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-        
+
         val modelErrorLabel = JBLabel()
         modelErrorLabel.foreground = JBColor.RED
         modelErrorLabel.font = JBUI.Fonts.smallFont()
         authPanel.add(modelErrorLabel)
-        
+
         val loginButton = JButton("Login")
         loginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         loginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
@@ -364,53 +365,53 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         retryButton.toolTipText = "Retry loading models"
         retryButton.isVisible = false
         authPanel.add(retryButton)
-        
+
         // Usage panel — shows real billing data from GitHub API
         val usagePanel = JBPanel<JBPanel<*>>()
         usagePanel.layout = BoxLayout(usagePanel, BoxLayout.Y_AXIS)
         usagePanel.border = JBUI.Borders.emptyLeft(10)
         usagePanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-        
+
         usageLabel = JBLabel("")
         usageLabel.font = JBUI.Fonts.smallFont()
         usageLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         usagePanel.add(usageLabel)
-        
+
         costLabel = JBLabel("")
         costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
         costLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
         usagePanel.add(costLabel)
-        
+
         val topPanel = JBPanel<JBPanel<*>>()
         topPanel.layout = BoxLayout(topPanel, BoxLayout.Y_AXIS)
         topPanel.add(toolbar)
         topPanel.add(authPanel)
         topPanel.add(usagePanel)
-        
+
         panel.add(topPanel, BorderLayout.NORTH)
-        
+
         // Fetch real billing data in background
         loadBillingData()
-        
+
         // Center: Split pane with prompt input (top) and response output (bottom)
         val splitPane = OnePixelSplitter(true, 0.4f)
-        
+
         // Prompt input area
         val promptPanel = JBPanel<JBPanel<*>>(BorderLayout())
         promptPanel.border = JBUI.Borders.empty(5)
-        
+
         val promptLabel = JBLabel("Prompt:")
         promptPanel.add(promptLabel, BorderLayout.NORTH)
-        
+
         val promptTextArea = JBTextArea()
         promptTextArea.lineWrap = true
         promptTextArea.wrapStyleWord = true
         promptTextArea.rows = 3
-        
+
         // Response output area (declare before button listener needs it)
         val responsePanel = JBPanel<JBPanel<*>>(BorderLayout())
         responsePanel.border = JBUI.Borders.empty(5)
-        
+
         val responseHeaderPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val responseLabel = JBLabel("Response:")
         val responseSpinner = AsyncProcessIcon("response-loading")
@@ -423,16 +424,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         responseHeaderPanel.add(responseSpinner)
         responseHeaderPanel.add(responseStatus)
         responsePanel.add(responseHeaderPanel, BorderLayout.NORTH)
-        
+
         val responseTextArea = JBTextArea()
         responseTextArea.isEditable = false
         responseTextArea.lineWrap = true
         responseTextArea.wrapStyleWord = true
-        responseTextArea.text = "Response will appear here after running a prompt...\n\nFirst run will auto-start the Copilot process."
-        
+        responseTextArea.text =
+            "Response will appear here after running a prompt...\n\nFirst run will auto-start the Copilot process."
+
         val responseScrollPane = JBScrollPane(responseTextArea)
         responsePanel.add(responseScrollPane, BorderLayout.CENTER)
-        
+
         // Helper function to append to response area
         fun appendResponse(text: String) {
             SwingUtilities.invokeLater {
@@ -440,7 +442,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 responseTextArea.caretPosition = responseTextArea.document.length
             }
         }
-        
+
         // Helper to update response status indicator
         fun setResponseStatus(text: String, loading: Boolean = true) {
             SwingUtilities.invokeLater {
@@ -448,11 +450,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 responseSpinner.isVisible = loading
             }
         }
-        
+
         // Add document listener for token counting
         val promptScrollPane = JBScrollPane(promptTextArea)
         promptPanel.add(promptScrollPane, BorderLayout.CENTER)
-        
+
         // Run button, Stop button, and New Chat button
         val buttonPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val runButton = JButton("Run")
@@ -471,16 +473,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             SwingUtilities.invokeLater {
                 planRoot.removeAllChildren()
                 planTreeModel.reload()
-                planDetailsArea.text = "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
+                planDetailsArea.text =
+                    "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
             }
         }
         buttonPanel.add(runButton)
         buttonPanel.add(stopButton)
         buttonPanel.add(newChatButton)
-        
+
         // Enter sends prompt, Shift+Enter inserts newline (standard chat UX)
         val enterKey = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
-        val shiftEnterKey = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, java.awt.event.InputEvent.SHIFT_DOWN_MASK)
+        val shiftEnterKey = javax.swing.KeyStroke.getKeyStroke(
+            java.awt.event.KeyEvent.VK_ENTER,
+            java.awt.event.InputEvent.SHIFT_DOWN_MASK
+        )
         promptTextArea.getInputMap(javax.swing.JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
         promptTextArea.actionMap.put("sendPrompt", object : javax.swing.AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
@@ -495,7 +501,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 promptTextArea.insert("\n", promptTextArea.caretPosition)
             }
         })
-        
+
         // Placeholder hint text
         promptTextArea.addFocusListener(object : java.awt.event.FocusListener {
             private val placeholder = "Ask Copilot... (Shift+Enter for new line)"
@@ -505,6 +511,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     promptTextArea.foreground = javax.swing.UIManager.getColor("TextArea.foreground")
                 }
             }
+
             override fun focusLost(e: java.awt.event.FocusEvent) {
                 if (promptTextArea.text.isBlank()) {
                     promptTextArea.text = placeholder
@@ -514,52 +521,53 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         })
         promptTextArea.text = "Ask Copilot... (Shift+Enter for new line)"
         promptTextArea.foreground = com.intellij.ui.JBColor.GRAY
-        
+
         // Track current prompt thread for cancellation
         var currentPromptThread: Thread? = null
-        
+
         stopButton.addActionListener {
             val sessionId = currentSessionId
             if (sessionId != null) {
                 try {
                     val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     service.getClient().cancelSession(sessionId)
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
             }
             currentPromptThread?.interrupt()
             appendResponse("\n⏹ Stopped by user\n")
             setResponseStatus("Stopped", loading = false)
             addTimelineEvent(EventType.ERROR, "Prompt cancelled by user")
         }
-        
+
         runButton.addActionListener {
             val placeholderText = "Ask Copilot... (Shift+Enter for new line)"
             val prompt = promptTextArea.text.trim()
             if (prompt.isEmpty() || prompt == placeholderText) {
                 return@addActionListener
             }
-            
+
             runButton.isEnabled = false
             stopButton.isVisible = true
             setResponseStatus("Thinking...")
-            
+
             // For first prompt or new chat, clear response area
             val isNewSession = currentSessionId == null
             if (isNewSession) {
                 responseTextArea.text = ""
             }
-            
+
             // Show the user's message in the conversation
             appendResponse("\n>>> $prompt\n\n")
             promptTextArea.text = ""
-            
+
             // Run in background thread
             ApplicationManager.getApplication().executeOnPooledThread {
                 currentPromptThread = Thread.currentThread()
                 try {
                     val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                     val client = service.getClient()
-                    
+
                     // Reuse session for multi-turn conversation, create new if needed
                     if (currentSessionId == null) {
                         currentSessionId = client.createSession(project.basePath)
@@ -567,9 +575,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         updateSessionInfo()
                     }
                     val sessionId = currentSessionId!!
-                    
-                    addTimelineEvent(EventType.MESSAGE_SENT, "Prompt: ${prompt.take(80)}${if (prompt.length > 80) "..." else ""}")
-                    
+
+                    addTimelineEvent(
+                        EventType.MESSAGE_SENT,
+                        "Prompt: ${prompt.take(80)}${if (prompt.length > 80) "..." else ""}"
+                    )
+
                     // Get selected model from loaded models list
                     val selIdx = modelComboBox.selectedIndex
                     val selectedModelObj = if (selIdx >= 0 && selIdx < loadedModels.size) loadedModels[selIdx] else null
@@ -582,15 +593,19 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
                                 .findFileByPath(item.path)
                             if (file != null) {
-                                val doc = com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
-                                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
-                                }
+                                val doc =
+                                    com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
+                                        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
+                                            .getDocument(file)
+                                    }
                                 if (doc != null) {
                                     val text = if (item.isSelection && item.startLine > 0) {
                                         val startOffset = doc.getLineStartOffset(
-                                            (item.startLine - 1).coerceIn(0, doc.lineCount - 1))
+                                            (item.startLine - 1).coerceIn(0, doc.lineCount - 1)
+                                        )
                                         val endOffset = doc.getLineEndOffset(
-                                            (item.endLine - 1).coerceIn(0, doc.lineCount - 1))
+                                            (item.endLine - 1).coerceIn(0, doc.lineCount - 1)
+                                        )
                                         doc.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
                                     } else {
                                         doc.text
@@ -614,25 +629,26 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             appendResponse("⚠ Could not read context: ${item.name}\n")
                         }
                     }
-                    
+
                     if (references.isNotEmpty()) {
                         appendResponse("📎 ${references.size} context file(s) attached\n\n")
                     }
-                    
+
                     // Track if we've received any content chunks
                     var receivedContent = false
-                    
+
                     // Send prompt with context, streaming, and update handler
-                    client.sendPrompt(sessionId, prompt, modelId, 
+                    client.sendPrompt(
+                        sessionId, prompt, modelId,
                         if (references.isNotEmpty()) references else null,
-                        { chunk -> 
+                        { chunk ->
                             if (!receivedContent) {
                                 receivedContent = true
                                 setResponseStatus("Responding...")
                             }
                             appendResponse(chunk)
                         },
-                        { update -> 
+                        { update ->
                             val updateType = update.get("sessionUpdate")?.asString ?: ""
                             when (updateType) {
                                 "tool_call" -> {
@@ -643,6 +659,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                         appendResponse("🔧 $title\n")
                                     }
                                 }
+
                                 "tool_call_update" -> {
                                     val status = update.get("status")?.asString ?: ""
                                     if (status == "completed") {
@@ -652,6 +669,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                         appendResponse("⚠ Tool failed: $toolId\n")
                                     }
                                 }
+
                                 "agent_thought_chunk" -> {
                                     // Agent is thinking — keep spinner active
                                     if (!receivedContent) {
@@ -662,14 +680,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             handleAcpUpdate(update)
                         }
                     )
-                    
+
                     appendResponse("\n") // clean separation after response
                     setResponseStatus("Done", loading = false)
                     addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
-                    
+
                     // Refresh billing data after prompt
                     loadBillingData()
-                    
+
                 } catch (e: Exception) {
                     val msg = if (e is InterruptedException || e.cause is InterruptedException) {
                         "Request cancelled"
@@ -682,7 +700,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     // Only reset session on non-recoverable errors (process died, closed)
                     // Keep session alive for timeouts/interrupts so conversation can continue
                     val isRecoverable = e is InterruptedException || e.cause is InterruptedException ||
-                        (e is com.github.copilot.intellij.bridge.CopilotException && e.isRecoverable)
+                            (e is com.github.copilot.intellij.bridge.CopilotException && e.isRecoverable)
                     if (!isRecoverable) {
                         currentSessionId = null
                         updateSessionInfo()
@@ -698,12 +716,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         promptPanel.add(buttonPanel, BorderLayout.SOUTH)
-        
+
         splitPane.firstComponent = promptPanel
         splitPane.secondComponent = responsePanel
-        
+
         panel.add(splitPane, BorderLayout.CENTER)
-        
+
         // Reusable model loading function
         fun loadModels() {
             SwingUtilities.invokeLater {
@@ -719,14 +737,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 var lastError: Exception? = null
                 val maxRetries = 3
                 val retryDelayMs = 2000L
-                
+
                 for (attempt in 1..maxRetries) {
                     try {
                         val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                         val client = service.getClient()
                         val models = client.listModels()
                         loadedModels = models
-                        
+
                         SwingUtilities.invokeLater {
                             loadingSpinner.isVisible = false
                             modelComboBox.removeAllItems()
@@ -756,16 +774,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     } catch (e: Exception) {
                         lastError = e
                         val msg = e.message ?: ""
-                        val isAuthError = msg.contains("auth") || 
-                                         msg.contains("Copilot CLI") || msg.contains("authenticated")
+                        val isAuthError = msg.contains("auth") ||
+                                msg.contains("Copilot CLI") || msg.contains("authenticated")
                         if (isAuthError) break
                         if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                     }
                 }
-                
+
                 val errorMsg = lastError?.message ?: "Unknown error"
-                val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
-                                  errorMsg.contains("authenticated")
+                val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") ||
+                        errorMsg.contains("authenticated")
                 val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
                 SwingUtilities.invokeLater {
                     loadingSpinner.isVisible = false
@@ -786,26 +804,26 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         retryButton.addActionListener { loadModels() }
         loadModels()
-        
+
         return panel
     }
 
     private fun createContextTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
-        
+
         // Use class-level contextListModel
-        
+
         // Top toolbar with Add button
         val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
-        
+
         val addFileButton = JButton("Add Current File")
         addFileButton.toolTipText = "Add the currently open file to context"
         addFileButton.addActionListener {
             // Get current editor and file
             val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
             val currentFile = fileEditorManager.selectedFiles.firstOrNull()
-            
+
             if (currentFile != null) {
                 val virtualFile = currentFile
                 val path = virtualFile.path
@@ -816,7 +834,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 } catch (e: Exception) {
                     0
                 }
-                
+
                 // Create context item
                 val item = ContextItem(
                     path = path,
@@ -826,12 +844,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     fileType = virtualFile.fileType,
                     isSelection = false
                 )
-                
+
                 // Check if already added
-                val exists = (0 until contextListModel.size()).any { 
-                    contextListModel.get(it).path == path 
+                val exists = (0 until contextListModel.size()).any {
+                    contextListModel.get(it).path == path
                 }
-                
+
                 if (!exists) {
                     contextListModel.addElement(item)
                 } else {
@@ -852,24 +870,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         toolbar.add(addFileButton)
-        
+
         val addSelectionButton = JButton("Add Selection")
         addSelectionButton.toolTipText = "Add the current text selection to context"
         addSelectionButton.addActionListener {
             val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
             val editor = fileEditorManager.selectedTextEditor
             val currentFile = fileEditorManager.selectedFiles.firstOrNull()
-            
+
             if (editor != null && currentFile != null) {
                 val selectionModel = editor.selectionModel
-                
+
                 if (selectionModel.hasSelection()) {
                     val document = editor.document
                     val startOffset = selectionModel.selectionStart
                     val endOffset = selectionModel.selectionEnd
                     val startLine = document.getLineNumber(startOffset) + 1
                     val endLine = document.getLineNumber(endOffset) + 1
-                    
+
                     val item = ContextItem(
                         path = currentFile.path,
                         name = "${currentFile.name}:$startLine-$endLine",
@@ -878,7 +896,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         fileType = currentFile.fileType,
                         isSelection = true
                     )
-                    
+
                     contextListModel.addElement(item)
                 } else {
                     JOptionPane.showMessageDialog(
@@ -898,7 +916,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         toolbar.add(addSelectionButton)
-        
+
         val clearButton = JButton("Clear All")
         clearButton.addActionListener {
             if (contextListModel.size() > 0) {
@@ -914,9 +932,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         toolbar.add(clearButton)
-        
+
         panel.add(toolbar, BorderLayout.NORTH)
-        
+
         // Context list with custom renderer
         val contextList = com.intellij.ui.components.JBList(contextListModel)
         contextList.cellRenderer = object : DefaultListCellRenderer() {
@@ -929,11 +947,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             ): java.awt.Component {
                 val item = value as? ContextItem
                 val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
-                
+
                 if (item != null) {
                     // Set icon based on file type
                     label.icon = item.fileType?.icon ?: com.intellij.icons.AllIcons.FileTypes.Text
-                    
+
                     // Format display text
                     val displayText = if (item.isSelection) {
                         "${item.name} (${item.endLine - item.startLine + 1} lines)"
@@ -944,65 +962,65 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     label.toolTipText = item.path
                     label.border = JBUI.Borders.empty(5)
                 }
-                
+
                 return label
             }
         }
-        
+
         val scrollPane = JBScrollPane(contextList)
         panel.add(scrollPane, BorderLayout.CENTER)
-        
+
         // Bottom info panel
         val infoPanel = JBPanel<JBPanel<*>>(BorderLayout())
         infoPanel.border = JBUI.Borders.empty(5)
         val infoLabel = JBLabel("Context items will be sent with each prompt")
         infoLabel.foreground = java.awt.Color.GRAY
         infoPanel.add(infoLabel, BorderLayout.WEST)
-        
+
         val countLabel = JBLabel("0 items")
         countLabel.foreground = java.awt.Color.GRAY
         infoPanel.add(countLabel, BorderLayout.EAST)
-        
+
         // Update count when list changes
         contextListModel.addListDataListener(object : javax.swing.event.ListDataListener {
             override fun intervalAdded(e: javax.swing.event.ListDataEvent?) = updateCount()
             override fun intervalRemoved(e: javax.swing.event.ListDataEvent?) = updateCount()
             override fun contentsChanged(e: javax.swing.event.ListDataEvent?) = updateCount()
-            
+
             private fun updateCount() {
                 countLabel.text = "${contextListModel.size()} items"
             }
         })
-        
+
         panel.add(infoPanel, BorderLayout.SOUTH)
-        
+
         return panel
     }
 
     private fun createSessionTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
-        
+
         // Session info header
         sessionInfoLabel = JBLabel("No active session")
         sessionInfoLabel.font = JBUI.Fonts.smallFont()
         sessionInfoLabel.foreground = JBColor.GRAY
         sessionInfoLabel.border = JBUI.Borders.emptyBottom(5)
         panel.add(sessionInfoLabel, BorderLayout.NORTH)
-        
+
         // Create split pane: tree on left, details on right
         val splitPane = OnePixelSplitter(false, 0.4f)
-        
+
         // Left: Session content tree
         val treePanel = JBPanel<JBPanel<*>>(BorderLayout())
         treePanel.border = JBUI.Borders.empty(5)
-        
+
         planRoot = javax.swing.tree.DefaultMutableTreeNode("Session")
         planTreeModel = javax.swing.tree.DefaultTreeModel(planRoot)
         val tree = com.intellij.ui.treeStructure.Tree(planTreeModel)
         tree.isRootVisible = false
         tree.showsRootHandles = true
-        
+
         // Custom cell renderer for plan status icons only
         tree.cellRenderer = object : javax.swing.tree.DefaultTreeCellRenderer() {
             override fun getTreeCellRendererComponent(
@@ -1017,23 +1035,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val label = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
                 val node = value as? javax.swing.tree.DefaultMutableTreeNode
                 val text = node?.userObject?.toString() ?: ""
-                
+
                 when {
                     text.contains("[completed]") -> icon = com.intellij.icons.AllIcons.Actions.Commit
                     text.contains("[in_progress]") -> icon = com.intellij.icons.AllIcons.Actions.Execute
                     text.contains("[pending]") -> icon = com.intellij.icons.AllIcons.Actions.Pause
                     text.contains("[failed]") -> icon = com.intellij.icons.AllIcons.General.Error
                 }
-                
+
                 return label
             }
         }
-        
+
         // Double-click or Enter opens file in editor
         fun openSelectedFile() {
             val node = tree.lastSelectedPathComponent as? FileTreeNode ?: return
             val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
-                node.filePath.replace("\\", "/"))
+                node.filePath.replace("\\", "/")
+            )
             if (vFile != null) {
                 ApplicationManager.getApplication().invokeLater {
                     com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vFile, true)
@@ -1050,18 +1069,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) openSelectedFile()
             }
         })
-        
+
         // Empty state label shown when tree has no items
         val emptyLabel = JBLabel("No session files yet")
         emptyLabel.foreground = JBColor.GRAY
         emptyLabel.horizontalAlignment = javax.swing.SwingConstants.CENTER
-        
+
         val treeScrollPane = JBScrollPane(tree)
         val treeCardPanel = JBPanel<JBPanel<*>>(java.awt.CardLayout())
         treeCardPanel.add(emptyLabel, "empty")
         treeCardPanel.add(treeScrollPane, "tree")
         treePanel.add(treeCardPanel, BorderLayout.CENTER)
-        
+
         // Show empty/tree based on content
         fun updateTreeVisibility() {
             val cl = treeCardPanel.layout as java.awt.CardLayout
@@ -1074,22 +1093,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             override fun treeStructureChanged(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
         })
         updateTreeVisibility()
-        
+
         splitPane.firstComponent = treePanel
-        
+
         // Right: Details panel
         val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
         detailsPanel.border = JBUI.Borders.empty(5)
-        
+
         planDetailsArea = JBTextArea()
         planDetailsArea.isEditable = false
         planDetailsArea.lineWrap = true
         planDetailsArea.wrapStyleWord = true
         planDetailsArea.text = "Select a file to preview its content.\nDouble-click or Enter to open in editor."
-        
+
         val detailsScrollPane = JBScrollPane(planDetailsArea)
         detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
-        
+
         // Selection listener — show file content preview (truncated for large files)
         tree.addTreeSelectionListener { event ->
             val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
@@ -1097,7 +1116,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val content = node.fileContent
                 val lines = content.lines()
                 val preview = if (lines.size > 200) {
-                    lines.take(200).joinToString("\n") + "\n\n--- Truncated (${lines.size} lines total, showing first 200) ---"
+                    lines.take(200)
+                        .joinToString("\n") + "\n\n--- Truncated (${lines.size} lines total, showing first 200) ---"
                 } else content
                 planDetailsArea.text = "${node.fileName}\n${"─".repeat(40)}\n\n$preview"
                 planDetailsArea.caretPosition = 0
@@ -1106,21 +1126,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 planDetailsArea.text = text.ifEmpty { "Select an item to see details." }
             }
         }
-        
+
         splitPane.secondComponent = detailsPanel
-        
+
         panel.add(splitPane, BorderLayout.CENTER)
-        
+
         return panel
     }
 
     private fun createTimelineTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
-        
+
         // Timeline list — uses shared timelineModel populated from real events
         val timelineList = com.intellij.ui.components.JBList(timelineModel)
-        
+
         // Custom cell renderer for timeline events
         timelineList.cellRenderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
@@ -1132,7 +1152,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             ): java.awt.Component {
                 val event = value as? TimelineEvent
                 val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
-                
+
                 if (event != null) {
                     val icon = when (event.type) {
                         EventType.SESSION_START -> com.intellij.icons.AllIcons.Actions.Execute
@@ -1142,22 +1162,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         EventType.TOOL_CALL -> com.intellij.icons.AllIcons.Actions.Lightning
                     }
                     label.icon = icon
-                    
+
                     val timeStr = java.text.SimpleDateFormat("HH:mm:ss").format(event.timestamp)
                     label.text = "<html><b>$timeStr</b> - ${event.message}</html>"
                     label.border = JBUI.Borders.empty(5)
                 }
-                
+
                 return label
             }
         }
-        
+
         val scrollPane = JBScrollPane(timelineList)
         panel.add(scrollPane, BorderLayout.CENTER)
-        
+
         // Bottom toolbar
         val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(10), JBUI.scale(5)))
-        
+
         val clearButton = JButton("Clear Timeline")
         clearButton.addActionListener {
             if (timelineModel.size() > 0) {
@@ -1165,32 +1185,32 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         toolbar.add(clearButton)
-        
+
         panel.add(toolbar, BorderLayout.SOUTH)
-        
+
         return panel
     }
 
     private fun createSettingsTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(GridBagLayout())
         panel.border = JBUI.Borders.empty(10)
-        
+
         val gbc = GridBagConstraints()
         gbc.gridx = 0
         gbc.gridy = 0
         gbc.anchor = GridBagConstraints.WEST
         gbc.insets = JBUI.insets(5)
         gbc.fill = GridBagConstraints.HORIZONTAL
-        
+
         // Model settings section
         val modelLabel = JBLabel("<html><b>Model Settings</b></html>")
         gbc.gridwidth = 2
         panel.add(modelLabel, gbc)
-        
+
         gbc.gridy++
         gbc.gridwidth = 1
         panel.add(JBLabel("Default Model:"), gbc)
-        
+
         gbc.gridx = 1
         val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         val defaultModelCombo = ComboBox(arrayOf("Loading..."))
@@ -1201,7 +1221,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         settingsSpinner.preferredSize = JBUI.size(16, 16)
         settingsModelPanel.add(settingsSpinner)
         panel.add(settingsModelPanel, gbc)
-        
+
         // Auth row for settings tab
         gbc.gridx = 0
         gbc.gridy++
@@ -1224,7 +1244,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         settingsRetryButton.isVisible = false
         settingsAuthPanel.add(settingsRetryButton)
         panel.add(settingsAuthPanel, gbc)
-        
+
         // Reusable settings model loading function
         fun loadSettingsModels() {
             SwingUtilities.invokeLater {
@@ -1240,13 +1260,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 var lastError: Exception? = null
                 val maxRetries = 3
                 val retryDelayMs = 2000L
-                
+
                 for (attempt in 1..maxRetries) {
                     try {
                         val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
                         val client = service.getClient()
                         val models = client.listModels()
-                        
+
                         SwingUtilities.invokeLater {
                             settingsSpinner.isVisible = false
                             defaultModelCombo.removeAllItems()
@@ -1273,16 +1293,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     } catch (e: Exception) {
                         lastError = e
                         val msg = e.message ?: ""
-                        val isAuthError = msg.contains("auth") || 
-                                         msg.contains("Copilot CLI") || msg.contains("authenticated")
+                        val isAuthError = msg.contains("auth") ||
+                                msg.contains("Copilot CLI") || msg.contains("authenticated")
                         if (isAuthError) break
                         if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                     }
                 }
-                
+
                 val errorMsg = lastError?.message ?: "Unknown error"
-                val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") || 
-                                  errorMsg.contains("authenticated")
+                val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") ||
+                        errorMsg.contains("authenticated")
                 val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
                 SwingUtilities.invokeLater {
                     settingsSpinner.isVisible = false
@@ -1303,7 +1323,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         settingsRetryButton.addActionListener { loadSettingsModels() }
         loadSettingsModels()
-        
+
         // Tool permissions section
         gbc.gridx = 0
         gbc.gridy++
@@ -1311,55 +1331,55 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.insets = JBUI.insets(20, 5, 5, 5)
         val permissionsLabel = JBLabel("<html><b>Tool Permissions</b></html>")
         panel.add(permissionsLabel, gbc)
-        
+
         gbc.gridy++
         gbc.gridwidth = 1
         gbc.insets = JBUI.insets(5)
-        
+
         val toolPermissions = listOf(
             "File Operations" to "Allow agent to read and write files",
             "Code Execution" to "Allow agent to run commands",
             "Git Operations" to "Allow agent to commit and push",
             "Network Access" to "Allow agent to make HTTP requests"
         )
-        
+
         toolPermissions.forEach { (tool, description) ->
             gbc.gridx = 0
             val checkbox = JCheckBox(tool)
             checkbox.isSelected = tool == "File Operations" // Default: only file ops allowed
             checkbox.toolTipText = description
             panel.add(checkbox, gbc)
-            
+
             gbc.gridy++
         }
-        
+
         // Format settings section
         gbc.gridx = 0
         gbc.gridwidth = 2
         gbc.insets = JBUI.insets(20, 5, 5, 5)
         val formatLabel = JBLabel("<html><b>Code Formatting</b></html>")
         panel.add(formatLabel, gbc)
-        
+
         gbc.gridy++
         gbc.gridwidth = 1
         gbc.insets = JBUI.insets(5)
-        
+
         val formatAfterEdit = JCheckBox("Format code after agent edits")
         formatAfterEdit.isSelected = true
         panel.add(formatAfterEdit, gbc)
-        
+
         gbc.gridy++
         val optimizeImports = JCheckBox("Optimize imports after edits")
         optimizeImports.isSelected = true
         panel.add(optimizeImports, gbc)
-        
+
         // Save button
         gbc.gridy++
         gbc.gridx = 0
         gbc.gridwidth = 2
         gbc.insets = JBUI.insets(20, 5, 5, 5)
         gbc.anchor = GridBagConstraints.CENTER
-        
+
         val saveButton = JButton("Save Settings")
         saveButton.addActionListener {
             JOptionPane.showMessageDialog(
@@ -1370,18 +1390,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             )
         }
         panel.add(saveButton, gbc)
-        
+
         // Add filler to push everything to top
         gbc.gridy++
         gbc.weighty = 1.0
         gbc.fill = GridBagConstraints.BOTH
         panel.add(JBPanel<JBPanel<*>>(), gbc)
-        
+
         return panel
     }
 
     fun getComponent(): JComponent = mainPanel
-    
+
     // Data classes
     private data class ContextItem(
         val path: String,
@@ -1391,13 +1411,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val fileType: com.intellij.openapi.fileTypes.FileType?,
         val isSelection: Boolean
     )
-    
+
     private data class TimelineEvent(
         val type: EventType,
         val message: String,
         val timestamp: java.util.Date
     )
-    
+
     private enum class EventType {
         SESSION_START,
         MESSAGE_SENT,

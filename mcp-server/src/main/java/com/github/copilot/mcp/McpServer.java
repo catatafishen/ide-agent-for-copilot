@@ -2,7 +2,6 @@ package com.github.copilot.mcp;
 
 import com.google.gson.*;
 
-import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;

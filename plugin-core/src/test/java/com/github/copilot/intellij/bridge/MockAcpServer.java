@@ -1,16 +1,16 @@
 package com.github.copilot.intellij.bridge;
 
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
 import java.util.function.Function;
 
 /**
  * Mock ACP server that simulates the copilot-language-server stdin/stdout protocol.
  * Used for integration testing the CopilotAcpClient without needing a real Copilot backend.
- *
+ * <p>
  * Each test can register handlers for specific methods. The server reads JSON-RPC
  * messages from its stdin pipe and writes responses/notifications to stdout.
  */
@@ -37,12 +37,16 @@ public class MockAcpServer implements Closeable {
         registerHandler("session/new", this::handleNewSession);
     }
 
-    /** Register a handler for a specific JSON-RPC method. */
+    /**
+     * Register a handler for a specific JSON-RPC method.
+     */
     public void registerHandler(String method, Function<JsonObject, JsonObject> handler) {
         requestHandlers.put(method, handler);
     }
 
-    /** Start the mock server's read loop. */
+    /**
+     * Start the mock server's read loop.
+     */
     public void start() {
         readerThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(serverFromClient))) {
@@ -82,7 +86,9 @@ public class MockAcpServer implements Closeable {
         readerThread.start();
     }
 
-    /** Send a JSON-RPC message to the client (notification or agent-to-client request). */
+    /**
+     * Send a JSON-RPC message to the client (notification or agent-to-client request).
+     */
     public synchronized void sendMessage(JsonObject msg) throws IOException {
         String json = new Gson().toJson(msg);
         sentResponses.add(msg);
@@ -90,7 +96,9 @@ public class MockAcpServer implements Closeable {
         serverToClient.flush();
     }
 
-    /** Send a notification (no id, no response expected). */
+    /**
+     * Send a notification (no id, no response expected).
+     */
     public void sendNotification(String method, JsonObject params) throws IOException {
         JsonObject msg = new JsonObject();
         msg.addProperty("jsonrpc", "2.0");
@@ -99,7 +107,9 @@ public class MockAcpServer implements Closeable {
         sendMessage(msg);
     }
 
-    /** Send an agent-to-client request (has id, expects response). */
+    /**
+     * Send an agent-to-client request (has id, expects response).
+     */
     public void sendAgentRequest(long id, String method, JsonObject params) throws IOException {
         JsonObject msg = new JsonObject();
         msg.addProperty("jsonrpc", "2.0");
@@ -109,29 +119,39 @@ public class MockAcpServer implements Closeable {
         sendMessage(msg);
     }
 
-    /** Get all requests received from the client. */
+    /**
+     * Get all requests received from the client.
+     */
     public List<JsonObject> getReceivedRequests() {
         return Collections.unmodifiableList(receivedRequests);
     }
 
-    /** Get requests received for a specific method. */
+    /**
+     * Get requests received for a specific method.
+     */
     public List<JsonObject> getReceivedRequests(String method) {
         return receivedRequests.stream()
                 .filter(r -> method.equals(r.has("method") ? r.get("method").getAsString() : ""))
                 .toList();
     }
 
-    /** Get the output stream that acts as the mock process's stdin (client writes here). */
+    /**
+     * Get the output stream that acts as the mock process's stdin (client writes here).
+     */
     public OutputStream getProcessStdin() {
         return clientToServer;
     }
 
-    /** Get the input stream that acts as the mock process's stdout (client reads here). */
+    /**
+     * Get the input stream that acts as the mock process's stdout (client reads here).
+     */
     public InputStream getProcessStdout() {
         return clientFromServer;
     }
 
-    /** Create a mock Process object that uses this server's pipes. */
+    /**
+     * Create a mock Process object that uses this server's pipes.
+     */
     public Process createMockProcess() {
         return new MockProcess(clientToServer, clientFromServer);
     }
@@ -139,8 +159,14 @@ public class MockAcpServer implements Closeable {
     @Override
     public void close() {
         running = false;
-        try { clientToServer.close(); } catch (IOException ignored) {}
-        try { serverToClient.close(); } catch (IOException ignored) {}
+        try {
+            clientToServer.close();
+        } catch (IOException ignored) {
+        }
+        try {
+            serverToClient.close();
+        } catch (IOException ignored) {
+        }
         if (readerThread != null) readerThread.interrupt();
     }
 
@@ -279,12 +305,38 @@ public class MockAcpServer implements Closeable {
             this.stdout = stdout;
         }
 
-        @Override public OutputStream getOutputStream() { return stdin; }
-        @Override public InputStream getInputStream() { return stdout; }
-        @Override public InputStream getErrorStream() { return new ByteArrayInputStream(new byte[0]); }
-        @Override public int waitFor() { return 0; }
-        @Override public int exitValue() { return 0; }
-        @Override public void destroy() {}
-        @Override public boolean isAlive() { return true; }
+        @Override
+        public OutputStream getOutputStream() {
+            return stdin;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return stdout;
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            return new ByteArrayInputStream(new byte[0]);
+        }
+
+        @Override
+        public int waitFor() {
+            return 0;
+        }
+
+        @Override
+        public int exitValue() {
+            return 0;
+        }
+
+        @Override
+        public void destroy() {
+        }
+
+        @Override
+        public boolean isAlive() {
+            return true;
+        }
     }
 }

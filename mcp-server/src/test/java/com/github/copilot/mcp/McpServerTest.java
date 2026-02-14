@@ -1,11 +1,11 @@
 package com.github.copilot.mcp;
 
-import com.google.gson.*;
-import org.junit.jupiter.api.*;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.*;
-import java.nio.file.*;
 import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -22,49 +22,49 @@ class McpServerTest {
         Files.createDirectories(srcDir);
 
         Files.writeString(srcDir.resolve("UserService.java"),
-            """
-            package com.example;
-            
-            public class UserService {
-                private final UserRepository userRepo;
-            
-                public UserService(UserRepository userRepo) {
-                    this.userRepo = userRepo;
-                }
-            
-                public User findById(long id) {
-                    return userRepo.findById(id);
-                }
-            
-                public void deleteUser(long id) {
-                    userRepo.delete(id);
-                }
-            }
-            """);
+                """
+                        package com.example;
+
+                        public class UserService {
+                            private final UserRepository userRepo;
+
+                            public UserService(UserRepository userRepo) {
+                                this.userRepo = userRepo;
+                            }
+
+                            public User findById(long id) {
+                                return userRepo.findById(id);
+                            }
+
+                            public void deleteUser(long id) {
+                                userRepo.delete(id);
+                            }
+                        }
+                        """);
 
         Files.writeString(srcDir.resolve("UserRepository.java"),
-            """
-            package com.example;
-            
-            public interface UserRepository {
-                User findById(long id);
-                void delete(long id);
-                void save(User user);
-            }
-            """);
+                """
+                        package com.example;
+
+                        public interface UserRepository {
+                            User findById(long id);
+                            void delete(long id);
+                            void save(User user);
+                        }
+                        """);
 
         Files.writeString(srcDir.resolve("User.java"),
-            """
-            package com.example;
-            
-            public class User {
-                private long id;
-                private String name;
-            
-                public long getId() { return id; }
-                public String getName() { return name; }
-            }
-            """);
+                """
+                        package com.example;
+
+                        public class User {
+                            private long id;
+                            private String name;
+
+                            public long getId() { return id; }
+                            public String getName() { return name; }
+                        }
+                        """);
 
         // Set project root for tests
         try {

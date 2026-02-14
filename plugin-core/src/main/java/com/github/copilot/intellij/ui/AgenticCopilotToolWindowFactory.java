@@ -18,13 +18,13 @@ public class AgenticCopilotToolWindowFactory implements ToolWindowFactory, DumbA
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         // Create the Kotlin UI content
         AgenticCopilotToolWindowContent content = new AgenticCopilotToolWindowContent(project);
-        
+
         // Wrap in IntelliJ Content and add to tool window
         ContentFactory contentFactory = ContentFactory.getInstance();
         Content toolWindowContent = contentFactory.createContent(
-            content.getComponent(),
-            "",
-            false
+                content.getComponent(),
+                "",
+                false
         );
         toolWindow.getContentManager().addContent(toolWindowContent);
     }
