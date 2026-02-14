@@ -882,6 +882,14 @@ public final class PsiBridgeService implements Disposable {
      */
     private String runInspections(JsonObject args) throws Exception {
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+        String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
+        Set<String> excludeInspections = new HashSet<>();
+        if (args.has("exclude_inspections")) {
+            for (String id : args.get("exclude_inspections").getAsString().split(",")) {
+                String trimmed = id.trim();
+                if (!trimmed.isEmpty()) excludeInspections.add(trimmed);
+            }
+        }
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
@@ -892,7 +900,7 @@ public final class PsiBridgeService implements Disposable {
         // doInspections() internally uses invokeLater + Task.Backgroundable,
         // so it can be called from any thread
         try {
-            runInspectionAnalysis(limit, resultFuture);
+            runInspectionAnalysis(limit, minSeverity, excludeInspections, resultFuture);
         } catch (Exception e) {
             LOG.error("Error running inspections", e);
             resultFuture.complete("Error running inspections: " + e.getMessage());
@@ -998,7 +1006,19 @@ public final class PsiBridgeService implements Disposable {
      * Implementation follows JetBrains' own InspectionCommandEx pattern.
      */
     @SuppressWarnings("TestOnlyProblems")
-    private void runInspectionAnalysis(int limit, CompletableFuture<String> resultFuture) {
+    private void runInspectionAnalysis(int limit, String minSeverity, Set<String> excludeInspections,
+                                       CompletableFuture<String> resultFuture) {
+        // Severity ranking for filtering
+        Map<String, Integer> severityRank = Map.of(
+            "ERROR", 4, "WARNING", 3, "WEAK_WARNING", 2,
+            "LIKE_UNUSED_SYMBOL", 2, "INFORMATION", 1, "INFO", 1,
+            "TEXT_ATTRIBUTES", 0, "GENERIC_SERVER_ERROR_OR_WARNING", 3
+        );
+        int minRank = 0;
+        if (minSeverity != null && !minSeverity.isEmpty()) {
+            minRank = severityRank.getOrDefault(minSeverity.toUpperCase(), 0);
+        }
+        final int requiredRank = minRank;
         try {
             LOG.info("Starting full inspection analysis...");
 
@@ -1036,6 +1056,9 @@ public final class PsiBridgeService implements Disposable {
 
                             var toolWrapper = tools.getTool();
                             String toolId = toolWrapper.getShortName();
+
+                            // Skip excluded inspections
+                            if (excludeInspections.contains(toolId)) continue;
 
                             var presentation = getPresentation(toolWrapper);
                             if (presentation == null) continue;
@@ -1086,6 +1109,12 @@ public final class PsiBridgeService implements Disposable {
                                         if (pd.getHighlightType() != null) {
                                             severity = pd.getHighlightType().toString();
                                         }
+                                    }
+
+                                    // Filter by minimum severity
+                                    if (requiredRank > 0) {
+                                        int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
+                                        if (rank < requiredRank) continue;
                                     }
 
                                     problems.add(String.format("%s:%d [%s/%s] %s",

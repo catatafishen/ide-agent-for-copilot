@@ -283,10 +283,16 @@ public class McpServer {
                 "Run IntelliJ's full code inspection engine on the entire project (same as Analyze > Inspect Code). " +
                         "Triggers comprehensive analysis using the current inspection profile. " +
                         "Finds code quality issues, security vulnerabilities, typos, complexity warnings, " +
-                        "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Problems tool window. " +
-                        "This is SLOW (may take minutes) but thorough.",
+                        "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Inspection Results view. " +
+                        "This is SLOW (may take minutes) but thorough. Use filters to focus on actionable issues.",
                 Map.of(
-                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
+                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)"),
+                        "min_severity", Map.of("type", "string", "description",
+                                "Minimum severity to include. Options: ERROR, WARNING, WEAK_WARNING, INFO (default: all). " +
+                                        "Use WARNING to skip typos and minor style hints."),
+                        "exclude_inspections", Map.of("type", "string", "description",
+                                "Comma-separated inspection IDs to exclude (e.g. 'SpellCheckingInspection,GrazieInspection'). " +
+                                        "Use to filter out false positives or noisy inspections.")
                 ),
                 List.of()));
 

@@ -9,7 +9,6 @@ build/
 .idea/tasks.xml
 .idea/usage.statistics.xml
 .idea/shelf/
-.idea/dictionaries/
 .idea/sonarlint/
 .idea/.idea/
 *.iml
@@ -52,3 +51,4 @@ plugin-core/build/
 integration-tests/build/
 mcp-server/build/
 
+qodana.yaml

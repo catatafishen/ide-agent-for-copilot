@@ -11,9 +11,9 @@
       <module name="agentic-copilot-intellij.mcp-server" options="-parameters" />
       <module name="agentic-copilot-intellij.mcp-server.main" options="-parameters" />
       <module name="agentic-copilot-intellij.mcp-server.test" options="-parameters" />
-      <module name="agentic-copilot-intellij.plugin-core" options="-parameters" />
-      <module name="agentic-copilot-intellij.plugin-core.main" options="-parameters" />
-      <module name="agentic-copilot-intellij.plugin-core.test" options="-parameters" />
+      <module name="agentic-copilot-intellij.plugin-core" options="-parameters -Xlint:deprecation" />
+      <module name="agentic-copilot-intellij.plugin-core.main" options="-parameters -Xlint:deprecation" />
+      <module name="agentic-copilot-intellij.plugin-core.test" options="-parameters -Xlint:deprecation" />
     </option>
   </component>
 </project>
