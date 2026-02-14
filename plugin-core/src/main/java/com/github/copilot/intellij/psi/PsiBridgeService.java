@@ -891,8 +891,11 @@ public final class PsiBridgeService implements Disposable {
                         });
                     }
 
-                    // Analyze each file for problems
+                    LOG.info("Analyzing " + allFiles.size() + " files for inspections");
+
+                    // Analyze each file for problems using existing highlights
                     int count = 0;
+                    int filesWithProblems = 0;
                     for (VirtualFile vf : allFiles) {
                         if (count >= limit) break;
 
@@ -902,40 +905,54 @@ public final class PsiBridgeService implements Disposable {
                         Document doc = FileDocumentManager.getInstance().getDocument(vf);
                         if (doc == null) continue;
 
-                        // Force analysis if needed
-                        com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
-
                         String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
                         List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
 
                         try {
+                            // Get ALL severity levels (ERROR, WARNING, WEAK_WARNING, etc.)
+                            // Use null severity to get everything
                             com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
                                     doc, project,
-                                    com.intellij.lang.annotation.HighlightSeverity.WARNING,
+                                    null,  // Get all severities
                                     0, doc.getTextLength(),
                                     highlights::add
                             );
 
+                            if (!highlights.isEmpty()) {
+                                filesWithProblems++;
+                            }
+
                             for (var h : highlights) {
                                 if (h.getDescription() == null) continue;
+                                
+                                // Filter to only show actual problems (not info/hints)
+                                var severity = h.getSeverity();
+                                if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
+                                    severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
+                                    continue;
+                                }
+
                                 int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                                String severity = h.getSeverity().getName();
+                                String severityName = severity.getName();
                                 problems.add(String.format("%s:%d [%s] %s",
-                                        relPath, line, severity, h.getDescription()));
+                                        relPath, line, severityName, h.getDescription()));
                                 count++;
                                 if (count >= limit) break;
                             }
                         } catch (Exception e) {
-                            // Skip files that can't be analyzed
+                            LOG.warn("Failed to analyze file: " + relPath, e);
                         }
                     }
 
                     if (problems.isEmpty()) {
-                        resultFuture.complete("No problems found in " + allFiles.size() + " files analyzed. " +
-                                "Note: This uses cached analysis results. Run 'Analyze > Inspect Code' in IntelliJ for full inspection.");
+                        resultFuture.complete(String.format("No problems found in %d files analyzed (0 files with issues). " +
+                                "Note: This tool reads CACHED analysis results. " +
+                                "If you just opened the project, IntelliJ may not have analyzed files yet. " +
+                                "To trigger full analysis: 1) Open some files in the editor, or 2) Run 'Analyze > Inspect Code' in IntelliJ, " +
+                                "then try this tool again.", allFiles.size()));
                     } else {
-                        String summary = String.format("Found %d problems (showing first %d):\n",
-                                count, Math.min(count, limit));
+                        String summary = String.format("Found %d problems across %d files (showing up to %d):\n\n",
+                                count, filesWithProblems, limit);
                         resultFuture.complete(summary + String.join("\n", problems));
                     }
                 });
