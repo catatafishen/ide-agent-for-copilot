@@ -158,6 +158,7 @@ public final class PsiBridgeService implements Disposable {
                 case "create_run_configuration" -> createRunConfiguration(arguments);
                 case "edit_run_configuration" -> editRunConfiguration(arguments);
                 case "get_problems" -> getProblems(arguments);
+                case "run_inspections" -> runInspections(arguments);
                 case "optimize_imports" -> optimizeImports(arguments);
                 case "format_code" -> formatCode(arguments);
                 case "read_file", "intellij_read_file" -> readFile(arguments);
@@ -842,6 +843,92 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Run IntelliJ inspections on the whole project or specific scope.
+     * This analyzes all project files using IntelliJ's inspection profiles.
+     */
+    private String runInspections(JsonObject args) throws Exception {
+        String scope = args.has("scope") ? args.get("scope").getAsString() : "project";
+        int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                ReadAction.run(() -> {
+                    List<String> problems = new ArrayList<>();
+                    String basePath = project.getBasePath();
+
+                    // Get all project source files
+                    ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
+                    Collection<VirtualFile> allFiles = new ArrayList<>();
+
+                    if ("project".equals(scope)) {
+                        // Iterate all source roots
+                        fileIndex.iterateContent(file -> {
+                            if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
+                                allFiles.add(file);
+                            }
+                            return true;
+                        });
+                    }
+
+                    // Analyze each file for problems
+                    int count = 0;
+                    for (VirtualFile vf : allFiles) {
+                        if (count >= limit) break;
+
+                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                        if (psiFile == null) continue;
+
+                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                        if (doc == null) continue;
+
+                        // Force analysis if needed
+                        com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+
+                        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+
+                        try {
+                            com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+                                    doc, project,
+                                    com.intellij.lang.annotation.HighlightSeverity.WARNING,
+                                    0, doc.getTextLength(),
+                                    highlights::add
+                            );
+
+                            for (var h : highlights) {
+                                if (h.getDescription() == null) continue;
+                                int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                                String severity = h.getSeverity().getName();
+                                problems.add(String.format("%s:%d [%s] %s",
+                                        relPath, line, severity, h.getDescription()));
+                                count++;
+                                if (count >= limit) break;
+                            }
+                        } catch (Exception e) {
+                            // Skip files that can't be analyzed
+                        }
+                    }
+
+                    if (problems.isEmpty()) {
+                        resultFuture.complete("No problems found in " + allFiles.size() + " files analyzed. " +
+                                "Note: This uses cached analysis results. Run 'Analyze > Inspect Code' in IntelliJ for full inspection.");
+                    } else {
+                        String summary = String.format("Found %d problems (showing first %d):\n",
+                                count, Math.min(count, limit));
+                        resultFuture.complete(summary + String.join("\n", problems));
+                    }
+                });
+            } catch (Exception e) {
+                resultFuture.complete("Error running inspections: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(30, TimeUnit.SECONDS);
     }
 
     private String optimizeImports(JsonObject args) throws Exception {

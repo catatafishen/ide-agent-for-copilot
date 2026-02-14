@@ -2,6 +2,9 @@ package com.github.copilot.mcp;
 
 import com.google.gson.*;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -262,6 +265,16 @@ public class McpServer {
                         "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
                 ),
                 List.of("path")));
+
+        tools.add(buildTool("run_inspections",
+                "Run IntelliJ's code inspections on the entire project. Analyzes all source files and returns " +
+                        "warnings, errors, and code quality issues. Returns cached analysis results. " +
+                        "Use this to get a project-wide view of problems.",
+                Map.of(
+                        "scope", Map.of("type", "string", "description", "Analysis scope: 'project' (default) for all files"),
+                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
+                ),
+                List.of()));
 
         tools.add(buildTool("intellij_read_file",
                 "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
