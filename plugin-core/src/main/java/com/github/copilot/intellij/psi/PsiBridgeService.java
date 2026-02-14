@@ -11,8 +11,8 @@ import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.process.OSProcessHandler;
-import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
@@ -31,7 +31,12 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
+import com.intellij.psi.PsiNamedElement;
+import com.intellij.psi.PsiRecursiveElementWalkingVisitor;
+import com.intellij.psi.PsiReference;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiSearchHelper;
 import com.intellij.psi.search.UsageSearchContext;
@@ -51,7 +56,15 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -310,7 +323,7 @@ public final class PsiBridgeService implements Disposable {
                             if (element instanceof PsiNamedElement named) {
                                 String name = named.getName();
                                 String type = classifyElement(element);
-                                if (name != null && type != null && type.equals(typeFilter)) {
+                            if (name != null && type != null && type.equals(typeFilter)) {
                                     int line = doc.getLineNumber(element.getTextOffset()) + 1;
                                     String relPath = relativize(basePath, vf.getPath());
                                     String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;
@@ -515,7 +528,6 @@ public final class PsiBridgeService implements Disposable {
 
                 List<String> results = new ArrayList<>();
                 for (var config : configs) {
-                    RunConfiguration rc = config.getConfiguration();
                     String entry = String.format("%s [%s]%s",
                         config.getName(),
                         config.getType().getDisplayName(),
@@ -850,6 +862,7 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(10, TimeUnit.SECONDS);
     }
 
+    @SuppressWarnings("UnstableApiUsage")
     /**
      * Get syntax highlights and daemon-level diagnostics for project files.
      * This reads the cached results from IntelliJ's on-the-fly analysis (DaemonCodeAnalyzer).
@@ -876,6 +889,7 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(30, TimeUnit.SECONDS);
     }
 
+    @SuppressWarnings("UnstableApiUsage")
     /**
      * Run IntelliJ's full code inspections on the project using the inspection engine.
      * This triggers the same analysis as "Analyze > Inspect Code" in the IDE.
@@ -1008,7 +1022,7 @@ public final class PsiBridgeService implements Disposable {
      * <p>
      * Implementation follows JetBrains' own InspectionCommandEx pattern.
      */
-    @SuppressWarnings("TestOnlyProblems")
+    @SuppressWarnings({"TestOnlyProblems", "UnstableApiUsage"})
     private void runInspectionAnalysis(int limit, String minSeverity, Set<String> excludeInspections,
                                        CompletableFuture<String> resultFuture) {
         // Severity ranking for filtering
@@ -1315,9 +1329,9 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String addToExistingSuppressWarnings(com.intellij.psi.PsiAnnotation annotation,
-                                                  String inspectionId,
-                                                  com.intellij.openapi.editor.Document document,
-                                                  com.intellij.psi.PsiFile psiFile) {
+                                                 String inspectionId,
+                                                 com.intellij.openapi.editor.Document document,
+                                                 com.intellij.psi.PsiFile psiFile) {
         String text = annotation.getText();
         // Check if already suppressed
         if (text.contains(inspectionId)) {
@@ -1328,7 +1342,6 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 var value = annotation.findAttributeValue("value");
                 if (value != null) {
-                    String newText;
                     if (value instanceof com.intellij.psi.PsiArrayInitializerMemberValue) {
                         // Already an array: {"X", "Y"} → {"X", "Y", "inspectionId"}
                         int endBrace = value.getTextRange().getEndOffset() - 1;
@@ -1411,6 +1424,7 @@ public final class PsiBridgeService implements Disposable {
         return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
     }
 
+    @SuppressWarnings("OverrideOnly")
     private String runQodana(JsonObject args) throws Exception {
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
 
@@ -1469,7 +1483,6 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(600, TimeUnit.SECONDS);
     }
 
-    @SuppressWarnings("unchecked")
     private void pollQodanaResults(int limit, CompletableFuture<String> resultFuture) {
         try {
             // Use reflection to access Qodana's service — it's an optional plugin dependency
@@ -2241,8 +2254,7 @@ public final class PsiBridgeService implements Disposable {
             return "Could not locate idea.log";
         }
 
-        List<String> allLines = Files.readAllLines(logFile);
-        List<String> filtered = allLines;
+        List<String> filtered = Files.readAllLines(logFile);
 
         if (level != null) {
             final String lvl = level;
@@ -2419,7 +2431,6 @@ public final class PsiBridgeService implements Disposable {
                 }
 
                 // Find widget via findWidgetByContent
-                var manager = managerClass.getMethod("getInstance", Project.class).invoke(null, project);
                 var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
                     com.intellij.ui.content.Content.class);
                 Object widget = findWidgetByContent.invoke(null, targetContent);
@@ -2533,7 +2544,7 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
 
-        return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
+        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
             try {
                 var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
                 var descriptors = new java.util.ArrayList<>(manager.getAllDescriptors());
@@ -2572,7 +2583,7 @@ public final class PsiBridgeService implements Disposable {
                         return available.toString();
                     }
                 } else {
-                    target = descriptors.get(descriptors.size() - 1);
+                    target = descriptors.getLast();
                 }
 
                 var console = target.getExecutionConsole();
@@ -2719,7 +2730,7 @@ public final class PsiBridgeService implements Disposable {
                         try {
                             var getQualifiedName = element.getClass().getMethod("getQualifiedName");
                             String fqn = (String) getQualifiedName.invoke(element);
-                            if (fqn != null && (className.contains(".") ? fqn.equals(className) : true)) {
+                            if (fqn != null && (!className.contains(".") || fqn.equals(className))) {
                                 VirtualFile vf = element.getContainingFile().getVirtualFile();
                                 Module mod = vf != null
                                     ? ProjectFileIndex.getInstance(project).getModuleForFile(vf)
@@ -2737,7 +2748,7 @@ public final class PsiBridgeService implements Disposable {
                 UsageSearchContext.IN_CODE,
                 true
             );
-            return matches.isEmpty() ? new ClassInfo(className, null) : matches.get(0);
+            return matches.isEmpty() ? new ClassInfo(className, null) : matches.getFirst();
         });
     }
 
@@ -3257,10 +3268,10 @@ public final class PsiBridgeService implements Disposable {
             try {
                 // Try to resolve as a fully qualified class name first
                 GlobalSearchScope scope = GlobalSearchScope.allScope(project);
-                PsiElement element = null;
+                PsiElement element;
 
                 // Split into class and member parts
-                String className = symbol;
+                String className;
                 String memberName = null;
 
                 // Check if symbol contains a member reference (e.g. java.util.List.add)
@@ -3268,10 +3279,11 @@ public final class PsiBridgeService implements Disposable {
                 Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
                 Object facade = javaPsiFacadeClass.getMethod("getInstance", Project.class).invoke(null, project);
 
-                PsiElement resolvedClass = null;
                 // Try the full symbol as a class first
-                resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
+                PsiElement resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
                     .invoke(facade, symbol, scope);
+
+                className = symbol;
 
                 if (resolvedClass == null) {
                     // Try splitting at the last dot to find class + member
@@ -3385,6 +3397,7 @@ public final class PsiBridgeService implements Disposable {
         return "No documentation available for " + symbol + ". Element found:\n" + elementText;
     }
 
+    @SuppressWarnings({"JavaReflectionMemberAccess", "JavaReflectionInvocation"})
     private String downloadSources(JsonObject args) {
         String library = args.has("library") ? args.get("library").getAsString() : "";
 
@@ -3490,7 +3503,6 @@ public final class PsiBridgeService implements Disposable {
 
                 // Try the Gradle-specific isDownloadSources if available,
                 // otherwise use the resolve annotations approach
-                boolean downloadSourcesEnabled = false;
                 try {
                     // In newer IntelliJ, the setting is "Resolve external annotations" + separate download
                     // For Gradle projects, try setResolveExternalAnnotations
@@ -3588,24 +3600,13 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
+    @SuppressWarnings({"JavaReflectionMemberAccess", "JavaReflectionInvocation"})
     private void triggerProjectResync(StringBuilder sb) {
         try {
             // Trigger ExternalSystem project refresh (works for both Gradle and Maven)
-            Class<?> externalProjectsManagerClass = Class.forName(
-                "com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManager");
-            Object manager = externalProjectsManagerClass.getMethod("getInstance", Project.class)
-                .invoke(null, project);
-
-            // Schedule a project refresh
-            Class<?> importSpecClass = Class.forName(
-                "com.intellij.openapi.externalSystem.importing.ImportSpecBuilder");
             Class<?> gradleConstantsClass = Class.forName(
                 "org.jetbrains.plugins.gradle.util.GradleConstants");
             Object gradleSystemId = gradleConstantsClass.getField("SYSTEM_ID").get(null);
-
-            Object importSpec = importSpecClass.getConstructor(Project.class,
-                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"))
-                .newInstance(project, gradleSystemId);
 
             // Trigger refresh
             Class<?> externalSystemUtil = Class.forName(
@@ -3625,7 +3626,6 @@ public final class PsiBridgeService implements Disposable {
             sb.append("  Or: File → Reload All from Disk\n");
         }
     }
-
 
     /**
      * Create a scratch file with the given content and open it in the editor.

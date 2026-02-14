@@ -20,7 +20,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * End-to-end tests for the ACP protocol using MockAcpServer.
@@ -129,7 +133,7 @@ class AcpEndToEndTest {
 
             assertTrue(result.has("authMethods"), "Should have authMethods");
             JsonArray authMethods = result.getAsJsonArray("authMethods");
-            assertTrue(authMethods.size() > 0, "Should have at least one auth method");
+            assertTrue(!authMethods.isEmpty(), "Should have at least one auth method");
 
             JsonObject auth = authMethods.get(0).getAsJsonObject();
             assertNotNull(auth.get("id").getAsString());
@@ -407,7 +411,7 @@ class AcpEndToEndTest {
 
             assertEquals(List.of("pending", "in_progress", "completed"), toolStatuses);
             assertEquals(1, chunks.size());
-            assertEquals("File contents: OK", chunks.get(0));
+            assertEquals("File contents: OK", chunks.getFirst());
         }
 
         @Test
@@ -494,7 +498,6 @@ class AcpEndToEndTest {
             doInitialize();
             String sessionId = doCreateSession();
 
-            CompletableFuture<JsonObject> permissionReceived = new CompletableFuture<>();
             server.registerHandler("session/prompt", params -> {
                 String sid = params.get("sessionId").getAsString();
                 try {
@@ -750,7 +753,6 @@ class AcpEndToEndTest {
                 sendRequest(10 + i, "session/prompt", promptParams);
 
                 // Read chunk notification + result
-                List<String> turnMessages = new ArrayList<>();
                 for (int j = 0; j < 5; j++) {
                     String line = reader.readLine();
                     if (line == null) break;
@@ -975,7 +977,7 @@ class AcpEndToEndTest {
             AtomicReference<String> capturedText = new AtomicReference<>();
             server.registerHandler("session/prompt", params -> {
                 JsonArray prompt = params.getAsJsonArray("prompt");
-                if (prompt.size() > 0) {
+                if (!prompt.isEmpty()) {
                     capturedText.set(prompt.get(0).getAsJsonObject().get("text").getAsString());
                 }
                 JsonObject result = new JsonObject();

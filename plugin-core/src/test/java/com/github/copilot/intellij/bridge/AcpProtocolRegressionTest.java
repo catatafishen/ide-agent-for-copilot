@@ -13,7 +13,10 @@ import java.io.OutputStreamWriter;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Regression tests using MockAcpServer to verify bug fixes.
@@ -459,7 +462,6 @@ class AcpProtocolRegressionTest {
     @Test
     void testEditPermissionIsDenied() throws Exception {
         MockAcpServer server = new MockAcpServer();
-        CountDownLatch permissionResponseReceived = new CountDownLatch(1);
         String[] capturedOptionId = new String[1];
 
         server.registerHandler("session/prompt", params -> {
@@ -526,9 +528,6 @@ class AcpProtocolRegressionTest {
         // The server should have received the permission response from the client
         // Look for messages that are responses (have "result" and "id" matching the permission request)
         var received = server.getReceivedRequests();
-        boolean foundPermissionResponse = received.stream().anyMatch(r ->
-            r.has("id") && r.get("id").getAsLong() == 100 && r.has("result")
-        );
 
         // If we can check the response, verify it rejected
         for (JsonObject req : received) {

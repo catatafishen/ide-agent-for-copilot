@@ -11,12 +11,7 @@ import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.*
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
-import java.awt.BorderLayout
-import java.awt.Cursor
-import java.awt.FlowLayout
-import java.awt.Font
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
+import java.awt.*
 import javax.swing.*
 
 /**
@@ -730,7 +725,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     // Only reset session on non-recoverable errors (process died, closed)
                     // Keep session alive for timeouts/interrupts so conversation can continue
                     val isRecoverable = e is InterruptedException || e.cause is InterruptedException ||
-                            (e is com.github.copilot.intellij.bridge.CopilotException && e.isRecoverable)
+                        (e is com.github.copilot.intellij.bridge.CopilotException && e.isRecoverable)
                     if (!isRecoverable) {
                         currentSessionId = null
                         updateSessionInfo()
@@ -805,7 +800,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         lastError = e
                         val msg = e.message ?: ""
                         val isAuthError = msg.contains("auth") ||
-                                msg.contains("Copilot CLI") || msg.contains("authenticated")
+                            msg.contains("Copilot CLI") || msg.contains("authenticated")
                         if (isAuthError) break
                         if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                     }
@@ -813,7 +808,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                 val errorMsg = lastError?.message ?: "Unknown error"
                 val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") ||
-                        errorMsg.contains("authenticated")
+                    errorMsg.contains("authenticated")
                 val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
                 SwingUtilities.invokeLater {
                     loadingSpinner.isVisible = false
@@ -855,9 +850,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val currentFile = fileEditorManager.selectedFiles.firstOrNull()
 
             if (currentFile != null) {
-                val virtualFile = currentFile
-                val path = virtualFile.path
-                val name = virtualFile.name
+                val path = currentFile.path
+                val name = currentFile.name
                 val lineCount = try {
                     val editor = fileEditorManager.selectedTextEditor
                     editor?.document?.lineCount ?: 0
@@ -871,7 +865,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     name = name,
                     startLine = 1,
                     endLine = lineCount,
-                    fileType = virtualFile.fileType,
+                    fileType = currentFile.fileType,
                     isSelection = false
                 )
 
@@ -1324,7 +1318,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         lastError = e
                         val msg = e.message ?: ""
                         val isAuthError = msg.contains("auth") ||
-                                msg.contains("Copilot CLI") || msg.contains("authenticated")
+                            msg.contains("Copilot CLI") || msg.contains("authenticated")
                         if (isAuthError) break
                         if (attempt < maxRetries) Thread.sleep(retryDelayMs)
                     }
@@ -1332,7 +1326,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                 val errorMsg = lastError?.message ?: "Unknown error"
                 val isAuthError = errorMsg.contains("auth") || errorMsg.contains("Copilot CLI") ||
-                        errorMsg.contains("authenticated")
+                    errorMsg.contains("authenticated")
                 val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
                 SwingUtilities.invokeLater {
                     settingsSpinner.isVisible = false

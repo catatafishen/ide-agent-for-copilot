@@ -1,11 +1,20 @@
 package com.github.copilot.intellij.bridge;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for CopilotAcpClient.
@@ -26,21 +35,20 @@ class CopilotAcpClientTest {
      */
     private static Process startMockAcpProcess(String... responses) throws IOException {
         // Build a script that echoes predefined JSON-RPC responses for each line of input
-        StringBuilder script = new StringBuilder();
-        script.append("import sys, json\n");
-        script.append("responses = ").append(toPythonList(responses)).append("\n");
-        script.append("idx = 0\n");
-        script.append("for line in sys.stdin:\n");
-        script.append("    line = line.strip()\n");
-        script.append("    if not line: continue\n");
-        script.append("    msg = json.loads(line)\n");
-        script.append("    if 'id' in msg and idx < len(responses):\n");
-        script.append("        print(responses[idx], flush=True)\n");
-        script.append("        idx += 1\n");
-        script.append("    elif msg.get('method') == 'initialized':\n");
-        script.append("        pass\n");
+        String script = "import sys, json\n" +
+            "responses = " + toPythonList(responses) + "\n" +
+            "idx = 0\n" +
+            "for line in sys.stdin:\n" +
+            "    line = line.strip()\n" +
+            "    if not line: continue\n" +
+            "    msg = json.loads(line)\n" +
+            "    if 'id' in msg and idx < len(responses):\n" +
+            "        print(responses[idx], flush=True)\n" +
+            "        idx += 1\n" +
+            "    elif msg.get('method') == 'initialized':\n" +
+            "        pass\n";
 
-        ProcessBuilder pb = new ProcessBuilder("python", "-c", script.toString());
+        ProcessBuilder pb = new ProcessBuilder("python", "-c", script);
         pb.redirectErrorStream(false);
         return pb.start();
     }
@@ -97,7 +105,7 @@ class CopilotAcpClientTest {
         assertEquals("copilot-login", auth.id);
         assertEquals("copilot.exe", auth.command);
         assertEquals(1, auth.args.size());
-        assertEquals("login", auth.args.get(0));
+        assertEquals("login", auth.args.getFirst());
     }
 
     @Test
@@ -166,7 +174,7 @@ class CopilotAcpClientTest {
             assertFalse(models.isEmpty(), "Should return at least one model");
 
             // Verify model structure
-            CopilotAcpClient.Model first = models.get(0);
+            CopilotAcpClient.Model first = models.getFirst();
             assertNotNull(first.id, "Model should have id");
             assertNotNull(first.name, "Model should have name");
             assertFalse(first.id.isEmpty());
@@ -198,7 +206,7 @@ class CopilotAcpClientTest {
             StringBuilder accumulated = new StringBuilder();
 
             String stopReason = client.sendPrompt(sessionId,
-                    "Reply with exactly one word: hello", null, accumulated::append);
+                "Reply with exactly one word: hello", null, accumulated::append);
 
             assertNotNull(stopReason);
             assertEquals("end_turn", stopReason, "Should end normally");
@@ -211,14 +219,14 @@ class CopilotAcpClientTest {
             List<CopilotAcpClient.Model> models = client.listModels();
             // Pick the cheapest model
             String cheapModel = models.stream()
-                    .filter(m -> "0x".equals(m.usage) || "0.33x".equals(m.usage))
-                    .findFirst()
-                    .map(m -> m.id)
-                    .orElse(models.get(models.size() - 1).id);
+                .filter(m -> "0x".equals(m.usage) || "0.33x".equals(m.usage))
+                .findFirst()
+                .map(m -> m.id)
+                .orElse(models.getLast().id);
 
             StringBuilder response = new StringBuilder();
             String stopReason = client.sendPrompt(sessionId,
-                    "Reply with exactly: ok", cheapModel, response::append);
+                "Reply with exactly: ok", cheapModel, response::append);
 
             assertEquals("end_turn", stopReason);
             assertFalse(response.toString().isEmpty());
