@@ -226,3 +226,15 @@ All plugin code will be **Java 21**. If a Kotlin‑only API is unavoidable, we�
 ## 15) Implementation Decisions (Feb 2026)
 
 See README.md for detailed decisions on build system, protocol, authentication, and development strategy.
+
+---
+
+## 16) Agent Time Budget
+
+Each prompt has a hard timeout of approximately **10 minutes**. Plan your work accordingly:
+
+- **Prioritize**: Fix the most impactful issues first (compilation errors > warnings > style).
+- **Batch by file**: Read a file once, make all edits, then move on. Do not re-read the same file repeatedly.
+- **Stop cleanly**: If you have fixed several issues but more remain, commit what you have and tell the user to send another prompt to continue. Do not try to fix everything in one turn.
+- **Pagination is instant**: After the first `run_inspections` call, subsequent pages (with `offset`) are served from cache in milliseconds.
+- **Do NOT rewrite entire files**: Use `old_str`/`new_str` partial edits. Full file writes risk data loss and are slow.

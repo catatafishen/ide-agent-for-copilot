@@ -1,5 +1,7 @@
 package com.github.copilot.intellij.ui;
 
+import org.intellij.lang.annotations.MagicConstant;
+
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
@@ -17,7 +19,7 @@ public class WrapLayout extends FlowLayout {
         super(LEFT);
     }
 
-    public WrapLayout(int align, int hgap, int vgap) {
+    public WrapLayout(@MagicConstant(intValues = {LEFT, CENTER, RIGHT, LEADING, TRAILING}) int align, int hgap, int vgap) {
         super(align, hgap, vgap);
     }
 

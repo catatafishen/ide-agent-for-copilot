@@ -1027,9 +1027,12 @@ public final class PsiBridgeService implements Disposable {
         boolean hasMore = end < total;
 
         String summary = String.format(
-            "Found %d total problems across %d files (profile: %s).\n" +
-                "Showing %d-%d of %d.%s\n" +
-                "Results are also visible in the IDE's Inspection Results view.\n\n",
+            """
+                Found %d total problems across %d files (profile: %s).
+                Showing %d-%d of %d.%s
+                Results are also visible in the IDE's Inspection Results view.
+
+                """,
             total, filesWithProblems, profileName,
             effectiveOffset + 1, end, total,
             hasMore ? String.format(
@@ -1427,7 +1430,7 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, annotation);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress inspection", null)
+            }, "Suppress Inspection", null)
         );
 
         return "Added @SuppressWarnings(\"" + inspectionId + "\") at line " + (targetLine + 1);
@@ -1460,7 +1463,7 @@ public final class PsiBridgeService implements Disposable {
                     }
                     com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
                 }
-            }, "Suppress inspection", null)
+            }, "Suppress Inspection", null)
         );
 
         return "Added '" + inspectionId + "' to existing @SuppressWarnings annotation";
@@ -1497,7 +1500,7 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, annotation);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress inspection", null)
+            }, "Suppress Inspection", null)
         );
 
         return "Added @Suppress(\"" + inspectionId + "\") at line " + (targetLine + 1);
@@ -1523,7 +1526,7 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, comment);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress inspection", null)
+            }, "Suppress Inspection", null)
         );
 
         return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
@@ -1727,8 +1730,11 @@ public final class PsiBridgeService implements Disposable {
             }
 
             String summary = String.format(
-                "Qodana found %d problems across %d files (showing up to %d).\n" +
-                    "Results are also visible in the Qodana tab of the Problems tool window.\n\n",
+                """
+                    Qodana found %d problems across %d files (showing up to %d).
+                    Results are also visible in the Qodana tab of the Problems tool window.
+
+                    """,
                 problems.size(), filesSet.size(), limit);
             return summary + String.join("\n", problems);
 
@@ -1985,7 +1991,7 @@ public final class PsiBridgeService implements Disposable {
                         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
                         new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
                         new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
-                    }, "Auto-format after write", null)
+                    }, "Auto-Format After Write", null)
                 );
                 LOG.info("Auto-formatted after write: " + pathStr);
             } catch (Exception e) {
@@ -2454,7 +2460,7 @@ public final class PsiBridgeService implements Disposable {
             }
             for (var notification : notifications) {
                 result.append("[").append(notification.getType()).append("] ");
-                if (notification.getTitle() != null && !notification.getTitle().isEmpty()) {
+                if (!notification.getTitle().isEmpty()) {
                     result.append(notification.getTitle()).append(": ");
                 }
                 result.append(notification.getContent()).append("\n");
@@ -3088,9 +3094,10 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception ignored) {
         }
 
-        return "No coverage data found. Run tests with coverage first:\n"
-            + "  - IntelliJ: Right-click test → Run with Coverage\n"
-            + "  - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`";
+        return """
+            No coverage data found. Run tests with coverage first:
+              - IntelliJ: Right-click test → Run with Coverage
+              - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`""";
     }
 
     // ---- Test & Run Helper Methods ----
@@ -3564,7 +3571,6 @@ public final class PsiBridgeService implements Disposable {
         return "No documentation available for " + symbol + ". Element found:\n" + elementText;
     }
 
-    @SuppressWarnings("JavaReflectionMemberAccess")
     private String downloadSources(JsonObject args) {
         String library = args.has("library") ? args.get("library").getAsString() : "";
 

@@ -55,15 +55,12 @@ public class CopilotAcpClient implements Closeable {
     private volatile boolean closed = false;
 
     // State from initialize
-    private JsonObject agentInfo;
-    private JsonObject agentCapabilities;
     private JsonArray authMethods;
     private boolean initialized = false;
 
     // Session state
     private String currentSessionId;
     private List<Model> availableModels;
-    private String currentModelId;
 
     // Flag: set when a built-in permission (edit/create/runInTerminal) is denied during a prompt turn
     private volatile boolean builtInActionDeniedDuringTurn = false;
@@ -174,8 +171,8 @@ public class CopilotAcpClient implements Closeable {
 
         JsonObject result = sendRequest("initialize", params);
 
-        agentInfo = result.has("agentInfo") ? result.getAsJsonObject("agentInfo") : null;
-        agentCapabilities = result.has("agentCapabilities") ? result.getAsJsonObject("agentCapabilities") : null;
+        JsonObject agentInfo = result.has("agentInfo") ? result.getAsJsonObject("agentInfo") : null;
+        JsonObject agentCapabilities = result.has("agentCapabilities") ? result.getAsJsonObject("agentCapabilities") : null;
         authMethods = result.has("authMethods") ? result.getAsJsonArray("authMethods") : null;
 
         initialized = true;
@@ -226,9 +223,6 @@ public class CopilotAcpClient implements Closeable {
                     }
                     availableModels.add(model);
                 }
-            }
-            if (modelsObj.has("currentModelId")) {
-                currentModelId = modelsObj.get("currentModelId").getAsString();
             }
         }
 
@@ -337,11 +331,11 @@ public class CopilotAcpClient implements Closeable {
                     JsonObject resource = new JsonObject();
                     resource.addProperty("type", "resource");
                     JsonObject resourceData = new JsonObject();
-                    resourceData.addProperty("uri", ref.uri);
-                    if (ref.mimeType != null) {
-                        resourceData.addProperty("mimeType", ref.mimeType);
+                    resourceData.addProperty("uri", ref.uri());
+                    if (ref.mimeType() != null) {
+                        resourceData.addProperty("mimeType", ref.mimeType());
                     }
-                    resourceData.addProperty("text", ref.text);
+                    resourceData.addProperty("text", ref.text());
                     resource.add("resource", resourceData);
                     promptArray.add(resource);
                 }
@@ -362,7 +356,7 @@ public class CopilotAcpClient implements Closeable {
             builtInActionDeniedDuringTurn = false;
             LOG.info("sendPrompt: sending session/prompt request");
             JsonObject result = sendRequest("session/prompt", params, 300);
-            LOG.info("sendPrompt: got result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
+            LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
             // If a built-in action was denied, send a retry prompt telling agent to use MCP tools
             if (builtInActionDeniedDuringTurn) {
@@ -667,7 +661,7 @@ public class CopilotAcpClient implements Closeable {
             retryParams.addProperty("model", model);
         }
         JsonObject result = sendRequest("session/prompt", retryParams, 300);
-        LOG.info("sendPrompt: retry result: " + (result != null ? result.toString().substring(0, Math.min(200, result.toString().length())) : "null"));
+        LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
         return result;
     }
 
@@ -887,16 +881,7 @@ public class CopilotAcpClient implements Closeable {
     /**
      * ACP resource reference — file or selection context sent with prompts.
      */
-    public static class ResourceReference {
-        public final String uri;
-        public final String mimeType;
-        public final String text;
-
-        public ResourceReference(@NotNull String uri, @Nullable String mimeType, @NotNull String text) {
-            this.uri = uri;
-            this.mimeType = mimeType;
-            this.text = text;
-        }
+    public record ResourceReference(@NotNull String uri, @Nullable String mimeType, @NotNull String text) {
     }
 
     public static class AuthMethod {
