@@ -182,7 +182,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             try {
                 val ghCli = findGhCli() ?: run {
                     SwingUtilities.invokeLater {
-                        usageLabel.text = ""
+                        usageLabel.text = "Usage info unavailable (gh CLI not found)"
+                        usageLabel.toolTipText = "Install GitHub CLI: https://cli.github.com  then run 'gh auth login'"
                         costLabel.text = ""
                     }
                     return@executeOnPooledThread
@@ -233,7 +234,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
-                    usageLabel.text = ""
+                    usageLabel.text = "Usage info unavailable"
+                    usageLabel.toolTipText = "Error: ${e.message}. Ensure 'gh auth login' has been run."
                     costLabel.text = ""
                 }
             }
