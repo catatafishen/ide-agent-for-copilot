@@ -45,6 +45,24 @@ tasks.named("prepareSandbox") {
             sandboxLib.mkdirs()
             mcpJar.copyTo(File(sandboxLib, "mcp-server.jar"), overwrite = true)
         }
+
+        // Restore persisted sandbox config (disabled plugins, settings, etc.)
+        val persistentConfig = rootProject.file(".sandbox-config")
+        if (persistentConfig.exists() && persistentConfig.isDirectory) {
+            ideDirs?.forEach { ideDir ->
+                val configDir = File(ideDir, "config")
+                configDir.mkdirs()
+                persistentConfig.walkTopDown().forEach { src ->
+                    if (src.isFile) {
+                        val rel = src.relativeTo(persistentConfig)
+                        val dest = File(configDir, rel.path)
+                        dest.parentFile.mkdirs()
+                        src.copyTo(dest, overwrite = true)
+                    }
+                }
+            }
+            logger.lifecycle("Restored sandbox config from .sandbox-config/")
+        }
     }
 }
 
