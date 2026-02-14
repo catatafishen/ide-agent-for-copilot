@@ -566,6 +566,18 @@ public class McpServer {
                 ),
                 List.of("name", "content")));
 
+        tools.add(buildTool("get_indexing_status",
+                "Check whether IntelliJ is still indexing the project. " +
+                        "IMPORTANT: Call this before running inspections, find_references, or search_symbols after IDE startup or project open. " +
+                        "Use wait=true to block until indexing completes. Tools may return incomplete results while indexing.",
+                Map.of(
+                        "wait", Map.of("type", "boolean", "description",
+                                "If true, blocks until indexing finishes (up to timeout). If false, returns current status immediately."),
+                        "timeout", Map.of("type", "integer", "description",
+                                "Max seconds to wait when wait=true (default: 60).")
+                ),
+                List.of()));
+
         result.add("tools", tools);
         return result;
     }

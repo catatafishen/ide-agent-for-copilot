@@ -114,10 +114,27 @@ if ($LASTEXITCODE -eq 0) {
 
 ---
 
+## Clean Build (Important!)
+
+After making code changes, the sandbox may use **stale cached class files** from incremental builds. If the agent or plugin doesn't reflect your latest changes, do a clean rebuild:
+
+```bash
+# Option 1: Use the restart script (handles config persistence automatically)
+./restart-sandbox.sh --clean
+
+# Option 2: Manual clean rebuild
+JAVA_HOME=/path/to/jdk21 ./gradlew :mcp-server:clean :plugin-core:clean \
+  :plugin-core:prepareSandbox --no-daemon --rerun-tasks
+JAVA_HOME=/path/to/jdk21 nohup ./gradlew :plugin-core:runIde --no-daemon > ide_launch.log 2>&1 &
+```
+
+**Why this matters**: `prepareSandbox` copies compiled jars into the sandbox. If Gradle's incremental compilation caches a stale `.class` file, the sandbox IDE runs old code even though your source files are updated. The `clean` + `--rerun-tasks` flags force a full recompilation.
+
+**Config persistence**: The `prepareSandbox` task automatically restores settings from `.sandbox-config/` (disabled plugins, UI preferences, etc.), so your IDE settings survive clean rebuilds.
+
+---
+
 ## Current Status
 
-**Working**: Manual install in main IDE  
-**Broken**: `runIde` task (bug in Platform Plugin 2.1.0)  
-**Recommended**: Use manual install workflow for now
-
-The plugin functions perfectly when manually installed. The sandbox issue is purely a development convenience problem.
+**Working**: `runIde` task, sandbox mode, config persistence, clean rebuilds
+**Recommended**: Use `./restart-sandbox.sh` for restarts, add `--clean` after code changes

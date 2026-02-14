@@ -136,7 +136,11 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {
-        byte[] resp = "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+        boolean indexing = com.intellij.openapi.project.DumbService.getInstance(project).isDumb();
+        JsonObject health = new JsonObject();
+        health.addProperty("status", "ok");
+        health.addProperty("indexing", indexing);
+        byte[] resp = GSON.toJson(health).getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, resp.length);
         exchange.getResponseBody().write(resp);
@@ -163,7 +167,7 @@ public final class PsiBridgeService implements Disposable {
             "http_request", "run_command", "read_ide_log", "get_notifications",
             "read_run_output", "run_in_terminal", "list_terminals",
             "read_terminal_output", "get_documentation", "download_sources",
-            "create_scratch_file"
+            "create_scratch_file", "get_indexing_status"
         };
         for (String name : toolNames) {
             JsonObject tool = new JsonObject();
@@ -246,6 +250,8 @@ public final class PsiBridgeService implements Disposable {
                 case "download_sources" -> downloadSources(arguments);
                 // Scratch file tools
                 case "create_scratch_file" -> createScratchFile(arguments);
+                // IDE status tools
+                case "get_indexing_status" -> getIndexingStatus(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
@@ -491,6 +497,31 @@ public final class PsiBridgeService implements Disposable {
     }
 
     // ---- Project Environment Tools ----
+
+    private String getIndexingStatus(JsonObject args) throws Exception {
+        boolean wait = args.has("wait") && args.get("wait").getAsBoolean();
+        int timeoutSec = args.has("timeout") ? args.get("timeout").getAsInt() : 60;
+
+        var dumbService = com.intellij.openapi.project.DumbService.getInstance(project);
+        boolean indexing = dumbService.isDumb();
+
+        if (indexing && wait) {
+            CompletableFuture<Void> done = new CompletableFuture<>();
+            dumbService.runWhenSmart(() -> done.complete(null));
+            try {
+                done.get(timeoutSec, TimeUnit.SECONDS);
+                return "Indexing finished. IDE is ready.";
+            } catch (java.util.concurrent.TimeoutException e) {
+                return "Indexing still in progress after " + timeoutSec + "s timeout. Try again later.";
+            }
+        }
+
+        if (indexing) {
+            return "Indexing is in progress. Use wait=true to block until finished. " +
+                "Some tools (inspections, find_references, search_symbols) may return incomplete results while indexing.";
+        }
+        return "IDE is ready. Indexing is complete.";
+    }
 
     private String getProjectInfo() {
         return ReadAction.compute(() -> {
