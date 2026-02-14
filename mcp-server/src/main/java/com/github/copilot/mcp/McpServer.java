@@ -296,6 +296,28 @@ public class McpServer {
                 ),
                 List.of()));
 
+        tools.add(buildTool("add_to_dictionary",
+                "Add a word to the project's spelling dictionary so it is no longer flagged as a typo. " +
+                        "Use this to mark technical terms, acronyms, or domain-specific words as accepted. " +
+                        "The word is saved to the project dictionary and persists across sessions.",
+                Map.of(
+                        "word", Map.of("type", "string", "description", "The word to add to the project dictionary")
+                ),
+                List.of("word")));
+
+        tools.add(buildTool("suppress_inspection",
+                "Suppress a specific inspection finding for a given code element by adding the appropriate " +
+                        "suppression annotation. For Java: adds @SuppressWarnings(\"InspectionId\"). " +
+                        "For Kotlin: adds @Suppress(\"InspectionId\"). Use this to mark false positives " +
+                        "so they don't appear in future inspection runs.",
+                Map.of(
+                        "path", Map.of("type", "string", "description", "Path to the file containing the code to suppress"),
+                        "line", Map.of("type", "integer", "description", "Line number where the inspection finding is (1-based)"),
+                        "inspection_id", Map.of("type", "string", "description",
+                                "The inspection ID to suppress (e.g. 'SpellCheckingInspection', 'UnusedReturnValue', 'DuplicatedCode')")
+                ),
+                List.of("path", "line", "inspection_id")));
+
         tools.add(buildTool("intellij_read_file",
                 "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
                         "is open in the editor (which may differ from disk). Supports line ranges. " +

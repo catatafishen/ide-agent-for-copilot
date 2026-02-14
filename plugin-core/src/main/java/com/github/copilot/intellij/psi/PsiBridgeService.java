@@ -161,6 +161,8 @@ public final class PsiBridgeService implements Disposable {
                 case "get_problems" -> getProblems(arguments);
                 case "get_highlights" -> getHighlights(arguments);
                 case "run_inspections" -> runInspections(arguments);
+                case "add_to_dictionary" -> addToDictionary(arguments);
+                case "suppress_inspection" -> suppressInspection(arguments);
                 case "optimize_imports" -> optimizeImports(arguments);
                 case "format_code" -> formatCode(arguments);
                 case "read_file", "intellij_read_file" -> readFile(arguments);
@@ -1152,6 +1154,248 @@ public final class PsiBridgeService implements Disposable {
             LOG.error("Error setting up inspections", e);
             resultFuture.complete("Error setting up inspections: " + e.getMessage());
         }
+    }
+
+    private String addToDictionary(JsonObject args) throws Exception {
+        String word = args.get("word").getAsString().trim().toLowerCase();
+        if (word.isEmpty()) {
+            return "Error: word cannot be empty";
+        }
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var spellChecker = com.intellij.spellchecker.SpellCheckerManager.getInstance(project);
+                spellChecker.acceptWordAsCorrect(word, project);
+                resultFuture.complete("Added '" + word + "' to project dictionary. " +
+                    "It will no longer be flagged as a typo in future inspections.");
+            } catch (Exception e) {
+                LOG.error("Error adding word to dictionary", e);
+                resultFuture.complete("Error adding word to dictionary: " + e.getMessage());
+            }
+        });
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String suppressInspection(JsonObject args) throws Exception {
+        String pathStr = args.get("path").getAsString();
+        int line = args.get("line").getAsInt();
+        String inspectionId = args.get("inspection_id").getAsString().trim();
+
+        if (inspectionId.isEmpty()) {
+            return "Error: inspection_id cannot be empty";
+        }
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("Error: file not found: " + pathStr);
+                    return;
+                }
+
+                var psiFile = com.intellij.psi.PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) {
+                    resultFuture.complete("Error: could not parse file: " + pathStr);
+                    return;
+                }
+
+                var document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(psiFile);
+                if (document == null) {
+                    resultFuture.complete("Error: could not get document for: " + pathStr);
+                    return;
+                }
+
+                // Find the PSI element at the given line
+                int zeroLine = line - 1;
+                if (zeroLine < 0 || zeroLine >= document.getLineCount()) {
+                    resultFuture.complete("Error: line " + line + " is out of range (file has " +
+                        document.getLineCount() + " lines)");
+                    return;
+                }
+
+                int offset = document.getLineStartOffset(zeroLine);
+                var element = psiFile.findElementAt(offset);
+                if (element == null) {
+                    resultFuture.complete("Error: no code element found at line " + line);
+                    return;
+                }
+
+                // Walk up to find the statement/declaration to annotate
+                var target = findSuppressTarget(element);
+                String fileName = vf.getName();
+
+                if (fileName.endsWith(".java")) {
+                    resultFuture.complete(suppressJava(target, inspectionId, document, psiFile));
+                } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
+                    resultFuture.complete(suppressKotlin(target, inspectionId, document, psiFile));
+                } else {
+                    // For other file types, add a noinspection comment
+                    resultFuture.complete(suppressWithComment(target, inspectionId, document, psiFile));
+                }
+            } catch (Exception e) {
+                LOG.error("Error suppressing inspection", e);
+                resultFuture.complete("Error suppressing inspection: " + e.getMessage());
+            }
+        });
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private com.intellij.psi.PsiElement findSuppressTarget(com.intellij.psi.PsiElement element) {
+        var current = element;
+        while (current != null) {
+            // For Java: stop at method, field, class, or local variable declaration
+            if (current instanceof com.intellij.psi.PsiMethod ||
+                current instanceof com.intellij.psi.PsiField ||
+                current instanceof com.intellij.psi.PsiClass ||
+                current instanceof com.intellij.psi.PsiLocalVariable) {
+                return current;
+            }
+            // For statements
+            if (current instanceof com.intellij.psi.PsiStatement) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        return element;
+    }
+
+    private String suppressJava(com.intellij.psi.PsiElement target, String inspectionId,
+                                com.intellij.openapi.editor.Document document,
+                                com.intellij.psi.PsiFile psiFile) {
+        // Find the line to insert the annotation before
+        int targetOffset = target.getTextRange().getStartOffset();
+        int targetLine = document.getLineNumber(targetOffset);
+        int lineStart = document.getLineStartOffset(targetLine);
+
+        // Get the indentation of the target line
+        String lineText = document.getText(
+            new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
+        String indent = "";
+        for (char c : lineText.toCharArray()) {
+            if (c == ' ' || c == '\t') indent += c;
+            else break;
+        }
+
+        // Check if there's already a @SuppressWarnings on this element
+        if (target instanceof com.intellij.psi.PsiModifierListOwner modListOwner) {
+            var modList = modListOwner.getModifierList();
+            if (modList != null) {
+                var existing = modList.findAnnotation("java.lang.SuppressWarnings");
+                if (existing != null) {
+                    // Annotation exists — add the new ID to it
+                    return addToExistingSuppressWarnings(existing, inspectionId, document, psiFile);
+                }
+            }
+        }
+
+        String annotation = indent + "@SuppressWarnings(\"" + inspectionId + "\")\n";
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                document.insertString(lineStart, annotation);
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
+            }, "Suppress inspection", null);
+        });
+
+        return "Added @SuppressWarnings(\"" + inspectionId + "\") at line " + (targetLine + 1);
+    }
+
+    private String addToExistingSuppressWarnings(com.intellij.psi.PsiAnnotation annotation,
+                                                  String inspectionId,
+                                                  com.intellij.openapi.editor.Document document,
+                                                  com.intellij.psi.PsiFile psiFile) {
+        String text = annotation.getText();
+        // Check if already suppressed
+        if (text.contains(inspectionId)) {
+            return "Inspection '" + inspectionId + "' is already suppressed at this location";
+        }
+
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                var value = annotation.findAttributeValue("value");
+                if (value != null) {
+                    String newText;
+                    if (value instanceof com.intellij.psi.PsiArrayInitializerMemberValue) {
+                        // Already an array: {"X", "Y"} → {"X", "Y", "inspectionId"}
+                        int endBrace = value.getTextRange().getEndOffset() - 1;
+                        document.insertString(endBrace, ", \"" + inspectionId + "\"");
+                    } else {
+                        // Single value: "X" → {"X", "inspectionId"}
+                        var range = value.getTextRange();
+                        String existing = document.getText(range);
+                        document.replaceString(range.getStartOffset(), range.getEndOffset(),
+                            "{" + existing + ", \"" + inspectionId + "\"}");
+                    }
+                    com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
+                }
+            }, "Suppress inspection", null);
+        });
+
+        return "Added '" + inspectionId + "' to existing @SuppressWarnings annotation";
+    }
+
+    private String suppressKotlin(com.intellij.psi.PsiElement target, String inspectionId,
+                                  com.intellij.openapi.editor.Document document,
+                                  com.intellij.psi.PsiFile psiFile) {
+        int targetOffset = target.getTextRange().getStartOffset();
+        int targetLine = document.getLineNumber(targetOffset);
+        int lineStart = document.getLineStartOffset(targetLine);
+
+        String lineText = document.getText(
+            new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
+        String indent = "";
+        for (char c : lineText.toCharArray()) {
+            if (c == ' ' || c == '\t') indent += c;
+            else break;
+        }
+
+        // Check if preceding line already has @Suppress
+        if (targetLine > 0) {
+            int prevStart = document.getLineStartOffset(targetLine - 1);
+            int prevEnd = document.getLineEndOffset(targetLine - 1);
+            String prevLine = document.getText(
+                new com.intellij.openapi.util.TextRange(prevStart, prevEnd)).trim();
+            if (prevLine.startsWith("@Suppress(") && prevLine.contains(inspectionId)) {
+                return "Inspection '" + inspectionId + "' is already suppressed at this location";
+            }
+        }
+
+        String annotation = indent + "@Suppress(\"" + inspectionId + "\")\n";
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                document.insertString(lineStart, annotation);
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
+            }, "Suppress inspection", null);
+        });
+
+        return "Added @Suppress(\"" + inspectionId + "\") at line " + (targetLine + 1);
+    }
+
+    private String suppressWithComment(com.intellij.psi.PsiElement target, String inspectionId,
+                                       com.intellij.openapi.editor.Document document,
+                                       com.intellij.psi.PsiFile psiFile) {
+        int targetOffset = target.getTextRange().getStartOffset();
+        int targetLine = document.getLineNumber(targetOffset);
+        int lineStart = document.getLineStartOffset(targetLine);
+
+        String lineText = document.getText(
+            new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
+        String indent = "";
+        for (char c : lineText.toCharArray()) {
+            if (c == ' ' || c == '\t') indent += c;
+            else break;
+        }
+
+        String comment = indent + "//noinspection " + inspectionId + "\n";
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                document.insertString(lineStart, comment);
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
+            }, "Suppress inspection", null);
+        });
+
+        return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
     }
 
     private String optimizeImports(JsonObject args) throws Exception {
