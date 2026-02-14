@@ -3,21 +3,33 @@
     <words>
       <w>acp</w>
       <w>agentic</w>
+      <w>alnum</w>
+      <w>appname</w>
       <w>autoload</w>
+      <w>cdpath</w>
       <w>classname</w>
+      <w>claude</w>
       <w>copilot</w>
+      <w>cygpath</w>
       <w>datetime</w>
+      <w>dest</w>
       <w>editorconfig</w>
       <w>envs</w>
       <w>failsafe</w>
+      <w>goroot</w>
       <w>gradle</w>
       <w>gradlew</w>
       <w>gson</w>
       <w>headless</w>
       <w>healthcheck</w>
       <w>hgap</w>
+      <w>honour</w>
       <w>intellij</w>
       <w>jacoco</w>
+      <w>javacmd</w>
+      <w>jbcolor</w>
+      <w>jbtabbedpane</w>
+      <w>jbui</w>
       <w>jsonrpc</w>
       <w>jvmargs</w>
       <w>kotlin</w>
@@ -29,8 +41,10 @@
       <w>noop</w>
       <w>oneline</w>
       <w>psi</w>
+      <w>pwsh</w>
       <w>qname</w>
       <w>quickfix</w>
+      <w>readarray</w>
       <w>refactor</w>
       <w>roundtrip</w>
       <w>rsync</w>
@@ -39,6 +53,7 @@
       <w>sandbox</w>
       <w>sdk</w>
       <w>serializable</w>
+      <w>shellness</w>
       <w>sonarlint</w>
       <w>sonarqube</w>
       <w>stderr</w>
@@ -46,6 +61,7 @@
       <w>stdout</w>
       <w>temurin</w>
       <w>toolwindow</w>
+      <w>ulimit</w>
       <w>unicode</w>
       <w>utf</w>
       <w>uuid</w>
@@ -53,6 +69,7 @@
       <w>webhook</w>
       <w>whitespace</w>
       <w>winget</w>
+      <w>xxxxx</w>
     </words>
   </dictionary>
 </component>
