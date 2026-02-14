@@ -284,7 +284,7 @@ public class McpServer {
                         "Triggers comprehensive analysis using the current inspection profile. " +
                         "Finds code quality issues, security vulnerabilities, typos, complexity warnings, " +
                         "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Inspection Results view. " +
-                        "This is SLOW (may take minutes) but thorough. " +
+                        "The first call is SLOW (may take minutes) but subsequent pages are instant (cached for 5 min). " +
                         "IMPORTANT: The response header shows 'Found N total problems ... Showing X-Y of N'. " +
                         "You MUST check if Y < N and paginate with offset to fetch ALL results before drawing conclusions. " +
                         "Do NOT assume the first page is everything.",

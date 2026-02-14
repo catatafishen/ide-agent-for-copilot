@@ -87,6 +87,12 @@ public final class PsiBridgeService implements Disposable {
     private HttpServer httpServer;
     private int port;
 
+    // Cached inspection results for pagination — avoids re-running the full inspection engine
+    private volatile List<String> cachedInspectionResults;
+    private volatile int cachedInspectionFileCount;
+    private volatile String cachedInspectionProfile;
+    private volatile long cachedInspectionTimestamp;
+
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
     }
@@ -375,7 +381,7 @@ public final class PsiBridgeService implements Disposable {
                                 String type = classifyElement(element);
                                 if (name != null && type != null && type.equals(typeFilter)) {
                                     int line = doc.getLineNumber(element.getTextOffset()) + 1;
-                                    String relPath = relativize(basePath, vf.getPath());
+                                    String relPath = basePath != null ? relativize(basePath, vf.getPath()) : null;
                                     String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;
                                     if (seen.add(key)) {
                                         results.add(String.format("%s:%d [%s] %s",
@@ -966,7 +972,6 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(30, TimeUnit.SECONDS);
     }
 
-    @SuppressWarnings("UnstableApiUsage")
     /**
      * Run IntelliJ's full code inspections on the project using the inspection engine.
      * This triggers the same analysis as "Analyze > Inspect Code" in the IDE.
@@ -974,6 +979,7 @@ public final class PsiBridgeService implements Disposable {
      * Finds code quality issues, security problems, typos, complexity warnings,
      * and third-party inspection results (e.g. SonarQube).
      */
+    @SuppressWarnings("UnstableApiUsage")
     private String runInspections(JsonObject args) throws Exception {
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
         int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
@@ -981,6 +987,14 @@ public final class PsiBridgeService implements Disposable {
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+        }
+
+        // Serve from cache if available and fresh (5 min TTL) — avoids re-running the full inspection
+        long cacheAge = System.currentTimeMillis() - cachedInspectionTimestamp;
+        if (offset > 0 && cachedInspectionResults != null && cacheAge < 300_000) {
+            LOG.info("Serving inspection page from cache (offset=" + offset + ", cache age=" + cacheAge + "ms)");
+            return formatInspectionPage(cachedInspectionResults, cachedInspectionFileCount,
+                cachedInspectionProfile, offset, limit);
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -996,6 +1010,32 @@ public final class PsiBridgeService implements Disposable {
 
         // Full inspection can take a while
         return resultFuture.get(600, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Format a page of cached inspection results.
+     */
+    private String formatInspectionPage(List<String> allProblems, int filesWithProblems,
+                                        String profileName, int offset, int limit) {
+        int total = allProblems.size();
+        if (total == 0) {
+            return "No inspection problems found (cached result).";
+        }
+        int effectiveOffset = Math.min(offset, total);
+        int end = Math.min(effectiveOffset + limit, total);
+        List<String> page = allProblems.subList(effectiveOffset, end);
+        boolean hasMore = end < total;
+
+        String summary = String.format(
+            "Found %d total problems across %d files (profile: %s).\n" +
+                "Showing %d-%d of %d.%s\n" +
+                "Results are also visible in the IDE's Inspection Results view.\n\n",
+            total, filesWithProblems, profileName,
+            effectiveOffset + 1, end, total,
+            hasMore ? String.format(
+                " WARNING: %d more problems not shown! Call run_inspections with offset=%d to see the rest.",
+                total - end, end) : "");
+        return summary + String.join("\n", page);
     }
 
     /**
@@ -1216,26 +1256,20 @@ public final class PsiBridgeService implements Disposable {
                         int total = allProblems.size();
                         int filesWithProblems = filesSet.size();
 
+                        // Cache results for fast pagination
+                        cachedInspectionResults = new ArrayList<>(allProblems);
+                        cachedInspectionFileCount = filesWithProblems;
+                        cachedInspectionProfile = profileName;
+                        cachedInspectionTimestamp = System.currentTimeMillis();
+                        LOG.info("Cached " + total + " inspection results for pagination");
+
                         if (total == 0) {
                             resultFuture.complete("No inspection problems found. " +
                                 "The code passed all enabled inspections in the current profile (" +
                                 profileName + "). Results are also visible in the IDE's Inspection Results view.");
                         } else {
-                            int effectiveOffset = Math.min(offset, total);
-                            int end = Math.min(effectiveOffset + limit, total);
-                            List<String> page = allProblems.subList(effectiveOffset, end);
-                            boolean hasMore = end < total;
-
-                            String summary = String.format(
-                                "Found %d total problems across %d files (profile: %s).\n" +
-                                    "Showing %d-%d of %d.%s\n" +
-                                    "Results are also visible in the IDE's Inspection Results view.\n\n",
-                                total, filesWithProblems, profileName,
-                                effectiveOffset + 1, end, total,
-                                hasMore ? String.format(
-                                    " WARNING: %d more problems not shown! Call run_inspections with offset=%d to see the rest.",
-                                    total - end, end) : "");
-                            resultFuture.complete(summary + String.join("\n", page));
+                            resultFuture.complete(formatInspectionPage(
+                                allProblems, filesWithProblems, profileName, offset, limit));
                         }
                     } catch (Exception e) {
                         LOG.error("Error collecting inspection results", e);
@@ -1389,12 +1423,12 @@ public final class PsiBridgeService implements Disposable {
         }
 
         String annotation = indent + "@SuppressWarnings(\"" + inspectionId + "\")\n";
-        ApplicationManager.getApplication().runWriteAction(() -> {
+        ApplicationManager.getApplication().runWriteAction(() ->
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, annotation);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress inspection", null);
-        });
+            }, "Suppress inspection", null)
+        );
 
         return "Added @SuppressWarnings(\"" + inspectionId + "\") at line " + (targetLine + 1);
     }
@@ -1409,16 +1443,16 @@ public final class PsiBridgeService implements Disposable {
             return "Inspection '" + inspectionId + "' is already suppressed at this location";
         }
 
-        ApplicationManager.getApplication().runWriteAction(() -> {
+        ApplicationManager.getApplication().runWriteAction(() ->
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 var value = annotation.findAttributeValue("value");
                 if (value != null) {
                     if (value instanceof com.intellij.psi.PsiArrayInitializerMemberValue) {
-                        // Already an array: {"X", "Y"} → {"X", "Y", "inspectionId"}
+                        // Already an array: {"X", "Y"} -- add "inspectionId"
                         int endBrace = value.getTextRange().getEndOffset() - 1;
                         document.insertString(endBrace, ", \"" + inspectionId + "\"");
                     } else {
-                        // Single value: "X" → {"X", "inspectionId"}
+                        // Single value: "X" -- convert to {"X", "inspectionId"}
                         var range = value.getTextRange();
                         String existing = document.getText(range);
                         document.replaceString(range.getStartOffset(), range.getEndOffset(),
@@ -1426,8 +1460,8 @@ public final class PsiBridgeService implements Disposable {
                     }
                     com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
                 }
-            }, "Suppress inspection", null);
-        });
+            }, "Suppress inspection", null)
+        );
 
         return "Added '" + inspectionId + "' to existing @SuppressWarnings annotation";
     }
@@ -1459,12 +1493,12 @@ public final class PsiBridgeService implements Disposable {
         }
 
         String annotation = indent + "@Suppress(\"" + inspectionId + "\")\n";
-        ApplicationManager.getApplication().runWriteAction(() -> {
+        ApplicationManager.getApplication().runWriteAction(() ->
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, annotation);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress inspection", null);
-        });
+            }, "Suppress inspection", null)
+        );
 
         return "Added @Suppress(\"" + inspectionId + "\") at line " + (targetLine + 1);
     }
@@ -1485,12 +1519,12 @@ public final class PsiBridgeService implements Disposable {
         }
 
         String comment = indent + "//noinspection " + inspectionId + "\n";
-        ApplicationManager.getApplication().runWriteAction(() -> {
+        ApplicationManager.getApplication().runWriteAction(() ->
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, comment);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress inspection", null);
-        });
+            }, "Suppress inspection", null)
+        );
 
         return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
     }
@@ -1724,12 +1758,12 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
 
-                ApplicationManager.getApplication().runWriteAction(() -> {
+                ApplicationManager.getApplication().runWriteAction(() ->
                     com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
                         new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
-                    }, "Optimize Imports", null);
-                });
+                    }, "Optimize Imports", null)
+                );
 
                 String relPath = project.getBasePath() != null
                     ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
@@ -1761,12 +1795,12 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
 
-                ApplicationManager.getApplication().runWriteAction(() -> {
+                ApplicationManager.getApplication().runWriteAction(() ->
                     com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
                         new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
-                    }, "Reformat Code", null);
-                });
+                    }, "Reformat Code", null)
+                );
 
                 String relPath = project.getBasePath() != null
                     ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
@@ -1852,10 +1886,10 @@ public final class PsiBridgeService implements Disposable {
                         // Overwrite existing file via Document API for undo support
                         Document doc = FileDocumentManager.getInstance().getDocument(vf);
                         if (doc != null) {
-                            ApplicationManager.getApplication().runWriteAction(() -> {
+                            ApplicationManager.getApplication().runWriteAction(() ->
                                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                    project, () -> doc.setText(newContent), "Write File", null);
-                            });
+                                    project, () -> doc.setText(newContent), "Write File", null)
+                            );
                             autoFormatAfterWrite(pathStr);
                             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + " chars)");
                         } else {
@@ -1916,11 +1950,11 @@ public final class PsiBridgeService implements Disposable {
                     }
                     final int finalIdx = idx;
                     final int finalLen = matchLen;
-                    ApplicationManager.getApplication().runWriteAction(() -> {
+                    ApplicationManager.getApplication().runWriteAction(() ->
                         com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                             project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
-                            "Edit File", null);
-                    });
+                            "Edit File", null)
+                    );
                     autoFormatAfterWrite(pathStr);
                     resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + " chars)");
                 } else {
@@ -1946,13 +1980,13 @@ public final class PsiBridgeService implements Disposable {
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) return;
 
-                ApplicationManager.getApplication().runWriteAction(() -> {
+                ApplicationManager.getApplication().runWriteAction(() ->
                     com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
                         new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
                         new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
-                    }, "Auto-format after write", null);
-                });
+                    }, "Auto-format after write", null)
+                );
                 LOG.info("Auto-formatted after write: " + pathStr);
             } catch (Exception e) {
                 LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
@@ -2919,7 +2953,7 @@ public final class PsiBridgeService implements Disposable {
                                 && hasTestAnnotation(element)) {
                                 String methodName = named.getName();
                                 String className = getContainingClassName(element);
-                                String relPath = relativize(basePath, vf.getPath());
+                                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
                                 int line = doc != null
                                     ? doc.getLineNumber(element.getTextOffset()) + 1 : 0;
                                 tests.add(String.format("%s.%s (%s:%d)",
@@ -3530,7 +3564,7 @@ public final class PsiBridgeService implements Disposable {
         return "No documentation available for " + symbol + ". Element found:\n" + elementText;
     }
 
-    @SuppressWarnings({"JavaReflectionMemberAccess", "JavaReflectionInvocation"})
+    @SuppressWarnings("JavaReflectionMemberAccess")
     private String downloadSources(JsonObject args) {
         String library = args.has("library") ? args.get("library").getAsString() : "";
 
