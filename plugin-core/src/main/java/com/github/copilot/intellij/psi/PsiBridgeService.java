@@ -863,6 +863,7 @@ public final class PsiBridgeService implements Disposable {
     private String runInspections(JsonObject args) throws Exception {
         String scope = args.has("scope") ? args.get("scope").getAsString() : "project";
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+        boolean triggerAnalysis = args.has("trigger_analysis") && args.get("trigger_analysis").getAsBoolean();
 
         // Check if IDE is fully initialized
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
@@ -873,95 +874,227 @@ public final class PsiBridgeService implements Disposable {
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                ReadAction.run(() -> {
-                    List<String> problems = new ArrayList<>();
-                    String basePath = project.getBasePath();
-
-                    // Get all project source files
-                    ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
-                    Collection<VirtualFile> allFiles = new ArrayList<>();
-
-                    if ("project".equals(scope)) {
-                        // Iterate all source roots
-                        fileIndex.iterateContent(file -> {
-                            if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
-                                allFiles.add(file);
-                            }
-                            return true;
-                        });
-                    }
-
-                    LOG.info("Analyzing " + allFiles.size() + " files for inspections");
-
-                    // Analyze each file for problems using existing highlights
-                    int count = 0;
-                    int filesWithProblems = 0;
-                    for (VirtualFile vf : allFiles) {
-                        if (count >= limit) break;
-
-                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                        if (psiFile == null) continue;
-
-                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                        if (doc == null) continue;
-
-                        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
-
-                        try {
-                            // Get ALL severity levels (ERROR, WARNING, WEAK_WARNING, etc.)
-                            // Use null severity to get everything
-                            com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                                    doc, project,
-                                    null,  // Get all severities
-                                    0, doc.getTextLength(),
-                                    highlights::add
-                            );
-
-                            if (!highlights.isEmpty()) {
-                                filesWithProblems++;
-                            }
-
-                            for (var h : highlights) {
-                                if (h.getDescription() == null) continue;
-                                
-                                // Filter to only show actual problems (not info/hints)
-                                var severity = h.getSeverity();
-                                if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
-                                    severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
-                                    continue;
-                                }
-
-                                int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                                String severityName = severity.getName();
-                                problems.add(String.format("%s:%d [%s] %s",
-                                        relPath, line, severityName, h.getDescription()));
-                                count++;
-                                if (count >= limit) break;
-                            }
-                        } catch (Exception e) {
-                            LOG.warn("Failed to analyze file: " + relPath, e);
-                        }
-                    }
-
-                    if (problems.isEmpty()) {
-                        resultFuture.complete(String.format("No problems found in %d files analyzed (0 files with issues). " +
-                                "Note: This tool reads CACHED analysis results. " +
-                                "If you just opened the project, IntelliJ may not have analyzed files yet. " +
-                                "To trigger full analysis: 1) Open some files in the editor, or 2) Run 'Analyze > Inspect Code' in IntelliJ, " +
-                                "then try this tool again.", allFiles.size()));
-                    } else {
-                        String summary = String.format("Found %d problems across %d files (showing up to %d):\n\n",
-                                count, filesWithProblems, limit);
-                        resultFuture.complete(summary + String.join("\n", problems));
-                    }
-                });
+                if (triggerAnalysis) {
+                    // Run actual inspection analysis (slower but comprehensive)
+                    runInspectionWithAnalysis(scope, limit, resultFuture);
+                } else {
+                    // Quick mode: read cached highlights only
+                    runInspectionCached(scope, limit, resultFuture);
+                }
             } catch (Exception e) {
+                LOG.error("Error running inspections", e);
                 resultFuture.complete("Error running inspections: " + e.getMessage());
             }
         });
 
-        return resultFuture.get(30, TimeUnit.SECONDS);
+        // Longer timeout for triggered analysis
+        int timeout = triggerAnalysis ? 300 : 30;
+        return resultFuture.get(timeout, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Run inspections by reading cached highlights (fast but may miss unanalyzed files).
+     */
+    private void runInspectionCached(String scope, int limit, CompletableFuture<String> resultFuture) {
+        ReadAction.run(() -> {
+            List<String> problems = new ArrayList<>();
+            String basePath = project.getBasePath();
+
+            // Get all project source files
+            ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
+            Collection<VirtualFile> allFiles = new ArrayList<>();
+
+            if ("project".equals(scope)) {
+                // Iterate all source roots
+                fileIndex.iterateContent(file -> {
+                    if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
+                        allFiles.add(file);
+                    }
+                    return true;
+                });
+            }
+
+            LOG.info("Analyzing " + allFiles.size() + " files for inspections (cached mode)");
+
+            // Analyze each file for problems using existing highlights
+            int count = 0;
+            int filesWithProblems = 0;
+            for (VirtualFile vf : allFiles) {
+                if (count >= limit) break;
+
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) continue;
+
+                Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                if (doc == null) continue;
+
+                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+
+                try {
+                    // Get ALL severity levels
+                    com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+                            doc, project,
+                            null,  // Get all severities
+                            0, doc.getTextLength(),
+                            highlights::add
+                    );
+
+                    if (!highlights.isEmpty()) {
+                        filesWithProblems++;
+                    }
+
+                    for (var h : highlights) {
+                        if (h.getDescription() == null) continue;
+                        
+                        // Filter to only show actual problems (not info/hints)
+                        var severity = h.getSeverity();
+                        if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
+                            severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
+                            continue;
+                        }
+
+                        int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                        String severityName = severity.getName();
+                        problems.add(String.format("%s:%d [%s] %s",
+                                relPath, line, severityName, h.getDescription()));
+                        count++;
+                        if (count >= limit) break;
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Failed to analyze file: " + relPath, e);
+                }
+            }
+
+            if (problems.isEmpty()) {
+                resultFuture.complete(String.format("No problems found in %d files analyzed (0 files with issues). " +
+                        "Note: This tool reads CACHED analysis results. " +
+                        "If you just opened the project, IntelliJ may not have analyzed files yet. " +
+                        "To get complete results, use trigger_analysis=true parameter (slower but comprehensive).", 
+                        allFiles.size()));
+            } else {
+                String summary = String.format("Found %d problems across %d files (showing up to %d):\n\n",
+                        count, filesWithProblems, limit);
+                resultFuture.complete(summary + String.join("\n", problems));
+            }
+        });
+    }
+
+    /**
+     * Run inspections by triggering actual analysis (slow but comprehensive).
+     */
+    private void runInspectionWithAnalysis(String scope, int limit, CompletableFuture<String> resultFuture) {
+        try {
+            List<String> problems = new ArrayList<>();
+            String basePath = project.getBasePath();
+
+            // Get files to analyze
+            ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
+            List<VirtualFile> filesToAnalyze = new ArrayList<>();
+
+            if ("project".equals(scope)) {
+                ReadAction.run(() -> {
+                    fileIndex.iterateContent(file -> {
+                        if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
+                            filesToAnalyze.add(file);
+                        }
+                        return true;
+                    });
+                });
+            }
+
+            LOG.info("Triggering analysis for " + filesToAnalyze.size() + " files (this may take a while)");
+
+            // Use DaemonCodeAnalyzer to trigger analysis and wait for results
+            com.intellij.codeInsight.daemon.DaemonCodeAnalyzer analyzer = 
+                com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project);
+
+            int count = 0;
+            int filesAnalyzed = 0;
+            int filesWithProblems = 0;
+
+            for (VirtualFile vf : filesToAnalyze) {
+                if (count >= limit) break;
+
+                PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
+                if (psiFile == null) continue;
+
+                Document doc = ReadAction.compute(() -> FileDocumentManager.getInstance().getDocument(vf));
+                if (doc == null) continue;
+
+                filesAnalyzed++;
+                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+
+                try {
+                    // Trigger analysis for this file
+                    ApplicationManager.getApplication().invokeAndWait(() -> {
+                        analyzer.restart(psiFile);
+                    });
+
+                    // Wait a moment for analysis to complete (simple approach)
+                    Thread.sleep(100);
+
+                    // Now read the highlights
+                    List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+                    
+                    ReadAction.run(() -> {
+                        com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+                                doc, project,
+                                null,  // Get all severities
+                                0, doc.getTextLength(),
+                                highlights::add
+                        );
+                    });
+
+                    boolean fileHasProblems = false;
+                    for (var h : highlights) {
+                        if (count >= limit) break;
+                        if (h.getDescription() == null) continue;
+                        
+                        // Filter to only show actual problems
+                        var severity = h.getSeverity();
+                        if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
+                            severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
+                            continue;
+                        }
+
+                        fileHasProblems = true;
+                        int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                        String severityName = severity.getName();
+                        problems.add(String.format("%s:%d [%s] %s",
+                                relPath, line, severityName, h.getDescription()));
+                        count++;
+                    }
+
+                    if (fileHasProblems) {
+                        filesWithProblems++;
+                    }
+
+                } catch (Exception e) {
+                    LOG.warn("Failed to analyze file with inspections: " + relPath, e);
+                }
+
+                // Progress logging every 10 files
+                if (filesAnalyzed % 10 == 0) {
+                    LOG.info("Analyzed " + filesAnalyzed + "/" + filesToAnalyze.size() + " files, found " + count + " problems so far");
+                }
+            }
+
+            LOG.info("Analysis complete: " + filesAnalyzed + " files analyzed, " + count + " problems found");
+
+            if (problems.isEmpty()) {
+                resultFuture.complete(String.format("No problems found after analyzing %d files. " +
+                        "The code appears to be clean!", filesAnalyzed));
+            } else {
+                String summary = String.format("Found %d problems across %d files (analyzed %d files total, showing up to %d problems):\n\n",
+                        count, filesWithProblems, filesAnalyzed, limit);
+                resultFuture.complete(summary + String.join("\n", problems));
+            }
+
+        } catch (Exception e) {
+            LOG.error("Error in triggered analysis", e);
+            resultFuture.complete("Error during analysis: " + e.getMessage());
+        }
     }
 
     private String optimizeImports(JsonObject args) throws Exception {

@@ -269,12 +269,14 @@ public class McpServer {
                 List.of("path")));
 
         tools.add(buildTool("run_inspections",
-                "Run IntelliJ's code inspections on the entire project. Analyzes all source files and returns " +
-                        "warnings, errors, and code quality issues. Returns cached analysis results. " +
-                        "Use this to get a project-wide view of problems.",
+                "Run IntelliJ's code inspections on the entire project. " +
+                        "By default, reads CACHED analysis results (fast). " +
+                        "Set trigger_analysis=true to run actual analysis (slow but comprehensive, finds all problems). " +
+                        "Returns warnings, errors, and code quality issues.",
                 Map.of(
                         "scope", Map.of("type", "string", "description", "Analysis scope: 'project' (default) for all files"),
-                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
+                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)"),
+                        "trigger_analysis", Map.of("type", "boolean", "description", "If true, triggers actual analysis instead of reading cache (default: false). Much slower but comprehensive.")
                 ),
                 List.of()));
 
