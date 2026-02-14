@@ -163,6 +163,7 @@ public final class PsiBridgeService implements Disposable {
                 case "run_inspections" -> runInspections(arguments);
                 case "add_to_dictionary" -> addToDictionary(arguments);
                 case "suppress_inspection" -> suppressInspection(arguments);
+                case "run_qodana" -> runQodana(arguments);
                 case "optimize_imports" -> optimizeImports(arguments);
                 case "format_code" -> formatCode(arguments);
                 case "read_file", "intellij_read_file" -> readFile(arguments);
@@ -1396,6 +1397,216 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
+    }
+
+    private String runQodana(JsonObject args) throws Exception {
+        int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        // Trigger Qodana's Run action via the IDE action system
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance();
+                var qodanaAction = actionManager.getAction("Qodana.RunQodanaAction");
+
+                if (qodanaAction == null) {
+                    resultFuture.complete("Error: Qodana plugin is not installed or not available. " +
+                        "Install it from Settings > Plugins > Marketplace.");
+                    return;
+                }
+
+                // Create a synthetic action event for the current project
+                var dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                    .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                    .build();
+                var presentation = qodanaAction.getTemplatePresentation().clone();
+                var event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                    dataContext, presentation, "QodanaTool",
+                    com.intellij.openapi.actionSystem.ActionUiKind.NONE, null);
+
+                // Check if the action is available
+                qodanaAction.update(event);
+                if (!event.getPresentation().isEnabled()) {
+                    resultFuture.complete("Error: Qodana action is not available. " +
+                        "The project may not be fully loaded yet, or Qodana may already be running.");
+                    return;
+                }
+
+                LOG.info("Triggering Qodana local analysis...");
+                qodanaAction.actionPerformed(event);
+
+                // Poll for results in background thread
+                ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                    try {
+                        pollQodanaResults(limit, resultFuture);
+                    } catch (Exception e) {
+                        LOG.error("Error polling Qodana results", e);
+                        resultFuture.complete("Qodana analysis was triggered but result polling failed: " +
+                            e.getMessage() + ". Check the Qodana tab in the Problems tool window for results.");
+                    }
+                });
+
+            } catch (Exception e) {
+                LOG.error("Error triggering Qodana", e);
+                resultFuture.complete("Error triggering Qodana: " + e.getMessage());
+            }
+        });
+
+        // Qodana analysis can take a long time
+        return resultFuture.get(600, TimeUnit.SECONDS);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void pollQodanaResults(int limit, CompletableFuture<String> resultFuture) {
+        try {
+            // Use reflection to access Qodana's service — it's an optional plugin dependency
+            Class<?> serviceClass;
+            try {
+                serviceClass = Class.forName("org.jetbrains.qodana.run.QodanaRunInIdeService");
+            } catch (ClassNotFoundException e) {
+                resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                    "(Qodana service class not available for result polling)");
+                return;
+            }
+
+            var qodanaService = project.getService(serviceClass);
+            if (qodanaService == null) {
+                resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                    "(Could not access Qodana service to poll results)");
+                return;
+            }
+
+            // Get the runState StateFlow
+            var getRunState = serviceClass.getMethod("getRunState");
+            var runStateFlow = getRunState.invoke(qodanaService);
+            var getValueMethod = runStateFlow.getClass().getMethod("getValue");
+
+            // Poll until Qodana finishes (up to 8 minutes)
+            int maxPolls = 480;
+            boolean wasRunning = false;
+            for (int i = 0; i < maxPolls; i++) {
+                var state = getValueMethod.invoke(runStateFlow);
+                String stateName = state.getClass().getSimpleName();
+
+                if (stateName.contains("Running")) {
+                    wasRunning = true;
+                    if (i % 30 == 0) {
+                        LOG.info("Qodana analysis still running... (" + i + "s)");
+                    }
+                } else if (wasRunning) {
+                    // Transitioned from Running to NotRunning — analysis complete
+                    LOG.info("Qodana analysis completed after ~" + i + "s");
+                    break;
+                } else if (i > 10) {
+                    // Never started running — may have shown a dialog or failed
+                    resultFuture.complete("Qodana analysis was triggered but may require user interaction. " +
+                        "Check the IDE for any Qodana dialogs or the Qodana tab in Problems for results.");
+                    return;
+                }
+
+                Thread.sleep(1000);
+            }
+
+            // Try to read SARIF results from the output
+            var getRunsResults = serviceClass.getMethod("getRunsResults");
+            var runsResultsFlow = getRunsResults.invoke(qodanaService);
+            var outputs = (Set<?>) getValueMethod.invoke(runsResultsFlow);
+            if (outputs != null && !outputs.isEmpty()) {
+                var latest = outputs.iterator().next();
+                var getSarifPath = latest.getClass().getMethod("getSarifPath");
+                var sarifPath = (java.nio.file.Path) getSarifPath.invoke(latest);
+                if (sarifPath != null && java.nio.file.Files.exists(sarifPath)) {
+                    String sarif = java.nio.file.Files.readString(sarifPath);
+                    resultFuture.complete(parseSarifResults(sarif, limit));
+                    return;
+                }
+            }
+
+            resultFuture.complete("Qodana analysis completed. Results are visible in the Qodana tab " +
+                "of the Problems tool window. (SARIF output file not found for programmatic reading)");
+
+        } catch (Exception e) {
+            LOG.error("Error polling Qodana results", e);
+            resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
+                "Polling error: " + e.getMessage());
+        }
+    }
+
+    private String parseSarifResults(String sarifJson, int limit) {
+        try {
+            var sarif = com.google.gson.JsonParser.parseString(sarifJson).getAsJsonObject();
+            var runs = sarif.getAsJsonArray("runs");
+            if (runs == null || runs.isEmpty()) {
+                return "Qodana completed but no analysis runs found in SARIF output.";
+            }
+
+            List<String> problems = new ArrayList<>();
+            Set<String> filesSet = new HashSet<>();
+            String basePath = project.getBasePath();
+            int count = 0;
+
+            for (var runElement : runs) {
+                var run = runElement.getAsJsonObject();
+                var results = run.getAsJsonArray("results");
+                if (results == null) continue;
+
+                for (var resultElement : results) {
+                    if (count >= limit) break;
+                    var result = resultElement.getAsJsonObject();
+
+                    String ruleId = result.has("ruleId") ? result.get("ruleId").getAsString() : "unknown";
+                    String level = result.has("level") ? result.get("level").getAsString() : "warning";
+                    String message = "";
+                    if (result.has("message") && result.getAsJsonObject("message").has("text")) {
+                        message = result.getAsJsonObject("message").get("text").getAsString();
+                    }
+
+                    String filePath = "";
+                    int line = -1;
+                    if (result.has("locations")) {
+                        var locations = result.getAsJsonArray("locations");
+                        if (!locations.isEmpty()) {
+                            var loc = locations.get(0).getAsJsonObject();
+                            if (loc.has("physicalLocation")) {
+                                var phys = loc.getAsJsonObject("physicalLocation");
+                                if (phys.has("artifactLocation") &&
+                                    phys.getAsJsonObject("artifactLocation").has("uri")) {
+                                    filePath = phys.getAsJsonObject("artifactLocation").get("uri").getAsString();
+                                    // Remove file:// prefix if present
+                                    if (filePath.startsWith("file://")) filePath = filePath.substring(7);
+                                    if (basePath != null) filePath = relativize(basePath, filePath);
+                                    filesSet.add(filePath);
+                                }
+                                if (phys.has("region") &&
+                                    phys.getAsJsonObject("region").has("startLine")) {
+                                    line = phys.getAsJsonObject("region").get("startLine").getAsInt();
+                                }
+                            }
+                        }
+                    }
+
+                    problems.add(String.format("%s:%d [%s/%s] %s", filePath, line, level, ruleId, message));
+                    count++;
+                }
+            }
+
+            if (problems.isEmpty()) {
+                return "Qodana analysis completed: no problems found. " +
+                    "Results are also visible in the Qodana tab of the Problems tool window.";
+            }
+
+            String summary = String.format(
+                "Qodana found %d problems across %d files (showing up to %d).\n" +
+                    "Results are also visible in the Qodana tab of the Problems tool window.\n\n",
+                problems.size(), filesSet.size(), limit);
+            return summary + String.join("\n", problems);
+
+        } catch (Exception e) {
+            LOG.error("Error parsing SARIF results", e);
+            return "Qodana analysis completed but SARIF parsing failed: " + e.getMessage() +
+                ". Check the Qodana tab in the Problems tool window for results.";
+        }
     }
 
     private String optimizeImports(JsonObject args) throws Exception {

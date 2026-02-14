@@ -318,6 +318,16 @@ public class McpServer {
                 ),
                 List.of("path", "line", "inspection_id")));
 
+        tools.add(buildTool("run_qodana",
+                "Run Qodana local analysis on the project. This triggers JetBrains Qodana's code inspection " +
+                        "engine which uses its own inspection profile (qodana.starter) and may find different/additional " +
+                        "issues compared to run_inspections. Results appear in the Qodana tab of the Problems tool window " +
+                        "and are also returned as SARIF-format findings. This is SLOW (may take several minutes).",
+                Map.of(
+                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
+                ),
+                List.of()));
+
         tools.add(buildTool("intellij_read_file",
                 "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
                         "is open in the editor (which may differ from disk). Supports line ranges. " +
