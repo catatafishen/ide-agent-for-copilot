@@ -939,13 +939,13 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(10, TimeUnit.SECONDS);
     }
 
-    @SuppressWarnings("UnstableApiUsage")
     /**
      * Get syntax highlights and daemon-level diagnostics for project files.
      * This reads the cached results from IntelliJ's on-the-fly analysis (DaemonCodeAnalyzer).
      * Useful for quick checks on files already open/analyzed by the IDE.
-     * Does NOT run full code inspections — use run_inspections for that.
+     * Does NOT run full code inspections -- use run_inspections for that.
      */
+    @SuppressWarnings("UnstableApiUsage")
     private String getHighlights(JsonObject args) throws Exception {
         String scope = args.has("scope") ? args.get("scope").getAsString() : "project";
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
@@ -1232,7 +1232,9 @@ public final class PsiBridgeService implements Disposable {
                                     "Results are also visible in the IDE's Inspection Results view.\n\n",
                                 total, filesWithProblems, profileName,
                                 effectiveOffset + 1, end, total,
-                                hasMore ? String.format(" Use offset=%d to see more.", end) : "");
+                                hasMore ? String.format(
+                                    " WARNING: %d more problems not shown! Call run_inspections with offset=%d to see the rest.",
+                                    total - end, end) : "");
                             resultFuture.complete(summary + String.join("\n", page));
                         }
                     } catch (Exception e) {
@@ -1890,8 +1892,11 @@ public final class PsiBridgeService implements Disposable {
                         String normOld = normalizeForMatch(oldStr);
                         idx = normText.indexOf(normOld);
                         if (idx != -1) {
-                            // Find the actual end position in the original text
+                            LOG.info("write_file: normalized match succeeded for " + pathStr);
                             matchLen = findOriginalLength(text, idx, normOld.length());
+                        } else {
+                            LOG.warn("write_file: old_str not found in " + pathStr +
+                                " (exact and normalized both failed)");
                         }
                     }
                     if (idx == -1) {
@@ -1960,15 +1965,16 @@ public final class PsiBridgeService implements Disposable {
      * This handles em-dashes, smart quotes, non-breaking spaces, etc. that LLMs often can't reproduce exactly.
      */
     private static String normalizeForMatch(String s) {
-        return s.replace('\u2014', '-')   // em-dash → hyphen
-            .replace('\u2013', '-')   // en-dash → hyphen
-            .replace('\u2018', '\'')  // left single quote
-            .replace('\u2019', '\'')  // right single quote
-            .replace('\u201C', '"')   // left double quote
-            .replace('\u201D', '"')   // right double quote
-            .replace('\u00A0', ' ')   // non-breaking space
-            .replace("\r\n", "\n")    // CRLF → LF
-            .replace('\r', '\n');     // CR → LF
+        // First normalize line endings
+        s = s.replace("\r\n", "\n").replace('\r', '\n');
+        // Replace ALL non-ASCII chars with '?' — this matches what LLMs naturally do
+        // when they can't reproduce em-dashes, smart quotes, etc.
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            sb.append(c > 127 ? '?' : c);
+        }
+        return sb.toString();
     }
 
     /**
