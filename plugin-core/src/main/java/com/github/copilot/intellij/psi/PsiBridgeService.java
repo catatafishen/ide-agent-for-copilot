@@ -865,7 +865,7 @@ public final class PsiBridgeService implements Disposable {
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
-        ApplicationManager.getApplication().invokeLater(() -> {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 getHighlightsCached(scope, limit, resultFuture);
             } catch (Exception e) {
