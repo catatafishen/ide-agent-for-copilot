@@ -85,6 +85,12 @@ intellijPlatform {
 }
 
 tasks {
+    test {
+        useJUnitPlatform {
+            excludeTags("integration")
+        }
+    }
+
     runIde {
         maxHeapSize = "2g"
         // Enable auto-reload of plugin when changes are built
