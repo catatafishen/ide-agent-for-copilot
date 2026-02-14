@@ -309,7 +309,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.border = JBUI.Borders.empty(10)
 
         // Top toolbar with model selector and mode toggle — wraps on narrow windows
-        val toolbar = JBPanel<JBPanel<*>>(WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)))
+        val toolbar = JBPanel<JBPanel<*>>()
+        toolbar.layout = WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)) as java.awt.LayoutManager
         toolbar.alignmentX = java.awt.Component.LEFT_ALIGNMENT
 
         // Model selector (placeholder shown inside dropdown)
