@@ -293,6 +293,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String getFileOutline(JsonObject args) {
+        if (!args.has("path") || args.get("path").isJsonNull())
+            return "Error: 'path' parameter is required";
         String pathStr = args.get("path").getAsString();
 
         return ReadAction.compute(() -> {
@@ -421,6 +423,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String findReferences(JsonObject args) {
+        if (!args.has("symbol") || args.get("symbol").isJsonNull())
+            return "Error: 'symbol' parameter is required";
         String symbol = args.get("symbol").getAsString();
         String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
 
@@ -1748,6 +1752,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String readFile(JsonObject args) {
+        if (!args.has("path") || args.get("path").isJsonNull())
+            return "Error: 'path' parameter is required";
         String pathStr = args.get("path").getAsString();
         int startLine = args.has("start_line") ? args.get("start_line").getAsInt() : -1;
         int endLine = args.has("end_line") ? args.get("end_line").getAsInt() : -1;
@@ -1784,6 +1790,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String writeFile(JsonObject args) throws Exception {
+        if (!args.has("path") || args.get("path").isJsonNull())
+            return "Error: 'path' parameter is required";
         String pathStr = args.get("path").getAsString();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
