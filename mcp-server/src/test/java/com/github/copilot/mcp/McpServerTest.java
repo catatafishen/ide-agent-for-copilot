@@ -98,7 +98,7 @@ class McpServerTest {
 
         assertNotNull(response);
         JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
-        assertEquals(40, tools.size(), "Should have 40 tools (code nav + file I/O + testing + quality + run configs + git + infra + terminal + docs + inspections)");
+        assertEquals(41, tools.size(), "Should have 41 tools (code nav + file I/O + testing + quality + run configs + git + infra + terminal + docs + highlights + inspections)");
 
         // Verify tool names
         var toolNames = new ArrayList<String>();

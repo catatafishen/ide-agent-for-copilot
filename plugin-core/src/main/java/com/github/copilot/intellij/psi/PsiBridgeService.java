@@ -169,6 +169,7 @@ public final class PsiBridgeService implements Disposable {
                 case "create_run_configuration" -> createRunConfiguration(arguments);
                 case "edit_run_configuration" -> editRunConfiguration(arguments);
                 case "get_problems" -> getProblems(arguments);
+                case "get_highlights" -> getHighlights(arguments);
                 case "run_inspections" -> runInspections(arguments);
                 case "optimize_imports" -> optimizeImports(arguments);
                 case "format_code" -> formatCode(arguments);
@@ -857,15 +858,41 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Run IntelliJ inspections on the whole project or specific scope.
-     * This analyzes all project files using IntelliJ's inspection profiles.
+     * Get syntax highlights and daemon-level diagnostics for project files.
+     * This reads the cached results from IntelliJ's on-the-fly analysis (DaemonCodeAnalyzer).
+     * Useful for quick checks on files already open/analyzed by the IDE.
+     * Does NOT run full code inspections — use run_inspections for that.
      */
-    private String runInspections(JsonObject args) throws Exception {
+    private String getHighlights(JsonObject args) throws Exception {
         String scope = args.has("scope") ? args.get("scope").getAsString() : "project";
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
-        boolean triggerAnalysis = args.has("trigger_analysis") && args.get("trigger_analysis").getAsBoolean();
 
-        // Check if IDE is fully initialized
+        if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
+            return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+        }
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                getHighlightsCached(scope, limit, resultFuture);
+            } catch (Exception e) {
+                LOG.error("Error getting highlights", e);
+                resultFuture.complete("Error getting highlights: " + e.getMessage());
+            }
+        });
+        return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Run IntelliJ's full code inspections on the project using the inspection engine.
+     * This triggers the same analysis as "Analyze > Inspect Code" in the IDE.
+     * Results appear in the Problems tool window and are returned here.
+     * Finds code quality issues, security problems, typos, complexity warnings,
+     * and third-party inspection results (e.g. SonarQube).
+     */
+    private String runInspections(JsonObject args) throws Exception {
+        int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
         }
@@ -874,28 +901,21 @@ public final class PsiBridgeService implements Disposable {
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                if (triggerAnalysis) {
-                    // Run actual inspection analysis (slower but comprehensive)
-                    runInspectionWithAnalysis(scope, limit, resultFuture);
-                } else {
-                    // Quick mode: read cached highlights only
-                    runInspectionCached(scope, limit, resultFuture);
-                }
+                runInspectionAnalysis(limit, resultFuture);
             } catch (Exception e) {
                 LOG.error("Error running inspections", e);
                 resultFuture.complete("Error running inspections: " + e.getMessage());
             }
         });
 
-        // Longer timeout for triggered analysis
-        int timeout = triggerAnalysis ? 300 : 30;
-        return resultFuture.get(timeout, TimeUnit.SECONDS);
+        // Full inspection can take a while
+        return resultFuture.get(600, TimeUnit.SECONDS);
     }
 
     /**
-     * Run inspections by reading cached highlights (fast but may miss unanalyzed files).
+     * Get highlights by reading cached daemon analysis (fast but may miss unanalyzed files).
      */
-    private void runInspectionCached(String scope, int limit, CompletableFuture<String> resultFuture) {
+    private void getHighlightsCached(String scope, int limit, CompletableFuture<String> resultFuture) {
         ReadAction.run(() -> {
             List<String> problems = new ArrayList<>();
             String basePath = project.getBasePath();
@@ -967,10 +987,9 @@ public final class PsiBridgeService implements Disposable {
             }
 
             if (problems.isEmpty()) {
-                resultFuture.complete(String.format("No problems found in %d files analyzed (0 files with issues). " +
-                        "Note: This tool reads CACHED analysis results. " +
-                        "If you just opened the project, IntelliJ may not have analyzed files yet. " +
-                        "To get complete results, use trigger_analysis=true parameter (slower but comprehensive).", 
+                resultFuture.complete(String.format("No highlights found in %d files analyzed (0 files with issues). " +
+                        "Note: This reads cached daemon analysis results from already-analyzed files. " +
+                        "For comprehensive code quality analysis, use run_inspections instead.", 
                         allFiles.size()));
             } else {
                 String summary = String.format("Found %d problems across %d files (showing up to %d):\n\n",
@@ -981,119 +1000,137 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Run inspections by triggering actual analysis (slow but comprehensive).
+     * Run full IntelliJ code inspections using the proper inspection engine.
+     * This is the same as "Analyze > Inspect Code" in the IDE menu.
+     * Results populate the Problems tool window and are returned as text.
      */
-    private void runInspectionWithAnalysis(String scope, int limit, CompletableFuture<String> resultFuture) {
+    private void runInspectionAnalysis(int limit, CompletableFuture<String> resultFuture) {
         try {
+            LOG.info("Starting full inspection analysis...");
+
+            var inspectionManager = com.intellij.codeInspection.InspectionManager.getInstance(project);
+            var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
+            var profile = profileManager.getCurrentProfile();
+            var scope = new com.intellij.analysis.AnalysisScope(project);
+
+            LOG.info("Using inspection profile: " + profile.getName());
+            LOG.info("Analysis scope: entire project");
+
+            var context = (com.intellij.codeInspection.ex.GlobalInspectionContextImpl)
+                    inspectionManager.createNewGlobalContext();
+
             List<String> problems = new ArrayList<>();
             String basePath = project.getBasePath();
 
-            // Get files to analyze
-            ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
-            List<VirtualFile> filesToAnalyze = new ArrayList<>();
-
-            if ("project".equals(scope)) {
-                ReadAction.run(() -> {
-                    fileIndex.iterateContent(file -> {
-                        if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
-                            filesToAnalyze.add(file);
-                        }
-                        return true;
-                    });
-                });
-            }
-
-            LOG.info("Triggering analysis for " + filesToAnalyze.size() + " files (this may take a while)");
-
-            // Use DaemonCodeAnalyzer to trigger analysis and wait for results
-            com.intellij.codeInsight.daemon.DaemonCodeAnalyzer analyzer = 
-                com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project);
-
-            int count = 0;
-            int filesAnalyzed = 0;
-            int filesWithProblems = 0;
-
-            for (VirtualFile vf : filesToAnalyze) {
-                if (count >= limit) break;
-
-                PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
-                if (psiFile == null) continue;
-
-                Document doc = ReadAction.compute(() -> FileDocumentManager.getInstance().getDocument(vf));
-                if (doc == null) continue;
-
-                filesAnalyzed++;
-                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-
+            // performInspectionsWithProgress runs synchronously with a progress indicator,
+            // so we execute it on a pooled thread to avoid blocking the EDT
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
                 try {
-                    // Trigger analysis for this file
-                    ApplicationManager.getApplication().invokeAndWait(() -> {
-                        analyzer.restart(psiFile);
-                    });
+                    // args: scope, runGlobalToolsOnly=false, isOfflineInspections=false
+                    context.performInspectionsWithProgress(scope, false, false);
 
-                    // Wait a moment for analysis to complete (simple approach)
-                    Thread.sleep(100);
-
-                    // Now read the highlights
-                    List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
-                    
+                    // After completion, gather results from the context
                     ReadAction.run(() -> {
-                        com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                                doc, project,
-                                null,  // Get all severities
-                                0, doc.getTextLength(),
-                                highlights::add
-                        );
+                        try {
+                            int count = 0;
+                            Set<String> filesSet = new HashSet<>();
+
+                            var usedTools = context.getUsedTools();
+                            for (var tools : usedTools) {
+                                if (count >= limit) break;
+
+                                var toolWrapper = tools.getTool();
+                                String toolId = toolWrapper.getShortName();
+
+                                var presentation = context.getPresentation(toolWrapper);
+                                if (presentation == null) continue;
+
+                                var problemElements = presentation.getProblemElements();
+                                if (problemElements == null || problemElements.isEmpty()) continue;
+
+                                // SynchronizedBidiMultiMap uses keys() and get(key)
+                                for (var refEntity : problemElements.keys()) {
+                                    if (count >= limit) break;
+
+                                    var descriptors = problemElements.get(refEntity);
+                                    if (descriptors == null) continue;
+
+                                    for (var descriptor : descriptors) {
+                                        if (count >= limit) break;
+
+                                        String description = descriptor.getDescriptionTemplate();
+                                        if (description == null || description.isEmpty()) continue;
+
+                                        // Clean up HTML/template markers from description
+                                        description = description.replaceAll("<[^>]+>", "")
+                                                                .replaceAll("&lt;", "<")
+                                                                .replaceAll("&gt;", ">")
+                                                                .replaceAll("&amp;", "&")
+                                                                .replaceAll("#ref", "")
+                                                                .replaceAll("#loc", "")
+                                                                .trim();
+
+                                        int line = -1;
+                                        String filePath = "";
+                                        String severity = "WARNING";
+
+                                        // ProblemDescriptor has line/file info; CommonProblemDescriptor does not
+                                        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+                                            line = pd.getLineNumber() + 1;
+                                            var psiElement = pd.getPsiElement();
+                                            if (psiElement != null) {
+                                                var containingFile = psiElement.getContainingFile();
+                                                if (containingFile != null) {
+                                                    var vf = containingFile.getVirtualFile();
+                                                    if (vf != null) {
+                                                        filePath = basePath != null
+                                                                ? relativize(basePath, vf.getPath())
+                                                                : vf.getName();
+                                                        filesSet.add(filePath);
+                                                    }
+                                                }
+                                            }
+                                            if (pd.getHighlightType() != null) {
+                                                severity = pd.getHighlightType().toString();
+                                            }
+                                        }
+
+                                        problems.add(String.format("%s:%d [%s/%s] %s",
+                                                filePath, line, severity, toolId, description));
+                                        count++;
+                                    }
+                                }
+                            }
+
+                            int filesWithProblems = filesSet.size();
+
+                            if (problems.isEmpty()) {
+                                resultFuture.complete("No inspection problems found. " +
+                                        "The code passed all enabled inspections in the current profile (" +
+                                        profile.getName() + ").");
+                            } else {
+                                String summary = String.format(
+                                        "Found %d problems across %d files (profile: %s, showing up to %d):\n\n",
+                                        problems.size(), filesWithProblems, profile.getName(), limit);
+                                resultFuture.complete(summary + String.join("\n", problems));
+                            }
+                        } catch (Exception e) {
+                            LOG.error("Error collecting inspection results", e);
+                            resultFuture.complete("Error collecting results: " + e.getMessage());
+                        }
                     });
 
-                    boolean fileHasProblems = false;
-                    for (var h : highlights) {
-                        if (count >= limit) break;
-                        if (h.getDescription() == null) continue;
-                        
-                        // Filter to only show actual problems
-                        var severity = h.getSeverity();
-                        if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
-                            severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
-                            continue;
-                        }
-
-                        fileHasProblems = true;
-                        int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                        String severityName = severity.getName();
-                        problems.add(String.format("%s:%d [%s] %s",
-                                relPath, line, severityName, h.getDescription()));
-                        count++;
-                    }
-
-                    if (fileHasProblems) {
-                        filesWithProblems++;
-                    }
+                    context.close(true);
 
                 } catch (Exception e) {
-                    LOG.warn("Failed to analyze file with inspections: " + relPath, e);
+                    LOG.error("Error during inspection execution", e);
+                    resultFuture.complete("Error during inspection: " + e.getMessage());
                 }
-
-                // Progress logging every 10 files
-                if (filesAnalyzed % 10 == 0) {
-                    LOG.info("Analyzed " + filesAnalyzed + "/" + filesToAnalyze.size() + " files, found " + count + " problems so far");
-                }
-            }
-
-            LOG.info("Analysis complete: " + filesAnalyzed + " files analyzed, " + count + " problems found");
-
-            if (problems.isEmpty()) {
-                resultFuture.complete(String.format("No problems found after analyzing %d files. " +
-                        "The code appears to be clean!", filesAnalyzed));
-            } else {
-                String summary = String.format("Found %d problems across %d files (analyzed %d files total, showing up to %d problems):\n\n",
-                        count, filesWithProblems, filesAnalyzed, limit);
-                resultFuture.complete(summary + String.join("\n", problems));
-            }
+            });
 
         } catch (Exception e) {
-            LOG.error("Error in triggered analysis", e);
-            resultFuture.complete("Error during analysis: " + e.getMessage());
+            LOG.error("Error setting up inspections", e);
+            resultFuture.complete("Error setting up inspections: " + e.getMessage());
         }
     }
 

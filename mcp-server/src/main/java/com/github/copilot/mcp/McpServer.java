@@ -268,15 +268,25 @@ public class McpServer {
                 ),
                 List.of("path")));
 
-        tools.add(buildTool("run_inspections",
-                "Run IntelliJ's code inspections on the entire project. " +
-                        "By default, reads CACHED analysis results (fast). " +
-                        "Set trigger_analysis=true to run actual analysis (slow but comprehensive, finds all problems). " +
-                        "Returns warnings, errors, and code quality issues.",
+        tools.add(buildTool("get_highlights",
+                "Get cached syntax highlights and daemon-level diagnostics for project source files. " +
+                        "Reads results from IntelliJ's on-the-fly analysis (already-analyzed files only). " +
+                        "Fast but limited — only returns issues the IDE has already detected in memory. " +
+                        "For comprehensive code quality analysis, use run_inspections instead.",
                 Map.of(
-                        "scope", Map.of("type", "string", "description", "Analysis scope: 'project' (default) for all files"),
-                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)"),
-                        "trigger_analysis", Map.of("type", "boolean", "description", "If true, triggers actual analysis instead of reading cache (default: false). Much slower but comprehensive.")
+                        "scope", Map.of("type", "string", "description", "Analysis scope: 'project' (default) for all source files"),
+                        "limit", Map.of("type", "integer", "description", "Maximum number of highlights to return (default: 100)")
+                ),
+                List.of()));
+
+        tools.add(buildTool("run_inspections",
+                "Run IntelliJ's full code inspection engine on the entire project (same as Analyze > Inspect Code). " +
+                        "Triggers comprehensive analysis using the current inspection profile. " +
+                        "Finds code quality issues, security vulnerabilities, typos, complexity warnings, " +
+                        "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Problems tool window. " +
+                        "This is SLOW (may take minutes) but thorough.",
+                Map.of(
+                        "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
                 ),
                 List.of()));
 
