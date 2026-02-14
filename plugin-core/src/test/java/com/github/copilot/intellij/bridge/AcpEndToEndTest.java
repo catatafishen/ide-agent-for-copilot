@@ -133,7 +133,7 @@ class AcpEndToEndTest {
 
             assertTrue(result.has("authMethods"), "Should have authMethods");
             JsonArray authMethods = result.getAsJsonArray("authMethods");
-            assertTrue(!authMethods.isEmpty(), "Should have at least one auth method");
+            assertFalse(authMethods.isEmpty(), "Should have at least one auth method");
 
             JsonObject auth = authMethods.get(0).getAsJsonObject();
             assertNotNull(auth.get("id").getAsString());

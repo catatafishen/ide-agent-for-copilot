@@ -1930,14 +1930,14 @@ public final class PsiBridgeService implements Disposable {
      */
     private static String normalizeForMatch(String s) {
         return s.replace('\u2014', '-')   // em-dash → hyphen
-                .replace('\u2013', '-')   // en-dash → hyphen
-                .replace('\u2018', '\'')  // left single quote
-                .replace('\u2019', '\'')  // right single quote
-                .replace('\u201C', '"')   // left double quote
-                .replace('\u201D', '"')   // right double quote
-                .replace('\u00A0', ' ')   // non-breaking space
-                .replace("\r\n", "\n")    // CRLF → LF
-                .replace('\r', '\n');     // CR → LF
+            .replace('\u2013', '-')   // en-dash → hyphen
+            .replace('\u2018', '\'')  // left single quote
+            .replace('\u2019', '\'')  // right single quote
+            .replace('\u201C', '"')   // left double quote
+            .replace('\u201D', '"')   // right double quote
+            .replace('\u00A0', ' ')   // non-breaking space
+            .replace("\r\n", "\n")    // CRLF → LF
+            .replace('\r', '\n');     // CR → LF
     }
 
     /**
@@ -3380,8 +3380,6 @@ public final class PsiBridgeService implements Disposable {
                 // Try the full symbol as a class first
                 PsiElement resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
                     .invoke(facade, symbol, scope);
-
-                className = symbol;
 
                 if (resolvedClass == null) {
                     // Try splitting at the last dot to find class + member
