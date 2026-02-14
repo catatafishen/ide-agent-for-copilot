@@ -4,26 +4,35 @@
       <w>acp</w>
       <w>agentic</w>
       <w>autoload</w>
+      <w>classname</w>
       <w>copilot</w>
       <w>datetime</w>
       <w>editorconfig</w>
+      <w>envs</w>
       <w>failsafe</w>
       <w>gradle</w>
       <w>gradlew</w>
       <w>gson</w>
       <w>headless</w>
       <w>healthcheck</w>
+      <w>hgap</w>
       <w>intellij</w>
+      <w>jacoco</w>
       <w>jsonrpc</w>
+      <w>jvmargs</w>
       <w>kotlin</w>
       <w>lifecycle</w>
       <w>localhost</w>
       <w>mcp</w>
+      <w>mcpserver</w>
       <w>ndjson</w>
       <w>noop</w>
+      <w>oneline</w>
       <w>psi</w>
+      <w>qname</w>
       <w>quickfix</w>
       <w>refactor</w>
+      <w>roundtrip</w>
       <w>rsync</w>
       <w>runnable</w>
       <w>runtime</w>
@@ -35,11 +44,15 @@
       <w>stderr</w>
       <w>stdin</w>
       <w>stdout</w>
+      <w>temurin</w>
       <w>toolwindow</w>
+      <w>unicode</w>
       <w>utf</w>
       <w>uuid</w>
+      <w>vgap</w>
       <w>webhook</w>
       <w>whitespace</w>
+      <w>winget</w>
     </words>
   </dictionary>
 </component>

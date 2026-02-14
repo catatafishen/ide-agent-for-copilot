@@ -1048,7 +1048,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Custom cell renderer for plan status icons only
         tree.cellRenderer = object : javax.swing.tree.DefaultTreeCellRenderer() {
             override fun getTreeCellRendererComponent(
-                tree: javax.swing.JTree?,
+                tree: JTree?,
                 value: Any?,
                 sel: Boolean,
                 expanded: Boolean,
