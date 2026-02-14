@@ -5,17 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.io.*;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +71,7 @@ public class MockAcpServer implements Closeable {
 
                         if (method != null && requestHandlers.containsKey(method)) {
                             JsonObject result = requestHandlers.get(method).apply(
-                                    msg.has("params") ? msg.getAsJsonObject("params") : new JsonObject());
+                                msg.has("params") ? msg.getAsJsonObject("params") : new JsonObject());
 
                             if (hasId && result != null) {
                                 JsonObject response = new JsonObject();
@@ -148,8 +138,8 @@ public class MockAcpServer implements Closeable {
      */
     public List<JsonObject> getReceivedRequests(String method) {
         return receivedRequests.stream()
-                .filter(r -> method.equals(r.has("method") ? r.get("method").getAsString() : ""))
-                .toList();
+            .filter(r -> method.equals(r.has("method") ? r.get("method").getAsString() : ""))
+            .toList();
     }
 
     /**

@@ -38,17 +38,6 @@ import com.intellij.psi.search.UsageSearchContext;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import org.jetbrains.annotations.NotNull;
 
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -62,6 +51,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -148,7 +138,7 @@ public final class PsiBridgeService implements Disposable {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String toolName = request.get("name").getAsString();
         JsonObject arguments = request.has("arguments")
-                ? request.getAsJsonObject("arguments") : new JsonObject();
+            ? request.getAsJsonObject("arguments") : new JsonObject();
 
         LOG.info("PSI Bridge tool call: " + toolName + " args=" + arguments);
 
@@ -282,7 +272,7 @@ public final class PsiBridgeService implements Disposable {
             String basePath = project.getBasePath();
             String display = basePath != null ? relativize(basePath, vf.getPath()) : pathStr;
             return "Outline of " + (display != null ? display : pathStr) + ":\n"
-                    + String.join("\n", outline);
+                + String.join("\n", outline);
         });
     }
 
@@ -323,7 +313,7 @@ public final class PsiBridgeService implements Disposable {
                                     String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;
                                     if (seen.add(key)) {
                                         results.add(String.format("%s:%d [%s] %s",
-                                                relPath != null ? relPath : vf.getPath(), line, type, name));
+                                            relPath != null ? relPath : vf.getPath(), line, type, name));
                                     }
                                 }
                             }
@@ -334,40 +324,40 @@ public final class PsiBridgeService implements Disposable {
                 });
                 if (results.isEmpty())
                     return "No " + typeFilter + " symbols found (scanned " + fileCount[0]
-                            + " source files using AST analysis). This is a definitive result — no grep needed.";
+                        + " source files using AST analysis). This is a definitive result — no grep needed.";
                 return results.size() + " " + typeFilter + " symbols:\n" + String.join("\n", results);
             }
 
             // Exact word search via PSI index
 
             PsiSearchHelper.getInstance(project).processElementsWithWord(
-                    (element, offsetInElement) -> {
-                        PsiElement parent = element.getParent();
-                        if (parent instanceof PsiNamedElement named && query.equals(named.getName())) {
-                            String type = classifyElement(parent);
-                            if (type != null && (typeFilter.isEmpty() || type.equals(typeFilter))) {
-                                PsiFile file = parent.getContainingFile();
-                                if (file != null && file.getVirtualFile() != null) {
-                                    Document doc = FileDocumentManager.getInstance()
-                                            .getDocument(file.getVirtualFile());
-                                    if (doc != null) {
-                                        int line = doc.getLineNumber(parent.getTextOffset()) + 1;
-                                        String relPath = basePath != null
-                                                ? relativize(basePath, file.getVirtualFile().getPath())
-                                                : file.getVirtualFile().getPath();
-                                        String key = relPath + ":" + line;
-                                        if (seen.add(key)) {
-                                            String lineText = getLineText(doc, line - 1);
-                                            results.add(String.format("%s:%d [%s] %s",
-                                                    relPath, line, type, lineText));
-                                        }
+                (element, offsetInElement) -> {
+                    PsiElement parent = element.getParent();
+                    if (parent instanceof PsiNamedElement named && query.equals(named.getName())) {
+                        String type = classifyElement(parent);
+                        if (type != null && (typeFilter.isEmpty() || type.equals(typeFilter))) {
+                            PsiFile file = parent.getContainingFile();
+                            if (file != null && file.getVirtualFile() != null) {
+                                Document doc = FileDocumentManager.getInstance()
+                                    .getDocument(file.getVirtualFile());
+                                if (doc != null) {
+                                    int line = doc.getLineNumber(parent.getTextOffset()) + 1;
+                                    String relPath = basePath != null
+                                        ? relativize(basePath, file.getVirtualFile().getPath())
+                                        : file.getVirtualFile().getPath();
+                                    String key = relPath + ":" + line;
+                                    if (seen.add(key)) {
+                                        String lineText = getLineText(doc, line - 1);
+                                        results.add(String.format("%s:%d [%s] %s",
+                                            relPath, line, type, lineText));
                                     }
                                 }
                             }
                         }
-                        return results.size() < 50;
-                    },
-                    scope, query, UsageSearchContext.IN_CODE, true
+                    }
+                    return results.size() < 50;
+                },
+                scope, query, UsageSearchContext.IN_CODE, true
             );
 
             if (results.isEmpty()) return "No symbols found matching '" + query + "'";
@@ -398,8 +388,8 @@ public final class PsiBridgeService implements Disposable {
                     if (doc != null) {
                         int line = doc.getLineNumber(refEl.getTextOffset()) + 1;
                         String relPath = basePath != null
-                                ? relativize(basePath, file.getVirtualFile().getPath())
-                                : file.getVirtualFile().getPath();
+                            ? relativize(basePath, file.getVirtualFile().getPath())
+                            : file.getVirtualFile().getPath();
                         String lineText = getLineText(doc, line - 1);
                         results.add(String.format("%s:%d: %s", relPath, line, lineText));
                     }
@@ -410,26 +400,26 @@ public final class PsiBridgeService implements Disposable {
             // Fall back to word search if no PSI references found
             if (results.isEmpty()) {
                 PsiSearchHelper.getInstance(project).processElementsWithWord(
-                        (element, offsetInElement) -> {
-                            PsiFile file = element.getContainingFile();
-                            if (file == null || file.getVirtualFile() == null) return true;
-                            if (!filePattern.isEmpty() && !matchGlob(file.getName(), filePattern))
-                                return true;
+                    (element, offsetInElement) -> {
+                        PsiFile file = element.getContainingFile();
+                        if (file == null || file.getVirtualFile() == null) return true;
+                        if (!filePattern.isEmpty() && !matchGlob(file.getName(), filePattern))
+                            return true;
 
-                            Document doc = FileDocumentManager.getInstance()
-                                    .getDocument(file.getVirtualFile());
-                            if (doc != null) {
-                                int line = doc.getLineNumber(element.getTextOffset()) + 1;
-                                String relPath = basePath != null
-                                        ? relativize(basePath, file.getVirtualFile().getPath())
-                                        : file.getVirtualFile().getPath();
-                                String lineText = getLineText(doc, line - 1);
-                                String entry = String.format("%s:%d: %s", relPath, line, lineText);
-                                if (!results.contains(entry)) results.add(entry);
-                            }
-                            return results.size() < 100;
-                        },
-                        scope, symbol, UsageSearchContext.IN_CODE, true
+                        Document doc = FileDocumentManager.getInstance()
+                            .getDocument(file.getVirtualFile());
+                        if (doc != null) {
+                            int line = doc.getLineNumber(element.getTextOffset()) + 1;
+                            String relPath = basePath != null
+                                ? relativize(basePath, file.getVirtualFile().getPath())
+                                : file.getVirtualFile().getPath();
+                            String lineText = getLineText(doc, line - 1);
+                            String entry = String.format("%s:%d: %s", relPath, line, lineText);
+                            if (!results.contains(entry)) results.add(entry);
+                        }
+                        return results.size() < 100;
+                    },
+                    scope, symbol, UsageSearchContext.IN_CODE, true
                 );
             }
 
@@ -471,7 +461,7 @@ public final class PsiBridgeService implements Disposable {
                             sb.append(" [SDK: ").append(moduleSdk.getName()).append("]");
                         }
                         VirtualFile[] sourceRoots = ModuleRootManager.getInstance(module)
-                                .getSourceRoots(false);
+                            .getSourceRoots(false);
                         if (sourceRoots.length > 0) {
                             sb.append(" (").append(sourceRoots.length).append(" source roots)");
                         }
@@ -486,10 +476,10 @@ public final class PsiBridgeService implements Disposable {
             // Build system
             if (basePath != null) {
                 if (Files.exists(Path.of(basePath, "build.gradle.kts"))
-                        || Files.exists(Path.of(basePath, "build.gradle"))) {
+                    || Files.exists(Path.of(basePath, "build.gradle"))) {
                     sb.append("\nBuild System: Gradle\n");
                     Path gradlew = Path.of(basePath,
-                            System.getProperty("os.name").contains("Win") ? "gradlew.bat" : "gradlew");
+                        System.getProperty("os.name").contains("Win") ? "gradlew.bat" : "gradlew");
                     sb.append("Gradle Wrapper: ").append(gradlew).append("\n");
                 } else if (Files.exists(Path.of(basePath, "pom.xml"))) {
                     sb.append("\nBuild System: Maven\n");
@@ -503,7 +493,7 @@ public final class PsiBridgeService implements Disposable {
                     sb.append("\nRun Configurations (").append(configs.size()).append("):\n");
                     for (var config : configs) {
                         sb.append("  - ").append(config.getName())
-                                .append(" [").append(config.getType().getDisplayName()).append("]\n");
+                            .append(" [").append(config.getType().getDisplayName()).append("]\n");
                     }
                 }
             } catch (Exception e) {
@@ -524,9 +514,9 @@ public final class PsiBridgeService implements Disposable {
                 for (var config : configs) {
                     RunConfiguration rc = config.getConfiguration();
                     String entry = String.format("%s [%s]%s",
-                            config.getName(),
-                            config.getType().getDisplayName(),
-                            config.isTemporary() ? " (temporary)" : "");
+                        config.getName(),
+                        config.getType().getDisplayName(),
+                        config.isTemporary() ? " (temporary)" : "");
                     results.add(entry);
                 }
                 return results.size() + " run configurations:\n" + String.join("\n", results);
@@ -546,7 +536,7 @@ public final class PsiBridgeService implements Disposable {
                 var settings = RunManager.getInstance(project).findConfigurationByName(name);
                 if (settings == null) {
                     resultFuture.complete("Run configuration not found: '" + name
-                            + "'. Use list_run_configurations to see available configs.");
+                        + "'. Use list_run_configurations to see available configs.");
                     return;
                 }
 
@@ -560,9 +550,9 @@ public final class PsiBridgeService implements Disposable {
                 var env = envBuilder.build();
                 ExecutionManager.getInstance(project).restartRunProfile(env);
                 resultFuture.complete("Started run configuration: " + name
-                        + " [" + settings.getType().getDisplayName() + "]"
-                        + "\nResults will appear in the IntelliJ Run panel."
-                        + "\nUse get_test_results to check results after completion.");
+                    + " [" + settings.getType().getDisplayName() + "]"
+                    + "\nResults will appear in the IntelliJ Run panel."
+                    + "\nUse get_test_results to check results after completion.");
             } catch (Exception e) {
                 resultFuture.complete("Error running configuration: " + e.getMessage());
             }
@@ -589,7 +579,7 @@ public final class PsiBridgeService implements Disposable {
                         available.add(ct.getDisplayName());
                     }
                     resultFuture.complete("Unknown configuration type: '" + type
-                            + "'. Available types: " + String.join(", ", available));
+                        + "'. Available types: " + String.join(", ", available));
                     return;
                 }
 
@@ -607,8 +597,8 @@ public final class PsiBridgeService implements Disposable {
                 runManager.setSelectedConfiguration(settings);
 
                 resultFuture.complete("Created run configuration: " + name
-                        + " [" + configType.getDisplayName() + "]"
-                        + "\nUse run_configuration to execute it, or edit_run_configuration to modify it.");
+                    + " [" + configType.getDisplayName() + "]"
+                    + "\nUse run_configuration to execute it, or edit_run_configuration to modify it.");
             } catch (Exception e) {
                 resultFuture.complete("Error creating run configuration: " + e.getMessage());
             }
@@ -639,15 +629,15 @@ public final class PsiBridgeService implements Disposable {
                 }
                 if (args.has("jvm_args")) {
                     setViaReflection(config, "setVMParameters",
-                            args.get("jvm_args").getAsString(), changes, "JVM args");
+                        args.get("jvm_args").getAsString(), changes, "JVM args");
                 }
                 if (args.has("program_args")) {
                     setViaReflection(config, "setProgramParameters",
-                            args.get("program_args").getAsString(), changes, "program args");
+                        args.get("program_args").getAsString(), changes, "program args");
                 }
                 if (args.has("working_dir")) {
                     setViaReflection(config, "setWorkingDirectory",
-                            args.get("working_dir").getAsString(), changes, "working directory");
+                        args.get("working_dir").getAsString(), changes, "working directory");
                 }
 
                 // Apply type-specific properties
@@ -659,11 +649,11 @@ public final class PsiBridgeService implements Disposable {
 
                 if (changes.isEmpty()) {
                     resultFuture.complete("No changes applied. Available properties: "
-                            + "env (object), jvm_args, program_args, working_dir, "
-                            + "main_class, test_class, test_method, tasks");
+                        + "env (object), jvm_args, program_args, working_dir, "
+                        + "main_class, test_class, test_method, tasks");
                 } else {
                     resultFuture.complete("Updated run configuration '" + name + "': "
-                            + String.join(", ", changes));
+                        + String.join(", ", changes));
                 }
             } catch (Exception e) {
                 resultFuture.complete("Error editing run configuration: " + e.getMessage());
@@ -679,7 +669,7 @@ public final class PsiBridgeService implements Disposable {
         for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
             String displayName = ct.getDisplayName().toLowerCase();
             if (displayName.equals(type) || displayName.contains(type)
-                    || ct.getId().toLowerCase().contains(type)) {
+                || ct.getId().toLowerCase().contains(type)) {
                 return ct;
             }
         }
@@ -713,7 +703,7 @@ public final class PsiBridgeService implements Disposable {
                     ClassInfo classInfo = resolveClass(testClass);
                     data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
                     data.getClass().getField("TEST_OBJECT").set(data,
-                            args.has("test_method") ? "method" : "class");
+                        args.has("test_method") ? "method" : "class");
                     // Auto-set module if not explicitly provided
                     if (!args.has("module_name") && classInfo.module() != null) {
                         try {
@@ -726,21 +716,21 @@ public final class PsiBridgeService implements Disposable {
                 }
                 if (args.has("test_method")) {
                     data.getClass().getField("METHOD_NAME").set(data,
-                            args.get("test_method").getAsString());
+                        args.get("test_method").getAsString());
                     data.getClass().getField("TEST_OBJECT").set(data, "method");
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
                 // Fallback: try direct setter
                 setViaReflection(config, "setMainClassName",
-                        args.has("test_class") ? args.get("test_class").getAsString() : "", ignore, null);
+                    args.has("test_class") ? args.get("test_class").getAsString() : "", ignore, null);
             }
         }
 
         if (args.has("module_name")) {
             try {
                 Module module = ModuleManager.getInstance(project)
-                        .findModuleByName(args.get("module_name").getAsString());
+                    .findModuleByName(args.get("module_name").getAsString());
                 if (module != null) {
                     var setModule = config.getClass().getMethod("setModule", Module.class);
                     setModule.invoke(config, module);
@@ -826,10 +816,10 @@ public final class PsiBridgeService implements Disposable {
                         String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
                         List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
                         com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                                doc, project,
-                                com.intellij.lang.annotation.HighlightSeverity.WARNING,
-                                0, doc.getTextLength(),
-                                highlights::add
+                            doc, project,
+                            com.intellij.lang.annotation.HighlightSeverity.WARNING,
+                            0, doc.getTextLength(),
+                            highlights::add
                         );
 
                         for (var h : highlights) {
@@ -837,14 +827,14 @@ public final class PsiBridgeService implements Disposable {
                             int line = doc.getLineNumber(h.getStartOffset()) + 1;
                             String severity = h.getSeverity().getName();
                             problems.add(String.format("%s:%d [%s] %s",
-                                    relPath, line, severity, h.getDescription()));
+                                relPath, line, severity, h.getDescription()));
                         }
                     }
 
                     if (problems.isEmpty()) {
                         resultFuture.complete("No problems found"
-                                + (pathStr.isEmpty() ? " in open files" : " in " + pathStr)
-                                + ". Analysis is based on IntelliJ's inspections — file must be open in editor for highlights to be available.");
+                            + (pathStr.isEmpty() ? " in open files" : " in " + pathStr)
+                            + ". Analysis is based on IntelliJ's inspections — file must be open in editor for highlights to be available.");
                     } else {
                         resultFuture.complete(problems.size() + " problems:\n" + String.join("\n", problems));
                     }
@@ -954,10 +944,10 @@ public final class PsiBridgeService implements Disposable {
                 try {
                     // Get ALL severity levels
                     com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                            doc, project,
-                            null,  // Get all severities
-                            0, doc.getTextLength(),
-                            highlights::add
+                        doc, project,
+                        null,  // Get all severities
+                        0, doc.getTextLength(),
+                        highlights::add
                     );
 
                     if (!highlights.isEmpty()) {
@@ -966,7 +956,7 @@ public final class PsiBridgeService implements Disposable {
 
                     for (var h : highlights) {
                         if (h.getDescription() == null) continue;
-                        
+
                         // Filter to only show actual problems (not info/hints)
                         var severity = h.getSeverity();
                         if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
@@ -977,7 +967,7 @@ public final class PsiBridgeService implements Disposable {
                         int line = doc.getLineNumber(h.getStartOffset()) + 1;
                         String severityName = severity.getName();
                         problems.add(String.format("%s:%d [%s] %s",
-                                relPath, line, severityName, h.getDescription()));
+                            relPath, line, severityName, h.getDescription()));
                         count++;
                         if (count >= limit) break;
                     }
@@ -989,11 +979,11 @@ public final class PsiBridgeService implements Disposable {
             if (problems.isEmpty()) {
                 resultFuture.complete(String.format("No highlights found in %d files analyzed (0 files with issues). " +
                         "Note: This reads cached daemon analysis results from already-analyzed files. " +
-                        "For comprehensive code quality analysis, use run_inspections instead.", 
-                        allFiles.size()));
+                        "For comprehensive code quality analysis, use run_inspections instead.",
+                    allFiles.size()));
             } else {
                 String summary = String.format("Found %d problems across %d files (showing up to %d):\n\n",
-                        count, filesWithProblems, limit);
+                    count, filesWithProblems, limit);
                 resultFuture.complete(summary + String.join("\n", problems));
             }
         });
@@ -1004,7 +994,7 @@ public final class PsiBridgeService implements Disposable {
      * This is the same as "Analyze > Inspect Code" in the IDE menu.
      * Uses doInspections() which handles ProgressWindow, threading, and UI automatically.
      * Results appear in the IDE's Inspection Results view AND are returned as text.
-     *
+     * <p>
      * Implementation follows JetBrains' own InspectionCommandEx pattern.
      */
     @SuppressWarnings("TestOnlyProblems")
@@ -1013,7 +1003,7 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("Starting full inspection analysis...");
 
             var inspectionManagerEx = (com.intellij.codeInspection.ex.InspectionManagerEx)
-                    com.intellij.codeInspection.InspectionManager.getInstance(project);
+                com.intellij.codeInspection.InspectionManager.getInstance(project);
             var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
             var currentProfile = profileManager.getCurrentProfile();
             var scope = new com.intellij.analysis.AnalysisScope(project);
@@ -1027,7 +1017,7 @@ public final class PsiBridgeService implements Disposable {
             // Create context following JetBrains' InspectionCommandEx pattern:
             // Use GlobalInspectionContextImpl with contentManager, override notifyInspectionsFinished
             var context = new com.intellij.codeInspection.ex.GlobalInspectionContextImpl(
-                    project, inspectionManagerEx.getContentManager()) {
+                project, inspectionManagerEx.getContentManager()) {
 
                 @Override
                 protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope scope) {
@@ -1067,12 +1057,12 @@ public final class PsiBridgeService implements Disposable {
 
                                     // Clean up HTML/template markers from description
                                     description = description.replaceAll("<[^>]+>", "")
-                                                            .replaceAll("&lt;", "<")
-                                                            .replaceAll("&gt;", ">")
-                                                            .replaceAll("&amp;", "&")
-                                                            .replaceAll("#ref", "")
-                                                            .replaceAll("#loc", "")
-                                                            .trim();
+                                        .replaceAll("&lt;", "<")
+                                        .replaceAll("&gt;", ">")
+                                        .replaceAll("&amp;", "&")
+                                        .replaceAll("#ref", "")
+                                        .replaceAll("#loc", "")
+                                        .trim();
 
                                     int line = -1;
                                     String filePath = "";
@@ -1087,8 +1077,8 @@ public final class PsiBridgeService implements Disposable {
                                                 var vf = containingFile.getVirtualFile();
                                                 if (vf != null) {
                                                     filePath = basePath != null
-                                                            ? relativize(basePath, vf.getPath())
-                                                            : vf.getName();
+                                                        ? relativize(basePath, vf.getPath())
+                                                        : vf.getName();
                                                     filesSet.add(filePath);
                                                 }
                                             }
@@ -1099,7 +1089,7 @@ public final class PsiBridgeService implements Disposable {
                                     }
 
                                     problems.add(String.format("%s:%d [%s/%s] %s",
-                                            filePath, line, severity, toolId, description));
+                                        filePath, line, severity, toolId, description));
                                     count++;
                                 }
                             }
@@ -1109,13 +1099,13 @@ public final class PsiBridgeService implements Disposable {
 
                         if (problems.isEmpty()) {
                             resultFuture.complete("No inspection problems found. " +
-                                    "The code passed all enabled inspections in the current profile (" +
-                                    profileName + "). Results are also visible in the IDE's Inspection Results view.");
+                                "The code passed all enabled inspections in the current profile (" +
+                                profileName + "). Results are also visible in the IDE's Inspection Results view.");
                         } else {
                             String summary = String.format(
-                                    "Found %d problems across %d files (profile: %s, showing up to %d).\n" +
+                                "Found %d problems across %d files (profile: %s, showing up to %d).\n" +
                                     "Results are also visible in the IDE's Inspection Results view.\n\n",
-                                    problems.size(), filesWithProblems, profileName, limit);
+                                problems.size(), filesWithProblems, profileName, limit);
                             resultFuture.complete(summary + String.join("\n", problems));
                         }
                     } catch (Exception e) {
@@ -1162,7 +1152,7 @@ public final class PsiBridgeService implements Disposable {
                 });
 
                 String relPath = project.getBasePath() != null
-                        ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
+                    ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
                 resultFuture.complete("Imports optimized: " + relPath);
             } catch (Exception e) {
                 resultFuture.complete("Error optimizing imports: " + e.getMessage());
@@ -1199,7 +1189,7 @@ public final class PsiBridgeService implements Disposable {
                 });
 
                 String relPath = project.getBasePath() != null
-                        ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
+                    ? relativize(project.getBasePath(), vf.getPath()) : pathStr;
                 resultFuture.complete("Code formatted: " + relPath);
             } catch (Exception e) {
                 resultFuture.complete("Error formatting code: " + e.getMessage());
@@ -1264,7 +1254,7 @@ public final class PsiBridgeService implements Disposable {
                                 String normalized = pathStr.replace('\\', '/');
                                 String basePath = project.getBasePath();
                                 String fullPath = normalized.startsWith("/") ? normalized
-                                        : (basePath != null ? basePath + "/" + normalized : normalized);
+                                    : (basePath != null ? basePath + "/" + normalized : normalized);
                                 Path filePath = Path.of(fullPath);
                                 Files.createDirectories(filePath.getParent());
                                 Files.writeString(filePath, newContent);
@@ -1280,7 +1270,7 @@ public final class PsiBridgeService implements Disposable {
                         if (doc != null) {
                             ApplicationManager.getApplication().runWriteAction(() -> {
                                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                        project, () -> doc.setText(newContent), "Write File", null);
+                                    project, () -> doc.setText(newContent), "Write File", null);
                             });
                             autoFormatAfterWrite(pathStr);
                             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + " chars)");
@@ -1321,8 +1311,8 @@ public final class PsiBridgeService implements Disposable {
                     }
                     ApplicationManager.getApplication().runWriteAction(() -> {
                         com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                project, () -> doc.replaceString(idx, idx + oldStr.length(), newStr),
-                                "Edit File", null);
+                            project, () -> doc.replaceString(idx, idx + oldStr.length(), newStr),
+                            "Edit File", null);
                     });
                     autoFormatAfterWrite(pathStr);
                     resultFuture.complete("Edited: " + pathStr + " (replaced " + oldStr.length() + " chars with " + newStr.length() + " chars)");
@@ -1478,8 +1468,8 @@ public final class PsiBridgeService implements Disposable {
 
         // Save all documents before committing to ensure disk matches editor state
         ApplicationManager.getApplication().invokeAndWait(() ->
-                ApplicationManager.getApplication().runWriteAction(() ->
-                        FileDocumentManager.getInstance().saveAllDocuments()));
+            ApplicationManager.getApplication().runWriteAction(() ->
+                FileDocumentManager.getInstance().saveAllDocuments()));
 
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("commit");
@@ -1704,9 +1694,9 @@ public final class PsiBridgeService implements Disposable {
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 new RunContentExecutor(project, processHandler)
-                        .withTitle("Command: " + truncateForTitle(command))
-                        .withActivateToolWindow(true)
-                        .run();
+                    .withTitle("Command: " + truncateForTitle(command))
+                    .withActivateToolWindow(true)
+                    .run();
             } catch (Exception e) {
                 LOG.warn("Could not show in Run panel", e);
                 processHandler.startNotify();
@@ -1722,7 +1712,7 @@ public final class PsiBridgeService implements Disposable {
         }
 
         return (exitCode == 0 ? "✓ Command succeeded" : "✗ Command failed (exit code " + exitCode + ")")
-                + "\n\n" + truncateOutput(output.toString());
+            + "\n\n" + truncateOutput(output.toString());
     }
 
     private static String truncateForTitle(String command) {
@@ -1761,14 +1751,14 @@ public final class PsiBridgeService implements Disposable {
         if (level != null) {
             final String lvl = level;
             filtered = filtered.stream()
-                    .filter(l -> l.contains(lvl))
-                    .toList();
+                .filter(l -> l.contains(lvl))
+                .toList();
         }
         if (filter != null) {
             final String f = filter;
             filtered = filtered.stream()
-                    .filter(l -> l.contains(f))
-                    .toList();
+                .filter(l -> l.contains(f))
+                .toList();
         }
 
         int start = Math.max(0, filtered.size() - lines);
@@ -1781,7 +1771,7 @@ public final class PsiBridgeService implements Disposable {
         try {
             // Get notifications via EventLog / NotificationsManager
             var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()
-                    .getNotificationsOfType(com.intellij.notification.Notification.class, project);
+                .getNotificationsOfType(com.intellij.notification.Notification.class, project);
             if (notifications.length == 0) {
                 return "No recent notifications.";
             }
@@ -1827,7 +1817,7 @@ public final class PsiBridgeService implements Disposable {
                     String title = tabName != null ? tabName : "Agent: " + truncateForTitle(command);
                     List<String> shellCommand = shell != null ? List.of(shell) : null;
                     var createSession = managerClass.getMethod("createNewSession",
-                            String.class, String.class, List.class, boolean.class, boolean.class);
+                        String.class, String.class, List.class, boolean.class, boolean.class);
                     widget = createSession.invoke(manager, project.getBasePath(), title, shellCommand, true, true);
                     usedTab = title + " (new)";
                 }
@@ -1835,7 +1825,7 @@ public final class PsiBridgeService implements Disposable {
                 // Send command via TerminalWidget.sendCommandToExecute (works for both classic and block terminal)
                 sendTerminalCommand(widget, command);
                 resultFuture.complete("Command sent to terminal '" + usedTab + "': " + command +
-                        "\n\nNote: Use read_terminal_output to read terminal content, or run_command if you need output returned directly.");
+                    "\n\nNote: Use read_terminal_output to read terminal content, or run_command if you need output returned directly.");
 
             } catch (ClassNotFoundException e) {
                 resultFuture.complete("Terminal plugin not available. Use run_command tool instead.");
@@ -1874,7 +1864,7 @@ public final class PsiBridgeService implements Disposable {
             if (toolWindow == null) return null;
 
             var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
-                    com.intellij.ui.content.Content.class);
+                com.intellij.ui.content.Content.class);
 
             for (var content : toolWindow.getContentManager().getContents()) {
                 String displayName = content.getDisplayName();
@@ -1928,18 +1918,18 @@ public final class PsiBridgeService implements Disposable {
                 }
                 if (targetContent == null) {
                     resultFuture.complete("No terminal tab found" +
-                            (tabName != null ? " matching '" + tabName + "'" : "") + ".");
+                        (tabName != null ? " matching '" + tabName + "'" : "") + ".");
                     return;
                 }
 
                 // Find widget via findWidgetByContent
                 var manager = managerClass.getMethod("getInstance", Project.class).invoke(null, project);
                 var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
-                        com.intellij.ui.content.Content.class);
+                    com.intellij.ui.content.Content.class);
                 Object widget = findWidgetByContent.invoke(null, targetContent);
                 if (widget == null) {
                     resultFuture.complete("No terminal widget found for tab '" + targetContent.getDisplayName() +
-                            "'. The auto-created default tab may not be readable — use agent-created tabs instead.");
+                        "'. The auto-created default tab may not be readable — use agent-created tabs instead.");
                     return;
                 }
 
@@ -1953,11 +1943,11 @@ public final class PsiBridgeService implements Disposable {
                         resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' has no output.");
                     } else {
                         resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' output:\n" +
-                                truncateOutput(output));
+                            truncateOutput(output));
                     }
                 } catch (NoSuchMethodException e) {
                     resultFuture.complete("getText() not available on this terminal type (" +
-                            widget.getClass().getSimpleName() + "). Terminal output reading not supported.");
+                        widget.getClass().getSimpleName() + "). Terminal output reading not supported.");
                 }
 
             } catch (Exception e) {
@@ -2130,7 +2120,6 @@ public final class PsiBridgeService implements Disposable {
                 StringBuilder testOutput = new StringBuilder();
                 // Get test tree summary via reflection
                 var getAllTests = viewer.getClass().getMethod("getAllTests");
-                @SuppressWarnings("unchecked")
                 var tests = (java.util.List<?>) getAllTests.invoke(viewer);
                 if (tests != null && !tests.isEmpty()) {
                     testOutput.append("=== Test Results ===\n");
@@ -2227,30 +2216,30 @@ public final class PsiBridgeService implements Disposable {
             String searchName = className.contains(".") ? className.substring(className.lastIndexOf('.') + 1) : className;
             List<ClassInfo> matches = new ArrayList<>();
             PsiSearchHelper.getInstance(project).processElementsWithWord(
-                    (element, offset) -> {
-                        String type = classifyElement(element);
-                        if ("class".equals(type) && element instanceof PsiNamedElement named
-                                && searchName.equals(named.getName())) {
-                            try {
-                                var getQualifiedName = element.getClass().getMethod("getQualifiedName");
-                                String fqn = (String) getQualifiedName.invoke(element);
-                                if (fqn != null && (className.contains(".") ? fqn.equals(className) : true)) {
-                                    VirtualFile vf = element.getContainingFile().getVirtualFile();
-                                    Module mod = vf != null
-                                            ? ProjectFileIndex.getInstance(project).getModuleForFile(vf)
-                                            : null;
-                                    matches.add(new ClassInfo(fqn, mod));
-                                }
-                            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
-                                     | IllegalAccessException ignored) {
+                (element, offset) -> {
+                    String type = classifyElement(element);
+                    if ("class".equals(type) && element instanceof PsiNamedElement named
+                        && searchName.equals(named.getName())) {
+                        try {
+                            var getQualifiedName = element.getClass().getMethod("getQualifiedName");
+                            String fqn = (String) getQualifiedName.invoke(element);
+                            if (fqn != null && (className.contains(".") ? fqn.equals(className) : true)) {
+                                VirtualFile vf = element.getContainingFile().getVirtualFile();
+                                Module mod = vf != null
+                                    ? ProjectFileIndex.getInstance(project).getModuleForFile(vf)
+                                    : null;
+                                matches.add(new ClassInfo(fqn, mod));
                             }
+                        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                                 | IllegalAccessException ignored) {
                         }
-                        return true;
-                    },
-                    GlobalSearchScope.projectScope(project),
-                    searchName,
-                    UsageSearchContext.IN_CODE,
-                    true
+                    }
+                    return true;
+                },
+                GlobalSearchScope.projectScope(project),
+                searchName,
+                UsageSearchContext.IN_CODE,
+                true
             );
             return matches.isEmpty() ? new ClassInfo(className, null) : matches.get(0);
         });
@@ -2285,14 +2274,14 @@ public final class PsiBridgeService implements Disposable {
                         if (element instanceof PsiNamedElement named) {
                             String type = classifyElement(element);
                             if (("method".equals(type) || "function".equals(type))
-                                    && hasTestAnnotation(element)) {
+                                && hasTestAnnotation(element)) {
                                 String methodName = named.getName();
                                 String className = getContainingClassName(element);
                                 String relPath = relativize(basePath, vf.getPath());
                                 int line = doc != null
-                                        ? doc.getLineNumber(element.getTextOffset()) + 1 : 0;
+                                    ? doc.getLineNumber(element.getTextOffset()) + 1 : 0;
                                 tests.add(String.format("%s.%s (%s:%d)",
-                                        className, methodName, relPath, line));
+                                    className, methodName, relPath, line));
                             }
                         }
                         super.visitElement(element);
@@ -2318,7 +2307,7 @@ public final class PsiBridgeService implements Disposable {
 
         // Fall back to Gradle
         String gradlew = basePath + (System.getProperty("os.name").contains("Win")
-                ? "\\gradlew.bat" : "/gradlew");
+            ? "\\gradlew.bat" : "/gradlew");
         String taskPrefix = module.isEmpty() ? "" : ":" + module + ":";
 
         // Get JAVA_HOME from project SDK
@@ -2352,9 +2341,9 @@ public final class PsiBridgeService implements Disposable {
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 new RunContentExecutor(project, processHandler)
-                        .withTitle("Test: " + target)
-                        .withActivateToolWindow(true)
-                        .run();
+                    .withTitle("Test: " + target)
+                    .withActivateToolWindow(true)
+                    .run();
             } catch (Exception e) {
                 LOG.warn("Could not show in Run panel, starting headless", e);
                 processHandler.startNotify();
@@ -2368,7 +2357,7 @@ public final class PsiBridgeService implements Disposable {
         } catch (TimeoutException e) {
             processHandler.destroyProcess();
             return "Tests timed out after 120 seconds. Partial output:\n"
-                    + truncateOutput(output.toString());
+                + truncateOutput(output.toString());
         }
 
         // Only use JUnit XML results if the build actually succeeded or tests ran
@@ -2382,7 +2371,7 @@ public final class PsiBridgeService implements Disposable {
 
         // Report failure with process output
         return (exitCode == 0 ? "✓ Tests PASSED" : "✗ Tests FAILED (exit code " + exitCode + ")")
-                + "\n\n" + truncateOutput(output.toString());
+            + "\n\n" + truncateOutput(output.toString());
     }
 
     private String getTestResults(JsonObject args) {
@@ -2402,8 +2391,8 @@ public final class PsiBridgeService implements Disposable {
         // Try JaCoCo XML report
         for (String module : List.of("", "plugin-core", "mcp-server")) {
             Path jacocoXml = module.isEmpty()
-                    ? Path.of(basePath, "build", "reports", "jacoco", "test", "jacocoTestReport.xml")
-                    : Path.of(basePath, module, "build", "reports", "jacoco", "test", "jacocoTestReport.xml");
+                ? Path.of(basePath, "build", "reports", "jacoco", "test", "jacocoTestReport.xml")
+                : Path.of(basePath, module, "build", "reports", "jacoco", "test", "jacocoTestReport.xml");
             if (Files.exists(jacocoXml)) {
                 return parseJacocoXml(jacocoXml, file);
             }
@@ -2424,8 +2413,8 @@ public final class PsiBridgeService implements Disposable {
         }
 
         return "No coverage data found. Run tests with coverage first:\n"
-                + "  - IntelliJ: Right-click test → Run with Coverage\n"
-                + "  - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`";
+            + "  - IntelliJ: Right-click test → Run with Coverage\n"
+            + "  - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`";
     }
 
     // ---- Test & Run Helper Methods ----
@@ -2437,7 +2426,7 @@ public final class PsiBridgeService implements Disposable {
             for (var config : configs) {
                 String typeName = config.getType().getDisplayName().toLowerCase();
                 if ((typeName.contains("junit") || typeName.contains("test"))
-                        && config.getName().contains(target)) {
+                    && config.getName().contains(target)) {
                     return runConfiguration(createJsonWithName(config.getName()));
                 }
             }
@@ -2476,8 +2465,8 @@ public final class PsiBridgeService implements Disposable {
                     var getQualifiedName = anno.getClass().getMethod("getQualifiedName");
                     String qname = (String) getQualifiedName.invoke(anno);
                     if (qname != null && (qname.endsWith(".Test")
-                            || qname.endsWith(".ParameterizedTest")
-                            || qname.endsWith(".RepeatedTest"))) {
+                        || qname.endsWith(".ParameterizedTest")
+                        || qname.endsWith(".RepeatedTest"))) {
                         return true;
                     }
                 }
@@ -2493,8 +2482,8 @@ public final class PsiBridgeService implements Disposable {
             if (prev instanceof PsiNamedElement && classifyElement(prev) != null) break;
             String text = prev.getText().trim();
             if (text.startsWith("@Test") || text.startsWith("@ParameterizedTest")
-                    || text.startsWith("@RepeatedTest")
-                    || text.startsWith("@org.junit")) {
+                || text.startsWith("@RepeatedTest")
+                || text.startsWith("@org.junit")) {
                 return true;
             }
             prev = prev.getPrevSibling();
@@ -2521,7 +2510,7 @@ public final class PsiBridgeService implements Disposable {
             // Search all modules
             try (var dirs = Files.walk(Path.of(basePath), 4)) {
                 dirs.filter(p -> p.endsWith("test-results/test") && Files.isDirectory(p))
-                        .forEach(reportDirs::add);
+                    .forEach(reportDirs::add);
             } catch (IOException ignored) {
             }
         } else {
@@ -2540,7 +2529,7 @@ public final class PsiBridgeService implements Disposable {
                 for (Path xmlFile : xmlFiles.filter(p -> p.toString().endsWith(".xml")).toList()) {
                     try {
                         var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                                .parse(xmlFile.toFile());
+                            .parse(xmlFile.toFile());
                         var suites = doc.getElementsByTagName("testsuite");
                         for (int i = 0; i < suites.getLength(); i++) {
                             var suite = suites.item(i);
@@ -2552,18 +2541,18 @@ public final class PsiBridgeService implements Disposable {
 
                             // Collect failure details
                             var testcases = ((org.w3c.dom.Element) suite)
-                                    .getElementsByTagName("testcase");
+                                .getElementsByTagName("testcase");
                             for (int j = 0; j < testcases.getLength(); j++) {
                                 var tc = testcases.item(j);
                                 var failNodes = ((org.w3c.dom.Element) tc)
-                                        .getElementsByTagName("failure");
+                                    .getElementsByTagName("failure");
                                 if (failNodes.getLength() > 0) {
                                     String tcName = tc.getAttributes().getNamedItem("name")
-                                            .getNodeValue();
+                                        .getNodeValue();
                                     String cls = tc.getAttributes().getNamedItem("classname")
-                                            .getNodeValue();
+                                        .getNodeValue();
                                     String msg = failNodes.item(0).getAttributes()
-                                            .getNamedItem("message").getNodeValue();
+                                        .getNamedItem("message").getNodeValue();
                                     failures.add(String.format("  ✗ %s.%s: %s", cls, tcName, msg));
                                 }
                             }
@@ -2580,7 +2569,7 @@ public final class PsiBridgeService implements Disposable {
         int passed = totalTests - totalFailed - totalErrors - totalSkipped;
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("Test Results: %d tests, %d passed, %d failed, %d errors, %d skipped (%.1fs)\n",
-                totalTests, passed, totalFailed, totalErrors, totalSkipped, totalTime));
+            totalTests, passed, totalFailed, totalErrors, totalSkipped, totalTime));
 
         if (!failures.isEmpty()) {
             sb.append("\nFailures:\n");
@@ -2592,7 +2581,7 @@ public final class PsiBridgeService implements Disposable {
     private String parseJacocoXml(Path xmlPath, String fileFilter) {
         try {
             var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                    .parse(xmlPath.toFile());
+                .parse(xmlPath.toFile());
             var packages = doc.getElementsByTagName("package");
             List<String> lines = new ArrayList<>();
             int totalLines = 0, coveredLines = 0;
@@ -2609,14 +2598,14 @@ public final class PsiBridgeService implements Disposable {
                     for (int k = 0; k < counters.getLength(); k++) {
                         var counter = counters.item(k);
                         if ("LINE".equals(counter.getAttributes().getNamedItem("type")
-                                .getNodeValue())) {
+                            .getNodeValue())) {
                             int missed = intAttr(counter, "missed");
                             int covered = intAttr(counter, "covered");
                             totalLines += missed + covered;
                             coveredLines += covered;
                             double pct = covered * 100.0 / Math.max(1, missed + covered);
                             lines.add(String.format("  %s: %.1f%% (%d/%d lines)",
-                                    name, pct, covered, missed + covered));
+                                name, pct, covered, missed + covered));
                         }
                     }
                 }
@@ -2625,7 +2614,7 @@ public final class PsiBridgeService implements Disposable {
             if (lines.isEmpty()) return "No line coverage data in JaCoCo report";
             double totalPct = coveredLines * 100.0 / Math.max(1, totalLines);
             return String.format("Coverage: %.1f%% overall (%d/%d lines)\n\n%s",
-                    totalPct, coveredLines, totalLines, String.join("\n", lines));
+                totalPct, coveredLines, totalLines, String.join("\n", lines));
         } catch (Exception e) {
             return "Error parsing JaCoCo report: " + e.getMessage();
         }
@@ -2651,18 +2640,18 @@ public final class PsiBridgeService implements Disposable {
     private PsiElement findDefinition(String name, GlobalSearchScope scope) {
         PsiElement[] result = {null};
         PsiSearchHelper.getInstance(project).processElementsWithWord(
-                (element, offsetInElement) -> {
-                    PsiElement parent = element.getParent();
-                    if (parent instanceof PsiNamedElement named && name.equals(named.getName())) {
-                        String type = classifyElement(parent);
-                        if (type != null && !type.equals("field")) {
-                            result[0] = parent;
-                            return false; // found one, stop
-                        }
+            (element, offsetInElement) -> {
+                PsiElement parent = element.getParent();
+                if (parent instanceof PsiNamedElement named && name.equals(named.getName())) {
+                    String type = classifyElement(parent);
+                    if (type != null && !type.equals("field")) {
+                        result[0] = parent;
+                        return false; // found one, stop
                     }
-                    return true;
-                },
-                scope, name, UsageSearchContext.IN_CODE, true
+                }
+                return true;
+            },
+            scope, name, UsageSearchContext.IN_CODE, true
         );
         return result[0];
     }
@@ -2786,7 +2775,7 @@ public final class PsiBridgeService implements Disposable {
                 PsiElement resolvedClass = null;
                 // Try the full symbol as a class first
                 resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
-                        .invoke(facade, symbol, scope);
+                    .invoke(facade, symbol, scope);
 
                 if (resolvedClass == null) {
                     // Try splitting at the last dot to find class + member
@@ -2795,7 +2784,7 @@ public final class PsiBridgeService implements Disposable {
                         className = symbol.substring(0, lastDot);
                         memberName = symbol.substring(lastDot + 1);
                         resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
-                                .invoke(facade, className, scope);
+                            .invoke(facade, className, scope);
                     }
                 }
 
@@ -2840,7 +2829,7 @@ public final class PsiBridgeService implements Disposable {
                 Class<?> langDocClass = Class.forName("com.intellij.lang.LanguageDocumentation");
                 Object langDocInstance = langDocClass.getField("INSTANCE").get(null);
                 Object provider = langDocClass.getMethod("forLanguage", com.intellij.lang.Language.class)
-                        .invoke(langDocInstance, element.getLanguage());
+                    .invoke(langDocInstance, element.getLanguage());
 
                 if (provider == null) {
                     // Fallback: extract PsiDocComment directly for Java elements
@@ -2848,7 +2837,7 @@ public final class PsiBridgeService implements Disposable {
                 }
 
                 String doc = (String) provider.getClass().getMethod("generateDoc", PsiElement.class, PsiElement.class)
-                        .invoke(provider, element, null);
+                    .invoke(provider, element, null);
 
                 if (doc == null || doc.isEmpty()) {
                     return extractDocComment(element, symbol);
@@ -2856,13 +2845,13 @@ public final class PsiBridgeService implements Disposable {
 
                 // Strip HTML tags for clean text output
                 String text = doc.replaceAll("<[^>]+>", "")
-                        .replaceAll("&nbsp;", " ")
-                        .replaceAll("&lt;", "<")
-                        .replaceAll("&gt;", ">")
-                        .replaceAll("&amp;", "&")
-                        .replaceAll("&#\\d+;", "")
-                        .replaceAll("\n{3,}", "\n\n")
-                        .trim();
+                    .replaceAll("&nbsp;", " ")
+                    .replaceAll("&lt;", "<")
+                    .replaceAll("&gt;", ">")
+                    .replaceAll("&amp;", "&")
+                    .replaceAll("&#\\d+;", "")
+                    .replaceAll("\n{3,}", "\n\n")
+                    .trim();
 
                 return truncateOutput("Documentation for " + symbol + ":\n\n" + text);
             } catch (Exception e) {
@@ -2882,9 +2871,9 @@ public final class PsiBridgeService implements Disposable {
                     String text = ((PsiElement) docComment).getText();
                     // Clean up the comment markers
                     text = text.replaceAll("/\\*\\*", "")
-                            .replaceAll("\\*/", "")
-                            .replaceAll("(?m)^\\s*\\*\\s?", "")
-                            .trim();
+                        .replaceAll("\\*/", "")
+                        .replaceAll("(?m)^\\s*\\*\\s?", "")
+                        .trim();
                     return "Documentation for " + symbol + ":\n\n" + text;
                 }
             }
@@ -2979,14 +2968,13 @@ public final class PsiBridgeService implements Disposable {
         try {
             // Access GradleSettings or ExternalSystemSettings to enable source download
             Class<?> gradleSettingsClass = Class.forName(
-                    "org.jetbrains.plugins.gradle.settings.GradleSettings");
+                "org.jetbrains.plugins.gradle.settings.GradleSettings");
             Object gradleSettings = gradleSettingsClass.getMethod("getInstance", Project.class)
-                    .invoke(null, project);
+                .invoke(null, project);
 
             // Get linked project settings
-            @SuppressWarnings("unchecked")
             java.util.Collection<?> linkedSettings = (java.util.Collection<?>)
-                    gradleSettingsClass.getMethod("getLinkedProjectsSettings").invoke(gradleSettings);
+                gradleSettingsClass.getMethod("getLinkedProjectsSettings").invoke(gradleSettings);
 
             if (linkedSettings == null || linkedSettings.isEmpty()) {
                 sb.append("No Gradle project settings found.\n");
@@ -2999,10 +2987,10 @@ public final class PsiBridgeService implements Disposable {
                 Class<?> settingsClass = projectSettings.getClass();
                 // The method is on ExternalProjectSettings (parent class)
                 Class<?> externalSettingsClass = Class.forName(
-                        "com.intellij.openapi.externalSystem.settings.ExternalProjectSettings");
+                    "com.intellij.openapi.externalSystem.settings.ExternalProjectSettings");
 
                 boolean currentDownloadSources = (boolean) externalSettingsClass
-                        .getMethod("isResolveExternalAnnotations").invoke(projectSettings);
+                    .getMethod("isResolveExternalAnnotations").invoke(projectSettings);
 
                 // Try the Gradle-specific isDownloadSources if available,
                 // otherwise use the resolve annotations approach
@@ -3024,7 +3012,7 @@ public final class PsiBridgeService implements Disposable {
                     // GradleProjectSettings has isResolveModulePerSourceSet etc.
                     // Check for download sources via AdvancedSettings registry
                     Class<?> advancedSettingsClass = Class.forName(
-                            "com.intellij.openapi.options.advanced.AdvancedSettings");
+                        "com.intellij.openapi.options.advanced.AdvancedSettings");
                     Method getBoolean = advancedSettingsClass.getMethod("getBoolean", String.class);
                     boolean currentValue = (boolean) getBoolean.invoke(null, "gradle.download.sources.on.sync");
 
@@ -3071,14 +3059,14 @@ public final class PsiBridgeService implements Disposable {
     private boolean enableMavenDownloadSources(StringBuilder sb) {
         try {
             Class<?> mavenSettingsClass = Class.forName(
-                    "org.jetbrains.idea.maven.project.MavenImportingSettings");
+                "org.jetbrains.idea.maven.project.MavenImportingSettings");
             // Maven has a different settings path
             Class<?> mavenProjectsManagerClass = Class.forName(
-                    "org.jetbrains.idea.maven.project.MavenProjectsManager");
+                "org.jetbrains.idea.maven.project.MavenProjectsManager");
             Object manager = mavenProjectsManagerClass.getMethod("getInstance", Project.class)
-                    .invoke(null, project);
+                .invoke(null, project);
             Object importingSettings = mavenProjectsManagerClass.getMethod("getImportingSettings")
-                    .invoke(manager);
+                .invoke(manager);
 
             Method setDownloadSources = mavenSettingsClass.getMethod("setDownloadSourcesAutomatically", boolean.class);
             Method getDownloadSources = mavenSettingsClass.getMethod("isDownloadSourcesAutomatically");
@@ -3108,28 +3096,28 @@ public final class PsiBridgeService implements Disposable {
         try {
             // Trigger ExternalSystem project refresh (works for both Gradle and Maven)
             Class<?> externalProjectsManagerClass = Class.forName(
-                    "com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManager");
+                "com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManager");
             Object manager = externalProjectsManagerClass.getMethod("getInstance", Project.class)
-                    .invoke(null, project);
+                .invoke(null, project);
 
             // Schedule a project refresh
             Class<?> importSpecClass = Class.forName(
-                    "com.intellij.openapi.externalSystem.importing.ImportSpecBuilder");
+                "com.intellij.openapi.externalSystem.importing.ImportSpecBuilder");
             Class<?> gradleConstantsClass = Class.forName(
-                    "org.jetbrains.plugins.gradle.util.GradleConstants");
+                "org.jetbrains.plugins.gradle.util.GradleConstants");
             Object gradleSystemId = gradleConstantsClass.getField("SYSTEM_ID").get(null);
 
             Object importSpec = importSpecClass.getConstructor(Project.class,
-                            Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"))
-                    .newInstance(project, gradleSystemId);
+                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"))
+                .newInstance(project, gradleSystemId);
 
             // Trigger refresh
             Class<?> externalSystemUtil = Class.forName(
-                    "com.intellij.openapi.externalSystem.util.ExternalSystemUtil");
+                "com.intellij.openapi.externalSystem.util.ExternalSystemUtil");
             externalSystemUtil.getMethod("refreshProject", Project.class,
-                            Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"),
-                            String.class, boolean.class, boolean.class)
-                    .invoke(null, project, gradleSystemId, project.getBasePath(), false, true);
+                    Class.forName("com.intellij.openapi.externalSystem.model.ProjectSystemId"),
+                    String.class, boolean.class, boolean.class)
+                .invoke(null, project, gradleSystemId, project.getBasePath(), false, true);
 
             sb.append("\nTriggered Gradle project re-sync to download sources.\n");
             sb.append("Sources will be downloaded in the background. Check back shortly.\n");
@@ -3160,38 +3148,38 @@ public final class PsiBridgeService implements Disposable {
                 try {
                     // Get scratch file service
                     com.intellij.ide.scratch.ScratchFileService scratchService =
-                            com.intellij.ide.scratch.ScratchFileService.getInstance();
+                        com.intellij.ide.scratch.ScratchFileService.getInstance();
                     com.intellij.ide.scratch.ScratchRootType scratchRoot =
-                            com.intellij.ide.scratch.ScratchRootType.getInstance();
+                        com.intellij.ide.scratch.ScratchRootType.getInstance();
 
                     // Create scratch file in write action (now on EDT)
                     resultFile[0] = ApplicationManager.getApplication().runWriteAction(
-                            (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
-                                try {
-                                    com.intellij.openapi.vfs.VirtualFile file = scratchService.findFile(
-                                            scratchRoot,
-                                            name,
-                                            com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
-                                    );
+                        (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
+                            try {
+                                com.intellij.openapi.vfs.VirtualFile file = scratchService.findFile(
+                                    scratchRoot,
+                                    name,
+                                    com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
+                                );
 
-                                    if (file != null) {
-                                        java.io.OutputStream out = file.getOutputStream(null);
-                                        out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                                        out.close();
-                                    }
-                                    return file;
-                                } catch (java.io.IOException e) {
-                                    LOG.warn("Failed to create/write scratch file", e);
-                                    errorMsg[0] = e.getMessage();
-                                    return null;
+                                if (file != null) {
+                                    java.io.OutputStream out = file.getOutputStream(null);
+                                    out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                    out.close();
                                 }
+                                return file;
+                            } catch (java.io.IOException e) {
+                                LOG.warn("Failed to create/write scratch file", e);
+                                errorMsg[0] = e.getMessage();
+                                return null;
                             }
+                        }
                     );
 
                     // Open in editor (already on EDT)
                     if (resultFile[0] != null) {
                         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-                                .openFile(resultFile[0], true);
+                            .openFile(resultFile[0], true);
                     }
                 } catch (Exception e) {
                     LOG.warn("Failed in EDT execution", e);
@@ -3201,7 +3189,7 @@ public final class PsiBridgeService implements Disposable {
 
             if (resultFile[0] == null) {
                 return "Error: Failed to create scratch file" +
-                        (errorMsg[0] != null ? ": " + errorMsg[0] : "");
+                    (errorMsg[0] != null ? ": " + errorMsg[0] : "");
             }
 
             return "Created scratch file: " + resultFile[0].getPath() + " (" + content.length() + " chars)";

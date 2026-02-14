@@ -8,10 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -44,11 +41,11 @@ class AcpProtocolRegressionTest {
             try {
                 // Send tool_call notification
                 server.sendNotification("session/update",
-                        MockAcpServer.buildToolCall(sessionId, "call_001", "Write file", "edit", "pending"));
+                    MockAcpServer.buildToolCall(sessionId, "call_001", "Write file", "edit", "pending"));
 
                 // Send request_permission (agent-to-client request with id)
                 server.sendAgentRequest(100, "session/request_permission",
-                        MockAcpServer.buildRequestPermission(sessionId, "call_001"));
+                    MockAcpServer.buildRequestPermission(sessionId, "call_001"));
 
                 // Small delay to allow client to process and respond
                 Thread.sleep(500);
@@ -208,9 +205,9 @@ class AcpProtocolRegressionTest {
         response.add("result", result);
 
         assertTrue(response.getAsJsonObject("result").has("content"),
-                "fs/read_text_file response should use 'content' field");
+            "fs/read_text_file response should use 'content' field");
         assertFalse(response.getAsJsonObject("result").has("text"),
-                "fs/read_text_file response should NOT use 'text' field");
+            "fs/read_text_file response should NOT use 'text' field");
     }
 
     /**
@@ -405,7 +402,7 @@ class AcpProtocolRegressionTest {
         assertEquals("completed", u.get("status").getAsString());
         assertEquals(1, u.getAsJsonArray("content").size());
         assertEquals("Analysis complete", u.getAsJsonArray("content").get(0).getAsJsonObject()
-                .getAsJsonObject("content").get("text").getAsString());
+            .getAsJsonObject("content").get("text").getAsString());
     }
 
     /**
@@ -470,7 +467,7 @@ class AcpProtocolRegressionTest {
             try {
                 // Agent requests permission to edit a file
                 server.sendAgentRequest(100, "session/request_permission",
-                        MockAcpServer.buildRequestPermission(sessionId, "call_001", "edit", "Editing CopilotService.java"));
+                    MockAcpServer.buildRequestPermission(sessionId, "call_001", "edit", "Editing CopilotService.java"));
                 Thread.sleep(500);
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -508,7 +505,7 @@ class AcpProtocolRegressionTest {
         writer.flush();
         String sessionResp = reader.readLine();
         String sessionId = JsonParser.parseString(sessionResp).getAsJsonObject()
-                .getAsJsonObject("result").get("sessionId").getAsString();
+            .getAsJsonObject("result").get("sessionId").getAsString();
 
         // Send prompt — this triggers the permission request
         JsonObject promptParams = new JsonObject();
@@ -530,7 +527,7 @@ class AcpProtocolRegressionTest {
         // Look for messages that are responses (have "result" and "id" matching the permission request)
         var received = server.getReceivedRequests();
         boolean foundPermissionResponse = received.stream().anyMatch(r ->
-                r.has("id") && r.get("id").getAsLong() == 100 && r.has("result")
+            r.has("id") && r.get("id").getAsLong() == 100 && r.has("result")
         );
 
         // If we can check the response, verify it rejected
@@ -547,7 +544,7 @@ class AcpProtocolRegressionTest {
         // The key assertion: edit permission should be rejected
         if (capturedOptionId[0] != null) {
             assertEquals("reject_once", capturedOptionId[0],
-                    "Edit permission should be denied with reject_once");
+                "Edit permission should be denied with reject_once");
         }
         // If we couldn't capture the response (server may not record client responses),
         // the test still verifies the flow doesn't hang
