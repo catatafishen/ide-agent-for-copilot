@@ -261,20 +261,32 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
      * Finds the gh CLI executable, checking PATH and known install locations.
      */
     private fun findGhCli(): String? {
-        // Check PATH first
+        // Check PATH using platform-appropriate command
         try {
-            val check = ProcessBuilder("where", "gh").start()
+            val cmd = if (System.getProperty("os.name").lowercase().contains("win")) "where" else "which"
+            val check = ProcessBuilder(cmd, "gh").start()
             if (check.waitFor() == 0) return "gh"
         } catch (_: Exception) {
         }
 
         // Check known install locations
-        val knownPaths = listOf(
-            "C:\\Program Files\\GitHub CLI\\gh.exe",
-            "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
-            "C:\\Tools\\gh\\bin\\gh.exe",
-            System.getProperty("user.home") + "\\AppData\\Local\\GitHub CLI\\gh.exe"
-        )
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val knownPaths = if (isWindows) {
+            listOf(
+                "C:\\Program Files\\GitHub CLI\\gh.exe",
+                "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
+                "C:\\Tools\\gh\\bin\\gh.exe",
+                System.getProperty("user.home") + "\\AppData\\Local\\GitHub CLI\\gh.exe"
+            )
+        } else {
+            listOf(
+                "/usr/bin/gh",
+                "/usr/local/bin/gh",
+                System.getProperty("user.home") + "/.local/bin/gh",
+                "/snap/bin/gh",
+                "/home/linuxbrew/.linuxbrew/bin/gh"
+            )
+        }
         return knownPaths.firstOrNull { java.io.File(it).exists() }
     }
 
