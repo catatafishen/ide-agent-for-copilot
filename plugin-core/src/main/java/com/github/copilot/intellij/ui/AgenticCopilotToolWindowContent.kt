@@ -998,11 +998,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val infoPanel = JBPanel<JBPanel<*>>(BorderLayout())
         infoPanel.border = JBUI.Borders.empty(5)
         val infoLabel = JBLabel("Context items will be sent with each prompt")
-        infoLabel.foreground = java.awt.Color.GRAY
+        infoLabel.foreground = JBColor.GRAY
         infoPanel.add(infoLabel, BorderLayout.WEST)
 
         val countLabel = JBLabel("0 items")
-        countLabel.foreground = java.awt.Color.GRAY
+        countLabel.foreground = JBColor.GRAY
         infoPanel.add(countLabel, BorderLayout.EAST)
 
         // Update count when list changes
@@ -1055,7 +1055,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 leaf: Boolean,
                 row: Int,
                 hasFocus: Boolean
-            ): java.awt.Component {
+            ): Component {
                 val label = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
                 val node = value as? javax.swing.tree.DefaultMutableTreeNode
                 val text = node?.userObject?.toString() ?: ""
@@ -1097,17 +1097,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Empty state label shown when tree has no items
         val emptyLabel = JBLabel("No session files yet")
         emptyLabel.foreground = JBColor.GRAY
-        emptyLabel.horizontalAlignment = javax.swing.SwingConstants.CENTER
+        emptyLabel.horizontalAlignment = SwingConstants.CENTER
 
         val treeScrollPane = JBScrollPane(tree)
-        val treeCardPanel = JBPanel<JBPanel<*>>(java.awt.CardLayout())
+        val treeCardPanel = JBPanel<JBPanel<*>>(CardLayout())
         treeCardPanel.add(emptyLabel, "empty")
         treeCardPanel.add(treeScrollPane, "tree")
         treePanel.add(treeCardPanel, BorderLayout.CENTER)
 
         // Show empty/tree based on content
         fun updateTreeVisibility() {
-            val cl = treeCardPanel.layout as java.awt.CardLayout
+            val cl = treeCardPanel.layout as CardLayout
             cl.show(treeCardPanel, if (planRoot.childCount > 0) "tree" else "empty")
         }
         planTreeModel.addTreeModelListener(object : javax.swing.event.TreeModelListener {
@@ -1173,7 +1173,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 index: Int,
                 isSelected: Boolean,
                 cellHasFocus: Boolean
-            ): java.awt.Component {
+            ): Component {
                 val event = value as? TimelineEvent
                 val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
 

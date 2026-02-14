@@ -1,11 +1,21 @@
 package com.github.copilot.intellij.bridge;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration tests that use the real Copilot CLI but select the free model (0x usage)
@@ -187,10 +197,10 @@ class CopilotFreeModelIntegrationTest {
     @Order(8)
     void testEmptyResponseHandling() throws Exception {
         // Ask for minimal response
-        StringBuilder response = new StringBuilder();
         String stopReason = client.sendPrompt(sessionId,
             "Reply with an empty response - literally nothing",
-            freeModelId, response::append);
+            freeModelId, text -> {
+            });
 
         // Should complete without error regardless of content
         assertNotNull(stopReason);

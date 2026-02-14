@@ -5,7 +5,15 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +40,11 @@ public class MockAcpServer implements Closeable {
     private final List<JsonObject> receivedRequests = new CopyOnWriteArrayList<>();
     private final List<JsonObject> sentResponses = new CopyOnWriteArrayList<>();
     private Thread readerThread;
+
+    public List<JsonObject> getSentResponses() {
+        return sentResponses;
+    }
+
     private volatile boolean running = true;
 
     public MockAcpServer() throws IOException {
