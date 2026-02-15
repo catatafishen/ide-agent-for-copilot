@@ -83,29 +83,29 @@ class CopilotAcpClientTest {
     @Test
     void testModelDto() {
         CopilotAcpClient.Model model = new CopilotAcpClient.Model();
-        model.id = "gpt-4.1";
-        model.name = "GPT-4.1";
-        model.description = "Fast model";
-        model.usage = "0x";
+        model.setId("gpt-4.1");
+        model.setName("GPT-4.1");
+        model.setDescription("Fast model");
+        model.setUsage("0x");
 
-        assertEquals("gpt-4.1", model.id);
-        assertEquals("GPT-4.1", model.name);
-        assertEquals("Fast model", model.description);
-        assertEquals("0x", model.usage);
+        assertEquals("gpt-4.1", model.getId());
+        assertEquals("GPT-4.1", model.getName());
+        assertEquals("Fast model", model.getDescription());
+        assertEquals("0x", model.getUsage());
     }
 
     @Test
     void testAuthMethodDto() {
         CopilotAcpClient.AuthMethod auth = new CopilotAcpClient.AuthMethod();
-        auth.id = "copilot-login";
-        auth.name = "Log in with Copilot CLI";
-        auth.command = "copilot.exe";
-        auth.args = List.of("login");
+        auth.setId("copilot-login");
+        auth.setName("Log in with Copilot CLI");
+        auth.setCommand("copilot.exe");
+        auth.setArgs(List.of("login"));
 
-        assertEquals("copilot-login", auth.id);
-        assertEquals("copilot.exe", auth.command);
-        assertEquals(1, auth.args.size());
-        assertEquals("login", auth.args.getFirst());
+        assertEquals("copilot-login", auth.getId());
+        assertEquals("copilot.exe", auth.getCommand());
+        assertEquals(1, auth.getArgs().size());
+        assertEquals("login", auth.getArgs().getFirst());
     }
 
     @Test
@@ -177,15 +177,15 @@ class CopilotAcpClientTest {
 
             // Verify model structure
             CopilotAcpClient.Model first = models.getFirst();
-            assertNotNull(first.id, "Model should have id");
-            assertNotNull(first.name, "Model should have name");
-            assertFalse(first.id.isEmpty());
+            assertNotNull(first.getId(), "Model should have id");
+            assertNotNull(first.getName(), "Model should have name");
+            assertFalse(first.getId().isEmpty());
         }
 
         @Test
         void testListModelsContainsKnownModels() throws CopilotException {
             List<CopilotAcpClient.Model> models = client.listModels();
-            List<String> modelIds = models.stream().map(m -> m.id).toList();
+            List<String> modelIds = models.stream().map(m -> m.getId()).toList();
 
             // At least some of these should be present
             boolean hasGpt = modelIds.stream().anyMatch(id -> id.startsWith("gpt-"));
@@ -198,8 +198,8 @@ class CopilotAcpClientTest {
             CopilotAcpClient.AuthMethod auth = client.getAuthMethod();
             // Auth method should always be present from initialize
             assertNotNull(auth, "Auth method should not be null");
-            assertNotNull(auth.id);
-            assertNotNull(auth.name);
+            assertNotNull(auth.getId());
+            assertNotNull(auth.getName());
         }
 
         @Test
@@ -221,10 +221,10 @@ class CopilotAcpClientTest {
             List<CopilotAcpClient.Model> models = client.listModels();
             // Pick the cheapest model
             String cheapModel = models.stream()
-                .filter(m -> "0x".equals(m.usage) || "0.33x".equals(m.usage))
+                .filter(m -> "0x".equals(m.getUsage()) || "0.33x".equals(m.getUsage()))
                 .findFirst()
-                .map(m -> m.id)
-                .orElse(models.getLast().id);
+                .map(m -> m.getId())
+                .orElse(models.getLast().getId());
 
             StringBuilder response = new StringBuilder();
             String stopReason = client.sendPrompt(sessionId,

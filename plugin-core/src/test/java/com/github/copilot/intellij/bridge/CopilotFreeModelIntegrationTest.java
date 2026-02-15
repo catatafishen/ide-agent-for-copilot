@@ -58,10 +58,10 @@ class CopilotFreeModelIntegrationTest {
         List<CopilotAcpClient.Model> models = client.listModels();
         // Select free model (0x) or cheapest available
         freeModelId = models.stream()
-            .filter(m -> "0x".equals(m.usage))
+            .filter(m -> "0x".equals(m.getUsage()))
             .findFirst()
-            .or(() -> models.stream().filter(m -> "0.33x".equals(m.usage)).findFirst())
-            .map(m -> m.id)
+            .or(() -> models.stream().filter(m -> "0.33x".equals(m.getUsage())).findFirst())
+            .map(m -> m.getId())
             .orElse(null);
 
         Assumptions.assumeTrue(freeModelId != null,
@@ -78,12 +78,12 @@ class CopilotFreeModelIntegrationTest {
     void testFreeModelExists() throws Exception {
         List<CopilotAcpClient.Model> models = client.listModels();
         CopilotAcpClient.Model freeModel = models.stream()
-            .filter(m -> m.id.equals(freeModelId))
+            .filter(m -> m.getId().equals(freeModelId))
             .findFirst().orElse(null);
 
         assertNotNull(freeModel, "Free model should exist");
-        assertEquals("0x", freeModel.usage, "Free model usage should be 0x");
-        assertNotNull(freeModel.name, "Free model should have a name");
+        assertEquals("0x", freeModel.getUsage(), "Free model usage should be 0x");
+        assertNotNull(freeModel.getName(), "Free model should have a name");
     }
 
     @Test
@@ -152,9 +152,9 @@ class CopilotFreeModelIntegrationTest {
         // Re-resolve free model
         List<CopilotAcpClient.Model> models = client.listModels();
         freeModelId = models.stream()
-            .filter(m -> "0x".equals(m.usage))
+            .filter(m -> "0x".equals(m.getUsage()))
             .findFirst()
-            .map(m -> m.id)
+            .map(m -> m.getId())
             .orElse(null);
         Assumptions.assumeTrue(freeModelId != null);
 
@@ -172,9 +172,9 @@ class CopilotFreeModelIntegrationTest {
 
         // All models should have required fields
         for (CopilotAcpClient.Model model : models) {
-            assertNotNull(model.id, "Model id required");
-            assertFalse(model.id.isEmpty(), "Model id should not be empty");
-            assertNotNull(model.name, "Model name required");
+            assertNotNull(model.getId(), "Model id required");
+            assertFalse(model.getId().isEmpty(), "Model id should not be empty");
+            assertNotNull(model.getName(), "Model name required");
         }
     }
 

@@ -18,7 +18,6 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +39,21 @@ import java.util.function.Consumer;
 public class CopilotAcpClient implements Closeable {
     private static final Logger LOG = Logger.getInstance(CopilotAcpClient.class);
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
+
+    // JSON-RPC field names
+    private static final String JSONRPC = "jsonrpc";
+    private static final String METHOD = "method";
+    private static final String PARAMS = "params";
+    private static final String RESULT = "result";
+    private static final String ERROR = "error";
+    private static final String MESSAGE = "message";
+    private static final String COMMAND = "command";
+    private static final String SESSION_ID = "sessionId";
+    private static final String DESCRIPTION = "description";
+    private static final String META = "_meta";
+    private static final String OPTIONS = "options";
+    private static final String OPTION_ID = "optionId";
+    private static final String USER_HOME = "user.home";
 
     /**
      * Permission kinds that are denied so the agent uses IntelliJ MCP tools instead.
@@ -79,7 +93,8 @@ public class CopilotAcpClient implements Closeable {
             closed = false; // Reset closed flag for restart
             try {
                 if (writer != null) writer.close();
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                LOG.debug("Failed to close writer during restart", e);
             }
             if (process.isAlive()) process.destroyForcibly();
             pendingRequests.clear();
@@ -148,11 +163,11 @@ public class CopilotAcpClient implements Closeable {
                     JsonObject mcpConfig = new JsonObject();
                     JsonObject servers = new JsonObject();
                     JsonObject codeTools = new JsonObject();
-                    codeTools.addProperty("command", javaPath);
+                    codeTools.addProperty(COMMAND, javaPath);
                     JsonArray args = new JsonArray();
                     args.add("-jar");
                     args.add(mcpJarPath);
-                    args.add(System.getProperty("user.home"));
+                    args.add(System.getProperty(USER_HOME));
                     codeTools.add("args", args);
                     codeTools.add("env", new JsonObject());
                     servers.add("intellij-code-tools", codeTools);
@@ -220,14 +235,14 @@ public class CopilotAcpClient implements Closeable {
         ensureStarted();
 
         JsonObject params = new JsonObject();
-        params.addProperty("cwd", cwd != null ? cwd : System.getProperty("user.home"));
+        params.addProperty("cwd", cwd != null ? cwd : System.getProperty(USER_HOME));
 
         // mcpServers must be an array in session/new (agent validates this)
         params.add("mcpServers", new JsonArray());
 
         JsonObject result = sendRequest("session/new", params);
 
-        currentSessionId = result.get("sessionId").getAsString();
+        currentSessionId = result.get(SESSION_ID).getAsString();
 
         // Parse available models
         if (result.has("models")) {
@@ -237,12 +252,12 @@ public class CopilotAcpClient implements Closeable {
                 for (JsonElement elem : modelsObj.getAsJsonArray("availableModels")) {
                     JsonObject m = elem.getAsJsonObject();
                     Model model = new Model();
-                    model.id = m.get("modelId").getAsString();
-                    model.name = m.has("name") ? m.get("name").getAsString() : model.id;
-                    model.description = m.has("description") ? m.get("description").getAsString() : "";
-                    if (m.has("_meta")) {
-                        JsonObject meta = m.getAsJsonObject("_meta");
-                        model.usage = meta.has("copilotUsage") ? meta.get("copilotUsage").getAsString() : null;
+                    model.setId(m.get("modelId").getAsString());
+                    model.setName(m.has("name") ? m.get("name").getAsString() : model.getId());
+                    model.setDescription(m.has(DESCRIPTION) ? m.get(DESCRIPTION).getAsString() : "");
+                    if (m.has(META)) {
+                        JsonObject meta = m.getAsJsonObject(META);
+                        model.setUsage(meta.has("copilotUsage") ? meta.get("copilotUsage").getAsString() : null);
                     }
                     availableModels.add(model);
                 }
@@ -310,13 +325,13 @@ public class CopilotAcpClient implements Closeable {
 
         // Register notification listener for streaming chunks
         Consumer<JsonObject> listener = notification -> {
-            String method = notification.has("method") ? notification.get("method").getAsString() : "";
+            String method = notification.has(METHOD) ? notification.get(METHOD).getAsString() : "";
             if (!"session/update".equals(method)) return;
 
-            JsonObject params = notification.getAsJsonObject("params");
+            JsonObject params = notification.getAsJsonObject(PARAMS);
             if (params == null) return;
 
-            String sid = params.has("sessionId") ? params.get("sessionId").getAsString() : "";
+            String sid = params.has(SESSION_ID) ? params.get(SESSION_ID).getAsString() : "";
             if (!sessionId.equals(sid)) {
                 LOG.info("sendPrompt: ignoring update for different session: " + sid + " (expected " + sessionId + ")");
                 return;
@@ -344,7 +359,7 @@ public class CopilotAcpClient implements Closeable {
 
         try {
             JsonObject params = new JsonObject();
-            params.addProperty("sessionId", sessionId);
+            params.addProperty(SESSION_ID, sessionId);
 
             JsonArray promptArray = new JsonArray();
 
@@ -402,11 +417,11 @@ public class CopilotAcpClient implements Closeable {
         if (closed) return;
         try {
             JsonObject notification = new JsonObject();
-            notification.addProperty("jsonrpc", "2.0");
-            notification.addProperty("method", "session/cancel");
+            notification.addProperty(JSONRPC, "2.0");
+            notification.addProperty(METHOD, "session/cancel");
             JsonObject params = new JsonObject();
-            params.addProperty("sessionId", sessionId);
-            notification.add("params", params);
+            params.addProperty(SESSION_ID, sessionId);
+            notification.add(PARAMS, params);
             sendRawMessage(notification);
             LOG.info("Sent session/cancel for session " + sessionId);
         } catch (RuntimeException e) {
@@ -429,20 +444,20 @@ public class CopilotAcpClient implements Closeable {
         if (authMethods == null || authMethods.isEmpty()) return null;
         JsonObject first = authMethods.get(0).getAsJsonObject();
         AuthMethod method = new AuthMethod();
-        method.id = first.has("id") ? first.get("id").getAsString() : "";
-        method.name = first.has("name") ? first.get("name").getAsString() : "";
-        method.description = first.has("description") ? first.get("description").getAsString() : "";
-        if (first.has("_meta")) {
-            JsonObject meta = first.getAsJsonObject("_meta");
+        method.setId(first.has("id") ? first.get("id").getAsString() : "");
+        method.setName(first.has("name") ? first.get("name").getAsString() : "");
+        method.setDescription(first.has(DESCRIPTION) ? first.get(DESCRIPTION).getAsString() : "");
+        if (first.has(META)) {
+            JsonObject meta = first.getAsJsonObject(META);
             if (meta.has("terminal-auth")) {
                 JsonObject termAuth = meta.getAsJsonObject("terminal-auth");
-                method.command = termAuth.has("command") ? termAuth.get("command").getAsString() : null;
+                method.setCommand(termAuth.has(COMMAND) ? termAuth.get(COMMAND).getAsString() : null);
                 if (termAuth.has("args")) {
                     List<String> args = new ArrayList<>();
                     for (JsonElement a : termAuth.getAsJsonArray("args")) {
                         args.add(a.getAsString());
                     }
-                    method.args = args;
+                    method.setArgs(args);
                 }
             }
         }
@@ -483,10 +498,10 @@ public class CopilotAcpClient implements Closeable {
 
         try {
             JsonObject request = new JsonObject();
-            request.addProperty("jsonrpc", "2.0");
+            request.addProperty(JSONRPC, "2.0");
             request.addProperty("id", id);
-            request.addProperty("method", method);
-            request.add("params", params);
+            request.addProperty(METHOD, method);
+            request.add(PARAMS, params);
 
             String json = gson.toJson(request);
             LOG.info("ACP request: " + method + " id=" + id + " params=" + gson.toJson(params));
@@ -505,7 +520,7 @@ public class CopilotAcpClient implements Closeable {
         } catch (ExecutionException e) {
             pendingRequests.remove(id);
             Throwable cause = e.getCause();
-            if (cause instanceof CopilotException) throw (CopilotException) cause;
+            if (cause instanceof CopilotException copilotException) throw copilotException;
             throw new CopilotException("ACP request failed: " + method + " - " + cause.getMessage(), e, false);
         } catch (InterruptedException e) {
             pendingRequests.remove(id);
@@ -531,7 +546,7 @@ public class CopilotAcpClient implements Closeable {
                     JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
 
                     boolean hasId = msg.has("id") && !msg.get("id").isJsonNull();
-                    boolean hasMethod = msg.has("method");
+                    boolean hasMethod = msg.has(METHOD);
 
                     if (hasId && hasMethod) {
                         // Agent-to-client request (e.g., session/request_permission)
@@ -542,7 +557,7 @@ public class CopilotAcpClient implements Closeable {
                             try {
                                 listener.accept(msg);
                             } catch (RuntimeException e) {
-                                LOG.warn("Listener error", e);
+                                LOG.debug("Error forwarding notification to listener", e);
                             }
                         }
                     } else if (hasId) {
@@ -550,19 +565,20 @@ public class CopilotAcpClient implements Closeable {
                         long id = msg.get("id").getAsLong();
                         CompletableFuture<JsonObject> future = pendingRequests.remove(id);
                         if (future != null) {
-                            if (msg.has("error")) {
-                                JsonObject error = msg.getAsJsonObject("error");
-                                String errorMessage = error.has("message") ? error.get("message").getAsString() : "Unknown error";
+                            if (msg.has(ERROR)) {
+                                JsonObject error = msg.getAsJsonObject(ERROR);
+                                String errorMessage = error.has(MESSAGE) ? error.get(MESSAGE).getAsString() : "Unknown error";
                                 LOG.warn("ACP error response for request id=" + id + ": " + gson.toJson(error));
                                 if (error.has("data") && !error.get("data").isJsonNull()) {
                                     try {
                                         errorMessage = error.get("data").getAsString();
-                                    } catch (ClassCastException | IllegalStateException ignored) {
+                                    } catch (ClassCastException | IllegalStateException e) {
+                                        LOG.debug("Error extracting error data as string", e);
                                     }
                                 }
                                 future.completeExceptionally(new CopilotException("ACP error: " + errorMessage, null, false));
-                            } else if (msg.has("result")) {
-                                future.complete(msg.getAsJsonObject("result"));
+                            } else if (msg.has(RESULT)) {
+                                future.complete(msg.getAsJsonObject(RESULT));
                             } else {
                                 future.complete(new JsonObject());
                             }
@@ -624,12 +640,12 @@ public class CopilotAcpClient implements Closeable {
      * Route an agent-to-client request to the appropriate handler.
      */
     private void handleAgentRequest(JsonObject msg) {
-        String reqMethod = msg.get("method").getAsString();
+        String reqMethod = msg.get(METHOD).getAsString();
         long reqId = msg.get("id").getAsLong();
         LOG.info("ACP agent request: " + reqMethod + " id=" + reqId);
 
         if ("session/request_permission".equals(reqMethod)) {
-            handlePermissionRequest(reqId, msg.has("params") ? msg.getAsJsonObject("params") : null);
+            handlePermissionRequest(reqId, msg.has(PARAMS) ? msg.getAsJsonObject(PARAMS) : null);
         } else {
             sendErrorResponse(reqId, -32601, "Method not supported: " + reqMethod);
         }
@@ -669,7 +685,7 @@ public class CopilotAcpClient implements Closeable {
      */
     private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
         JsonObject retryParams = new JsonObject();
-        retryParams.addProperty("sessionId", sessionId);
+        retryParams.addProperty(SESSION_ID, sessionId);
         JsonArray retryPrompt = new JsonArray();
         JsonObject retryContent = new JsonObject();
         retryContent.addProperty("type", "text");
@@ -703,12 +719,12 @@ public class CopilotAcpClient implements Closeable {
 
     private void sendErrorResponse(long reqId, int code, String message) {
         JsonObject response = new JsonObject();
-        response.addProperty("jsonrpc", "2.0");
+        response.addProperty(JSONRPC, "2.0");
         response.addProperty("id", reqId);
         JsonObject error = new JsonObject();
         error.addProperty("code", code);
-        error.addProperty("message", message);
-        response.add("error", error);
+        error.addProperty(MESSAGE, message);
+        response.add(ERROR, error);
         sendRawMessage(response);
     }
 
@@ -722,9 +738,9 @@ public class CopilotAcpClient implements Closeable {
     public String getModelMultiplier(@NotNull String modelId) {
         if (availableModels == null) return "1x";
         return availableModels.stream()
-            .filter(m -> modelId.equals(m.id))
+            .filter(m -> modelId.equals(m.getId()))
             .findFirst()
-            .map(m -> m.usage != null ? m.usage : "1x")
+            .map(m -> m.getUsage() != null ? m.getUsage() : "1x")
             .orElse("1x");
     }
 
@@ -743,7 +759,11 @@ public class CopilotAcpClient implements Closeable {
                 String path = new String(check.getInputStream().readAllBytes()).trim().split("\\r?\\n")[0];
                 if (new File(path).exists()) return path;
             }
-        } catch (IOException | InterruptedException ignored) {
+        } catch (IOException e) {
+            LOG.debug("Failed to check for copilot in PATH", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.debug("Interrupted while checking for copilot in PATH", e);
         }
 
         // Check known Windows winget install location
@@ -755,7 +775,7 @@ public class CopilotAcpClient implements Closeable {
 
         // Check common Linux/macOS locations (NVM, global npm, Homebrew)
         if (!isWindows) {
-            String home = System.getProperty("user.home");
+            String home = System.getProperty(USER_HOME);
             List<String> candidates = new ArrayList<>();
 
             // NVM-managed node installations
@@ -833,59 +853,13 @@ public class CopilotAcpClient implements Closeable {
         return null;
     }
 
-    /**
-     * Call a tool on the PSI bridge HTTP server.
-     * Returns the result string, or null if bridge is unavailable.
-     */
-    private String callPsiBridge(String toolName, JsonObject arguments) {
-        try {
-            java.nio.file.Path bridgeFile = java.nio.file.Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
-            if (!java.nio.file.Files.exists(bridgeFile)) return null;
-
-            String content = java.nio.file.Files.readString(bridgeFile);
-            JsonObject bridge = JsonParser.parseString(content).getAsJsonObject();
-            int port = bridge.get("port").getAsInt();
-
-            java.net.URL url = java.net.URI.create("http://127.0.0.1:" + port + "/tools/call").toURL();
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30000);
-            conn.setRequestProperty("Content-Type", "application/json");
-
-            JsonObject request = new JsonObject();
-            request.addProperty("name", toolName);
-            request.add("arguments", arguments);
-
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(gson.toJson(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            }
-
-            if (conn.getResponseCode() == 200) {
-                String resp = new String(conn.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                JsonObject result = JsonParser.parseString(resp).getAsJsonObject();
-                return result.has("result") ? result.get("result").getAsString() : null;
-            }
-        } catch (IOException e) {
-            LOG.debug("PSI bridge call failed for " + toolName + ": " + e.getMessage());
-        }
-        return null;
-    }
-
-    private static JsonObject createArgs(String key, String value) {
-        JsonObject args = new JsonObject();
-        args.addProperty(key, value);
-        return args;
-    }
-
     private String findAllowOption(JsonObject reqParams) {
-        if (reqParams != null && reqParams.has("options")) {
-            for (JsonElement opt : reqParams.getAsJsonArray("options")) {
+        if (reqParams != null && reqParams.has(OPTIONS)) {
+            for (JsonElement opt : reqParams.getAsJsonArray(OPTIONS)) {
                 JsonObject option = opt.getAsJsonObject();
                 String kind = option.has("kind") ? option.get("kind").getAsString() : "";
                 if ("allow_once".equals(kind) || "allow_always".equals(kind)) {
-                    return option.get("optionId").getAsString();
+                    return option.get(OPTION_ID).getAsString();
                 }
             }
         }
@@ -893,12 +867,12 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private String findRejectOption(JsonObject reqParams) {
-        if (reqParams != null && reqParams.has("options")) {
-            for (JsonElement opt : reqParams.getAsJsonArray("options")) {
+        if (reqParams != null && reqParams.has(OPTIONS)) {
+            for (JsonElement opt : reqParams.getAsJsonArray(OPTIONS)) {
                 JsonObject option = opt.getAsJsonObject();
                 String kind = option.has("kind") ? option.get("kind").getAsString() : "";
                 if ("reject_once".equals(kind) || "reject_always".equals(kind)) {
-                    return option.get("optionId").getAsString();
+                    return option.get(OPTION_ID).getAsString();
                 }
             }
         }
@@ -907,14 +881,14 @@ public class CopilotAcpClient implements Closeable {
 
     private void sendPermissionResponse(long reqId, String optionId) {
         JsonObject response = new JsonObject();
-        response.addProperty("jsonrpc", "2.0");
+        response.addProperty(JSONRPC, "2.0");
         response.addProperty("id", reqId);
         JsonObject result = new JsonObject();
         JsonObject outcome = new JsonObject();
         outcome.addProperty("outcome", "selected");
-        outcome.addProperty("optionId", optionId);
+        outcome.addProperty(OPTION_ID, optionId);
         result.add("outcome", outcome);
-        response.add("result", result);
+        response.add(RESULT, result);
         sendRawMessage(response);
     }
 
@@ -924,7 +898,8 @@ public class CopilotAcpClient implements Closeable {
         if (writer != null) {
             try {
                 writer.close();
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                LOG.debug("Failed to close writer during shutdown", e);
             }
         }
         if (process != null && process.isAlive()) {
@@ -933,7 +908,9 @@ public class CopilotAcpClient implements Closeable {
                 if (!process.waitFor(5, TimeUnit.SECONDS)) {
                     process.destroyForcibly();
                 }
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOG.debug("Interrupted while waiting for process shutdown", e);
                 process.destroyForcibly();
             }
         }
@@ -946,23 +923,95 @@ public class CopilotAcpClient implements Closeable {
     // DTOs
 
     public static class Model {
-        public String id;
-        public String name;
-        public String description;
-        public String usage; // e.g., "1x", "3x", "0.33x"
+        private String id;
+        private String name;
+        private String description;
+        private String usage; // e.g., "1x", "3x", "0.33x"
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public String getUsage() {
+            return usage;
+        }
+
+        public void setUsage(String usage) {
+            this.usage = usage;
+        }
     }
 
     /**
-     * ACP resource reference — file or selection context sent with prompts.
+     * ACP resource reference ? file or selection context sent with prompts.
      */
     public record ResourceReference(@NotNull String uri, @Nullable String mimeType, @NotNull String text) {
     }
 
     public static class AuthMethod {
-        public String id;
-        public String name;
-        public String description;
-        public String command;
-        public List<String> args;
+        private String id;
+        private String name;
+        private String description;
+        private String command;
+        private List<String> args;
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public String getCommand() {
+            return command;
+        }
+
+        public void setCommand(String command) {
+            this.command = command;
+        }
+
+        public List<String> getArgs() {
+            return args;
+        }
+
+        public void setArgs(List<String> args) {
+            this.args = args;
+        }
     }
 }

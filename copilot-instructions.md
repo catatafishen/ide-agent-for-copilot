@@ -237,11 +237,22 @@ Each prompt has a hard timeout of approximately **10 minutes**. Plan your work a
 - **Aim for zero warnings**: When asked to "fix highlights" or "clean up code", fix ALL warnings and errors, not just the critical ones. This project maintains high code quality standards with minimal warnings.
 - **Use the right tools in sequence**:
   1. `open_in_editor` - Opens file and triggers DaemonCodeAnalyzer (needed for SonarLint)
-  2. `get_highlights` - Shows SonarLint + IntelliJ warnings for opened files
-  3. `run_inspections` - Comprehensive IntelliJ inspection analysis (doesn't include SonarLint)
+  2. `get_highlights(path="...")` - Shows SonarLint + IntelliJ warnings for specific file
+  3. `run_inspections(scope="...")` - Comprehensive IntelliJ inspection analysis (doesn't include SonarLint)
   4. Fix issues using `apply_quickfix`, `intellij_write_file`, `add_to_dictionary`, `suppress_inspection`
   5. `optimize_imports` and `format_code` after making changes
-- **Batch by file**: Read a file once, make all edits, then move on. Do not re-read the same file repeatedly.
+  6. Check `get_highlights` again to verify fixes worked
+- **Tool efficiency guidelines**:
+  - Use `view` for exploration (fast, read-only, can see large sections)
+  - Use `intellij_read_file` only when you need to edit (returns content for old_str/new_str)
+  - Read large chunks (100-200 lines) instead of many small reads (10-20 lines)
+  - Batch related edits in a single `intellij_write_file` call when possible
+  - Don't re-read the same section multiple times - take notes in your reasoning
+- **Cognitive complexity prevention**: 
+  - When writing NEW code, check `get_highlights` after each method/class to catch complexity issues early
+  - If you see "Cognitive Complexity" warnings, refactor IMMEDIATELY by extracting methods
+  - Breaking up complex code during development is much easier than fixing it later
+  - For EXISTING large files with complexity issues, explain that major refactoring is needed but out of scope for quick fixes
 - **Stop cleanly**: If you have fixed several issues but more remain, commit what you have and tell the user to send another prompt to continue. Do not try to fix everything in one turn.
 - **Pagination is instant**: After the first `run_inspections` call, subsequent pages (with `offset`) are served from cache in milliseconds.
 - **Do NOT rewrite entire files**: Use `old_str`/`new_str` partial edits. Full file writes risk data loss and are slow.
