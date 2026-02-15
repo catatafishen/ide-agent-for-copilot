@@ -717,6 +717,40 @@ public class CopilotAcpClient implements Closeable {
             if (new File(wingetPath).exists()) return wingetPath;
         }
 
+        // Check common Linux/macOS locations (NVM, global npm, Homebrew)
+        if (!isWindows) {
+            String home = System.getProperty("user.home");
+            List<String> candidates = new ArrayList<>();
+
+            // NVM-managed node installations
+            File nvmDir = new File(home, ".nvm/versions/node");
+            if (nvmDir.isDirectory()) {
+                File[] nodeDirs = nvmDir.listFiles(File::isDirectory);
+                if (nodeDirs != null) {
+                    // Sort descending to prefer latest version
+                    java.util.Arrays.sort(nodeDirs, (a, b) -> b.getName().compareTo(a.getName()));
+                    for (File nodeDir : nodeDirs) {
+                        candidates.add(new File(nodeDir, "bin/copilot").getAbsolutePath());
+                    }
+                }
+            }
+
+            // Common global npm/yarn locations
+            candidates.add(home + "/.local/bin/copilot");
+            candidates.add("/usr/local/bin/copilot");
+            candidates.add(home + "/.npm-global/bin/copilot");
+            candidates.add(home + "/.yarn/bin/copilot");
+            // Homebrew
+            candidates.add("/opt/homebrew/bin/copilot");
+
+            for (String path : candidates) {
+                if (new File(path).exists()) {
+                    LOG.info("Found Copilot CLI at: " + path);
+                    return path;
+                }
+            }
+        }
+
         String installInstructions = isWindows
             ? "Install with: winget install GitHub.Copilot"
             : "Install with: npm install -g @anthropic-ai/copilot-cli";
