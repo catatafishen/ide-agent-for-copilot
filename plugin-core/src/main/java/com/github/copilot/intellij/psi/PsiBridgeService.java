@@ -177,7 +177,8 @@ public final class PsiBridgeService implements Disposable {
             "read_terminal_output", "get_documentation", "download_sources",
             "create_scratch_file", "get_indexing_status",
             "apply_quickfix", "refactor", "go_to_declaration",
-            "get_type_hierarchy", "create_file", "delete_file", "build_project"
+            "get_type_hierarchy", "create_file", "delete_file", "build_project",
+            "open_in_editor", "show_diff"
         };
         for (String name : toolNames) {
             JsonObject tool = new JsonObject();
@@ -270,6 +271,8 @@ public final class PsiBridgeService implements Disposable {
                 case "create_file" -> createFile(arguments);
                 case "delete_file" -> deleteFile(arguments);
                 case "build_project" -> buildProject(arguments);
+                case "open_in_editor" -> openInEditor(arguments);
+                case "show_diff" -> showDiff(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
@@ -4812,6 +4815,115 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(300, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Open a file in the editor, optionally navigating to a specific line.
+     * This makes the file visible to the user and triggers DaemonCodeAnalyzer
+     * (which enables get_highlights to return SonarLint and other external annotator results).
+     */
+    private String openInEditor(JsonObject args) throws Exception {
+        if (!args.has("file")) {
+            return "Error: 'file' parameter is required";
+        }
+        String pathStr = args.get("file").getAsString();
+        int line = args.has("line") ? args.get("line").getAsInt() : -1;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("Error: File not found: " + pathStr);
+                    return;
+                }
+
+                if (line > 0) {
+                    new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, line - 1, 0)
+                        .navigate(true);
+                } else {
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                        .openFile(vf, true);
+                }
+
+                resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : ""));
+            } catch (Exception e) {
+                resultFuture.complete("Error opening file: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Show a diff between two files, or between the current file content and a provided string,
+     * in IntelliJ's diff viewer.
+     */
+    private String showDiff(JsonObject args) throws Exception {
+        if (!args.has("file")) {
+            return "Error: 'file' parameter is required";
+        }
+        String pathStr = args.get("file").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("Error: File not found: " + pathStr);
+                    return;
+                }
+
+                if (args.has("file2")) {
+                    // Diff two files
+                    String pathStr2 = args.get("file2").getAsString();
+                    VirtualFile vf2 = resolveVirtualFile(pathStr2);
+                    if (vf2 == null) {
+                        resultFuture.complete("Error: Second file not found: " + pathStr2);
+                        return;
+                    }
+                    var content1 = com.intellij.diff.DiffContentFactory.getInstance()
+                        .create(project, vf);
+                    var content2 = com.intellij.diff.DiffContentFactory.getInstance()
+                        .create(project, vf2);
+                    var request = new com.intellij.diff.requests.SimpleDiffRequest(
+                        "Diff: " + vf.getName() + " vs " + vf2.getName(),
+                        content1, content2,
+                        vf.getName(), vf2.getName());
+                    com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
+                    resultFuture.complete("Showing diff: " + pathStr + " vs " + pathStr2);
+                } else if (args.has("content")) {
+                    // Diff file against provided content
+                    String newContent = args.get("content").getAsString();
+                    String title = args.has("title") ? args.get("title").getAsString() : "Proposed changes";
+                    var content1 = com.intellij.diff.DiffContentFactory.getInstance()
+                        .create(project, vf);
+                    var content2 = com.intellij.diff.DiffContentFactory.getInstance()
+                        .create(project, newContent, vf.getFileType());
+                    var request = new com.intellij.diff.requests.SimpleDiffRequest(
+                        title,
+                        content1, content2,
+                        "Current", "Proposed");
+                    com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
+                    resultFuture.complete("Showing diff for " + pathStr + ": current vs proposed changes");
+                } else {
+                    // Show VCS diff (uncommitted changes)
+                    var content1 = com.intellij.diff.DiffContentFactory.getInstance()
+                        .create(project, vf);
+                    com.intellij.diff.DiffManager.getInstance().showDiff(project,
+                        new com.intellij.diff.requests.SimpleDiffRequest(
+                            "File: " + vf.getName(), content1, content1, "Current", "Current"));
+                    resultFuture.complete("Opened " + pathStr + " in diff viewer. " +
+                        "Tip: pass 'file2' for two-file diff, or 'content' to diff against proposed changes.");
+                }
+            } catch (Exception e) {
+                resultFuture.complete("Error showing diff: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
     }
 
     public void dispose() {

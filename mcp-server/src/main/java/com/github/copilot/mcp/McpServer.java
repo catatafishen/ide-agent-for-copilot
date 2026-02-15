@@ -591,6 +591,36 @@ public class McpServer {
                 ),
                 List.of()));
 
+        // Editor & navigation tools
+        tools.add(buildTool("open_in_editor",
+                "Open a file in IntelliJ's editor, optionally at a specific line. " +
+                        "Use this to show files to the user after making changes, or to trigger " +
+                        "DaemonCodeAnalyzer on a file (required for get_highlights to return SonarLint findings). " +
+                        "Also useful to navigate the user to a specific location in code.",
+                Map.of(
+                        "file", Map.of("type", "string", "description", "Path to the file to open"),
+                        "line", Map.of("type", "integer", "description",
+                                "Optional: line number to navigate to (1-based)")
+                ),
+                List.of("file")));
+
+        tools.add(buildTool("show_diff",
+                "Show a visual diff in IntelliJ's diff viewer. Three modes: " +
+                        "(1) Two files: provide 'file' and 'file2'. " +
+                        "(2) File vs proposed content: provide 'file' and 'content' (great for reviewing changes before applying). " +
+                        "(3) Single file: provide only 'file' to open in diff viewer. " +
+                        "Use after making changes to show the user what was modified.",
+                Map.of(
+                        "file", Map.of("type", "string", "description", "Path to the first file"),
+                        "file2", Map.of("type", "string", "description",
+                                "Optional: path to second file for two-file diff"),
+                        "content", Map.of("type", "string", "description",
+                                "Optional: proposed new content to diff against the current file"),
+                        "title", Map.of("type", "string", "description",
+                                "Optional: title for the diff viewer window")
+                ),
+                List.of("file")));
+
         // Refactoring & code modification tools
         tools.add(buildTool("apply_quickfix",
                 "Apply an IntelliJ quick-fix to an inspection problem. Instead of manually editing code, " +
