@@ -260,6 +260,14 @@ Each prompt has a hard timeout of approximately **10 minutes**. Plan your work a
 - **Stop cleanly**: If you have fixed several issues but more remain, commit what you have and tell the user to send another prompt to continue. Do not try to fix everything in one turn.
 - **Pagination is instant**: After the first `run_inspections` call, subsequent pages (with `offset`) are served from cache in milliseconds.
 - **Do NOT rewrite entire files**: Use `old_str`/`new_str` partial edits. Full file writes risk data loss and are slow.
+- **When asked to fix issues for the whole project**, use this systematic approach:
+  1. Run `run_inspections` to get overview (first page shows issue counts per file)
+  2. Group issues by file (e.g., "PsiBridgeService: 142, McpServer: 24, CopilotAcpClient: 8")
+  3. Fix ONE file at a time, starting with most issues first
+  4. After each file: format, build, commit with descriptive message
+  5. Report progress: "✅ Fixed PsiBridgeService (142→5), next: McpServer (24 issues)"
+  6. Continue until all files are done or user asks to stop
+  7. Do NOT try to fix all files in one turn - commit after each file
 
 ## 17) Prefer IDE Tools Over Shell Commands
 
