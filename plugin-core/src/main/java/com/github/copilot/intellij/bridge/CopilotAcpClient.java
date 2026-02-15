@@ -8,6 +8,7 @@ import com.google.gson.JsonParser;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.extensions.PluginId;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -802,10 +803,11 @@ public class CopilotAcpClient implements Closeable {
     private String findMcpServerJar() {
         try {
             // The JAR is bundled in the plugin's lib directory alongside plugin-core
+            PluginId pluginId = PluginId.getId("com.github.copilot.intellij");
             IdeaPluginDescriptor[] plugins = PluginManagerCore.getPlugins();
             String pluginPath = plugins.length > 0 ?
                 java.util.Arrays.stream(plugins)
-                    .filter(p -> "com.github.copilot.intellij".equals(p.getPluginId().getIdString()))
+                    .filter(p -> pluginId.equals(p.getPluginId()))
                     .findFirst()
                     .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
                     .orElse(null) : null;
