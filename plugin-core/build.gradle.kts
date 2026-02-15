@@ -63,6 +63,22 @@ tasks.named("prepareSandbox") {
             }
             logger.lifecycle("Restored sandbox config from .sandbox-config/")
         }
+
+        // Restore marketplace-installed plugins (zips/jars in system/plugins/)
+        val persistentPlugins = rootProject.file(".sandbox-plugins")
+        if (persistentPlugins.exists() && persistentPlugins.isDirectory) {
+            ideDirs?.forEach { ideDir ->
+                val systemPlugins = File(ideDir, "system/plugins")
+                systemPlugins.mkdirs()
+                persistentPlugins.listFiles()?.filter { it.extension == "zip" || it.extension == "jar" }?.forEach { src ->
+                    val dest = File(systemPlugins, src.name)
+                    if (!dest.exists()) {
+                        src.copyTo(dest)
+                    }
+                }
+            }
+            logger.lifecycle("Restored marketplace plugins from .sandbox-plugins/")
+        }
     }
 }
 

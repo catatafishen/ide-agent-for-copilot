@@ -38,6 +38,21 @@ if [ -n "$LIVE_CONFIG" ] && [ -d "$LIVE_CONFIG/options" ]; then
     rsync -a --delete "$LIVE_CONFIG/" "$PERSISTENT_CONFIG/"
 fi
 
+# Save marketplace-installed plugins (they live in system/plugins/ as zips)
+LIVE_SYSTEM_PLUGINS=$(find "$SANDBOX_BASE" -maxdepth 2 -name "plugins" -path "*/system/*" -type d 2>/dev/null | head -1)
+PERSISTENT_PLUGINS="$PROJECT_DIR/.sandbox-plugins"
+if [ -n "$LIVE_SYSTEM_PLUGINS" ] && [ -d "$LIVE_SYSTEM_PLUGINS" ]; then
+    # Only save non-built plugins (exclude our own plugin-core)
+    PLUGIN_FILES=$(find "$LIVE_SYSTEM_PLUGINS" -maxdepth 1 \( -name "*.zip" -o -name "*.jar" \) 2>/dev/null)
+    if [ -n "$PLUGIN_FILES" ]; then
+        echo "Saving marketplace plugins..."
+        mkdir -p "$PERSISTENT_PLUGINS"
+        for f in $PLUGIN_FILES; do
+            cp -p "$f" "$PERSISTENT_PLUGINS/"
+        done
+    fi
+fi
+
 # Clean build if requested
 if [ "$1" = "--clean" ]; then
     echo "Performing clean build..."
@@ -52,6 +67,19 @@ LIVE_CONFIG=$(find "$SANDBOX_BASE" -maxdepth 2 -name "config" -type d 2>/dev/nul
 if [ -n "$LIVE_CONFIG" ] && [ -d "$PERSISTENT_CONFIG/options" ]; then
     echo "Restoring sandbox config..."
     rsync -a "$PERSISTENT_CONFIG/" "$LIVE_CONFIG/"
+fi
+
+# Restore marketplace plugins after build
+LIVE_SYSTEM_PLUGINS=$(find "$SANDBOX_BASE" -maxdepth 2 -name "plugins" -path "*/system/*" -type d 2>/dev/null | head -1)
+if [ -d "$PERSISTENT_PLUGINS" ] && [ -n "$LIVE_SYSTEM_PLUGINS" ]; then
+    PLUGIN_FILES=$(find "$PERSISTENT_PLUGINS" -maxdepth 1 \( -name "*.zip" -o -name "*.jar" \) 2>/dev/null)
+    if [ -n "$PLUGIN_FILES" ]; then
+        echo "Restoring marketplace plugins..."
+        mkdir -p "$LIVE_SYSTEM_PLUGINS"
+        for f in $PLUGIN_FILES; do
+            cp -p "$f" "$LIVE_SYSTEM_PLUGINS/"
+        done
+    fi
 fi
 
 echo ""

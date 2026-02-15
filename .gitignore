@@ -52,3 +52,4 @@ integration-tests/build/
 mcp-server/build/
 
 qodana.yaml
+.sandbox-plugins/
