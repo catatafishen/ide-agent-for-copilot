@@ -280,15 +280,19 @@ public class McpServer {
                 List.of()));
 
         tools.add(buildTool("run_inspections",
-                "Run IntelliJ's full code inspection engine on the entire project (same as Analyze > Inspect Code). " +
+                "Run IntelliJ's code inspection engine (same as Analyze > Inspect Code). " +
                         "Triggers comprehensive analysis using the current inspection profile. " +
                         "Finds code quality issues, security vulnerabilities, typos, complexity warnings, " +
                         "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Inspection Results view. " +
-                        "The first call is SLOW (may take minutes) but subsequent pages are instant (cached for 5 min). " +
+                        "Use the 'scope' parameter to target a specific file or directory (much faster than whole project). " +
+                        "The first call is SLOW (may take minutes for whole project) but subsequent pages are instant (cached for 5 min). " +
                         "IMPORTANT: The response header shows 'Found N total problems ... Showing X-Y of N'. " +
                         "You MUST check if Y < N and paginate with offset to fetch ALL results before drawing conclusions. " +
                         "Do NOT assume the first page is everything.",
                 Map.of(
+                        "scope", Map.of("type", "string", "description",
+                                "Optional: file or directory path to inspect. If omitted, inspects the entire project. " +
+                                "Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"),
                         "limit", Map.of("type", "integer", "description",
                                 "Page size (default: 100). Maximum problems to return per call."),
                         "offset", Map.of("type", "integer", "description",

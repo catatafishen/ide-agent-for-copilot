@@ -34,6 +34,7 @@ import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiNamedElement;
@@ -995,12 +996,14 @@ public final class PsiBridgeService implements Disposable {
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
         int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
         String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
+        String scopePath = args.has("scope") ? args.get("scope").getAsString() : null;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
         }
 
         // Serve from cache if available and fresh (5 min TTL) — avoids re-running the full inspection
+        // Only use cache for same-scope paginated requests (offset > 0)
         long cacheAge = System.currentTimeMillis() - cachedInspectionTimestamp;
         if (offset > 0 && cachedInspectionResults != null && cacheAge < 300_000) {
             LOG.info("Serving inspection page from cache (offset=" + offset + ", cache age=" + cacheAge + "ms)");
@@ -1013,7 +1016,7 @@ public final class PsiBridgeService implements Disposable {
         // doInspections() internally uses invokeLater + Task.Backgroundable,
         // so it can be called from any thread
         try {
-            runInspectionAnalysis(limit, offset, minSeverity, resultFuture);
+            runInspectionAnalysis(limit, offset, minSeverity, scopePath, resultFuture);
         } catch (Exception e) {
             LOG.error("Error running inspections", e);
             resultFuture.complete("Error running inspections: " + e.getMessage());
@@ -1149,6 +1152,7 @@ public final class PsiBridgeService implements Disposable {
      */
     @SuppressWarnings({"TestOnlyProblems", "UnstableApiUsage"})
     private void runInspectionAnalysis(int limit, int offset, String minSeverity,
+                                       String scopePath,
                                        CompletableFuture<String> resultFuture) {
         // Severity ranking for filtering
         Map<String, Integer> severityRank = Map.of(
@@ -1162,16 +1166,44 @@ public final class PsiBridgeService implements Disposable {
         }
         final int requiredRank = minRank;
         try {
-            LOG.info("Starting full inspection analysis...");
+            LOG.info("Starting inspection analysis...");
 
             var inspectionManagerEx = (com.intellij.codeInspection.ex.InspectionManagerEx)
                 com.intellij.codeInspection.InspectionManager.getInstance(project);
             var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
             var currentProfile = profileManager.getCurrentProfile();
-            var scope = new com.intellij.analysis.AnalysisScope(project);
+
+            // Create scope based on scopePath parameter
+            com.intellij.analysis.AnalysisScope scope;
+            if (scopePath != null && !scopePath.isEmpty()) {
+                VirtualFile scopeFile = resolveVirtualFile(scopePath);
+                if (scopeFile == null) {
+                    resultFuture.complete("Error: File or directory not found: " + scopePath);
+                    return;
+                }
+                if (scopeFile.isDirectory()) {
+                    PsiDirectory psiDir = PsiManager.getInstance(project).findDirectory(scopeFile);
+                    if (psiDir == null) {
+                        resultFuture.complete("Error: Cannot resolve directory: " + scopePath);
+                        return;
+                    }
+                    scope = new com.intellij.analysis.AnalysisScope(psiDir);
+                    LOG.info("Analysis scope: directory " + scopePath);
+                } else {
+                    PsiFile psiFile = PsiManager.getInstance(project).findFile(scopeFile);
+                    if (psiFile == null) {
+                        resultFuture.complete("Error: Cannot parse file: " + scopePath);
+                        return;
+                    }
+                    scope = new com.intellij.analysis.AnalysisScope(psiFile);
+                    LOG.info("Analysis scope: file " + scopePath);
+                }
+            } else {
+                scope = new com.intellij.analysis.AnalysisScope(project);
+                LOG.info("Analysis scope: entire project");
+            }
 
             LOG.info("Using inspection profile: " + currentProfile.getName());
-            LOG.info("Analysis scope: entire project");
 
             String basePath = project.getBasePath();
             String profileName = currentProfile.getName();
