@@ -174,7 +174,9 @@ public final class PsiBridgeService implements Disposable {
             "http_request", "run_command", "read_ide_log", "get_notifications",
             "read_run_output", "run_in_terminal", "list_terminals",
             "read_terminal_output", "get_documentation", "download_sources",
-            "create_scratch_file", "get_indexing_status"
+            "create_scratch_file", "get_indexing_status",
+            "apply_quickfix", "refactor", "go_to_declaration",
+            "get_type_hierarchy", "create_file", "delete_file", "build_project"
         };
         for (String name : toolNames) {
             JsonObject tool = new JsonObject();
@@ -259,6 +261,14 @@ public final class PsiBridgeService implements Disposable {
                 case "create_scratch_file" -> createScratchFile(arguments);
                 // IDE status tools
                 case "get_indexing_status" -> getIndexingStatus(arguments);
+                // Refactoring & code modification tools
+                case "apply_quickfix" -> applyQuickfix(arguments);
+                case "refactor" -> refactor(arguments);
+                case "go_to_declaration" -> goToDeclaration(arguments);
+                case "get_type_hierarchy" -> getTypeHierarchy(arguments);
+                case "create_file" -> createFile(arguments);
+                case "delete_file" -> deleteFile(arguments);
+                case "build_project" -> buildProject(arguments);
                 default -> "Unknown tool: " + toolName;
             };
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
@@ -3945,6 +3955,731 @@ public final class PsiBridgeService implements Disposable {
             LOG.warn("Failed to create scratch file", e);
             return "Error creating scratch file: " + e.getMessage();
         }
+    }
+
+    // ==================== Refactoring & Code Modification Tools ====================
+
+    private String applyQuickfix(JsonObject args) throws Exception {
+        if (!args.has("file") || !args.has("line") || !args.has("inspection_id")) {
+            return "Error: 'file', 'line', and 'inspection_id' parameters are required";
+        }
+        String pathStr = args.get("file").getAsString();
+        int targetLine = args.get("line").getAsInt();
+        String inspectionId = args.get("inspection_id").getAsString();
+        int fixIndex = args.has("fix_index") ? args.get("fix_index").getAsInt() : 0;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("Error: File not found: " + pathStr);
+                    return;
+                }
+
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    try {
+                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                        if (psiFile == null) {
+                            resultFuture.complete("Error: Cannot parse file: " + pathStr);
+                            return;
+                        }
+
+                        Document document = FileDocumentManager.getInstance().getDocument(vf);
+                        if (document == null) {
+                            resultFuture.complete("Error: Cannot get document for: " + pathStr);
+                            return;
+                        }
+
+                        // Find the PsiElement at the target line
+                        if (targetLine < 1 || targetLine > document.getLineCount()) {
+                            resultFuture.complete("Error: Line " + targetLine + " is out of bounds " +
+                                "(file has " + document.getLineCount() + " lines)");
+                            return;
+                        }
+                        int lineStartOffset = document.getLineStartOffset(targetLine - 1);
+                        int lineEndOffset = document.getLineEndOffset(targetLine - 1);
+
+                        // Run local inspections on the file to find the matching problem
+                        var inspectionManager = com.intellij.codeInspection.InspectionManager.getInstance(project);
+                        var profile = com.intellij.profile.codeInspection.InspectionProjectProfileManager
+                            .getInstance(project).getCurrentProfile();
+                        var toolWrapper = profile.getInspectionTool(inspectionId, project);
+
+                        if (toolWrapper == null) {
+                            resultFuture.complete("Error: Inspection '" + inspectionId + "' not found. " +
+                                "Use the inspection ID from run_inspections output (e.g., 'RedundantCast', 'unused').");
+                            return;
+                        }
+
+                        var tool = toolWrapper.getTool();
+                        List<com.intellij.codeInspection.ProblemDescriptor> problems = new ArrayList<>();
+
+                        if (tool instanceof com.intellij.codeInspection.LocalInspectionTool localTool) {
+                            var visitor = localTool.buildVisitor(
+                                new com.intellij.codeInspection.ProblemsHolder(inspectionManager, psiFile, false),
+                                false);
+                            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+                                @Override
+                                public void visitElement(@NotNull PsiElement element) {
+                                    element.accept(visitor);
+                                    super.visitElement(element);
+                                }
+                            });
+                            var holder = new com.intellij.codeInspection.ProblemsHolder(inspectionManager, psiFile, false);
+                            var visitor2 = localTool.buildVisitor(holder, false);
+                            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+                                @Override
+                                public void visitElement(@NotNull PsiElement element) {
+                                    element.accept(visitor2);
+                                    super.visitElement(element);
+                                }
+                            });
+                            problems.addAll(holder.getResults());
+                        }
+
+                        // Filter to problems on the target line
+                        List<com.intellij.codeInspection.ProblemDescriptor> lineProblems = new ArrayList<>();
+                        for (var problem : problems) {
+                            PsiElement elem = problem.getPsiElement();
+                            if (elem != null) {
+                                int offset = elem.getTextOffset();
+                                if (offset >= lineStartOffset && offset <= lineEndOffset) {
+                                    lineProblems.add(problem);
+                                }
+                            }
+                        }
+
+                        if (lineProblems.isEmpty()) {
+                            // Also try highlights-based approach for problems not found via local inspection
+                            resultFuture.complete("No problems found for inspection '" + inspectionId +
+                                "' at line " + targetLine + " in " + pathStr +
+                                ". The inspection may have been resolved, or it may be a global inspection " +
+                                "that doesn't support quickfixes. Try using intellij_write_file instead.");
+                            return;
+                        }
+
+                        com.intellij.codeInspection.ProblemDescriptor targetProblem =
+                            lineProblems.get(Math.min(fixIndex, lineProblems.size() - 1));
+
+                        var fixes = targetProblem.getFixes();
+                        if (fixes == null || fixes.length == 0) {
+                            resultFuture.complete("No quickfixes available for this problem. " +
+                                "Description: " + targetProblem.getDescriptionTemplate() +
+                                ". Use intellij_write_file to fix manually.");
+                            return;
+                        }
+
+                        // List fixes if multiple available
+                        StringBuilder sb = new StringBuilder();
+                        var fix = fixes[Math.min(fixIndex, fixes.length - 1)];
+
+                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                            project,
+                            () -> fix.applyFix(project, targetProblem),
+                            "Apply Quick Fix: " + fix.getName(),
+                            null
+                        );
+
+                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                        FileDocumentManager.getInstance().saveAllDocuments();
+
+                        sb.append("✓ Applied fix: ").append(fix.getName()).append("\n");
+                        sb.append("  File: ").append(pathStr).append(" line ").append(targetLine).append("\n");
+                        if (fixes.length > 1) {
+                            sb.append("  (").append(fixes.length).append(" fixes were available, applied #")
+                                .append(Math.min(fixIndex, fixes.length - 1)).append(")\n");
+                            sb.append("  Other available fixes:\n");
+                            for (int i = 0; i < fixes.length; i++) {
+                                if (i != Math.min(fixIndex, fixes.length - 1)) {
+                                    sb.append("    ").append(i).append(": ").append(fixes[i].getName()).append("\n");
+                                }
+                            }
+                        }
+
+                        resultFuture.complete(sb.toString());
+                    } catch (Exception e) {
+                        LOG.warn("Error applying quickfix", e);
+                        resultFuture.complete("Error applying quickfix: " + e.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                LOG.warn("Error in applyQuickfix", e);
+                resultFuture.complete("Error: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    private String refactor(JsonObject args) throws Exception {
+        if (!args.has("operation") || !args.has("file") || !args.has("symbol")) {
+            return "Error: 'operation', 'file', and 'symbol' parameters are required";
+        }
+        String operation = args.get("operation").getAsString();
+        String pathStr = args.get("file").getAsString();
+        String symbolName = args.get("symbol").getAsString();
+        int targetLine = args.has("line") ? args.get("line").getAsInt() : -1;
+        String newName = args.has("new_name") ? args.get("new_name").getAsString() : null;
+
+        if ("rename".equals(operation) && (newName == null || newName.isEmpty())) {
+            return "Error: 'new_name' is required for rename operation";
+        }
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                // Phase 1: Read — find the target element (read action is implicit on EDT)
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("Error: File not found: " + pathStr);
+                    return;
+                }
+
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                if (psiFile == null) {
+                    resultFuture.complete("Error: Cannot parse file: " + pathStr);
+                    return;
+                }
+
+                Document document = FileDocumentManager.getInstance().getDocument(vf);
+
+                PsiNamedElement targetElement = findNamedElement(psiFile, document, symbolName, targetLine);
+                if (targetElement == null) {
+                    resultFuture.complete("Error: Symbol '" + symbolName + "' not found in " + pathStr +
+                        (targetLine > 0 ? " at line " + targetLine : "") +
+                        ". Use search_symbols to find the correct name and location.");
+                    return;
+                }
+
+                // Phase 2: Write — perform the refactoring
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    try {
+                        switch (operation) {
+                            case "rename" -> {
+                                var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project))
+                                    .findAll();
+                                int refCount = refs.size();
+
+                                var factory = com.intellij.refactoring.RefactoringFactory.getInstance(project);
+                                var rename = factory.createRename(targetElement, newName);
+                                rename.setSearchInComments(true);
+                                rename.setSearchInNonJavaFiles(true);
+                                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                    project,
+                                    () -> {
+                                        var usages = rename.findUsages();
+                                        rename.doRefactoring(usages);
+                                    },
+                                    "Rename " + symbolName + " to " + newName,
+                                    null
+                                );
+
+                                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                FileDocumentManager.getInstance().saveAllDocuments();
+
+                                resultFuture.complete("✓ Renamed '" + symbolName + "' to '" + newName + "'\n" +
+                                    "  Updated " + refCount + " references across the project.\n" +
+                                    "  File: " + pathStr);
+                            }
+                            case "safe_delete" -> {
+                                var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project))
+                                    .findAll();
+
+                                if (!refs.isEmpty()) {
+                                    StringBuilder sb = new StringBuilder();
+                                    sb.append("Cannot safely delete '").append(symbolName)
+                                        .append("' — it has ").append(refs.size()).append(" usages:\n");
+                                    int shown = 0;
+                                    for (var ref : refs) {
+                                        if (shown++ >= 10) {
+                                            sb.append("  ... and ").append(refs.size() - 10).append(" more\n");
+                                            break;
+                                        }
+                                        PsiFile refFile = ref.getElement().getContainingFile();
+                                        int line = -1;
+                                        if (refFile != null) {
+                                            Document refDoc = FileDocumentManager.getInstance()
+                                                .getDocument(refFile.getVirtualFile());
+                                            if (refDoc != null) {
+                                                line = refDoc.getLineNumber(ref.getElement().getTextOffset()) + 1;
+                                            }
+                                        }
+                                        sb.append("  ").append(refFile != null ? refFile.getName() : "?")
+                                            .append(":").append(line).append("\n");
+                                    }
+                                    resultFuture.complete(sb.toString());
+                                    return;
+                                }
+
+                                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                    project,
+                                    () -> targetElement.delete(),
+                                    "Safe Delete " + symbolName,
+                                    null
+                                );
+                                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                FileDocumentManager.getInstance().saveAllDocuments();
+
+                                resultFuture.complete("✓ Safely deleted '" + symbolName + "' (no usages found).\n" +
+                                    "  File: " + pathStr);
+                            }
+                            case "inline" -> {
+                                resultFuture.complete("Error: 'inline' refactoring is not yet supported via this tool. " +
+                                    "Use intellij_write_file to manually inline the code.");
+                            }
+                            case "extract_method" -> {
+                                resultFuture.complete("Error: 'extract_method' requires a code selection range " +
+                                    "which is not well-suited for tool-based invocation. " +
+                                    "Use intellij_write_file to manually extract the method.");
+                            }
+                            default -> resultFuture.complete("Error: Unknown operation '" + operation +
+                                "'. Supported: rename, safe_delete");
+                        }
+                    } catch (Exception e) {
+                        LOG.warn("Refactoring error", e);
+                        resultFuture.complete("Error during refactoring: " + e.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                resultFuture.complete("Error: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Find a PsiNamedElement by name, optionally constrained to a specific line.
+     */
+    private PsiNamedElement findNamedElement(PsiFile psiFile, Document document, String name, int targetLine) {
+        PsiNamedElement[] found = {null};
+        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+            @Override
+            public void visitElement(@NotNull PsiElement element) {
+                if (element instanceof PsiNamedElement named && name.equals(named.getName())) {
+                    if (targetLine <= 0) {
+                        // No line constraint — take first match
+                        if (found[0] == null) found[0] = named;
+                    } else if (document != null) {
+                        int line = document.getLineNumber(element.getTextOffset()) + 1;
+                        if (line == targetLine) {
+                            found[0] = named;
+                        }
+                    }
+                }
+                if (found[0] == null) super.visitElement(element);
+            }
+        });
+        return found[0];
+    }
+
+    private String goToDeclaration(JsonObject args) {
+        if (!args.has("file") || !args.has("symbol") || !args.has("line")) {
+            return "Error: 'file', 'symbol', and 'line' parameters are required";
+        }
+        String pathStr = args.get("file").getAsString();
+        String symbolName = args.get("symbol").getAsString();
+        int targetLine = args.get("line").getAsInt();
+
+        return ReadAction.compute(() -> {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) return "Error: File not found: " + pathStr;
+
+            PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+            if (psiFile == null) return "Error: Cannot parse file: " + pathStr;
+
+            Document document = FileDocumentManager.getInstance().getDocument(vf);
+            if (document == null) return "Error: Cannot get document for: " + pathStr;
+
+            if (targetLine < 1 || targetLine > document.getLineCount()) {
+                return "Error: Line " + targetLine + " is out of bounds (file has " +
+                    document.getLineCount() + " lines)";
+            }
+            int lineStartOffset = document.getLineStartOffset(targetLine - 1);
+            int lineEndOffset = document.getLineEndOffset(targetLine - 1);
+
+            // Find references on the target line matching the symbol name
+            List<PsiElement> declarations = new ArrayList<>();
+
+            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+                @Override
+                public void visitElement(@NotNull PsiElement element) {
+                    int offset = element.getTextOffset();
+                    if (offset >= lineStartOffset && offset <= lineEndOffset) {
+                        if (element.getText().equals(symbolName) || (element instanceof PsiNamedElement named
+                            && symbolName.equals(named.getName()))) {
+                            // Try to resolve references
+                            PsiReference ref = element.getReference();
+                            if (ref != null) {
+                                PsiElement resolved = ref.resolve();
+                                if (resolved != null) declarations.add(resolved);
+                            }
+                            // Also check if this IS a declaration
+                            if (element instanceof PsiNamedElement) {
+                                // For a declaration, look for the actual type/superclass
+                                for (PsiReference r : element.getReferences()) {
+                                    PsiElement res = r.resolve();
+                                    if (res != null && res != element) declarations.add(res);
+                                }
+                            }
+                        }
+                    }
+                    super.visitElement(element);
+                }
+            });
+
+            if (declarations.isEmpty()) {
+                // Try broader search — find any reference to this symbol on the line
+                String lineText = document.getText(new com.intellij.openapi.util.TextRange(lineStartOffset, lineEndOffset));
+                int symIdx = lineText.indexOf(symbolName);
+                if (symIdx >= 0) {
+                    int offset = lineStartOffset + symIdx;
+                    PsiElement elemAtOffset = psiFile.findElementAt(offset);
+                    if (elemAtOffset != null) {
+                        // Walk up to find a referenceable element
+                        PsiElement current = elemAtOffset;
+                        for (int i = 0; i < 5 && current != null; i++) {
+                            PsiReference ref = current.getReference();
+                            if (ref != null) {
+                                PsiElement resolved = ref.resolve();
+                                if (resolved != null) {
+                                    declarations.add(resolved);
+                                    break;
+                                }
+                            }
+                            current = current.getParent();
+                        }
+                    }
+                }
+            }
+
+            if (declarations.isEmpty()) {
+                return "Could not resolve declaration for '" + symbolName + "' at line " + targetLine +
+                    " in " + pathStr + ". The symbol may be unresolved or from an unindexed library.";
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("Declaration of '").append(symbolName).append("':\n\n");
+            String basePath = project.getBasePath();
+
+            for (PsiElement decl : declarations) {
+                PsiFile declFile = decl.getContainingFile();
+                if (declFile == null) continue;
+
+                VirtualFile declVf = declFile.getVirtualFile();
+                String declPath = declVf != null && basePath != null
+                    ? relativize(basePath, declVf.getPath()) : (declVf != null ? declVf.getName() : "?");
+
+                Document declDoc = declVf != null ? FileDocumentManager.getInstance().getDocument(declVf) : null;
+                int declLine = declDoc != null ? declDoc.getLineNumber(decl.getTextOffset()) + 1 : -1;
+
+                sb.append("  File: ").append(declPath).append("\n");
+                sb.append("  Line: ").append(declLine).append("\n");
+
+                // Show context (5 lines around declaration)
+                if (declDoc != null && declLine > 0) {
+                    int startLine = Math.max(0, declLine - 3);
+                    int endLine = Math.min(declDoc.getLineCount() - 1, declLine + 2);
+                    sb.append("  Context:\n");
+                    for (int l = startLine; l <= endLine; l++) {
+                        int ls = declDoc.getLineStartOffset(l);
+                        int le = declDoc.getLineEndOffset(l);
+                        String lineContent = declDoc.getText(new com.intellij.openapi.util.TextRange(ls, le));
+                        sb.append(l == declLine - 1 ? "  → " : "    ")
+                            .append(l + 1).append(": ").append(lineContent).append("\n");
+                    }
+                }
+                sb.append("\n");
+            }
+
+            return sb.toString();
+        });
+    }
+
+    private String getTypeHierarchy(JsonObject args) {
+        if (!args.has("symbol")) return "Error: 'symbol' parameter is required";
+        String symbolName = args.get("symbol").getAsString();
+        String direction = args.has("direction") ? args.get("direction").getAsString() : "both";
+
+        return ReadAction.compute(() -> {
+            // Find the class by name
+            var javaPsiFacade = com.intellij.psi.JavaPsiFacade.getInstance(project);
+            var scope = GlobalSearchScope.allScope(project);
+
+            // Try fully qualified first, then simple name
+            com.intellij.psi.PsiClass psiClass = javaPsiFacade.findClass(symbolName, scope);
+            if (psiClass == null) {
+                // Search by simple name
+                var classes = javaPsiFacade.findClasses(symbolName, scope);
+                if (classes.length == 0) {
+                    // Try short name search
+                    var shortNameCache = com.intellij.psi.search.PsiShortNamesCache.getInstance(project);
+                    classes = shortNameCache.getClassesByName(symbolName, scope);
+                }
+                if (classes.length == 0) {
+                    return "Error: Class/interface '" + symbolName + "' not found. " +
+                        "Use search_symbols to find the correct name.";
+                }
+                psiClass = classes[0];
+            }
+
+            StringBuilder sb = new StringBuilder();
+            String basePath = project.getBasePath();
+
+            String qualifiedName = psiClass.getQualifiedName();
+            sb.append("Type hierarchy for: ").append(qualifiedName != null ? qualifiedName : symbolName);
+            sb.append(psiClass.isInterface() ? " (interface)" : " (class)").append("\n\n");
+
+            // Supertypes
+            if ("supertypes".equals(direction) || "both".equals(direction)) {
+                sb.append("Supertypes:\n");
+                appendSupertypes(psiClass, sb, basePath, "  ", new HashSet<>(), 0);
+                sb.append("\n");
+            }
+
+            // Subtypes
+            if ("subtypes".equals(direction) || "both".equals(direction)) {
+                sb.append("Subtypes/Implementations:\n");
+                var searcher = com.intellij.psi.search.searches.ClassInheritorsSearch.search(
+                    psiClass, GlobalSearchScope.projectScope(project), true);
+                var inheritors = searcher.findAll();
+                if (inheritors.isEmpty()) {
+                    sb.append("  (none found in project scope)\n");
+                } else {
+                    for (var inheritor : inheritors) {
+                        String iName = inheritor.getQualifiedName();
+                        String iFile = "";
+                        PsiFile containingFile = inheritor.getContainingFile();
+                        if (containingFile != null && containingFile.getVirtualFile() != null && basePath != null) {
+                            iFile = " (" + relativize(basePath, containingFile.getVirtualFile().getPath()) + ")";
+                        }
+                        sb.append("  ").append(inheritor.isInterface() ? "interface " : "class ")
+                            .append(iName != null ? iName : inheritor.getName())
+                            .append(iFile).append("\n");
+                    }
+                }
+            }
+
+            return sb.toString();
+        });
+    }
+
+    private void appendSupertypes(com.intellij.psi.PsiClass psiClass, StringBuilder sb,
+                                   String basePath, String indent, Set<String> visited, int depth) {
+        if (depth > 10) return;
+        String qn = psiClass.getQualifiedName();
+        if (qn != null && !visited.add(qn)) return;
+
+        // Superclass
+        com.intellij.psi.PsiClass superClass = psiClass.getSuperClass();
+        if (superClass != null && !"java.lang.Object".equals(superClass.getQualifiedName())) {
+            String superName = superClass.getQualifiedName();
+            String file = getClassFile(superClass, basePath);
+            sb.append(indent).append("extends ").append(superName != null ? superName : superClass.getName())
+                .append(file).append("\n");
+            appendSupertypes(superClass, sb, basePath, indent + "  ", visited, depth + 1);
+        }
+
+        // Interfaces
+        for (var iface : psiClass.getInterfaces()) {
+            String ifaceName = iface.getQualifiedName();
+            if ("java.lang.Object".equals(ifaceName)) continue;
+            String file = getClassFile(iface, basePath);
+            sb.append(indent).append("implements ").append(ifaceName != null ? ifaceName : iface.getName())
+                .append(file).append("\n");
+            appendSupertypes(iface, sb, basePath, indent + "  ", visited, depth + 1);
+        }
+    }
+
+    private String getClassFile(com.intellij.psi.PsiClass cls, String basePath) {
+        PsiFile file = cls.getContainingFile();
+        if (file != null && file.getVirtualFile() != null && basePath != null) {
+            String path = file.getVirtualFile().getPath();
+            if (path.contains(".jar!")) return ""; // Library class — don't show path
+            return " (" + relativize(basePath, path) + ")";
+        }
+        return "";
+    }
+
+    private String createFile(JsonObject args) throws Exception {
+        if (!args.has("path") || !args.has("content")) {
+            return "Error: 'path' and 'content' parameters are required";
+        }
+        String pathStr = args.get("path").getAsString();
+        String content = args.get("content").getAsString();
+
+        // Resolve path
+        String basePath = project.getBasePath();
+        Path filePath;
+        if (Path.of(pathStr).isAbsolute()) {
+            filePath = Path.of(pathStr);
+        } else if (basePath != null) {
+            filePath = Path.of(basePath, pathStr);
+        } else {
+            return "Error: Cannot resolve relative path without project base path";
+        }
+
+        if (Files.exists(filePath)) {
+            return "Error: File already exists: " + pathStr +
+                ". Use intellij_write_file to modify existing files.";
+        }
+
+        // Create parent directories
+        Path parentDir = filePath.getParent();
+        if (parentDir != null) {
+            Files.createDirectories(parentDir);
+        }
+        // Write content
+        Files.writeString(filePath, content, StandardCharsets.UTF_8);
+
+        // Refresh VFS so IntelliJ sees the file
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                LocalFileSystem.getInstance().refreshAndFindFileByPath(filePath.toString());
+                resultFuture.complete("✓ Created file: " + pathStr + " (" + content.length() + " chars)");
+            } catch (Exception e) {
+                resultFuture.complete("File created but VFS refresh failed: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String deleteFile(JsonObject args) throws Exception {
+        if (!args.has("path")) return "Error: 'path' parameter is required";
+        String pathStr = args.get("path").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete("Error: File not found: " + pathStr);
+                    return;
+                }
+
+                if (vf.isDirectory()) {
+                    resultFuture.complete("Error: Cannot delete directories. Path is a directory: " + pathStr);
+                    return;
+                }
+
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    try {
+                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                            project,
+                            () -> {
+                                try {
+                                    vf.delete(PsiBridgeService.this);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            },
+                            "Delete File: " + vf.getName(),
+                            null
+                        );
+                        resultFuture.complete("✓ Deleted file: " + pathStr);
+                    } catch (Exception e) {
+                        resultFuture.complete("Error deleting file: " + e.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                resultFuture.complete("Error: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String buildProject(JsonObject args) throws Exception {
+        String moduleName = args.has("module") ? args.get("module").getAsString() : "";
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        long startTime = System.currentTimeMillis();
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var compilerManager = com.intellij.openapi.compiler.CompilerManager.getInstance(project);
+
+                com.intellij.openapi.compiler.CompileStatusNotification callback =
+                    (aborted, errorCount, warningCount, context) -> {
+                        long elapsed = System.currentTimeMillis() - startTime;
+                        StringBuilder sb = new StringBuilder();
+
+                        if (aborted) {
+                            sb.append("Build aborted.\n");
+                        } else if (errorCount == 0) {
+                            sb.append("✓ Build succeeded");
+                        } else {
+                            sb.append("✗ Build failed");
+                        }
+                        sb.append(String.format(" (%d errors, %d warnings, %.1fs)\n",
+                            errorCount, warningCount, elapsed / 1000.0));
+
+                        // Collect error messages
+                        var messages = context.getMessages(
+                            com.intellij.openapi.compiler.CompilerMessageCategory.ERROR);
+                        for (var msg : messages) {
+                            String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
+                            sb.append("  ERROR ").append(file);
+                            // Try to get line number from implementation class
+                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl) {
+                                if (impl.getLine() > 0) sb.append(":").append(impl.getLine());
+                            }
+                            sb.append(" ").append(msg.getMessage()).append("\n");
+                        }
+
+                        var warnMsgs = context.getMessages(
+                            com.intellij.openapi.compiler.CompilerMessageCategory.WARNING);
+                        int warnShown = 0;
+                        for (var msg : warnMsgs) {
+                            if (warnShown++ >= 20) {
+                                sb.append("  ... and ").append(warnMsgs.length - 20).append(" more warnings\n");
+                                break;
+                            }
+                            String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
+                            sb.append("  WARN ").append(file);
+                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl) {
+                                if (impl.getLine() > 0) sb.append(":").append(impl.getLine());
+                            }
+                            sb.append(" ").append(msg.getMessage()).append("\n");
+                        }
+
+                        resultFuture.complete(sb.toString());
+                    };
+
+                if (!moduleName.isEmpty()) {
+                    // Build specific module
+                    Module module = ModuleManager.getInstance(project).findModuleByName(moduleName);
+                    if (module == null) {
+                        // Try with project name prefix
+                        String projectName = project.getName();
+                        module = ModuleManager.getInstance(project).findModuleByName(projectName + "." + moduleName);
+                    }
+                    if (module == null) {
+                        StringBuilder available = new StringBuilder("Available modules:\n");
+                        for (Module m : ModuleManager.getInstance(project).getModules()) {
+                            available.append("  ").append(m.getName()).append("\n");
+                        }
+                        resultFuture.complete("Error: Module '" + moduleName + "' not found.\n" + available);
+                        return;
+                    }
+                    compilerManager.compile(module, callback);
+                } else {
+                    // Build whole project (no-arg make)
+                    compilerManager.make(callback);
+                }
+            } catch (Exception e) {
+                LOG.warn("Build error", e);
+                resultFuture.complete("Error starting build: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(300, TimeUnit.SECONDS);
     }
 
     public void dispose() {

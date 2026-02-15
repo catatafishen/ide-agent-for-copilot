@@ -98,7 +98,7 @@ class McpServerTest {
 
         assertNotNull(response);
         JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
-        assertEquals(45, tools.size(), "Should have 45 tools (code nav + file I/O + testing + quality + run configs + git + infra + terminal + docs + highlights + inspections + dictionary + suppress + qodana + indexing)");
+        assertEquals(52, tools.size(), "Should have 52 tools (code nav + file I/O + testing + quality + run configs + git + infra + terminal + docs + highlights + inspections + dictionary + suppress + qodana + indexing + refactoring + build)");
 
         // Verify tool names
         var toolNames = new ArrayList<String>();
@@ -118,6 +118,14 @@ class McpServerTest {
         assertTrue(toolNames.contains("git_branch"));
         assertTrue(toolNames.contains("git_stash"));
         assertTrue(toolNames.contains("git_show"));
+        // Refactoring & code modification tools
+        assertTrue(toolNames.contains("apply_quickfix"));
+        assertTrue(toolNames.contains("refactor"));
+        assertTrue(toolNames.contains("go_to_declaration"));
+        assertTrue(toolNames.contains("get_type_hierarchy"));
+        assertTrue(toolNames.contains("create_file"));
+        assertTrue(toolNames.contains("delete_file"));
+        assertTrue(toolNames.contains("build_project"));
     }
 
     @Test
@@ -262,5 +270,143 @@ class McpServerTest {
         request.addProperty("method", method);
         request.add("params", params);
         return request;
+    }
+
+    // ==================== New Tool Schema Tests ====================
+
+    @Test
+    void testApplyQuickfixToolSchema() {
+        JsonObject tool = findToolByName("apply_quickfix");
+        assertNotNull(tool, "apply_quickfix tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("file"), "Should have 'file' parameter");
+        assertTrue(props.has("line"), "Should have 'line' parameter");
+        assertTrue(props.has("inspection_id"), "Should have 'inspection_id' parameter");
+        assertTrue(props.has("fix_index"), "Should have 'fix_index' parameter");
+
+        var required = schema.getAsJsonArray("required");
+        assertTrue(required.toString().contains("file"));
+        assertTrue(required.toString().contains("line"));
+        assertTrue(required.toString().contains("inspection_id"));
+    }
+
+    @Test
+    void testRefactorToolSchema() {
+        JsonObject tool = findToolByName("refactor");
+        assertNotNull(tool, "refactor tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("operation"), "Should have 'operation' parameter");
+        assertTrue(props.has("file"), "Should have 'file' parameter");
+        assertTrue(props.has("symbol"), "Should have 'symbol' parameter");
+        assertTrue(props.has("new_name"), "Should have 'new_name' parameter");
+        assertTrue(props.has("line"), "Should have 'line' parameter");
+
+        // Description should mention supported operations
+        String desc = tool.get("description").getAsString();
+        assertTrue(desc.contains("rename"), "Description should mention 'rename'");
+        assertTrue(desc.contains("safe_delete"), "Description should mention 'safe_delete'");
+    }
+
+    @Test
+    void testGoToDeclarationToolSchema() {
+        JsonObject tool = findToolByName("go_to_declaration");
+        assertNotNull(tool, "go_to_declaration tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("file"), "Should have 'file' parameter");
+        assertTrue(props.has("symbol"), "Should have 'symbol' parameter");
+        assertTrue(props.has("line"), "Should have 'line' parameter");
+
+        var required = schema.getAsJsonArray("required");
+        assertEquals(3, required.size(), "All three parameters should be required");
+    }
+
+    @Test
+    void testGetTypeHierarchyToolSchema() {
+        JsonObject tool = findToolByName("get_type_hierarchy");
+        assertNotNull(tool, "get_type_hierarchy tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("symbol"), "Should have 'symbol' parameter");
+        assertTrue(props.has("direction"), "Should have 'direction' parameter");
+
+        // Description should mention hierarchy directions
+        String desc = tool.get("description").getAsString();
+        assertTrue(desc.contains("superclass") || desc.contains("supertypes"),
+            "Description should mention supertypes/superclasses");
+        assertTrue(desc.contains("subclass") || desc.contains("subtypes") || desc.contains("implementations"),
+            "Description should mention subtypes/implementations");
+    }
+
+    @Test
+    void testCreateFileToolSchema() {
+        JsonObject tool = findToolByName("create_file");
+        assertNotNull(tool, "create_file tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("path"), "Should have 'path' parameter");
+        assertTrue(props.has("content"), "Should have 'content' parameter");
+
+        var required = schema.getAsJsonArray("required");
+        assertEquals(2, required.size(), "Both path and content should be required");
+    }
+
+    @Test
+    void testDeleteFileToolSchema() {
+        JsonObject tool = findToolByName("delete_file");
+        assertNotNull(tool, "delete_file tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("path"), "Should have 'path' parameter");
+
+        var required = schema.getAsJsonArray("required");
+        assertEquals(1, required.size(), "path should be required");
+    }
+
+    @Test
+    void testBuildProjectToolSchema() {
+        JsonObject tool = findToolByName("build_project");
+        assertNotNull(tool, "build_project tool should exist");
+
+        var schema = tool.getAsJsonObject("inputSchema");
+        var props = schema.getAsJsonObject("properties");
+        assertTrue(props.has("module"), "Should have 'module' parameter");
+
+        var required = schema.getAsJsonArray("required");
+        assertEquals(0, required.size(), "No required parameters — module is optional");
+
+        // Description should mention incremental compilation
+        String desc = tool.get("description").getAsString();
+        assertTrue(desc.contains("incremental"), "Description should mention 'incremental'");
+    }
+
+    @Test
+    void testRunCommandDescriptionWarnsAgainstTests() {
+        JsonObject tool = findToolByName("run_command");
+        assertNotNull(tool, "run_command tool should exist");
+
+        String desc = tool.get("description").getAsString();
+        assertTrue(desc.contains("run_tests"), "run_command description should redirect to run_tests");
+        assertTrue(desc.contains("search_symbols"), "run_command description should redirect to search_symbols");
+    }
+
+    private JsonObject findToolByName(String name) {
+        JsonObject request = buildRequest("tools/list", new JsonObject());
+        JsonObject response = McpServer.handleMessage(request);
+        JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
+        for (var t : tools) {
+            if (name.equals(t.getAsJsonObject().get("name").getAsString())) {
+                return t.getAsJsonObject();
+            }
+        }
+        return null;
     }
 }

@@ -586,6 +586,91 @@ public class McpServer {
                 ),
                 List.of()));
 
+        // Refactoring & code modification tools
+        tools.add(buildTool("apply_quickfix",
+                "Apply an IntelliJ quick-fix to an inspection problem. Instead of manually editing code, " +
+                        "let IntelliJ apply its own fix (the lightbulb action). PREFER THIS over manual code edits " +
+                        "when fixing inspection findings. First run 'run_inspections' or 'get_highlights' to identify " +
+                        "problems, then use this tool to fix them.",
+                Map.of(
+                        "file", Map.of("type", "string", "description", "Path to the file containing the problem"),
+                        "line", Map.of("type", "integer", "description", "Line number where the problem is located"),
+                        "inspection_id", Map.of("type", "string", "description",
+                                "The inspection ID from run_inspections output (e.g., 'RedundantCast', 'unused', 'SpellCheckingInspection')"),
+                        "fix_index", Map.of("type", "integer", "description",
+                                "Which fix to apply if multiple are available (0-based, default: 0). Use list_quickfixes first if unsure.")
+                ),
+                List.of("file", "line", "inspection_id")));
+
+        tools.add(buildTool("refactor",
+                "Perform an IntelliJ refactoring operation. Handles imports, references, and all related changes " +
+                        "automatically. Much safer than manual string-based edits. Supported operations: " +
+                        "rename (rename a symbol everywhere), extract_method (extract selected code into a new method), " +
+                        "inline (inline a variable/method), safe_delete (delete with usage check).",
+                Map.of(
+                        "operation", Map.of("type", "string", "description",
+                                "Refactoring type: 'rename', 'extract_method', 'inline', 'safe_delete'"),
+                        "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
+                        "symbol", Map.of("type", "string", "description",
+                                "Name of the symbol to refactor (class, method, field, variable)"),
+                        "line", Map.of("type", "integer", "description",
+                                "Line number to disambiguate if multiple symbols have the same name (optional)"),
+                        "new_name", Map.of("type", "string", "description",
+                                "New name for 'rename' operation. Required for rename, ignored for others.")
+                ),
+                List.of("operation", "file", "symbol")));
+
+        tools.add(buildTool("go_to_declaration",
+                "Navigate from a symbol usage to its declaration/definition using IntelliJ's reference resolution. " +
+                        "Returns the file path, line number, and surrounding code of the declaration. " +
+                        "More reliable than grep — resolves through imports, type hierarchy, and overloads.",
+                Map.of(
+                        "file", Map.of("type", "string", "description", "Path to the file containing the symbol usage"),
+                        "symbol", Map.of("type", "string", "description", "Name of the symbol to look up"),
+                        "line", Map.of("type", "integer", "description", "Line number where the symbol appears (helps disambiguate)")
+                ),
+                List.of("file", "symbol", "line")));
+
+        tools.add(buildTool("get_type_hierarchy",
+                "Get the class/interface hierarchy for a type. Shows superclasses, implemented interfaces, " +
+                        "and subclasses/implementations. Uses IntelliJ's type resolution — handles generics, " +
+                        "anonymous classes, and inner classes correctly.",
+                Map.of(
+                        "symbol", Map.of("type", "string", "description",
+                                "Fully qualified or simple class/interface name (e.g., 'PsiBridgeService', 'java.util.List')"),
+                        "direction", Map.of("type", "string", "description",
+                                "Direction: 'supertypes' (ancestors), 'subtypes' (descendants), or 'both' (default: 'both')")
+                ),
+                List.of("symbol")));
+
+        tools.add(buildTool("create_file",
+                "Create a new file in the project. The file must not already exist. " +
+                        "Parent directories will be created automatically if needed. " +
+                        "The file is created through IntelliJ's VFS so it appears immediately in the IDE.",
+                Map.of(
+                        "path", Map.of("type", "string", "description", "Path for the new file (absolute or project-relative)"),
+                        "content", Map.of("type", "string", "description", "Content to write to the file")
+                ),
+                List.of("path", "content")));
+
+        tools.add(buildTool("delete_file",
+                "Delete a file from the project. The file is deleted through IntelliJ's VFS so the IDE " +
+                        "updates immediately. Use with caution — this is not undoable through the IDE's undo system.",
+                Map.of(
+                        "path", Map.of("type", "string", "description", "Path to the file to delete (absolute or project-relative)")
+                ),
+                List.of("path")));
+
+        tools.add(buildTool("build_project",
+                "Trigger IntelliJ's internal project build (Make Project). Faster than running Gradle/Maven " +
+                        "from the command line because it uses incremental compilation. Returns structured error " +
+                        "output with file paths and line numbers. Use this to verify code changes compile correctly.",
+                Map.of(
+                        "module", Map.of("type", "string", "description",
+                                "Optional: build only a specific module (e.g., 'plugin-core', 'mcp-server'). If empty, builds the whole project.")
+                ),
+                List.of()));
+
         result.add("tools", tools);
         return result;
     }
