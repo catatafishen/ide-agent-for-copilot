@@ -4851,7 +4851,14 @@ public final class PsiBridgeService implements Disposable {
                         .openFile(vf, true);
                 }
 
-                resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : ""));
+                // Force DaemonCodeAnalyzer to run on this file
+                PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
+                if (psiFile != null) {
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                }
+
+                resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : "") +
+                    " (daemon analysis triggered - use get_highlights after a moment)");
             } catch (Exception e) {
                 resultFuture.complete("Error opening file: " + e.getMessage());
             }
