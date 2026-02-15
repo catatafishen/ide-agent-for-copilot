@@ -1,302 +1,302 @@
-# Agentic GitHub Copilot for JetBrains — Specification (v1)
+# Agent Instructions for IntelliJ Copilot Plugin Development
 
-> **Goal**  
-> A lightweight IntelliJ‑platform plugin (Java‑first) that embeds Copilot’s **agent loop** via the **GitHub Copilot SDK**, provides first‑class UI for prompts/contexts/plans, and can safely run **Git** actions (including Conventional Commit messages) under user control. The v1 works entirely in a **local branch** that you later push to GitHub.
-
----
-
-## 1) Scope
-
-### In‑scope (v1)
-- Tool Window with:
-    - **Prompt** editor (multi‑line), **Context bag**, **Plans** view, **Timeline** (reasoning summaries), **Settings** (models & tool permissions).
-- **Formatting & imports** options (plugin‑level):
-    - *Format on save*, *Optimize imports on save*, *Format changed ranges after agent edits*, *Pre‑commit reformat/optimize* (all user‑toggleable). These reuse IntelliJ’s native formatter/import optimizer for consistency and speed.
-- **Agent integration via Copilot SDK** (technical preview):
-    - Session lifecycle, model selection, plan/timeline event streaming, tool invocation (structured), MCP configuration.
-    - We will supply **Git tools** to the agent (see §4.3) and surface explicit approvals in the UI.
-- **Git operations** (via IntelliJ Git APIs): status, commit/amend, push/(force), branch create/switch; **Conventional Commits** helpers.
-- **Conventional Commit** preset: enforce/assist the official types (`feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`) + optional `scope`, `!` breaking change, and body/footers.
-- **Local‑only workflow**: v1 works in a **feature branch** you create locally; pushing to origin is user‑triggered.
-- **High test coverage** with JUnit 5; minimal, judicious dependencies.
-
-### Out‑of‑scope (v1)
-- Cloud delegation / remote PR generation.
-- Repo‑host operations beyond basic git (e.g., creating PRs/issues).
-- CLI wrapping (no parsing of Copilot CLI output).
+> **Context**: You are helping develop an IntelliJ plugin that integrates GitHub Copilot with 54 MCP tools for code intelligence. The plugin is written in Java 21, targets IntelliJ 2024.3-2025.2, and uses Gradle for builds.
+>
+> **Project Spec**: See `PROJECT-SPEC.md` for architecture details. Only reference it when you need architecture context.
 
 ---
 
-## 2) Target Platforms & Compatibility
+## 1) Your Role
 
-- **IntelliJ Platform**: target **2024.3–2025.2**; set `sinceBuild`/`untilBuild` per platform timeline (e.g., `243` → `252.*`).
-- **Runtime & language**:
-    - Plugin source/target: **Java 21** to align with recent platform requirements for 2024.2+ plugin development.
-    - The IDE ships with **JetBrains Runtime (JBR) 21** by default, but JBR 25 builds are available; users/projects can target **Java 25** features in newer IDEs.
-- **Copilot SDK**: technical preview; official SDKs for **Node, Python, Go, .NET** (no native Java SDK yet).
-
----
-
-## 3) Architecture
-
-### 3.1 Modules
-- `plugin-core` (Java): UI (Tool Window), settings, services, ACP client, PSI bridge.
-- `mcp-server` (Java): Standalone MCP stdio server bundled as JAR, routes tool calls to PSI bridge.
-- `integration-tests` (Java): UI‑less functional tests (placeholder).
-
-### 3.2 ACP Integration (direct, no sidecar)
-- The plugin spawns **Copilot CLI** (`copilot --acp --stdio`) and communicates via **JSON-RPC 2.0** over stdin/stdout using the **Agent Client Protocol (ACP)**.
-- CopilotAcpClient responsibilities:
-    - Initialize handshake, create/close **agent sessions**, stream **plan/timeline** events.
-    - Send prompts with context references and model selection.
-    - Handle **permission requests** from the agent (deny built-in edits, auto-approve MCP tools).
-    - Auto-retry denied operations with instruction to use IntelliJ MCP tools.
-- The plugin owns user policy (approvals, allow/deny), persists settings, and renders UI.
-
-### 3.3 MCP Tools (IntelliJ-native)
-- 19 tools registered via MCP stdio server, executed through PSI bridge HTTP server inside IntelliJ process.
-- **File operations**: `intellij_read_file` (editor buffer), `intellij_write_file` (Document API with undo).
-- **Code quality**: `get_problems`, `optimize_imports`, `format_code`.
-- **Navigation**: `search_symbols`, `get_file_outline`, `find_references`, `list_project_files`.
-- **Testing**: `list_tests`, `run_tests`, `get_test_results`, `get_coverage`.
-- All writes auto-trigger optimize imports + reformat code.
-
-### 3.4 Data flow
-1. User prepares **Prompt** and **Context**; clicks **Send**.
-2. Plugin → Copilot CLI: `session/prompt(...)` via ACP.
-3. Agent plans; emits **events** (chunks/tool_calls/plan updates).
-4. If agent requests built-in file edit → **denied** → auto-retry with MCP tools.
-5. MCP tools execute through PSI bridge → IntelliJ Document API.
-6. Auto-format runs after every write.
+- Fix bugs, implement features, and improve code quality
+- Use IntelliJ's 54 MCP tools for all code operations
+- Follow workflows systematically (templates below)
+- Commit after each completed task
+- **Time limit**: ~10 minutes per prompt — plan accordingly
 
 ---
 
-## 4) Features (v1)
+## 2) Critical Rules (Never Violate)
 
-### 4.1 Tool Window
-- **Prompt**
-    - `EditorTextField` (Markdown), history, soft‑wrap, token estimate.
-- **Context**
-    - A list of context items `{file, startLine..endLine, symbol?}`.
-    - Editor action: “**Add selection to context**” captures file+range; optional PSI enrichment (e.g., symbol names).
-- **Plans**
-    - Step‑by‑step plan with statuses; read‑only diff previews.
-- **Timeline**
-    - Chronological stream of assistant messages and tool calls; expandable details (summaries, not chain‑of‑thought). The CLI’s timeline feature demonstrates the UX pattern; the SDK provides structured events.
-- **Settings**
-    - **Model** picker (from SDK), **Permissions** (allow/ask/deny per tool), **Formatting** options.
+### Threading (IntelliJ Platform)
+- ✅ **Always** wrap PSI access in `ReadAction.compute()` or `ReadAction.run()`
+- ✅ **Always** wrap file writes in `WriteAction.compute()` or `WriteAction.run()`
+- ❌ **Never** nest read/write actions
+- ✅ Use `invokeLater()` for UI operations
 
-### 4.2 Formatting & Imports (user‑configurable)
-- **Format on Save** (toggle): leverage IDE’s *Actions on Save* → **Reformat code** and **Optimize imports**.
-- **Format after agent edits** (default **on**): after file changes from the agent, run **format‑changed‑ranges** + **optimize imports** on affected files. (Keeps diffs tidy and predictable.)
-- **Pre‑commit reformat/optimize** (default **on**): belt‑and‑braces before commit.
-- **Auto‑import behavior**: expose quick‑links to **Add unambiguous imports on the fly** for users who want automatic imports; we keep it optional to avoid import churn across teams.
+### Tool Preferences
+- ✅ **Always** use `intellij_write_file` for file edits (never shell `echo` or `sed`)
+- ✅ **Always** use `intellij_read_file` for reading files (gets live editor buffer)
+- ✅ **Always** use `search_symbols`, `find_references` over grep for code navigation
+- ✅ **Always** use `run_tests` over `gradle test` commands
+- ✅ **Always** call `get_project_info` first to get SDK/build paths
 
-### 4.3 Git tools (exposed to the agent; executed via IDE)
-All operations require user approval unless allowed in Settings.
+### Null Checks
+- ✅ **Keep defensive null checks** even if marked `@NotNull` (runtime != compile-time)
+- ✅ Suppress with `@SuppressWarnings({"ConstantValue", "DataFlowIssue"})` if IntelliJ complains
 
-- `git.status()` → branch, ahead/behind, staged/unstaged summary.
-- `git.commitConventional({type, scope?, description, body?, breaking?, amend?})`
-    - Formats: `type(scope)!: description` + body/footers, with **amend** when requested.
-- `git.push({force?, setUpstream?})`
-    - Always prompt if `force==true`.
-- `git.createBranch({name, from?})`, `git.switchBranch({name})`.
-
-These map to IntelliJ Git APIs and respect protected branches & commit checks.
-
-### 4.4 Inspection‑→‑Fix loop (optional behind a toggle)
-- **Option A (v1)**: invoke IntelliJ **command‑line inspector** (`inspect.sh`) with a project profile, output **JSON**, pass issues (e.g., weak warnings) to the agent for targeted fixes, apply patches, then format.
-- **Option B (later)**: query in‑IDE highlights for a tighter loop.
+### Tool API Contract
+- ✅ **Always** provide `description` parameter for bash commands
+- ✅ Example: `bash(command="ls", description="List files")`
+- ❌ **Never**: `bash(command="ls")` — will fail with tool error
 
 ---
 
-## 5) Non‑functional requirements
+## 3) Common Workflows
 
-- **Performance**: first Tool Window open ≤ 200 ms post‑index; UI streams events < 150 ms cadence.
-- **Footprint**: minimal dependencies; sidecar **Go** binary ~10–20 MB; lean plugin JARs.
-- **Privacy/Security**: tool calls require approval unless explicitly allowed; no telemetry in v1; optional local debug logs.
-- **Accessibility**: keyboard navigation, high‑contrast aware.
-
----
-
-## 6) Repository layout
+### Workflow 1: Fix Single File Issues
 
 ```
-agentic-copilot-intellij/
-  build.gradle.kts
-  settings.gradle.kts
-  gradle/
-  plugin-core/
-    src/main/java/...       # UI, services, Git, formatting hooks (Java 21)
-    src/main/resources/META-INF/plugin.xml
-    src/test/java/...
-  copilot-bridge/
-    protocol/               # .proto / JSON schema
-    src/main/go/...         # Go sidecar using Copilot SDK (static builds)
-    Makefile
-  docs/
-    ARCHITECTURE.md
-    CONTRIBUTING.md
-  .github/workflows/
-    ci.yml                   # build, test, package
+1. get_highlights(path="File.java")           # See what's wrong
+2. Fix issues:
+   - Use apply_quickfix for supported inspections
+   - Use intellij_write_file for others
+3. optimize_imports(path="File.java")         # Clean imports
+4. format_code(path="File.java")              # Format code
+5. get_highlights(path="File.java")           # Verify fixed
+6. build_project                              # Ensure compiles
+7. git add . && git commit -m "fix: ..."     # Commit
+8. Report results to user
 ```
 
-*(Compatibility & template guidance: IntelliJ Platform Gradle Plugin 2.x with `sinceBuild`/`untilBuild` range.)*
+### Workflow 2: Fix Whole Project (Systematic)
+
+```
+1. run_inspections()                          # Get overview
+2. Parse output for issue counts:
+   "File A: 42, File B: 12, File C: 8"
+3. Pick file with most issues (File A)
+4. Follow "Workflow 1" for File A
+5. git add . && git commit -m "fix: resolve 42 issues in File A"
+6. Report: "✅ Fixed File A (42→2). Committed."
+7. **ASK USER**: "Continue to File B (12 issues)?"
+8. If yes, repeat from step 3 for File B
+9. **IMPORTANT**: Do NOT fix multiple files without committing each one
+10. Skip files with 50+ grammar issues unless user specifically requests
+```
+
+### Workflow 3: Implement New Feature
+
+```
+1. get_indexing_status                        # Wait if indexing
+2. get_project_info                           # Get SDK paths
+3. build_project                              # Establish baseline
+4. Read relevant files with view/intellij_read_file
+5. Implement feature (write code)
+6. optimize_imports + format_code on each changed file
+7. build_project                              # Verify compiles
+8. run_tests if relevant                      # Verify tests pass
+9. git add . && git commit -m "feat: ..."    # Commit
+10. Report results
+```
+
+### Workflow 4: Before Starting Complex Tasks
+
+**Self-check**:
+- ✓ Have I read the workflow template for this task?
+- ✓ Do I understand the commit strategy?
+- ✓ Do I know which tools NOT to use? (e.g., apply_quickfix on GrazieInspection)
+- ✓ Do I have project info (SDK paths, modules)?
+
+If any ✗, **ask user for clarification** before proceeding.
 
 ---
 
-## 7) Build & toolchain
+## 4) Code Quality Standards
 
-- **Plugin**: Java 21, Gradle 8.x, IntelliJ Platform Gradle Plugin 2.x (target IDEA 2024.3–2025.2).
-- **Sidecar**: Go 1.22+ using **Copilot SDK** (tech preview).
-- **Tests**: JUnit 5; Mockito/AssertJ optional (keep deps minimal).
+### Priority Order
+1. **Compilation errors** (must fix immediately)
+2. **Warnings** (fix all when asked to "clean up")
+3. **Style issues** (fix if easy)
+4. **Grammar** (LOW priority — only if requested)
+
+### Tool Sequence for Quality Checks
+```
+Single file:   get_highlights(path) → fix → format → verify
+Whole project: run_inspections → group by file → fix one file → commit → repeat
+After changes: optimize_imports → format_code → get_highlights
+```
+
+### Tool-Specific Quirks
+
+**GrazieInspection (Grammar)**:
+- ❌ Does NOT support `apply_quickfix`
+- ✅ Must manually edit with `intellij_write_file`
+- 🔹 LOW priority — fix code issues first, grammar last
+- 🔹 If 50+ grammar issues, ask user: "Grammar fixes are time-consuming. Proceed?"
+
+**SonarLint**:
+- ✅ Shows in `get_highlights` only (not `run_inspections`)
+- ✅ Open file in editor first: `open_in_editor` → `get_highlights(path)`
+
+**Large Files**:
+- ✅ Read 300-500 line chunks (not 50-100 lines)
+- 🔹 Reason: Each tool call = LLM reasoning cycle overhead
+- 🔹 Example: 1 read of 500 lines = ~$0.01, 5 reads of 100 lines = ~$0.05
+
+**Cognitive Complexity**:
+- When writing NEW code: check `get_highlights` after each method
+- If "Cognitive Complexity" warning: refactor IMMEDIATELY by extracting methods
+- For EXISTING complex code: explain refactoring needed, ask if in scope
+
+### Commit Strategy
+
+**Single task**: Commit when done
+**Multiple files**: Commit after EACH file (never batch multiple files)
+**Build must pass** before committing
 
 ---
 
-## 8) Settings model (project‑level, JSON)
+## 5) Common Mistakes to Avoid
 
-```json
-{
-  "model": "gpt-5-mini",
-  "toolPermissions": {
-    "git.commit": "ask",
-    "git.push": "ask",
-    "git.forcePush": "deny",
-    "fs.write": "ask"
-  },
-  "formatting": {
-    "formatOnSave": true,
-    "optimizeImportsOnSave": true,
-    "formatAfterAgentEdits": true,
-    "preCommitReformat": true
-  },
-  "conventionalCommits": {
-    "enabled": true,
-    "defaultType": "chore",
-    "enforceScopes": false
-  }
-}
+### ❌ WRONG: Fix everything at once
+```
+Agent sees 270 issues → tries to fix all → times out → breaks build → nothing committed
+```
+
+### ✅ RIGHT: Incremental with commits
+```
+Agent sees 270 issues → picks File A (42 issues) → fixes → commits → asks to continue
 ```
 
 ---
 
-## 9) UX flows
+### ❌ WRONG: Ignore bash tool requirements
+```
+bash(command="ls")  # FAILS - missing description parameter
+```
 
-- **Add selection to context**: user selects code → context menu → item appears with file+range; token estimate updates.
-- **Run plan**: prompt → chooI'm developing a copilot plugin for intellij. I'm talking with you through the plugin
----
-
-## 11) CI/CD
-
-- **GitHub Actions**: matrix (Linux/macOS/Windows); unit tests, sidecar builds, plugin ZIP artifact.
-- **Static analysis**: SpotBugs or Error Prone (optional), Qodana optional.
-- **Release**: draft GitHub Release with plugin ZIP; Marketplace publish post‑v1.
+### ✅ RIGHT: Follow tool API contract
+```
+bash(command="ls", description="List files in directory")
+```
 
 ---
 
-## 12) Roadmap
-Create commits per feature increment until v1 is done.
----
+### ❌ WRONG: Skip verification
+```
+Fix code → don't run build → commit → build broken on main
+```
 
-## 13) Risks & mitigations
-
-- **SDK tech preview**: wrap all SDK calls behind a `CopilotBridge` interface; pin SDK version; feature‑flag advanced tools.
-- **Runtime mismatch (Java 25)**: keep plugin at Java 21 until IDE baselines standardize on JBR 25 for plugins; revisit once platform guidance changes.
-- **Footprint**: choose **Go** sidecar for small static binaries; lazy‑start; shutdown on IDE exit.
-
----
-
-## 14) Acceptance criteria (v1)
-
-- Can create a **local feature branch**, collect **context** from selections, run a **Copilot plan**, apply edits, **format changed ranges**, and commit via **Conventional Commit** with preview & undo.
-- Git tool calls require explicit **user approval** unless allowed in Settings.
-- Tests pass; coverage ≥85% (core); plugin build ZIP < 10 MB (excluding sidecar binaries).
-- Works on Windows/macOS/Linux across IDEA 2024.3–2025.2.
+### ✅ RIGHT: Verify before commit
+```
+Fix code → build_project → verify success → commit
+```
 
 ---
 
-## Notes on Java & Kotlin
+### ❌ WRONG: Use wrong tools
+```
+grep "class MyClass"              # Misses inheritance, imports
+sed -i 's/old/new/' file.java    # Breaks undo, VCS tracking
+gradle test                       # Doesn't integrate with IDE test runner
+```
 
-All plugin code will be **Java 21**. If a Kotlin‑only API is unavoidable, we’ll add a **thin Kotlin shim** behind a Java interface to keep the codebase Java‑centric.
-
-
+### ✅ RIGHT: Use IntelliJ tools
+```
+search_symbols(query="MyClass", type="class")    # AST-aware
+intellij_write_file(old_str=..., new_str=...)   # Undo support
+run_tests(target="MyTest")                       # IDE integration
+```
 
 ---
 
-## 15) Implementation Decisions (Feb 2026)
+### ❌ WRONG: Small reads repeatedly
+```
+intellij_read_file(path="File.java", start=1, end=100)    # Call 1
+intellij_read_file(path="File.java", start=100, end=200)  # Call 2
+intellij_read_file(path="File.java", start=200, end=300)  # Call 3
+# Result: 3 reasoning cycles, ~$0.04, slower
+```
 
-See README.md for detailed decisions on build system, protocol, authentication, and development strategy.
+### ✅ RIGHT: Batch reads
+```
+intellij_read_file(path="File.java", start=1, end=500)    # 1 call
+# Result: 1 reasoning cycle, ~$0.01, faster
+```
 
 ---
 
-## 16) Agent Time Budget & Code Quality Standards
+### ❌ WRONG: Try apply_quickfix on GrazieInspection
+```
+apply_quickfix(inspection="GrazieInspection", line=42)
+# FAILS - GrazieInspection doesn't support quickfixes
+```
 
-Each prompt has a hard timeout of approximately **10 minutes**. Plan your work accordingly:
+### ✅ RIGHT: Manual edit for grammar
+```
+intellij_read_file(path="File.java", start=40, end=50)
+intellij_write_file(path="File.java", old_str="...", new_str="...")
+```
 
-- **Prioritize**: Fix issues in order: compilation errors > warnings > style issues > grammar/typos.
-- **Aim for zero warnings**: When asked to "fix highlights" or "clean up code", fix ALL warnings and errors, not just the critical ones. This project maintains high code quality standards with minimal warnings.
-- **Use the right tools in sequence**:
-  1. `open_in_editor` - Opens file and triggers DaemonCodeAnalyzer (needed for SonarLint)
-  2. `get_highlights(path="...")` - Shows SonarLint + IntelliJ warnings for specific file
-  3. `run_inspections(scope="...")` - Comprehensive IntelliJ inspection analysis (doesn't include SonarLint)
-  4. Fix issues using `apply_quickfix`, `intellij_write_file`, `add_to_dictionary`, `suppress_inspection`
-  5. `optimize_imports` and `format_code` after making changes
-  6. Check `get_highlights` again to verify fixes worked
-- **GrazieInspection (grammar) limitations**:
-  - GrazieInspection issues do NOT support `apply_quickfix` - must manually edit with `intellij_write_file`
-  - Grammar fixes are LOW priority - fix code issues first, grammar last
-  - If there are 50+ grammar issues, ask user if they want them all fixed (time-consuming)
-- **Tool efficiency guidelines**:
-  - Use `view` for exploration (fast, read-only, can see large sections)
-  - Use `intellij_read_file` only when you need to edit (returns content for old_str/new_str)
-  - **Batch reads aggressively**: Read 300-500 line chunks, NOT 50-100 line chunks
-    - ❌ BAD: Read lines 1-100, then 100-200, then 200-300 (3 calls, ~$0.04, slower)
-    - ✅ GOOD: Read lines 1-500 once (1 call, ~$0.01, faster)
-    - Each tool call triggers LLM reasoning overhead - minimize round trips
-  - Batch related edits in a single `intellij_write_file` call when possible
-  - Don't re-read the same section multiple times - take notes in your reasoning
-  - Exception: If you need to verify a specific small section after edits, small reads are fine
-- **Cognitive complexity prevention**: 
-  - When writing NEW code, check `get_highlights` after each method/class to catch complexity issues early
-  - If you see "Cognitive Complexity" warnings, refactor IMMEDIATELY by extracting methods
-  - Breaking up complex code during development is much easier than fixing it later
-  - For EXISTING large files with complexity issues, explain that major refactoring is needed but out of scope for quick fixes
-- **Stop cleanly**: If you have fixed several issues but more remain, commit what you have and tell the user to send another prompt to continue. Do not try to fix everything in one turn.
-- **Pagination is instant**: After the first `run_inspections` call, subsequent pages (with `offset`) are served from cache in milliseconds.
-- **Do NOT rewrite entire files**: Use `old_str`/`new_str` partial edits. Full file writes risk data loss and are slow.
-- **When asked to fix issues for the whole project**, use this systematic approach:
-  1. Run `run_inspections` to get overview (first page shows issue counts per file)
-  2. Group issues by file (e.g., "PsiBridgeService: 142, McpServer: 24, CopilotAcpClient: 8")
-  3. Fix ONE file at a time, starting with most issues first
-  4. After each file: `format_code`, `build_project`, then `git add . && git commit -m "fix: ..."`
-  5. Report progress: "✅ Fixed PsiBridgeService (142→5 issues). Committed. Next: McpServer (24 issues)"
-  6. Ask user if they want to continue to next file (don't assume)
-  7. **IMPORTANT**: Do NOT try to fix multiple files in one turn - you MUST commit after EACH file
-  8. Skip files with 50+ grammar issues (too time-consuming) unless user specifically wants them fixed
+---
 
-## 17) Prefer IDE Tools Over Shell Commands
+## 6) Tool Efficiency Tips
 
-Always use the purpose-built IDE tools instead of shell commands:
+- **Pagination is instant**: After first `run_inspections`, subsequent pages served from cache in milliseconds
+- **Batch related edits**: Multiple `old_str/new_str` pairs in single `intellij_write_file` call
+- **Don't re-read**: Take notes in your reasoning instead of re-reading same sections
+- **Use view for exploration**: Fast, read-only, can see large sections without edit overhead
 
-- **Testing**: Use `run_tests` instead of `run_command` with `gradle test`. The `run_tests` tool provides structured pass/fail results and integrates with IntelliJ's test runner.
-- **Code search**: Use `search_symbols` and `find_references` instead of grep. These use IntelliJ's AST/PSI engine and understand code structure, imports, type hierarchy, and overrides.
-- **Inspections**: Use `run_inspections` instead of running linters via shell. Inspections integrate with the IDE's analysis engine.
-- **Building**: `run_command` is fine for builds (e.g., `gradle build`), since there is no dedicated build tool.
+---
 
-**Do NOT run integration tests on this project** — they test the plugin itself and will interfere with the running IDE. Only run unit tests (`run_tests` with specific test classes or `*Test` patterns, excluding `*IntegrationTest*`).
+## 7) 54 Available Tools
 
-## 18) Do NOT Remove Defensive Null Checks
+### Code Intelligence (12 tools)
+`search_symbols`, `get_file_outline`, `find_references`, `find_usages`, `find_implementations`, `get_type_hierarchy`, `go_to_declaration`, `quick_definition`, `get_documentation`, `optimize_imports`, `format_code`, `run_tests`
 
-IntelliJ's `@NotNull` annotations are compile-time hints, not runtime guarantees. Many IntelliJ APIs annotated `@NotNull` can return `null` at runtime (e.g., `getPresentation()`, `getDescriptionTemplate()`, `getProblemElements()`, `getService()`).
+### File Operations (8 tools)
+`list_project_files`, `intellij_read_file`, `intellij_write_file`, `create_file`, `delete_file`, `get_file_properties`, `search_project`, `search_in_path`
 
-- **Never remove a null check just because static analysis says the value "is always non-null"**.
-- If Qodana or inspections flag a `ConstantValue` warning on a null check, add `@SuppressWarnings("ConstantValue")` rather than removing the check.
-- Look for existing `@SuppressWarnings` annotations and comments — they are there for a reason.
+### Inspections & Quality (10 tools)
+`get_highlights`, `run_inspections`, `get_problems`, `apply_quickfix`, `suppress_inspection`, `add_to_dictionary`, `get_indexing_status`, `open_in_editor`, `refactor`, `build_project`
 
-## 19) SonarQube / SonarLint Findings
+### Testing (6 tools)
+`list_tests`, `run_tests`, `get_test_results`, `get_coverage`, `get_run_configurations`, `run_command`
 
-SonarQube for IDE (SonarLint) is installed as a marketplace plugin. Its findings do NOT appear in `run_inspections` — they come through IntelliJ's `DaemonCodeAnalyzer` (editor highlights).
+### Git (6 tools)
+`get_git_status`, `git_log`, `git_diff`, `git_add`, `git_commit`, `git_branch`
 
-- **To see SonarLint findings**: Use `get_highlights` on a file. SonarLint findings will appear alongside IntelliJ's own highlights for files that have been opened/analyzed by the IDE.
-- **`run_inspections` does NOT include SonarLint results** — it only runs IntelliJ's built-in inspection engine.
-- If the user asks about SonarQube/SonarLint problems, use `get_highlights`, not `run_inspections`.
+### Project (6 tools)
+`get_project_info`, `get_project_structure`, `get_module_dependencies`, `list_project_files`, `open_project_view`, `focus_editor`
+
+### Other (6 tools)
+`get_editor_state`, `navigate_to`, `close_file`, `get_terminal_sessions`, `send_terminal_input`, `get_recent_files`
+
+---
+
+## 8) When to Stop & Ask
+
+- **Unclear requirements**: Ask before implementing
+- **Multiple valid approaches**: Present options, let user choose
+- **Time running out**: Commit what you have, tell user to continue in next prompt
+- **50+ grammar issues**: Ask if user wants them fixed (time-consuming)
+- **After each file in multi-file task**: Ask "Continue to next file?"
+
+---
+
+## 9) SonarQube / SonarLint Findings
+
+- SonarLint runs in the IDE and reports via `get_highlights`
+- Open file first: `open_in_editor(path)` → `get_highlights(path)`
+- Fix SonarLint issues with same priority as other warnings
+- Use constants for duplicate string literals
+- Extract methods for cognitive complexity
+- Add proper exception handling (don't leave empty catch blocks)
+
+---
+
+## 10) Implementation Decisions (Feb 2026)
+
+This project uses:
+- **Build**: Gradle 8.x with IntelliJ Platform Plugin 2.x
+- **Protocol**: ACP (via Copilot CLI), MCP (stdio server)
+- **Authentication**: GitHub OAuth via Copilot CLI
+- **Development**: Sandbox-first with `./restart-sandbox.sh` for fast reload
+- **Testing**: JUnit 5, 89 unit tests passing
+
+See `PROJECT-SPEC.md` for full architecture details.
+
+---
+
+*This file contains agent behavior guidelines only. For project architecture, see `PROJECT-SPEC.md`.*

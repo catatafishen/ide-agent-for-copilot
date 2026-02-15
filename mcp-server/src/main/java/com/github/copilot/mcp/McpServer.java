@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 /**
  * Lightweight MCP (Model Context Protocol) stdio server providing code intelligence and git tools.
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
- * Provides 36 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
+ * Provides 54 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
  */
 public class McpServer {
 
