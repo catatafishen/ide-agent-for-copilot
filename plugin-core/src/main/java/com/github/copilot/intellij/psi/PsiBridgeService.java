@@ -3089,6 +3089,10 @@ public final class PsiBridgeService implements Disposable {
         String configResult = tryRunTestConfig(target);
         if (configResult != null) return configResult;
 
+        // Try IntelliJ's native JUnit test runner
+        String junitResult = tryRunJUnitNatively(target, module);
+        if (junitResult != null) return junitResult;
+
         // Fall back to Gradle
         String gradlew = basePath + (System.getProperty("os.name").contains("Win")
             ? "\\gradlew.bat" : "/gradlew");
@@ -3218,6 +3222,104 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception ignored) {
         }
         return null;
+    }
+
+    /**
+     * Create a temporary JUnit run configuration and execute it via IntelliJ's native test runner.
+     * This gives proper test tree UI, pass/fail counts, and rerun-failed support.
+     */
+    private String tryRunJUnitNatively(String target, String module) {
+        try {
+            var junitType = findConfigurationType("junit");
+            if (junitType == null) return null;
+
+            // Parse target: "com.example.MyTest" or "MyTest.testFoo" or "*Test"
+            String testClass = target;
+            String testMethod = null;
+            if (target.contains("*")) {
+                // Pattern-based — can't map to a single JUnit class, fall back to Gradle
+                return null;
+            }
+
+            // Check for "ClassName.methodName" pattern (not a package separator)
+            int lastDot = target.lastIndexOf('.');
+            if (lastDot > 0) {
+                String possibleMethod = target.substring(lastDot + 1);
+                String possibleClass = target.substring(0, lastDot);
+                // If the part after the last dot starts with lowercase, it's likely a method name
+                if (!possibleMethod.isEmpty() && Character.isLowerCase(possibleMethod.charAt(0))) {
+                    testClass = possibleClass;
+                    testMethod = possibleMethod;
+                }
+            }
+
+            // Resolve the class via PSI to get FQN and module
+            ClassInfo classInfo = resolveClass(testClass);
+            if (classInfo.fqn() == null) return null; // class not found, fall back to Gradle
+
+            CompletableFuture<String> resultFuture = new CompletableFuture<>();
+            final String resolvedClass = classInfo.fqn();
+            final String resolvedMethod = testMethod;
+            final Module resolvedModule = classInfo.module();
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                try {
+                    RunManager runManager = RunManager.getInstance(project);
+                    var factory = junitType.getConfigurationFactories()[0];
+                    String configName = "Test: " + (resolvedMethod != null
+                        ? resolvedClass.substring(resolvedClass.lastIndexOf('.') + 1) + "." + resolvedMethod
+                        : resolvedClass.substring(resolvedClass.lastIndexOf('.') + 1));
+                    var settings = runManager.createConfiguration(configName, factory);
+                    RunConfiguration config = settings.getConfiguration();
+
+                    // Set test class/method via getPersistentData()
+                    var getData = config.getClass().getMethod("getPersistentData");
+                    Object data = getData.invoke(config);
+                    data.getClass().getField("MAIN_CLASS_NAME").set(data, resolvedClass);
+                    if (resolvedMethod != null) {
+                        data.getClass().getField("METHOD_NAME").set(data, resolvedMethod);
+                        data.getClass().getField("TEST_OBJECT").set(data, "method");
+                    } else {
+                        data.getClass().getField("TEST_OBJECT").set(data, "class");
+                    }
+
+                    // Set module
+                    if (resolvedModule != null) {
+                        try {
+                            var setModule = config.getClass().getMethod("setModule", Module.class);
+                            setModule.invoke(config, resolvedModule);
+                        } catch (NoSuchMethodException ignored) {
+                        }
+                    }
+
+                    settings.setTemporary(true);
+                    runManager.addConfiguration(settings);
+                    runManager.setSelectedConfiguration(settings);
+
+                    // Execute via IntelliJ's test runner
+                    var executor = DefaultRunExecutor.getRunExecutorInstance();
+                    var envBuilder = ExecutionEnvironmentBuilder.createOrNull(executor, settings);
+                    if (envBuilder == null) {
+                        resultFuture.complete("Error: Cannot create execution environment for JUnit test");
+                        return;
+                    }
+
+                    var env = envBuilder.build();
+                    ExecutionManager.getInstance(project).restartRunProfile(env);
+                    resultFuture.complete("Started tests via IntelliJ JUnit runner: " + configName
+                        + "\nResults will appear in the IntelliJ Test Runner panel."
+                        + "\nUse get_test_results to check results after completion.");
+                } catch (Exception e) {
+                    LOG.warn("Failed to run JUnit natively, will fall back to Gradle", e);
+                    resultFuture.complete(null);
+                }
+            });
+
+            return resultFuture.get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            LOG.warn("tryRunJUnitNatively failed", e);
+            return null;
+        }
     }
 
     private String getProjectJavaHome() {
