@@ -275,7 +275,7 @@ public class McpServer {
                         "Fast but limited — only returns issues the IDE has already detected in memory. " +
                         "For comprehensive code quality analysis, use run_inspections instead.",
                 Map.of(
-                        "scope", Map.of("type", "string", "description", "Analysis scope: 'project' (default) for all source files"),
+                        "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all project source files.", "default", ""),
                         "limit", Map.of("type", "integer", "description", "Maximum number of highlights to return (default: 100)")
                 ),
                 List.of()));

@@ -968,7 +968,7 @@ public final class PsiBridgeService implements Disposable {
      */
     @SuppressWarnings("UnstableApiUsage")
     private String getHighlights(JsonObject args) throws Exception {
-        String scope = args.has("scope") ? args.get("scope").getAsString() : "project";
+        String pathStr = args.has("path") ? args.get("path").getAsString() : null;
         int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
@@ -978,7 +978,7 @@ public final class PsiBridgeService implements Disposable {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
-                getHighlightsCached(scope, limit, resultFuture);
+                getHighlightsCached(pathStr, limit, resultFuture);
             } catch (Exception e) {
                 LOG.error("Error getting highlights", e);
                 resultFuture.complete("Error getting highlights: " + e.getMessage());
@@ -1061,17 +1061,26 @@ public final class PsiBridgeService implements Disposable {
     /**
      * Get highlights by reading cached daemon analysis (fast but may miss unanalyzed files).
      */
-    private void getHighlightsCached(String scope, int limit, CompletableFuture<String> resultFuture) {
+    private void getHighlightsCached(String pathStr, int limit, CompletableFuture<String> resultFuture) {
         ReadAction.run(() -> {
             List<String> problems = new ArrayList<>();
             String basePath = project.getBasePath();
 
-            // Get all project source files
+            // Get files to analyze
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> allFiles = new ArrayList<>();
 
-            if ("project".equals(scope)) {
-                // Iterate all source roots
+            if (pathStr != null && !pathStr.isEmpty()) {
+                // Analyze specific file
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf != null && fileIndex.isInSourceContent(vf)) {
+                    allFiles.add(vf);
+                } else {
+                    resultFuture.complete("Error: File not found or not in source content: " + pathStr);
+                    return;
+                }
+            } else {
+                // Analyze all project source files
                 fileIndex.iterateContent(file -> {
                     if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
                         allFiles.add(file);
@@ -1080,7 +1089,7 @@ public final class PsiBridgeService implements Disposable {
                 });
             }
 
-            LOG.info("Analyzing " + allFiles.size() + " files for inspections (cached mode)");
+            LOG.info("Analyzing " + allFiles.size() + " files for highlights (cached mode)");
 
             // Analyze each file for problems using existing highlights
             int count = 0;
