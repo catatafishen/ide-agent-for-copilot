@@ -68,6 +68,29 @@ tasks.named("prepareSandbox") {
         val persistentPlugins = rootProject.file(".sandbox-plugins")
         if (persistentPlugins.exists() && persistentPlugins.isDirectory) {
             ideDirs?.forEach { ideDir ->
+                // Extract plugin zips into the plugins/ directory (alongside plugin-core)
+                // IntelliJ loads plugins from plugins/, not system/plugins/
+                val pluginsDir = File(ideDir, "plugins")
+                pluginsDir.mkdirs()
+                persistentPlugins.listFiles()?.filter { it.extension == "zip" }?.forEach { zipFile ->
+                    val pluginName = zipFile.nameWithoutExtension
+                    val extractedDir = File(pluginsDir, pluginName)
+                    if (!extractedDir.exists()) {
+                        logger.lifecycle("Extracting marketplace plugin: ${zipFile.name}")
+                        project.copy {
+                            from(project.zipTree(zipFile))
+                            into(pluginsDir)
+                        }
+                    }
+                }
+                // Copy standalone jars
+                persistentPlugins.listFiles()?.filter { it.extension == "jar" }?.forEach { jarFile ->
+                    val dest = File(pluginsDir, jarFile.name)
+                    if (!dest.exists()) {
+                        jarFile.copyTo(dest)
+                    }
+                }
+                // Also keep the zips in system/plugins/ for IntelliJ's plugin manager UI
                 val systemPlugins = File(ideDir, "system/plugins")
                 systemPlugins.mkdirs()
                 persistentPlugins.listFiles()?.filter { it.extension == "zip" || it.extension == "jar" }?.forEach { src ->
