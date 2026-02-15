@@ -44,6 +44,7 @@
       <w>mcpserver</w>
       <w>ndjson</w>
       <w>noop</w>
+      <w>nosonar</w>
       <w>oneline</w>
       <w>psi</w>
       <w>pwsh</w>

@@ -1185,7 +1185,9 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
                 if (scopeFile.isDirectory()) {
-                    PsiDirectory psiDir = PsiManager.getInstance(project).findDirectory(scopeFile);
+                    PsiDirectory psiDir = com.intellij.openapi.application.ReadAction.compute(() ->
+                        PsiManager.getInstance(project).findDirectory(scopeFile)
+                    );
                     if (psiDir == null) {
                         resultFuture.complete("Error: Cannot resolve directory: " + scopePath);
                         return;
@@ -1193,7 +1195,9 @@ public final class PsiBridgeService implements Disposable {
                     scope = new com.intellij.analysis.AnalysisScope(psiDir);
                     LOG.info("Analysis scope: directory " + scopePath);
                 } else {
-                    PsiFile psiFile = PsiManager.getInstance(project).findFile(scopeFile);
+                    PsiFile psiFile = com.intellij.openapi.application.ReadAction.compute(() ->
+                        PsiManager.getInstance(project).findFile(scopeFile)
+                    );
                     if (psiFile == null) {
                         resultFuture.complete("Error: Cannot parse file: " + scopePath);
                         return;

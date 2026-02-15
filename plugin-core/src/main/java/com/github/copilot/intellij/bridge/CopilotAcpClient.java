@@ -55,7 +55,6 @@ public class CopilotAcpClient implements Closeable {
     private Process process;
     private BufferedWriter writer;
     private Thread readerThread;
-    private Thread stderrReaderThread;
     private volatile boolean closed = false;
 
     // State from initialize
@@ -104,7 +103,7 @@ public class CopilotAcpClient implements Closeable {
             readerThread.start();
 
             // Start stderr reader thread to capture process errors
-            stderrReaderThread = new Thread(this::readStderrLoop, "copilot-acp-stderr");
+            Thread stderrReaderThread = new Thread(this::readStderrLoop, "copilot-acp-stderr");
             stderrReaderThread.setDaemon(true);
             stderrReaderThread.start();
 
@@ -121,10 +120,9 @@ public class CopilotAcpClient implements Closeable {
      */
     private ProcessBuilder buildAcpCommand(String copilotPath) {
         java.util.List<String> cmd = new java.util.ArrayList<>();
-        
+
         // If copilot is in an NVM directory, explicitly use the same node binary
         // to avoid resolving to a different node version via /usr/bin/env node
-        File copilotFile = new File(copilotPath);
         if (copilotPath.contains("/.nvm/versions/node/")) {
             String nodeDir = copilotPath.substring(0, copilotPath.indexOf("/bin/copilot"));
             String nodePath = nodeDir + "/bin/node";
@@ -137,7 +135,7 @@ public class CopilotAcpClient implements Closeable {
         } else {
             cmd.add(copilotPath);
         }
-        
+
         cmd.add("--acp");
         cmd.add("--stdio");
 
@@ -805,12 +803,13 @@ public class CopilotAcpClient implements Closeable {
             // The JAR is bundled in the plugin's lib directory alongside plugin-core
             PluginId pluginId = PluginId.getId("com.github.copilot.intellij");
             IdeaPluginDescriptor[] plugins = PluginManagerCore.getPlugins();
+            @SuppressWarnings("EqualsBetweenInconvertibleTypes")
             String pluginPath = plugins.length > 0 ?
                 java.util.Arrays.stream(plugins)
                     // Cast needed - IDE fails to resolve inherited methods from PluginDescriptor interface
-                    .filter(p -> pluginId.equals(((com.intellij.openapi.extensions.PluginDescriptor)p).getPluginId())) //NOSONAR
+                    .filter(p -> pluginId.equals(((com.intellij.openapi.extensions.PluginDescriptor) p).getPluginId())) //NOSONAR
                     .findFirst()
-                    .map(p -> ((com.intellij.openapi.extensions.PluginDescriptor)p).getPluginPath().resolve("lib").resolve("mcp-server.jar").toString()) //NOSONAR
+                    .map(p -> ((com.intellij.openapi.extensions.PluginDescriptor) p).getPluginPath().resolve("lib").resolve("mcp-server.jar").toString()) //NOSONAR
                     .orElse(null) : null;
             if (pluginPath != null && new File(pluginPath).exists()) {
                 LOG.info("Found MCP server JAR: " + pluginPath);
