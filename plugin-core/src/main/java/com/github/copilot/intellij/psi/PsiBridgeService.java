@@ -24,6 +24,7 @@ import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
+import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModuleRootManager;
@@ -3748,38 +3749,28 @@ public final class PsiBridgeService implements Disposable {
             }
 
             boolean anyChanged = false;
-            for (Object projectSettings : linkedSettings) {
-                Class<?> settingsClass = projectSettings.getClass();
-                Class<?> externalSettingsClass = Class.forName(
-                    "com.intellij.openapi.externalSystem.settings.ExternalProjectSettings");
+            Class<?> gradleProjectSettingsClass = Class.forName(
+                "org.jetbrains.plugins.gradle.settings.GradleProjectSettings");
 
-                // Try to resolve external annotations (method may not exist in all IntelliJ versions)
+            for (Object projectSettings : linkedSettings) {
+                // isResolveExternalAnnotations is on GradleProjectSettings, not ExternalProjectSettings
                 try {
-                    //noinspection JavaReflectionMemberAccess - method exists in some IntelliJ versions
-                    Method getResolve = externalSettingsClass.getMethod("isResolveExternalAnnotations");
-                    boolean currentDownloadSources = (boolean) getResolve.invoke(projectSettings);
-                    //noinspection JavaReflectionMemberAccess
-                    Method resolveMethod = externalSettingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
-                    if (!currentDownloadSources) {
-                        resolveMethod.invoke(projectSettings, true);
+                    Method getResolve = gradleProjectSettingsClass.getMethod("isResolveExternalAnnotations");
+                    boolean currentValue = (boolean) getResolve.invoke(projectSettings);
+                    if (!currentValue) {
+                        Method setResolve = gradleProjectSettingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
+                        setResolve.invoke(projectSettings, true);
                         sb.append("Enabled 'Resolve external annotations' for Gradle project.\n");
                         anyChanged = true;
                     }
                 } catch (NoSuchMethodException ignored) {
                 }
 
-                // Also try the direct download sources setting (may be in AdvancedSettings or GradleProjectSettings)
+                // AdvancedSettings is a platform API — use it directly
                 try {
-                    // GradleProjectSettings has isResolveModulePerSourceSet etc.
-                    // Check for download sources via AdvancedSettings registry
-                    Class<?> advancedSettingsClass = Class.forName(
-                        "com.intellij.openapi.options.advanced.AdvancedSettings");
-                    Method getBoolean = advancedSettingsClass.getMethod("getBoolean", String.class);
-                    boolean currentValue = (boolean) getBoolean.invoke(null, "gradle.download.sources.on.sync");
-
-                    if (!currentValue) {
-                        Method setBoolean = advancedSettingsClass.getMethod("setBoolean", String.class, boolean.class);
-                        setBoolean.invoke(null, "gradle.download.sources.on.sync", true);
+                    boolean downloadOnSync = AdvancedSettings.getBoolean("gradle.download.sources.on.sync");
+                    if (!downloadOnSync) {
+                        AdvancedSettings.setBoolean("gradle.download.sources.on.sync", true);
                         sb.append("Enabled 'Download sources on sync' in Advanced Settings.\n");
                         anyChanged = true;
                     } else {
@@ -3787,10 +3778,10 @@ public final class PsiBridgeService implements Disposable {
                     }
                 } catch (Exception e) {
                     LOG.info("AdvancedSettings download sources not available: " + e.getMessage());
-                    // Try older API path
+                    // Try older API path via GradleProjectSettings
                     try {
-                        Method setDownload = settingsClass.getMethod("setDownloadSources", boolean.class);
-                        Method getDownload = settingsClass.getMethod("isDownloadSources");
+                        Method getDownload = gradleProjectSettingsClass.getMethod("isDownloadSources");
+                        Method setDownload = gradleProjectSettingsClass.getMethod("setDownloadSources", boolean.class);
                         boolean current = (boolean) getDownload.invoke(projectSettings);
                         if (!current) {
                             setDownload.invoke(projectSettings, true);
