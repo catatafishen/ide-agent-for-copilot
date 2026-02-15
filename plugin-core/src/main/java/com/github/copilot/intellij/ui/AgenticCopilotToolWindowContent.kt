@@ -1227,13 +1227,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.fill = GridBagConstraints.HORIZONTAL
 
         // Model settings section
-        val modelLabel = JBLabel("<html><b>Model Settings</b></html>")
+        val modelLabel = JBLabel("<html><b>Model settings</b></html>")
         gbc.gridwidth = 2
         panel.add(modelLabel, gbc)
 
         gbc.gridy++
         gbc.gridwidth = 1
-        panel.add(JBLabel("Default Model:"), gbc)
+        panel.add(JBLabel("Default model:"), gbc)
 
         gbc.gridx = 1
         val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
@@ -1353,7 +1353,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.gridy++
         gbc.gridwidth = 2
         gbc.insets = JBUI.insets(20, 5, 5, 5)
-        val permissionsLabel = JBLabel("<html><b>Tool Permissions</b></html>")
+        val permissionsLabel = JBLabel("<html><b>Tool permissions</b></html>")
         panel.add(permissionsLabel, gbc)
 
         gbc.gridy++
@@ -1381,7 +1381,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.gridx = 0
         gbc.gridwidth = 2
         gbc.insets = JBUI.insets(20, 5, 5, 5)
-        val formatLabel = JBLabel("<html><b>Code Formatting</b></html>")
+        val formatLabel = JBLabel("<html><b>Code formatting</b></html>")
         panel.add(formatLabel, gbc)
 
         gbc.gridy++

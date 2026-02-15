@@ -1188,10 +1188,9 @@ public final class PsiBridgeService implements Disposable {
                             String toolId = toolWrapper.getShortName();
 
                             var presentation = getPresentation(toolWrapper);
-                            if (presentation == null) continue;
 
                             var problemElements = presentation.getProblemElements();
-                            if (problemElements == null || problemElements.isEmpty()) continue;
+                            if (problemElements.isEmpty()) continue;
 
                             for (var refEntity : problemElements.keys()) {
                                 var descriptors = problemElements.get(refEntity);
@@ -1199,7 +1198,7 @@ public final class PsiBridgeService implements Disposable {
 
                                 for (var descriptor : descriptors) {
                                     String description = descriptor.getDescriptionTemplate();
-                                    if (description == null || description.isEmpty()) {
+                                    if (description.isEmpty()) {
                                         skippedNoDescription++;
                                         continue;
                                     }
@@ -1627,6 +1626,7 @@ public final class PsiBridgeService implements Disposable {
             }
 
             var qodanaService = project.getService(serviceClass);
+            //noinspection ConstantValue - serviceClass is loaded via reflection; getService may return null at runtime
             if (qodanaService == null) {
                 // Fall back to looking for SARIF output files
                 String fallbackResult = tryFindSarifOutput(limit);
@@ -1708,7 +1708,7 @@ public final class PsiBridgeService implements Disposable {
                 try {
                     String sarif = java.nio.file.Files.readString(candidate);
                     if (sarif.length() > 10) {
-                        LOG.info("Found Qodana SARIF output at " + candidate);
+                        LOG.info("Found Qodana SARIF output at candidate path: " + candidate);
                         return parseSarifResults(sarif, limit);
                     }
                 } catch (Exception e) {
@@ -1728,12 +1728,14 @@ public final class PsiBridgeService implements Disposable {
                                 try {
                                     return java.nio.file.Files.getLastModifiedTime(b)
                                         .compareTo(java.nio.file.Files.getLastModifiedTime(a));
-                                } catch (Exception e) { return 0; }
+                                } catch (Exception e) {
+                                    return 0;
+                                }
                             })
                             .findFirst();
                         if (sarifFile.isPresent()) {
                             String sarif = java.nio.file.Files.readString(sarifFile.get());
-                            LOG.info("Found Qodana SARIF output at " + sarifFile.get());
+                            LOG.info("Found Qodana SARIF output via recursive search: " + sarifFile.get());
                             return parseSarifResults(sarif, limit);
                         }
                     }
@@ -3747,20 +3749,14 @@ public final class PsiBridgeService implements Disposable {
 
             boolean anyChanged = false;
             for (Object projectSettings : linkedSettings) {
-                // Check current state
                 Class<?> settingsClass = projectSettings.getClass();
-                // The method is on ExternalProjectSettings (parent class)
                 Class<?> externalSettingsClass = Class.forName(
                     "com.intellij.openapi.externalSystem.settings.ExternalProjectSettings");
 
-                boolean currentDownloadSources = (boolean) externalSettingsClass
-                    .getMethod("isResolveExternalAnnotations").invoke(projectSettings);
-
-                // Try the Gradle-specific isDownloadSources if available,
-                // otherwise use the resolve annotations approach
+                // Try to resolve external annotations (method may not exist in all IntelliJ versions)
                 try {
-                    // In newer IntelliJ, the setting is "Resolve external annotations" + separate download
-                    // For Gradle projects, try setResolveExternalAnnotations
+                    Method getResolve = externalSettingsClass.getMethod("isResolveExternalAnnotations");
+                    boolean currentDownloadSources = (boolean) getResolve.invoke(projectSettings);
                     Method resolveMethod = externalSettingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
                     if (!currentDownloadSources) {
                         resolveMethod.invoke(projectSettings, true);
