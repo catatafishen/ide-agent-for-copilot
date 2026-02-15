@@ -3755,8 +3755,10 @@ public final class PsiBridgeService implements Disposable {
 
                 // Try to resolve external annotations (method may not exist in all IntelliJ versions)
                 try {
+                    //noinspection JavaReflectionMemberAccess - method exists in some IntelliJ versions
                     Method getResolve = externalSettingsClass.getMethod("isResolveExternalAnnotations");
                     boolean currentDownloadSources = (boolean) getResolve.invoke(projectSettings);
+                    //noinspection JavaReflectionMemberAccess
                     Method resolveMethod = externalSettingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
                     if (!currentDownloadSources) {
                         resolveMethod.invoke(projectSettings, true);
