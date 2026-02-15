@@ -229,11 +229,18 @@ See README.md for detailed decisions on build system, protocol, authentication, 
 
 ---
 
-## 16) Agent Time Budget
+## 16) Agent Time Budget & Code Quality Standards
 
 Each prompt has a hard timeout of approximately **10 minutes**. Plan your work accordingly:
 
-- **Prioritize**: Fix the most impactful issues first (compilation errors > warnings > style).
+- **Prioritize**: Fix issues in order: compilation errors > warnings > style issues > grammar/typos.
+- **Aim for zero warnings**: When asked to "fix highlights" or "clean up code", fix ALL warnings and errors, not just the critical ones. This project maintains high code quality standards with minimal warnings.
+- **Use the right tools in sequence**:
+  1. `open_in_editor` - Opens file and triggers DaemonCodeAnalyzer (needed for SonarLint)
+  2. `get_highlights` - Shows SonarLint + IntelliJ warnings for opened files
+  3. `run_inspections` - Comprehensive IntelliJ inspection analysis (doesn't include SonarLint)
+  4. Fix issues using `apply_quickfix`, `intellij_write_file`, `add_to_dictionary`, `suppress_inspection`
+  5. `optimize_imports` and `format_code` after making changes
 - **Batch by file**: Read a file once, make all edits, then move on. Do not re-read the same file repeatedly.
 - **Stop cleanly**: If you have fixed several issues but more remain, commit what you have and tell the user to send another prompt to continue. Do not try to fix everything in one turn.
 - **Pagination is instant**: After the first `run_inspections` call, subsequent pages (with `offset`) are served from cache in milliseconds.
