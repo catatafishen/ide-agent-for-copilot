@@ -103,6 +103,10 @@ intellijPlatform {
 }
 
 tasks {
+    withType<Jar> {
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+
     withType<JavaCompile> {
         options.compilerArgs.add("-Xlint:deprecation")
     }
