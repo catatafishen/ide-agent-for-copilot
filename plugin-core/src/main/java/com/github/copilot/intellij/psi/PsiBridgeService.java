@@ -4226,10 +4226,8 @@ public final class PsiBridgeService implements Disposable {
                                 resultFuture.complete("✓ Safely deleted '" + symbolName + "' (no usages found).\n" +
                                     "  File: " + pathStr);
                             }
-                            case "inline" -> {
-                                resultFuture.complete("Error: 'inline' refactoring is not yet supported via this tool. " +
-                                    "Use intellij_write_file to manually inline the code.");
-                            }
+                            case "inline" -> resultFuture.complete("Error: 'inline' refactoring is not yet supported via this tool. " +
+                                "Use intellij_write_file to manually inline the code.");
                             case "extract_method" -> {
                                 resultFuture.complete("Error: 'extract_method' requires a code selection range " +
                                     "which is not well-suited for tool-based invocation. " +
