@@ -472,7 +472,10 @@ public class McpServer {
         tools.add(buildTool("run_command",
                 "Execute a shell command in the project directory and return its output. " +
                         "The command runs through IntelliJ's process management and its output is visible " +
-                        "in the Run panel. Use for builds, scripts, or any CLI operation.",
+                        "in the Run panel. Use for builds, scripts, or any CLI operation. " +
+                        "WARNING: Do NOT use this to run tests — use the 'run_tests' tool instead, which provides " +
+                        "structured results with pass/fail counts. Do NOT use this for code search — use " +
+                        "'search_symbols' or 'find_references' tools which use the AST and are more accurate than grep.",
                 Map.of(
                         "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'npm test', 'ls -la')"),
                         "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),

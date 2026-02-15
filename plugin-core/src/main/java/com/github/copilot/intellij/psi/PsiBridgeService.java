@@ -1188,18 +1188,25 @@ public final class PsiBridgeService implements Disposable {
                             var toolWrapper = tools.getTool();
                             String toolId = toolWrapper.getShortName();
 
+                            // Null checks required: getPresentation() and getProblemElements() can return null at runtime
+                            // despite @NotNull annotations — these are inspection API calls on dynamic tool wrappers
+                            @SuppressWarnings("ConstantValue")
                             var presentation = getPresentation(toolWrapper);
+                            if (presentation == null) continue;
 
+                            @SuppressWarnings("ConstantValue")
                             var problemElements = presentation.getProblemElements();
-                            if (problemElements.isEmpty()) continue;
+                            if (problemElements == null || problemElements.isEmpty()) continue;
 
                             for (var refEntity : problemElements.keys()) {
                                 var descriptors = problemElements.get(refEntity);
                                 if (descriptors == null) continue;
 
                                 for (var descriptor : descriptors) {
+                                    // getDescriptionTemplate() can return null despite @NotNull annotation
+                                    @SuppressWarnings("ConstantValue")
                                     String description = descriptor.getDescriptionTemplate();
-                                    if (description.isEmpty()) {
+                                    if (description == null || description.isEmpty()) {
                                         skippedNoDescription++;
                                         continue;
                                     }

@@ -238,3 +238,22 @@ Each prompt has a hard timeout of approximately **10 minutes**. Plan your work a
 - **Stop cleanly**: If you have fixed several issues but more remain, commit what you have and tell the user to send another prompt to continue. Do not try to fix everything in one turn.
 - **Pagination is instant**: After the first `run_inspections` call, subsequent pages (with `offset`) are served from cache in milliseconds.
 - **Do NOT rewrite entire files**: Use `old_str`/`new_str` partial edits. Full file writes risk data loss and are slow.
+
+## 17) Prefer IDE Tools Over Shell Commands
+
+Always use the purpose-built IDE tools instead of shell commands:
+
+- **Testing**: Use `run_tests` instead of `run_command` with `gradle test`. The `run_tests` tool provides structured pass/fail results and integrates with IntelliJ's test runner.
+- **Code search**: Use `search_symbols` and `find_references` instead of grep. These use IntelliJ's AST/PSI engine and understand code structure, imports, type hierarchy, and overrides.
+- **Inspections**: Use `run_inspections` instead of running linters via shell. Inspections integrate with the IDE's analysis engine.
+- **Building**: `run_command` is fine for builds (e.g., `gradle build`), since there is no dedicated build tool.
+
+**Do NOT run integration tests on this project** — they test the plugin itself and will interfere with the running IDE. Only run unit tests (`run_tests` with specific test classes or `*Test` patterns, excluding `*IntegrationTest*`).
+
+## 18) Do NOT Remove Defensive Null Checks
+
+IntelliJ's `@NotNull` annotations are compile-time hints, not runtime guarantees. Many IntelliJ APIs annotated `@NotNull` can return `null` at runtime (e.g., `getPresentation()`, `getDescriptionTemplate()`, `getProblemElements()`, `getService()`).
+
+- **Never remove a null check just because static analysis says the value "is always non-null"**.
+- If Qodana or inspections flag a `ConstantValue` warning on a null check, add `@SuppressWarnings("ConstantValue")` rather than removing the check.
+- Look for existing `@SuppressWarnings` annotations and comments — they are there for a reason.
