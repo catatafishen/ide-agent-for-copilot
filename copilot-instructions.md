@@ -242,6 +242,10 @@ Each prompt has a hard timeout of approximately **10 minutes**. Plan your work a
   4. Fix issues using `apply_quickfix`, `intellij_write_file`, `add_to_dictionary`, `suppress_inspection`
   5. `optimize_imports` and `format_code` after making changes
   6. Check `get_highlights` again to verify fixes worked
+- **GrazieInspection (grammar) limitations**:
+  - GrazieInspection issues do NOT support `apply_quickfix` - must manually edit with `intellij_write_file`
+  - Grammar fixes are LOW priority - fix code issues first, grammar last
+  - If there are 50+ grammar issues, ask user if they want them all fixed (time-consuming)
 - **Tool efficiency guidelines**:
   - Use `view` for exploration (fast, read-only, can see large sections)
   - Use `intellij_read_file` only when you need to edit (returns content for old_str/new_str)
@@ -264,10 +268,11 @@ Each prompt has a hard timeout of approximately **10 minutes**. Plan your work a
   1. Run `run_inspections` to get overview (first page shows issue counts per file)
   2. Group issues by file (e.g., "PsiBridgeService: 142, McpServer: 24, CopilotAcpClient: 8")
   3. Fix ONE file at a time, starting with most issues first
-  4. After each file: format, build, commit with descriptive message
-  5. Report progress: "✅ Fixed PsiBridgeService (142→5), next: McpServer (24 issues)"
-  6. Continue until all files are done or user asks to stop
-  7. Do NOT try to fix all files in one turn - commit after each file
+  4. After each file: `format_code`, `build_project`, then `git add . && git commit -m "fix: ..."`
+  5. Report progress: "✅ Fixed PsiBridgeService (142→5 issues). Committed. Next: McpServer (24 issues)"
+  6. Ask user if they want to continue to next file (don't assume)
+  7. **IMPORTANT**: Do NOT try to fix multiple files in one turn - you MUST commit after EACH file
+  8. Skip files with 50+ grammar issues (too time-consuming) unless user specifically wants them fixed
 
 ## 17) Prefer IDE Tools Over Shell Commands
 
