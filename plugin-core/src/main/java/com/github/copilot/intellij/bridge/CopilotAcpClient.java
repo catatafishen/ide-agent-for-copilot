@@ -56,7 +56,7 @@ public class CopilotAcpClient implements Closeable {
     private static final String USER_HOME = "user.home";
 
     /**
-     * Permission kinds that are denied so the agent uses IntelliJ MCP tools instead.
+     * Permission kinds that are denied, so the agent uses IntelliJ MCP tools instead.
      */
     private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create", "execute", "runInTerminal");
 
@@ -71,7 +71,7 @@ public class CopilotAcpClient implements Closeable {
     private Thread readerThread;
     private volatile boolean closed = false;
 
-    // State from initialize
+    // State from the initialization response
     private JsonArray authMethods;
     private boolean initialized = false;
 
@@ -84,10 +84,10 @@ public class CopilotAcpClient implements Closeable {
     private volatile String lastDeniedKind = "";
 
     /**
-     * Start the copilot ACP process and perform the initialize handshake.
+     * Start the copilot ACP process and perform the initialization handshake.
      */
     public synchronized void start() throws CopilotException {
-        // Clean up previous process if it died
+        // Clean up the previous process if it died
         if (process != null) {
             LOG.info("Restarting ACP client (previous process died)");
             closed = false; // Reset closed flag for restart
@@ -112,12 +112,12 @@ public class CopilotAcpClient implements Closeable {
 
             writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
 
-            // Start reader thread for responses and notifications
+            // Start a reader thread for responses and notifications
             readerThread = new Thread(this::readLoop, "copilot-acp-reader");
             readerThread.setDaemon(true);
             readerThread.start();
 
-            // Start stderr reader thread to capture process errors
+            // Start a thread to read stderr and capture process errors
             Thread stderrReaderThread = new Thread(this::readStderrLoop, "copilot-acp-stderr");
             stderrReaderThread.setDaemon(true);
             stderrReaderThread.start();
@@ -227,9 +227,9 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
-     * Create a new ACP session with optional working directory.
+     * Create a new ACP session with an optional working directory.
      *
-     * @param cwd The working directory for the session, or null to use user.home
+     * @param cwd The working directory for the session, or null to use user.home.
      */
     public synchronized String createSession(@Nullable String cwd) throws CopilotException {
         ensureStarted();
@@ -245,28 +245,37 @@ public class CopilotAcpClient implements Closeable {
         currentSessionId = result.get(SESSION_ID).getAsString();
 
         // Parse available models
+        parseAvailableModels(result);
+
+        LOG.info("ACP session created: " + currentSessionId + " with " +
+            (availableModels != null ? availableModels.size() : 0) + " models");
+        return currentSessionId;
+    }
+
+    private void parseAvailableModels(JsonObject result) {
         if (result.has("models")) {
             JsonObject modelsObj = result.getAsJsonObject("models");
             availableModels = new ArrayList<>();
             if (modelsObj.has("availableModels")) {
                 for (JsonElement elem : modelsObj.getAsJsonArray("availableModels")) {
                     JsonObject m = elem.getAsJsonObject();
-                    Model model = new Model();
-                    model.setId(m.get("modelId").getAsString());
-                    model.setName(m.has("name") ? m.get("name").getAsString() : model.getId());
-                    model.setDescription(m.has(DESCRIPTION) ? m.get(DESCRIPTION).getAsString() : "");
-                    if (m.has(META)) {
-                        JsonObject meta = m.getAsJsonObject(META);
-                        model.setUsage(meta.has("copilotUsage") ? meta.get("copilotUsage").getAsString() : null);
-                    }
+                    Model model = parseModel(m);
                     availableModels.add(model);
                 }
             }
         }
+    }
 
-        LOG.info("ACP session created: " + currentSessionId + " with " +
-            (availableModels != null ? availableModels.size() : 0) + " models");
-        return currentSessionId;
+    private Model parseModel(JsonObject m) {
+        Model model = new Model();
+        model.setId(m.get("modelId").getAsString());
+        model.setName(m.has("name") ? m.get("name").getAsString() : model.getId());
+        model.setDescription(m.has(DESCRIPTION) ? m.get(DESCRIPTION).getAsString() : "");
+        if (m.has(META)) {
+            JsonObject meta = m.getAsJsonObject(META);
+            model.setUsage(meta.has("copilotUsage") ? meta.get("copilotUsage").getAsString() : null);
+        }
+        return model;
     }
 
     /**
@@ -324,7 +333,36 @@ public class CopilotAcpClient implements Closeable {
         LOG.info("sendPrompt: sessionId=" + sessionId + " model=" + model + " refs=" + (references != null ? references.size() : 0));
 
         // Register notification listener for streaming chunks
-        Consumer<JsonObject> listener = notification -> {
+        Consumer<JsonObject> listener = createStreamingListener(sessionId, onChunk, onUpdate);
+        notificationListeners.add(listener);
+
+        try {
+            JsonObject params = buildPromptParams(sessionId, prompt, model, references);
+
+            // Send request - response comes after all streaming chunks
+            builtInActionDeniedDuringTurn = false;
+            LOG.info("sendPrompt: sending session/prompt request");
+            JsonObject result = sendRequest("session/prompt", params, 600);
+            LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
+
+            // If a built-in action was denied, send a retry prompt telling the agent to use MCP tools
+            if (builtInActionDeniedDuringTurn) {
+                String deniedKind = lastDeniedKind;
+                builtInActionDeniedDuringTurn = false;
+                LOG.info("sendPrompt: built-in " + deniedKind + " denied, sending retry with MCP tool instruction");
+                result = sendRetryPrompt(sessionId, model, deniedKind);
+            }
+
+            return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
+        } finally {
+            notificationListeners.remove(listener);
+        }
+    }
+
+    private Consumer<JsonObject> createStreamingListener(@NotNull String sessionId,
+                                                         @Nullable Consumer<String> onChunk,
+                                                         @Nullable Consumer<JsonObject> onUpdate) {
+        return notification -> {
             String method = notification.has(METHOD) ? notification.get(METHOD).getAsString() : "";
             if (!"session/update".equals(method)) return;
 
@@ -339,75 +377,69 @@ public class CopilotAcpClient implements Closeable {
 
             if (params.has("update")) {
                 JsonObject update = params.getAsJsonObject("update");
-                String updateType = update.has("sessionUpdate") ? update.get("sessionUpdate").getAsString() : "";
-                LOG.debug("sendPrompt: received update type=" + updateType);
-
-                if ("agent_message_chunk".equals(updateType) && onChunk != null) {
-                    JsonObject content = update.has("content") ? update.getAsJsonObject("content") : null;
-                    if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
-                        onChunk.accept(content.get("text").getAsString());
-                    }
-                }
-
-                // Forward all updates to onUpdate listener (plan events, tool calls, etc.)
-                if (onUpdate != null) {
-                    onUpdate.accept(update);
-                }
+                handleSessionUpdate(update, onChunk, onUpdate);
             }
         };
-        notificationListeners.add(listener);
+    }
 
-        try {
-            JsonObject params = new JsonObject();
-            params.addProperty(SESSION_ID, sessionId);
+    private void handleSessionUpdate(JsonObject update,
+                                     @Nullable Consumer<String> onChunk,
+                                     @Nullable Consumer<JsonObject> onUpdate) {
+        String updateType = update.has("sessionUpdate") ? update.get("sessionUpdate").getAsString() : "";
+        LOG.debug("sendPrompt: received update type=" + updateType);
 
-            JsonArray promptArray = new JsonArray();
-
-            // Add resource references before text prompt
-            if (references != null) {
-                for (ResourceReference ref : references) {
-                    JsonObject resource = new JsonObject();
-                    resource.addProperty("type", "resource");
-                    JsonObject resourceData = new JsonObject();
-                    resourceData.addProperty("uri", ref.uri());
-                    if (ref.mimeType() != null) {
-                        resourceData.addProperty("mimeType", ref.mimeType());
-                    }
-                    resourceData.addProperty("text", ref.text());
-                    resource.add("resource", resourceData);
-                    promptArray.add(resource);
-                }
+        if ("agent_message_chunk".equals(updateType) && onChunk != null) {
+            JsonObject content = update.has("content") ? update.getAsJsonObject("content") : null;
+            if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
+                onChunk.accept(content.get("text").getAsString());
             }
-
-            // Add text prompt
-            JsonObject promptContent = new JsonObject();
-            promptContent.addProperty("type", "text");
-            promptContent.addProperty("text", prompt);
-            promptArray.add(promptContent);
-            params.add("prompt", promptArray);
-
-            if (model != null) {
-                params.addProperty("model", model);
-            }
-
-            // Send request - response comes after all streaming chunks
-            builtInActionDeniedDuringTurn = false;
-            LOG.info("sendPrompt: sending session/prompt request");
-            JsonObject result = sendRequest("session/prompt", params, 600);
-            LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
-
-            // If a built-in action was denied, send a retry prompt telling agent to use MCP tools
-            if (builtInActionDeniedDuringTurn) {
-                String deniedKind = lastDeniedKind;
-                builtInActionDeniedDuringTurn = false;
-                LOG.info("sendPrompt: built-in " + deniedKind + " denied, sending retry with MCP tool instruction");
-                result = sendRetryPrompt(sessionId, model, deniedKind);
-            }
-
-            return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
-        } finally {
-            notificationListeners.remove(listener);
         }
+
+        // Forward all updates to onUpdate listener (plan events, tool calls, etc.)
+        if (onUpdate != null) {
+            onUpdate.accept(update);
+        }
+    }
+
+    private JsonObject buildPromptParams(@NotNull String sessionId, @NotNull String prompt,
+                                         @Nullable String model, @Nullable List<ResourceReference> references) {
+        JsonObject params = new JsonObject();
+        params.addProperty(SESSION_ID, sessionId);
+
+        JsonArray promptArray = new JsonArray();
+
+        // Add resource references before the text prompt
+        if (references != null) {
+            for (ResourceReference ref : references) {
+                promptArray.add(createResourceReference(ref));
+            }
+        }
+
+        // Add text prompt
+        JsonObject promptContent = new JsonObject();
+        promptContent.addProperty("type", "text");
+        promptContent.addProperty("text", prompt);
+        promptArray.add(promptContent);
+        params.add("prompt", promptArray);
+
+        if (model != null) {
+            params.addProperty("model", model);
+        }
+
+        return params;
+    }
+
+    private JsonObject createResourceReference(ResourceReference ref) {
+        JsonObject resource = new JsonObject();
+        resource.addProperty("type", "resource");
+        JsonObject resourceData = new JsonObject();
+        resourceData.addProperty("uri", ref.uri());
+        if (ref.mimeType() != null) {
+            resourceData.addProperty("mimeType", ref.mimeType());
+        }
+        resourceData.addProperty("text", ref.text());
+        resource.add("resource", resourceData);
+        return resource;
     }
 
     /**
@@ -437,7 +469,7 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
-     * Get the auth method info from the initialize response (for login button).
+     * Get the auth method info from the initialization response (for the login button).
      */
     @Nullable
     public AuthMethod getAuthMethod() {
@@ -447,8 +479,13 @@ public class CopilotAcpClient implements Closeable {
         method.setId(first.has("id") ? first.get("id").getAsString() : "");
         method.setName(first.has("name") ? first.get("name").getAsString() : "");
         method.setDescription(first.has(DESCRIPTION) ? first.get(DESCRIPTION).getAsString() : "");
-        if (first.has(META)) {
-            JsonObject meta = first.getAsJsonObject(META);
+        parseTerminalAuth(first, method);
+        return method;
+    }
+
+    private void parseTerminalAuth(JsonObject jsonObject, AuthMethod method) {
+        if (jsonObject.has(META)) {
+            JsonObject meta = jsonObject.getAsJsonObject(META);
             if (meta.has("terminal-auth")) {
                 JsonObject termAuth = meta.getAsJsonObject("terminal-auth");
                 method.setCommand(termAuth.has(COMMAND) ? termAuth.get(COMMAND).getAsString() : null);
@@ -461,7 +498,6 @@ public class CopilotAcpClient implements Closeable {
                 }
             }
         }
-        return method;
     }
 
     /**
@@ -541,61 +577,7 @@ public class CopilotAcpClient implements Closeable {
             while (!closed && (line = reader.readLine()) != null) {
                 line = line.trim();
                 if (line.isEmpty()) continue;
-
-                try {
-                    JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
-
-                    boolean hasId = msg.has("id") && !msg.get("id").isJsonNull();
-                    boolean hasMethod = msg.has(METHOD);
-
-                    if (hasId && hasMethod) {
-                        // Agent-to-client request (e.g., session/request_permission)
-                        handleAgentRequest(msg);
-
-                        // Also forward to notification listeners for timeline tracking
-                        for (Consumer<JsonObject> listener : notificationListeners) {
-                            try {
-                                listener.accept(msg);
-                            } catch (RuntimeException e) {
-                                LOG.debug("Error forwarding notification to listener", e);
-                            }
-                        }
-                    } else if (hasId) {
-                        // Response to a request we sent
-                        long id = msg.get("id").getAsLong();
-                        CompletableFuture<JsonObject> future = pendingRequests.remove(id);
-                        if (future != null) {
-                            if (msg.has(ERROR)) {
-                                JsonObject error = msg.getAsJsonObject(ERROR);
-                                String errorMessage = error.has(MESSAGE) ? error.get(MESSAGE).getAsString() : "Unknown error";
-                                LOG.warn("ACP error response for request id=" + id + ": " + gson.toJson(error));
-                                if (error.has("data") && !error.get("data").isJsonNull()) {
-                                    try {
-                                        errorMessage = error.get("data").getAsString();
-                                    } catch (ClassCastException | IllegalStateException e) {
-                                        LOG.debug("Error extracting error data as string", e);
-                                    }
-                                }
-                                future.completeExceptionally(new CopilotException("ACP error: " + errorMessage, null, false));
-                            } else if (msg.has(RESULT)) {
-                                future.complete(msg.getAsJsonObject(RESULT));
-                            } else {
-                                future.complete(new JsonObject());
-                            }
-                        }
-                    } else if (hasMethod) {
-                        // Notification (no id) — e.g., session/update
-                        for (Consumer<JsonObject> listener : notificationListeners) {
-                            try {
-                                listener.accept(msg);
-                            } catch (RuntimeException e) {
-                                LOG.warn("Notification listener error", e);
-                            }
-                        }
-                    }
-                } catch (com.google.gson.JsonParseException | IllegalStateException e) {
-                    LOG.warn("Failed to parse ACP message: " + line, e);
-                }
+                processLine(line);
             }
         } catch (IOException e) {
             if (!closed) {
@@ -603,7 +585,82 @@ public class CopilotAcpClient implements Closeable {
             }
         }
 
-        // Process ended — fail all pending requests
+        // Process ended ? fail all pending requests
+        failAllPendingRequests();
+    }
+
+    private void processLine(String line) {
+        try {
+            JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
+            handleJsonRpcMessage(msg);
+        } catch (com.google.gson.JsonParseException | IllegalStateException e) {
+            LOG.warn("Failed to parse ACP message: " + line, e);
+        }
+    }
+
+    private void handleJsonRpcMessage(JsonObject msg) {
+        boolean hasId = msg.has("id") && !msg.get("id").isJsonNull();
+        boolean hasMethod = msg.has(METHOD);
+
+        if (hasId && hasMethod) {
+            handleAgentToClientRequest(msg);
+        } else if (hasId) {
+            handleResponseMessage(msg);
+        } else if (hasMethod) {
+            handleNotificationMessage(msg);
+        }
+    }
+
+    private void handleAgentToClientRequest(JsonObject msg) {
+        handleAgentRequest(msg);
+
+        // Also forward to notification listeners for timeline tracking
+        notifyListeners(msg);
+    }
+
+    private void handleResponseMessage(JsonObject msg) {
+        long id = msg.get("id").getAsLong();
+        CompletableFuture<JsonObject> future = pendingRequests.remove(id);
+        if (future != null) {
+            if (msg.has(ERROR)) {
+                handleErrorResponse(msg, id, future);
+            } else if (msg.has(RESULT)) {
+                future.complete(msg.getAsJsonObject(RESULT));
+            } else {
+                future.complete(new JsonObject());
+            }
+        }
+    }
+
+    private void handleErrorResponse(JsonObject msg, long id, CompletableFuture<JsonObject> future) {
+        JsonObject error = msg.getAsJsonObject(ERROR);
+        String errorMessage = error.has(MESSAGE) ? error.get(MESSAGE).getAsString() : "Unknown error";
+        LOG.warn("ACP error response for request id=" + id + ": " + gson.toJson(error));
+        if (error.has("data") && !error.get("data").isJsonNull()) {
+            try {
+                errorMessage = error.get("data").getAsString();
+            } catch (ClassCastException | IllegalStateException e) {
+                LOG.debug("Error extracting error data as string", e);
+            }
+        }
+        future.completeExceptionally(new CopilotException("ACP error: " + errorMessage, null, false));
+    }
+
+    private void handleNotificationMessage(JsonObject msg) {
+        notifyListeners(msg);
+    }
+
+    private void notifyListeners(JsonObject msg) {
+        for (Consumer<JsonObject> listener : notificationListeners) {
+            try {
+                listener.accept(msg);
+            } catch (RuntimeException e) {
+                LOG.debug("Error forwarding notification to listener", e);
+            }
+        }
+    }
+
+    private void failAllPendingRequests() {
         for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
             entry.getValue().completeExceptionally(
                 new CopilotException("ACP process terminated", null, false));
@@ -653,7 +710,7 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Handle permission requests from the Copilot agent.
-     * Denies built-in write operations (edit, create) so the agent retries with IntelliJ MCP tools.
+     * Denies built-in write operations (edit, create), so the agent retries with IntelliJ MCP tools.
      * Auto-approves everything else (MCP tool calls, shell, reads).
      */
     private void handlePermissionRequest(long reqId, @Nullable JsonObject reqParams) {
@@ -717,6 +774,7 @@ public class CopilotAcpClient implements Closeable {
         return result;
     }
 
+    @SuppressWarnings("SameParameterValue") // Error code is standard JSON-RPC -32_601 for "Method not found"
     private void sendErrorResponse(long reqId, int code, String message) {
         JsonObject response = new JsonObject();
         response.addProperty(JSONRPC, "2.0");
@@ -732,9 +790,10 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Get the usage multiplier for a model ID (e.g., "1x", "3x", "0.33x").
-     * Returns "1x" if model not found.
+     * Returns "1x" if the model is not found.
      */
     @NotNull
+    @SuppressWarnings("unused") // Public API - may be used by external code
     public String getModelMultiplier(@NotNull String modelId) {
         if (availableModels == null) return "1x";
         return availableModels.stream()
@@ -752,6 +811,29 @@ public class CopilotAcpClient implements Closeable {
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
         // Check PATH first
+        String pathResult = checkCopilotInPath(isWindows);
+        if (pathResult != null) return pathResult;
+
+        // Check known Windows winget install location
+        if (isWindows) {
+            String wingetPath = checkWindowsWingetPath();
+            if (wingetPath != null) return wingetPath;
+        }
+
+        // Check common Linux/macOS locations
+        if (!isWindows) {
+            String unixPath = checkUnixLocations();
+            if (unixPath != null) return unixPath;
+        }
+
+        String installInstructions = isWindows
+            ? "Install with: winget install GitHub.Copilot"
+            : "Install with: npm install -g @anthropic-ai/copilot-cli";
+        throw new CopilotException("Copilot CLI not found. " + installInstructions, null, false);
+    }
+
+    @Nullable
+    private String checkCopilotInPath(boolean isWindows) {
         try {
             String command = isWindows ? "where" : "which";
             Process check = new ProcessBuilder(command, "copilot").start();
@@ -765,52 +847,54 @@ public class CopilotAcpClient implements Closeable {
             Thread.currentThread().interrupt();
             LOG.debug("Interrupted while checking for copilot in PATH", e);
         }
+        return null;
+    }
 
-        // Check known Windows winget install location
-        if (isWindows) {
-            String wingetPath = System.getenv("LOCALAPPDATA") +
-                "\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe";
-            if (new File(wingetPath).exists()) return wingetPath;
-        }
+    @Nullable
+    private String checkWindowsWingetPath() {
+        String wingetPath = System.getenv("LOCALAPPDATA") +
+            "\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe";
+        if (new File(wingetPath).exists()) return wingetPath;
+        return null;
+    }
 
-        // Check common Linux/macOS locations (NVM, global npm, Homebrew)
-        if (!isWindows) {
-            String home = System.getProperty(USER_HOME);
-            List<String> candidates = new ArrayList<>();
+    @Nullable
+    private String checkUnixLocations() {
+        String home = System.getProperty(USER_HOME);
+        List<String> candidates = new ArrayList<>();
 
-            // NVM-managed node installations
-            File nvmDir = new File(home, ".nvm/versions/node");
-            if (nvmDir.isDirectory()) {
-                File[] nodeDirs = nvmDir.listFiles(File::isDirectory);
-                if (nodeDirs != null) {
-                    // Sort descending to prefer latest version
-                    java.util.Arrays.sort(nodeDirs, (a, b) -> b.getName().compareTo(a.getName()));
-                    for (File nodeDir : nodeDirs) {
-                        candidates.add(new File(nodeDir, "bin/copilot").getAbsolutePath());
-                    }
-                }
-            }
+        // NVM-managed node installations
+        addNvmCandidates(home, candidates);
 
-            // Common global npm/yarn locations
-            candidates.add(home + "/.local/bin/copilot");
-            candidates.add("/usr/local/bin/copilot");
-            candidates.add(home + "/.npm-global/bin/copilot");
-            candidates.add(home + "/.yarn/bin/copilot");
-            // Homebrew
-            candidates.add("/opt/homebrew/bin/copilot");
+        // Common global npm/yarn locations
+        candidates.add(home + "/.local/bin/copilot");
+        candidates.add("/usr/local/bin/copilot");
+        candidates.add(home + "/.npm-global/bin/copilot");
+        candidates.add(home + "/.yarn/bin/copilot");
+        // Homebrew
+        candidates.add("/opt/homebrew/bin/copilot");
 
-            for (String path : candidates) {
-                if (new File(path).exists()) {
-                    LOG.info("Found Copilot CLI at: " + path);
-                    return path;
-                }
+        for (String path : candidates) {
+            if (new File(path).exists()) {
+                LOG.info("Found Copilot CLI at: " + path);
+                return path;
             }
         }
+        return null;
+    }
 
-        String installInstructions = isWindows
-            ? "Install with: winget install GitHub.Copilot"
-            : "Install with: npm install -g @anthropic-ai/copilot-cli";
-        throw new CopilotException("Copilot CLI not found. " + installInstructions, null, false);
+    private void addNvmCandidates(String home, List<String> candidates) {
+        File nvmDir = new File(home, ".nvm/versions/node");
+        if (nvmDir.isDirectory()) {
+            File[] nodeDirs = nvmDir.listFiles(File::isDirectory);
+            if (nodeDirs != null) {
+                // Sort descending to prefer the latest version
+                java.util.Arrays.sort(nodeDirs, (a, b) -> b.getName().compareTo(a.getName()));
+                for (File nodeDir : nodeDirs) {
+                    candidates.add(new File(nodeDir, "bin/copilot").getAbsolutePath());
+                }
+            }
+        }
     }
 
     /**
@@ -932,6 +1016,7 @@ public class CopilotAcpClient implements Closeable {
             return id;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setId(String id) {
             this.id = id;
         }
@@ -940,14 +1025,17 @@ public class CopilotAcpClient implements Closeable {
             return name;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setName(String name) {
             this.name = name;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public String getDescription() {
             return description;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setDescription(String description) {
             this.description = description;
         }
@@ -956,6 +1044,7 @@ public class CopilotAcpClient implements Closeable {
             return usage;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setUsage(String usage) {
             this.usage = usage;
         }
@@ -978,6 +1067,7 @@ public class CopilotAcpClient implements Closeable {
             return id;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setId(String id) {
             this.id = id;
         }
@@ -986,14 +1076,17 @@ public class CopilotAcpClient implements Closeable {
             return name;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setName(String name) {
             this.name = name;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public String getDescription() {
             return description;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setDescription(String description) {
             this.description = description;
         }
@@ -1002,6 +1095,7 @@ public class CopilotAcpClient implements Closeable {
             return command;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setCommand(String command) {
             this.command = command;
         }
@@ -1010,6 +1104,7 @@ public class CopilotAcpClient implements Closeable {
             return args;
         }
 
+        @SuppressWarnings("unused") // Public API for external use
         public void setArgs(List<String> args) {
             this.args = args;
         }

@@ -245,9 +245,13 @@ Each prompt has a hard timeout of approximately **10 minutes**. Plan your work a
 - **Tool efficiency guidelines**:
   - Use `view` for exploration (fast, read-only, can see large sections)
   - Use `intellij_read_file` only when you need to edit (returns content for old_str/new_str)
-  - Read large chunks (100-200 lines) instead of many small reads (10-20 lines)
+  - **Batch reads aggressively**: Read 300-500 line chunks, NOT 50-100 line chunks
+    - ❌ BAD: Read lines 1-100, then 100-200, then 200-300 (3 calls, ~$0.04, slower)
+    - ✅ GOOD: Read lines 1-500 once (1 call, ~$0.01, faster)
+    - Each tool call triggers LLM reasoning overhead - minimize round trips
   - Batch related edits in a single `intellij_write_file` call when possible
   - Don't re-read the same section multiple times - take notes in your reasoning
+  - Exception: If you need to verify a specific small section after edits, small reads are fine
 - **Cognitive complexity prevention**: 
   - When writing NEW code, check `get_highlights` after each method/class to catch complexity issues early
   - If you see "Cognitive Complexity" warnings, refactor IMMEDIATELY by extracting methods
