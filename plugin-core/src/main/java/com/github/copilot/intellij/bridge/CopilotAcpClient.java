@@ -807,9 +807,10 @@ public class CopilotAcpClient implements Closeable {
             IdeaPluginDescriptor[] plugins = PluginManagerCore.getPlugins();
             String pluginPath = plugins.length > 0 ?
                 java.util.Arrays.stream(plugins)
-                    .filter(p -> pluginId.equals(((com.intellij.openapi.extensions.PluginDescriptor)p).getPluginId()))
+                    // Cast needed - IDE fails to resolve inherited methods from PluginDescriptor interface
+                    .filter(p -> pluginId.equals(((com.intellij.openapi.extensions.PluginDescriptor)p).getPluginId())) //NOSONAR
                     .findFirst()
-                    .map(p -> ((com.intellij.openapi.extensions.PluginDescriptor)p).getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
+                    .map(p -> ((com.intellij.openapi.extensions.PluginDescriptor)p).getPluginPath().resolve("lib").resolve("mcp-server.jar").toString()) //NOSONAR
                     .orElse(null) : null;
             if (pluginPath != null && new File(pluginPath).exists()) {
                 LOG.info("Found MCP server JAR: " + pluginPath);
