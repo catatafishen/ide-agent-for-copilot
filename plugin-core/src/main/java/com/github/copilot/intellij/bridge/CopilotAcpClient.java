@@ -5,6 +5,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.intellij.ide.plugins.IdeaPluginDescriptor;
+import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -52,6 +54,7 @@ public class CopilotAcpClient implements Closeable {
     private Process process;
     private BufferedWriter writer;
     private Thread readerThread;
+    private Thread stderrReaderThread;
     private volatile boolean closed = false;
 
     // State from initialize
@@ -99,6 +102,11 @@ public class CopilotAcpClient implements Closeable {
             readerThread.setDaemon(true);
             readerThread.start();
 
+            // Start stderr reader thread to capture process errors
+            stderrReaderThread = new Thread(this::readStderrLoop, "copilot-acp-stderr");
+            stderrReaderThread.setDaemon(true);
+            stderrReaderThread.start();
+
             // Initialize handshake
             doInitialize();
 
@@ -112,7 +120,23 @@ public class CopilotAcpClient implements Closeable {
      */
     private ProcessBuilder buildAcpCommand(String copilotPath) {
         java.util.List<String> cmd = new java.util.ArrayList<>();
-        cmd.add(copilotPath);
+        
+        // If copilot is in an NVM directory, explicitly use the same node binary
+        // to avoid resolving to a different node version via /usr/bin/env node
+        File copilotFile = new File(copilotPath);
+        if (copilotPath.contains("/.nvm/versions/node/")) {
+            String nodeDir = copilotPath.substring(0, copilotPath.indexOf("/bin/copilot"));
+            String nodePath = nodeDir + "/bin/node";
+            if (new File(nodePath).exists()) {
+                cmd.add(nodePath);
+                cmd.add(copilotPath);
+            } else {
+                cmd.add(copilotPath);
+            }
+        } else {
+            cmd.add(copilotPath);
+        }
+        
         cmd.add("--acp");
         cmd.add("--stdio");
 
@@ -572,6 +596,19 @@ public class CopilotAcpClient implements Closeable {
         pendingRequests.clear();
     }
 
+    private void readStderrLoop() {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                LOG.warn("Copilot CLI stderr: " + line);
+            }
+        } catch (IOException e) {
+            if (!closed) {
+                LOG.warn("Stderr reader thread ended: " + e.getMessage());
+            }
+        }
+    }
+
     private void ensureStarted() throws CopilotException {
         if (closed) {
             throw new CopilotException("ACP client is closed", null, false);
@@ -765,8 +802,9 @@ public class CopilotAcpClient implements Closeable {
     private String findMcpServerJar() {
         try {
             // The JAR is bundled in the plugin's lib directory alongside plugin-core
-            String pluginPath = com.intellij.ide.plugins.PluginManagerCore.getPlugins().length > 0 ?
-                java.util.Arrays.stream(com.intellij.ide.plugins.PluginManagerCore.getPlugins())
+            IdeaPluginDescriptor[] plugins = PluginManagerCore.getPlugins();
+            String pluginPath = plugins.length > 0 ?
+                java.util.Arrays.stream(plugins)
                     .filter(p -> "com.github.copilot.intellij".equals(p.getPluginId().getIdString()))
                     .findFirst()
                     .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
