@@ -716,7 +716,7 @@ public class McpServer {
 
         try {
             // All tools go through the PSI bridge — no silent fallbacks
-            String bridgeResult = tryPsiBridge(toolName, arguments);
+            String bridgeResult = delegateToPsiBridge(toolName, arguments);
 
             String resultText;
             if (bridgeResult != null) {
@@ -755,7 +755,7 @@ public class McpServer {
      * Try to delegate a tool call to the IntelliJ PSI bridge for accurate AST analysis.
      * Falls back to null if bridge is unavailable.
      */
-    private static String tryPsiBridge(String toolName, JsonObject arguments) {
+    private static String delegateToPsiBridge(String toolName, JsonObject arguments) {
         try {
             Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
             if (!Files.exists(bridgeFile)) return null;
