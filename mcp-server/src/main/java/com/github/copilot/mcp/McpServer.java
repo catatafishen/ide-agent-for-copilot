@@ -271,6 +271,7 @@ public class McpServer {
         tools.add(buildTool("get_highlights",
                 "Get cached syntax highlights and daemon-level diagnostics for project source files. " +
                         "Reads results from IntelliJ's on-the-fly analysis (already-analyzed files only). " +
+                        "Includes findings from third-party plugins like SonarQube/SonarLint (if installed). " +
                         "Fast but limited — only returns issues the IDE has already detected in memory. " +
                         "For comprehensive code quality analysis, use run_inspections instead.",
                 Map.of(

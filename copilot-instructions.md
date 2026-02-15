@@ -257,3 +257,11 @@ IntelliJ's `@NotNull` annotations are compile-time hints, not runtime guarantees
 - **Never remove a null check just because static analysis says the value "is always non-null"**.
 - If Qodana or inspections flag a `ConstantValue` warning on a null check, add `@SuppressWarnings("ConstantValue")` rather than removing the check.
 - Look for existing `@SuppressWarnings` annotations and comments — they are there for a reason.
+
+## 19) SonarQube / SonarLint Findings
+
+SonarQube for IDE (SonarLint) is installed as a marketplace plugin. Its findings do NOT appear in `run_inspections` — they come through IntelliJ's `DaemonCodeAnalyzer` (editor highlights).
+
+- **To see SonarLint findings**: Use `get_highlights` on a file. SonarLint findings will appear alongside IntelliJ's own highlights for files that have been opened/analyzed by the IDE.
+- **`run_inspections` does NOT include SonarLint results** — it only runs IntelliJ's built-in inspection engine.
+- If the user asks about SonarQube/SonarLint problems, use `get_highlights`, not `run_inspections`.
