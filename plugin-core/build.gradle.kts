@@ -107,6 +107,7 @@ tasks.named("prepareSandbox") {
 
 // Also include in the distribution ZIP
 tasks.named<Zip>("buildPlugin") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     dependsOn(project(":mcp-server").tasks.named("jar"))
     from(project(":mcp-server").tasks.named("jar")) {
         into("lib")
