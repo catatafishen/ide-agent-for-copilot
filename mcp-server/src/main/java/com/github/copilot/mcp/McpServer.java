@@ -112,8 +112,10 @@ public class McpServer {
                 This reads IntelliJ's live editor buffer, which may have unsaved changes.
                 3. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.
                 4. Use 'get_problems' or 'get_highlights' to check for warnings and errors after changes.
-                5. PREFER IntelliJ tools (search_symbols, find_references, get_file_outline, list_project_files) \
-                over grep/glob for code navigation.
+                5. NEVER use grep/glob for IntelliJ project files or scratch files. \
+                ALWAYS use IntelliJ tools: search_symbols, find_references, get_file_outline, list_project_files, intellij_read_file. \
+                grep/glob will FAIL on scratch files (they're stored outside the project). \
+                After creating a scratch file, save its path and use intellij_read_file to access it.
                 6. Read 300-500 lines per intellij_read_file call, NOT 50-100 lines. Each call has overhead.
                 7. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
                 8. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
