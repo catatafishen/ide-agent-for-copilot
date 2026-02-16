@@ -736,15 +736,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Reusable model loading function
         fun loadModels() {
-            SwingUtilities.invokeLater {
-                loadingSpinner.isVisible = true
-                authPanel.isVisible = false
-                retryButton.isVisible = false
-                loginButton.isVisible = false
-                modelComboBox.removeAllItems()
-                modelComboBox.addItem("Loading...")
-                modelComboBox.isEnabled = false
-            }
+            setLoadingState(loadingSpinner, modelComboBox, loginButton, retryButton, authPanel)
             ApplicationManager.getApplication().executeOnPooledThread {
                 var lastError: Exception? = null
                 val maxRetries = 3
@@ -1216,15 +1208,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Reusable settings model loading function
         fun loadSettingsModels() {
-            SwingUtilities.invokeLater {
-                settingsSpinner.isVisible = true
-                settingsAuthPanel.isVisible = false
-                settingsRetryButton.isVisible = false
-                settingsLoginButton.isVisible = false
-                defaultModelCombo.removeAllItems()
-                defaultModelCombo.addItem("Loading...")
-                defaultModelCombo.isEnabled = false
-            }
+            setLoadingState(
+                settingsSpinner,
+                defaultModelCombo,
+                settingsLoginButton,
+                settingsRetryButton,
+                settingsAuthPanel
+            )
             ApplicationManager.getApplication().executeOnPooledThread {
                 var lastError: Exception? = null
                 val maxRetries = 3
@@ -1344,6 +1334,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     fun getComponent(): JComponent = mainPanel
 
     // Helper methods to reduce code duplication
+    private fun setLoadingState(
+        spinner: AsyncProcessIcon,
+        comboBox: JComboBox<String>,
+        loginButton: JButton,
+        retryButton: JButton,
+        authPanel: JPanel
+    ) {
+        SwingUtilities.invokeLater {
+            spinner.isVisible = true
+            authPanel.isVisible = false
+            retryButton.isVisible = false
+            loginButton.isVisible = false
+            comboBox.removeAllItems()
+            comboBox.addItem("Loading...")
+            comboBox.isEnabled = false
+        }
+    }
+
     private fun isAuthenticationError(message: String): Boolean {
         return message.contains("auth") ||
             message.contains("Copilot CLI") ||
