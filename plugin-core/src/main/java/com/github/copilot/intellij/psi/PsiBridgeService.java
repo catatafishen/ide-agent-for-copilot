@@ -1279,11 +1279,11 @@ public final class PsiBridgeService implements Disposable {
 
                                     // Clean up HTML/template markers from description
                                     description = description.replaceAll("<[^>]+>", "")
-                                        .replaceAll("&lt;", "<")
-                                        .replaceAll("&gt;", ">")
-                                        .replaceAll("&amp;", "&")
+                                        .replace("&lt;", "<")
+                                        .replace("&gt;", ">")
+                                        .replace("&amp;", "&")
                                         .replace("#ref", refText != null ? refText : "")
-                                        .replaceAll("#loc", "")
+                                        .replace("#loc", "")
                                         .trim();
 
                                     if (description.isEmpty()) {
@@ -1435,7 +1435,7 @@ public final class PsiBridgeService implements Disposable {
                 String fileName = vf.getName();
 
                 if (fileName.endsWith(".java")) {
-                    resultFuture.complete(suppressJava(target, inspectionId, document, psiFile));
+                    resultFuture.complete(suppressJava(target, inspectionId, document));
                 } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
                     resultFuture.complete(suppressKotlin(target, inspectionId, document));
                 } else {
@@ -1470,8 +1470,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String suppressJava(com.intellij.psi.PsiElement target, String inspectionId,
-                                com.intellij.openapi.editor.Document document,
-                                com.intellij.psi.PsiFile psiFile) {
+                                com.intellij.openapi.editor.Document document) {
         // Find the line to insert the annotation before
         int targetOffset = target.getTextRange().getStartOffset();
         int targetLine = document.getLineNumber(targetOffset);
@@ -1480,9 +1479,9 @@ public final class PsiBridgeService implements Disposable {
         // Get the indentation of the target line
         String lineText = document.getText(
             new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
-        String indent = "";
+        StringBuilder indent = new StringBuilder();
         for (char c : lineText.toCharArray()) {
-            if (c == ' ' || c == '\t') indent += c;
+            if (c == ' ' || c == '\t') indent.append(c);
             else break;
         }
 
@@ -1492,7 +1491,7 @@ public final class PsiBridgeService implements Disposable {
             if (modList != null) {
                 var existing = modList.findAnnotation("java.lang.SuppressWarnings");
                 if (existing != null) {
-                    // Annotation exists — add the new ID to it
+                    // Annotation exists ? add the new ID to it
                     return addToExistingSuppressWarnings(existing, inspectionId, document);
                 }
             }
@@ -1549,9 +1548,9 @@ public final class PsiBridgeService implements Disposable {
 
         String lineText = document.getText(
             new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
-        String indent = "";
+        StringBuilder indent = new StringBuilder();
         for (char c : lineText.toCharArray()) {
-            if (c == ' ' || c == '\t') indent += c;
+            if (c == ' ' || c == '\t') indent.append(c);
             else break;
         }
 
@@ -1585,9 +1584,9 @@ public final class PsiBridgeService implements Disposable {
 
         String lineText = document.getText(
             new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
-        String indent = "";
+        StringBuilder indent = new StringBuilder();
         for (char c : lineText.toCharArray()) {
-            if (c == ' ' || c == '\t') indent += c;
+            if (c == ' ' || c == '\t') indent.append(c);
             else break;
         }
 
@@ -1744,6 +1743,7 @@ public final class PsiBridgeService implements Disposable {
                 "of the Problems tool window. (SARIF output file not found for programmatic reading)");
 
         } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             LOG.error("Error polling Qodana results", e);
             resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
                 "Polling error: " + e.getMessage());
@@ -1779,15 +1779,14 @@ public final class PsiBridgeService implements Disposable {
                     try (var stream = java.nio.file.Files.walk(qodanaDir, 5)) {
                         var sarifFile = stream
                             .filter(p -> p.getFileName().toString().endsWith(".sarif.json"))
-                            .sorted((a, b) -> {
+                            .min((a, b) -> {
                                 try {
                                     return java.nio.file.Files.getLastModifiedTime(b)
                                         .compareTo(java.nio.file.Files.getLastModifiedTime(a));
                                 } catch (Exception e) {
                                     return 0;
                                 }
-                            })
-                            .findFirst();
+                            });
                         if (sarifFile.isPresent()) {
                             String sarif = java.nio.file.Files.readString(sarifFile.get());
                             LOG.info("Found Qodana SARIF output via recursive search: " + sarifFile.get());
@@ -2014,7 +2013,7 @@ public final class PsiBridgeService implements Disposable {
                                 String normalized = pathStr.replace('\\', '/');
                                 String basePath = project.getBasePath();
                                 String fullPath = normalized.startsWith("/") ? normalized
-                                    : (basePath != null ? basePath + "/" + normalized : normalized);
+                                    : (basePath != null ? Path.of(basePath, normalized).toString() : normalized);
                                 Path filePath = Path.of(fullPath);
                                 Files.createDirectories(filePath.getParent());
                                 Files.writeString(filePath, newContent);
@@ -2659,6 +2658,7 @@ public final class PsiBridgeService implements Disposable {
         try {
             return resultFuture.get(10, TimeUnit.SECONDS);
         } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "Terminal opened (response timed out, but command was likely sent).";
         }
     }
@@ -2779,6 +2779,7 @@ public final class PsiBridgeService implements Disposable {
         try {
             return resultFuture.get(5, TimeUnit.SECONDS);
         } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "Timed out reading terminal output.";
         }
     }
@@ -3355,6 +3356,7 @@ public final class PsiBridgeService implements Disposable {
 
             return resultFuture.get(10, TimeUnit.SECONDS);
         } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             LOG.warn("tryRunJUnitNatively failed", e);
             return null;
         }
@@ -3445,7 +3447,10 @@ public final class PsiBridgeService implements Disposable {
 
         if (reportDirs.isEmpty()) return "";
 
-        int totalTests = 0, totalFailed = 0, totalErrors = 0, totalSkipped = 0;
+        int totalTests = 0;
+        int totalFailed = 0;
+        int totalErrors = 0;
+        int totalSkipped = 0;
         double totalTime = 0;
         List<String> failures = new ArrayList<>();
 
@@ -3453,8 +3458,9 @@ public final class PsiBridgeService implements Disposable {
             try (var xmlFiles = Files.list(reportDir)) {
                 for (Path xmlFile : xmlFiles.filter(p -> p.toString().endsWith(".xml")).toList()) {
                     try {
-                        var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                            .parse(xmlFile.toFile());
+                        var dbf = DocumentBuilderFactory.newInstance();
+                        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+                        var doc = dbf.newDocumentBuilder().parse(xmlFile.toFile());
                         var suites = doc.getElementsByTagName("testsuite");
                         for (int i = 0; i < suites.getLength(); i++) {
                             var suite = suites.item(i);
