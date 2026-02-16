@@ -104,16 +104,38 @@ public class McpServer {
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
-                IMPORTANT TOOL USAGE RULES:
+                TOOL USAGE RULES:
                 1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
                 This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
                 Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
                 2. ALWAYS use 'intellij_read_file' for ALL file reads. \
                 This reads IntelliJ's live editor buffer, which may have unsaved changes.
                 3. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.
-                4. Use 'get_problems' to check for warnings and errors after changes.
+                4. Use 'get_problems' or 'get_highlights' to check for warnings and errors after changes.
                 5. PREFER IntelliJ tools (search_symbols, find_references, get_file_outline, list_project_files) \
-                over grep/glob for code navigation.""");
+                over grep/glob for code navigation.
+                6. Read 300-500 lines per intellij_read_file call, NOT 50-100 lines. Each call has overhead.
+                7. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
+                8. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
+                
+                WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
+                Step 1: run_inspections() to get an overview of all issues.
+                Step 2: Group issues by PROBLEM TYPE (not by file). Examples: \
+                "Unused parameters: 5 across 3 files", "Redundant casts: 3 in PsiBridge", "Grammar: 50+ issues".
+                Step 3: Pick the highest-priority problem category and fix ALL instances of that problem \
+                (this may span multiple files if they share the same issue — that's fine).
+                Step 4: format_code + optimize_imports on changed files, then build_project to verify.
+                Step 5: Commit the logical unit with a descriptive message like "fix: resolve unused parameters in test mocks".
+                Step 6: Report progress and ASK THE USER before moving to the next problem category. \
+                Example: "Fixed unused parameters (5 warnings across 3 files). Next: redundant casts (3 issues). Continue?"
+                Step 7: Wait for user response, then repeat from Step 2.
+                
+                KEY PRINCIPLES:
+                - Related changes belong in ONE commit (e.g. refactoring that touches 4 files).
+                - Unrelated changes need SEPARATE commits (don't mix grammar fixes with null checks).
+                - Skip grammar issues (GrazieInspection) unless user specifically requests them.
+                - Skip generated files (gradlew.bat, log files).
+                - If you see 200+ issues, prioritize: compilation errors > warnings > style > grammar.""");
         return result;
     }
 
