@@ -1788,15 +1788,15 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    @SuppressWarnings("ConstantValue") // False positive: qodanaService can be non-null
     private Object getQodanaServiceInstance(Class<?> serviceClass, int limit,
                                             CompletableFuture<String> resultFuture) {
-        var qodanaService = project.getService(serviceClass);
+        Object qodanaService = project.getService(serviceClass);
         if (qodanaService == null) {
             String fallbackResult = tryFindSarifOutput(limit);
             resultFuture.complete(Objects.requireNonNullElse(fallbackResult,
                 "Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
                     "(Could not access Qodana service to poll results)"));
+            return null;
         }
         return qodanaService;
     }

@@ -39,6 +39,16 @@ public class McpServer {
     private static final Gson GSON = new GsonBuilder().create();
     private static String projectRoot = ".";
 
+    /**
+     * Sends a JSON-RPC response to the client via stdout.
+     * MCP protocol requires communication over stdin/stdout, so System.out is intentional and necessary.
+     */
+    private static void sendMcpResponse(JsonObject response) {
+        String json = GSON.toJson(response);
+        System.out.println(json);
+        System.out.flush();
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length > 0) {
             projectRoot = args[0];
@@ -53,10 +63,7 @@ public class McpServer {
                 JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
                 JsonObject response = handleMessage(msg);
                 if (response != null) {
-                    @SuppressWarnings("java:S106") // System.out is intentional for MCP protocol
-                    String json = GSON.toJson(response);
-                    System.out.println(json);
-                    System.out.flush();
+                    sendMcpResponse(response);
                 }
             } catch (Exception e) {
                 LOG.log(Level.SEVERE, "MCP Server error", e);
