@@ -1,6 +1,8 @@
 # Agentic GitHub Copilot for JetBrains
 
-A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE via the **Agent Client Protocol (ACP)**, with **MCP-based code intelligence tools** that leverage IntelliJ's native APIs for symbol search, code formatting, test execution, git operations, and file operations.
+A lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE via the **Agent Client Protocol (ACP)**.
+
+It provides **MCP-based code intelligence tools** that leverage IntelliJ's native APIs for symbol search, code formatting, test execution, git operations, and file operations.
 
 ## Status
 
@@ -72,7 +74,7 @@ intellij-copilot-plugin/
 └── integration-tests/    # (placeholder)
 ```
 
-## MCP Tools (32 tools)
+## MCP Tools (35 tools)
 
 | Category | Tools |
 |----------|-------|

@@ -86,8 +86,8 @@
 | Process Lifecycle | ✅ Complete | Auto-restart on crash |
 | HTTP Client | ✅ Complete | JSON-RPC working |
 | Binary Discovery | ✅ Complete | Multi-path + JAR extraction |
-| **SDK Integration** | ✅ Complete | With mock fallback |
-| **Runtime Testing** | 🔄 Pending | Need to test with real CLI |
+| SDK Integration | ✅ Complete | With mock fallback |
+| Runtime Testing | 🔄 Pending | Need to test with real CLI |
 
 ---
 

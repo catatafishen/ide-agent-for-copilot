@@ -149,7 +149,7 @@ This runs inside a single undoable command group on the EDT.
 | File | Purpose |
 |------|---------|
 | `plugin-core/.../bridge/CopilotAcpClient.java` | ACP client, permission handler, retry logic |
-| `plugin-core/.../psi/PsiBridgeService.java` | 38 MCP tools via IntelliJ APIs |
+| `plugin-core/.../psi/PsiBridgeService.java` | 55 MCP tools via IntelliJ APIs |
 | `plugin-core/.../services/CopilotService.java` | Service entry point, starts ACP client |
 | `plugin-core/.../ui/AgenticCopilotToolWindowContent.kt` | Main UI (Kotlin Swing) |
 | `mcp-server/.../mcp/McpServer.java` | MCP stdio server, tool registrations |
@@ -173,9 +173,9 @@ Add to `Help > Diagnostic Tools > Debug Log Settings`:
 | Issue | Cause | Fix |
 |-------|-------|-----|
 | "Error loading models" | Copilot CLI not authenticated | Run `copilot auth` |
-| "RPC call failed: session.create" | ACP process died | Check idea.log for stderr |
+| "RPC call failed: session.create" | ACP process died | Check `idea.log` for stderr |
 | Agent uses built-in edit tool | Deny+retry not working | Check permission handler logs |
-| "file changed externally" dialog | Write bypassed Document API | Verify intellij_write_file is used |
+| "file changed externally" dialog | Write bypassed Document API | Verify `intellij_write_file` is used |
 
 ## Test Coverage
 
