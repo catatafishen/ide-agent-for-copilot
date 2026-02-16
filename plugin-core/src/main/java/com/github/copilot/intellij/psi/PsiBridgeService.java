@@ -363,10 +363,10 @@ public final class PsiBridgeService implements Disposable {
 
         return ReadAction.compute(() -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
-            if (vf == null) return "File not found: " + pathStr;
+            if (vf == null) return ERROR_FILE_NOT_FOUND + pathStr;
 
             PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-            if (psiFile == null) return "Cannot parse file: " + pathStr;
+            if (psiFile == null) return ERROR_CANNOT_PARSE + pathStr;
 
             Document document = FileDocumentManager.getInstance().getDocument(vf);
             if (document == null) return "Cannot read file: " + pathStr;
@@ -944,7 +944,7 @@ public final class PsiBridgeService implements Disposable {
                         VirtualFile vf = resolveVirtualFile(pathStr);
                         if (vf != null) filesToCheck.add(vf);
                         else {
-                            resultFuture.complete("File not found: " + pathStr);
+                            resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
                             return;
                         }
                     } else {
@@ -1926,13 +1926,13 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("File not found: " + pathStr);
+                    resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) {
-                    resultFuture.complete("Cannot parse file: " + pathStr);
+                    resultFuture.complete(ERROR_CANNOT_PARSE + pathStr);
                     return;
                 }
 
@@ -1963,13 +1963,13 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("File not found: " + pathStr);
+                    resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) {
-                    resultFuture.complete("Cannot parse file: " + pathStr);
+                    resultFuture.complete(ERROR_CANNOT_PARSE + pathStr);
                     return;
                 }
 
@@ -2000,7 +2000,7 @@ public final class PsiBridgeService implements Disposable {
 
         return ReadAction.compute(() -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
-            if (vf == null) return "File not found: " + pathStr;
+            if (vf == null) return ERROR_FILE_NOT_FOUND + pathStr;
 
             // Read from Document (editor buffer) if available, otherwise from VFS
             Document doc = FileDocumentManager.getInstance().getDocument(vf);
@@ -2085,7 +2085,7 @@ public final class PsiBridgeService implements Disposable {
                 } else if (args.has("old_str") && args.has("new_str")) {
                     // Partial edit: replace old_str with new_str in the file
                     if (vf == null) {
-                        resultFuture.complete("File not found: " + pathStr);
+                        resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
                         return;
                     }
                     Document doc = FileDocumentManager.getInstance().getDocument(vf);
