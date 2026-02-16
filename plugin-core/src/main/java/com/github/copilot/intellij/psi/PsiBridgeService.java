@@ -3007,77 +3007,91 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
 
-        // Cast needed: runReadAction is overloaded (Computable vs. ThrowableComputable) - removing causes ambiguity
         //noinspection RedundantCast
         return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
             try {
-                var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
-                var descriptors = new ArrayList<>(manager.getAllDescriptors());
-
-                // Also include debug session descriptors
-                try {
-                    var debugManager = com.intellij.xdebugger.XDebuggerManager.getInstance(project);
-                    for (var session : debugManager.getDebugSessions()) {
-                        var rd = session.getRunContentDescriptor();
-                        if (!descriptors.contains(rd)) {
-                            descriptors.add(rd);
-                        }
-                    }
-                } catch (Exception ignored) {
-                    // XDebugger may not be available
-                }
-
+                List<com.intellij.execution.ui.RunContentDescriptor> descriptors = collectRunDescriptors();
                 if (descriptors.isEmpty()) {
                     return "No Run or Debug panel tabs available.";
                 }
 
-                // Find the matching descriptor (by tab name or most recent)
-                com.intellij.execution.ui.RunContentDescriptor target = null;
-                if (tabName != null) {
-                    for (var d : descriptors) {
-                        if (d.getDisplayName() != null && d.getDisplayName().contains(tabName)) {
-                            target = d;
-                            break;
-                        }
-                    }
-                    if (target == null) {
-                        StringBuilder available = new StringBuilder("No tab matching '").append(tabName).append("'. Available tabs:\n");
-                        for (var d : descriptors) {
-                            available.append("  - ").append(d.getDisplayName()).append("\n");
-                        }
-                        return available.toString();
-                    }
-                } else {
-                    target = descriptors.getLast();
+                var result = findTargetRunDescriptor(descriptors, tabName);
+                if (result instanceof String errorMsg) {
+                    return errorMsg;
                 }
 
+                var target = (com.intellij.execution.ui.RunContentDescriptor) result;
                 var console = target.getExecutionConsole();
                 if (console == null) {
                     return "Tab '" + target.getDisplayName() + "' has no console.";
                 }
 
                 String text = extractConsoleText(console);
-
                 if (text == null || text.isEmpty()) {
                     return "Tab '" + target.getDisplayName() + "' has no text content (console may still be loading or is an unsupported type).";
                 }
 
-                StringBuilder result = new StringBuilder();
-                result.append("Tab: ").append(target.getDisplayName()).append("\n");
-                result.append("Total length: ").append(text.length()).append(" chars\n\n");
-
-                if (text.length() > maxChars) {
-                    result.append("...(truncated, showing last ").append(maxChars).append(" of ").append(text.length()).append(" chars. Use max_chars parameter to read more.)\n");
-                    result.append(text.substring(text.length() - maxChars));
-                } else {
-                    result.append(text);
-                }
-
-                return result.toString();
+                return formatRunOutput(target.getDisplayName(), text, maxChars);
             } catch (Exception e) {
                 return "Error reading Run output: " + e.getMessage();
             }
         });
+    }
+
+    private List<com.intellij.execution.ui.RunContentDescriptor> collectRunDescriptors() {
+        var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
+        var descriptors = new ArrayList<>(manager.getAllDescriptors());
+
+        // Also include debug session descriptors
+        try {
+            var debugManager = com.intellij.xdebugger.XDebuggerManager.getInstance(project);
+            for (var session : debugManager.getDebugSessions()) {
+                var rd = session.getRunContentDescriptor();
+                if (!descriptors.contains(rd)) {
+                    descriptors.add(rd);
+                }
+            }
+        } catch (Exception ignored) {
+            // XDebugger may not be available
+        }
+        return descriptors;
+    }
+
+    private Object findTargetRunDescriptor(List<com.intellij.execution.ui.RunContentDescriptor> descriptors,
+                                           String tabName) {
+        if (tabName == null) {
+            return descriptors.getLast();
+        }
+
+        // Find by name
+        for (var d : descriptors) {
+            if (d.getDisplayName() != null && d.getDisplayName().contains(tabName)) {
+                return d;
+            }
+        }
+
+        // Not found - return error message
+        StringBuilder available = new StringBuilder("No tab matching '").append(tabName).append("'. Available tabs:\n");
+        for (var d : descriptors) {
+            available.append("  - ").append(d.getDisplayName()).append("\n");
+        }
+        return available.toString();
+    }
+
+    private String formatRunOutput(String displayName, String text, int maxChars) {
+        StringBuilder result = new StringBuilder();
+        result.append("Tab: ").append(displayName).append("\n");
+        result.append("Total length: ").append(text.length()).append(" chars\n\n");
+
+        if (text.length() > maxChars) {
+            result.append("...(truncated, showing last ").append(maxChars).append(" of ").append(text.length())
+                .append(" chars. Use max_chars parameter to read more.)\n");
+            result.append(text.substring(text.length() - maxChars));
+        } else {
+            result.append(text);
+        }
+
+        return result.toString();
     }
 
     /**
