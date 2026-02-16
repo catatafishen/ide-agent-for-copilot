@@ -145,20 +145,27 @@ public class McpServer {
             intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
             format_code([file1]) → optimize_imports() → done.
 
-            5. NEVER use grep/glob for IntelliJ project files or scratch files. \
+            5. CHECKING FILE HIGHLIGHTS (errors/warnings): \
+            a) Just call get_highlights(file) directly - NO waiting or daemon commands needed. \
+            b) IntelliJ analyzes files automatically in background. get_highlights returns current state. \
+            c) DO NOT use shell commands like "sleep" or "wait for daemon" - just call get_highlights. \
+            d) If you want to open file in editor first: open_in_editor(file) → get_highlights(file). \
+            Example: get_highlights("PsiBridgeService.java") returns all problems in that file.
+
+            6. NEVER use grep/glob for IntelliJ project files or scratch files. \
             ALWAYS use IntelliJ tools: search_symbols, find_references, get_file_outline, list_project_files, intellij_read_file. \
             grep/glob will FAIL on scratch files (they're stored outside the project). \
             After creating a scratch file, save its path and use intellij_read_file to access it.
 
-            6. TESTING RULES: \
+            7. TESTING RULES: \
             ALWAYS use 'run_tests' to run tests. DO NOT use './gradlew test' or 'mvn test'. \
             run_tests integrates with IntelliJ's test runner and provides structured results in the IDE's Run panel. \
             Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
             Only use run_command for tests as a last resort if run_tests fails.
 
-            7. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
+            8. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
 
-            8. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
+            9. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
 
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
             ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
