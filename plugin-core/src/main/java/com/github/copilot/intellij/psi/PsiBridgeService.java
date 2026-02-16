@@ -223,7 +223,7 @@ public final class PsiBridgeService implements Disposable {
         JsonObject response = new JsonObject();
         response.add("tools", tools);
         byte[] bytes = GSON.toJson(response).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.getResponseBody().close();
@@ -314,7 +314,7 @@ public final class PsiBridgeService implements Disposable {
             result = "Error: IDE is busy, please retry. " + e.getMessage();
         } catch (Exception e) {
             LOG.warn("PSI tool error: " + toolName, e);
-            result = "Error: " + e.getMessage();
+            result = ERROR_PREFIX + e.getMessage();
         }
 
         JsonObject response = new JsonObject();
@@ -334,7 +334,7 @@ public final class PsiBridgeService implements Disposable {
 
         return ReadAction.compute(() -> {
             String basePath = project.getBasePath();
-            if (basePath == null) return "No project base path";
+            if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
             List<String> files = new ArrayList<>();
             ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
@@ -358,7 +358,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String getFileOutline(JsonObject args) {
         if (!args.has("path") || args.get("path").isJsonNull())
-            return "Error: 'path' parameter is required";
+            return ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
 
         return ReadAction.compute(() -> {
@@ -487,10 +487,10 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String findReferences(JsonObject args) {
-        if (!args.has("symbol") || args.get("symbol").isJsonNull())
+        if (!args.has(PARAM_SYMBOL) || args.get(PARAM_SYMBOL).isJsonNull())
             return "Error: 'symbol' parameter is required";
-        String symbol = args.get("symbol").getAsString();
-        String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
+        String symbol = args.get(PARAM_SYMBOL).getAsString();
+        String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
 
         return ReadAction.compute(() -> {
             List<String> results = new ArrayList<>();
