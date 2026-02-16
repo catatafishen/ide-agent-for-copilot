@@ -41,7 +41,7 @@ public class McpServer {
 
     /**
      * Sends a JSON-RPC response to the client via stdout.
-     * MCP protocol requires communication over stdin/stdout, so System.out is intentional and necessary.
+     * The MCP protocol requires communication over stdin/stdout, so System.out is intentional and necessary.
      */
     private static void sendMcpResponse(JsonObject response) {
         String json = GSON.toJson(response);

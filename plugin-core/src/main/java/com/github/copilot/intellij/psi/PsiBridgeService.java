@@ -2124,7 +2124,7 @@ public final class PsiBridgeService implements Disposable {
         if (!args.has("path") || args.get("path").isJsonNull())
             return "Error: 'path' parameter is required";
         String pathStr = args.get("path").getAsString();
-        
+
         // Check if auto-format should be applied (default: true)
         boolean autoFormat = !args.has("auto_format") || args.get("auto_format").getAsBoolean();
 
@@ -2289,7 +2289,7 @@ public final class PsiBridgeService implements Disposable {
 
     /**
      * Finds the length in the original text that corresponds to a given length in the normalized text,
-     * starting from the given position. This accounts for multi-byte chars that normalize to single chars.
+     * starting from the given position. This accounts for multibyte chars that normalize to single chars.
      */
     private static int findOriginalLength(String original, int startIdx, int normalizedLen) {
         int origPos = startIdx;
