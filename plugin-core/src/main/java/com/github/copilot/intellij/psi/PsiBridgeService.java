@@ -1459,7 +1459,7 @@ public final class PsiBridgeService implements Disposable {
         String inspectionId = args.get(PARAM_INSPECTION_ID).getAsString().trim();
 
         if (inspectionId.isEmpty()) {
-            return "Error: inspection_id cannot be empty";
+            return "Error: " + PARAM_INSPECTION_ID + " cannot be empty";
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -1487,7 +1487,7 @@ public final class PsiBridgeService implements Disposable {
                 int zeroLine = line - 1;
                 if (zeroLine < 0 || zeroLine >= document.getLineCount()) {
                     resultFuture.complete("Error: line " + line + " is out of range (file has " +
-                        document.getLineCount() + " lines)");
+                        document.getLineCount() + FORMAT_LINES_SUFFIX);
                     return;
                 }
 
@@ -1570,7 +1570,7 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, annotation);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress Inspection", null)
+            }, LABEL_SUPPRESS_INSPECTION, null)
         );
 
         return "Added @SuppressWarnings(\"" + inspectionId + "\") at line " + (targetLine + 1);
@@ -1602,7 +1602,7 @@ public final class PsiBridgeService implements Disposable {
                     }
                     com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
                 }
-            }, "Suppress Inspection", null)
+            }, LABEL_SUPPRESS_INSPECTION, null)
         );
 
         return "Added '" + inspectionId + "' to existing @SuppressWarnings annotation";
@@ -1638,7 +1638,7 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, annotation);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress Inspection", null)
+            }, LABEL_SUPPRESS_INSPECTION, null)
         );
 
         return "Added @Suppress(\"" + inspectionId + "\") at line " + (targetLine + 1);
@@ -1663,7 +1663,7 @@ public final class PsiBridgeService implements Disposable {
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(lineStart, comment);
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, "Suppress Inspection", null)
+            }, LABEL_SUPPRESS_INSPECTION, null)
         );
 
         return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
@@ -2100,7 +2100,7 @@ public final class PsiBridgeService implements Disposable {
                                     project, () -> doc.setText(newContent), "Write File", null)
                             );
                             autoFormatAfterWrite(pathStr);
-                            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + " chars)");
+                            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
                         } else {
                             // Fallback: write to VFS directly
                             ApplicationManager.getApplication().runWriteAction(() -> {
@@ -2165,7 +2165,7 @@ public final class PsiBridgeService implements Disposable {
                             "Edit File", null)
                     );
                     autoFormatAfterWrite(pathStr);
-                    resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + " chars)");
+                    resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + FORMAT_CHARS_SUFFIX);
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
                 }
@@ -4278,7 +4278,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String applyQuickfix(JsonObject args) throws Exception {
         if (!args.has("file") || !args.has("line") || !args.has(PARAM_INSPECTION_ID)) {
-            return "Error: 'file', 'line', and 'inspection_id' parameters are required";
+            return "Error: 'file', 'line', and '" + PARAM_INSPECTION_ID + "' parameters are required";
         }
         String pathStr = args.get("file").getAsString();
         int targetLine = args.get("line").getAsInt();
@@ -4312,7 +4312,7 @@ public final class PsiBridgeService implements Disposable {
                         // Find the PsiElement at the target line
                         if (targetLine < 1 || targetLine > document.getLineCount()) {
                             resultFuture.complete("Error: Line " + targetLine + " is out of bounds " +
-                                "(file has " + document.getLineCount() + " lines)");
+                                "(file has " + document.getLineCount() + FORMAT_LINES_SUFFIX);
                             return;
                         }
                         int lineStartOffset = document.getLineStartOffset(targetLine - 1);
@@ -4857,7 +4857,7 @@ public final class PsiBridgeService implements Disposable {
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 LocalFileSystem.getInstance().refreshAndFindFileByPath(filePath.toString());
-                resultFuture.complete("✓ Created file: " + pathStr + " (" + content.length() + " chars)");
+                resultFuture.complete("✓ Created file: " + pathStr + " (" + content.length() + FORMAT_CHARS_SUFFIX);
             } catch (Exception e) {
                 resultFuture.complete("File created but VFS refresh failed: " + e.getMessage());
             }
