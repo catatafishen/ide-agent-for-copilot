@@ -6,12 +6,34 @@
 
 ---
 
+## ⚠️ TASK TYPE DETECTION (Read This First!)
+
+**Before starting, identify your task type:**
+
+### 🔴 Type A: "Fix whole project" / "Fix all problems/highlights"
+→ **Use Workflow 2** (Section 3)
+→ Work in logical units (one problem area at a time)
+→ Commit after each unit, then ask to continue
+
+### 🟡 Type B: "Fix this specific file" / "Fix File.java"  
+→ **Use Workflow 1** (Section 3)
+→ Fix the file completely, commit once
+
+### 🟢 Type C: Specific task (implement feature, fix bug)
+→ **Use Workflow 3** (Section 3)
+→ Complete the logical change (may span multiple files)
+→ Commit when done
+
+**Key principle**: Group RELATED changes together, commit as logical units, then ask before moving to next UNRELATED problem.
+
+---
+
 ## 1) Your Role
 
 - Fix bugs, implement features, and improve code quality
 - Use IntelliJ's 54 MCP tools for all code operations
 - Follow workflows systematically (templates below)
-- Commit after each completed task
+- Commit after each **logical unit of work**
 - **Time limit**: ~10 minutes per prompt — plan accordingly
 
 ---
@@ -61,19 +83,55 @@
 
 ### Workflow 2: Fix Whole Project (Systematic)
 
+**Key concept**: Group issues by PROBLEM TYPE, not by file. A single problem may span multiple files.
+
 ```
-1. run_inspections()                          # Get overview
-2. Parse output for issue counts:
-   "File A: 42, File B: 12, File C: 8"
-3. Pick file with most issues (File A)
-4. Follow "Workflow 1" for File A
-5. git add . && git commit -m "fix: resolve 42 issues in File A"
-6. Report: "✅ Fixed File A (42→2). Committed."
-7. **ASK USER**: "Continue to File B (12 issues)?"
-8. If yes, repeat from step 3 for File B
-9. **IMPORTANT**: Do NOT fix multiple files without committing each one
-10. Skip files with 50+ grammar issues unless user specifically requests
+STEP 1: Analyze
+  run_inspections()
+  Group issues by CATEGORY (not just file):
+    - "Unused parameters: 5 across 3 files"
+    - "Redundant casts: 3 in PsiBridge"  
+    - "Grammar: 50 issues in multiple files"
+    - "Null checks: 2 in McpServer"
+  
+STEP 2: Prioritize
+  Pick highest-value problem category
+  Examples of logical units:
+    ✅ "Fix all unused parameter warnings" (may touch 3 files)
+    ✅ "Fix redundant casts in PsiBridge" (1 file, related issue)
+    ✅ "Add null checks for optional parameters" (may touch 2 files)
+    ❌ "Fix random issues in 5 different files" (unrelated)
+
+STEP 3: Fix the problem completely
+  - Fix ALL instances of that problem type
+  - May span multiple files if it's the SAME issue
+  - Verify with build_project
+
+STEP 4: Commit the logical unit
+  git add . && git commit -m "fix: unused parameters in test mocks"
+  
+STEP 5: Report & Ask
+  Report: "✅ Fixed unused parameters (5 warnings across 3 files). Committed."
+  **ASK USER**: "Next problem: redundant casts (3 issues). Continue?"
+  
+STEP 6: Wait for user response, then repeat from STEP 2
+
+**Rules:**
+- Commit after each LOGICAL UNIT (may be 1 file or 5 files)
+- Related changes belong together (e.g., refactoring that touches 4 files)
+- Unrelated changes need separate commits
+- Skip categories with 50+ grammar issues unless user requests
 ```
+
+### Workflow 2 Self-Check (Before Starting)
+
+**Answer these questions:**
+- [ ] What is the highest-priority problem CATEGORY? (Not just "File A has issues")
+- [ ] Will fixing this problem span multiple files? (That's OK if related!)
+- [ ] What will my commit message be? (Should describe the logical change)
+- [ ] Am I planning to ask user before moving to NEXT problem type?
+
+If unsure → **ASK USER**: "I see 3 problem categories. Should I start with [category]?"
 
 ### Workflow 3: Implement New Feature
 
@@ -113,7 +171,7 @@ If any ✗, **ask user for clarification** before proceeding.
 ### Tool Sequence for Quality Checks
 ```
 Single file:   get_highlights(path) → fix → format → verify
-Whole project: run_inspections → group by file → fix one file → commit → repeat
+Whole project: run_inspections → group by PROBLEM TYPE → fix problem → commit → ask → repeat
 After changes: optimize_imports → format_code → get_highlights
 ```
 
@@ -141,22 +199,53 @@ After changes: optimize_imports → format_code → get_highlights
 
 ### Commit Strategy
 
-**Single task**: Commit when done
-**Multiple files**: Commit after EACH file (never batch multiple files)
+**Logical units**: Commit related changes together, even if they span multiple files
+**Examples of good logical units**:
+  - ✅ "Fix unused parameters across 3 test files" (related problem)
+  - ✅ "Refactor authentication flow" (touches 4 files, one feature)
+  - ✅ "Add null checks to optional params" (2 files, same issue type)
+
+**Examples of bad logical units**:
+  - ❌ "Fix random issues in 5 unrelated files" (should be separate commits)
+  - ❌ "Grammar fixes + refactoring + bug fix" (3 different concerns)
+
 **Build must pass** before committing
 
 ---
 
 ## 5) Common Mistakes to Avoid
 
-### ❌ WRONG: Fix everything at once
+### ❌ WRONG: Fix unrelated issues without commits
 ```
-Agent sees 270 issues → tries to fix all → times out → breaks build → nothing committed
+Agent sees: unused params, grammar, null checks, deprecations
+Agent fixes all of them → no commits → mixes unrelated changes
 ```
 
-### ✅ RIGHT: Incremental with commits
+### ✅ RIGHT: Group by problem type, commit each
 ```
-Agent sees 270 issues → picks File A (42 issues) → fixes → commits → asks to continue
+Agent sees: unused params, grammar, null checks
+1. Fix unused params (3 files) → commit "fix: unused parameters"
+2. Ask user → continue
+3. Fix null checks (2 files) → commit "fix: add null safety checks"  
+4. Ask user → continue
+5. Skip grammar (50+ issues, low priority)
+```
+
+---
+
+### ❌ WRONG: Split related changes across commits
+```
+Refactoring needs changes in Class A, B, C
+Commit 1: Class A (broken build)
+Commit 2: Class B (still broken)
+Commit 3: Class C (now works)
+```
+
+### ✅ RIGHT: Keep related changes together
+```
+Refactoring needs changes in Class A, B, C
+Commit 1: All 3 classes → "refactor: extract common interface"
+Build passes, logical change is atomic
 ```
 
 ---
