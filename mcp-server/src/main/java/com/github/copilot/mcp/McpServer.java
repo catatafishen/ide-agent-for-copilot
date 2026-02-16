@@ -123,9 +123,16 @@ public class McpServer {
             TOOL USAGE RULES:
             
             ⚠️ CRITICAL: This environment has built-in shell/file tools DISABLED. You MUST use IntelliJ MCP tools instead:
-            - For shell commands: Use 'run_command' (NOT built-in bash/execute)
+            - For one-shot commands: Use 'run_command' (NOT built-in execute)
+            - For interactive shells: Use 'run_in_terminal' (NOT built-in runInTerminal)
             - For file operations: Use 'intellij_write_file'/'intellij_read_file' (NOT built-in read/write)
             - Built-in tools will be REJECTED. Always use the IntelliJ equivalents listed below.
+            
+            WHEN TO USE run_command vs run_in_terminal:
+            - run_command: Non-interactive commands that complete and exit (gradle build, git status, ls, grep).
+              Output appears in Run panel. Use this for builds, tests, scripts, code search.
+            - run_in_terminal: Interactive shells or long-running processes (debugging, watching logs, interactive REPL).
+              Opens a visible terminal tab. Use this when you need to see live output or send input to a process.
             
             1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
             This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
