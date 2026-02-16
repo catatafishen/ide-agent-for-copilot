@@ -70,6 +70,11 @@ public class CopilotAcpClient implements Closeable {
     private BufferedWriter writer;
     private Thread readerThread;
     private volatile boolean closed = false;
+    
+    // Auto-restart state
+    private volatile int restartAttempts = 0;
+    private static final int MAX_RESTART_ATTEMPTS = 3;
+    private static final long[] RESTART_DELAYS_MS = {1000, 2000, 4000}; // Exponential backoff
 
     // State from the initialization response
     private JsonArray authMethods;
@@ -585,10 +590,69 @@ public class CopilotAcpClient implements Closeable {
             }
         }
 
-        // Process ended ? fail all pending requests
-        failAllPendingRequests();
+        // Process ended - attempt auto-restart if not intentionally closed
+        if (!closed) {
+            attemptAutoRestart();
+        } else {
+            failAllPendingRequests();
+        }
     }
-
+    
+    private void attemptAutoRestart() {
+        if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+            LOG.warn("ACP process terminated after " + MAX_RESTART_ATTEMPTS + " restart attempts");
+            showNotification("Copilot Disconnected", 
+                "Could not reconnect after " + MAX_RESTART_ATTEMPTS + " attempts. Please restart the IDE.",
+                com.intellij.notification.NotificationType.ERROR);
+            failAllPendingRequests();
+            return;
+        }
+        
+        restartAttempts++;
+        long delayMs = RESTART_DELAYS_MS[Math.min(restartAttempts - 1, RESTART_DELAYS_MS.length - 1)];
+        
+        LOG.info("ACP process terminated. Attempting restart " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + 
+                 " after " + delayMs + "ms...");
+        showNotification("Copilot Reconnecting...", 
+            "Attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS,
+            com.intellij.notification.NotificationType.INFORMATION);
+        
+        // Schedule restart on background thread
+        new Thread(() -> {
+            try {
+                Thread.sleep(delayMs);
+                start();
+                LOG.info("ACP process successfully restarted");
+                showNotification("Copilot Reconnected", 
+                    "Successfully reconnected to Copilot",
+                    com.intellij.notification.NotificationType.INFORMATION);
+                restartAttempts = 0; // Reset counter on successful restart
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOG.warn("Restart attempt interrupted", e);
+                failAllPendingRequests();
+            } catch (CopilotException e) {
+                LOG.warn("Failed to restart ACP process (attempt " + restartAttempts + ")", e);
+                attemptAutoRestart(); // Try again
+            }
+        }, "CopilotACP-Restart").start();
+    }
+    
+    private void showNotification(String title, String content, com.intellij.notification.NotificationType type) {
+        com.intellij.notification.NotificationGroupManager.getInstance()
+            .getNotificationGroup("Copilot Notifications")
+            .createNotification(title, content, type)
+            .notify(null);
+    }
+    
+    private void failAllPendingRequests() {
+        for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
+            entry.getValue().completeExceptionally(
+                new CopilotException("ACP process terminated", null, false));
+        }
+        pendingRequests.clear();
+    }
+    
     private void processLine(String line) {
         try {
             JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
@@ -658,14 +722,6 @@ public class CopilotAcpClient implements Closeable {
                 LOG.debug("Error forwarding notification to listener", e);
             }
         }
-    }
-
-    private void failAllPendingRequests() {
-        for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
-            entry.getValue().completeExceptionally(
-                new CopilotException("ACP process terminated", null, false));
-        }
-        pendingRequests.clear();
     }
 
     private void readStderrLoop() {

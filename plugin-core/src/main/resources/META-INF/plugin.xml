@@ -73,6 +73,9 @@
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity
       implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
+    
+    <!-- Notification Group for Copilot status messages -->
+    <notificationGroup id="Copilot Notifications" displayType="BALLOON"/>
   </extensions>
 
   <actions>
