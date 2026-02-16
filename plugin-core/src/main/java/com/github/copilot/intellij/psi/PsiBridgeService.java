@@ -2124,6 +2124,9 @@ public final class PsiBridgeService implements Disposable {
         if (!args.has("path") || args.get("path").isJsonNull())
             return "Error: 'path' parameter is required";
         String pathStr = args.get("path").getAsString();
+        
+        // Check if auto-format should be applied (default: true)
+        boolean autoFormat = !args.has("auto_format") || args.get("auto_format").getAsBoolean();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
@@ -2159,7 +2162,9 @@ public final class PsiBridgeService implements Disposable {
                                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                                     project, () -> doc.setText(newContent), "Write File", null)
                             );
-                            autoFormatAfterWrite(pathStr);
+                            if (autoFormat) {
+                                autoFormatAfterWrite(pathStr);
+                            }
                             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
                         } else {
                             // Fallback: write to VFS directly
@@ -2224,7 +2229,9 @@ public final class PsiBridgeService implements Disposable {
                             project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
                             "Edit File", null)
                     );
-                    autoFormatAfterWrite(pathStr);
+                    if (autoFormat) {
+                        autoFormatAfterWrite(pathStr);
+                    }
                     resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + FORMAT_CHARS_SUFFIX);
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");

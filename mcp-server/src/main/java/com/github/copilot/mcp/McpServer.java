@@ -137,7 +137,13 @@ public class McpServer {
             d) Early error detection prevents cascade failures across multiple files. \
             Example workflow: intellij_write_file(file.java) → get_highlights(file.java) → verify no errors → continue.
 
-            4. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.
+            4. For MULTIPLE SEQUENTIAL EDITS: \
+            When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
+            Check for errors with get_highlights after EACH edit (still required!). \
+            After all edits complete, call format_code and optimize_imports ONCE. \
+            Example: intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
+            intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
+            format_code([file1]) → optimize_imports() → done.
 
             5. NEVER use grep/glob for IntelliJ project files or scratch files. \
             ALWAYS use IntelliJ tools: search_symbols, find_references, get_file_outline, list_project_files, intellij_read_file. \
@@ -423,12 +429,13 @@ public class McpServer {
             "Write file contents through IntelliJ's Document API. Supports undo, VCS tracking, and editor sync. " +
                 "Use 'content' for full file replacement, or 'old_str'+'new_str' for precise edits. " +
                 "ALWAYS USE THIS instead of your built-in file writing tools — this keeps IntelliJ in sync " +
-                "and supports undo (Ctrl+Z). After writing, run optimize_imports and format_code.",
+                "and supports undo (Ctrl+Z). Auto-formats by default; set auto_format=false for sequential edits.",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
                 "content", Map.of("type", "string", "description", "Optional: full file content to write (replaces entire file or creates new file)"),
                 "old_str", Map.of("type", "string", "description", "Optional: exact string to find and replace (must be unique in file)"),
-                "new_str", Map.of("type", "string", "description", "Optional: replacement string (used with old_str)")
+                "new_str", Map.of("type", "string", "description", "Optional: replacement string (used with old_str)"),
+                "auto_format", Map.of("type", "boolean", "description", "Auto-format and optimize imports after write (default: true). Set false for sequential edits, then call format_code once at the end.")
             ),
             List.of("path")));
 
