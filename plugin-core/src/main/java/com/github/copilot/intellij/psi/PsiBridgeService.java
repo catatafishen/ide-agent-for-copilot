@@ -1242,7 +1242,7 @@ public final class PsiBridgeService implements Disposable {
                         PsiManager.getInstance(project).findFile(scopeFile)
                     );
                     if (psiFile == null) {
-                        resultFuture.complete("Error: Cannot parse file: " + scopePath);
+                        resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + scopePath);
                         return;
                     }
                     scope = new com.intellij.analysis.AnalysisScope(psiFile);
@@ -4168,23 +4168,41 @@ public final class PsiBridgeService implements Disposable {
         try {
             StringBuilder result = new StringBuilder();
             final int[] count = {0};
+            final Set<String> seenPaths = new HashSet<>();
 
             ApplicationManager.getApplication().invokeAndWait(() -> {
                 try {
+                    result.append("Scratch files:\n");
+                    
+                    // First, check currently open files in editors (catches files open but not in VFS yet)
+                    com.intellij.openapi.fileEditor.FileEditorManager editorManager = 
+                        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                    VirtualFile[] openFiles = editorManager.getOpenFiles();
+                    
+                    for (VirtualFile file : openFiles) {
+                        // Check if this is a scratch file (path contains "scratches")
+                        String path = file.getPath();
+                        if (path.contains("scratches") && !file.isDirectory()) {
+                            seenPaths.add(path);
+                            long sizeKB = file.getLength() / 1024;
+                            result.append("- ").append(path)
+                                  .append(" (").append(sizeKB).append(" KB) [OPEN]\n");
+                            count[0]++;
+                        }
+                    }
+                    
+                    // Then, list files from scratch root directory (catches files on disk)
                     com.intellij.ide.scratch.ScratchFileService scratchService =
                         com.intellij.ide.scratch.ScratchFileService.getInstance();
                     com.intellij.ide.scratch.ScratchRootType scratchRoot =
                         com.intellij.ide.scratch.ScratchRootType.getInstance();
 
                     // Get scratch root directory
-                    VirtualFile scratchesDir = scratchRoot.findFile(null, "", 
+                    VirtualFile scratchesDir = scratchRoot.findFile(null, "",
                         com.intellij.ide.scratch.ScratchFileService.Option.existing_only);
-                    
+
                     if (scratchesDir != null && scratchesDir.exists()) {
-                        result.append("Scratch files:\n");
-                        listScratchFilesRecursive(scratchesDir, result, count, 0);
-                    } else {
-                        result.append("No scratch files found (scratches directory doesn't exist yet).\n");
+                        listScratchFilesRecursive(scratchesDir, result, count, 0, seenPaths);
                     }
                 } catch (Exception e) {
                     LOG.warn("Failed to list scratch files", e);
@@ -4199,7 +4217,7 @@ public final class PsiBridgeService implements Disposable {
                 result.append("\nTotal: ").append(count[0]).append(" scratch file(s)\n");
                 result.append("Use intellij_read_file with these paths to read content.");
             }
-            
+
             return result.toString();
         } catch (Exception e) {
             LOG.warn("Failed to list scratch files", e);
@@ -4207,18 +4225,22 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    private void listScratchFilesRecursive(VirtualFile dir, StringBuilder result, int[] count, int depth) {
+    private void listScratchFilesRecursive(VirtualFile dir, StringBuilder result, int[] count, int depth, Set<String> seenPaths) {
         if (depth > 3) return; // Prevent excessive recursion
         
         for (VirtualFile child : dir.getChildren()) {
             if (child.isDirectory()) {
-                listScratchFilesRecursive(child, result, count, depth + 1);
+                listScratchFilesRecursive(child, result, count, depth + 1, seenPaths);
             } else {
-                String indent = "  ".repeat(depth);
-                long sizeKB = child.getLength() / 1024;
-                result.append(indent).append("- ").append(child.getPath())
-                      .append(" (").append(sizeKB).append(" KB)\n");
-                count[0]++;
+                String path = child.getPath();
+                if (!seenPaths.contains(path)) {  // Skip if already listed from open files
+                    seenPaths.add(path);
+                    String indent = "  ".repeat(depth);
+                    long sizeKB = child.getLength() / 1024;
+                    result.append(indent).append("- ").append(path)
+                          .append(" (").append(sizeKB).append(" KB)\n");
+                    count[0]++;
+                }
             }
         }
     }
@@ -4240,7 +4262,7 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("Error: File not found: " + pathStr);
+                    resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 
@@ -4248,7 +4270,7 @@ public final class PsiBridgeService implements Disposable {
                     try {
                         PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                         if (psiFile == null) {
-                            resultFuture.complete("Error: Cannot parse file: " + pathStr);
+                            resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr);
                             return;
                         }
 
@@ -4401,13 +4423,13 @@ public final class PsiBridgeService implements Disposable {
                 // Phase 1: Read — find the target element (read action is implicit on EDT)
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("Error: File not found: " + pathStr);
+                    resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) {
-                    resultFuture.complete("Error: Cannot parse file: " + pathStr);
+                    resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr);
                     return;
                 }
 
@@ -4551,10 +4573,10 @@ public final class PsiBridgeService implements Disposable {
 
         return ReadAction.compute(() -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
-            if (vf == null) return "Error: File not found: " + pathStr;
+            if (vf == null) return ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr;
 
             PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-            if (psiFile == null) return "Error: Cannot parse file: " + pathStr;
+            if (psiFile == null) return ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr;
 
             Document document = FileDocumentManager.getInstance().getDocument(vf);
             if (document == null) return "Error: Cannot get document for: " + pathStr;
@@ -4825,7 +4847,7 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("Error: File not found: " + pathStr);
+                    resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 
@@ -4966,7 +4988,7 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("Error: File not found: " + pathStr);
+                    resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 
@@ -5011,7 +5033,7 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
-                    resultFuture.complete("Error: File not found: " + pathStr);
+                    resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
                     return;
                 }
 

@@ -20,6 +20,14 @@ import javax.swing.*
  */
 class AgenticCopilotToolWindowContent(private val project: Project) {
 
+    // UI String Constants
+    private companion object {
+        const val MSG_LOADING = "Loading..."
+        const val MSG_ASK_COPILOT = "Ask Copilot..."
+        const val MSG_THINKING = "Thinking..."
+        const val MSG_UNKNOWN_ERROR = "Unknown error"
+    }
+
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
     private val tabbedPane = JBTabbedPane()
 
@@ -338,7 +346,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         toolbar.alignmentX = Component.LEFT_ALIGNMENT
 
         // Model selector (placeholder shown inside dropdown)
-        val modelComboBox = ComboBox(arrayOf("Loading..."))
+        val modelComboBox = ComboBox(arrayOf(MSG_LOADING))
         modelComboBox.preferredSize = JBUI.size(280, 30)
         modelComboBox.isEnabled = false
         // Custom renderer to show model name + cost
@@ -561,7 +569,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             runButton.isEnabled = false
             stopButton.isVisible = true
-            setResponseStatus("Thinking...")
+            setResponseStatus(MSG_THINKING)
 
             // For first prompt or new chat, clear response area
             val isNewSession = currentSessionId == null
@@ -675,7 +683,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 "tool_call_update" -> {
                                     val status = update.get("status")?.asString ?: ""
                                     if (status == "completed") {
-                                        setResponseStatus("Thinking...")
+                                        setResponseStatus(MSG_THINKING)
                                     } else if (status == "failed") {
                                         val toolId = update.get("toolCallId")?.asString ?: ""
                                         appendResponse("⚠ Tool failed: $toolId\n")
@@ -683,9 +691,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 }
 
                                 "agent_thought_chunk" -> {
-                                    // Agent is thinking — keep spinner active
+                                    // Agent is thinking ? keep spinner active
                                     if (!receivedContent) {
-                                        setResponseStatus("Thinking...")
+                                        setResponseStatus(MSG_THINKING)
                                     }
                                 }
                             }
@@ -704,7 +712,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val msg = if (e is InterruptedException || e.cause is InterruptedException) {
                         "Request cancelled"
                     } else {
-                        e.message ?: "Unknown error"
+                        e.message ?: MSG_UNKNOWN_ERROR
                     }
                     appendResponse("\n❌ Error: $msg\n")
                     setResponseStatus("Error", loading = false)
@@ -767,7 +775,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     }
                 }
 
-                val errorMsg = lastError?.message ?: "Unknown error"
+                val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
                 showModelError(
                     loadingSpinner, modelComboBox, modelErrorLabel,
                     loginButton, retryButton, authPanel, errorMsg
@@ -1185,7 +1193,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         gbc.gridx = 1
         val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
-        val defaultModelCombo = ComboBox(arrayOf("Loading..."))
+        val defaultModelCombo = ComboBox(arrayOf(MSG_LOADING))
         defaultModelCombo.preferredSize = JBUI.size(250, 30)
         defaultModelCombo.isEnabled = false
         settingsModelPanel.add(defaultModelCombo)
@@ -1244,7 +1252,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     }
                 }
 
-                val errorMsg = lastError?.message ?: "Unknown error"
+                val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
                 showModelError(
                     settingsSpinner, defaultModelCombo, settingsModelError,
                     settingsLoginButton, settingsRetryButton, settingsAuthPanel, errorMsg
@@ -1347,7 +1355,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             retryButton.isVisible = false
             loginButton.isVisible = false
             comboBox.removeAllItems()
-            comboBox.addItem("Loading...")
+            comboBox.addItem(MSG_LOADING)
             comboBox.isEnabled = false
         }
     }
