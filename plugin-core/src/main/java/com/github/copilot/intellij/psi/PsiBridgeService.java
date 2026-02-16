@@ -30,11 +30,10 @@ import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiDirectory;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiNamedElement;
@@ -67,6 +66,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -704,7 +704,7 @@ public final class PsiBridgeService implements Disposable {
                 applyConfigProperties(config, args);
 
                 // Apply type-specific properties
-                applyTypeSpecificProperties(config, type, args);
+                applyTypeSpecificProperties(config, args);
 
                 runManager.addConfiguration(settings);
                 runManager.setSelectedConfiguration(settings);
@@ -754,8 +754,7 @@ public final class PsiBridgeService implements Disposable {
                 }
 
                 // Apply type-specific properties
-                String typeName = settings.getType().getDisplayName().toLowerCase();
-                applyTypeSpecificProperties(config, typeName, args);
+                applyTypeSpecificProperties(config, args);
                 if (args.has("main_class")) changes.add("main class");
                 if (args.has("test_class")) changes.add("test class");
                 if (args.has("tasks")) changes.add("Gradle tasks");
@@ -800,7 +799,7 @@ public final class PsiBridgeService implements Disposable {
             setViaReflection(config, "setWorkingDirectory", args.get("working_dir").getAsString(), ignore, null);
     }
 
-    private void applyTypeSpecificProperties(RunConfiguration config, String type, JsonObject args) {
+    private void applyTypeSpecificProperties(RunConfiguration config, JsonObject args) {
         List<String> ignore = new ArrayList<>();
         if (args.has("main_class"))
             setViaReflection(config, "setMainClassName", args.get("main_class").getAsString(), ignore, null);
@@ -1247,12 +1246,10 @@ public final class PsiBridgeService implements Disposable {
                             String toolId = toolWrapper.getShortName();
 
                             // Null checks required: getPresentation() and getProblemElements() can return null at runtime
-                            // despite @NotNull annotations — these are inspection API calls on dynamic tool wrappers
-                            @SuppressWarnings("ConstantValue")
+                            // despite @NotNull annotations ? these are inspection API calls on dynamic tool wrappers
                             var presentation = getPresentation(toolWrapper);
                             if (presentation == null) continue;
 
-                            @SuppressWarnings("ConstantValue")
                             var problemElements = presentation.getProblemElements();
                             if (problemElements == null || problemElements.isEmpty()) continue;
 
@@ -1262,7 +1259,6 @@ public final class PsiBridgeService implements Disposable {
 
                                 for (var descriptor : descriptors) {
                                     // getDescriptionTemplate() can return null despite @NotNull annotation
-                                    @SuppressWarnings("ConstantValue")
                                     String description = descriptor.getDescriptionTemplate();
                                     if (description == null || description.isEmpty()) {
                                         skippedNoDescription++;
@@ -1441,10 +1437,10 @@ public final class PsiBridgeService implements Disposable {
                 if (fileName.endsWith(".java")) {
                     resultFuture.complete(suppressJava(target, inspectionId, document, psiFile));
                 } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
-                    resultFuture.complete(suppressKotlin(target, inspectionId, document, psiFile));
+                    resultFuture.complete(suppressKotlin(target, inspectionId, document));
                 } else {
                     // For other file types, add a noinspection comment
-                    resultFuture.complete(suppressWithComment(target, inspectionId, document, psiFile));
+                    resultFuture.complete(suppressWithComment(target, inspectionId, document));
                 }
             } catch (Exception e) {
                 LOG.error("Error suppressing inspection", e);
@@ -1497,7 +1493,7 @@ public final class PsiBridgeService implements Disposable {
                 var existing = modList.findAnnotation("java.lang.SuppressWarnings");
                 if (existing != null) {
                     // Annotation exists — add the new ID to it
-                    return addToExistingSuppressWarnings(existing, inspectionId, document, psiFile);
+                    return addToExistingSuppressWarnings(existing, inspectionId, document);
                 }
             }
         }
@@ -1515,8 +1511,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String addToExistingSuppressWarnings(com.intellij.psi.PsiAnnotation annotation,
                                                  String inspectionId,
-                                                 com.intellij.openapi.editor.Document document,
-                                                 com.intellij.psi.PsiFile psiFile) {
+                                                 com.intellij.openapi.editor.Document document) {
         String text = annotation.getText();
         // Check if already suppressed
         if (text.contains(inspectionId)) {
@@ -1547,8 +1542,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String suppressKotlin(com.intellij.psi.PsiElement target, String inspectionId,
-                                  com.intellij.openapi.editor.Document document,
-                                  com.intellij.psi.PsiFile psiFile) {
+                                  com.intellij.openapi.editor.Document document) {
         int targetOffset = target.getTextRange().getStartOffset();
         int targetLine = document.getLineNumber(targetOffset);
         int lineStart = document.getLineStartOffset(targetLine);
@@ -1584,8 +1578,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String suppressWithComment(com.intellij.psi.PsiElement target, String inspectionId,
-                                       com.intellij.openapi.editor.Document document,
-                                       com.intellij.psi.PsiFile psiFile) {
+                                       com.intellij.openapi.editor.Document document) {
         int targetOffset = target.getTextRange().getStartOffset();
         int targetLine = document.getLineNumber(targetOffset);
         int lineStart = document.getLineStartOffset(targetLine);
@@ -1696,12 +1689,8 @@ public final class PsiBridgeService implements Disposable {
             if (qodanaService == null) {
                 // Fall back to looking for SARIF output files
                 String fallbackResult = tryFindSarifOutput(limit);
-                if (fallbackResult != null) {
-                    resultFuture.complete(fallbackResult);
-                } else {
-                    resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
-                        "(Could not access Qodana service to poll results)");
-                }
+                resultFuture.complete(Objects.requireNonNullElse(fallbackResult, "Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                    "(Could not access Qodana service to poll results)"));
                 return;
             }
 
@@ -2868,11 +2857,12 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
 
-        // Cast needed: runReadAction is overloaded (Computable vs ThrowableComputable) — removing causes ambiguity
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        // Cast needed: runReadAction is overloaded (Computable vs ThrowableComputable) ? removing causes ambiguity
+        //noinspection RedundantCast
+        return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
             try {
                 var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
-                var descriptors = new java.util.ArrayList<>(manager.getAllDescriptors());
+                var descriptors = new ArrayList<>(manager.getAllDescriptors());
 
                 // Also include debug session descriptors
                 try {
@@ -3138,7 +3128,7 @@ public final class PsiBridgeService implements Disposable {
         if (configResult != null) return configResult;
 
         // Try IntelliJ's native JUnit test runner
-        String junitResult = tryRunJUnitNatively(target, module);
+        String junitResult = tryRunJUnitNatively(target);
         if (junitResult != null) return junitResult;
 
         // Fall back to Gradle
@@ -3276,7 +3266,7 @@ public final class PsiBridgeService implements Disposable {
      * Create a temporary JUnit run configuration and execute it via IntelliJ's native test runner.
      * This gives proper test tree UI, pass/fail counts, and rerun-failed support.
      */
-    private String tryRunJUnitNatively(String target, String module) {
+    private String tryRunJUnitNatively(String target) {
         try {
             var junitType = findConfigurationType("junit");
             if (junitType == null) return null;
@@ -3615,23 +3605,33 @@ public final class PsiBridgeService implements Disposable {
         if (cls.contains("PsiEnumConstant")) return "field";
 
         // Kotlin PSI
-        if (cls.equals("KtClass") || cls.equals("KtObjectDeclaration")) {
-            // KtClass can be class, interface, or enum — check via hasModifier or text
-            try {
-                // KtClass has isInterface() and isEnum() methods
-                var isInterface = element.getClass().getMethod("isInterface");
-                if ((boolean) isInterface.invoke(element)) return "interface";
-                var isEnum = element.getClass().getMethod("isEnum");
-                if ((boolean) isEnum.invoke(element)) return "enum";
-            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
-                     | IllegalAccessException ignored) {
+        switch (cls) {
+            case "KtClass", "KtObjectDeclaration" -> {
+                // KtClass can be class, interface, or enum — check via hasModifier or text
+                try {
+                    // KtClass has isInterface() and isEnum() methods
+                    var isInterface = element.getClass().getMethod("isInterface");
+                    if ((boolean) isInterface.invoke(element)) return "interface";
+                    var isEnum = element.getClass().getMethod("isEnum");
+                    if ((boolean) isEnum.invoke(element)) return "enum";
+                } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                         | IllegalAccessException ignored) {
+                }
+                return "class";
             }
-            return "class";
+            case "KtNamedFunction" -> {
+                return "function";
+            }
+            case "KtProperty" -> {
+                return "field";
+            }
+            case "KtParameter" -> {
+                return null; // skip parameters
+            }
+            case "KtTypeAlias" -> {
+                return "class";
+            }
         }
-        if (cls.equals("KtNamedFunction")) return "function";
-        if (cls.equals("KtProperty")) return "field";
-        if (cls.equals("KtParameter")) return null; // skip parameters
-        if (cls.equals("KtTypeAlias")) return "class";
 
         // Generic patterns
         if (cls.contains("Interface") && !cls.contains("Reference")) return "interface";
@@ -4061,22 +4061,23 @@ public final class PsiBridgeService implements Disposable {
 
                     // Create scratch file in write action (now on EDT)
                     // Cast needed: runWriteAction is overloaded (Computable vs ThrowableComputable)
+                    //noinspection RedundantCast
                     resultFile[0] = ApplicationManager.getApplication().runWriteAction(
-                        (Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
+                        (com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
                             try {
-                                com.intellij.openapi.vfs.VirtualFile file = scratchService.findFile(
+                                VirtualFile file = scratchService.findFile(
                                     scratchRoot,
                                     name,
                                     com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
                                 );
 
                                 if (file != null) {
-                                    java.io.OutputStream out = file.getOutputStream(null);
-                                    out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                    OutputStream out = file.getOutputStream(null);
+                                    out.write(content.getBytes(StandardCharsets.UTF_8));
                                     out.close();
                                 }
                                 return file;
-                            } catch (java.io.IOException e) {
+                            } catch (IOException e) {
                                 LOG.warn("Failed to create/write scratch file", e);
                                 errorMsg[0] = e.getMessage();
                                 return null;
@@ -4225,6 +4226,7 @@ public final class PsiBridgeService implements Disposable {
                         StringBuilder sb = new StringBuilder();
                         var fix = fixes[Math.min(fixIndex, fixes.length - 1)];
 
+                        //noinspection unchecked
                         com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                             project,
                             () -> fix.applyFix(project, targetProblem),
@@ -4366,7 +4368,7 @@ public final class PsiBridgeService implements Disposable {
 
                                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                                     project,
-                                    () -> targetElement.delete(),
+                                    targetElement::delete,
                                     "Safe Delete " + symbolName,
                                     null
                                 );
@@ -4376,13 +4378,13 @@ public final class PsiBridgeService implements Disposable {
                                 resultFuture.complete("✓ Safely deleted '" + symbolName + "' (no usages found).\n" +
                                     "  File: " + pathStr);
                             }
-                            case "inline" -> resultFuture.complete("Error: 'inline' refactoring is not yet supported via this tool. " +
-                                "Use intellij_write_file to manually inline the code.");
-                            case "extract_method" -> {
+                            case "inline" ->
+                                resultFuture.complete("Error: 'inline' refactoring is not yet supported via this tool. " +
+                                    "Use intellij_write_file to manually inline the code.");
+                            case "extract_method" ->
                                 resultFuture.complete("Error: 'extract_method' requires a code selection range " +
                                     "which is not well-suited for tool-based invocation. " +
                                     "Use intellij_write_file to manually extract the method.");
-                            }
                             default -> resultFuture.complete("Error: Unknown operation '" + operation +
                                 "'. Supported: rename, safe_delete");
                         }
@@ -4616,7 +4618,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private void appendSupertypes(com.intellij.psi.PsiClass psiClass, StringBuilder sb,
-                                   String basePath, String indent, Set<String> visited, int depth) {
+                                  String basePath, String indent, Set<String> visited, int depth) {
         if (depth > 10) return;
         String qn = psiClass.getQualifiedName();
         if (qn != null && !visited.add(qn)) return;
@@ -4661,9 +4663,10 @@ public final class PsiBridgeService implements Disposable {
 
         // Resolve path
         String basePath = project.getBasePath();
+        Path pathObj = Path.of(pathStr);
         Path filePath;
-        if (Path.of(pathStr).isAbsolute()) {
-            filePath = Path.of(pathStr);
+        if (pathObj.isAbsolute()) {
+            filePath = pathObj;
         } else if (basePath != null) {
             filePath = Path.of(basePath, pathStr);
         } else {
@@ -4863,7 +4866,8 @@ public final class PsiBridgeService implements Disposable {
                 // Force DaemonCodeAnalyzer to run on this file
                 PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
                 if (psiFile != null) {
-                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                    //noinspection deprecation
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart();
                 }
 
                 resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : "") +
@@ -4917,7 +4921,7 @@ public final class PsiBridgeService implements Disposable {
                 } else if (args.has("content")) {
                     // Diff file against provided content
                     String newContent = args.get("content").getAsString();
-                    String title = args.has("title") ? args.get("title").getAsString() : "Proposed changes";
+                    String title = args.has("title") ? args.get("title").getAsString() : "Proposed Changes";
                     var content1 = com.intellij.diff.DiffContentFactory.getInstance()
                         .create(project, vf);
                     var content2 = com.intellij.diff.DiffContentFactory.getInstance()
