@@ -121,6 +121,12 @@ public class McpServer {
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
             TOOL USAGE RULES:
+            
+            ⚠️ CRITICAL: This environment has built-in shell/file tools DISABLED. You MUST use IntelliJ MCP tools instead:
+            - For shell commands: Use 'run_command' (NOT built-in bash/execute)
+            - For file operations: Use 'intellij_write_file'/'intellij_read_file' (NOT built-in read/write)
+            - Built-in tools will be REJECTED. Always use the IntelliJ equivalents listed below.
+            
             1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
             This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
             Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
