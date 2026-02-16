@@ -85,15 +85,48 @@ public final class PsiBridgeService implements Disposable {
     private static final Logger LOG = Logger.getInstance(PsiBridgeService.class);
     private static final Gson GSON = new GsonBuilder().create();
 
+    // HTTP Constants
+    private static final String CONTENT_TYPE_HEADER = "Content-Type";
+    private static final String APPLICATION_JSON = "application/json";
+    private static final String STATUS_PARAM = "status";
+
+    // Error Messages
+    private static final String ERROR_PREFIX = "Error: ";
+    private static final String ERROR_NO_PROJECT_PATH = "No project base path";
+    private static final String ERROR_PATH_REQUIRED = "Error: 'path' parameter is required";
+    private static final String ERROR_FILE_NOT_FOUND = "File not found: ";
+    private static final String ERROR_CANNOT_PARSE = "Cannot parse file: ";
+
+    // Common Parameters
+    private static final String PARAM_SYMBOL = "symbol";
+    private static final String PARAM_FILE_PATTERN = "file_pattern";
+    private static final String PARAM_TIMEOUT = "timeout";
+    private static final String PARAM_JVM_ARGS = "jvm_args";
+    private static final String PARAM_PROGRAM_ARGS = "program_args";
+    private static final String PARAM_WORKING_DIR = "working_dir";
+    private static final String PARAM_MAIN_CLASS = "main_class";
+    private static final String PARAM_TEST_CLASS = "test_class";
+    private static final String PARAM_TEST_METHOD = "test_method";
+
+    // File Extensions
+    private static final String JAVA_EXTENSION = ".java";
+
+    // Format Strings
+    private static final String FORMAT_LOCATION = "%s:%d [%s] %s";
+
+    // System Properties
+    private static final String OS_NAME_PROPERTY = "os.name";
+
     private final Project project;
     private HttpServer httpServer;
     private int port;
 
     // Cached inspection results for pagination - avoids rerunning the full inspection engine
-    private volatile List<String> cachedInspectionResults;
-    private volatile int cachedInspectionFileCount;
-    private volatile String cachedInspectionProfile;
-    private volatile long cachedInspectionTimestamp;
+    private final Object inspectionCacheLock = new Object();
+    private List<String> cachedInspectionResults;
+    private int cachedInspectionFileCount;
+    private String cachedInspectionProfile;
+    private long cachedInspectionTimestamp;
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
@@ -103,6 +136,7 @@ public final class PsiBridgeService implements Disposable {
         return project.getService(PsiBridgeService.class);
     }
 
+    @SuppressWarnings("unused") // Public API - may be used by external integrations
     public int getPort() {
         return port;
     }
@@ -146,10 +180,10 @@ public final class PsiBridgeService implements Disposable {
     private void handleHealth(HttpExchange exchange) throws IOException {
         boolean indexing = com.intellij.openapi.project.DumbService.getInstance(project).isDumb();
         JsonObject health = new JsonObject();
-        health.addProperty("status", "ok");
+        health.addProperty(STATUS_PARAM, "ok");
         health.addProperty("indexing", indexing);
         byte[] resp = GSON.toJson(health).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
         exchange.sendResponseHeaders(200, resp.length);
         exchange.getResponseBody().write(resp);
         exchange.getResponseBody().close();
