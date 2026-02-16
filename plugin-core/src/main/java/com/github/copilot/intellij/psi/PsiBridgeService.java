@@ -89,7 +89,7 @@ public final class PsiBridgeService implements Disposable {
     private HttpServer httpServer;
     private int port;
 
-    // Cached inspection results for pagination — avoids re-running the full inspection engine
+    // Cached inspection results for pagination - avoids rerunning the full inspection engine
     private volatile List<String> cachedInspectionResults;
     private volatile int cachedInspectionFileCount;
     private volatile String cachedInspectionProfile;
@@ -963,7 +963,7 @@ public final class PsiBridgeService implements Disposable {
      * Get syntax highlights and daemon-level diagnostics for project files.
      * This reads the cached results from IntelliJ's on-the-fly analysis (DaemonCodeAnalyzer).
      * Useful for quick checks on files already open/analyzed by the IDE.
-     * Does NOT run full code inspections -- use run_inspections for that.
+     * Does NOT run full code inspections - use run_inspections for that.
      */
     @SuppressWarnings("UnstableApiUsage")
     private String getHighlights(JsonObject args) throws Exception {
@@ -991,7 +991,7 @@ public final class PsiBridgeService implements Disposable {
      * This triggers the same analysis as "Analyze > Inspect Code" in the IDE.
      * Results appear in the Problems tool window and are returned here.
      * Finds code quality issues, security problems, typos, complexity warnings,
-     * and third-party inspection results (e.g. SonarQube).
+     * and third-party inspection results (e.g., SonarQube).
      */
     @SuppressWarnings("UnstableApiUsage")
     private String runInspections(JsonObject args) throws Exception {
@@ -2143,9 +2143,9 @@ public final class PsiBridgeService implements Disposable {
      * This handles em-dashes, smart quotes, non-breaking spaces, etc. that LLMs often can't reproduce exactly.
      */
     private static String normalizeForMatch(String s) {
-        // First normalize line endings
+        // First normalize line endings.
         s = s.replace("\r\n", "\n").replace('\r', '\n');
-        // Replace ALL non-ASCII chars with '?' — this matches what LLMs naturally do
+        // Replace ALL non-ASCII chars with '?' - this matches what LLMs naturally do
         // when they can't reproduce em-dashes, smart quotes, etc.
         StringBuilder sb = new StringBuilder(s.length());
         for (int i = 0; i < s.length(); i++) {
@@ -2156,7 +2156,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Find the length in the original text that corresponds to a given length in the normalized text,
+     * Finds the length in the original text that corresponds to a given length in the normalized text,
      * starting from the given position. This accounts for multi-byte chars that normalize to single chars.
      */
     private static int findOriginalLength(String original, int startIdx, int normalizedLen) {
@@ -2861,7 +2861,7 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
 
-        // Cast needed: runReadAction is overloaded (Computable vs ThrowableComputable) ? removing causes ambiguity
+        // Cast needed: runReadAction is overloaded (Computable vs. ThrowableComputable) - removing causes ambiguity
         //noinspection RedundantCast
         return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
             try {
@@ -4077,7 +4077,7 @@ public final class PsiBridgeService implements Disposable {
                         com.intellij.ide.scratch.ScratchRootType.getInstance();
 
                     // Create scratch file in write action (now on EDT)
-                    // Cast needed: runWriteAction is overloaded (Computable vs ThrowableComputable)
+                    // Cast needed: runWriteAction is overloaded (Computable vs. ThrowableComputable)
                     //noinspection RedundantCast
                     resultFile[0] = ApplicationManager.getApplication().runWriteAction(
                         (com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {

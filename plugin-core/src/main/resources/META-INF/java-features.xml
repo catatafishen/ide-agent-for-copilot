@@ -1,4 +1,4 @@
 <idea-plugin>
-    <!-- Extensions that require com.intellij.modules.java -->
-    <!-- This file is only loaded when Java plugin is available -->
+    <!-- Extensions that require the com.intellij.modules.java module -->
+    <!-- This file is only loaded when the Java plugin is available -->
 </idea-plugin>

@@ -1,24 +1,24 @@
 <idea-plugin>
-    <id>com.github.copilot.intellij</id>
-    <name>Agentic Copilot</name>
-    <vendor email="support@example.com" url="https://github.com/yourusername/intellij-copilot-plugin">
-        Agentic Copilot Contributors
-    </vendor>
+  <id>com.github.copilot.intellij</id>
+  <name>Agentic Copilot</name>
+  <vendor email="support@example.com" url="https://github.com/yourusername/intellij-copilot-plugin">
+    Agentic Copilot Contributors
+  </vendor>
 
-    <description><![CDATA[
+  <description><![CDATA[
     <p>Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE
     via the Agent Client Protocol (ACP).</p>
-    
+
     <h3>Features</h3>
     <ul>
         <li>AI-powered multi-step planning and execution via GitHub Copilot</li>
-        <li>Direct ACP integration — no sidecar or SDK required</li>
+        <li>Direct ACP integration - no sidecar or SDK required</li>
         <li>Rich context management with code selections and symbols</li>
         <li>Visual plan tracking with real-time progress</li>
         <li>Timeline view of agent reasoning and tool invocations</li>
         <li>Model selection (Claude, GPT, Gemini) with usage indicators</li>
     </ul>
-    
+
     <h3>Requirements</h3>
     <ul>
         <li>GitHub Copilot subscription</li>
@@ -26,7 +26,7 @@
     </ul>
     ]]></description>
 
-    <change-notes><![CDATA[
+  <change-notes><![CDATA[
     <h3>0.2.0</h3>
     <ul>
         <li>Direct ACP integration — removed Go sidecar and SDK dependency</li>
@@ -41,41 +41,41 @@
     </ul>
     ]]></change-notes>
 
-    <!-- Require IntelliJ Platform 2025.1+ (compatible through 2025.3) -->
-    <idea-version since-build="251" until-build="253.*"/>
+  <!-- Require IntelliJ Platform 2025.1+ (compatible through 2025.3) -->
+  <idea-version since-build="251" until-build="253.*"/>
 
-    <!-- Plugin dependencies -->
-    <depends>com.intellij.modules.platform</depends>
-    <depends optional="true" config-file="java-features.xml">com.intellij.modules.java</depends>
-    <!-- <depends>Git4Idea</depends> -->
-    <depends optional="true" config-file="git-features.xml">Git4Idea</depends>
-    <depends optional="true">org.jetbrains.plugins.terminal</depends>
+  <!-- Plugin dependencies -->
+  <depends>com.intellij.modules.platform</depends>
+  <depends optional="true" config-file="java-features.xml">com.intellij.modules.java</depends>
+  <!-- <depends>Git4Idea</depends> -->
+  <depends optional="true" config-file="git-features.xml">Git4Idea</depends>
+  <depends optional="true">org.jetbrains.plugins.terminal</depends>
 
-    <!-- Extension points and implementations -->
-    <extensions defaultExtensionNs="com.intellij">
-        <!-- Tool Window -->
-        <toolWindow id="AgenticCopilot" 
-                    secondary="false" 
-                    anchor="right"
-                    icon="/icons/copilot.svg"
-                    factoryClass="com.github.copilot.intellij.ui.AgenticCopilotToolWindowFactory"/>
-        
-        <!-- Application Services -->
-        <applicationService 
-            serviceImplementation="com.github.copilot.intellij.services.AgenticCopilotService"/>
-        <applicationService 
-            serviceImplementation="com.github.copilot.intellij.services.CopilotService"/>
+  <!-- Extension points and implementations -->
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Tool Window -->
+    <toolWindow id="AgenticCopilot"
+                secondary="false"
+                anchor="right"
+                icon="/icons/copilot.svg"
+                factoryClass="com.github.copilot.intellij.ui.AgenticCopilotToolWindowFactory"/>
 
-        <!-- Project Services -->
-        <projectService
-            serviceImplementation="com.github.copilot.intellij.psi.PsiBridgeService"/>
+    <!-- Application Services -->
+    <applicationService
+      serviceImplementation="com.github.copilot.intellij.services.AgenticCopilotService"/>
+    <applicationService
+      serviceImplementation="com.github.copilot.intellij.services.CopilotService"/>
 
-        <!-- Start PSI Bridge when project opens -->
-        <postStartupActivity
-            implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
-    </extensions>
+    <!-- Project Services -->
+    <projectService
+      serviceImplementation="com.github.copilot.intellij.psi.PsiBridgeService"/>
 
-    <actions>
-        <!-- Actions will be added here -->
-    </actions>
+    <!-- Start PSI Bridge when the project opens -->
+    <postStartupActivity
+      implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
+  </extensions>
+
+  <actions>
+    <!-- Actions will be added here -->
+  </actions>
 </idea-plugin>
