@@ -23,14 +23,6 @@ public final class AgenticCopilotService implements Disposable {
         return ApplicationManager.getApplication().getService(AgenticCopilotService.class);
     }
 
-    /**
-     * Get the Copilot ACP service.
-     */
-    @NotNull
-    public CopilotService getCopilotService() {
-        return CopilotService.getInstance();
-    }
-
     @Override
     public void dispose() {
         LOG.info("Agentic Copilot Service disposed");

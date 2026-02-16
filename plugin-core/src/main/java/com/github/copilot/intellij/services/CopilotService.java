@@ -2,29 +2,32 @@ package com.github.copilot.intellij.services;
 
 import com.github.copilot.intellij.bridge.CopilotAcpClient;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
 /**
  * Service for managing the Copilot ACP client lifecycle.
  * Starts the copilot --acp process on first use and stops it on IDE shutdown.
+ * Each project has its own instance with session state in .agent-work/
  */
-@Service(Service.Level.APP)
+@Service(Service.Level.PROJECT)
 public final class CopilotService implements Disposable {
     private static final Logger LOG = Logger.getInstance(CopilotService.class);
 
+    private final Project project;
     private CopilotAcpClient acpClient;
     private volatile boolean started = false;
 
-    public CopilotService() {
-        LOG.info("Copilot ACP Service initialized");
+    public CopilotService(Project project) {
+        this.project = project;
+        LOG.info("Copilot ACP Service initialized for project: " + project.getName());
     }
 
     @NotNull
-    public static CopilotService getInstance() {
-        return ApplicationManager.getApplication().getService(CopilotService.class);
+    public static CopilotService getInstance(@NotNull Project project) {
+        return project.getService(CopilotService.class);
     }
 
     /**
@@ -37,14 +40,16 @@ public final class CopilotService implements Disposable {
         }
 
         try {
-            LOG.info("Starting Copilot ACP client...");
+            LOG.info("Starting Copilot ACP client for project: " + project.getName());
             if (acpClient != null) {
                 acpClient.close();
             }
-            acpClient = new CopilotAcpClient();
+            
+            String projectPath = project.getBasePath();
+            acpClient = new CopilotAcpClient(projectPath);
             acpClient.start();
             started = true;
-            LOG.info("Copilot ACP client started");
+            LOG.info("Copilot ACP client started with config-dir: " + projectPath + "/.agent-work");
 
         } catch (Exception e) {
             LOG.error("Failed to start Copilot ACP client", e);

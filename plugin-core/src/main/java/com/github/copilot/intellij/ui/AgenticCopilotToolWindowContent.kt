@@ -300,7 +300,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 // Try to get auth method from ACP client
-                val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                val service = CopilotService.getInstance(project)
                 var authCommand: String? = null
                 var authArgs: List<String>? = null
 
@@ -548,7 +548,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val sessionId = currentSessionId
             if (sessionId != null) {
                 try {
-                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                    val service = CopilotService.getInstance(project)
                     service.getClient().cancelSession(sessionId)
                 } catch (_: Exception) {
                 }
@@ -584,7 +584,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             ApplicationManager.getApplication().executeOnPooledThread {
                 currentPromptThread = Thread.currentThread()
                 try {
-                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                    val service = CopilotService.getInstance(project)
                     val client = service.getClient()
 
                     // Reuse session for multi-turn conversation, create new if needed
@@ -1378,7 +1378,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             for (attempt in 1..maxRetries) {
                 try {
-                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                    val service = CopilotService.getInstance(project)
                     val client = service.getClient()
                     val models = client.listModels()
 

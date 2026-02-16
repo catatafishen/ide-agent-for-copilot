@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +68,7 @@ public class CopilotAcpClient implements Closeable {
     private final CopyOnWriteArrayList<Consumer<JsonObject>> notificationListeners = new CopyOnWriteArrayList<>();
 
     private final Object writerLock = new Object();
+    private final String projectBasePath; // Project path for config-dir
     private Process process;
     private BufferedWriter writer;
     private Thread readerThread;
@@ -88,6 +90,13 @@ public class CopilotAcpClient implements Closeable {
     // Flag: set when a built-in permission (edit/create/runInTerminal) is denied during a prompt turn
     private volatile boolean builtInActionDeniedDuringTurn = false;
     private volatile String lastDeniedKind = "";
+
+    /**
+     * Create ACP client with optional project base path for config-dir.
+     */
+    public CopilotAcpClient(@Nullable String projectBasePath) {
+        this.projectBasePath = projectBasePath;
+    }
 
     /**
      * Start the copilot ACP process and perform the initialization handshake.
@@ -159,6 +168,14 @@ public class CopilotAcpClient implements Closeable {
 
         cmd.add("--acp");
         cmd.add("--stdio");
+        
+        // Configure Copilot CLI to use .agent-work/ for session state
+        if (projectBasePath != null) {
+            Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
+            cmd.add("--config-dir");
+            cmd.add(agentWorkPath.toString());
+            LOG.info("Copilot CLI config-dir set to: " + agentWorkPath);
+        }
 
         String mcpJarPath = findMcpServerJar();
         if (mcpJarPath != null) {

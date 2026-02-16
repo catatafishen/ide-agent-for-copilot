@@ -140,10 +140,15 @@ public class McpServer {
 
             2. TRUST MCP TOOL OUTPUTS - they return data directly in the response. \
             DO NOT try to read /tmp/ files created by the Copilot CLI itself - the tool output IS the data you need. \
-            For reading PROJECT files: ALWAYS use 'intellij_read_file' (works for project files, logs, ANY file in the workspace). \
+            For reading files: ALWAYS use 'intellij_read_file' (works for project files, logs, ANY file). \
             NEVER use sed, cat, head, tail, grep, or the built-in 'view' tool to read file content. \
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
             Read 300-500 lines per call for efficiency (each call has overhead).
+            
+            AGENT WORKSPACE: For temporary/working files, use '.agent-work/' directory in project root. \
+            This directory is git-ignored and persists across sessions. Use 'intellij_write_file' to write files there. \
+            Example: '.agent-work/analysis.md', '.agent-work/issues-list.txt'. \
+            DO NOT create temp files in /tmp/ - use .agent-work/ so files persist and are accessible to you later.
 
             3. IMMEDIATELY after editing ANY file with intellij_write_file: \
             a) Run 'get_highlights' on that SAME file to check for errors. \

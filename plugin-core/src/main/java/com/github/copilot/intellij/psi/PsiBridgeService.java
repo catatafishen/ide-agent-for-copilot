@@ -615,6 +615,7 @@ public final class PsiBridgeService implements Disposable {
             String basePath = project.getBasePath();
             sb.append("Project: ").append(project.getName()).append("\n");
             sb.append("Path: ").append(basePath).append("\n");
+            sb.append("Agent Workspace: ").append(basePath).append("/.agent-work/ (for temp/working files)\n");
 
             // SDK / JDK
             try {
