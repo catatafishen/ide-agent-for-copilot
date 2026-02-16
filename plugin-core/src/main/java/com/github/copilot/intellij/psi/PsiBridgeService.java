@@ -2281,9 +2281,9 @@ public final class PsiBridgeService implements Disposable {
     private String gitStatus(JsonObject args) throws Exception {
         boolean verbose = args.has("verbose") && args.get("verbose").getAsBoolean();
         if (verbose) {
-            return runGit("status");
+            return runGit(STATUS_PARAM);
         }
-        return runGit("status", "--short", "--branch");
+        return runGit(STATUS_PARAM, "--short", "--branch");
     }
 
     private String gitDiff(JsonObject args) throws Exception {
@@ -2363,13 +2363,13 @@ public final class PsiBridgeService implements Disposable {
                 FileDocumentManager.getInstance().saveAllDocuments()));
 
         List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("commit");
+        gitArgs.add(PARAM_COMMIT);
 
         if (args.has("amend") && args.get("amend").getAsBoolean()) {
             gitArgs.add("--amend");
         }
         if (args.has("all") && args.get("all").getAsBoolean()) {
-            gitArgs.add("--all");
+            gitArgs.add(GIT_FLAG_ALL);
         }
 
         gitArgs.add("-m");
@@ -2383,7 +2383,7 @@ public final class PsiBridgeService implements Disposable {
         gitArgs.add("add");
 
         if (args.has("all") && args.get("all").getAsBoolean()) {
-            gitArgs.add("--all");
+            gitArgs.add(GIT_FLAG_ALL);
         } else if (args.has("paths")) {
             for (var elem : args.getAsJsonArray("paths")) {
                 gitArgs.add(elem.getAsString());
@@ -2421,7 +2421,7 @@ public final class PsiBridgeService implements Disposable {
         return switch (action) {
             case "list" -> {
                 boolean all = args.has("all") && args.get("all").getAsBoolean();
-                yield runGit("branch", all ? "--all" : "--list", "-v");
+                yield runGit(PARAM_BRANCH, all ? GIT_FLAG_ALL : "--list", "-v");
             }
             case "create" -> {
                 if (!args.has("name")) yield "Error: 'name' required for create";
@@ -2550,11 +2550,11 @@ public final class PsiBridgeService implements Disposable {
         String title = args.has("title") ? args.get("title").getAsString() : null;
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
-        int timeoutSec = args.has("timeout") ? args.get("timeout").getAsInt() : 60;
+        int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
         String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
 
         GeneralCommandLine cmd;
-        if (System.getProperty("os.name").contains("Win")) {
+        if (System.getProperty(OS_NAME_PROPERTY).contains("Win")) {
             cmd = new GeneralCommandLine("cmd", "/c", command);
         } else {
             cmd = new GeneralCommandLine("sh", "-c", command);
@@ -2886,7 +2886,7 @@ public final class PsiBridgeService implements Disposable {
 
         // 2. Available shells
         result.append("\nAvailable shells:\n");
-        String os = System.getProperty("os.name", "").toLowerCase();
+        String os = System.getProperty(OS_NAME_PROPERTY, "").toLowerCase();
         if (os.contains("win")) {
             checkShell(result, "PowerShell", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
             checkShell(result, "PowerShell 7", "C:\\Program Files\\PowerShell\\7\\pwsh.exe");
@@ -3207,7 +3207,7 @@ public final class PsiBridgeService implements Disposable {
         if (junitResult != null) return junitResult;
 
         // Fall back to Gradle
-        String gradlew = basePath + (System.getProperty("os.name").contains("Win")
+        String gradlew = basePath + (System.getProperty(OS_NAME_PROPERTY).contains("Win")
             ? "\\gradlew.bat" : "/gradlew");
         String taskPrefix = module.isEmpty() ? "" : ":" + module + ":";
 
