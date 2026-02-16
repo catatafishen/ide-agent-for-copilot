@@ -138,8 +138,10 @@ public class McpServer {
             This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
             Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
 
-            2. ALWAYS use 'intellij_read_file' for ALL file reads. \
-            NEVER use sed, cat, head, tail, or grep to read file content. \
+            2. TRUST MCP TOOL OUTPUTS - they return data directly in the response. \
+            DO NOT try to read /tmp/ files created by the Copilot CLI itself - the tool output IS the data you need. \
+            For reading PROJECT files: ALWAYS use 'intellij_read_file' (works for project files, logs, ANY file in the workspace). \
+            NEVER use sed, cat, head, tail, grep, or the built-in 'view' tool to read file content. \
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
             Read 300-500 lines per call for efficiency (each call has overhead).
 
