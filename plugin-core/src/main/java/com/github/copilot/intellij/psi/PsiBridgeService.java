@@ -2855,54 +2855,14 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
 
-                var contentManager = toolWindow.getContentManager();
-
-                // Find the target content - by name or use selected
-                com.intellij.ui.content.Content targetContent = null;
-                if (tabName != null) {
-                    for (var content : contentManager.getContents()) {
-                        String displayName = content.getDisplayName();
-                        if (displayName != null && displayName.contains(tabName)) {
-                            targetContent = content;
-                            break;
-                        }
-                    }
-                }
-                if (targetContent == null) {
-                    targetContent = contentManager.getSelectedContent();
-                }
+                com.intellij.ui.content.Content targetContent = findTerminalContent(toolWindow, tabName);
                 if (targetContent == null) {
                     resultFuture.complete("No terminal tab found" +
                         (tabName != null ? " matching '" + tabName + "'" : "") + ".");
                     return;
                 }
 
-                // Find widget via findWidgetByContent
-                var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
-                    com.intellij.ui.content.Content.class);
-                Object widget = findWidgetByContent.invoke(null, targetContent);
-                if (widget == null) {
-                    resultFuture.complete("No terminal widget found for tab '" + targetContent.getDisplayName() +
-                        "'. The auto-created default tab may not be readable — use agent-created tabs instead.");
-                    return;
-                }
-
-                // Call getText() via the TerminalWidget interface to avoid IllegalAccessException
-                try {
-                    var widgetInterface = Class.forName("com.intellij.terminal.ui.TerminalWidget");
-                    var getText = widgetInterface.getMethod("getText");
-                    CharSequence text = (CharSequence) getText.invoke(widget);
-                    String output = text != null ? text.toString().strip() : "";
-                    if (output.isEmpty()) {
-                        resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' has no output.");
-                    } else {
-                        resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' output:\n" +
-                            truncateOutput(output));
-                    }
-                } catch (NoSuchMethodException e) {
-                    resultFuture.complete("getText() not available on this terminal type (" +
-                        widget.getClass().getSimpleName() + "). Terminal output reading not supported.");
-                }
+                readTerminalText(managerClass, targetContent, resultFuture);
 
             } catch (Exception e) {
                 LOG.warn("Failed to read terminal output", e);
@@ -2915,6 +2875,54 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "Timed out reading terminal output.";
+        }
+    }
+
+    private com.intellij.ui.content.Content findTerminalContent(
+        com.intellij.openapi.wm.ToolWindow toolWindow, String tabName) {
+        var contentManager = toolWindow.getContentManager();
+
+        // Find by name if specified
+        if (tabName != null) {
+            for (var content : contentManager.getContents()) {
+                String displayName = content.getDisplayName();
+                if (displayName != null && displayName.contains(tabName)) {
+                    return content;
+                }
+            }
+        }
+
+        // Fall back to selected content
+        return contentManager.getSelectedContent();
+    }
+
+    private void readTerminalText(Class<?> managerClass, com.intellij.ui.content.Content targetContent,
+                                  CompletableFuture<String> resultFuture) throws Exception {
+        // Find widget via findWidgetByContent
+        var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
+            com.intellij.ui.content.Content.class);
+        Object widget = findWidgetByContent.invoke(null, targetContent);
+        if (widget == null) {
+            resultFuture.complete("No terminal widget found for tab '" + targetContent.getDisplayName() +
+                "'. The auto-created default tab may not be readable — use agent-created tabs instead.");
+            return;
+        }
+
+        // Call getText() via the TerminalWidget interface
+        try {
+            var widgetInterface = Class.forName("com.intellij.terminal.ui.TerminalWidget");
+            var getText = widgetInterface.getMethod("getText");
+            CharSequence text = (CharSequence) getText.invoke(widget);
+            String output = text != null ? text.toString().strip() : "";
+            if (output.isEmpty()) {
+                resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' has no output.");
+            } else {
+                resultFuture.complete("Terminal '" + targetContent.getDisplayName() + "' output:\n" +
+                    truncateOutput(output));
+            }
+        } catch (NoSuchMethodException e) {
+            resultFuture.complete("getText() not available on this terminal type (" +
+                widget.getClass().getSimpleName() + "). Terminal output reading not supported.");
         }
     }
 
