@@ -209,7 +209,7 @@ public final class PsiBridgeService implements Disposable {
             "http_request", "run_command", "read_ide_log", "get_notifications",
             "read_run_output", "run_in_terminal", "list_terminals",
             "read_terminal_output", "get_documentation", "download_sources",
-            "create_scratch_file", "get_indexing_status",
+            "create_scratch_file", "list_scratch_files", "get_indexing_status",
             "apply_quickfix", "refactor", "go_to_declaration",
             "get_type_hierarchy", "create_file", "delete_file", "build_project",
             "open_in_editor", "show_diff"
@@ -295,6 +295,7 @@ public final class PsiBridgeService implements Disposable {
                 case "download_sources" -> downloadSources(arguments);
                 // Scratch file tools
                 case "create_scratch_file" -> createScratchFile(arguments);
+                case "list_scratch_files" -> listScratchFiles(arguments);
                 // IDE status tools
                 case "get_indexing_status" -> getIndexingStatus(arguments);
                 // Refactoring & code modification tools
@@ -4156,6 +4157,69 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             LOG.warn("Failed to create scratch file", e);
             return "Error creating scratch file: " + e.getMessage();
+        }
+    }
+
+    /**
+     * List all scratch files visible to the IDE.
+     * Returns paths that can be used with intellij_read_file.
+     */
+    private String listScratchFiles(JsonObject args) {
+        try {
+            StringBuilder result = new StringBuilder();
+            final int[] count = {0};
+
+            ApplicationManager.getApplication().invokeAndWait(() -> {
+                try {
+                    com.intellij.ide.scratch.ScratchFileService scratchService =
+                        com.intellij.ide.scratch.ScratchFileService.getInstance();
+                    com.intellij.ide.scratch.ScratchRootType scratchRoot =
+                        com.intellij.ide.scratch.ScratchRootType.getInstance();
+
+                    // Get scratch root directory
+                    VirtualFile scratchesDir = scratchRoot.findFile(null, "", 
+                        com.intellij.ide.scratch.ScratchFileService.Option.existing_only);
+                    
+                    if (scratchesDir != null && scratchesDir.exists()) {
+                        result.append("Scratch files:\n");
+                        listScratchFilesRecursive(scratchesDir, result, count, 0);
+                    } else {
+                        result.append("No scratch files found (scratches directory doesn't exist yet).\n");
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Failed to list scratch files", e);
+                    result.append("Error listing scratch files: ").append(e.getMessage());
+                }
+            });
+
+            if (count[0] == 0 && !result.toString().contains("Error")) {
+                result.append("\nTotal: 0 scratch files\n");
+                result.append("Use create_scratch_file to create one.");
+            } else {
+                result.append("\nTotal: ").append(count[0]).append(" scratch file(s)\n");
+                result.append("Use intellij_read_file with these paths to read content.");
+            }
+            
+            return result.toString();
+        } catch (Exception e) {
+            LOG.warn("Failed to list scratch files", e);
+            return "Error listing scratch files: " + e.getMessage();
+        }
+    }
+
+    private void listScratchFilesRecursive(VirtualFile dir, StringBuilder result, int[] count, int depth) {
+        if (depth > 3) return; // Prevent excessive recursion
+        
+        for (VirtualFile child : dir.getChildren()) {
+            if (child.isDirectory()) {
+                listScratchFilesRecursive(child, result, count, depth + 1);
+            } else {
+                String indent = "  ".repeat(depth);
+                long sizeKB = child.getLength() / 1024;
+                result.append(indent).append("- ").append(child.getPath())
+                      .append(" (").append(sizeKB).append(" KB)\n");
+                count[0]++;
+            }
         }
     }
 

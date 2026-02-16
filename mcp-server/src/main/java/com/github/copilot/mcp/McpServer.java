@@ -610,12 +610,20 @@ public class McpServer {
                 "Create a scratch file in IntelliJ for longer content like markdown documentation, code snippets, or formatted output. " +
                         "Scratch files support syntax highlighting based on file extension and persist in the IDE. " +
                         "Use this when responses are too long for chat or when user needs formatted code/markdown. " +
-                        "The file will be automatically opened in the editor.",
+                        "The file will be automatically opened in the editor. Returns the absolute path - save this to read the file later.",
                 Map.of(
                         "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'analysis.md', 'snippet.java', 'output.json'). Extension determines syntax highlighting."),
                         "content", Map.of("type", "string", "description", "The content to write to the scratch file")
                 ),
                 List.of("name", "content")));
+
+        tools.add(buildTool("list_scratch_files",
+                "List all scratch files in the IDE with their absolute paths and sizes. " +
+                        "Use this to find scratch files you created earlier or to see what scratch files exist. " +
+                        "The returned paths can be used with intellij_read_file to access the content. " +
+                        "Scratch files are stored outside the project directory, so grep/glob cannot find them.",
+                Map.of(),
+                List.of()));
 
         tools.add(buildTool("get_indexing_status",
                 "Check whether IntelliJ is still indexing the project. " +
