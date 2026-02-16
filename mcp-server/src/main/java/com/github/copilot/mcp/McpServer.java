@@ -119,16 +119,30 @@ public class McpServer {
                 8. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
                 
                 WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
+                ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
+                
                 Step 1: run_inspections() to get an overview of all issues.
                 Step 2: Group issues by PROBLEM TYPE (not by file). Examples: \
                 "Unused parameters: 5 across 3 files", "Redundant casts: 3 in PsiBridge", "Grammar: 50+ issues".
-                Step 3: Pick the highest-priority problem category and fix ALL instances of that problem \
+                Step 3: Pick the FIRST problem category and fix ALL instances of that problem \
                 (this may span multiple files if they share the same issue — that's fine).
                 Step 4: format_code + optimize_imports on changed files, then build_project to verify.
                 Step 5: Commit the logical unit with a descriptive message like "fix: resolve unused parameters in test mocks".
-                Step 6: Report progress and ASK THE USER before moving to the next problem category. \
-                Example: "Fixed unused parameters (5 warnings across 3 files). Next: redundant casts (3 issues). Continue?"
-                Step 7: Wait for user response, then repeat from Step 2.
+                Step 6: ⚠️ STOP HERE AND ASK THE USER ⚠️
+                   Say: "✅ Fixed [problem type] ([N] issues across [M] files). Should I continue with [next category]?"
+                   WAIT for user response. DO NOT proceed to the next category automatically.
+                Step 7: If user says yes, repeat from Step 3 with the next problem category.
+                
+                ⚠️ RULE: After fixing EACH problem TYPE, you MUST stop and ask before continuing. \
+                Even if you found 10 different problem types, fix ONE type at a time and ask after EACH one.
+                
+                Example correct workflow:
+                - Find issues: 5 unused params, 3 StringBuilder, 2 XXE vulnerabilities
+                - Fix unused params → commit → ASK "Continue with StringBuilder?"
+                - (user says yes)
+                - Fix StringBuilder → commit → ASK "Continue with XXE vulnerabilities?"
+                - (user says yes)
+                - Fix XXE → commit → DONE
                 
                 KEY PRINCIPLES:
                 - Related changes belong in ONE commit (e.g. refactoring that touches 4 files).
