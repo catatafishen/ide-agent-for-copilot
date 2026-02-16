@@ -51,5 +51,8 @@ plugin-core/build/
 integration-tests/build/
 mcp-server/build/
 
+# Agent workspace (for Copilot session state)
+.agent-work/
+
 qodana.yaml
 .sandbox-plugins/
