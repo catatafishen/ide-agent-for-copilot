@@ -2,10 +2,8 @@ package com.github.copilot.intellij.ui;
 
 import org.junit.jupiter.api.Test;
 
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
+import javax.swing.*;
+import java.awt.*;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -91,6 +89,7 @@ class WrapLayoutTest {
         assertTrue(pref.height > 0);
     }
 
+    @SuppressWarnings("SameParameterValue") // Test helper with fixed values is acceptable
     private static JLabel makeBox(int width, int height) {
         JLabel label = new JLabel("x");
         label.setPreferredSize(new Dimension(width, height));

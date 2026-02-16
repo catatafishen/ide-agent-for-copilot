@@ -1246,11 +1246,13 @@ public final class PsiBridgeService implements Disposable {
                             String toolId = toolWrapper.getShortName();
 
                             // Null checks required: getPresentation() and getProblemElements() can return null at runtime
-                            // despite @NotNull annotations ? these are inspection API calls on dynamic tool wrappers
+                            // despite @NotNull annotations – these are inspection API calls on dynamic tool wrappers
                             var presentation = getPresentation(toolWrapper);
+                            //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
                             if (presentation == null) continue;
 
                             var problemElements = presentation.getProblemElements();
+                            //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
                             if (problemElements == null || problemElements.isEmpty()) continue;
 
                             for (var refEntity : problemElements.keys()) {
@@ -1260,6 +1262,7 @@ public final class PsiBridgeService implements Disposable {
                                 for (var descriptor : descriptors) {
                                     // getDescriptionTemplate() can return null despite @NotNull annotation
                                     String description = descriptor.getDescriptionTemplate();
+                                    //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
                                     if (description == null || description.isEmpty()) {
                                         skippedNoDescription++;
                                         continue;
@@ -3459,6 +3462,7 @@ public final class PsiBridgeService implements Disposable {
                 for (Path xmlFile : xmlFiles.filter(p -> p.toString().endsWith(".xml")).toList()) {
                     try {
                         var dbf = DocumentBuilderFactory.newInstance();
+                        //noinspection HttpUrlsUsage - XML feature URI, not an actual URL
                         dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
                         var doc = dbf.newDocumentBuilder().parse(xmlFile.toFile());
                         var suites = doc.getElementsByTagName("testsuite");
@@ -3512,6 +3516,7 @@ public final class PsiBridgeService implements Disposable {
     private String parseJacocoXml(Path xmlPath, String fileFilter) {
         try {
             var dbf = DocumentBuilderFactory.newInstance();
+            //noinspection HttpUrlsUsage - XML feature URI, not an actual URL
             dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             var doc = dbf.newDocumentBuilder().parse(xmlPath.toFile());
             var packages = doc.getElementsByTagName("package");
@@ -3558,6 +3563,7 @@ public final class PsiBridgeService implements Disposable {
         return item != null ? Integer.parseInt(item.getNodeValue()) : 0;
     }
 
+    @SuppressWarnings("SameParameterValue") // Utility method mirrors intAttr, kept parameterized for consistency
     private static double doubleAttr(org.w3c.dom.Node node, String attr) {
         var item = node.getAttributes().getNamedItem(attr);
         return item != null ? Double.parseDouble(item.getNodeValue()) : 0.0;
@@ -4795,12 +4801,12 @@ public final class PsiBridgeService implements Disposable {
                             sb.append(" ").append(msg.getMessage()).append("\n");
                         }
 
-                        var warnMsgs = context.getMessages(
+                        var warnMessages = context.getMessages(
                             com.intellij.openapi.compiler.CompilerMessageCategory.WARNING);
                         int warnShown = 0;
-                        for (var msg : warnMsgs) {
+                        for (var msg : warnMessages) {
                             if (warnShown++ >= 20) {
-                                sb.append("  ... and ").append(warnMsgs.length - 20).append(" more warnings\n");
+                                sb.append("  ... and ").append(warnMessages.length - 20).append(" more warnings\n");
                                 break;
                             }
                             String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
