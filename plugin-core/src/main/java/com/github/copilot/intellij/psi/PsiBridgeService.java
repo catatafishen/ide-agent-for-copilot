@@ -870,52 +870,66 @@ public final class PsiBridgeService implements Disposable {
         if (args.has(PARAM_MAIN_CLASS))
             setViaReflection(config, "setMainClassName", args.get(PARAM_MAIN_CLASS).getAsString(), ignore, null);
 
-        // JUnit: test class/method via getPersistentData() which has public fields
+        // JUnit: test class/method via getPersistentData()
         if (args.has(PARAM_TEST_CLASS) || args.has(PARAM_TEST_METHOD)) {
-            try {
-                var getData = config.getClass().getMethod("getPersistentData");
-                Object data = getData.invoke(config);
-                if (args.has(PARAM_TEST_CLASS)) {
-                    String testClass = args.get(PARAM_TEST_CLASS).getAsString();
-                    // Resolve class name to FQN and module via PSI
-                    ClassInfo classInfo = resolveClass(testClass);
-                    data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
-                    data.getClass().getField(FIELD_TEST_OBJECT).set(data,
-                        args.has(PARAM_TEST_METHOD) ? TEST_TYPE_METHOD : TEST_TYPE_CLASS);
-                    // Auto-set module if not explicitly provided
-                    if (!args.has(PARAM_MODULE_NAME) && classInfo.module() != null) {
-                        try {
-                            var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
-                            setModule.invoke(config, classInfo.module());
-                        } catch (NoSuchMethodException e) {
-                            LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
-                        }
-                    }
-                }
-                if (args.has(PARAM_TEST_METHOD)) {
-                    data.getClass().getField(FIELD_METHOD_NAME).set(data,
-                        args.get(PARAM_TEST_METHOD).getAsString());
-                    data.getClass().getField(FIELD_TEST_OBJECT).set(data, TEST_TYPE_METHOD);
-                }
-            } catch (Exception e) {
-                LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
-                // Fallback: try direct setter
-                setViaReflection(config, "setMainClassName",
-                    args.has(PARAM_TEST_CLASS) ? args.get(PARAM_TEST_CLASS).getAsString() : "", ignore, null);
-            }
+            applyJUnitTestProperties(config, args);
         }
 
         if (args.has(PARAM_MODULE_NAME)) {
-            try {
-                Module module = ModuleManager.getInstance(project)
-                    .findModuleByName(args.get(PARAM_MODULE_NAME).getAsString());
-                if (module != null) {
-                    var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
-                    setModule.invoke(config, module);
-                }
-            } catch (Exception ignored) {
-                // Config may not support setModule method
+            applyModuleProperty(config, args);
+        }
+    }
+
+    private void applyJUnitTestProperties(RunConfiguration config, JsonObject args) {
+        try {
+            var getData = config.getClass().getMethod("getPersistentData");
+            Object data = getData.invoke(config);
+
+            if (args.has(PARAM_TEST_CLASS)) {
+                applyTestClass(config, args, data);
             }
+            if (args.has(PARAM_TEST_METHOD)) {
+                data.getClass().getField(FIELD_METHOD_NAME).set(data,
+                    args.get(PARAM_TEST_METHOD).getAsString());
+                data.getClass().getField(FIELD_TEST_OBJECT).set(data, TEST_TYPE_METHOD);
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
+            // Fallback: try direct setter
+            List<String> ignore = new ArrayList<>();
+            setViaReflection(config, "setMainClassName",
+                args.has(PARAM_TEST_CLASS) ? args.get(PARAM_TEST_CLASS).getAsString() : "", ignore, null);
+        }
+    }
+
+    private void applyTestClass(RunConfiguration config, JsonObject args, Object data) throws Exception {
+        String testClass = args.get(PARAM_TEST_CLASS).getAsString();
+        ClassInfo classInfo = resolveClass(testClass);
+        data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
+        data.getClass().getField(FIELD_TEST_OBJECT).set(data,
+            args.has(PARAM_TEST_METHOD) ? TEST_TYPE_METHOD : TEST_TYPE_CLASS);
+
+        // Auto-set module if not explicitly provided
+        if (!args.has(PARAM_MODULE_NAME) && classInfo.module() != null) {
+            try {
+                var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
+                setModule.invoke(config, classInfo.module());
+            } catch (NoSuchMethodException e) {
+                LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
+            }
+        }
+    }
+
+    private void applyModuleProperty(RunConfiguration config, JsonObject args) {
+        try {
+            Module module = ModuleManager.getInstance(project)
+                .findModuleByName(args.get(PARAM_MODULE_NAME).getAsString());
+            if (module != null) {
+                var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
+                setModule.invoke(config, module);
+            }
+        } catch (Exception ignored) {
+            // Config may not support setModule method
         }
     }
 
