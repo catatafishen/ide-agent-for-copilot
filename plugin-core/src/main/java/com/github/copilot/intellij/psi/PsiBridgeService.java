@@ -2060,31 +2060,37 @@ public final class PsiBridgeService implements Disposable {
             VirtualFile vf = resolveVirtualFile(pathStr);
             if (vf == null) return ERROR_FILE_NOT_FOUND + pathStr;
 
-            // Read from Document (editor buffer) if available, otherwise from VFS
-            Document doc = FileDocumentManager.getInstance().getDocument(vf);
-            String content;
-            if (doc != null) {
-                content = doc.getText();
-            } else {
-                try {
-                    content = new String(vf.contentsToByteArray(), StandardCharsets.UTF_8);
-                } catch (IOException e) {
-                    return "Error reading file: " + e.getMessage();
-                }
-            }
+            String content = readFileContent(vf);
+            if (content.startsWith("Error")) return content;
 
             if (startLine > 0 || endLine > 0) {
-                String[] lines = content.split("\n", -1);
-                int from = Math.max(0, (startLine > 0 ? startLine - 1 : 0));
-                int to = Math.min(lines.length, (endLine > 0 ? endLine : lines.length));
-                StringBuilder sb = new StringBuilder();
-                for (int i = from; i < to; i++) {
-                    sb.append(i + 1).append(": ").append(lines[i]).append("\n");
-                }
-                return sb.toString();
+                return extractLineRange(content, startLine, endLine);
             }
             return content;
         });
+    }
+
+    private String readFileContent(VirtualFile vf) {
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc != null) {
+            return doc.getText();
+        }
+        try {
+            return new String(vf.contentsToByteArray(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "Error reading file: " + e.getMessage();
+        }
+    }
+
+    private String extractLineRange(String content, int startLine, int endLine) {
+        String[] lines = content.split("\n", -1);
+        int from = Math.max(0, (startLine > 0 ? startLine - 1 : 0));
+        int to = Math.min(lines.length, (endLine > 0 ? endLine : lines.length));
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i < to; i++) {
+            sb.append(i + 1).append(": ").append(lines[i]).append("\n");
+        }
+        return sb.toString();
     }
 
     private String writeFile(JsonObject args) throws Exception {
