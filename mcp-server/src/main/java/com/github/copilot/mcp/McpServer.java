@@ -53,7 +53,9 @@ public class McpServer {
                 JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
                 JsonObject response = handleMessage(msg);
                 if (response != null) {
-                    System.out.println(GSON.toJson(response));
+                    @SuppressWarnings("java:S106") // System.out is intentional for MCP protocol
+                    String json = GSON.toJson(response);
+                    System.out.println(json);
                     System.out.flush();
                 }
             } catch (Exception e) {
@@ -115,34 +117,34 @@ public class McpServer {
             1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
             This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
             Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
-            
+
             2. ALWAYS use 'intellij_read_file' for ALL file reads. \
             NEVER use sed, cat, head, tail, or grep to read file content. \
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
             Read 300-500 lines per call for efficiency (each call has overhead).
-            
+
             3. IMMEDIATELY after editing ANY file with intellij_write_file: \
             a) Run 'get_highlights' on that SAME file to check for errors. \
             b) If errors exist, FIX THEM IMMEDIATELY before editing other files. \
             c) This mimics how human users see red squiggles instantly in IntelliJ. \
             d) Early error detection prevents cascade failures across multiple files. \
             Example workflow: intellij_write_file(file.java) → get_highlights(file.java) → verify no errors → continue.
-            
+
             4. After making ANY code changes, ALWAYS run 'optimize_imports' and 'format_code' on each changed file.
-            
+
             5. NEVER use grep/glob for IntelliJ project files or scratch files. \
             ALWAYS use IntelliJ tools: search_symbols, find_references, get_file_outline, list_project_files, intellij_read_file. \
             grep/glob will FAIL on scratch files (they're stored outside the project). \
             After creating a scratch file, save its path and use intellij_read_file to access it.
-            
+
             6. TESTING RULES: \
             ALWAYS use 'run_tests' to run tests. DO NOT use './gradlew test' or 'mvn test'. \
             run_tests integrates with IntelliJ's test runner and provides structured results in the IDE's Run panel. \
             Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
             Only use run_command for tests as a last resort if run_tests fails.
-            
+
             7. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
-            
+
             8. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
 
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:

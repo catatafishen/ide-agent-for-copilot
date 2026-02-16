@@ -1788,6 +1788,7 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
+    @SuppressWarnings("ConstantValue") // False positive: qodanaService can be non-null
     private Object getQodanaServiceInstance(Class<?> serviceClass, int limit,
                                             CompletableFuture<String> resultFuture) {
         var qodanaService = project.getService(serviceClass);

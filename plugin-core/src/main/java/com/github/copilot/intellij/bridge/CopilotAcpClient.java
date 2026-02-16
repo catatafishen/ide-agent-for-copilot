@@ -29,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -70,9 +71,9 @@ public class CopilotAcpClient implements Closeable {
     private BufferedWriter writer;
     private Thread readerThread;
     private volatile boolean closed = false;
-    
+
     // Auto-restart state
-    private volatile int restartAttempts = 0;
+    private final AtomicInteger restartAttempts = new AtomicInteger(0);
     private static final int MAX_RESTART_ATTEMPTS = 3;
     private static final long[] RESTART_DELAYS_MS = {1000, 2000, 4000}; // Exponential backoff
 
@@ -597,36 +598,36 @@ public class CopilotAcpClient implements Closeable {
             failAllPendingRequests();
         }
     }
-    
+
     private void attemptAutoRestart() {
-        if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+        if (restartAttempts.get() >= MAX_RESTART_ATTEMPTS) {
             LOG.warn("ACP process terminated after " + MAX_RESTART_ATTEMPTS + " restart attempts");
-            showNotification("Copilot Disconnected", 
+            showNotification("Copilot Disconnected",
                 "Could not reconnect after " + MAX_RESTART_ATTEMPTS + " attempts. Please restart the IDE.",
                 com.intellij.notification.NotificationType.ERROR);
             failAllPendingRequests();
             return;
         }
-        
-        restartAttempts++;
-        long delayMs = RESTART_DELAYS_MS[Math.min(restartAttempts - 1, RESTART_DELAYS_MS.length - 1)];
-        
-        LOG.info("ACP process terminated. Attempting restart " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + 
-                 " after " + delayMs + "ms...");
-        showNotification("Copilot Reconnecting...", 
-            "Attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS,
+
+        int attempts = restartAttempts.incrementAndGet();
+        long delayMs = RESTART_DELAYS_MS[Math.min(attempts - 1, RESTART_DELAYS_MS.length - 1)];
+
+        LOG.info("ACP process terminated. Attempting restart " + attempts + "/" + MAX_RESTART_ATTEMPTS +
+            " after " + delayMs + "ms...");
+        showNotification("Copilot Reconnecting...",
+            "Attempt " + attempts + "/" + MAX_RESTART_ATTEMPTS,
             com.intellij.notification.NotificationType.INFORMATION);
-        
+
         // Schedule restart on background thread
         new Thread(() -> {
             try {
                 Thread.sleep(delayMs);
                 start();
                 LOG.info("ACP process successfully restarted");
-                showNotification("Copilot Reconnected", 
+                showNotification("Copilot Reconnected",
                     "Successfully reconnected to Copilot",
                     com.intellij.notification.NotificationType.INFORMATION);
-                restartAttempts = 0; // Reset counter on successful restart
+                restartAttempts.set(0); // Reset counter on successful restart
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 LOG.warn("Restart attempt interrupted", e);
@@ -637,14 +638,14 @@ public class CopilotAcpClient implements Closeable {
             }
         }, "CopilotACP-Restart").start();
     }
-    
+
     private void showNotification(String title, String content, com.intellij.notification.NotificationType type) {
         com.intellij.notification.NotificationGroupManager.getInstance()
             .getNotificationGroup("Copilot Notifications")
             .createNotification(title, content, type)
             .notify(null);
     }
-    
+
     private void failAllPendingRequests() {
         for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
             entry.getValue().completeExceptionally(
@@ -652,7 +653,7 @@ public class CopilotAcpClient implements Closeable {
         }
         pendingRequests.clear();
     }
-    
+
     private void processLine(String line) {
         try {
             JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
