@@ -645,6 +645,7 @@ public final class PsiBridgeService implements Disposable {
                             sb.append(" (").append(sourceRoots.length).append(" source roots)");
                         }
                     } catch (Exception ignored) {
+                        // Module may not support source roots
                     }
                     sb.append("\n");
                 }
@@ -892,9 +893,9 @@ public final class PsiBridgeService implements Disposable {
                     }
                 }
                 if (args.has(PARAM_TEST_METHOD)) {
-                    data.getClass().getField("METHOD_NAME").set(data,
+                    data.getClass().getField(FIELD_METHOD_NAME).set(data,
                         args.get(PARAM_TEST_METHOD).getAsString());
-                    data.getClass().getField("TEST_OBJECT").set(data, "method");
+                    data.getClass().getField(FIELD_TEST_OBJECT).set(data, TEST_TYPE_METHOD);
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
@@ -904,15 +905,16 @@ public final class PsiBridgeService implements Disposable {
             }
         }
 
-        if (args.has("module_name")) {
+        if (args.has(PARAM_MODULE_NAME)) {
             try {
                 Module module = ModuleManager.getInstance(project)
-                    .findModuleByName(args.get("module_name").getAsString());
+                    .findModuleByName(args.get(PARAM_MODULE_NAME).getAsString());
                 if (module != null) {
-                    var setModule = config.getClass().getMethod("setModule", Module.class);
+                    var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
                     setModule.invoke(config, module);
                 }
             } catch (Exception ignored) {
+                // Config may not support setModule method
             }
         }
     }
@@ -954,6 +956,7 @@ public final class PsiBridgeService implements Disposable {
             method.invoke(target, value);
             if (label != null) changes.add(label);
         } catch (Exception ignored) {
+            // Reflection method may not exist on this config type
         }
     }
 
@@ -1003,7 +1006,7 @@ public final class PsiBridgeService implements Disposable {
                             if (h.getDescription() == null) continue;
                             int line = doc.getLineNumber(h.getStartOffset()) + 1;
                             String severity = h.getSeverity().getName();
-                            problems.add(String.format("%s:%d [%s] %s",
+                            problems.add(String.format(FORMAT_LOCATION,
                                 relPath, line, severity, h.getDescription()));
                         }
                     }
@@ -1894,8 +1897,8 @@ public final class PsiBridgeService implements Disposable {
                     String ruleId = result.has("ruleId") ? result.get("ruleId").getAsString() : "unknown";
                     String level = result.has(PARAM_LEVEL) ? result.get(PARAM_LEVEL).getAsString() : "warning";
                     String message = "";
-                    if (result.has("message") && result.getAsJsonObject("message").has("text")) {
-                        message = result.getAsJsonObject("message").get("text").getAsString();
+                    if (result.has(PARAM_MESSAGE) && result.getAsJsonObject(PARAM_MESSAGE).has("text")) {
+                        message = result.getAsJsonObject(PARAM_MESSAGE).get("text").getAsString();
                     }
 
                     String filePath = "";
@@ -1906,17 +1909,17 @@ public final class PsiBridgeService implements Disposable {
                             var loc = locations.get(0).getAsJsonObject();
                             if (loc.has("physicalLocation")) {
                                 var phys = loc.getAsJsonObject("physicalLocation");
-                                if (phys.has("artifactLocation") &&
-                                    phys.getAsJsonObject("artifactLocation").has("uri")) {
-                                    filePath = phys.getAsJsonObject("artifactLocation").get("uri").getAsString();
+                                if (phys.has(JSON_ARTIFACT_LOCATION) &&
+                                    phys.getAsJsonObject(JSON_ARTIFACT_LOCATION).has("uri")) {
+                                    filePath = phys.getAsJsonObject(JSON_ARTIFACT_LOCATION).get("uri").getAsString();
                                     // Remove file:// prefix if present
                                     if (filePath.startsWith("file://")) filePath = filePath.substring(7);
                                     if (basePath != null) filePath = relativize(basePath, filePath);
                                     filesSet.add(filePath);
                                 }
-                                if (phys.has("region") &&
-                                    phys.getAsJsonObject("region").has("startLine")) {
-                                    line = phys.getAsJsonObject("region").get("startLine").getAsInt();
+                                if (phys.has(JSON_REGION) &&
+                                    phys.getAsJsonObject(JSON_REGION).has("startLine")) {
+                                    line = phys.getAsJsonObject(JSON_REGION).get("startLine").getAsInt();
                                 }
                             }
                         }
@@ -2071,9 +2074,9 @@ public final class PsiBridgeService implements Disposable {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
 
-                if (args.has("content")) {
+                if (args.has(PARAM_CONTENT)) {
                     // Full file write
-                    String newContent = args.get("content").getAsString();
+                    String newContent = args.get(PARAM_CONTENT).getAsString();
                     if (vf == null) {
                         // Create new file via VFS
                         ApplicationManager.getApplication().runWriteAction(() -> {
@@ -2297,7 +2300,7 @@ public final class PsiBridgeService implements Disposable {
             gitArgs.add("--");
             gitArgs.add(args.get("path").getAsString());
         }
-        if (args.has("stat_only") && args.get("stat_only").getAsBoolean()) {
+        if (args.has(PARAM_STAT_ONLY) && args.get(PARAM_STAT_ONLY).getAsBoolean()) {
             gitArgs.add(1, "--stat");
         }
         return runGit(gitArgs.toArray(new String[0]));
@@ -2316,7 +2319,8 @@ public final class PsiBridgeService implements Disposable {
             case "short" -> gitArgs.add("--format=%h %s (%an, %ar)");
             case "full" -> gitArgs.add("--format=commit %H%nAuthor: %an <%ae>%nDate:   %ad%n%n    %s%n%n%b");
             default -> {
-            } // "medium" is git default
+                // "medium" is git default - no flag needed
+            }
         }
 
         if (args.has("author")) {
@@ -2628,6 +2632,7 @@ public final class PsiBridgeService implements Disposable {
                 String logPath = (String) pm.getMethod("getLogPath").invoke(null);
                 logFile = Path.of(logPath, "idea.log");
             } catch (Exception ignored) {
+                // PathManager not available or reflection failed
             }
         }
         if (!Files.exists(logFile)) {
@@ -3038,6 +3043,7 @@ public final class PsiBridgeService implements Disposable {
                                     testOutput.append("    Stacktrace:\n").append(stacktrace).append("\n");
                                 }
                             } catch (NoSuchMethodException ignored) {
+                                // Method not available on this test result type
                             }
                         }
                     }
