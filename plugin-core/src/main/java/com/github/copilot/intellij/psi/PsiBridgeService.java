@@ -321,7 +321,7 @@ public final class PsiBridgeService implements Disposable {
         JsonObject response = new JsonObject();
         response.addProperty("result", result);
         byte[] bytes = GSON.toJson(response).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.getResponseBody().close();
@@ -414,7 +414,7 @@ public final class PsiBridgeService implements Disposable {
                     return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
                 int[] fileCount = {0};
                 ProjectFileIndex.getInstance(project).iterateContent(vf -> {
-                    if (vf.isDirectory() || (!vf.getName().endsWith(".java") && !vf.getName().endsWith(".kt")))
+                    if (vf.isDirectory() || (!vf.getName().endsWith(JAVA_EXTENSION) && !vf.getName().endsWith(".kt")))
                         return true;
                     fileCount[0]++;
                     PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
@@ -434,7 +434,7 @@ public final class PsiBridgeService implements Disposable {
                                     String relPath = basePath != null ? relativize(basePath, vf.getPath()) : null;
                                     String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;
                                     if (seen.add(key)) {
-                                        results.add(String.format("%s:%d [%s] %s",
+                                        results.add(String.format(FORMAT_LOCATION,
                                             relPath != null ? relPath : vf.getPath(), line, type, name));
                                     }
                                 }
@@ -556,7 +556,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String getIndexingStatus(JsonObject args) throws Exception {
         boolean wait = args.has("wait") && args.get("wait").getAsBoolean();
-        int timeoutSec = args.has("timeout") ? args.get("timeout").getAsInt() : 60;
+        int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
 
         var dumbService = com.intellij.openapi.project.DumbService.getInstance(project);
         boolean indexing = dumbService.isDumb();
@@ -628,7 +628,7 @@ public final class PsiBridgeService implements Disposable {
                     || Files.exists(Path.of(basePath, "build.gradle"))) {
                     sb.append("\nBuild System: Gradle\n");
                     Path gradlew = Path.of(basePath,
-                        System.getProperty("os.name").contains("Win") ? "gradlew.bat" : "gradlew");
+                        System.getProperty(OS_NAME_PROPERTY).contains("Win") ? "gradlew.bat" : "gradlew");
                     sb.append("Gradle Wrapper: ").append(gradlew).append("\n");
                 } else if (Files.exists(Path.of(basePath, "pom.xml"))) {
                     sb.append("\nBuild System: Maven\n");
@@ -775,23 +775,23 @@ public final class PsiBridgeService implements Disposable {
                 if (args.has("env")) {
                     applyEnvVars(config, args.getAsJsonObject("env"), changes);
                 }
-                if (args.has("jvm_args")) {
+                if (args.has(PARAM_JVM_ARGS)) {
                     setViaReflection(config, "setVMParameters",
-                        args.get("jvm_args").getAsString(), changes, "JVM args");
+                        args.get(PARAM_JVM_ARGS).getAsString(), changes, "JVM args");
                 }
-                if (args.has("program_args")) {
+                if (args.has(PARAM_PROGRAM_ARGS)) {
                     setViaReflection(config, "setProgramParameters",
-                        args.get("program_args").getAsString(), changes, "program args");
+                        args.get(PARAM_PROGRAM_ARGS).getAsString(), changes, "program args");
                 }
-                if (args.has("working_dir")) {
+                if (args.has(PARAM_WORKING_DIR)) {
                     setViaReflection(config, "setWorkingDirectory",
-                        args.get("working_dir").getAsString(), changes, "working directory");
+                        args.get(PARAM_WORKING_DIR).getAsString(), changes, "working directory");
                 }
 
                 // Apply type-specific properties
                 applyTypeSpecificProperties(config, args);
-                if (args.has("main_class")) changes.add("main class");
-                if (args.has("test_class")) changes.add("test class");
+                if (args.has(PARAM_MAIN_CLASS)) changes.add("main class");
+                if (args.has(PARAM_TEST_CLASS)) changes.add("test class");
                 if (args.has("tasks")) changes.add("Gradle tasks");
 
                 if (changes.isEmpty()) {
@@ -826,31 +826,31 @@ public final class PsiBridgeService implements Disposable {
     private void applyConfigProperties(RunConfiguration config, JsonObject args) {
         List<String> ignore = new ArrayList<>();
         if (args.has("env")) applyEnvVars(config, args.getAsJsonObject("env"), ignore);
-        if (args.has("jvm_args"))
-            setViaReflection(config, "setVMParameters", args.get("jvm_args").getAsString(), ignore, null);
-        if (args.has("program_args"))
-            setViaReflection(config, "setProgramParameters", args.get("program_args").getAsString(), ignore, null);
-        if (args.has("working_dir"))
-            setViaReflection(config, "setWorkingDirectory", args.get("working_dir").getAsString(), ignore, null);
+        if (args.has(PARAM_JVM_ARGS))
+            setViaReflection(config, "setVMParameters", args.get(PARAM_JVM_ARGS).getAsString(), ignore, null);
+        if (args.has(PARAM_PROGRAM_ARGS))
+            setViaReflection(config, "setProgramParameters", args.get(PARAM_PROGRAM_ARGS).getAsString(), ignore, null);
+        if (args.has(PARAM_WORKING_DIR))
+            setViaReflection(config, "setWorkingDirectory", args.get(PARAM_WORKING_DIR).getAsString(), ignore, null);
     }
 
     private void applyTypeSpecificProperties(RunConfiguration config, JsonObject args) {
         List<String> ignore = new ArrayList<>();
-        if (args.has("main_class"))
-            setViaReflection(config, "setMainClassName", args.get("main_class").getAsString(), ignore, null);
+        if (args.has(PARAM_MAIN_CLASS))
+            setViaReflection(config, "setMainClassName", args.get(PARAM_MAIN_CLASS).getAsString(), ignore, null);
 
         // JUnit: test class/method via getPersistentData() which has public fields
-        if (args.has("test_class") || args.has("test_method")) {
+        if (args.has(PARAM_TEST_CLASS) || args.has(PARAM_TEST_METHOD)) {
             try {
                 var getData = config.getClass().getMethod("getPersistentData");
                 Object data = getData.invoke(config);
-                if (args.has("test_class")) {
-                    String testClass = args.get("test_class").getAsString();
+                if (args.has(PARAM_TEST_CLASS)) {
+                    String testClass = args.get(PARAM_TEST_CLASS).getAsString();
                     // Resolve class name to FQN and module via PSI
                     ClassInfo classInfo = resolveClass(testClass);
                     data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
                     data.getClass().getField("TEST_OBJECT").set(data,
-                        args.has("test_method") ? "method" : "class");
+                        args.has(PARAM_TEST_METHOD) ? "method" : "class");
                     // Auto-set module if not explicitly provided
                     if (!args.has("module_name") && classInfo.module() != null) {
                         try {
@@ -861,9 +861,9 @@ public final class PsiBridgeService implements Disposable {
                         }
                     }
                 }
-                if (args.has("test_method")) {
+                if (args.has(PARAM_TEST_METHOD)) {
                     data.getClass().getField("METHOD_NAME").set(data,
-                        args.get("test_method").getAsString());
+                        args.get(PARAM_TEST_METHOD).getAsString());
                     data.getClass().getField("TEST_OBJECT").set(data, "method");
                 }
             } catch (Exception e) {
