@@ -1033,7 +1033,7 @@ public final class PsiBridgeService implements Disposable {
     @SuppressWarnings("UnstableApiUsage")
     private String getHighlights(JsonObject args) throws Exception {
         String pathStr = args.has("path") ? args.get("path").getAsString() : null;
-        int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+        int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
@@ -1060,7 +1060,7 @@ public final class PsiBridgeService implements Disposable {
      */
     @SuppressWarnings("UnstableApiUsage")
     private String runInspections(JsonObject args) throws Exception {
-        int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+        int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
         int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
         String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
         String scopePath = args.has("scope") ? args.get("scope").getAsString() : null;
@@ -1456,7 +1456,7 @@ public final class PsiBridgeService implements Disposable {
     private String suppressInspection(JsonObject args) throws Exception {
         String pathStr = args.get("path").getAsString();
         int line = args.get("line").getAsInt();
-        String inspectionId = args.get("inspection_id").getAsString().trim();
+        String inspectionId = args.get(PARAM_INSPECTION_ID).getAsString().trim();
 
         if (inspectionId.isEmpty()) {
             return "Error: inspection_id cannot be empty";
@@ -1671,7 +1671,7 @@ public final class PsiBridgeService implements Disposable {
 
     @SuppressWarnings("OverrideOnly")
     private String runQodana(JsonObject args) throws Exception {
-        int limit = args.has("limit") ? args.get("limit").getAsInt() : 100;
+        int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
@@ -1892,7 +1892,7 @@ public final class PsiBridgeService implements Disposable {
                     var result = resultElement.getAsJsonObject();
 
                     String ruleId = result.has("ruleId") ? result.get("ruleId").getAsString() : "unknown";
-                    String level = result.has("level") ? result.get("level").getAsString() : "warning";
+                    String level = result.has(PARAM_LEVEL) ? result.get(PARAM_LEVEL).getAsString() : "warning";
                     String message = "";
                     if (result.has("message") && result.getAsJsonObject("message").has("text")) {
                         message = result.getAsJsonObject("message").get("text").getAsString();
@@ -2290,8 +2290,8 @@ public final class PsiBridgeService implements Disposable {
         if (args.has("staged") && args.get("staged").getAsBoolean()) {
             gitArgs.add("--cached");
         }
-        if (args.has("commit")) {
-            gitArgs.add(args.get("commit").getAsString());
+        if (args.has(PARAM_COMMIT)) {
+            gitArgs.add(args.get(PARAM_COMMIT).getAsString());
         }
         if (args.has("path")) {
             gitArgs.add("--");
@@ -2329,8 +2329,8 @@ public final class PsiBridgeService implements Disposable {
             gitArgs.add("--");
             gitArgs.add(args.get("path").getAsString());
         }
-        if (args.has("branch")) {
-            gitArgs.add(2, args.get("branch").getAsString());
+        if (args.has(PARAM_BRANCH)) {
+            gitArgs.add(2, args.get(PARAM_BRANCH).getAsString());
         }
         return runGit(gitArgs.toArray(new String[0]));
     }
@@ -2351,7 +2351,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String gitCommit(JsonObject args) throws Exception {
-        if (!args.has("message")) return "Error: 'message' parameter is required";
+        if (!args.has(PARAM_MESSAGE)) return "Error: 'message' parameter is required";
 
         // Save all documents before committing to ensure disk matches editor state
         ApplicationManager.getApplication().invokeAndWait(() ->
@@ -2369,7 +2369,7 @@ public final class PsiBridgeService implements Disposable {
         }
 
         gitArgs.add("-m");
-        gitArgs.add(args.get("message").getAsString());
+        gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
 
         return runGit(gitArgs.toArray(new String[0]));
     }
@@ -2444,9 +2444,9 @@ public final class PsiBridgeService implements Disposable {
             case "list" -> runGit("stash", "list");
             case "push", "save" -> {
                 List<String> gitArgs = new ArrayList<>(List.of("stash", "push"));
-                if (args.has("message")) {
+                if (args.has(PARAM_MESSAGE)) {
                     gitArgs.add("-m");
-                    gitArgs.add(args.get("message").getAsString());
+                    gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
                 }
                 if (args.has("include_untracked") && args.get("include_untracked").getAsBoolean()) {
                     gitArgs.add("--include-untracked");
@@ -2611,7 +2611,7 @@ public final class PsiBridgeService implements Disposable {
     private String readIdeLog(JsonObject args) throws IOException {
         int lines = args.has("lines") ? args.get("lines").getAsInt() : 50;
         String filter = args.has("filter") ? args.get("filter").getAsString() : null;
-        String level = args.has("level") ? args.get("level").getAsString().toUpperCase() : null;
+        String level = args.has(PARAM_LEVEL) ? args.get(PARAM_LEVEL).getAsString().toUpperCase() : null;
 
         Path logFile = Path.of(System.getProperty("idea.log.path", ""), "idea.log");
         if (!Files.exists(logFile)) {
@@ -4277,12 +4277,12 @@ public final class PsiBridgeService implements Disposable {
 // ==================== Refactoring & Code Modification Tools ====================
 
     private String applyQuickfix(JsonObject args) throws Exception {
-        if (!args.has("file") || !args.has("line") || !args.has("inspection_id")) {
+        if (!args.has("file") || !args.has("line") || !args.has(PARAM_INSPECTION_ID)) {
             return "Error: 'file', 'line', and 'inspection_id' parameters are required";
         }
         String pathStr = args.get("file").getAsString();
         int targetLine = args.get("line").getAsInt();
-        String inspectionId = args.get("inspection_id").getAsString();
+        String inspectionId = args.get(PARAM_INSPECTION_ID).getAsString();
         int fixIndex = args.has("fix_index") ? args.get("fix_index").getAsInt() : 0;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
