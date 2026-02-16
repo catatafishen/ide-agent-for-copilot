@@ -4164,6 +4164,7 @@ public final class PsiBridgeService implements Disposable {
      * List all scratch files visible to the IDE.
      * Returns paths that can be used with intellij_read_file.
      */
+    @SuppressWarnings("unused")
     private String listScratchFiles(JsonObject args) {
         try {
             StringBuilder result = new StringBuilder();
@@ -4173,12 +4174,12 @@ public final class PsiBridgeService implements Disposable {
             ApplicationManager.getApplication().invokeAndWait(() -> {
                 try {
                     result.append("Scratch files:\n");
-                    
+
                     // First, check currently open files in editors (catches files open but not in VFS yet)
-                    com.intellij.openapi.fileEditor.FileEditorManager editorManager = 
+                    com.intellij.openapi.fileEditor.FileEditorManager editorManager =
                         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
                     VirtualFile[] openFiles = editorManager.getOpenFiles();
-                    
+
                     for (VirtualFile file : openFiles) {
                         // Check if this is a scratch file (path contains "scratches")
                         String path = file.getPath();
@@ -4186,14 +4187,12 @@ public final class PsiBridgeService implements Disposable {
                             seenPaths.add(path);
                             long sizeKB = file.getLength() / 1024;
                             result.append("- ").append(path)
-                                  .append(" (").append(sizeKB).append(" KB) [OPEN]\n");
+                                .append(" (").append(sizeKB).append(" KB) [OPEN]\n");
                             count[0]++;
                         }
                     }
-                    
+
                     // Then, list files from scratch root directory (catches files on disk)
-                    com.intellij.ide.scratch.ScratchFileService scratchService =
-                        com.intellij.ide.scratch.ScratchFileService.getInstance();
                     com.intellij.ide.scratch.ScratchRootType scratchRoot =
                         com.intellij.ide.scratch.ScratchRootType.getInstance();
 
@@ -4227,7 +4226,7 @@ public final class PsiBridgeService implements Disposable {
 
     private void listScratchFilesRecursive(VirtualFile dir, StringBuilder result, int[] count, int depth, Set<String> seenPaths) {
         if (depth > 3) return; // Prevent excessive recursion
-        
+
         for (VirtualFile child : dir.getChildren()) {
             if (child.isDirectory()) {
                 listScratchFilesRecursive(child, result, count, depth + 1, seenPaths);
@@ -4238,7 +4237,7 @@ public final class PsiBridgeService implements Disposable {
                     String indent = "  ".repeat(depth);
                     long sizeKB = child.getLength() / 1024;
                     result.append(indent).append("- ").append(path)
-                          .append(" (").append(sizeKB).append(" KB)\n");
+                        .append(" (").append(sizeKB).append(" KB)\n");
                     count[0]++;
                 }
             }

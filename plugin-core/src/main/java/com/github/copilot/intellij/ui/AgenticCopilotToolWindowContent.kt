@@ -23,7 +23,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // UI String Constants
     private companion object {
         const val MSG_LOADING = "Loading..."
-        const val MSG_ASK_COPILOT = "Ask Copilot..."
         const val MSG_THINKING = "Thinking..."
         const val MSG_UNKNOWN_ERROR = "Unknown error"
     }
@@ -744,42 +743,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Reusable model loading function
         fun loadModels() {
-            setLoadingState(loadingSpinner, modelComboBox, loginButton, retryButton, authPanel)
-            ApplicationManager.getApplication().executeOnPooledThread {
-                var lastError: Exception? = null
-                val maxRetries = 3
-                val retryDelayMs = 2000L
-
-                for (attempt in 1..maxRetries) {
-                    try {
-                        val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
-                        val client = service.getClient()
-                        val models = client.listModels()
-                        loadedModels = models
-
-                        SwingUtilities.invokeLater {
-                            loadingSpinner.isVisible = false
-                            populateModelComboBox(modelComboBox, models) { selIdx ->
-                                if (selIdx >= 0 && selIdx < loadedModels.size) {
-                                    CopilotSettings.setSelectedModel(loadedModels[selIdx].id)
-                                }
-                            }
-                            authPanel.isVisible = false
-                        }
-                        return@executeOnPooledThread
-                    } catch (e: Exception) {
-                        lastError = e
-                        val msg = e.message ?: ""
-                        if (isAuthenticationError(msg)) break
-                        if (attempt < maxRetries) Thread.sleep(retryDelayMs)
-                    }
-                }
-
-                val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
-                showModelError(
-                    loadingSpinner, modelComboBox, modelErrorLabel,
-                    loginButton, retryButton, authPanel, errorMsg
-                )
+            loadModelsAsync(
+                loadingSpinner,
+                modelComboBox,
+                modelErrorLabel,
+                loginButton,
+                retryButton,
+                authPanel
+            ) { models ->
+                loadedModels = models
             }
         }
 
@@ -1216,48 +1188,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Reusable settings model loading function
         fun loadSettingsModels() {
-            setLoadingState(
+            loadModelsAsync(
                 settingsSpinner,
                 defaultModelCombo,
+                settingsModelError,
                 settingsLoginButton,
                 settingsRetryButton,
                 settingsAuthPanel
-            )
-            ApplicationManager.getApplication().executeOnPooledThread {
-                var lastError: Exception? = null
-                val maxRetries = 3
-                val retryDelayMs = 2000L
-
-                for (attempt in 1..maxRetries) {
-                    try {
-                        val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
-                        val client = service.getClient()
-                        val models = client.listModels()
-
-                        SwingUtilities.invokeLater {
-                            settingsSpinner.isVisible = false
-                            populateModelComboBox(defaultModelCombo, models) { selIdx ->
-                                if (selIdx >= 0 && selIdx < models.size) {
-                                    CopilotSettings.setSelectedModel(models[selIdx].id)
-                                }
-                            }
-                            settingsAuthPanel.isVisible = false
-                        }
-                        return@executeOnPooledThread
-                    } catch (e: Exception) {
-                        lastError = e
-                        val msg = e.message ?: ""
-                        if (isAuthenticationError(msg)) break
-                        if (attempt < maxRetries) Thread.sleep(retryDelayMs)
-                    }
-                }
-
-                val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
-                showModelError(
-                    settingsSpinner, defaultModelCombo, settingsModelError,
-                    settingsLoginButton, settingsRetryButton, settingsAuthPanel, errorMsg
-                )
-            }
+            ) { }
         }
 
         settingsRetryButton.addActionListener { loadSettingsModels() }
@@ -1420,6 +1358,51 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             loginButton.isVisible = isAuthError
             retryButton.isVisible = !isAuthError
             authPanel.isVisible = true
+        }
+    }
+
+    private fun loadModelsAsync(
+        spinner: AsyncProcessIcon,
+        comboBox: JComboBox<String>,
+        errorLabel: JBLabel,
+        loginButton: JButton,
+        retryButton: JButton,
+        authPanel: JPanel,
+        onSuccess: (List<CopilotAcpClient.Model>) -> Unit
+    ) {
+        setLoadingState(spinner, comboBox, loginButton, retryButton, authPanel)
+        ApplicationManager.getApplication().executeOnPooledThread {
+            var lastError: Exception? = null
+            val maxRetries = 3
+            val retryDelayMs = 2000L
+
+            for (attempt in 1..maxRetries) {
+                try {
+                    val service = ApplicationManager.getApplication().getService(CopilotService::class.java)
+                    val client = service.getClient()
+                    val models = client.listModels()
+
+                    SwingUtilities.invokeLater {
+                        spinner.isVisible = false
+                        populateModelComboBox(comboBox, models) { selIdx ->
+                            if (selIdx >= 0 && selIdx < models.size) {
+                                CopilotSettings.setSelectedModel(models[selIdx].id)
+                            }
+                        }
+                        authPanel.isVisible = false
+                        onSuccess(models)
+                    }
+                    return@executeOnPooledThread
+                } catch (e: Exception) {
+                    lastError = e
+                    val msg = e.message ?: ""
+                    if (isAuthenticationError(msg)) break
+                    if (attempt < maxRetries) Thread.sleep(retryDelayMs)
+                }
+            }
+
+            val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
+            showModelError(spinner, comboBox, errorLabel, loginButton, retryButton, authPanel, errorMsg)
         }
     }
 
