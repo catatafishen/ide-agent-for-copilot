@@ -107,12 +107,42 @@ public final class PsiBridgeService implements Disposable {
     private static final String PARAM_MAIN_CLASS = "main_class";
     private static final String PARAM_TEST_CLASS = "test_class";
     private static final String PARAM_TEST_METHOD = "test_method";
+    private static final String PARAM_MODULE_NAME = "module_name";
+    private static final String PARAM_LIMIT = "limit";
+    private static final String PARAM_INSPECTION_ID = "inspection_id";
+    private static final String PARAM_LEVEL = "level";
+    private static final String PARAM_MESSAGE = "message";
+    private static final String PARAM_CONTENT = "content";
+    private static final String PARAM_COMMIT = "commit";
+    private static final String PARAM_STAT_ONLY = "stat_only";
+    private static final String PARAM_BRANCH = "branch";
+
+    // Reflection Field/Method Names
+    private static final String FIELD_TEST_OBJECT = "TEST_OBJECT";
+    private static final String FIELD_METHOD_NAME = "METHOD_NAME";
+    private static final String METHOD_SET_MODULE = "setModule";
+
+    // Test Type Values
+    private static final String TEST_TYPE_METHOD = "method";
+    private static final String TEST_TYPE_CLASS = "class";
 
     // File Extensions
     private static final String JAVA_EXTENSION = ".java";
 
     // Format Strings
     private static final String FORMAT_LOCATION = "%s:%d [%s] %s";
+    private static final String FORMAT_LINES_SUFFIX = " lines)";
+    private static final String FORMAT_CHARS_SUFFIX = " chars)";
+
+    // Display Strings
+    private static final String LABEL_SUPPRESS_INSPECTION = "Suppress Inspection";
+
+    // JSON Field Names
+    private static final String JSON_ARTIFACT_LOCATION = "artifactLocation";
+    private static final String JSON_REGION = "region";
+
+    // Git Constants
+    private static final String GIT_FLAG_ALL = "--all";
 
     // System Properties
     private static final String OS_NAME_PROPERTY = "os.name";
@@ -470,7 +500,7 @@ public final class PsiBridgeService implements Disposable {
                                     String key = relPath + ":" + line;
                                     if (seen.add(key)) {
                                         String lineText = getLineText(doc, line - 1);
-                                        results.add(String.format("%s:%d [%s] %s",
+                                        results.add(String.format(FORMAT_LOCATION,
                                             relPath, line, type, lineText));
                                     }
                                 }
@@ -849,12 +879,12 @@ public final class PsiBridgeService implements Disposable {
                     // Resolve class name to FQN and module via PSI
                     ClassInfo classInfo = resolveClass(testClass);
                     data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
-                    data.getClass().getField("TEST_OBJECT").set(data,
-                        args.has(PARAM_TEST_METHOD) ? "method" : "class");
+                    data.getClass().getField(FIELD_TEST_OBJECT).set(data,
+                        args.has(PARAM_TEST_METHOD) ? TEST_TYPE_METHOD : TEST_TYPE_CLASS);
                     // Auto-set module if not explicitly provided
-                    if (!args.has("module_name") && classInfo.module() != null) {
+                    if (!args.has(PARAM_MODULE_NAME) && classInfo.module() != null) {
                         try {
-                            var setModule = config.getClass().getMethod("setModule", Module.class);
+                            var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
                             setModule.invoke(config, classInfo.module());
                         } catch (NoSuchMethodException e) {
                             LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
@@ -870,7 +900,7 @@ public final class PsiBridgeService implements Disposable {
                 LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
                 // Fallback: try direct setter
                 setViaReflection(config, "setMainClassName",
-                    args.has("test_class") ? args.get("test_class").getAsString() : "", ignore, null);
+                    args.has(PARAM_TEST_CLASS) ? args.get(PARAM_TEST_CLASS).getAsString() : "", ignore, null);
             }
         }
 
@@ -927,7 +957,7 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    // ---- Code Quality Tools ----
+// ---- Code Quality Tools ----
 
     private String getProblems(JsonObject args) throws Exception {
         String pathStr = args.has("path") ? args.get("path").getAsString() : "";
@@ -1472,7 +1502,7 @@ public final class PsiBridgeService implements Disposable {
                 var target = findSuppressTarget(element);
                 String fileName = vf.getName();
 
-                if (fileName.endsWith(".java")) {
+                if (fileName.endsWith(JAVA_EXTENSION)) {
                     resultFuture.complete(suppressJava(target, inspectionId, document));
                 } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
                     resultFuture.complete(suppressKotlin(target, inspectionId, document));
@@ -2210,7 +2240,7 @@ public final class PsiBridgeService implements Disposable {
         return origPos - startIdx;
     }
 
-    // ---- Git tools ----
+// ---- Git tools ----
 
     /**
      * Execute a git command in the project root directory.
@@ -2456,9 +2486,9 @@ public final class PsiBridgeService implements Disposable {
         return runGit(gitArgs.toArray(new String[0]));
     }
 
-    // ---- End git tools ----
+// ---- End git tools ----
 
-    // ---- Infrastructure tools ----
+// ---- Infrastructure tools ----
 
     private String httpRequest(JsonObject args) throws Exception {
         String urlStr = args.get("url").getAsString();
@@ -2646,7 +2676,7 @@ public final class PsiBridgeService implements Disposable {
         return result.toString();
     }
 
-    // ---- Terminal tools ----
+// ---- Terminal tools ----
 
     private String runInTerminal(JsonObject args) {
         String command = args.get("command").getAsString();
@@ -2888,9 +2918,9 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    // ---- End terminal tools ----
+// ---- End terminal tools ----
 
-    // ---- End infrastructure tools ----
+// ---- End infrastructure tools ----
 
     private String readRunOutput(JsonObject args) {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
@@ -3106,7 +3136,7 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
-    // ---- Test Tools ----
+// ---- Test Tools ----
 
     private String listTests(JsonObject args) {
         String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
@@ -3283,7 +3313,7 @@ public final class PsiBridgeService implements Disposable {
               - Gradle: Add jacoco plugin and run `gradlew jacocoTestReport`""";
     }
 
-    // ---- Test & Run Helper Methods ----
+// ---- Test & Run Helper Methods ----
 
     private String tryRunTestConfig(String target) {
         try {
@@ -3609,7 +3639,7 @@ public final class PsiBridgeService implements Disposable {
         return "...(truncated)\n" + output.substring(output.length() - 8000);
     }
 
-    // ---- Helper Methods ----
+// ---- Helper Methods ----
 
     private PsiElement findDefinition(String name, GlobalSearchScope scope) {
         PsiElement[] result = {null};
@@ -3737,7 +3767,7 @@ public final class PsiBridgeService implements Disposable {
         return "Other";
     }
 
-    // ---- Documentation Tools ----
+// ---- Documentation Tools ----
 
     private String getDocumentation(JsonObject args) {
         String symbol = args.has("symbol") ? args.get("symbol").getAsString() : "";
@@ -4244,7 +4274,7 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    // ==================== Refactoring & Code Modification Tools ====================
+// ==================== Refactoring & Code Modification Tools ====================
 
     private String applyQuickfix(JsonObject args) throws Exception {
         if (!args.has("file") || !args.has("line") || !args.has("inspection_id")) {
