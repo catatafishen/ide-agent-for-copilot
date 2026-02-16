@@ -1738,92 +1738,111 @@ public final class PsiBridgeService implements Disposable {
 
     private void pollQodanaResults(int limit, CompletableFuture<String> resultFuture) {
         try {
-            // Use reflection to access Qodana's service — it's an optional plugin dependency
-            Class<?> serviceClass;
-            try {
-                serviceClass = Class.forName("org.jetbrains.qodana.run.QodanaRunInIdeService");
-            } catch (ClassNotFoundException e) {
-                // Qodana service not available — wait for analysis and look for SARIF output
-                LOG.info("QodanaRunInIdeService not available, waiting for SARIF output...");
-                // Wait up to 5 minutes for SARIF output to appear
-                for (int i = 0; i < 300; i++) {
-                    String fallbackResult = tryFindSarifOutput(limit);
-                    if (fallbackResult != null) {
-                        resultFuture.complete(fallbackResult);
-                        return;
-                    }
-                    Thread.sleep(1000);
-                }
-                resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
-                    "(Qodana service class not available for result polling)");
-                return;
-            }
+            Class<?> serviceClass = loadQodanaServiceClass(limit, resultFuture);
+            if (serviceClass == null) return; // Already completed with fallback
 
-            var qodanaService = project.getService(serviceClass);
-            //noinspection ConstantValue - serviceClass is loaded via reflection; getService may return null at runtime
-            if (qodanaService == null) {
-                // Fall back to looking for SARIF output files
-                String fallbackResult = tryFindSarifOutput(limit);
-                resultFuture.complete(Objects.requireNonNullElse(fallbackResult, "Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
-                    "(Could not access Qodana service to poll results)"));
-                return;
-            }
+            Object qodanaService = getQodanaServiceInstance(serviceClass, limit, resultFuture);
+            if (qodanaService == null) return; // Already completed with fallback
 
-            // Get the runState StateFlow
-            var getRunState = serviceClass.getMethod("getRunState");
-            var runStateFlow = getRunState.invoke(qodanaService);
-            var getValueMethod = runStateFlow.getClass().getMethod("getValue");
-
-            // Poll until Qodana finishes (up to 8 minutes)
-            int maxPolls = 480;
-            boolean wasRunning = false;
-            for (int i = 0; i < maxPolls; i++) {
-                var state = getValueMethod.invoke(runStateFlow);
-                String stateName = state.getClass().getSimpleName();
-
-                if (stateName.contains("Running")) {
-                    wasRunning = true;
-                    if (i % 30 == 0) {
-                        LOG.info("Qodana analysis still running... (" + i + "s)");
-                    }
-                } else if (wasRunning) {
-                    // Transitioned from Running to NotRunning — analysis complete
-                    LOG.info("Qodana analysis completed after ~" + i + "s");
-                    break;
-                } else if (i > 10) {
-                    // Never started running — may have shown a dialog or failed
-                    resultFuture.complete("Qodana analysis was triggered but may require user interaction. " +
-                        "Check the IDE for any Qodana dialogs or the Qodana tab in Problems for results.");
-                    return;
-                }
-
-                Thread.sleep(1000);
-            }
-
-            // Try to read SARIF results from the output
-            var getRunsResults = serviceClass.getMethod("getRunsResults");
-            var runsResultsFlow = getRunsResults.invoke(qodanaService);
-            var outputs = (Set<?>) getValueMethod.invoke(runsResultsFlow);
-            if (outputs != null && !outputs.isEmpty()) {
-                var latest = outputs.iterator().next();
-                var getSarifPath = latest.getClass().getMethod("getSarifPath");
-                var sarifPath = (java.nio.file.Path) getSarifPath.invoke(latest);
-                if (sarifPath != null && java.nio.file.Files.exists(sarifPath)) {
-                    String sarif = java.nio.file.Files.readString(sarifPath);
-                    resultFuture.complete(parseSarifResults(sarif, limit));
-                    return;
-                }
-            }
-
-            resultFuture.complete("Qodana analysis completed. Results are visible in the Qodana tab " +
-                "of the Problems tool window. (SARIF output file not found for programmatic reading)");
-
+            waitForQodanaCompletion(qodanaService, serviceClass, limit, resultFuture);
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             LOG.error("Error polling Qodana results", e);
             resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
                 "Polling error: " + e.getMessage());
         }
+    }
+
+    private Class<?> loadQodanaServiceClass(int limit, CompletableFuture<String> resultFuture)
+        throws InterruptedException {
+        try {
+            return Class.forName("org.jetbrains.qodana.run.QodanaRunInIdeService");
+        } catch (ClassNotFoundException e) {
+            LOG.info("QodanaRunInIdeService not available, waiting for SARIF output...");
+            // Wait up to 5 minutes for SARIF output to appear
+            for (int i = 0; i < 300; i++) {
+                String fallbackResult = tryFindSarifOutput(limit);
+                if (fallbackResult != null) {
+                    resultFuture.complete(fallbackResult);
+                    return null;
+                }
+                Thread.sleep(1000);
+            }
+            resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                "(Qodana service class not available for result polling)");
+            return null;
+        }
+    }
+
+    private Object getQodanaServiceInstance(Class<?> serviceClass, int limit,
+                                            CompletableFuture<String> resultFuture) {
+        var qodanaService = project.getService(serviceClass);
+        if (qodanaService == null) {
+            String fallbackResult = tryFindSarifOutput(limit);
+            resultFuture.complete(Objects.requireNonNullElse(fallbackResult,
+                "Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                    "(Could not access Qodana service to poll results)"));
+        }
+        return qodanaService;
+    }
+
+    private void waitForQodanaCompletion(Object qodanaService, Class<?> serviceClass,
+                                         int limit, CompletableFuture<String> resultFuture)
+        throws Exception {
+        var getRunState = serviceClass.getMethod("getRunState");
+        var runStateFlow = getRunState.invoke(qodanaService);
+        var getValueMethod = runStateFlow.getClass().getMethod("getValue");
+
+        boolean completed = pollQodanaRunState(getValueMethod, runStateFlow, resultFuture);
+        if (!completed) return; // Already set result
+
+        tryReadQodanaSarifResults(qodanaService, serviceClass, getValueMethod, limit, resultFuture);
+    }
+
+    private boolean pollQodanaRunState(java.lang.reflect.Method getValueMethod, Object runStateFlow,
+                                       CompletableFuture<String> resultFuture) throws Exception {
+        int maxPolls = 480;
+        boolean wasRunning = false;
+        for (int i = 0; i < maxPolls; i++) {
+            var state = getValueMethod.invoke(runStateFlow);
+            String stateName = state.getClass().getSimpleName();
+
+            if (stateName.contains("Running")) {
+                wasRunning = true;
+                if (i % 30 == 0) {
+                    LOG.info("Qodana analysis still running... (" + i + "s)");
+                }
+            } else if (wasRunning) {
+                LOG.info("Qodana analysis completed after ~" + i + "s");
+                return true;
+            } else if (i > 10) {
+                resultFuture.complete("Qodana analysis was triggered but may require user interaction. " +
+                    "Check the IDE for any Qodana dialogs or the Qodana tab in Problems for results.");
+                return false;
+            }
+            Thread.sleep(1000);
+        }
+        return true;
+    }
+
+    private void tryReadQodanaSarifResults(Object qodanaService, Class<?> serviceClass,
+                                           java.lang.reflect.Method getValueMethod, int limit,
+                                           CompletableFuture<String> resultFuture) throws Exception {
+        var getRunsResults = serviceClass.getMethod("getRunsResults");
+        var runsResultsFlow = getRunsResults.invoke(qodanaService);
+        var outputs = (Set<?>) getValueMethod.invoke(runsResultsFlow);
+        if (outputs != null && !outputs.isEmpty()) {
+            var latest = outputs.iterator().next();
+            var getSarifPath = latest.getClass().getMethod("getSarifPath");
+            var sarifPath = (java.nio.file.Path) getSarifPath.invoke(latest);
+            if (sarifPath != null && java.nio.file.Files.exists(sarifPath)) {
+                String sarif = java.nio.file.Files.readString(sarifPath);
+                resultFuture.complete(parseSarifResults(sarif, limit));
+                return;
+            }
+        }
+        resultFuture.complete("Qodana analysis completed. Results are visible in the Qodana tab " +
+            "of the Problems tool window. (SARIF output file not found for programmatic reading)");
     }
 
     private String tryFindSarifOutput(int limit) {
