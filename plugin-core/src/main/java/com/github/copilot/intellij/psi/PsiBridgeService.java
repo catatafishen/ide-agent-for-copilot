@@ -3511,11 +3511,13 @@ public final class PsiBridgeService implements Disposable {
 
     private String parseJacocoXml(Path xmlPath, String fileFilter) {
         try {
-            var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                .parse(xmlPath.toFile());
+            var dbf = DocumentBuilderFactory.newInstance();
+            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            var doc = dbf.newDocumentBuilder().parse(xmlPath.toFile());
             var packages = doc.getElementsByTagName("package");
             List<String> lines = new ArrayList<>();
-            int totalLines = 0, coveredLines = 0;
+            int totalLines = 0;
+            int coveredLines = 0;
 
             for (int i = 0; i < packages.getLength(); i++) {
                 var pkg = (org.w3c.dom.Element) packages.item(i);
@@ -3636,6 +3638,9 @@ public final class PsiBridgeService implements Disposable {
             }
             case "KtTypeAlias" -> {
                 return "class";
+            }
+            default -> {
+                // fall through to generic patterns below
             }
         }
 
@@ -3785,10 +3790,10 @@ public final class PsiBridgeService implements Disposable {
 
                 // Strip HTML tags for clean text output
                 String text = doc.replaceAll("<[^>]+>", "")
-                    .replaceAll("&nbsp;", " ")
-                    .replaceAll("&lt;", "<")
-                    .replaceAll("&gt;", ">")
-                    .replaceAll("&amp;", "&")
+                    .replace("&nbsp;", " ")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&amp;", "&")
                     .replaceAll("&#\\d+;", "")
                     .replaceAll("\n{3,}", "\n\n")
                     .trim();

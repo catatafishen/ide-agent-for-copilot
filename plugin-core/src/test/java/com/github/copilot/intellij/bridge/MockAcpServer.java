@@ -192,7 +192,7 @@ public class MockAcpServer implements Closeable {
 
     // --- Default handlers ---
 
-    private JsonObject handleInitialize(JsonObject params) {
+    private JsonObject handleInitialize(@SuppressWarnings("unused") JsonObject params) {
         JsonObject result = new JsonObject();
         result.addProperty("protocolVersion", 1);
 
@@ -213,7 +213,7 @@ public class MockAcpServer implements Closeable {
         return result;
     }
 
-    private JsonObject handleNewSession(JsonObject params) {
+    private JsonObject handleNewSession(@SuppressWarnings("unused") JsonObject params) {
         JsonObject result = new JsonObject();
         result.addProperty("sessionId", "mock-session-" + UUID.randomUUID());
 

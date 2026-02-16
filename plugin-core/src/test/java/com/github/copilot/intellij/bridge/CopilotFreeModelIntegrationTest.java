@@ -61,7 +61,7 @@ class CopilotFreeModelIntegrationTest {
             .filter(m -> "0x".equals(m.getUsage()))
             .findFirst()
             .or(() -> models.stream().filter(m -> "0.33x".equals(m.getUsage())).findFirst())
-            .map(m -> m.getId())
+            .map(CopilotAcpClient.Model::getId)
             .orElse(null);
 
         Assumptions.assumeTrue(freeModelId != null,
@@ -154,7 +154,7 @@ class CopilotFreeModelIntegrationTest {
         freeModelId = models.stream()
             .filter(m -> "0x".equals(m.getUsage()))
             .findFirst()
-            .map(m -> m.getId())
+            .map(CopilotAcpClient.Model::getId)
             .orElse(null);
         Assumptions.assumeTrue(freeModelId != null);
 

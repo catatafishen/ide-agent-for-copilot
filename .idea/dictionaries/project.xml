@@ -27,6 +27,8 @@
       <w>healthcheck</w>
       <w>hgap</w>
       <w>honour</w>
+      <w>iface</w>
+      <w>ifacename</w>
       <w>intellij</w>
       <w>jacoco</w>
       <w>javacmd</w>
@@ -74,6 +76,7 @@
       <w>utf</w>
       <w>uuid</w>
       <w>vgap</w>
+      <w>warnmsgs</w>
       <w>webhook</w>
       <w>whitespace</w>
       <w>winget</w>

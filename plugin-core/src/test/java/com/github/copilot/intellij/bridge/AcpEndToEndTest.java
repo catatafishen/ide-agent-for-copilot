@@ -29,8 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * End-to-end tests for the ACP protocol using MockAcpServer.
  * These tests exercise the full JSON-RPC protocol flow including streaming,
- * tool calls, permissions, and error handling — all without API costs.
+ * tool calls, permissions, and error handling ? all without API costs.
  */
+@SuppressWarnings("UnusedReturnValue")
 class AcpEndToEndTest {
 
     private MockAcpServer server;

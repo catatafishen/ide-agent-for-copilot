@@ -185,7 +185,7 @@ class CopilotAcpClientTest {
         @Test
         void testListModelsContainsKnownModels() throws CopilotException {
             List<CopilotAcpClient.Model> models = client.listModels();
-            List<String> modelIds = models.stream().map(m -> m.getId()).toList();
+            List<String> modelIds = models.stream().map(CopilotAcpClient.Model::getId).toList();
 
             // At least some of these should be present
             boolean hasGpt = modelIds.stream().anyMatch(id -> id.startsWith("gpt-"));
@@ -223,7 +223,7 @@ class CopilotAcpClientTest {
             String cheapModel = models.stream()
                 .filter(m -> "0x".equals(m.getUsage()) || "0.33x".equals(m.getUsage()))
                 .findFirst()
-                .map(m -> m.getId())
+                .map(CopilotAcpClient.Model::getId)
                 .orElse(models.getLast().getId());
 
             StringBuilder response = new StringBuilder();
