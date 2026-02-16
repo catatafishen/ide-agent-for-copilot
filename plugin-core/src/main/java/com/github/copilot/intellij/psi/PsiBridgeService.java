@@ -1468,57 +1468,62 @@ public final class PsiBridgeService implements Disposable {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                var vf = resolveVirtualFile(pathStr);
-                if (vf == null) {
-                    resultFuture.complete("Error: file not found: " + pathStr);
-                    return;
-                }
-
-                var psiFile = com.intellij.psi.PsiManager.getInstance(project).findFile(vf);
-                if (psiFile == null) {
-                    resultFuture.complete("Error: could not parse file: " + pathStr);
-                    return;
-                }
-
-                var document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(psiFile);
-                if (document == null) {
-                    resultFuture.complete("Error: could not get document for: " + pathStr);
-                    return;
-                }
-
-                // Find the PSI element at the given line
-                int zeroLine = line - 1;
-                if (zeroLine < 0 || zeroLine >= document.getLineCount()) {
-                    resultFuture.complete("Error: line " + line + " is out of range (file has " +
-                        document.getLineCount() + FORMAT_LINES_SUFFIX);
-                    return;
-                }
-
-                int offset = document.getLineStartOffset(zeroLine);
-                var element = psiFile.findElementAt(offset);
-                if (element == null) {
-                    resultFuture.complete("Error: no code element found at line " + line);
-                    return;
-                }
-
-                // Walk up to find the statement/declaration to annotate
-                var target = findSuppressTarget(element);
-                String fileName = vf.getName();
-
-                if (fileName.endsWith(JAVA_EXTENSION)) {
-                    resultFuture.complete(suppressJava(target, inspectionId, document));
-                } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
-                    resultFuture.complete(suppressKotlin(target, inspectionId, document));
-                } else {
-                    // For other file types, add a noinspection comment
-                    resultFuture.complete(suppressWithComment(target, inspectionId, document));
-                }
+                processSuppressInspection(pathStr, line, inspectionId, resultFuture);
             } catch (Exception e) {
                 LOG.error("Error suppressing inspection", e);
                 resultFuture.complete("Error suppressing inspection: " + e.getMessage());
             }
         });
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private void processSuppressInspection(String pathStr, int line, String inspectionId,
+                                           CompletableFuture<String> resultFuture) {
+        var vf = resolveVirtualFile(pathStr);
+        if (vf == null) {
+            resultFuture.complete("Error: file not found: " + pathStr);
+            return;
+        }
+
+        var psiFile = com.intellij.psi.PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) {
+            resultFuture.complete("Error: could not parse file: " + pathStr);
+            return;
+        }
+
+        var document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(psiFile);
+        if (document == null) {
+            resultFuture.complete("Error: could not get document for: " + pathStr);
+            return;
+        }
+
+        // Find the PSI element at the given line
+        int zeroLine = line - 1;
+        if (zeroLine < 0 || zeroLine >= document.getLineCount()) {
+            resultFuture.complete("Error: line " + line + " is out of range (file has " +
+                document.getLineCount() + FORMAT_LINES_SUFFIX);
+            return;
+        }
+
+        int offset = document.getLineStartOffset(zeroLine);
+        var element = psiFile.findElementAt(offset);
+        if (element == null) {
+            resultFuture.complete("Error: no code element found at line " + line);
+            return;
+        }
+
+        // Walk up to find the statement/declaration to annotate
+        var target = findSuppressTarget(element);
+        String fileName = vf.getName();
+
+        if (fileName.endsWith(JAVA_EXTENSION)) {
+            resultFuture.complete(suppressJava(target, inspectionId, document));
+        } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
+            resultFuture.complete(suppressKotlin(target, inspectionId, document));
+        } else {
+            // For other file types, add a noinspection comment
+            resultFuture.complete(suppressWithComment(target, inspectionId, document));
+        }
     }
 
     private com.intellij.psi.PsiElement findSuppressTarget(com.intellij.psi.PsiElement element) {
@@ -2860,7 +2865,15 @@ public final class PsiBridgeService implements Disposable {
     private String listTerminals() {
         StringBuilder result = new StringBuilder();
 
-        // 1. Show currently open terminal tabs
+        appendOpenTerminalTabs(result);
+        appendAvailableShells(result);
+        appendDefaultShell(result);
+
+        result.append("\n\nTip: Use run_in_terminal with tab_name to reuse an existing tab, or new_tab=true to force a new one.");
+        return result.toString();
+    }
+
+    private void appendOpenTerminalTabs(StringBuilder result) {
         result.append("Open terminal tabs:\n");
         try {
             var toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
@@ -2883,8 +2896,9 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             result.append("  (Could not list open terminals)\n");
         }
+    }
 
-        // 2. Available shells
+    private void appendAvailableShells(StringBuilder result) {
         result.append("\nAvailable shells:\n");
         String os = System.getProperty(OS_NAME_PROPERTY, "").toLowerCase();
         if (os.contains("win")) {
@@ -2899,8 +2913,9 @@ public final class PsiBridgeService implements Disposable {
             checkShell(result, "Fish", "/usr/bin/fish");
             checkShell(result, "sh", "/bin/sh");
         }
+    }
 
-        // 3. IntelliJ default shell
+    private void appendDefaultShell(StringBuilder result) {
         try {
             var settingsClass = Class.forName("org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider");
             var getInstance = settingsClass.getMethod("getInstance", Project.class);
@@ -2911,9 +2926,6 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             result.append("\nCould not determine IntelliJ default shell.");
         }
-
-        result.append("\n\nTip: Use run_in_terminal with tab_name to reuse an existing tab, or new_tab=true to force a new one.");
-        return result.toString();
     }
 
     private void checkShell(StringBuilder result, String name, String path) {
@@ -3455,7 +3467,10 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private boolean hasTestAnnotation(PsiElement element) {
-        // Use reflection to access PsiModifierListOwner (Java PSI, not compile-time available)
+        return hasTestAnnotationViaReflection(element) || hasTestAnnotationViaText(element);
+    }
+
+    private boolean hasTestAnnotationViaReflection(PsiElement element) {
         try {
             var getModifierList = element.getClass().getMethod("getModifierList");
             Object modList = getModifierList.invoke(element);
@@ -3473,8 +3488,12 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
         } catch (Exception ignored) {
+            // Reflection may not work for all element types
         }
+        return false;
+    }
 
+    private boolean hasTestAnnotationViaText(PsiElement element) {
         // Text-based fallback (catches Kotlin and edge cases)
         PsiElement prev = element.getPrevSibling();
         int depth = 0;
@@ -3603,19 +3622,12 @@ public final class PsiBridgeService implements Disposable {
                     String name = cls.getAttribute("name").replace('/', '.');
                     if (!fileFilter.isEmpty() && !name.contains(fileFilter)) continue;
 
-                    var counters = cls.getElementsByTagName("counter");
-                    for (int k = 0; k < counters.getLength(); k++) {
-                        var counter = counters.item(k);
-                        if ("LINE".equals(counter.getAttributes().getNamedItem("type")
-                            .getNodeValue())) {
-                            int missed = intAttr(counter, "missed");
-                            int covered = intAttr(counter, "covered");
-                            totalLines += missed + covered;
-                            coveredLines += covered;
-                            double pct = covered * 100.0 / Math.max(1, missed + covered);
-                            lines.add(String.format("  %s: %.1f%% (%d/%d lines)",
-                                name, pct, covered, missed + covered));
-                        }
+                    var coverage = processClassCoverage(cls);
+                    if (coverage != null) {
+                        totalLines += coverage.total;
+                        coveredLines += coverage.covered;
+                        lines.add(String.format("  %s: %.1f%% (%d/%d lines)",
+                            name, coverage.percentage, coverage.covered, coverage.total));
                     }
                 }
             }
@@ -3627,6 +3639,24 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             return "Error parsing JaCoCo report: " + e.getMessage();
         }
+    }
+
+    private CoverageData processClassCoverage(org.w3c.dom.Element cls) {
+        var counters = cls.getElementsByTagName("counter");
+        for (int k = 0; k < counters.getLength(); k++) {
+            var counter = counters.item(k);
+            if ("LINE".equals(counter.getAttributes().getNamedItem("type").getNodeValue())) {
+                int missed = intAttr(counter, "missed");
+                int covered = intAttr(counter, "covered");
+                int total = missed + covered;
+                double pct = covered * 100.0 / Math.max(1, total);
+                return new CoverageData(covered, total, pct);
+            }
+        }
+        return null;
+    }
+
+    private record CoverageData(int covered, int total, double percentage) {
     }
 
     private static int intAttr(org.w3c.dom.Node node, String attr) {
