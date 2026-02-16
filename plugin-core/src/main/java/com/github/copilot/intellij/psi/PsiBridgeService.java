@@ -1846,8 +1846,17 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String tryFindSarifOutput(int limit) {
-        // Look for SARIF output in common Qodana output locations
         String basePath = project.getBasePath();
+
+        // Try common locations first
+        String result = tryCommonSarifLocations(basePath, limit);
+        if (result != null) return result;
+
+        // Search recursively under project .qodana directory
+        return searchQodanaDirForSarif(basePath, limit);
+    }
+
+    private String tryCommonSarifLocations(String basePath, int limit) {
         java.nio.file.Path[] candidates = {
             basePath != null ? java.nio.file.Path.of(basePath, ".qodana", "results", "qodana.sarif.json") : null,
             java.nio.file.Path.of("/tmp/qodana_output/qodana.sarif.json"),
@@ -1866,32 +1875,35 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
         }
-        // Also search recursively under project .qodana directory
-        if (basePath != null) {
-            try {
-                var qodanaDir = java.nio.file.Path.of(basePath, ".qodana");
-                if (java.nio.file.Files.isDirectory(qodanaDir)) {
-                    try (var stream = java.nio.file.Files.walk(qodanaDir, 5)) {
-                        var sarifFile = stream
-                            .filter(p -> p.getFileName().toString().endsWith(".sarif.json"))
-                            .min((a, b) -> {
-                                try {
-                                    return java.nio.file.Files.getLastModifiedTime(b)
-                                        .compareTo(java.nio.file.Files.getLastModifiedTime(a));
-                                } catch (Exception e) {
-                                    return 0;
-                                }
-                            });
-                        if (sarifFile.isPresent()) {
-                            String sarif = java.nio.file.Files.readString(sarifFile.get());
-                            LOG.info("Found Qodana SARIF output via recursive search: " + sarifFile.get());
-                            return parseSarifResults(sarif, limit);
+        return null;
+    }
+
+    private String searchQodanaDirForSarif(String basePath, int limit) {
+        if (basePath == null) return null;
+
+        try {
+            var qodanaDir = java.nio.file.Path.of(basePath, ".qodana");
+            if (!java.nio.file.Files.isDirectory(qodanaDir)) return null;
+
+            try (var stream = java.nio.file.Files.walk(qodanaDir, 5)) {
+                var sarifFile = stream
+                    .filter(p -> p.getFileName().toString().endsWith(".sarif.json"))
+                    .min((a, b) -> {
+                        try {
+                            return java.nio.file.Files.getLastModifiedTime(b)
+                                .compareTo(java.nio.file.Files.getLastModifiedTime(a));
+                        } catch (Exception e) {
+                            return 0;
                         }
-                    }
+                    });
+                if (sarifFile.isPresent()) {
+                    String sarif = java.nio.file.Files.readString(sarifFile.get());
+                    LOG.info("Found Qodana SARIF output via recursive search: " + sarifFile.get());
+                    return parseSarifResults(sarif, limit);
                 }
-            } catch (Exception e) {
-                LOG.warn("Error searching for SARIF files", e);
             }
+        } catch (Exception e) {
+            LOG.warn("Error searching for SARIF files", e);
         }
         return null;
     }
@@ -2726,28 +2738,10 @@ public final class PsiBridgeService implements Disposable {
                 var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
                 var manager = managerClass.getMethod("getInstance", Project.class).invoke(null, project);
 
-                Object widget = null;
-                String usedTab = null;
+                var result = getOrCreateTerminalWidget(managerClass, manager, tabName, newTab, shell, command);
+                sendTerminalCommand(result.widget, command);
 
-                // Try to reuse existing terminal tab via Content userData
-                if (tabName != null && !newTab) {
-                    widget = findTerminalWidgetByTabName(managerClass, tabName);
-                    if (widget != null) usedTab = tabName;
-                }
-
-                // Create new tab if no existing tab found or new_tab requested
-                if (widget == null) {
-                    String title = tabName != null ? tabName : "Agent: " + truncateForTitle(command);
-                    List<String> shellCommand = shell != null ? List.of(shell) : null;
-                    var createSession = managerClass.getMethod("createNewSession",
-                        String.class, String.class, List.class, boolean.class, boolean.class);
-                    widget = createSession.invoke(manager, project.getBasePath(), title, shellCommand, true, true);
-                    usedTab = title + " (new)";
-                }
-
-                // Send command via TerminalWidget.sendCommandToExecute (works for both classic and block terminal)
-                sendTerminalCommand(widget, command);
-                resultFuture.complete("Command sent to terminal '" + usedTab + "': " + command +
+                resultFuture.complete("Command sent to terminal '" + result.tabName + "': " + command +
                     "\n\nNote: Use read_terminal_output to read terminal content, or run_command if you need output returned directly.");
 
             } catch (ClassNotFoundException e) {
@@ -2764,6 +2758,29 @@ public final class PsiBridgeService implements Disposable {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "Terminal opened (response timed out, but command was likely sent).";
         }
+    }
+
+    private record TerminalWidgetResult(Object widget, String tabName) {
+    }
+
+    private TerminalWidgetResult getOrCreateTerminalWidget(Class<?> managerClass, Object manager,
+                                                           String tabName, boolean newTab,
+                                                           String shell, String command) throws Exception {
+        // Try to reuse existing terminal tab
+        if (tabName != null && !newTab) {
+            Object widget = findTerminalWidgetByTabName(managerClass, tabName);
+            if (widget != null) {
+                return new TerminalWidgetResult(widget, tabName);
+            }
+        }
+
+        // Create new tab
+        String title = tabName != null ? tabName : "Agent: " + truncateForTitle(command);
+        List<String> shellCommand = shell != null ? List.of(shell) : null;
+        var createSession = managerClass.getMethod("createNewSession",
+            String.class, String.class, List.class, boolean.class, boolean.class);
+        Object widget = createSession.invoke(manager, project.getBasePath(), title, shellCommand, true, true);
+        return new TerminalWidgetResult(widget, title + " (new)");
     }
 
     /**
