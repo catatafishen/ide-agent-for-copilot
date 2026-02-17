@@ -120,6 +120,12 @@ public class McpServer {
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
+            ⚠️ EXECUTION ENVIRONMENT:
+            You are running INSIDE an IntelliJ IDEA plugin as an MCP server.
+            You do NOT have access to standard Copilot CLI tools, file system tools, or general-purpose utilities.
+            You ONLY have access to the IntelliJ MCP tools listed below (54 tools total).
+            If you need to do something, there is an IntelliJ tool for it - DO NOT invent or assume other tools exist.
+            
             TOOL USAGE RULES:
 
             ⚠️ CRITICAL: This environment has built-in shell/file tools DISABLED. You MUST use IntelliJ MCP tools instead:
@@ -140,6 +146,8 @@ public class McpServer {
 
             2. TRUST MCP TOOL OUTPUTS - they return data directly in the response. \
             DO NOT try to read /tmp/ files created by the Copilot CLI itself - the tool output IS the data you need. \
+            DO NOT invent filtering, processing, or transformation tools - work with the data you receive. \
+            If you need to filter/process output, use 'run_command' with grep/awk/sed, or process in your own logic. \
             For reading files: ALWAYS use 'intellij_read_file' (works for project files, logs, ANY file). \
             NEVER use sed, cat, head, tail, grep, or the built-in 'view' tool to read file content. \
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
