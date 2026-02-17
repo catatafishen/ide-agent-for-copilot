@@ -235,8 +235,8 @@ public class McpServer {
         JsonArray tools = new JsonArray();
         
         // Add a special "readme" tool that explains the environment
-        tools.add(buildTool("⚠️_IMPORTANT_READ_THIS_FIRST",
-            "⚠️ YOU ARE RUNNING INSIDE AN INTELLIJ PLUGIN. You have NO access to built-in Copilot tools, " +
+        tools.add(buildTool("IMPORTANT_READ_THIS_FIRST",
+            "WARNING: YOU ARE RUNNING INSIDE AN INTELLIJ PLUGIN. You have NO access to built-in Copilot tools, " +
                 "file system utilities, or general-purpose tools. The 54 tools listed below are ALL you have. " +
                 "DO NOT invent or assume other tools exist (like 'Filter', 'Find files', 'Search for X'). " +
                 "If you need to filter/process data, use 'run_command' with grep/awk, or analyze the data yourself. " +
