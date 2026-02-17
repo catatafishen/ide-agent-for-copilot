@@ -49,7 +49,7 @@
 - Fixed `buildPlugin` task (works perfectly now)
 - Investigated `runIde` bug thoroughly
 - Attempted workarounds (JVM args) - didn't help
-- Documented manual install workflow
+- Documented manual installation workflow
 
 #### 3. Development Tools Created ✅
 - `install-plugin.ps1` - Quick build helper script

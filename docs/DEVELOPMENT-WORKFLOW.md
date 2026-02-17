@@ -23,7 +23,7 @@ Since you have the project open in IntelliJ IDEA:
 
 ## Option 2: Manual Install (Recommended - Working Now)
 
-Since manual install is working perfectly, here's a quick script:
+Since manual installation is working perfectly, here's a quick script:
 
 ### Create `install-plugin.ps1` in project root:
 

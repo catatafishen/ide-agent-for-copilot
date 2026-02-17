@@ -71,7 +71,7 @@
 
 ### 2. Build Go Sidecar (30 min)
 - [ ] Address missing Copilot SDK in go.mod (create mock interface)
-- [ ] Build binary: `cd copilot-bridge && make build`
+- [ ] Build the binary: `cd copilot-bridge && make build`
 - [ ] Test sidecar: `./bin/copilot-sidecar.exe --port 8765`
 - [ ] Verify health: `curl http://localhost:8765/health`
 

@@ -41,7 +41,7 @@ public class McpServer {
 
     /**
      * Sends a JSON-RPC response to the client via stdout.
-     * The MCP protocol requires communication over stdin/stdout, so System.out is intentional and necessary.
+     * The MCP protocol requires communication over stdin/stdout. System.out is intentional and necessary.
      */
     private static void sendMcpResponse(JsonObject response) {
         String json = GSON.toJson(response);
@@ -121,19 +121,19 @@ public class McpServer {
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
             TOOL USAGE RULES:
-            
+
             ⚠️ CRITICAL: This environment has built-in shell/file tools DISABLED. You MUST use IntelliJ MCP tools instead:
             - For one-shot commands: Use 'run_command' (NOT built-in execute)
             - For interactive shells: Use 'run_in_terminal' (NOT built-in runInTerminal)
             - For file operations: Use 'intellij_write_file'/'intellij_read_file' (NOT built-in read/write)
             - Built-in tools will be REJECTED. Always use the IntelliJ equivalents listed below.
-            
+
             WHEN TO USE run_command vs run_in_terminal:
             - run_command: Non-interactive commands that complete and exit (gradle build, git status, ls, grep).
               Output appears in Run panel. Use this for builds, tests, scripts, code search.
             - run_in_terminal: Interactive shells or long-running processes (debugging, watching logs, interactive REPL).
               Opens a visible terminal tab. Use this when you need to see live output or send input to a process.
-            
+
             1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
             This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
             Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
@@ -144,7 +144,7 @@ public class McpServer {
             NEVER use sed, cat, head, tail, grep, or the built-in 'view' tool to read file content. \
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
             Read 300-500 lines per call for efficiency (each call has overhead).
-            
+
             AGENT WORKSPACE: For temporary/working files, use '.agent-work/' directory in project root. \
             This directory is git-ignored and persists across sessions. Use 'intellij_write_file' to write files there. \
             Example: '.agent-work/analysis.md', '.agent-work/issues-list.txt'. \

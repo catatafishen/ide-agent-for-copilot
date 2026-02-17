@@ -1457,8 +1457,9 @@ public final class PsiBridgeService implements Disposable {
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
-        ApplicationManager.getApplication().invokeLater(() -> {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
+                // Writing to dictionary is a slow operation - must not run on EDT
                 var spellChecker = com.intellij.spellchecker.SpellCheckerManager.getInstance(project);
                 spellChecker.acceptWordAsCorrect(word, project);
                 resultFuture.complete("Added '" + word + "' to project dictionary. " +

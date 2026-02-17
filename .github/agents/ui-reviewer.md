@@ -90,7 +90,7 @@ When asked to review UI code:
 1. **Read the file(s)** thoroughly
 2. **List issues** by severity:
    - 🔴 **Critical**: Broken layout, invisible content, accessibility failures, dead-end UX states
-   - 🟡 **Important**: Theme incompatibility, anti-patterns, poor responsiveness, confusing workflows
+   - 🟡 **Important**: Theme incompatibility, antipatterns, poor responsiveness, confusing workflows
    - 🟢 **Suggestion**: Minor improvements, idiomatic JetBrains patterns, UX polish
 3. **For each issue**, provide:
    - The specific line(s) affected

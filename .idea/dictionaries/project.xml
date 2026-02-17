@@ -12,6 +12,12 @@
       <w>copilot</w>
       <w>cygpath</w>
       <w>datetime</w>
+      <w>decl</w>
+      <w>decldoc</w>
+      <w>declfile</w>
+      <w>declline</w>
+      <w>declpath</w>
+      <w>declvf</w>
       <w>dest</w>
       <w>dirname</w>
       <w>editorconfig</w>

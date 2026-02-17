@@ -11,7 +11,7 @@
 
     <h3>Features</h3>
     <ul>
-        <li>AI-powered multi-step planning and execution via GitHub Copilot</li>
+        <li>AI-powered multistep planning and execution via GitHub Copilot</li>
         <li>Direct ACP integration - no sidecar or SDK required</li>
         <li>Rich context management with code selections and symbols</li>
         <li>Visual plan tracking with real-time progress</li>
@@ -73,7 +73,7 @@
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity
       implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
-    
+
     <!-- Notification Group for Copilot status messages -->
     <notificationGroup id="Copilot Notifications" displayType="BALLOON"/>
   </extensions>
