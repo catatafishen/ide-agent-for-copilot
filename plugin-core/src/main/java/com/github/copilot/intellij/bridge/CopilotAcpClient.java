@@ -823,19 +823,19 @@ public class CopilotAcpClient implements Closeable {
 
         String instruction = switch (deniedKind) {
             case "execute" ->
-                "The command execution was denied because this environment requires using IntelliJ tools. " +
-                    "Please retry using the run_command MCP tool, which executes commands through IntelliJ's Run panel. " +
-                    "The output will be visible to the user in IntelliJ and returned to you. " +
-                    "You can also use read_run_output to read the Run panel content afterward.";
+                "❌ THE TOOL YOU TRIED DOES NOT EXIST. You are running inside an IntelliJ plugin with ONLY 54 specific MCP tools. " +
+                    "You invented a tool name that doesn't exist. List available tools first to see what's actually available. " +
+                    "For shell commands, use 'run_command' (NOT generic 'execute' or made-up tool names). " +
+                    "The output will be visible in IntelliJ and returned to you.";
             case "runInTerminal" ->
-                "The terminal command was denied because this environment requires using IntelliJ's built-in terminal. " +
-                    "Please retry using the run_in_terminal MCP tool, which opens an IntelliJ Terminal tab. " +
-                    "Use list_terminals to see available shells (PowerShell, cmd, bash, etc.).";
+                "❌ THE TOOL YOU TRIED DOES NOT EXIST. You are in an IntelliJ plugin with ONLY 54 specific MCP tools. " +
+                    "List available tools first. For interactive shells, use 'run_in_terminal' (NOT generic 'runInTerminal'). " +
+                    "Use list_terminals to see available shells.";
             default ->
-                "The file operation was denied because this environment requires using IntelliJ tools for all project file changes. " +
-                    "Please retry using MCP tools: use intellij_read_file to read files and intellij_write_file to write/create files. " +
-                    "For edits, use intellij_write_file with old_str/new_str parameters. " +
-                    "For new files, use intellij_write_file with the full content parameter.";
+                "❌ THE TOOL YOU TRIED DOES NOT EXIST. You are in an IntelliJ plugin with ONLY 54 specific MCP tools. " +
+                    "You invented a tool name. List available tools first to see what exists. " +
+                    "For files: use intellij_read_file to read, intellij_write_file to write. " +
+                    "DO NOT assume tools exist - check the tools list.";
         };
         retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
