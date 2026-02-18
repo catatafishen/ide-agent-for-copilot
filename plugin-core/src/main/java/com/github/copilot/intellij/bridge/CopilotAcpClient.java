@@ -106,6 +106,59 @@ public class CopilotAcpClient implements Closeable {
     private volatile boolean builtInActionDeniedDuringTurn = false;
     private volatile String lastDeniedKind = "";
 
+    // Debug event listeners for UI debug tab
+    private final CopyOnWriteArrayList<Consumer<DebugEvent>> debugListeners = new CopyOnWriteArrayList<>();
+
+    /**
+     * Debug event for UI debug tab showing permission requests, denials, tool calls, etc.
+     */
+    public static class DebugEvent {
+        public final String timestamp;
+        public final String type;  // "PERMISSION_REQUEST", "PERMISSION_DENIED", "RETRY_SENT", "TOOL_CALL", etc.
+        public final String message;
+        public final String details; // JSON or additional info
+
+        public DebugEvent(String type, String message, String details) {
+            this.timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
+            this.type = type;
+            this.message = message;
+            this.details = details;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("[%s] %s: %s", timestamp, type, message);
+        }
+    }
+
+    /**
+     * Register a debug event listener for the UI debug tab.
+     */
+    public void addDebugListener(Consumer<DebugEvent> listener) {
+        debugListeners.add(listener);
+    }
+
+    /**
+     * Remove a debug event listener.
+     */
+    public void removeDebugListener(Consumer<DebugEvent> listener) {
+        debugListeners.remove(listener);
+    }
+
+    /**
+     * Fire a debug event to all listeners.
+     */
+    private void fireDebugEvent(String type, String message, String details) {
+        DebugEvent event = new DebugEvent(type, message, details);
+        for (Consumer<DebugEvent> listener : debugListeners) {
+            try {
+                listener.accept(event);
+            } catch (Exception e) {
+                LOG.warn("Debug listener threw exception", e);
+            }
+        }
+    }
+
     /**
      * Create ACP client with optional project base path for config-dir.
      */
@@ -406,7 +459,10 @@ public class CopilotAcpClient implements Closeable {
                 String deniedKind = lastDeniedKind;
                 builtInActionDeniedDuringTurn = false;
                 LOG.info("sendPrompt: built-in " + deniedKind + " denied, sending retry with MCP tool instruction");
+                fireDebugEvent("RETRY_PROMPT", "Sending retry after " + deniedKind + " denial", "");
                 result = sendRetryPrompt(sessionId, model, deniedKind);
+                fireDebugEvent("RETRY_RESPONSE", "Retry completed", 
+                    result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown");
             }
 
             return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
@@ -831,12 +887,16 @@ public class CopilotAcpClient implements Closeable {
             permTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
         }
         LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
+        fireDebugEvent("PERMISSION_REQUEST", permKind + (permTitle.isEmpty() ? "" : " - " + permTitle), 
+            toolCall != null ? toolCall.toString() : "");
 
         // Check if run_command is trying to do something we have a dedicated tool for
         String commandAbuse = detectCommandAbuse(toolCall);
         if (commandAbuse != null) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING run_command abuse: " + commandAbuse);
+            fireDebugEvent("PERMISSION_DENIED", "run_command abuse: " + commandAbuse, 
+                toolCall != null ? toolCall.toString() : "");
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = "run_command_abuse:" + commandAbuse;
             sendPermissionResponse(reqId, rejectOptionId);
@@ -846,12 +906,15 @@ public class CopilotAcpClient implements Closeable {
         if (DENIED_PERMISSION_KINDS.contains(permKind)) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
+            fireDebugEvent("PERMISSION_DENIED", "Built-in " + permKind + " denied", 
+                "Will retry with intellij-code-tools- prefix");
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = permKind;
             sendPermissionResponse(reqId, rejectOptionId);
         } else {
             String allowOptionId = findAllowOption(reqParams);
             LOG.info("ACP request_permission: auto-approving " + permKind + ", option=" + allowOptionId);
+            fireDebugEvent("PERMISSION_APPROVED", permKind + (permTitle.isEmpty() ? "" : " - " + permTitle), "");
             sendPermissionResponse(reqId, allowOptionId);
         }
     }

@@ -62,6 +62,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         tabbedPane.addTab("Context", createContextTab())
         tabbedPane.addTab("Session", createSessionTab())
         tabbedPane.addTab("Timeline", createTimelineTab())
+        tabbedPane.addTab("Debug", createDebugTab())
         tabbedPane.addTab("Settings", createSettingsTab())
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER)
@@ -1139,6 +1140,125 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         toolbar.add(clearButton)
 
         panel.add(toolbar, BorderLayout.SOUTH)
+
+        return panel
+    }
+
+    private fun createDebugTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
+        panel.border = JBUI.Borders.empty(5)
+
+        // Debug events list
+        val debugModel = DefaultListModel<CopilotAcpClient.DebugEvent>()
+        val list = JBList(debugModel)
+        list.cellRenderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?, value: Any?, index: Int,
+                isSelected: Boolean, cellHasFocus: Boolean
+            ): Component {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                if (value is CopilotAcpClient.DebugEvent) {
+                    text = value.toString()
+                    // Color code by type
+                    foreground = when (value.type) {
+                        "PERMISSION_APPROVED" -> JBColor.GREEN.darker()
+                        "PERMISSION_DENIED" -> JBColor.RED
+                        "RETRY_PROMPT", "RETRY_RESPONSE" -> JBColor.ORANGE
+                        else -> if (isSelected) list?.selectionForeground else list?.foreground
+                    }
+                }
+                return this
+            }
+        }
+
+        // Details panel
+        val detailsArea = JBTextArea()
+        detailsArea.isEditable = false
+        detailsArea.lineWrap = true
+        detailsArea.wrapStyleWord = true
+        detailsArea.text = "Select an event to see details"
+
+        // Selection listener
+        list.addListSelectionListener {
+            if (!it.valueIsAdjusting) {
+                val selected = list.selectedValue
+                if (selected != null) {
+                    detailsArea.text = """
+                        |Timestamp: ${selected.timestamp}
+                        |Type: ${selected.type}
+                        |Message: ${selected.message}
+                        |
+                        |Details:
+                        |${selected.details.ifEmpty { "(none)" }}
+                    """.trimMargin()
+                    detailsArea.caretPosition = 0
+                }
+            }
+        }
+
+        // Split pane
+        val splitPane = OnePixelSplitter(true, 0.6f)
+        splitPane.firstComponent = JBScrollPane(list)
+        splitPane.secondComponent = JBScrollPane(detailsArea)
+        panel.add(splitPane, BorderLayout.CENTER)
+
+        // Bottom toolbar
+        val toolbar = JPanel(FlowLayout(FlowLayout.LEFT))
+        val clearBtn = JButton("Clear")
+        clearBtn.addActionListener { debugModel.clear() }
+        
+        val copyBtn = JButton("Copy Selected")
+        copyBtn.addActionListener {
+            val selected = list.selectedValue
+            if (selected != null) {
+                val content = "${selected.timestamp} [${selected.type}] ${selected.message}\n${selected.details}"
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                    java.awt.datatransfer.StringSelection(content), null
+                )
+            }
+        }
+        
+        val exportBtn = JButton("Export All")
+        exportBtn.addActionListener {
+            val sb = StringBuilder()
+            for (i in 0 until debugModel.size()) {
+                val event = debugModel.getElementAt(i)
+                sb.append("${event.timestamp} [${event.type}] ${event.message}\n")
+                if (event.details.isNotEmpty()) {
+                    sb.append("  ${event.details}\n")
+                }
+                sb.append("\n")
+            }
+            java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                java.awt.datatransfer.StringSelection(sb.toString()), null
+            )
+        }
+        
+        toolbar.add(clearBtn)
+        toolbar.add(copyBtn)
+        toolbar.add(exportBtn)
+        panel.add(toolbar, BorderLayout.SOUTH)
+
+        // Register debug listener with CopilotService
+        val listener: (CopilotAcpClient.DebugEvent) -> Unit = { event ->
+            SwingUtilities.invokeLater {
+                debugModel.addElement(event)
+                // Keep only last 500 events to avoid memory issues
+                while (debugModel.size() > 500) {
+                    debugModel.remove(0)
+                }
+                // Auto-scroll to bottom
+                list.ensureIndexIsVisible(debugModel.size() - 1)
+            }
+        }
+        
+        val copilotService = CopilotService.getInstance(project)
+        try {
+            val client = copilotService.getClient()
+            client.addDebugListener(listener)
+        } catch (e: Exception) {
+            // Client not started yet - that's ok, will add listener when it starts
+        }
 
         return panel
     }
