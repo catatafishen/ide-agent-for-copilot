@@ -277,6 +277,8 @@ public class CopilotAcpClient implements Closeable {
         availableTools.add("task");
         availableTools.add("ask_user");
         params.add("availableTools", availableTools);
+        
+        LOG.warn("=== DEBUG: session/new params: " + params.toString());
         LOG.info("Session created with availableTools: report_intent, update_todo, task, ask_user");
 
         JsonObject result = sendRequest("session/new", params);
