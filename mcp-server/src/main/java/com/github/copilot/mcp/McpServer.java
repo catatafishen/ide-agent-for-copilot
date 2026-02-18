@@ -121,29 +121,29 @@ public class McpServer {
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
             You are running inside an IntelliJ IDEA plugin with access to 54 IDE tools.
-            
+
             FILE OPERATIONS:
             - intellij_read_file: Read any file (project files, logs, etc). Reads live editor buffer with unsaved changes.
             - intellij_write_file: Write/edit files. Use 'content' for full replacement or 'old_str'+'new_str' for edits.
               Supports undo (Ctrl+Z), VCS tracking, editor sync.
-            
+
             CODE SEARCH (AST-based, searches live editor buffers):
             - search_symbols: Find class/method/function definitions by name
             - find_references: Find all usages of a symbol at specific location
             - get_file_outline: Get structure/symbols in a file
-            
+
             COMMANDS:
             - run_command: One-shot commands (gradle build, git status). Output in Run panel.
             - run_in_terminal: Interactive shells or long-running processes. Opens visible terminal tab.
 
             BEST PRACTICES:
-            
+
             1. TRUST TOOL OUTPUTS - they return data directly. Don't try to read temp files or invent processing tools.
-            
+
             2. READ FILES EFFICIENTLY - Read 300-500 lines per call (each call has overhead).
 
             3. WORKSPACE: Use '.agent-work/' for temp files (git-ignored, persists across sessions).
-            
+
             4. AFTER EDITING - IMMEDIATELY after intellij_write_file: \
             a) Run 'get_highlights' on that SAME file to check for errors. \
             b) If errors exist, FIX THEM IMMEDIATELY before editing other files. \
@@ -337,11 +337,11 @@ public class McpServer {
         tools.add(buildTool("run_inspections", "Run Inspections",
             Map.of(
                 "scope", Map.of("type", "string", "description", "Optional: file or directory path to" +
-                        "Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"),
+                    "Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"),
                 "limit", Map.of("type", "integer", "description", "Page size (default: 100). Maximum p"),
                 "offset", Map.of("type", "integer", "description", "Number of problems to skip (default"),
                 "min_severity", Map.of("type", "string", "description", "Minimum severity filter. Options: E" +
-                        "Default: all severities included. Only set this if the user explicitly asks to filter by severity.")
+                    "Default: all severities included. Only set this if the user explicitly asks to filter by severity.")
             ),
             List.of()));
 
@@ -485,7 +485,7 @@ public class McpServer {
                 "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gr"),
                 "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),
                 "title", Map.of("type", "string", "description", "Human-readable title for the Run pa" +
-                        "If not set, defaults to the command text. ALWAYS set this to a short descriptive name.")
+                    "If not set, defaults to the command text. ALWAYS set this to a short descriptive name.")
             ),
             List.of("command")));
 
@@ -510,12 +510,6 @@ public class McpServer {
 
         // ---- Terminal tools ----
 
-        // Use a LinkedHashMap to preserve insertion order (Map.of has random order)
-        var runInTerminalProps = new java.util.LinkedHashMap<String, Map<String, String>>();
-        runInTerminalProps.put("command", Map.of("type", "string", "description", "Command to execute in the terminal"));
-        runInTerminalProps.put("tab_name", Map.of("type", "string", "description", "Name of existing terminal tab to re"));
-        runInTerminalProps.put("shell", Map.of("type", "string", "description", "Shell executable path for new tabs "));
-        runInTerminalProps.put("new_tab", Map.of("type", "boolean", "description", "Force opening a new terminal tab ev"));
         tools.add(buildTool("run_in_terminal", "Run In Terminal",
             Map.of(),
             List.of()));

@@ -59,13 +59,13 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Permission kinds that are denied, so the agent uses IntelliJ MCP tools instead.
-     * 
+     * <p>
      * WORKAROUND for GitHub Copilot CLI bug #556:
-     * https://github.com/github/copilot-cli/issues/556
-     * 
+     * <a href="https://github.com/github/copilot-cli/issues/556">Issue #556</a>
+     * <p>
      * Bug: Tool filtering (--available-tools, --excluded-tools, session params) doesn't work
      * in --acp mode. Agent sees ALL tools regardless of filtering attempts.
-     * 
+     * <p>
      * Until fixed, we deny permissions for CLI built-in tools at runtime to force
      * agent to use IntelliJ MCP tools (which read live editor buffers, not stale disk files).
      */
@@ -183,12 +183,12 @@ public class CopilotAcpClient implements Closeable {
 
         cmd.add("--acp");
         cmd.add("--stdio");
-        
+
         // NOTE: --available-tools and --excluded-tools CLI flags don't work in --acp mode.
         // Tool filtering must be done via session params (see createSession method).
         // These flags are left here for documentation but have no effect.
         LOG.info("Tool filtering handled via session/new availableTools parameter");
-        
+
         // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
             Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
@@ -282,7 +282,7 @@ public class CopilotAcpClient implements Closeable {
 
         // mcpServers must be an array in session/new (agent validates this)
         params.add("mcpServers", new JsonArray());
-        
+
         // CRITICAL: availableTools must be sent as session param, not CLI flag!
         // CLI --available-tools flag doesn't work in --acp mode.
         // Only allow CLI meta tools; force agent to use MCP tools for file/search/command ops.
@@ -292,8 +292,8 @@ public class CopilotAcpClient implements Closeable {
         availableTools.add("task");
         availableTools.add("ask_user");
         params.add("availableTools", availableTools);
-        
-        LOG.warn("=== DEBUG: session/new params: " + params.toString());
+
+        LOG.warn("=== DEBUG: session/new params: " + params);
         LOG.info("Session created with availableTools: report_intent, update_todo, task, ask_user");
 
         JsonObject result = sendRequest("session/new", params);
@@ -824,7 +824,7 @@ public class CopilotAcpClient implements Closeable {
         String permKind = "";
         String permTitle = "";
         JsonObject toolCall = null;
-        
+
         if (reqParams != null && reqParams.has("toolCall")) {
             toolCall = reqParams.getAsJsonObject("toolCall");
             permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
@@ -862,12 +862,12 @@ public class CopilotAcpClient implements Closeable {
      */
     private String detectCommandAbuse(JsonObject toolCall) {
         if (toolCall == null) return null;
-        
+
         String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
         if (!"run_command".equals(toolName) && !"intellij-code-tools-run_command".equals(toolName)) {
             return null;
         }
-        
+
         // Extract command from parameters
         String command = "";
         if (toolCall.has("parameters")) {
@@ -876,9 +876,9 @@ public class CopilotAcpClient implements Closeable {
                 command = params.get("command").getAsString().toLowerCase().trim();
             }
         }
-        
+
         if (command.isEmpty()) return null;
-        
+
         // Check for test patterns - must come before general 'test' word check
         if (command.matches(".*(gradlew|gradle|mvn|npm|yarn|pnpm|pytest|jest|mocha|go) test.*") ||
             command.matches(".*\\./gradlew.*test.*") ||
@@ -886,32 +886,32 @@ public class CopilotAcpClient implements Closeable {
             command.matches(".*cargo test.*")) {
             return "test";
         }
-        
+
         // Check for grep usage
-        if (command.startsWith("grep ") || command.contains("| grep") || 
+        if (command.startsWith("grep ") || command.contains("| grep") ||
             command.contains("&& grep") || command.contains("; grep")) {
             return "grep";
         }
-        
+
         // Check for find usage (file search)
         if (command.matches("find \\S+.*-name.*") || command.matches("find \\S+.*-type.*") ||
             command.startsWith("find .") || command.startsWith("find /")) {
             return "find";
         }
-        
+
         // Check for git operations we have tools for
         if (command.startsWith("git status") || command.startsWith("git diff") ||
             command.startsWith("git log") || command.startsWith("git branch")) {
             return "git";
         }
-        
+
         return null;
     }
 
     /**
      * Build and send a retry prompt after a built-in action was denied,
      * instructing the agent to use IntelliJ MCP tools instead.
-     * 
+     * <p>
      * Workaround for CLI bug #556 - tool filtering doesn't work in --acp mode.
      */
     private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
@@ -922,30 +922,25 @@ public class CopilotAcpClient implements Closeable {
         retryContent.addProperty("type", "text");
 
         String instruction;
-        
+
         // Specific guidance for run_command abuse
         if (deniedKind.startsWith("run_command_abuse:")) {
             String abuseType = deniedKind.substring("run_command_abuse:".length());
             instruction = switch (abuseType) {
-                case "test" -> 
-                    "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
+                case "test" -> "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
                     "Provides structured results, coverage, and failure details.";
-                case "grep" -> 
-                    "❌ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
+                case "grep" -> "❌ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
                     "'intellij-code-tools-find_references' instead. They search live editor buffers.";
-                case "find" -> 
-                    "❌ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
-                case "git" ->
-                    "❌ Don't use git commands via run_command. Use dedicated git tools: " +
+                case "find" -> "❌ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
+                case "git" -> "❌ Don't use git commands via run_command. Use dedicated git tools: " +
                     "'intellij-code-tools-git_status', 'intellij-code-tools-git_diff', etc.";
-                default -> 
-                    "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+                default -> "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
         } else {
             // Generic message for other denials
             instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
         }
-        
+
         retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
         retryParams.add("prompt", retryPrompt);

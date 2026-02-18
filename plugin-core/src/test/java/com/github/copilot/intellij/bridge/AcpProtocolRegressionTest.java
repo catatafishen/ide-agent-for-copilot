@@ -412,7 +412,7 @@ class AcpProtocolRegressionTest {
      * Test that unknown methods get an error response from the mock server.
      */
     @Test
-    void testUnknownMethodGetsNoResponse() throws Exception {
+    void testUnknownMethodGetsNoResponse() {
         MockAcpServer server = new MockAcpServer();
         server.start();
 
