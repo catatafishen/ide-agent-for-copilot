@@ -169,6 +169,13 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
         
+        // Exclude CLI's built-in file tools - force agent to use IntelliJ MCP tools instead
+        cmd.add("--excluded-tools");
+        cmd.add("view");
+        cmd.add("edit");
+        cmd.add("create");
+        LOG.info("Excluded CLI built-in tools: view, edit, create");
+        
         // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
             Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
