@@ -839,22 +839,11 @@ public class CopilotAcpClient implements Closeable {
         JsonObject retryContent = new JsonObject();
         retryContent.addProperty("type", "text");
 
-        String instruction = switch (deniedKind) {
-            case "execute" ->
-                "❌ THE TOOL YOU TRIED DOES NOT EXIST. You are running inside an IntelliJ plugin with ONLY 54 specific MCP tools. " +
-                    "You invented a tool name that doesn't exist. List available tools first to see what's actually available. " +
-                    "For shell commands, use 'run_command' (NOT generic 'execute' or made-up tool names). " +
-                    "The output will be visible in IntelliJ and returned to you.";
-            case "runInTerminal" ->
-                "❌ THE TOOL YOU TRIED DOES NOT EXIST. You are in an IntelliJ plugin with ONLY 54 specific MCP tools. " +
-                    "List available tools first. For interactive shells, use 'run_in_terminal' (NOT generic 'runInTerminal'). " +
-                    "Use list_terminals to see available shells.";
-            default ->
-                "❌ THE TOOL YOU TRIED DOES NOT EXIST. You are in an IntelliJ plugin with ONLY 54 specific MCP tools. " +
-                    "You invented a tool name. List available tools first to see what exists. " +
-                    "For files: use intellij_read_file to read, intellij_write_file to write. " +
-                    "DO NOT assume tools exist - check the tools list.";
-        };
+        // Simple, consistent message: Use tools starting with "intellij-code-tools-"
+        String instruction = "❌ Tool denied. Use tools starting with 'intellij-code-tools-' prefix instead. " +
+            "Examples: intellij-code-tools-intellij_read_file, intellij-code-tools-intellij_write_file, " +
+            "intellij-code-tools-run_command, intellij-code-tools-search_symbols";
+        
         retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
         retryParams.add("prompt", retryPrompt);
