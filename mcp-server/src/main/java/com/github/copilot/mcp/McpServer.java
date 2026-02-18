@@ -153,12 +153,12 @@ public class McpServer {
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
             Read 300-500 lines per call for efficiency (each call has overhead).
             
-            3. CODE SEARCH: Use IntelliJ's AST-based tools, NOT grep:
-            - search_symbols: Find class/method/function definitions
-            - find_references: Find all usages of a symbol
-            - get_file_outline: Get file structure
-            - grep MCP tool: Pattern search across files (ONLY if AST tools can't solve it)
-            DO NOT use shell grep via run_command - it searches stale files, not editor buffers.
+            3. CODE SEARCH: Use IntelliJ's AST-based tools, NOT shell grep:
+            - search_symbols: Find class/method/function definitions by name
+            - find_references: Find all usages of a symbol at specific location
+            - get_file_outline: Get structure/symbols in a specific file
+            These search LIVE editor buffers with unsaved changes. Shell grep searches stale disk files.
+            DO NOT use grep via run_command.
 
             AGENT WORKSPACE: For temporary/working files, use '.agent-work/' directory in project root. \
             This directory is git-ignored and persists across sessions. Use 'intellij_write_file' to write files there. \
