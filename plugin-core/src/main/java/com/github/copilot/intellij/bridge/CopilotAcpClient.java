@@ -169,18 +169,16 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
         
-        // Exclude CLI's built-in tools - force agent to use IntelliJ MCP tools instead
-        // - view/edit/create: Use intellij_read_file/intellij_write_file (reads live editor buffers)
-        // - grep/glob: Use search_symbols/find_references (AST-based, not pattern matching)
-        // - bash: Use run_command or run_in_terminal MCP tools (provides terminal integration)
-        cmd.add("--excluded-tools");
-        cmd.add("view");
-        cmd.add("edit");
-        cmd.add("create");
-        cmd.add("grep");
-        cmd.add("glob");
-        cmd.add("bash");
-        LOG.info("Excluded CLI built-in tools: view, edit, create, grep, glob, bash");
+        // WORKAROUND: --excluded-tools doesn't work in --acp mode (CLI bug?)
+        // Agent still sees view/edit/grep/glob/bash even when excluded.
+        // Using --available-tools whitelist instead to explicitly control tool access.
+        // Only allow: report_intent, update_todo, task, ask_user (required for CLI functionality)
+        cmd.add("--available-tools");
+        cmd.add("report_intent");
+        cmd.add("update_todo");
+        cmd.add("task");
+        cmd.add("ask_user");
+        LOG.info("Using --available-tools whitelist: report_intent, update_todo, task, ask_user");
         LOG.info("Full copilot command: " + String.join(" ", cmd));
         
         // Configure Copilot CLI to use .agent-work/ for session state
