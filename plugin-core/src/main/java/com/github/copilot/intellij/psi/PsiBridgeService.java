@@ -379,29 +379,30 @@ public final class PsiBridgeService implements Disposable {
     private String listProjectFiles(JsonObject args) {
         String dir = args.has("directory") ? args.get("directory").getAsString() : "";
         String pattern = args.has("pattern") ? args.get("pattern").getAsString() : "";
+        return ReadAction.compute(() -> computeProjectFilesList(dir, pattern));
+    }
 
-        return ReadAction.compute(() -> {
-            String basePath = project.getBasePath();
-            if (basePath == null) return ERROR_NO_PROJECT_PATH;
+    private String computeProjectFilesList(String dir, String pattern) {
+        String basePath = project.getBasePath();
+        if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
-            List<String> files = new ArrayList<>();
-            ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
-            fileIndex.iterateContent(vf -> {
-                if (!vf.isDirectory()) {
-                    String relPath = relativize(basePath, vf.getPath());
-                    if (relPath == null) return true;
-                    if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
-                    if (!pattern.isEmpty() && doesNotMatchGlob(vf.getName(), pattern)) return true;
-                    String tag = fileIndex.isInTestSourceContent(vf) ? "test " : "";
-                    files.add(String.format("%s [%s%s]", relPath, tag, fileType(vf.getName())));
-                }
-                return files.size() < 500;
-            });
-
-            if (files.isEmpty()) return "No files found";
-            Collections.sort(files);
-            return files.size() + " files:\n" + String.join("\n", files);
+        List<String> files = new ArrayList<>();
+        ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
+        fileIndex.iterateContent(vf -> {
+            if (!vf.isDirectory()) {
+                String relPath = relativize(basePath, vf.getPath());
+                if (relPath == null) return true;
+                if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
+                if (!pattern.isEmpty() && doesNotMatchGlob(vf.getName(), pattern)) return true;
+                String tag = fileIndex.isInTestSourceContent(vf) ? "test " : "";
+                files.add(String.format("%s [%s%s]", relPath, tag, fileType(vf.getName())));
+            }
+            return files.size() < 500;
         });
+
+        if (files.isEmpty()) return "No files found";
+        Collections.sort(files);
+        return files.size() + " files:\n" + String.join("\n", files);
     }
 
     private String getFileOutline(JsonObject args) {
@@ -901,16 +902,14 @@ public final class PsiBridgeService implements Disposable {
 
     private void applyJUnitTestProperties(RunConfiguration config, JsonObject args) {
         try {
-            var getData = config.getClass().getMethod("getPersistentData");
-            Object data = getData.invoke(config);
+            Object data = getJUnitPersistentData(config);
 
             if (args.has(PARAM_TEST_CLASS)) {
                 applyTestClass(config, args, data);
             }
             if (args.has(PARAM_TEST_METHOD)) {
-                data.getClass().getField(FIELD_METHOD_NAME).set(data,
-                    args.get(PARAM_TEST_METHOD).getAsString());
-                data.getClass().getField(FIELD_TEST_OBJECT).set(data, TEST_TYPE_METHOD);
+                setJUnitField(data, FIELD_METHOD_NAME, args.get(PARAM_TEST_METHOD).getAsString());
+                setJUnitField(data, FIELD_TEST_OBJECT, TEST_TYPE_METHOD);
             }
         } catch (Exception e) {
             LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
@@ -921,48 +920,50 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    private void applyTestClass(RunConfiguration config, JsonObject args, Object data) throws Exception {
+    private Object getJUnitPersistentData(RunConfiguration config) throws ReflectiveOperationException {
+        var getData = config.getClass().getMethod("getPersistentData");
+        return getData.invoke(config);
+    }
+
+    private void setJUnitField(Object data, String fieldName, Object value) throws ReflectiveOperationException {
+        data.getClass().getField(fieldName).set(data, value);
+    }
+
+    private void applyTestClass(RunConfiguration config, JsonObject args, Object data) throws ReflectiveOperationException {
         String testClass = args.get(PARAM_TEST_CLASS).getAsString();
         ClassInfo classInfo = resolveClass(testClass);
-        data.getClass().getField("MAIN_CLASS_NAME").set(data, classInfo.fqn());
-        data.getClass().getField(FIELD_TEST_OBJECT).set(data,
+        setJUnitField(data, "MAIN_CLASS_NAME", classInfo.fqn());
+        setJUnitField(data, FIELD_TEST_OBJECT,
             args.has(PARAM_TEST_METHOD) ? TEST_TYPE_METHOD : TEST_TYPE_CLASS);
 
         // Auto-set module if not explicitly provided
         if (!args.has(PARAM_MODULE_NAME) && classInfo.module() != null) {
-            try {
-                var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
-                setModule.invoke(config, classInfo.module());
-            } catch (NoSuchMethodException e) {
-                LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
-            }
+            trySetModuleOnConfig(config, classInfo.module());
+        }
+    }
+
+    private void trySetModuleOnConfig(RunConfiguration config, Module module) {
+        try {
+            var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
+            setModule.invoke(config, module);
+        } catch (NoSuchMethodException e) {
+            LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
+        } catch (Exception e) {
+            LOG.warn("Failed to set module on config", e);
         }
     }
 
     private void applyModuleProperty(RunConfiguration config, JsonObject args) {
-        try {
-            Module module = ModuleManager.getInstance(project)
-                .findModuleByName(args.get(PARAM_MODULE_NAME).getAsString());
-            if (module != null) {
-                var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
-                setModule.invoke(config, module);
-            }
-        } catch (Exception ignored) {
-            // Config may not support setModule method
+        Module module = ModuleManager.getInstance(project)
+            .findModuleByName(args.get(PARAM_MODULE_NAME).getAsString());
+        if (module != null) {
+            trySetModuleOnConfig(config, module);
         }
     }
 
-    @SuppressWarnings("unchecked")
     private void applyEnvVars(RunConfiguration config, JsonObject envObj, List<String> changes) {
         try {
-            // Get existing env vars
-            Map<String, String> envs;
-            try {
-                var getEnvs = config.getClass().getMethod("getEnvs");
-                envs = new HashMap<>((Map<String, String>) getEnvs.invoke(config));
-            } catch (Exception e) {
-                envs = new HashMap<>();
-            }
+            Map<String, String> envs = getConfigEnvVars(config);
 
             // Merge new values (null value removes the key)
             for (var entry : envObj.entrySet()) {
@@ -975,11 +976,26 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
 
-            var setEnvs = config.getClass().getMethod("setEnvs", Map.class);
-            setEnvs.invoke(config, envs);
+            setConfigEnvVars(config, envs);
         } catch (Exception e) {
             changes.add("env vars (failed: " + e.getMessage() + ")");
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> getConfigEnvVars(RunConfiguration config) throws Exception {
+        try {
+            var getEnvs = config.getClass().getMethod("getEnvs");
+            return new HashMap<>((Map<String, String>) getEnvs.invoke(config));
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
+    private void setConfigEnvVars(RunConfiguration config, Map<String, String> envs)
+        throws ReflectiveOperationException {
+        var setEnvs = config.getClass().getMethod("setEnvs", Map.class);
+        setEnvs.invoke(config, envs);
     }
 
     private void setViaReflection(Object target, String methodName, String value,
