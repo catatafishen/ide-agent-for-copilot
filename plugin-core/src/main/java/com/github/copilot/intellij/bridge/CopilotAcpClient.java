@@ -823,12 +823,25 @@ public class CopilotAcpClient implements Closeable {
     private void handlePermissionRequest(long reqId, @Nullable JsonObject reqParams) {
         String permKind = "";
         String permTitle = "";
+        JsonObject toolCall = null;
+        
         if (reqParams != null && reqParams.has("toolCall")) {
-            JsonObject toolCall = reqParams.getAsJsonObject("toolCall");
+            toolCall = reqParams.getAsJsonObject("toolCall");
             permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
             permTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
         }
         LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
+
+        // Check if run_command is trying to do something we have a dedicated tool for
+        String commandAbuse = detectCommandAbuse(toolCall);
+        if (commandAbuse != null) {
+            String rejectOptionId = findRejectOption(reqParams);
+            LOG.info("ACP request_permission: DENYING run_command abuse: " + commandAbuse);
+            builtInActionDeniedDuringTurn = true;
+            lastDeniedKind = "run_command_abuse:" + commandAbuse;
+            sendPermissionResponse(reqId, rejectOptionId);
+            return;
+        }
 
         if (DENIED_PERMISSION_KINDS.contains(permKind)) {
             String rejectOptionId = findRejectOption(reqParams);
@@ -844,6 +857,47 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
+     * Detect if run_command is being abused to do something we have a dedicated tool for.
+     * Returns abuse type if detected, null otherwise.
+     */
+    private String detectCommandAbuse(JsonObject toolCall) {
+        if (toolCall == null) return null;
+        
+        String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
+        if (!"run_command".equals(toolName) && !"intellij-code-tools-run_command".equals(toolName)) {
+            return null;
+        }
+        
+        // Extract command from parameters
+        String command = "";
+        if (toolCall.has("parameters")) {
+            JsonObject params = toolCall.getAsJsonObject("parameters");
+            if (params.has("command")) {
+                command = params.get("command").getAsString().toLowerCase().trim();
+            }
+        }
+        
+        if (command.isEmpty()) return null;
+        
+        // Check for common patterns
+        if (command.contains("gradlew test") || command.contains("mvn test") || 
+            command.contains("npm test") || command.contains("pytest") ||
+            command.contains("go test") || command.matches(".*\\btest\\b.*")) {
+            return "test";
+        }
+        
+        if (command.startsWith("grep ") || command.contains("| grep") || command.contains("&& grep")) {
+            return "grep";
+        }
+        
+        if (command.startsWith("find ") || command.contains("| find") || command.matches("find \\S+ -name.*")) {
+            return "find";
+        }
+        
+        return null;
+    }
+
+    /**
      * Build and send a retry prompt after a built-in action was denied,
      * instructing the agent to use IntelliJ MCP tools instead.
      * 
@@ -856,8 +910,27 @@ public class CopilotAcpClient implements Closeable {
         JsonObject retryContent = new JsonObject();
         retryContent.addProperty("type", "text");
 
-        // Simple message: just tell them to use the intellij-code-tools- prefix
-        String instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+        String instruction;
+        
+        // Specific guidance for run_command abuse
+        if (deniedKind.startsWith("run_command_abuse:")) {
+            String abuseType = deniedKind.substring("run_command_abuse:".length());
+            instruction = switch (abuseType) {
+                case "test" -> 
+                    "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' tool instead. " +
+                    "It provides structured results, coverage, and failure details.";
+                case "grep" -> 
+                    "❌ Don't use grep via run_command. Use 'intellij-code-tools-search_symbols' or " +
+                    "'intellij-code-tools-find_references' instead. They search live editor buffers, not stale disk files.";
+                case "find" -> 
+                    "❌ Don't use find via run_command. Use 'intellij-code-tools-list_project_files' instead.";
+                default -> 
+                    "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+            };
+        } else {
+            // Generic message for other denials
+            instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+        }
         
         retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
