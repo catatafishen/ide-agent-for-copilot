@@ -59,13 +59,20 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Permission kinds that are denied, so the agent uses IntelliJ MCP tools instead.
-     * CLI tool filtering bug #556 means we can't exclude tools via --available-tools.
-     * Instead, we deny permission requests and provide simple guidance.
+     * 
+     * WORKAROUND for GitHub Copilot CLI bug #556:
+     * https://github.com/github/copilot-cli/issues/556
+     * 
+     * Bug: Tool filtering (--available-tools, --excluded-tools, session params) doesn't work
+     * in --acp mode. Agent sees ALL tools regardless of filtering attempts.
+     * 
+     * Until fixed, we deny permissions for CLI built-in tools at runtime to force
+     * agent to use IntelliJ MCP tools (which read live editor buffers, not stale disk files).
      */
     private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
-        "edit",          // CLI built-in - deny to force intellij_write_file
-        "create",        // CLI built-in - deny to force intellij_write_file
-        "read",          // CLI built-in - deny to force intellij_read_file
+        "edit",          // CLI built-in view tool - deny to force intellij_write_file
+        "create",        // CLI built-in create tool - deny to force intellij_write_file
+        "read",          // CLI built-in view tool - deny to force intellij_read_file
         "execute",       // Generic execute - doesn't exist, agent invents it
         "runInTerminal"  // Generic name - actual tool is run_in_terminal
     );
@@ -839,6 +846,8 @@ public class CopilotAcpClient implements Closeable {
     /**
      * Build and send a retry prompt after a built-in action was denied,
      * instructing the agent to use IntelliJ MCP tools instead.
+     * 
+     * Workaround for CLI bug #556 - tool filtering doesn't work in --acp mode.
      */
     private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
         JsonObject retryParams = new JsonObject();
@@ -847,10 +856,8 @@ public class CopilotAcpClient implements Closeable {
         JsonObject retryContent = new JsonObject();
         retryContent.addProperty("type", "text");
 
-        // Simple, consistent message: Use tools starting with "intellij-code-tools-"
-        String instruction = "❌ Tool denied. Use tools starting with 'intellij-code-tools-' prefix instead. " +
-            "Examples: intellij-code-tools-intellij_read_file, intellij-code-tools-intellij_write_file, " +
-            "intellij-code-tools-run_command, intellij-code-tools-search_symbols";
+        // Simple message: just tell them to use the intellij-code-tools- prefix
+        String instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
         
         retryContent.addProperty("text", instruction);
         retryPrompt.add(retryContent);
