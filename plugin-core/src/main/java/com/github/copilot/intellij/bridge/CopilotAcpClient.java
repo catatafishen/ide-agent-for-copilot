@@ -879,19 +879,30 @@ public class CopilotAcpClient implements Closeable {
         
         if (command.isEmpty()) return null;
         
-        // Check for common patterns
-        if (command.contains("gradlew test") || command.contains("mvn test") || 
-            command.contains("npm test") || command.contains("pytest") ||
-            command.contains("go test") || command.matches(".*\\btest\\b.*")) {
+        // Check for test patterns - must come before general 'test' word check
+        if (command.matches(".*(gradlew|gradle|mvn|npm|yarn|pnpm|pytest|jest|mocha|go) test.*") ||
+            command.matches(".*\\./gradlew.*test.*") ||
+            command.matches(".*python.*-m.*pytest.*") ||
+            command.matches(".*cargo test.*")) {
             return "test";
         }
         
-        if (command.startsWith("grep ") || command.contains("| grep") || command.contains("&& grep")) {
+        // Check for grep usage
+        if (command.startsWith("grep ") || command.contains("| grep") || 
+            command.contains("&& grep") || command.contains("; grep")) {
             return "grep";
         }
         
-        if (command.startsWith("find ") || command.contains("| find") || command.matches("find \\S+ -name.*")) {
+        // Check for find usage (file search)
+        if (command.matches("find \\S+.*-name.*") || command.matches("find \\S+.*-type.*") ||
+            command.startsWith("find .") || command.startsWith("find /")) {
             return "find";
+        }
+        
+        // Check for git operations we have tools for
+        if (command.startsWith("git status") || command.startsWith("git diff") ||
+            command.startsWith("git log") || command.startsWith("git branch")) {
+            return "git";
         }
         
         return null;
@@ -917,13 +928,16 @@ public class CopilotAcpClient implements Closeable {
             String abuseType = deniedKind.substring("run_command_abuse:".length());
             instruction = switch (abuseType) {
                 case "test" -> 
-                    "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' tool instead. " +
-                    "It provides structured results, coverage, and failure details.";
+                    "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
+                    "Provides structured results, coverage, and failure details.";
                 case "grep" -> 
-                    "❌ Don't use grep via run_command. Use 'intellij-code-tools-search_symbols' or " +
-                    "'intellij-code-tools-find_references' instead. They search live editor buffers, not stale disk files.";
+                    "❌ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
+                    "'intellij-code-tools-find_references' instead. They search live editor buffers.";
                 case "find" -> 
-                    "❌ Don't use find via run_command. Use 'intellij-code-tools-list_project_files' instead.";
+                    "❌ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
+                case "git" ->
+                    "❌ Don't use git commands via run_command. Use dedicated git tools: " +
+                    "'intellij-code-tools-git_status', 'intellij-code-tools-git_diff', etc.";
                 default -> 
                     "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
