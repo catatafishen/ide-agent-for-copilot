@@ -135,8 +135,9 @@ public class McpServer {
             - Built-in tools will be REJECTED. Always use the IntelliJ equivalents listed below.
 
             WHEN TO USE run_command vs run_in_terminal:
-            - run_command: Non-interactive commands that complete and exit (gradle build, git status, ls, grep).
-              Output appears in Run panel. Use this for builds, tests, scripts, code search.
+            - run_command: Non-interactive commands that complete and exit (gradle build, git status, ls).
+              Output appears in Run panel. Use this for builds, tests, scripts.
+              ⚠️ DO NOT use for code search - use search_symbols, find_references, or grep MCP tool instead.
             - run_in_terminal: Interactive shells or long-running processes (debugging, watching logs, interactive REPL).
               Opens a visible terminal tab. Use this when you need to see live output or send input to a process.
 
@@ -147,25 +148,31 @@ public class McpServer {
             2. TRUST MCP TOOL OUTPUTS - they return data directly in the response. \
             DO NOT try to read /tmp/ files created by the Copilot CLI itself - the tool output IS the data you need. \
             DO NOT invent filtering, processing, or transformation tools - work with the data you receive. \
-            If you need to filter/process output, use 'run_command' with grep/awk/sed, or process in your own logic. \
             For reading files: ALWAYS use 'intellij_read_file' (works for project files, logs, ANY file). \
-            NEVER use sed, cat, head, tail, grep, or the built-in 'view' tool to read file content. \
+            NEVER use sed, cat, head, tail, or shell grep to read file content. \
             intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
             Read 300-500 lines per call for efficiency (each call has overhead).
+            
+            3. CODE SEARCH: Use IntelliJ's AST-based tools, NOT grep:
+            - search_symbols: Find class/method/function definitions
+            - find_references: Find all usages of a symbol
+            - get_file_outline: Get file structure
+            - grep MCP tool: Pattern search across files (ONLY if AST tools can't solve it)
+            DO NOT use shell grep via run_command - it searches stale files, not editor buffers.
 
             AGENT WORKSPACE: For temporary/working files, use '.agent-work/' directory in project root. \
             This directory is git-ignored and persists across sessions. Use 'intellij_write_file' to write files there. \
             Example: '.agent-work/analysis.md', '.agent-work/issues-list.txt'. \
             DO NOT create temp files in /tmp/ - use .agent-work/ so files persist and are accessible to you later.
 
-            3. IMMEDIATELY after editing ANY file with intellij_write_file: \
+            4. IMMEDIATELY after editing ANY file with intellij_write_file: \
             a) Run 'get_highlights' on that SAME file to check for errors. \
             b) If errors exist, FIX THEM IMMEDIATELY before editing other files. \
             c) This mimics how human users see red squiggles instantly in IntelliJ. \
             d) Early error detection prevents cascade failures across multiple files. \
             Example workflow: intellij_write_file(file.java) → get_highlights(file.java) → verify no errors → continue.
 
-            4. For MULTIPLE SEQUENTIAL EDITS: \
+            5. For MULTIPLE SEQUENTIAL EDITS: \
             When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
             Check for errors with get_highlights after EACH edit (still required!). \
             After all edits complete, call format_code and optimize_imports ONCE. \
@@ -173,7 +180,7 @@ public class McpServer {
             intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
             format_code([file1]) → optimize_imports() → done.
 
-            5. CHECKING FILE HIGHLIGHTS (errors/warnings): \
+            6. CHECKING FILE HIGHLIGHTS (errors/warnings): \
             a) Just call get_highlights(file) directly - NO waiting or daemon commands needed. \
             b) IntelliJ analyzes files automatically in background. get_highlights returns current state. \
             c) DO NOT use shell commands like "sleep" or "wait for daemon" - just call get_highlights. \
@@ -191,9 +198,9 @@ public class McpServer {
             Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
             Only use run_command for tests as a last resort if run_tests fails.
 
-            8. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
+            9. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
 
-            9. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
+            10. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
 
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
             ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
