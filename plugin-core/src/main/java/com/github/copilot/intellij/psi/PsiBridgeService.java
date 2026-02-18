@@ -550,6 +550,8 @@ public final class PsiBridgeService implements Disposable {
 
             if (definition != null) {
                 for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
+                    if (results.size() >= 100) break;
+
                     PsiElement refEl = ref.getElement();
                     PsiFile file = refEl.getContainingFile();
                     if (file == null || file.getVirtualFile() == null) continue;
@@ -564,7 +566,6 @@ public final class PsiBridgeService implements Disposable {
                         String lineText = getLineText(doc, line - 1);
                         results.add(String.format("%s:%d: %s", relPath, line, lineText));
                     }
-                    if (results.size() >= 100) break;
                 }
             }
 
@@ -1193,9 +1194,8 @@ public final class PsiBridgeService implements Disposable {
             // Analyze each file for problems using existing highlights
             int count = 0;
             int filesWithProblems = 0;
+            outerLoop:
             for (VirtualFile vf : allFiles) {
-                if (count >= limit) break;
-
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) continue;
 
@@ -1219,6 +1219,8 @@ public final class PsiBridgeService implements Disposable {
                     }
 
                     for (var h : highlights) {
+                        if (count >= limit) break outerLoop;
+
                         if (h.getDescription() == null) continue;
 
                         // Filter to only show actual problems (not info/hints)
@@ -1233,7 +1235,6 @@ public final class PsiBridgeService implements Disposable {
                         problems.add(String.format(FORMAT_LOCATION,
                             relPath, line, severityName, h.getDescription()));
                         count++;
-                        if (count >= limit) break;
                     }
                 } catch (Exception e) {
                     LOG.warn("Failed to analyze file: " + relPath, e);
@@ -2517,7 +2518,7 @@ public final class PsiBridgeService implements Disposable {
             case "create" -> {
                 if (!args.has("name")) yield "Error: 'name' required for create";
                 String base = args.has("base") ? args.get("base").getAsString() : "HEAD";
-                yield runGit("branch", args.get("name").getAsString(), base);
+                yield runGit(PARAM_BRANCH, args.get("name").getAsString(), base);
             }
             case "switch", "checkout" -> {
                 if (!args.has("name")) yield "Error: 'name' required for switch";
@@ -2526,7 +2527,7 @@ public final class PsiBridgeService implements Disposable {
             case "delete" -> {
                 if (!args.has("name")) yield "Error: 'name' required for delete";
                 boolean force = args.has("force") && args.get("force").getAsBoolean();
-                yield runGit("branch", force ? "-D" : "-d", args.get("name").getAsString());
+                yield runGit(PARAM_BRANCH, force ? "-D" : "-d", args.get("name").getAsString());
             }
             default -> "Error: unknown action '" + action + "'. Use: list, create, switch, delete";
         };
@@ -4082,21 +4083,21 @@ public final class PsiBridgeService implements Disposable {
                     for (Module module : modules) {
                         ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
                         for (var entry : rootManager.getOrderEntries()) {
-                            if (entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry) {
-                                var lib = libEntry.getLibrary();
-                                if (lib == null) continue;
-                                String entryName = entry.getPresentableName();
+                            if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry)) continue;
 
-                                if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
-                                    continue;
-                                }
+                            var lib = libEntry.getLibrary();
+                            if (lib == null) continue;
 
-                                VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
-                                if (sources.length > 0) {
-                                    withSources.add(entryName);
-                                } else {
-                                    withoutSources.add(entryName);
-                                }
+                            String entryName = entry.getPresentableName();
+                            if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
+                                continue;
+                            }
+
+                            VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
+                            if (sources.length > 0) {
+                                withSources.add(entryName);
+                            } else {
+                                withoutSources.add(entryName);
                             }
                         }
                     }
@@ -5115,8 +5116,8 @@ public final class PsiBridgeService implements Disposable {
                             String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
                             sb.append("  ERROR ").append(file);
                             // Try to get line number from implementation class
-                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl) {
-                                if (impl.getLine() > 0) sb.append(":").append(impl.getLine());
+                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl && impl.getLine() > 0) {
+                                sb.append(":").append(impl.getLine());
                             }
                             sb.append(" ").append(msg.getMessage()).append("\n");
                         }
@@ -5131,8 +5132,8 @@ public final class PsiBridgeService implements Disposable {
                             }
                             String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
                             sb.append("  WARN ").append(file);
-                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl) {
-                                if (impl.getLine() > 0) sb.append(":").append(impl.getLine());
+                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl && impl.getLine() > 0) {
+                                sb.append(":").append(impl.getLine());
                             }
                             sb.append(" ").append(msg.getMessage()).append("\n");
                         }
