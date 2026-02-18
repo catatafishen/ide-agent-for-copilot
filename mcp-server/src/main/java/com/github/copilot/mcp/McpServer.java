@@ -234,119 +234,86 @@ public class McpServer {
         JsonObject result = new JsonObject();
         JsonArray tools = new JsonArray();
 
-        tools.add(buildTool("search_symbols",
-            "Search for class, method, function, or interface definitions across the project using " +
-                "IntelliJ's code analysis engine (AST). Returns file path, line number, and the definition line. " +
-                "More accurate than grep — understands code structure. PREFER THIS over grep for finding definitions. " +
-                "Use query='*' with a type filter to list ALL symbols of that type (e.g., all interfaces).",
+        tools.add(buildTool("search_symbols", "Search Symbols",
             Map.of(
-                "query", Map.of("type", "string", "description", "Symbol name to search for, or '*' to list all symbols of a given type"),
-                "type", Map.of("type", "string", "description", "Optional: filter by type (class, method, function, interface, field)", "default", "")
+                "query", Map.of("type", "string", "description", "Symbol name to search for, or '*' t"),
+                "type", Map.of("type", "string", "description", "Optional: filter by type (class, me", "default", "")
             ),
             List.of("query")));
 
-        tools.add(buildTool("get_file_outline",
-            "Get the structural outline of a source file using AST analysis: classes, methods, fields, " +
-                "functions with line numbers. PREFER THIS over grep for understanding file structure.",
-            Map.of("path", Map.of("type", "string", "description", "Absolute or project-relative path to the source file")),
+        tools.add(buildTool("get_file_outline", "Get File Outline",
+            Map.of("path", Map.of("type", "string", "description", "Absolute or project-relative path t")),
             List.of("path")));
 
-        tools.add(buildTool("find_references",
-            "Find all usages of a symbol using IntelliJ's reference resolution engine. " +
-                "Understands imports, type hierarchy, and overrides. PREFER THIS over grep for finding usages.",
+        tools.add(buildTool("find_references", "Find References",
             Map.of(
                 "symbol", Map.of("type", "string", "description", "The exact symbol name to search for"),
-                "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.java', '*.kt')", "default", "")
+                "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter fil", "default", "")
             ),
             List.of("symbol")));
 
-        tools.add(buildTool("list_project_files",
-            "List source files in the project with their types. Useful for getting an overview of the project structure.",
+        tools.add(buildTool("list_project_files", "List Project Files",
             Map.of(
-                "directory", Map.of("type", "string", "description", "Optional subdirectory to list (relative to project root)", "default", ""),
+                "directory", Map.of("type", "string", "description", "Optional subdirectory to list (rela", "default", ""),
                 "pattern", Map.of("type", "string", "description", "Optional glob pattern (e.g., '*.java')", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("list_tests",
-            "Discover test classes and test methods in the project using AST analysis. " +
-                "Finds methods annotated with @Test, @ParameterizedTest, @RepeatedTest. " +
-                "PREFER THIS over grep for finding tests.",
+        tools.add(buildTool("list_tests", "List Tests",
             Map.of(
-                "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter test files (e.g., '*.java', '*Test.kt')", "default", "")
+                "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter tes", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("run_tests",
-            "Run tests through IntelliJ's test runner. Tests appear in the IDE's Run panel. " +
-                "Returns structured results with pass/fail counts and failure details. " +
-                "PREFER THIS over running gradle/maven commands directly.",
+        tools.add(buildTool("run_tests", "Run Tests",
             Map.of(
-                "target", Map.of("type", "string", "description", "Test target: fully qualified class name (e.g., 'com.example.MyTest'), " +
+                "target", Map.of("type", "string", "description", "Test target: fully qualified class " +
                     "class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"),
-                "module", Map.of("type", "string", "description", "Optional Gradle module name (e.g., 'mcp-server', 'plugin-core')", "default", "")
+                "module", Map.of("type", "string", "description", "Optional Gradle module name (e.g., ", "default", "")
             ),
             List.of("target")));
 
-        tools.add(buildTool("get_test_results",
-            "Get the results from the last test run without re-running tests. " +
-                "Returns pass/fail counts, failure details, and timing from JUnit XML reports.",
+        tools.add(buildTool("get_test_results", "Get Test Results",
             Map.of(
-                "module", Map.of("type", "string", "description", "Optional Gradle module name to get results for", "default", "")
+                "module", Map.of("type", "string", "description", "Optional Gradle module name to get ", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("get_coverage",
-            "Get code coverage data for the project or a specific file. " +
-                "Reads JaCoCo reports or IntelliJ coverage data. Run tests with coverage first.",
+        tools.add(buildTool("get_coverage", "Get Coverage",
             Map.of(
-                "file", Map.of("type", "string", "description", "Optional file or class name to filter coverage for", "default", "")
+                "file", Map.of("type", "string", "description", "Optional file or class name to filt", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("get_project_info",
-            "Get project environment info: SDK/JDK path and version, modules, build system, " +
-                "and run configurations. ALWAYS call this first before running any build/test commands " +
-                "to get the correct JAVA_HOME and build tool paths. Do NOT search for java or gradle yourself.",
+        tools.add(buildTool("get_project_info", "Get Project Info",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("list_run_configurations",
-            "List all IntelliJ run configurations in the project. " +
-                "Shows configuration name, type (JUnit, Gradle, Application, etc.), and whether it's temporary.",
+        tools.add(buildTool("list_run_configurations", "List Run Configurations",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("run_configuration",
-            "Execute an existing IntelliJ run configuration by name. " +
-                "The run will appear in IntelliJ's Run panel with full output. " +
-                "PREFER THIS over running commands manually. Use list_run_configurations to find available configs.",
+        tools.add(buildTool("run_configuration", "Run Configuration",
             Map.of(
-                "name", Map.of("type", "string", "description", "Exact name of the run configuration to execute")
+                "name", Map.of("type", "string", "description", "Exact name of the run configuration")
             ),
             List.of("name")));
 
-        tools.add(buildTool("create_run_configuration",
-            "Create a new IntelliJ run configuration. Supports Application, JUnit, Gradle, and other types. " +
-                "Can set environment variables, JVM args, working directory, main class, test class, etc. " +
-                "The configuration is saved and selected in IntelliJ. Use run_configuration to execute it.",
+        tools.add(buildTool("create_run_configuration", "Create Run Configuration",
             Map.of(
                 "name", Map.of("type", "string", "description", "Name for the new run configuration"),
-                "type", Map.of("type", "string", "description", "Configuration type: 'application', 'junit', 'gradle', etc."),
-                "jvm_args", Map.of("type", "string", "description", "Optional: JVM arguments (e.g., '-Xmx2g -Dkey=value')"),
+                "type", Map.of("type", "string", "description", "Configuration type: 'application', "),
+                "jvm_args", Map.of("type", "string", "description", "Optional: JVM arguments (e.g., '-Xm"),
                 "program_args", Map.of("type", "string", "description", "Optional: program arguments"),
                 "working_dir", Map.of("type", "string", "description", "Optional: working directory path"),
-                "main_class", Map.of("type", "string", "description", "Optional: main class (for Application configs)"),
+                "main_class", Map.of("type", "string", "description", "Optional: main class (for Applicati"),
                 "test_class", Map.of("type", "string", "description", "Optional: test class (for JUnit configs)"),
-                "module_name", Map.of("type", "string", "description", "Optional: IntelliJ module name (from get_project_info)")
+                "module_name", Map.of("type", "string", "description", "Optional: IntelliJ module name (fro")
             ),
             List.of("name", "type")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
-        tools.add(buildTool("edit_run_configuration",
-            "Edit an existing IntelliJ run configuration. Can modify environment variables, JVM args, " +
-                "working directory, program args, and type-specific properties. " +
-                "For env vars, pass a JSON object — set value to null to remove a variable.",
+        tools.add(buildTool("edit_run_configuration", "Edit Run Configuration",
             Map.of(
                 "name", Map.of("type", "string", "description", "Name of the run configuration to edit"),
                 "jvm_args", Map.of("type", "string", "description", "Optional: new JVM arguments"),
@@ -356,160 +323,109 @@ public class McpServer {
             List.of("name")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
-        tools.add(buildTool("get_problems",
-            "Get code problems, warnings, and errors reported by IntelliJ's inspections for a file or all open files. " +
-                "Returns severity, line number, and description for each problem. " +
-                "Files must be open in the editor for inspection results to be available.",
+        tools.add(buildTool("get_problems", "Get Problems",
             Map.of(
-                "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all open files.", "default", "")
+                "path", Map.of("type", "string", "description", "Optional: file path to check. If om", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("optimize_imports",
-            "Run IntelliJ's import optimizer on a file. Removes unused imports and organizes remaining ones " +
-                "according to project code style settings. ALWAYS run this after making code changes.",
+        tools.add(buildTool("optimize_imports", "Optimize Imports",
             Map.of(
-                "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
+                "path", Map.of("type", "string", "description", "Absolute or project-relative path t")
             ),
             List.of("path")));
 
-        tools.add(buildTool("format_code",
-            "Run IntelliJ's code formatter on a file. Formats the entire file according to the project's " +
-                "code style settings (including .editorconfig). ALWAYS run this after making code changes.",
+        tools.add(buildTool("format_code", "Format Code",
             Map.of(
-                "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file")
+                "path", Map.of("type", "string", "description", "Absolute or project-relative path t")
             ),
             List.of("path")));
 
-        tools.add(buildTool("get_highlights",
-            "Get cached syntax highlights and daemon-level diagnostics for project source files. " +
-                "Reads results from IntelliJ's on-the-fly analysis (already-analyzed files only). " +
-                "Includes findings from third-party plugins like SonarQube/SonarLint (if installed). " +
-                "Fast but limited — only returns issues the IDE has already detected in memory. " +
-                "For comprehensive code quality analysis, use run_inspections instead.",
+        tools.add(buildTool("get_highlights", "Get Highlights",
             Map.of(
-                "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all project source files.", "default", ""),
-                "limit", Map.of("type", "integer", "description", "Maximum number of highlights to return (default: 100)")
+                "path", Map.of("type", "string", "description", "Optional: file path to check. If om", "default", ""),
+                "limit", Map.of("type", "integer", "description", "Maximum number of highlights to ret")
             ),
             List.of()));
 
-        tools.add(buildTool("run_inspections",
-            "Run IntelliJ's code inspection engine (same as Analyze > Inspect Code). " +
-                "Triggers comprehensive analysis using the current inspection profile. " +
-                "Finds code quality issues, security vulnerabilities, typos, complexity warnings, " +
-                "and third-party findings (e.g. SonarQube). Results also appear in the IDE's Inspection Results view. " +
-                "Use the 'scope' parameter to target a specific file or directory (much faster than whole project). " +
-                "The first call is SLOW (may take minutes for whole project) but subsequent pages are instant (cached for 5 min). " +
-                "IMPORTANT: The response header shows 'Found N total problems ... Showing X-Y of N'. " +
-                "You MUST check if Y < N and paginate with offset to fetch ALL results before drawing conclusions. " +
-                "Do NOT assume the first page is everything.",
+        tools.add(buildTool("run_inspections", "Run Inspections",
             Map.of(
-                "scope", Map.of("type", "string", "description",
-                    "Optional: file or directory path to inspect. If omitted, inspects the entire project. " +
+                "scope", Map.of("type", "string", "description", "Optional: file or directory path to" +
                         "Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"),
-                "limit", Map.of("type", "integer", "description",
-                    "Page size (default: 100). Maximum problems to return per call."),
-                "offset", Map.of("type", "integer", "description",
-                    "Number of problems to skip (default: 0). Use with limit to paginate through results."),
-                "min_severity", Map.of("type", "string", "description",
-                    "Minimum severity filter. Options: ERROR, WARNING, WEAK_WARNING, INFO. " +
+                "limit", Map.of("type", "integer", "description", "Page size (default: 100). Maximum p"),
+                "offset", Map.of("type", "integer", "description", "Number of problems to skip (default"),
+                "min_severity", Map.of("type", "string", "description", "Minimum severity filter. Options: E" +
                         "Default: all severities included. Only set this if the user explicitly asks to filter by severity.")
             ),
             List.of()));
 
-        tools.add(buildTool("add_to_dictionary",
-            "Add a word to the project's spelling dictionary so it is no longer flagged as a typo. " +
-                "Use this to mark technical terms, acronyms, or domain-specific words as accepted. " +
-                "The word is saved to the project dictionary and persists across sessions.",
+        tools.add(buildTool("add_to_dictionary", "Add To Dictionary",
             Map.of(
-                "word", Map.of("type", "string", "description", "The word to add to the project dictionary")
+                "word", Map.of("type", "string", "description", "The word to add to the project dict")
             ),
             List.of("word")));
 
-        tools.add(buildTool("suppress_inspection",
-            "Suppress a specific inspection finding for a given code element by adding the appropriate " +
-                "suppression annotation. For Java: adds @SuppressWarnings(\"InspectionId\"). " +
-                "For Kotlin: adds @Suppress(\"InspectionId\"). Use this to mark false positives " +
-                "so they don't appear in future inspection runs.",
+        tools.add(buildTool("suppress_inspection", "Suppress Inspection",
             Map.of(
-                "path", Map.of("type", "string", "description", "Path to the file containing the code to suppress"),
-                "line", Map.of("type", "integer", "description", "Line number where the inspection finding is (1-based)"),
-                "inspection_id", Map.of("type", "string", "description",
-                    "The inspection ID to suppress (e.g. 'SpellCheckingInspection', 'UnusedReturnValue', 'DuplicatedCode')")
+                "path", Map.of("type", "string", "description", "Path to the file containing the cod"),
+                "line", Map.of("type", "integer", "description", "Line number where the inspection fi"),
+                "inspection_id", Map.of("type", "string", "description", "The inspection ID to suppress (e.g.")
             ),
             List.of("path", "line", "inspection_id")));
 
-        tools.add(buildTool("run_qodana",
-            "Run Qodana local analysis on the project. This triggers JetBrains Qodana's code inspection " +
-                "engine which uses its own inspection profile (qodana.starter) and may find different/additional " +
-                "issues compared to run_inspections. Results appear in the Qodana tab of the Problems tool window " +
-                "and are also returned as SARIF-format findings. This is SLOW (may take several minutes).",
+        tools.add(buildTool("run_qodana", "Run Qodana",
             Map.of(
-                "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
+                "limit", Map.of("type", "integer", "description", "Maximum number of problems to retur")
             ),
             List.of()));
 
-        tools.add(buildTool("intellij_read_file",
-            "Read file contents through IntelliJ's editor buffer. Returns the in-memory version if the file " +
-                "is open in the editor (which may differ from disk). Supports line ranges. " +
-                "PREFER THIS over your built-in file reading tools — this reads IntelliJ's live editor state.",
+        tools.add(buildTool("intellij_read_file", "Intellij Read File",
             Map.of(
-                "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
-                "start_line", Map.of("type", "integer", "description", "Optional: first line to read (1-based). If omitted, reads from start."),
-                "end_line", Map.of("type", "integer", "description", "Optional: last line to read (inclusive). If omitted, reads to end.")
+                "path", Map.of("type", "string", "description", "Absolute or project-relative path t"),
+                "start_line", Map.of("type", "integer", "description", "Optional: first line to read (1-bas"),
+                "end_line", Map.of("type", "integer", "description", "Optional: last line to read (inclus")
             ),
             List.of("path")));
 
-        tools.add(buildTool("intellij_write_file",
-            "Write file contents through IntelliJ's Document API. Supports undo, VCS tracking, and editor sync. " +
-                "Use 'content' for full file replacement, or 'old_str'+'new_str' for precise edits. " +
-                "ALWAYS USE THIS instead of your built-in file writing tools — this keeps IntelliJ in sync " +
-                "and supports undo (Ctrl+Z). Auto-formats by default; set auto_format=false for sequential edits.",
+        tools.add(buildTool("intellij_write_file", "Intellij Write File",
             Map.of(
-                "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file"),
-                "content", Map.of("type", "string", "description", "Optional: full file content to write (replaces entire file or creates new file)"),
-                "old_str", Map.of("type", "string", "description", "Optional: exact string to find and replace (must be unique in file)"),
-                "new_str", Map.of("type", "string", "description", "Optional: replacement string (used with old_str)"),
-                "auto_format", Map.of("type", "boolean", "description", "Auto-format and optimize imports after write (default: true). Set false for sequential edits, then call format_code once at the end.")
+                "path", Map.of("type", "string", "description", "Absolute or project-relative path t"),
+                "content", Map.of("type", "string", "description", "Optional: full file content to writ"),
+                "old_str", Map.of("type", "string", "description", "Optional: exact string to find and "),
+                "new_str", Map.of("type", "string", "description", "Optional: replacement string (used "),
+                "auto_format", Map.of("type", "boolean", "description", "Auto-format and optimize imports af")
             ),
             List.of("path")));
 
         // ---- Git tools ----
 
-        tools.add(buildTool("git_status",
-            "Show the working tree status: changed, staged, and untracked files. " +
-                "Returns short format by default (M/A/D/?? markers).",
+        tools.add(buildTool("git_status", "Git Status",
             Map.of(
-                "verbose", Map.of("type", "boolean", "description", "If true, show full 'git status' output instead of short format")
+                "verbose", Map.of("type", "boolean", "description", "If true, show full 'git status' out")
             ),
             List.of()));
 
-        tools.add(buildTool("git_diff",
-            "Show changes between working tree, staging area, or commits. " +
-                "By default shows unstaged changes. Use 'staged' for staged changes.",
+        tools.add(buildTool("git_diff", "Git Diff",
             Map.of(
-                "staged", Map.of("type", "boolean", "description", "If true, show staged (cached) changes instead of working tree"),
-                "commit", Map.of("type", "string", "description", "Compare against this commit (e.g., 'HEAD~1', a commit SHA, or 'main')"),
+                "staged", Map.of("type", "boolean", "description", "If true, show staged (cached) chang"),
+                "commit", Map.of("type", "string", "description", "Compare against this commit (e.g., "),
                 "path", Map.of("type", "string", "description", "Limit diff to this file path"),
-                "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats (insertions/deletions), not full diff")
+                "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats (inse")
             ),
             List.of()));
 
-        tools.add(buildTool("git_log",
-            "Show commit history. Returns last 20 commits by default in short format.",
+        tools.add(buildTool("git_log", "Git Log",
             Map.of(
-                "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show (default: 20)"),
-                "format", Map.of("type", "string", "description", "Output format: 'oneline', 'short', 'medium' (default), 'full'"),
+                "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show ("),
+                "format", Map.of("type", "string", "description", "Output format: 'oneline', 'short', "),
                 "author", Map.of("type", "string", "description", "Filter commits by author name or email"),
-                "since", Map.of("type", "string", "description", "Show commits after this date (e.g., '2024-01-01', '1 week ago')"),
+                "since", Map.of("type", "string", "description", "Show commits after this date (e.g.,"),
                 "path", Map.of("type", "string", "description", "Show only commits touching this file"),
-                "branch", Map.of("type", "string", "description", "Show commits from this branch (default: current)")
+                "branch", Map.of("type", "string", "description", "Show commits from this branch (defa")
             ),
             List.of()));
 
-        tools.add(buildTool("git_blame",
-            "Show line-by-line authorship (blame/annotate) for a file. " +
-                "Shows who last modified each line, when, and in which commit.",
+        tools.add(buildTool("git_blame", "Git Blame",
             Map.of(
                 "path", Map.of("type", "string", "description", "File path to blame"),
                 "line_start", Map.of("type", "integer", "description", "Start line number for partial blame"),
@@ -517,116 +433,92 @@ public class McpServer {
             ),
             List.of("path")));
 
-        tools.add(buildTool("git_commit",
-            "Commit staged changes with a message. Supports amend and commit-all. " +
-                "Stage files first with git_stage, or use 'all' to commit all tracked changes.",
+        tools.add(buildTool("git_commit", "Git Commit",
             Map.of(
-                "message", Map.of("type", "string", "description", "Commit message (use conventional commits format)"),
-                "amend", Map.of("type", "boolean", "description", "If true, amend the previous commit instead of creating a new one"),
-                "all", Map.of("type", "boolean", "description", "If true, automatically stage all modified/deleted tracked files before committing")
+                "message", Map.of("type", "string", "description", "Commit message (use conventional co"),
+                "amend", Map.of("type", "boolean", "description", "If true, amend the previous commit "),
+                "all", Map.of("type", "boolean", "description", "If true, automatically stage all mo")
             ),
             List.of("message")));
 
-        tools.add(buildTool("git_stage",
-            "Stage files for commit (git add). Stage specific files or all changes.",
+        tools.add(buildTool("git_stage", "Git Stage",
             Map.of(
                 "path", Map.of("type", "string", "description", "Single file path to stage"),
                 "paths", Map.of("type", "array", "description", "Multiple file paths to stage"),
-                "all", Map.of("type", "boolean", "description", "If true, stage all changes (including untracked files)")
+                "all", Map.of("type", "boolean", "description", "If true, stage all changes (includi")
             ),
             List.of()));
 
-        tools.add(buildTool("git_unstage",
-            "Unstage files from the staging area (git restore --staged).",
+        tools.add(buildTool("git_unstage", "Git Unstage",
             Map.of(
                 "path", Map.of("type", "string", "description", "Single file path to unstage"),
                 "paths", Map.of("type", "array", "description", "Multiple file paths to unstage")
             ),
             List.of()));
 
-        tools.add(buildTool("git_branch",
-            "Manage branches: list, create, switch, or delete.",
+        tools.add(buildTool("git_branch", "Git Branch",
             Map.of(
-                "action", Map.of("type", "string", "description", "Action: 'list' (default), 'create', 'switch', 'delete'"),
-                "name", Map.of("type", "string", "description", "Branch name (required for create/switch/delete)"),
+                "action", Map.of("type", "string", "description", "Action: 'list' (default), 'create',"),
+                "name", Map.of("type", "string", "description", "Branch name (required for create/sw"),
                 "base", Map.of("type", "string", "description", "Base ref for create (default: HEAD)"),
                 "all", Map.of("type", "boolean", "description", "For list: include remote branches"),
-                "force", Map.of("type", "boolean", "description", "For delete: force delete unmerged branch (-D)")
+                "force", Map.of("type", "boolean", "description", "For delete: force delete unmerged b")
             ),
             List.of()));
 
-        tools.add(buildTool("git_stash",
-            "Manage stashes: save, list, pop, apply, or drop working changes.",
+        tools.add(buildTool("git_stash", "Git Stash",
             Map.of(
-                "action", Map.of("type", "string", "description", "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"),
+                "action", Map.of("type", "string", "description", "Action: 'list' (default), 'push', '"),
                 "message", Map.of("type", "string", "description", "Stash message (for push action)"),
-                "index", Map.of("type", "string", "description", "Stash index (for pop/apply/drop, e.g., '0')"),
+                "index", Map.of("type", "string", "description", "Stash index (for pop/apply/drop, e."),
                 "include_untracked", Map.of("type", "boolean", "description", "For push: include untracked files")
             ),
             List.of()));
 
-        tools.add(buildTool("git_show",
-            "Show details of a commit: message, author, date, and diff. " +
-                "Defaults to HEAD if no ref given.",
+        tools.add(buildTool("git_show", "Git Show",
             Map.of(
-                "ref", Map.of("type", "string", "description", "Commit SHA, branch, tag, or ref (default: HEAD)"),
-                "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not full diff"),
+                "ref", Map.of("type", "string", "description", "Commit SHA, branch, tag, or ref (de"),
+                "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not "),
                 "path", Map.of("type", "string", "description", "Limit output to this file path")
             ),
             List.of()));
 
         // ---- Infrastructure tools ----
 
-        tools.add(buildTool("http_request",
-            "Make an HTTP request and return the response. Supports GET, POST, PUT, DELETE, PATCH. " +
-                "Useful for testing APIs, health checks, and inspecting endpoints.",
+        tools.add(buildTool("http_request", "Http Request",
             Map.of(
-                "url", Map.of("type", "string", "description", "Full URL to request (e.g., http://localhost:8080/api/health)"),
-                "method", Map.of("type", "string", "description", "HTTP method: GET (default), POST, PUT, DELETE, PATCH"),
+                "url", Map.of("type", "string", "description", "Full URL to request (e.g., http://l"),
+                "method", Map.of("type", "string", "description", "HTTP method: GET (default), POST, P"),
                 "body", Map.of("type", "string", "description", "Request body (for POST/PUT/PATCH)"),
                 "headers", Map.of("type", "object", "description", "Request headers as key-value pairs")
             ),
             List.of("url")));
 
-        tools.add(buildTool("run_command",
-            "Execute a shell command in the project directory and return its output. " +
-                "The command runs through IntelliJ's process management and its output is visible " +
-                "in the Run panel. Use for builds, scripts, or any CLI operation. " +
-                "WARNING: Do NOT use this to run tests — use the 'run_tests' tool instead, which provides " +
-                "structured results with pass/fail counts. Do NOT use this for code search — use " +
-                "'search_symbols' or 'find_references' tools which use the AST and are more accurate than grep.",
+        tools.add(buildTool("run_command", "Run Command",
             Map.of(
-                "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'npm test', 'ls -la')"),
+                "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gr"),
                 "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),
-                "title", Map.of("type", "string", "description",
-                    "Human-readable title for the Run panel tab (e.g., 'Build project', 'Run tests'). " +
+                "title", Map.of("type", "string", "description", "Human-readable title for the Run pa" +
                         "If not set, defaults to the command text. ALWAYS set this to a short descriptive name.")
             ),
             List.of("command")));
 
-        tools.add(buildTool("read_ide_log",
-            "Read recent entries from IntelliJ's idea.log file. Useful for debugging plugin issues, " +
-                "checking for errors, and understanding IDE behavior.",
+        tools.add(buildTool("read_ide_log", "Read Ide Log",
             Map.of(
-                "lines", Map.of("type", "integer", "description", "Number of recent lines to return (default: 50)"),
+                "lines", Map.of("type", "integer", "description", "Number of recent lines to return (d"),
                 "filter", Map.of("type", "string", "description", "Only return lines containing this text"),
                 "level", Map.of("type", "string", "description", "Filter by log level: INFO, WARN, ERROR")
             ),
             List.of()));
 
-        tools.add(buildTool("get_notifications",
-            "Get recent IntelliJ IDE notifications from the Event Log. " +
-                "Shows warnings, errors, and info messages displayed to the user.",
+        tools.add(buildTool("get_notifications", "Get Notifications",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("read_run_output",
-            "Read the text output from IntelliJ's Run panel. Returns the console text from the most recent " +
-                "run tab, or a specific tab by name. Useful for reading build output, test results, " +
-                "or any command output visible to the user in the Run panel.",
+        tools.add(buildTool("read_run_output", "Read Run Output",
             Map.of(
-                "tab_name", Map.of("type", "string", "description", "Name of the Run tab to read (default: most recent tab)"),
-                "max_chars", Map.of("type", "integer", "description", "Maximum characters to return (default: 8000). Output is truncated from the end if exceeded.")
+                "tab_name", Map.of("type", "string", "description", "Name of the Run tab to read (defaul"),
+                "max_chars", Map.of("type", "integer", "description", "Maximum characters to return (defau")
             ),
             List.of()));
 
@@ -635,196 +527,118 @@ public class McpServer {
         // Use a LinkedHashMap to preserve insertion order (Map.of has random order)
         var runInTerminalProps = new java.util.LinkedHashMap<String, Map<String, String>>();
         runInTerminalProps.put("command", Map.of("type", "string", "description", "Command to execute in the terminal"));
-        runInTerminalProps.put("tab_name", Map.of("type", "string", "description", "Name of existing terminal tab to reuse, or name for a new tab"));
-        runInTerminalProps.put("shell", Map.of("type", "string", "description", "Shell executable path for new tabs (e.g. cmd.exe, pwsh.exe, bash.exe). Use list_terminals to see available shells. Only used when creating a new tab."));
-        runInTerminalProps.put("new_tab", Map.of("type", "boolean", "description", "Force opening a new terminal tab even if tab_name matches an existing one (default: false)"));
-        tools.add(buildTool("run_in_terminal",
-            "Open an IntelliJ Terminal tab and execute a command. The terminal is interactive and visible " +
-                "to the user. Use this for interactive commands or when the user wants to see live output. " +
-                "Use read_terminal_output to read the output afterwards. " +
-                "Use list_terminals to see open tabs and available shells. " +
-                "Specify tab_name to reuse an existing terminal tab, or shell to open a specific shell type.",
-            runInTerminalProps,
-            List.of("command")));
-
-        tools.add(buildTool("list_terminals",
-            "List available terminal shells on this system (PowerShell, cmd, bash, etc.) " +
-                "and IntelliJ's configured default shell. Use before run_in_terminal to choose a shell.",
+        runInTerminalProps.put("tab_name", Map.of("type", "string", "description", "Name of existing terminal tab to re"));
+        runInTerminalProps.put("shell", Map.of("type", "string", "description", "Shell executable path for new tabs "));
+        runInTerminalProps.put("new_tab", Map.of("type", "boolean", "description", "Force opening a new terminal tab ev"));
+        tools.add(buildTool("run_in_terminal", "Run In Terminal",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("read_terminal_output",
-            "Read the text content from an IntelliJ Terminal tab. " +
-                "If tab_name is specified, reads from that tab; otherwise reads from the currently selected terminal tab. " +
-                "Use after run_in_terminal to check command output.",
+        tools.add(buildTool("read_terminal_output", "Read Terminal Output",
             Map.of(
-                "tab_name", Map.of("type", "string", "description", "Name of the terminal tab to read from (optional, defaults to selected tab)")
+                "tab_name", Map.of("type", "string", "description", "Name of the terminal tab to read fr")
             ),
             List.of()));
 
         // Documentation tools
-        tools.add(buildTool("get_documentation",
-            "Get javadoc/documentation for a Java or Kotlin symbol. " +
-                "Provide a fully qualified class name (e.g. java.util.List) or class.member (e.g. java.util.List.add). " +
-                "Returns rendered documentation including description, parameters, return type, and examples. " +
-                "Works for JDK classes, project classes, and library classes (if sources are downloaded).",
+        tools.add(buildTool("get_documentation", "Get Documentation",
             Map.of(
-                "symbol", Map.of("type", "string", "description", "Fully qualified symbol name (e.g. java.util.HashMap, com.google.gson.Gson.fromJson)")
+                "symbol", Map.of("type", "string", "description", "Fully qualified symbol name (e.g. j")
             ),
             List.of("symbol")));
 
-        tools.add(buildTool("download_sources",
-            "Check and download source/javadoc JARs for project dependencies. " +
-                "Lists all libraries and their source availability. " +
-                "Optionally filter by library name. Sources enable richer get_documentation results.",
+        tools.add(buildTool("download_sources", "Download Sources",
             Map.of(
-                "library", Map.of("type", "string", "description", "Optional library name filter (e.g. 'gson', 'kotlin-stdlib'). If empty, checks all libraries.")
+                "library", Map.of("type", "string", "description", "Optional library name filter (e.g. ")
             ),
             List.of()));
 
-        tools.add(buildTool("create_scratch_file",
-            "Create a scratch file in IntelliJ for longer content like markdown documentation, code snippets, or formatted output. " +
-                "Scratch files support syntax highlighting based on file extension and persist in the IDE. " +
-                "Use this when responses are too long for chat or when user needs formatted code/markdown. " +
-                "The file will be automatically opened in the editor. Returns the absolute path - save this to read the file later.",
+        tools.add(buildTool("create_scratch_file", "Create Scratch File",
             Map.of(
-                "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'analysis.md', 'snippet.java', 'output.json'). Extension determines syntax highlighting."),
+                "name", Map.of("type", "string", "description", "Scratch file name with extension (e"),
                 "content", Map.of("type", "string", "description", "The content to write to the scratch file")
             ),
             List.of("name", "content")));
 
-        tools.add(buildTool("list_scratch_files",
-            "List all scratch files in the IDE with their absolute paths and sizes. " +
-                "Use this to find scratch files you created earlier or to see what scratch files exist. " +
-                "The returned paths can be used with intellij_read_file to access the content. " +
-                "Scratch files are stored outside the project directory, so grep/glob cannot find them.",
+        tools.add(buildTool("list_scratch_files", "List Scratch Files",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("get_indexing_status",
-            "Check whether IntelliJ is still indexing the project. " +
-                "IMPORTANT: Call this before running inspections, find_references, or search_symbols after IDE startup or project open. " +
-                "Use wait=true to block until indexing completes. Tools may return incomplete results while indexing.",
+        tools.add(buildTool("get_indexing_status", "Get Indexing Status",
             Map.of(
-                "wait", Map.of("type", "boolean", "description",
-                    "If true, blocks until indexing finishes (up to timeout). If false, returns current status immediately."),
-                "timeout", Map.of("type", "integer", "description",
-                    "Max seconds to wait when wait=true (default: 60).")
+                "wait", Map.of("type", "boolean", "description", "If true, blocks until indexing fini"),
+                "timeout", Map.of("type", "integer", "description", "Max seconds to wait when wait=true ")
             ),
             List.of()));
 
         // Editor & navigation tools
-        tools.add(buildTool("open_in_editor",
-            "Open a file in IntelliJ's editor, optionally at a specific line. " +
-                "Use this to show files to the user after making changes, or to trigger " +
-                "DaemonCodeAnalyzer on a file (required for get_highlights to return SonarLint findings). " +
-                "Also useful to navigate the user to a specific location in code.",
+        tools.add(buildTool("open_in_editor", "Open In Editor",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file to open"),
-                "line", Map.of("type", "integer", "description",
-                    "Optional: line number to navigate to (1-based)")
+                "line", Map.of("type", "integer", "description", "Optional: line number to navigate t")
             ),
             List.of("file")));
 
-        tools.add(buildTool("show_diff",
-            "Show a visual diff in IntelliJ's diff viewer. Three modes: " +
-                "(1) Two files: provide 'file' and 'file2'. " +
-                "(2) File vs proposed content: provide 'file' and 'content' (great for reviewing changes before applying). " +
-                "(3) Single file: provide only 'file' to open in diff viewer. " +
-                "Use after making changes to show the user what was modified.",
+        tools.add(buildTool("show_diff", "Show Diff",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the first file"),
-                "file2", Map.of("type", "string", "description",
-                    "Optional: path to second file for two-file diff"),
-                "content", Map.of("type", "string", "description",
-                    "Optional: proposed new content to diff against the current file"),
-                "title", Map.of("type", "string", "description",
-                    "Optional: title for the diff viewer window")
+                "file2", Map.of("type", "string", "description", "Optional: path to second file for t"),
+                "content", Map.of("type", "string", "description", "Optional: proposed new content to d"),
+                "title", Map.of("type", "string", "description", "Optional: title for the diff viewer")
             ),
             List.of("file")));
 
         // Refactoring & code modification tools
-        tools.add(buildTool("apply_quickfix",
-            "Apply an IntelliJ quick-fix to an inspection problem. Instead of manually editing code, " +
-                "let IntelliJ apply its own fix (the lightbulb action). PREFER THIS over manual code edits " +
-                "when fixing inspection findings. First run 'run_inspections' or 'get_highlights' to identify " +
-                "problems, then use this tool to fix them.",
+        tools.add(buildTool("apply_quickfix", "Apply Quickfix",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file containing the problem"),
                 "line", Map.of("type", "integer", "description", "Line number where the problem is located"),
-                "inspection_id", Map.of("type", "string", "description",
-                    "The inspection ID from run_inspections output (e.g., 'RedundantCast', 'unused', 'SpellCheckingInspection')"),
-                "fix_index", Map.of("type", "integer", "description",
-                    "Which fix to apply if multiple are available (0-based, default: 0). Use list_quickfixes first if unsure.")
+                "inspection_id", Map.of("type", "string", "description", "The inspection ID from run_inspecti"),
+                "fix_index", Map.of("type", "integer", "description", "Which fix to apply if multiple are ")
             ),
             List.of("file", "line", "inspection_id")));
 
-        tools.add(buildTool("refactor",
-            "Perform an IntelliJ refactoring operation. Handles imports, references, and all related changes " +
-                "automatically. Much safer than manual string-based edits. Supported operations: " +
-                "rename (rename a symbol everywhere), extract_method (extract selected code into a new method), " +
-                "inline (inline a variable/method), safe_delete (delete with usage check).",
+        tools.add(buildTool("refactor", "Refactor",
             Map.of(
-                "operation", Map.of("type", "string", "description",
-                    "Refactoring type: 'rename', 'extract_method', 'inline', 'safe_delete'"),
+                "operation", Map.of("type", "string", "description", "Refactoring type: 'rename', 'extrac"),
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
-                "symbol", Map.of("type", "string", "description",
-                    "Name of the symbol to refactor (class, method, field, variable)"),
-                "line", Map.of("type", "integer", "description",
-                    "Line number to disambiguate if multiple symbols have the same name (optional)"),
-                "new_name", Map.of("type", "string", "description",
-                    "New name for 'rename' operation. Required for rename, ignored for others.")
+                "symbol", Map.of("type", "string", "description", "Name of the symbol to refactor (cla"),
+                "line", Map.of("type", "integer", "description", "Line number to disambiguate if mult"),
+                "new_name", Map.of("type", "string", "description", "New name for 'rename' operation. Re")
             ),
             List.of("operation", "file", "symbol")));
 
-        tools.add(buildTool("go_to_declaration",
-            "Navigate from a symbol usage to its declaration/definition using IntelliJ's reference resolution. " +
-                "Returns the file path, line number, and surrounding code of the declaration. " +
-                "More reliable than grep — resolves through imports, type hierarchy, and overloads.",
+        tools.add(buildTool("go_to_declaration", "Go To Declaration",
             Map.of(
-                "file", Map.of("type", "string", "description", "Path to the file containing the symbol usage"),
+                "file", Map.of("type", "string", "description", "Path to the file containing the sym"),
                 "symbol", Map.of("type", "string", "description", "Name of the symbol to look up"),
-                "line", Map.of("type", "integer", "description", "Line number where the symbol appears (helps disambiguate)")
+                "line", Map.of("type", "integer", "description", "Line number where the symbol appear")
             ),
             List.of("file", "symbol", "line")));
 
-        tools.add(buildTool("get_type_hierarchy",
-            "Get the class/interface hierarchy for a type. Shows superclasses, implemented interfaces, " +
-                "and subclasses/implementations. Uses IntelliJ's type resolution — handles generics, " +
-                "anonymous classes, and inner classes correctly.",
+        tools.add(buildTool("get_type_hierarchy", "Get Type Hierarchy",
             Map.of(
-                "symbol", Map.of("type", "string", "description",
-                    "Fully qualified or simple class/interface name (e.g., 'PsiBridgeService', 'java.util.List')"),
-                "direction", Map.of("type", "string", "description",
-                    "Direction: 'supertypes' (ancestors), 'subtypes' (descendants), or 'both' (default: 'both')")
+                "symbol", Map.of("type", "string", "description", "Fully qualified or simple class/int"),
+                "direction", Map.of("type", "string", "description", "Direction: 'supertypes' (ancestors)")
             ),
             List.of("symbol")));
 
-        tools.add(buildTool("create_file",
-            "Create a new file in the project. The file must not already exist. " +
-                "Parent directories will be created automatically if needed. " +
-                "The file is created through IntelliJ's VFS so it appears immediately in the IDE.",
+        tools.add(buildTool("create_file", "Create File",
             Map.of(
-                "path", Map.of("type", "string", "description", "Path for the new file (absolute or project-relative)"),
+                "path", Map.of("type", "string", "description", "Path for the new file (absolute or "),
                 "content", Map.of("type", "string", "description", "Content to write to the file")
             ),
             List.of("path", "content")));
 
-        tools.add(buildTool("delete_file",
-            "Delete a file from the project. The file is deleted through IntelliJ's VFS so the IDE " +
-                "updates immediately. Use with caution — this is not undoable through the IDE's undo system.",
+        tools.add(buildTool("delete_file", "Delete File",
             Map.of(
-                "path", Map.of("type", "string", "description", "Path to the file to delete (absolute or project-relative)")
+                "path", Map.of("type", "string", "description", "Path to the file to delete (absolut")
             ),
             List.of("path")));
 
-        tools.add(buildTool("build_project",
-            "Trigger IntelliJ's internal project build (Make Project). Faster than running Gradle/Maven " +
-                "from the command line because it uses incremental compilation. Returns structured error " +
-                "output with file paths and line numbers. Use this to verify code changes compile correctly.",
+        tools.add(buildTool("build_project", "Build Project",
             Map.of(
-                "module", Map.of("type", "string", "description",
-                    "Optional: build only a specific module (e.g., 'plugin-core', 'mcp-server'). If empty, builds the whole project.")
+                "module", Map.of("type", "string", "description", "Optional: build only a specific mod")
             ),
             List.of()));
 
@@ -860,7 +674,7 @@ public class McpServer {
         JsonObject props = schema.getAsJsonObject("properties");
         JsonObject envProp = new JsonObject();
         envProp.addProperty("type", "object");
-        envProp.addProperty("description", "Environment variables as key-value pairs. Set value to null to remove a variable.");
+        envProp.addProperty("description", "Environment variables as key-value ");
         JsonObject additionalProps = new JsonObject();
         additionalProps.addProperty("type", "string");
         envProp.add("additionalProperties", additionalProps);
