@@ -1235,6 +1235,8 @@ public class CopilotAcpClient implements Closeable {
      * Used to send guidance before rejecting permissions.
      */
     private void sendPromptMessage(String message) {
+        LOG.info("Sending pre-rejection guidance message: " + message.substring(0, Math.min(100, message.length())));
+        
         JsonObject params = new JsonObject();
         JsonArray messages = new JsonArray();
         JsonObject userMsg = new JsonObject();
@@ -1248,6 +1250,8 @@ public class CopilotAcpClient implements Closeable {
         notification.addProperty(JSONRPC, "2.0");
         notification.addProperty("method", "session/message");
         notification.add(PARAMS, params);
+        
+        LOG.info("Sending session/message notification: " + notification);
         sendRawMessage(notification);
     }
 
