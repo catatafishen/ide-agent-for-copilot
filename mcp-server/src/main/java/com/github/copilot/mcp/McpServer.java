@@ -122,17 +122,22 @@ public class McpServer {
         result.addProperty("instructions", """
             ⚠️ EXECUTION ENVIRONMENT:
             You are running INSIDE an IntelliJ IDEA plugin as an MCP server.
-            You do NOT have access to standard Copilot CLI tools, file system tools, or general-purpose utilities.
+            
+            ⚠️ EXCLUDED TOOLS - These CLI tools are NOT available (will fail if attempted):
+            - view, edit, create → Use 'intellij_read_file' and 'intellij_write_file' instead
+            - grep, glob, bash → Use 'search_symbols', 'find_references', or 'run_command' instead
+            
             You ONLY have access to the IntelliJ MCP tools listed below (54 tools total).
-            If you need to do something, there is an IntelliJ tool for it - DO NOT invent or assume other tools exist.
+            If you need to do something, there is an IntelliJ tool for it - DO NOT try CLI built-in tools.
             
             TOOL USAGE RULES:
 
-            ⚠️ CRITICAL: This environment has built-in shell/file tools DISABLED. You MUST use IntelliJ MCP tools instead:
-            - For one-shot commands: Use 'run_command' (NOT built-in execute)
-            - For interactive shells: Use 'run_in_terminal' (NOT built-in runInTerminal)
-            - For file operations: Use 'intellij_write_file'/'intellij_read_file' (NOT built-in read/write)
-            - Built-in tools will be REJECTED. Always use the IntelliJ equivalents listed below.
+            ⚠️ CRITICAL: Standard CLI tools (view/edit/grep/bash) are DISABLED. Use IntelliJ equivalents:
+            - For file reads: 'intellij_read_file' (NOT view)
+            - For file writes: 'intellij_write_file' (NOT edit/create)
+            - For code search: 'search_symbols' or 'find_references' (NOT grep/glob)
+            - For commands: 'run_command' or 'run_in_terminal' (NOT bash)
+            Attempting to use excluded tools will result in errors.
 
             WHEN TO USE run_command vs run_in_terminal:
             - run_command: Non-interactive commands that complete and exit (gradle build, git status, ls).
