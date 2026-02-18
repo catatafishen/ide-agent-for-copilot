@@ -250,8 +250,42 @@ public class CopilotAcpClient implements Closeable {
             LOG.info("Copilot CLI config-dir set to: " + agentWorkPath);
         }
 
-        // MCP server configuration is now passed in session/new params (see createSession method)
-        // Removed --additional-mcp-config approach as it was redundant and confusing
+        // MCP servers must be configured globally via --additional-mcp-config CLI flag,
+        // then referenced by name in session/new params (see createSession method)
+        String mcpJarPath = findMcpServerJar();
+        if (mcpJarPath != null) {
+            String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
+            String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
+            if (new File(javaPath).exists()) {
+                try {
+                    JsonObject mcpConfig = new JsonObject();
+                    JsonObject servers = new JsonObject();
+                    JsonObject codeTools = new JsonObject();
+                    codeTools.addProperty(COMMAND, javaPath);
+                    JsonArray args = new JsonArray();
+                    args.add("-jar");
+                    args.add(mcpJarPath);
+                    args.add(System.getProperty(USER_HOME));
+                    codeTools.add("args", args);
+                    codeTools.add("env", new JsonArray());
+                    servers.add("intellij-code-tools", codeTools);
+                    mcpConfig.add("mcpServers", servers);
+
+                    File mcpConfigFile = File.createTempFile("copilot-mcp-", ".json");
+                    mcpConfigFile.deleteOnExit();
+                    try (java.io.FileWriter fw = new java.io.FileWriter(mcpConfigFile)) {
+                        fw.write(gson.toJson(mcpConfig));
+                    }
+                    cmd.add("--additional-mcp-config");
+                    cmd.add("@" + mcpConfigFile.getAbsolutePath());
+                    LOG.info("MCP code-tools configured globally via " + mcpConfigFile.getAbsolutePath());
+                } catch (IOException e) {
+                    LOG.warn("Failed to write MCP config file", e);
+                }
+            } else {
+                LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
+            }
+        }
 
         return new ProcessBuilder(cmd);
     }
@@ -300,25 +334,11 @@ public class CopilotAcpClient implements Closeable {
         JsonObject params = new JsonObject();
         params.addProperty("cwd", cwd != null ? cwd : System.getProperty(USER_HOME));
 
-        // Pass MCP server configurations in session params
-        // The mcpServers field expects an array of server config objects
+        // Reference MCP servers by name (must be configured via --additional-mcp-config CLI flag)
+        // mcpServers expects an array of SERVER NAMES, not full config objects
         JsonArray mcpServers = new JsonArray();
-        String mcpJarPath = findMcpServerJar();
-        if (mcpJarPath != null) {
-            String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
-            String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
-            if (new File(javaPath).exists()) {
-                JsonObject codeTools = new JsonObject();
-                codeTools.addProperty("name", "intellij-code-tools");
-                codeTools.addProperty(COMMAND, javaPath);
-                JsonArray args = new JsonArray();
-                args.add("-jar");
-                args.add(mcpJarPath);
-                args.add(System.getProperty(USER_HOME));
-                codeTools.add("args", args);
-                codeTools.add("env", new JsonArray());  // env must be array of strings ["KEY=value", ...]
-                mcpServers.add(codeTools);
-            }
+        if (findMcpServerJar() != null) {
+            mcpServers.add("intellij-code-tools");
         }
         params.add("mcpServers", mcpServers);
 
@@ -328,7 +348,7 @@ public class CopilotAcpClient implements Closeable {
         // so we handle it via permission denial (see handlePermissionRequest).
 
         LOG.warn("=== DEBUG: session/new params: " + params);
-        LOG.info("Session created with " + mcpServers.size() + " MCP server(s)");
+        LOG.info("Session created with MCP server names: " + mcpServers);
 
         JsonObject result = sendRequest("session/new", params);
 
