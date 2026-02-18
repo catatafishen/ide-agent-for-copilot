@@ -151,7 +151,6 @@ public final class PsiBridgeService implements Disposable {
     private static final String JSON_HEADERS = "headers";
     private static final String JSON_TITLE = "title";
     private static final String JSON_MODULE = "module";
-    private static final String JSON_BUILD = "build";
     private static final String JSON_TAB_NAME = "tab_name";
 
     // Git Constants
@@ -1337,132 +1336,132 @@ public final class PsiBridgeService implements Disposable {
 
                     // Capture context for lambda
                     final GlobalInspectionContextImpl ctx = this;
-                    
+
                     // Move PSI access off EDT to avoid "Slow operations prohibited on EDT" errors
                     ReadAction.nonBlocking(() -> {
-                        try {
-                            List<String> allProblems = new ArrayList<>();
-                            Set<String> filesSet = new HashSet<>();
-                            int skippedNoDescription = 0;
-                            int skippedNoFile = 0;
+                            try {
+                                List<String> allProblems = new ArrayList<>();
+                                Set<String> filesSet = new HashSet<>();
+                                int skippedNoDescription = 0;
+                                int skippedNoFile = 0;
 
-                            var usedTools = ctx.getUsedTools();
-                            for (var tools : usedTools) {
-                                var toolWrapper = tools.getTool();
-                                String toolId = toolWrapper.getShortName();
+                                var usedTools = ctx.getUsedTools();
+                                for (var tools : usedTools) {
+                                    var toolWrapper = tools.getTool();
+                                    String toolId = toolWrapper.getShortName();
 
-                                // Null checks required: getPresentation() and getProblemElements() can return null at runtime
-                                // despite @NotNull annotations – these are inspection API calls on dynamic tool wrappers
-                                var presentation = ctx.getPresentation(toolWrapper);
-                                //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
-                                if (presentation == null) continue;
+                                    // Null checks required: getPresentation() and getProblemElements() can return null at runtime
+                                    // despite @NotNull annotations – these are inspection API calls on dynamic tool wrappers
+                                    var presentation = ctx.getPresentation(toolWrapper);
+                                    //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
+                                    if (presentation == null) continue;
 
-                                var problemElements = presentation.getProblemElements();
-                                //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
-                                if (problemElements == null || problemElements.isEmpty()) continue;
+                                    var problemElements = presentation.getProblemElements();
+                                    //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
+                                    if (problemElements == null || problemElements.isEmpty()) continue;
 
-                                for (var refEntity : problemElements.keys()) {
-                                    var descriptors = problemElements.get(refEntity);
-                                    if (descriptors == null) continue;
+                                    for (var refEntity : problemElements.keys()) {
+                                        var descriptors = problemElements.get(refEntity);
+                                        if (descriptors == null) continue;
 
-                                    for (var descriptor : descriptors) {
-                                        // getDescriptionTemplate() can return null despite @NotNull annotation
-                                        String description = descriptor.getDescriptionTemplate();
-                                        //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
-                                        if (description == null || description.isEmpty()) {
-                                            skippedNoDescription++;
-                                            continue;
-                                        }
-
-                                        // Resolve #ref placeholder with actual element text
-                                        String refText = "";
-                                        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-                                            var psiEl = pd.getPsiElement();
-                                            if (psiEl != null) {
-                                                refText = psiEl.getText();
-                                                if (refText != null && refText.length() > 80) {
-                                                    refText = refText.substring(0, 80) + "...";
-                                                }
+                                        for (var descriptor : descriptors) {
+                                            // getDescriptionTemplate() can return null despite @NotNull annotation
+                                            String description = descriptor.getDescriptionTemplate();
+                                            //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
+                                            if (description == null || description.isEmpty()) {
+                                                skippedNoDescription++;
+                                                continue;
                                             }
-                                        }
 
-                                        // Clean up HTML/template markers from description
-                                        description = description.replaceAll("<[^>]+>", "")
-                                            .replace("&lt;", "<")
-                                            .replace("&gt;", ">")
-                                            .replace("&amp;", "&")
-                                            .replace("#ref", refText != null ? refText : "")
-                                            .replace("#loc", "")
-                                            .trim();
-
-                                        if (description.isEmpty()) {
-                                            skippedNoDescription++;
-                                            continue;
-                                        }
-
-                                        int line = -1;
-                                        String filePath = "";
-                                        String severity = "WARNING";
-
-                                        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-                                            line = pd.getLineNumber() + 1;
-                                            var psiElement = pd.getPsiElement();
-                                            if (psiElement != null) {
-                                                var containingFile = psiElement.getContainingFile();
-                                                if (containingFile != null) {
-                                                    var vf = containingFile.getVirtualFile();
-                                                    if (vf != null) {
-                                                        filePath = basePath != null
-                                                            ? relativize(basePath, vf.getPath())
-                                                            : vf.getName();
-                                                        filesSet.add(filePath);
+                                            // Resolve #ref placeholder with actual element text
+                                            String refText = "";
+                                            if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+                                                var psiEl = pd.getPsiElement();
+                                                if (psiEl != null) {
+                                                    refText = psiEl.getText();
+                                                    if (refText != null && refText.length() > 80) {
+                                                        refText = refText.substring(0, 80) + "...";
                                                     }
                                                 }
                                             }
-                                            severity = pd.getHighlightType().toString();
-                                        } else {
-                                            skippedNoFile++;
-                                        }
 
-                                        // Filter by minimum severity
-                                        if (requiredRank > 0) {
-                                            int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
-                                            if (rank < requiredRank) continue;
-                                        }
+                                            // Clean up HTML/template markers from description
+                                            description = description.replaceAll("<[^>]+>", "")
+                                                .replace("&lt;", "<")
+                                                .replace("&gt;", ">")
+                                                .replace("&amp;", "&")
+                                                .replace("#ref", refText != null ? refText : "")
+                                                .replace("#loc", "")
+                                                .trim();
 
-                                        allProblems.add(String.format("%s:%d [%s/%s] %s",
-                                            filePath, line, severity, toolId, description));
+                                            if (description.isEmpty()) {
+                                                skippedNoDescription++;
+                                                continue;
+                                            }
+
+                                            int line = -1;
+                                            String filePath = "";
+                                            String severity = "WARNING";
+
+                                            if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+                                                line = pd.getLineNumber() + 1;
+                                                var psiElement = pd.getPsiElement();
+                                                if (psiElement != null) {
+                                                    var containingFile = psiElement.getContainingFile();
+                                                    if (containingFile != null) {
+                                                        var vf = containingFile.getVirtualFile();
+                                                        if (vf != null) {
+                                                            filePath = basePath != null
+                                                                ? relativize(basePath, vf.getPath())
+                                                                : vf.getName();
+                                                            filesSet.add(filePath);
+                                                        }
+                                                    }
+                                                }
+                                                severity = pd.getHighlightType().toString();
+                                            } else {
+                                                skippedNoFile++;
+                                            }
+
+                                            // Filter by minimum severity
+                                            if (requiredRank > 0) {
+                                                int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
+                                                if (rank < requiredRank) continue;
+                                            }
+
+                                            allProblems.add(String.format("%s:%d [%s/%s] %s",
+                                                filePath, line, severity, toolId, description));
+                                        }
                                     }
                                 }
+
+                                int total = allProblems.size();
+                                int filesWithProblems = filesSet.size();
+
+                                // Cache results for fast pagination
+                                cachedInspectionResults = new ArrayList<>(allProblems);
+                                cachedInspectionFileCount = filesWithProblems;
+                                cachedInspectionProfile = profileName;
+                                cachedInspectionTimestamp = System.currentTimeMillis();
+                                LOG.info("Cached " + total + " inspection results for pagination" +
+                                    " (skipped: " + skippedNoDescription + " no-description, " +
+                                    skippedNoFile + " no-file)");
+
+                                if (total == 0) {
+                                    resultFuture.complete("No inspection problems found. " +
+                                        "The code passed all enabled inspections in the current profile (" +
+                                        profileName + "). Results are also visible in the IDE's Inspection Results view.");
+                                } else {
+                                    resultFuture.complete(formatInspectionPage(
+                                        allProblems, filesWithProblems, profileName, offset, limit));
+                                }
+                            } catch (Exception e) {
+                                LOG.error("Error collecting inspection results", e);
+                                resultFuture.completeExceptionally(e);
                             }
-
-                            int total = allProblems.size();
-                            int filesWithProblems = filesSet.size();
-
-                            // Cache results for fast pagination
-                            cachedInspectionResults = new ArrayList<>(allProblems);
-                            cachedInspectionFileCount = filesWithProblems;
-                            cachedInspectionProfile = profileName;
-                            cachedInspectionTimestamp = System.currentTimeMillis();
-                            LOG.info("Cached " + total + " inspection results for pagination" +
-                                " (skipped: " + skippedNoDescription + " no-description, " +
-                                skippedNoFile + " no-file)");
-
-                            if (total == 0) {
-                                resultFuture.complete("No inspection problems found. " +
-                                    "The code passed all enabled inspections in the current profile (" +
-                                    profileName + "). Results are also visible in the IDE's Inspection Results view.");
-                            } else {
-                                resultFuture.complete(formatInspectionPage(
-                                    allProblems, filesWithProblems, profileName, offset, limit));
-                            }
-                        } catch (Exception e) {
-                            LOG.error("Error collecting inspection results", e);
-                            resultFuture.completeExceptionally(e);
-                        }
-                        return null;
-                    }).inSmartMode(project)
-                      .submit(AppExecutorUtil.getAppExecutorService());
+                            return null;
+                        }).inSmartMode(project)
+                        .submit(AppExecutorUtil.getAppExecutorService());
                 }
             };
 
@@ -4043,8 +4042,8 @@ public final class PsiBridgeService implements Disposable {
                 if (docComment != null) {
                     String text = ((PsiElement) docComment).getText();
                     // Clean up the comment markers
-                    text = text.replaceAll("/\\*\\*", "")
-                        .replaceAll("\\*/", "")
+                    text = text.replace("/**", "")
+                        .replace("*/", "")
                         .replaceAll("(?m)^\\s*\\*\\s?", "")
                         .trim();
                     return "Documentation for " + symbol + ":\n\n" + text;
@@ -4131,6 +4130,10 @@ public final class PsiBridgeService implements Disposable {
             });
 
             return future.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("download_sources interrupted", e);
+            return "Error: Operation interrupted";
         } catch (Exception e) {
             LOG.warn("download_sources error", e);
             return "Error: " + e.getMessage();
@@ -4781,22 +4784,21 @@ public final class PsiBridgeService implements Disposable {
                 @Override
                 public void visitElement(@NotNull PsiElement element) {
                     int offset = element.getTextOffset();
-                    if (offset >= lineStartOffset && offset <= lineEndOffset) {
-                        if (element.getText().equals(symbolName) || (element instanceof PsiNamedElement named
-                            && symbolName.equals(named.getName()))) {
-                            // Try to resolve references
-                            PsiReference ref = element.getReference();
-                            if (ref != null) {
-                                PsiElement resolved = ref.resolve();
-                                if (resolved != null) declarations.add(resolved);
-                            }
-                            // Also check if this IS a declaration
-                            if (element instanceof PsiNamedElement) {
-                                // For a declaration, look for the actual type/superclass
-                                for (PsiReference r : element.getReferences()) {
-                                    PsiElement res = r.resolve();
-                                    if (res != null && res != element) declarations.add(res);
-                                }
+                    if (offset >= lineStartOffset && offset <= lineEndOffset
+                        && (element.getText().equals(symbolName) || (element instanceof PsiNamedElement named
+                        && symbolName.equals(named.getName())))) {
+                        // Try to resolve references
+                        PsiReference ref = element.getReference();
+                        if (ref != null) {
+                            PsiElement resolved = ref.resolve();
+                            if (resolved != null) declarations.add(resolved);
+                        }
+                        // Also check if this IS a declaration
+                        if (element instanceof PsiNamedElement) {
+                            // For a declaration, look for the actual type/superclass
+                            for (PsiReference r : element.getReferences()) {
+                                PsiElement res = r.resolve();
+                                if (res != null && res != element) declarations.add(res);
                             }
                         }
                     }
@@ -5050,7 +5052,7 @@ public final class PsiBridgeService implements Disposable {
                 }
 
                 // Schedule delete on EDT after VFS resolution
-                ApplicationManager.getApplication().invokeLater(() -> {
+                ApplicationManager.getApplication().invokeLater(() ->
                     ApplicationManager.getApplication().runWriteAction(() -> {
                         try {
                             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
@@ -5065,12 +5067,12 @@ public final class PsiBridgeService implements Disposable {
                                 "Delete File: " + vf.getName(),
                                 null
                             );
-                            resultFuture.complete("✓ Deleted file: " + pathStr);
+                            resultFuture.complete("? Deleted file: " + pathStr);
                         } catch (Exception e) {
                             resultFuture.complete("Error deleting file: " + e.getMessage());
                         }
-                    });
-                });
+                    })
+                );
                 return null;
             } catch (Exception e) {
                 resultFuture.complete("Error: " + e.getMessage());
@@ -5201,8 +5203,7 @@ public final class PsiBridgeService implements Disposable {
                 // Force DaemonCodeAnalyzer to run on this file
                 PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
                 if (psiFile != null) {
-                    //noinspection deprecation
-                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart();
                 }
 
                 resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : "") +

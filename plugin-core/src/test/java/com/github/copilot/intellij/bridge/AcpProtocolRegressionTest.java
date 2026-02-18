@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.concurrent.CountDownLatch;
@@ -412,7 +413,7 @@ class AcpProtocolRegressionTest {
      * Test that unknown methods get an error response from the mock server.
      */
     @Test
-    void testUnknownMethodGetsNoResponse() {
+    void testUnknownMethodGetsNoResponse() throws IOException {
         MockAcpServer server = new MockAcpServer();
         server.start();
 
