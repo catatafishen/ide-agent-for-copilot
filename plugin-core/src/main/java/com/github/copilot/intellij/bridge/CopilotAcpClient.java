@@ -181,6 +181,7 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("glob");
         cmd.add("bash");
         LOG.info("Excluded CLI built-in tools: view, edit, create, grep, glob, bash");
+        LOG.info("Full copilot command: " + String.join(" ", cmd));
         
         // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
