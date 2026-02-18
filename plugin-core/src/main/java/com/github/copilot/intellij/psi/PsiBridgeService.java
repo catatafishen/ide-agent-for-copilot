@@ -140,19 +140,35 @@ public final class PsiBridgeService implements Disposable {
     // JSON Field Names
     private static final String JSON_ARTIFACT_LOCATION = "artifactLocation";
     private static final String JSON_REGION = "region";
+    private static final String JSON_PATHS = "paths";
+    private static final String JSON_ACTION = "action";
+    private static final String JSON_STASH = "stash";
+    private static final String JSON_INDEX = "index";
+    private static final String JSON_STASH_PREFIX = "stash@{";
+    private static final String JSON_APPLY = "apply";
+    private static final String JSON_HEADERS = "headers";
+    private static final String JSON_TITLE = "title";
+    private static final String JSON_MODULE = "module";
+    private static final String JSON_BUILD = "build";
+    private static final String JSON_TAB_NAME = "tab_name";
 
     // Git Constants
     private static final String GIT_FLAG_ALL = "--all";
 
     // System Properties
     private static final String OS_NAME_PROPERTY = "os.name";
+    private static final String JAVA_HOME_ENV = "JAVA_HOME";
+
+    // Log/Terminal Constants
+    private static final String IDEA_LOG_FILENAME = "idea.log";
+    private static final String TERMINAL_TOOL_WINDOW_ID = "Terminal";
+    private static final String GET_INSTANCE_METHOD = "getInstance";
 
     private final Project project;
     private HttpServer httpServer;
     private int port;
 
     // Cached inspection results for pagination - avoids rerunning the full inspection engine
-    private final Object inspectionCacheLock = new Object();
     private List<String> cachedInspectionResults;
     private int cachedInspectionFileCount;
     private String cachedInspectionProfile;
@@ -1213,7 +1229,7 @@ public final class PsiBridgeService implements Disposable {
 
                         int line = doc.getLineNumber(h.getStartOffset()) + 1;
                         String severityName = severity.getName();
-                        problems.add(String.format("%s:%d [%s] %s",
+                        problems.add(String.format(FORMAT_LOCATION,
                             relPath, line, severityName, h.getDescription()));
                         count++;
                         if (count >= limit) break;
@@ -1466,7 +1482,7 @@ public final class PsiBridgeService implements Disposable {
                     "It will no longer be flagged as a typo in future inspections.");
             } catch (Exception e) {
                 LOG.error("Error adding word to dictionary", e);
-                resultFuture.complete("Error adding word to dictionary: " + e.getMessage());
+                resultFuture.complete(ERROR_PREFIX + "adding word to dictionary: " + e.getMessage());
             }
         });
         return resultFuture.get(10, TimeUnit.SECONDS);
@@ -2080,7 +2096,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String readFile(JsonObject args) {
         if (!args.has("path") || args.get("path").isJsonNull())
-            return "Error: 'path' parameter is required";
+            return ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
         int startLine = args.has("start_line") ? args.get("start_line").getAsInt() : -1;
         int endLine = args.has("end_line") ? args.get("end_line").getAsInt() : -1;
@@ -2124,7 +2140,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String writeFile(JsonObject args) throws Exception {
         if (!args.has("path") || args.get("path").isJsonNull())
-            return "Error: 'path' parameter is required";
+            return ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
 
         // Check if auto-format should be applied (default: true)
@@ -2406,7 +2422,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String gitBlame(JsonObject args) throws Exception {
-        if (!args.has("path")) return "Error: 'path' parameter is required";
+        if (!args.has("path")) return ERROR_PATH_REQUIRED;
 
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("blame");
@@ -2450,8 +2466,8 @@ public final class PsiBridgeService implements Disposable {
 
         if (args.has("all") && args.get("all").getAsBoolean()) {
             gitArgs.add(GIT_FLAG_ALL);
-        } else if (args.has("paths")) {
-            for (var elem : args.getAsJsonArray("paths")) {
+        } else if (args.has(JSON_PATHS)) {
+            for (var elem : args.getAsJsonArray(JSON_PATHS)) {
                 gitArgs.add(elem.getAsString());
             }
         } else if (args.has("path")) {
@@ -2468,8 +2484,8 @@ public final class PsiBridgeService implements Disposable {
         gitArgs.add("restore");
         gitArgs.add("--staged");
 
-        if (args.has("paths")) {
-            for (var elem : args.getAsJsonArray("paths")) {
+        if (args.has(JSON_PATHS)) {
+            for (var elem : args.getAsJsonArray(JSON_PATHS)) {
                 gitArgs.add(elem.getAsString());
             }
         } else if (args.has("path")) {
@@ -2482,7 +2498,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String gitBranch(JsonObject args) throws Exception {
-        String action = args.has("action") ? args.get("action").getAsString() : "list";
+        String action = args.has(JSON_ACTION) ? args.get(JSON_ACTION).getAsString() : "list";
 
         return switch (action) {
             case "list" -> {
@@ -2508,12 +2524,12 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String gitStash(JsonObject args) throws Exception {
-        String action = args.has("action") ? args.get("action").getAsString() : "list";
+        String action = args.has(JSON_ACTION) ? args.get(JSON_ACTION).getAsString() : "list";
 
         return switch (action) {
-            case "list" -> runGit("stash", "list");
+            case "list" -> runGit(JSON_STASH, "list");
             case "push", "save" -> {
-                List<String> gitArgs = new ArrayList<>(List.of("stash", "push"));
+                List<String> gitArgs = new ArrayList<>(List.of(JSON_STASH, "push"));
                 if (args.has(PARAM_MESSAGE)) {
                     gitArgs.add("-m");
                     gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
@@ -2524,16 +2540,16 @@ public final class PsiBridgeService implements Disposable {
                 yield runGit(gitArgs.toArray(new String[0]));
             }
             case "pop" -> {
-                String index = args.has("index") ? args.get("index").getAsString() : "";
-                yield index.isEmpty() ? runGit("stash", "pop") : runGit("stash", "pop", "stash@{" + index + "}");
+                String index = args.has(JSON_INDEX) ? args.get(JSON_INDEX).getAsString() : "";
+                yield index.isEmpty() ? runGit(JSON_STASH, "pop") : runGit(JSON_STASH, "pop", JSON_STASH_PREFIX + index + "}");
             }
-            case "apply" -> {
-                String index = args.has("index") ? args.get("index").getAsString() : "";
-                yield index.isEmpty() ? runGit("stash", "apply") : runGit("stash", "apply", "stash@{" + index + "}");
+            case JSON_APPLY -> {
+                String index = args.has(JSON_INDEX) ? args.get(JSON_INDEX).getAsString() : "";
+                yield index.isEmpty() ? runGit(JSON_STASH, JSON_APPLY) : runGit(JSON_STASH, JSON_APPLY, JSON_STASH_PREFIX + index + "}");
             }
             case "drop" -> {
-                String index = args.has("index") ? args.get("index").getAsString() : "";
-                yield index.isEmpty() ? runGit("stash", "drop") : runGit("stash", "drop", "stash@{" + index + "}");
+                String index = args.has(JSON_INDEX) ? args.get(JSON_INDEX).getAsString() : "";
+                yield index.isEmpty() ? runGit(JSON_STASH, "drop") : runGit(JSON_STASH, "drop", JSON_STASH_PREFIX + index + "}");
             }
             default -> "Error: unknown stash action '" + action + "'. Use: list, push, pop, apply, drop";
         };
@@ -2546,7 +2562,7 @@ public final class PsiBridgeService implements Disposable {
         String ref = args.has("ref") ? args.get("ref").getAsString() : "HEAD";
         gitArgs.add(ref);
 
-        if (args.has("stat_only") && args.get("stat_only").getAsBoolean()) {
+        if (args.has(PARAM_STAT_ONLY) && args.get(PARAM_STAT_ONLY).getAsBoolean()) {
             gitArgs.add("--stat");
         }
         if (args.has("path")) {
@@ -2572,8 +2588,8 @@ public final class PsiBridgeService implements Disposable {
         conn.setReadTimeout(30_000);
 
         // Set headers
-        if (args.has("headers")) {
-            JsonObject headers = args.getAsJsonObject("headers");
+        if (args.has(JSON_HEADERS)) {
+            JsonObject headers = args.getAsJsonObject(JSON_HEADERS);
             for (String key : headers.keySet()) {
                 conn.setRequestProperty(key, headers.get(key).getAsString());
             }
@@ -2581,8 +2597,8 @@ public final class PsiBridgeService implements Disposable {
 
         // Write body
         if (body != null && ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method))) {
-            if (!args.has("headers") || !args.getAsJsonObject("headers").has("Content-Type")) {
-                conn.setRequestProperty("Content-Type", "application/json");
+            if (!args.has(JSON_HEADERS) || !args.getAsJsonObject(JSON_HEADERS).has(CONTENT_TYPE_HEADER)) {
+                conn.setRequestProperty(CONTENT_TYPE_HEADER, APPLICATION_JSON);
             }
             conn.setDoOutput(true);
             try (OutputStream os = conn.getOutputStream()) {
@@ -2613,7 +2629,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String runCommand(JsonObject args) throws Exception {
         String command = args.get("command").getAsString();
-        String title = args.has("title") ? args.get("title").getAsString() : null;
+        String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
         int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
@@ -2630,7 +2646,7 @@ public final class PsiBridgeService implements Disposable {
         // Set JAVA_HOME from project SDK if available
         String javaHome = getProjectJavaHome();
         if (javaHome != null) {
-            cmd.withEnvironment("JAVA_HOME", javaHome);
+            cmd.withEnvironment(JAVA_HOME_ENV, javaHome);
         }
 
         CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
@@ -2683,12 +2699,12 @@ public final class PsiBridgeService implements Disposable {
         String filter = args.has("filter") ? args.get("filter").getAsString() : null;
         String level = args.has(PARAM_LEVEL) ? args.get(PARAM_LEVEL).getAsString().toUpperCase() : null;
 
-        Path logFile = Path.of(System.getProperty("idea.log.path", ""), "idea.log");
+        Path logFile = Path.of(System.getProperty("idea.log.path", ""), IDEA_LOG_FILENAME);
         if (!Files.exists(logFile)) {
             // Try standard location
             String logDir = System.getProperty("idea.system.path");
             if (logDir != null) {
-                logFile = Path.of(logDir, "..", "log", "idea.log");
+                logFile = Path.of(logDir, "..", "log", IDEA_LOG_FILENAME);
             }
         }
         if (!Files.exists(logFile)) {
@@ -2696,7 +2712,7 @@ public final class PsiBridgeService implements Disposable {
             try {
                 Class<?> pm = Class.forName("com.intellij.openapi.application.PathManager");
                 String logPath = (String) pm.getMethod("getLogPath").invoke(null);
-                logFile = Path.of(logPath, "idea.log");
+                logFile = Path.of(logPath, IDEA_LOG_FILENAME);
             } catch (Exception ignored) {
                 // PathManager not available or reflection failed
             }
@@ -2751,7 +2767,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String runInTerminal(JsonObject args) {
         String command = args.get("command").getAsString();
-        String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
+        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
         boolean newTab = args.has("new_tab") && args.get("new_tab").getAsBoolean();
         String shell = args.has("shell") ? args.get("shell").getAsString() : null;
 
@@ -2760,7 +2776,7 @@ public final class PsiBridgeService implements Disposable {
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
-                var manager = managerClass.getMethod("getInstance", Project.class).invoke(null, project);
+                var manager = managerClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
 
                 var result = getOrCreateTerminalWidget(managerClass, manager, tabName, newTab, shell, command);
                 sendTerminalCommand(result.widget, command);
@@ -2825,7 +2841,7 @@ public final class PsiBridgeService implements Disposable {
      */
     private Object findTerminalWidgetByTabName(Class<?> managerClass, String tabName) {
         try {
-            var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Terminal");
+            var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(TERMINAL_TOOL_WINDOW_ID);
             if (toolWindow == null) return null;
 
             var findWidgetByContent = managerClass.getMethod("findWidgetByContent",
@@ -2852,14 +2868,14 @@ public final class PsiBridgeService implements Disposable {
      * Read terminal output from a named tab using TerminalWidget.getText().
      */
     private String readTerminalOutput(JsonObject args) {
-        String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
+        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
-                var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Terminal");
+                var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(TERMINAL_TOOL_WINDOW_ID);
                 if (toolWindow == null) {
                     resultFuture.complete("Terminal tool window not available.");
                     return;
@@ -2951,7 +2967,7 @@ public final class PsiBridgeService implements Disposable {
         result.append("Open terminal tabs:\n");
         try {
             var toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
-            var toolWindow = toolWindowManager.getToolWindow("Terminal");
+            var toolWindow = toolWindowManager.getToolWindow(TERMINAL_TOOL_WINDOW_ID);
             if (toolWindow != null) {
                 var contentManager = toolWindow.getContentManager();
                 var contents = contentManager.getContents();
@@ -2992,7 +3008,7 @@ public final class PsiBridgeService implements Disposable {
     private void appendDefaultShell(StringBuilder result) {
         try {
             var settingsClass = Class.forName("org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider");
-            var getInstance = settingsClass.getMethod("getInstance", Project.class);
+            var getInstance = settingsClass.getMethod(GET_INSTANCE_METHOD, Project.class);
             var settings = getInstance.invoke(null, project);
             var getShellPath = settings.getClass().getMethod("getShellPath");
             String defaultShell = (String) getShellPath.invoke(settings);
@@ -3015,7 +3031,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String readRunOutput(JsonObject args) {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
-        String tabName = args.has("tab_name") ? args.get("tab_name").getAsString() : null;
+        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
         //noinspection RedundantCast
         return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
@@ -3294,7 +3310,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String runTests(JsonObject args) throws Exception {
         String target = args.get("target").getAsString();
-        String module = args.has("module") ? args.get("module").getAsString() : "";
+        String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
 
@@ -3319,7 +3335,7 @@ public final class PsiBridgeService implements Disposable {
         cmd.addParameters(taskPrefix + "test", "--tests", target);
         cmd.setWorkDirectory(basePath);
         if (javaHome != null) {
-            cmd.withEnvironment("JAVA_HOME", javaHome);
+            cmd.withEnvironment(JAVA_HOME_ENV, javaHome);
         }
 
         CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
@@ -3376,7 +3392,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String getTestResults(JsonObject args) {
-        String module = args.has("module") ? args.get("module").getAsString() : "";
+        String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
 
@@ -3544,8 +3560,8 @@ public final class PsiBridgeService implements Disposable {
             }
         } catch (Exception ignored) {
         }
-        // Don't fall back to IDE's JBR — let the system JAVA_HOME take effect
-        return System.getenv("JAVA_HOME");
+        // Don't fall back to IDE's JBR ? let the system JAVA_HOME take effect
+        return System.getenv(JAVA_HOME_ENV);
     }
 
     private static JsonObject createJsonWithName(String name) {
@@ -3911,7 +3927,7 @@ public final class PsiBridgeService implements Disposable {
                 // Check if symbol contains a member reference (e.g. java.util.List.add)
                 // Try progressively shorter class names to find the class part
                 Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
-                Object facade = javaPsiFacadeClass.getMethod("getInstance", Project.class).invoke(null, project);
+                Object facade = javaPsiFacadeClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
 
                 // Try the full symbol as a class first
                 PsiElement resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
@@ -4109,7 +4125,7 @@ public final class PsiBridgeService implements Disposable {
             // Access GradleSettings or ExternalSystemSettings to enable source download
             Class<?> gradleSettingsClass = Class.forName(
                 "org.jetbrains.plugins.gradle.settings.GradleSettings");
-            Object gradleSettings = gradleSettingsClass.getMethod("getInstance", Project.class)
+            Object gradleSettings = gradleSettingsClass.getMethod(GET_INSTANCE_METHOD, Project.class)
                 .invoke(null, project);
 
             // Get linked project settings
@@ -4188,7 +4204,7 @@ public final class PsiBridgeService implements Disposable {
             // Maven has a different settings path
             Class<?> mavenProjectsManagerClass = Class.forName(
                 "org.jetbrains.idea.maven.project.MavenProjectsManager");
-            Object manager = mavenProjectsManagerClass.getMethod("getInstance", Project.class)
+            Object manager = mavenProjectsManagerClass.getMethod(GET_INSTANCE_METHOD, Project.class)
                 .invoke(null, project);
             Object importingSettings = mavenProjectsManagerClass.getMethod("getImportingSettings")
                 .invoke(manager);
@@ -4991,7 +5007,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String deleteFile(JsonObject args) throws Exception {
-        if (!args.has("path")) return "Error: 'path' parameter is required";
+        if (!args.has("path")) return ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -5037,7 +5053,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String buildProject(JsonObject args) throws Exception {
-        String moduleName = args.has("module") ? args.get("module").getAsString() : "";
+        String moduleName = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         long startTime = System.currentTimeMillis();
@@ -5211,7 +5227,7 @@ public final class PsiBridgeService implements Disposable {
                 } else if (args.has("content")) {
                     // Diff file against provided content
                     String newContent = args.get("content").getAsString();
-                    String title = args.has("title") ? args.get("title").getAsString() : "Proposed Changes";
+                    String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : "Proposed Changes";
                     var content1 = com.intellij.diff.DiffContentFactory.getInstance()
                         .create(project, vf);
                     var content2 = com.intellij.diff.DiffContentFactory.getInstance()
