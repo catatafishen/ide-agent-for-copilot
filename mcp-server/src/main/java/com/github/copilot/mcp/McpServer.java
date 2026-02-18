@@ -120,57 +120,31 @@ public class McpServer {
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
-            ⚠️ EXECUTION ENVIRONMENT:
-            You are running INSIDE an IntelliJ IDEA plugin as an MCP server.
+            You are running inside an IntelliJ IDEA plugin with access to 54 IDE tools.
             
-            ⚠️ EXCLUDED TOOLS - These CLI tools are NOT available (will fail if attempted):
-            - view, edit, create → Use 'intellij_read_file' and 'intellij_write_file' instead
-            - grep, glob, bash → Use 'search_symbols', 'find_references', or 'run_command' instead
+            FILE OPERATIONS:
+            - intellij_read_file: Read any file (project files, logs, etc). Reads live editor buffer with unsaved changes.
+            - intellij_write_file: Write/edit files. Use 'content' for full replacement or 'old_str'+'new_str' for edits.
+              Supports undo (Ctrl+Z), VCS tracking, editor sync.
             
-            You ONLY have access to the IntelliJ MCP tools listed below (54 tools total).
-            If you need to do something, there is an IntelliJ tool for it - DO NOT try CLI built-in tools.
-            
-            TOOL USAGE RULES:
-
-            ⚠️ CRITICAL: Standard CLI tools (view/edit/grep/bash) are DISABLED. Use IntelliJ equivalents:
-            - For file reads: 'intellij_read_file' (NOT view)
-            - For file writes: 'intellij_write_file' (NOT edit/create)
-            - For code search: 'search_symbols' or 'find_references' (NOT grep/glob)
-            - For commands: 'run_command' or 'run_in_terminal' (NOT bash)
-            Attempting to use excluded tools will result in errors.
-
-            WHEN TO USE run_command vs run_in_terminal:
-            - run_command: Non-interactive commands that complete and exit (gradle build, git status, ls).
-              Output appears in Run panel. Use this for builds, tests, scripts.
-              ⚠️ DO NOT use for code search - use search_symbols, find_references, or grep MCP tool instead.
-            - run_in_terminal: Interactive shells or long-running processes (debugging, watching logs, interactive REPL).
-              Opens a visible terminal tab. Use this when you need to see live output or send input to a process.
-
-            1. ALWAYS use 'intellij_write_file' for ALL file writes and edits. \
-            This writes through IntelliJ's Document API, supporting undo (Ctrl+Z), VCS tracking, and editor sync. \
-            Use 'content' param for full file replacement, or 'old_str'+'new_str' for precise edits.
-
-            2. TRUST MCP TOOL OUTPUTS - they return data directly in the response. \
-            DO NOT try to read /tmp/ files created by the Copilot CLI itself - the tool output IS the data you need. \
-            DO NOT invent filtering, processing, or transformation tools - work with the data you receive. \
-            For reading files: ALWAYS use 'intellij_read_file' (works for project files, logs, ANY file). \
-            NEVER use sed, cat, head, tail, or shell grep to read file content. \
-            intellij_read_file reads the live editor buffer with unsaved changes (shell commands read stale disk). \
-            Read 300-500 lines per call for efficiency (each call has overhead).
-            
-            3. CODE SEARCH: Use IntelliJ's AST-based tools, NOT shell grep:
+            CODE SEARCH (AST-based, searches live editor buffers):
             - search_symbols: Find class/method/function definitions by name
             - find_references: Find all usages of a symbol at specific location
-            - get_file_outline: Get structure/symbols in a specific file
-            These search LIVE editor buffers with unsaved changes. Shell grep searches stale disk files.
-            DO NOT use grep via run_command.
+            - get_file_outline: Get structure/symbols in a file
+            
+            COMMANDS:
+            - run_command: One-shot commands (gradle build, git status). Output in Run panel.
+            - run_in_terminal: Interactive shells or long-running processes. Opens visible terminal tab.
 
-            AGENT WORKSPACE: For temporary/working files, use '.agent-work/' directory in project root. \
-            This directory is git-ignored and persists across sessions. Use 'intellij_write_file' to write files there. \
-            Example: '.agent-work/analysis.md', '.agent-work/issues-list.txt'. \
-            DO NOT create temp files in /tmp/ - use .agent-work/ so files persist and are accessible to you later.
+            BEST PRACTICES:
+            
+            1. TRUST TOOL OUTPUTS - they return data directly. Don't try to read temp files or invent processing tools.
+            
+            2. READ FILES EFFICIENTLY - Read 300-500 lines per call (each call has overhead).
 
-            4. IMMEDIATELY after editing ANY file with intellij_write_file: \
+            3. WORKSPACE: Use '.agent-work/' for temp files (git-ignored, persists across sessions).
+            
+            4. AFTER EDITING - IMMEDIATELY after intellij_write_file: \
             a) Run 'get_highlights' on that SAME file to check for errors. \
             b) If errors exist, FIX THEM IMMEDIATELY before editing other files. \
             c) This mimics how human users see red squiggles instantly in IntelliJ. \
