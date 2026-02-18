@@ -169,17 +169,10 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
         
-        // WORKAROUND: --excluded-tools doesn't work in --acp mode (CLI bug?)
-        // Agent still sees view/edit/grep/glob/bash even when excluded.
-        // Using --available-tools whitelist instead to explicitly control tool access.
-        // Only allow: report_intent, update_todo, task, ask_user (required for CLI functionality)
-        cmd.add("--available-tools");
-        cmd.add("report_intent");
-        cmd.add("update_todo");
-        cmd.add("task");
-        cmd.add("ask_user");
-        LOG.info("Using --available-tools whitelist: report_intent, update_todo, task, ask_user");
-        LOG.info("Full copilot command: " + String.join(" ", cmd));
+        // NOTE: --available-tools and --excluded-tools CLI flags don't work in --acp mode.
+        // Tool filtering must be done via session params (see createSession method).
+        // These flags are left here for documentation but have no effect.
+        LOG.info("Tool filtering handled via session/new availableTools parameter");
         
         // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
@@ -274,6 +267,17 @@ public class CopilotAcpClient implements Closeable {
 
         // mcpServers must be an array in session/new (agent validates this)
         params.add("mcpServers", new JsonArray());
+        
+        // CRITICAL: availableTools must be sent as session param, not CLI flag!
+        // CLI --available-tools flag doesn't work in --acp mode.
+        // Only allow CLI meta tools; force agent to use MCP tools for file/search/command ops.
+        JsonArray availableTools = new JsonArray();
+        availableTools.add("report_intent");
+        availableTools.add("update_todo");
+        availableTools.add("task");
+        availableTools.add("ask_user");
+        params.add("availableTools", availableTools);
+        LOG.info("Session created with availableTools: report_intent, update_todo, task, ask_user");
 
         JsonObject result = sendRequest("session/new", params);
 
