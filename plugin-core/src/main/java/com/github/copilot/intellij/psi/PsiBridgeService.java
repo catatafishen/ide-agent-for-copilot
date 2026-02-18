@@ -3142,7 +3142,14 @@ public final class PsiBridgeService implements Disposable {
                         String name = (String) getName.invoke(test);
                         boolean passed = (boolean) isPassed.invoke(test);
                         boolean defect = (boolean) isDefect.invoke(test);
-                        String status = passed ? "✓ PASSED" : (defect ? "✗ FAILED" : "? UNKNOWN");
+                        String status;
+                        if (passed) {
+                            status = "? PASSED";
+                        } else if (defect) {
+                            status = "? FAILED";
+                        } else {
+                            status = "? UNKNOWN";
+                        }
                         testOutput.append("  ").append(status).append(" ").append(name).append("\n");
 
                         // For failed tests, try to get the error message
@@ -4826,8 +4833,14 @@ public final class PsiBridgeService implements Disposable {
                 if (declFile == null) continue;
 
                 VirtualFile declVf = declFile.getVirtualFile();
-                String declPath = declVf != null && basePath != null
-                    ? relativize(basePath, declVf.getPath()) : (declVf != null ? declVf.getName() : "?");
+                String declPath;
+                if (declVf != null && basePath != null) {
+                    declPath = relativize(basePath, declVf.getPath());
+                } else if (declVf != null) {
+                    declPath = declVf.getName();
+                } else {
+                    declPath = "?";
+                }
 
                 Document declDoc = declVf != null ? FileDocumentManager.getInstance().getDocument(declVf) : null;
                 int declLine = declDoc != null ? declDoc.getLineNumber(decl.getTextOffset()) + 1 : -1;
@@ -5173,7 +5186,7 @@ public final class PsiBridgeService implements Disposable {
                 PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
                 if (psiFile != null) {
                     //noinspection deprecation
-                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart();
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
                 }
 
                 resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : "") +
