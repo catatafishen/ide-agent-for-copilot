@@ -110,14 +110,14 @@ class CopilotAcpClientTest {
 
     @Test
     void testClientIsNotHealthyBeforeStart() {
-        try (CopilotAcpClient client = new CopilotAcpClient()) {
+        try (CopilotAcpClient client = new CopilotAcpClient(null)) {
             assertFalse(client.isHealthy(), "Client should not be healthy before start");
         }
     }
 
     @Test
     void testCloseIdempotent() {
-        try (CopilotAcpClient client = new CopilotAcpClient()) {
+        try (CopilotAcpClient client = new CopilotAcpClient(null)) {
             // Should not throw even if never started
             assertDoesNotThrow(client::close);
             assertDoesNotThrow(client::close);
@@ -146,7 +146,7 @@ class CopilotAcpClientTest {
         @BeforeEach
         void setUp() throws Exception {
             Assumptions.assumeTrue(copilotAvailable(), "Copilot CLI not available, skipping integration tests");
-            client = new CopilotAcpClient();
+            client = new CopilotAcpClient(null);
             client.start();
         }
 
@@ -254,7 +254,7 @@ class CopilotAcpClientTest {
             assertFalse(client.isHealthy());
 
             // Create a new client
-            client = new CopilotAcpClient();
+            client = new CopilotAcpClient(null);
             client.start();
             assertTrue(client.isHealthy());
         }
