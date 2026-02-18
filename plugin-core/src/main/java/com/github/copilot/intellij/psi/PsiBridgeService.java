@@ -5035,42 +5035,48 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        // Resolve VirtualFile in read action on background thread to avoid EDT violations
+        ReadAction.nonBlocking(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
                     resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
-                    return;
+                    return null;
                 }
 
                 if (vf.isDirectory()) {
                     resultFuture.complete("Error: Cannot delete directories. Path is a directory: " + pathStr);
-                    return;
+                    return null;
                 }
 
-                ApplicationManager.getApplication().runWriteAction(() -> {
-                    try {
-                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                            project,
-                            () -> {
-                                try {
-                                    vf.delete(PsiBridgeService.this);
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            },
-                            "Delete File: " + vf.getName(),
-                            null
-                        );
-                        resultFuture.complete("✓ Deleted file: " + pathStr);
-                    } catch (Exception e) {
-                        resultFuture.complete("Error deleting file: " + e.getMessage());
-                    }
+                // Schedule delete on EDT after VFS resolution
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    ApplicationManager.getApplication().runWriteAction(() -> {
+                        try {
+                            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                project,
+                                () -> {
+                                    try {
+                                        vf.delete(PsiBridgeService.this);
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                },
+                                "Delete File: " + vf.getName(),
+                                null
+                            );
+                            resultFuture.complete("✓ Deleted file: " + pathStr);
+                        } catch (Exception e) {
+                            resultFuture.complete("Error deleting file: " + e.getMessage());
+                        }
+                    });
                 });
+                return null;
             } catch (Exception e) {
                 resultFuture.complete("Error: " + e.getMessage());
+                return null;
             }
-        });
+        }).inSmartMode(project).submit(AppExecutorUtil.getAppExecutorService());
 
         return resultFuture.get(10, TimeUnit.SECONDS);
     }

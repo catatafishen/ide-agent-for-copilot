@@ -459,8 +459,15 @@ public class CopilotAcpClient implements Closeable {
                 String deniedKind = lastDeniedKind;
                 builtInActionDeniedDuringTurn = false;
                 LOG.info("sendPrompt: built-in " + deniedKind + " denied, sending retry with MCP tool instruction");
-                fireDebugEvent("RETRY_PROMPT", "Sending retry after " + deniedKind + " denial", "");
-                result = sendRetryPrompt(sessionId, model, deniedKind);
+                
+                // Build retry prompt and capture message for debug logging
+                JsonObject retryParams = buildRetryParams(sessionId, model, deniedKind);
+                String retryMessage = retryParams.getAsJsonArray("prompt")
+                    .get(0).getAsJsonObject().get("text").getAsString();
+                
+                fireDebugEvent("RETRY_PROMPT", "Sending retry after " + deniedKind + " denial", retryMessage);
+                result = sendRequest("session/prompt", retryParams, 600);
+                LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
                 fireDebugEvent("RETRY_RESPONSE", "Retry completed", 
                     result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown");
             }
@@ -972,12 +979,10 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
-     * Build and send a retry prompt after a built-in action was denied,
-     * instructing the agent to use IntelliJ MCP tools instead.
-     * <p>
-     * Workaround for CLI bug #556 - tool filtering doesn't work in --acp mode.
+     * Build retry prompt parameters after a built-in action was denied.
+     * Returns the params object that can be sent to session/prompt.
      */
-    private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
+    private JsonObject buildRetryParams(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) {
         JsonObject retryParams = new JsonObject();
         retryParams.addProperty(SESSION_ID, sessionId);
         JsonArray retryPrompt = new JsonArray();
@@ -1010,6 +1015,17 @@ public class CopilotAcpClient implements Closeable {
         if (model != null) {
             retryParams.addProperty("model", model);
         }
+        return retryParams;
+    }
+
+    /**
+     * Build and send a retry prompt after a built-in action was denied,
+     * instructing the agent to use IntelliJ MCP tools instead.
+     * <p>
+     * Workaround for CLI bug #556 - tool filtering doesn't work in --acp mode.
+     */
+    private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
+        JsonObject retryParams = buildRetryParams(sessionId, model, deniedKind);
         JsonObject result = sendRequest("session/prompt", retryParams, 600);
         LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
         return result;
