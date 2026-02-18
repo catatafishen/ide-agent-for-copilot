@@ -468,8 +468,10 @@ public class CopilotAcpClient implements Closeable {
                 fireDebugEvent("RETRY_PROMPT", "Sending retry after " + deniedKind + " denial", retryMessage);
                 result = sendRequest("session/prompt", retryParams, 600);
                 LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
-                fireDebugEvent("RETRY_RESPONSE", "Retry completed", 
-                    result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown");
+                
+                String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
+                fireDebugEvent("RETRY_RESPONSE", "Agent response: " + stopReason, 
+                    "Original retry message:\n" + retryMessage);
             }
 
             return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";

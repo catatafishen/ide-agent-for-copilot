@@ -130,6 +130,10 @@ public final class PsiBridgeService implements Disposable {
 
     // File Extensions
     private static final String JAVA_EXTENSION = ".java";
+    private static final String KOTLIN_EXTENSION = ".kt";
+
+    // Directory Names
+    private static final String BUILD_DIR = "build";
 
     // Format Strings
     private static final String FORMAT_LOCATION = "%s:%d [%s] %s";
@@ -706,27 +710,6 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
-    private String listRunConfigurations() {
-        return ReadAction.compute(() -> {
-            try {
-                var configs = RunManager.getInstance(project).getAllSettings();
-                if (configs.isEmpty()) return "No run configurations found";
-
-                List<String> results = new ArrayList<>();
-                for (var config : configs) {
-                    String entry = String.format("%s [%s]%s",
-                        config.getName(),
-                        config.getType().getDisplayName(),
-                        config.isTemporary() ? " (temporary)" : "");
-                    results.add(entry);
-                }
-                return results.size() + " run configurations:\n" + String.join("\n", results);
-            } catch (Exception e) {
-                return "Error listing run configurations: " + e.getMessage();
-            }
-        });
-    }
-
     private String runConfiguration(JsonObject args) throws Exception {
         String name = args.get("name").getAsString();
 
@@ -756,107 +739,6 @@ public final class PsiBridgeService implements Disposable {
                     + "\nUse get_test_results to check results after completion.");
             } catch (Exception e) {
                 resultFuture.complete("Error running configuration: " + e.getMessage());
-            }
-        });
-
-        return resultFuture.get(10, TimeUnit.SECONDS);
-    }
-
-    private String createRunConfiguration(JsonObject args) throws Exception {
-        String name = args.get("name").getAsString();
-        String type = args.get("type").getAsString().toLowerCase();
-
-        CompletableFuture<String> resultFuture = new CompletableFuture<>();
-
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try {
-                RunManager runManager = RunManager.getInstance(project);
-
-                // Find the configuration type
-                var configType = findConfigurationType(type);
-                if (configType == null) {
-                    List<String> available = new ArrayList<>();
-                    for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
-                        available.add(ct.getDisplayName());
-                    }
-                    resultFuture.complete("Unknown configuration type: '" + type
-                        + "'. Available types: " + String.join(", ", available));
-                    return;
-                }
-
-                var factory = configType.getConfigurationFactories()[0];
-                var settings = runManager.createConfiguration(name, factory);
-                RunConfiguration config = settings.getConfiguration();
-
-                // Apply common properties
-                applyConfigProperties(config, args);
-
-                // Apply type-specific properties
-                applyTypeSpecificProperties(config, args);
-
-                runManager.addConfiguration(settings);
-                runManager.setSelectedConfiguration(settings);
-
-                resultFuture.complete("Created run configuration: " + name
-                    + " [" + configType.getDisplayName() + "]"
-                    + "\nUse run_configuration to execute it, or edit_run_configuration to modify it.");
-            } catch (Exception e) {
-                resultFuture.complete("Error creating run configuration: " + e.getMessage());
-            }
-        });
-
-        return resultFuture.get(10, TimeUnit.SECONDS);
-    }
-
-    private String editRunConfiguration(JsonObject args) throws Exception {
-        String name = args.get("name").getAsString();
-
-        CompletableFuture<String> resultFuture = new CompletableFuture<>();
-
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try {
-                var settings = RunManager.getInstance(project).findConfigurationByName(name);
-                if (settings == null) {
-                    resultFuture.complete("Run configuration not found: '" + name + "'");
-                    return;
-                }
-
-                RunConfiguration config = settings.getConfiguration();
-                List<String> changes = new ArrayList<>();
-
-                // Apply common properties
-                if (args.has("env")) {
-                    applyEnvVars(config, args.getAsJsonObject("env"), changes);
-                }
-                if (args.has(PARAM_JVM_ARGS)) {
-                    setViaReflection(config, "setVMParameters",
-                        args.get(PARAM_JVM_ARGS).getAsString(), changes, "JVM args");
-                }
-                if (args.has(PARAM_PROGRAM_ARGS)) {
-                    setViaReflection(config, "setProgramParameters",
-                        args.get(PARAM_PROGRAM_ARGS).getAsString(), changes, "program args");
-                }
-                if (args.has(PARAM_WORKING_DIR)) {
-                    setViaReflection(config, "setWorkingDirectory",
-                        args.get(PARAM_WORKING_DIR).getAsString(), changes, "working directory");
-                }
-
-                // Apply type-specific properties
-                applyTypeSpecificProperties(config, args);
-                if (args.has(PARAM_MAIN_CLASS)) changes.add("main class");
-                if (args.has(PARAM_TEST_CLASS)) changes.add("test class");
-                if (args.has("tasks")) changes.add("Gradle tasks");
-
-                if (changes.isEmpty()) {
-                    resultFuture.complete("No changes applied. Available properties: "
-                        + "env (object), jvm_args, program_args, working_dir, "
-                        + "main_class, test_class, test_method, tasks");
-                } else {
-                    resultFuture.complete("Updated run configuration '" + name + "': "
-                        + String.join(", ", changes));
-                }
-            } catch (Exception e) {
-                resultFuture.complete("Error editing run configuration: " + e.getMessage());
             }
         });
 
