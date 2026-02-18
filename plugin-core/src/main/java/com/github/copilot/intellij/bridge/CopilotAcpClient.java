@@ -59,8 +59,16 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Permission kinds that are denied, so the agent uses IntelliJ MCP tools instead.
+     * CLI tool filtering bug #556 means we can't exclude tools via --available-tools.
+     * Instead, we deny permission requests and provide simple guidance.
      */
-    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of("edit", "create", "execute", "runInTerminal");
+    private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
+        "edit",          // CLI built-in - deny to force intellij_write_file
+        "create",        // CLI built-in - deny to force intellij_write_file
+        "read",          // CLI built-in - deny to force intellij_read_file
+        "execute",       // Generic execute - doesn't exist, agent invents it
+        "runInTerminal"  // Generic name - actual tool is run_in_terminal
+    );
 
     private final Gson gson = new Gson();
     private final AtomicLong requestIdCounter = new AtomicLong(1);
