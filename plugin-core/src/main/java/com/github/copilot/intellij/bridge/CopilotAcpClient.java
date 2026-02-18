@@ -322,18 +322,13 @@ public class CopilotAcpClient implements Closeable {
         }
         params.add("mcpServers", mcpServers);
 
-        // CRITICAL: availableTools must be sent as session param, not CLI flag!
-        // CLI --available-tools flag doesn't work in --acp mode (bug #556).
-        // Only allow CLI meta tools; force agent to use MCP tools for file/search/command ops.
-        JsonArray availableTools = new JsonArray();
-        availableTools.add("report_intent");
-        availableTools.add("update_todo");
-        availableTools.add("task");
-        availableTools.add("ask_user");
-        params.add("availableTools", availableTools);
+        // Do NOT send availableTools param - it would filter out MCP tools!
+        // We want the agent to see both CLI tools AND MCP tools.
+        // Tool filtering doesn't work properly in ACP mode (CLI bug #556),
+        // so we handle it via permission denial (see handlePermissionRequest).
 
         LOG.warn("=== DEBUG: session/new params: " + params);
-        LOG.info("Session created with " + mcpServers.size() + " MCP server(s), " + availableTools.size() + " CLI tools");
+        LOG.info("Session created with " + mcpServers.size() + " MCP server(s)");
 
         JsonObject result = sendRequest("session/new", params);
 
