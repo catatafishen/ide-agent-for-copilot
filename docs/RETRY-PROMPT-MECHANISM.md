@@ -4,99 +4,131 @@
 
 When the Copilot agent tries to use CLI built-in tools (view, edit, create, grep, glob, bash), we need to deny them and guide the agent to use our IntelliJ MCP tools instead. However, simply denying the permission causes the agent to see "Tool failed" without understanding what went wrong.
 
-## Solution: Second Prompt Workaround
+## Solution Evolution
 
-The retry mechanism uses a **two-phase approach**:
+### ❌ Failed Approach: Post-Rejection Retry (Removed)
 
-### Phase 1: Permission Denial
+**Original implementation** (commits 4fbf2fb - f0e9c45) sent guidance AFTER denial:
+1. Agent requests permission → we deny
+2. Agent's turn ends with "tool failed"
+3. We send new session/prompt with guidance
+
+**Why this failed:**
+- The retry message arrived as a separate turn, appearing to the agent as if the USER said it
+- Agent interpreted it as informational feedback, not actionable guidance
+- Agent responded with `end_turn` ("thanks for letting me know")
+- Timing-dependent and unreliable
+
+### ✅ Current Approach: Pre-Rejection Guidance
+
+**New implementation** sends guidance BEFORE denial:
+
 ```java
 // In handlePermissionRequest()
 if (DENIED_PERMISSION_KINDS.contains(permKind)) {
     String rejectOptionId = findRejectOption(reqParams);
-    builtInActionDeniedDuringTurn = true;  // Set flag
-    lastDeniedKind = permKind;              // Remember what was denied
-    sendPermissionResponse(reqId, rejectOptionId);  // Send rejection
-}
-```
-
-### Phase 2: Automatic Follow-up Prompt
-```java
-// In sendPrompt() after the first session/prompt completes
-if (builtInActionDeniedDuringTurn) {
-    String deniedKind = lastDeniedKind;
-    builtInActionDeniedDuringTurn = false;
     
-    // Send a SECOND session/prompt with guidance
-    result = sendRetryPrompt(sessionId, model, deniedKind);
+    // Send guidance FIRST while agent is still in turn
+    Map<String, Object> retryParams = buildRetryParams(permKind);
+    String retryMessage = (String) retryParams.get("message");
+    fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
+    sendPromptMessage(retryMessage);  // Fire-and-forget notification
+    
+    // THEN reject
+    fireDebugEvent("PERMISSION_DENIED", "Built-in " + permKind + " denied", 
+        "Will retry with intellij-code-tools- prefix");
+    builtInActionDeniedDuringTurn = true;
+    lastDeniedKind = permKind;
+    sendPermissionResponse(reqId, rejectOptionId);
 }
 ```
 
-The `sendRetryPrompt()` method sends a **completely new `session/prompt` JSON-RPC request** with a text message like:
+**Why this works better:**
+- Agent receives guidance while still in its turn (hasn't ended yet)
+- Guidance arrives BEFORE the tool failure
+- Agent sees: "use other tool" → tool fails → connects the dots
+- Not dependent on timing or turn boundaries
+
+## Implementation Details
+
+### sendPromptMessage()
+Sends a fire-and-forget `session/message` notification (not a request):
+```java
+private void sendPromptMessage(String message) {
+    JsonObject params = new JsonObject();
+    JsonArray messages = new JsonArray();
+    JsonObject userMsg = new JsonObject();
+    userMsg.addProperty("role", "user");
+    userMsg.addProperty("content", message);
+    messages.add(userMsg);
+    params.add("messages", messages);
+    
+    // Fire-and-forget notification (no request ID)
+    JsonObject notification = new JsonObject();
+    notification.addProperty(JSONRPC, "2.0");
+    notification.addProperty("method", "session/message");
+    notification.add(PARAMS, params);
+    sendRawMessage(notification);
+}
 ```
-❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.
-```
-
-## Why This Works
-
-The retry prompt is **not** part of the permission response. It's a separate session/prompt that:
-1. Arrives **after** the original prompt completes
-2. Gets processed by the agent as new context
-3. Allows the agent to retry with corrected tool usage
-
-This is the same as if the user manually sent a second message saying "use the other tool".
 
 ## History
 
-- **Original implementation** (commit `4fbf2fb`, Feb 13 2026): Created for `edit` permission denial
-- **Extended** (commits `fb35e02`, `a916a7f`): Added `create`, `read`, `execute`, `runInTerminal`
-- **Abuse detection added** (commit `035e54a`, Feb 18 2026): Detects run_command being used for tests/grep/find/git
+- **Original implementation** (commit `4fbf2fb`, Feb 13 2026): Post-rejection retry for `edit` denial
+- **Extended** (commit `ff23d47`): Added support for `create`, `read`, `execute`, `runInTerminal`
+- **Debug tab** (commit `0010abe`, Feb 17 2026): Added debug visibility for permission flow
+- **Investigation** (commit `f0e9c45`, Feb 17 2026): Discovered agent treats retry as "user feedback", not actionable guidance
+- **Pre-rejection guidance** (current): Send message BEFORE denial to keep agent in turn
 
-## Known Issues
+## Known Limitations
 
-### Issue: Retry messages not visible in UI
+Even with pre-rejection guidance, the agent may:
+- Still not see the message in time
+- See it but choose not to retry
+- Be in a state where it can't process additional context
 
-**Status:** Under investigation
+**Why tool filtering would be better:**
+- CLI's `--allowed-tools` flag should hide CLI built-ins from agent's tool list
+- Agent would only see IntelliJ MCP tools, no confusion possible
+- Bug #556 blocks this: tool filtering doesn't work in --acp mode
 
-**Symptoms:**
-- Agent sees "⚠ Tool failed: tooluse_..." in UI
-- Our retry message doesn't appear in the agent's visible context
-- Agent sometimes retries correctly (proving it got the message)
-- Sometimes agent gives up or tries wrong approach
+## Workaround Status
 
-**Hypothesis:**
-- The retry prompt is being sent and received by the agent
-- But the UI doesn't display it as visible context
-- Agent can "see" it internally for decision-making
-- Need to verify with debug logging
-
-**Related GitHub Issues:**
-- None found yet - may be IntelliJ plugin-specific UI behavior
-- Could be related to how streaming responses are displayed
-
-### Mitigation: Debug Tab
-
-To diagnose this issue, we're adding a debug tab that shows:
-- All permission requests (approved/denied)
-- Tool calls with parameters
-- Retry messages sent
-- Agent responses received
-
-This will help us understand:
-1. Are retry prompts actually being sent?
-2. What is the agent receiving vs what UI shows?
-3. Is there a timing issue with streaming responses?
+| Approach | Status | Reliability | Notes |
+|----------|--------|-------------|-------|
+| Post-rejection retry | ❌ Removed | Low | Agent treats as user feedback |
+| Pre-rejection guidance | ✅ Current | Medium | Better but not perfect |
+| Tool filtering | ⏳ Blocked | Would be 100% | Waiting for CLI bug #556 fix |
 
 ## Testing the Mechanism
 
-To test if retry prompts are working:
+To test if pre-rejection guidance is working:
 
-1. **Enable debug logging:**
-   ```bash
-   grep "===" ide_launch.log
-   ```
+1. **Open Debug Tab in plugin UI:**
+   - Shows PRE_REJECTION_GUIDANCE event before PERMISSION_DENIED
+   - Displays actual message sent to agent
 
 2. **Trigger a denial:**
    - Ask agent to "view a file"
+   - Or "edit a file"
+   - Or "run tests via ./gradlew test"
+
+3. **Check Debug Tab sequence:**
+   ```
+   PERMISSION_REQUEST    → read - path/to/file
+   PRE_REJECTION_GUIDANCE → ❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.
+   PERMISSION_DENIED     → Built-in read denied
+   ```
+
+4. **Check agent behavior:**
+   - Does it retry with `intellij-code-tools-` prefix?
+   - Or does it give up / try wrong tool?
+
+## Related Issues
+
+- **GitHub CLI bug #556**: `--allowed-tools` doesn't work in `--acp` mode
+- **Removal criteria**: When bug is fixed, remove all denial/retry logic and use proper tool filtering
+
    - Or "edit a file"
    - Or "run tests via ./gradlew test"
 
