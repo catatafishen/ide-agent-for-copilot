@@ -166,6 +166,7 @@ public final class PsiBridgeService implements Disposable {
     private static final String GET_INSTANCE_METHOD = "getInstance";
 
     private final Project project;
+    private final RunConfigurationService runConfigService;
     private HttpServer httpServer;
     private int port;
 
@@ -177,6 +178,7 @@ public final class PsiBridgeService implements Disposable {
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
+        this.runConfigService = new RunConfigurationService(project, this::resolveClass);
     }
 
     public static PsiBridgeService getInstance(@NotNull Project project) {
@@ -302,10 +304,10 @@ public final class PsiBridgeService implements Disposable {
                 case "get_test_results" -> getTestResults(arguments);
                 case "get_coverage" -> getCoverage(arguments);
                 case "get_project_info" -> getProjectInfo();
-                case "list_run_configurations" -> listRunConfigurations();
-                case "run_configuration" -> runConfiguration(arguments);
-                case "create_run_configuration" -> createRunConfiguration(arguments);
-                case "edit_run_configuration" -> editRunConfiguration(arguments);
+                case "list_run_configurations" -> runConfigService.listRunConfigurations();
+                case "run_configuration" -> runConfigService.runConfiguration(arguments);
+                case "create_run_configuration" -> runConfigService.createRunConfiguration(arguments);
+                case "edit_run_configuration" -> runConfigService.editRunConfiguration(arguments);
                 case "get_problems" -> getProblems(arguments);
                 case "get_highlights" -> getHighlights(arguments);
                 case "run_inspections" -> runInspections(arguments);
@@ -3254,7 +3256,11 @@ public final class PsiBridgeService implements Disposable {
         return null;
     }
 
-    private record ClassInfo(String fqn, Module module) {
+    public record ClassInfo(String fqn, Module module) {
+    }
+
+    public interface ClassResolver {
+        ClassInfo resolveClass(String className);
     }
 
     private ClassInfo resolveClass(String className) {

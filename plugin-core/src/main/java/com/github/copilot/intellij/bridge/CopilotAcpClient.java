@@ -957,6 +957,12 @@ public class CopilotAcpClient implements Closeable {
             return "test";
         }
 
+        // Check for sed usage - text manipulation that should use proper file editing tools
+        if (command.startsWith("sed ") || command.contains("| sed") ||
+            command.contains("&& sed") || command.contains("; sed")) {
+            return "sed";
+        }
+
         // Check for grep usage
         if (command.startsWith("grep ") || command.contains("| grep") ||
             command.contains("&& grep") || command.contains("; grep")) {
@@ -997,6 +1003,8 @@ public class CopilotAcpClient implements Closeable {
             instruction = switch (abuseType) {
                 case "test" -> "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
                     "Provides structured results, coverage, and failure details.";
+                case "sed" -> "❌ Don't use sed. Use 'intellij-code-tools-intellij_write_file' instead. " +
+                    "It provides proper file editing with undo/redo and live editor buffer access.";
                 case "grep" -> "❌ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
                     "'intellij-code-tools-find_references' instead. They search live editor buffers.";
                 case "find" -> "❌ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
