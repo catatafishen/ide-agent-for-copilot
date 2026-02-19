@@ -1215,7 +1215,6 @@ public final class PsiBridgeService implements Disposable {
         return new InspectionCollectionResult(allProblems, filesSet.size(), skippedNoDescription, skippedNoFile);
     }
 
-    @SuppressWarnings("UnstableApiUsage")
     private int[] collectProblemsFromTool(
         com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
         String toolId, String basePath, Set<String> filesSet,
@@ -1234,27 +1233,38 @@ public final class PsiBridgeService implements Disposable {
             if (descriptors == null) continue;
 
             for (var descriptor : descriptors) {
-                String formatted = formatInspectionDescriptor(descriptor, toolId, basePath, filesSet);
-                if (formatted == null) {
-                    skippedNoDescription++;
-                    continue;
-                }
-                if (formatted.isEmpty()) {
-                    skippedNoFile++;
-                    continue;
-                }
-
-                String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
-                    ? pd.getHighlightType().toString() : "WARNING";
-                if (requiredRank > 0) {
-                    int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
-                    if (rank < requiredRank) continue;
-                }
-
-                allProblems.add(formatted);
+                int result = processInspectionDescriptor(
+                    descriptor, toolId, basePath, filesSet, severityRank, requiredRank, allProblems);
+                if (result == 1) skippedNoDescription++;
+                else if (result == 2) skippedNoFile++;
             }
         }
         return new int[]{skippedNoDescription, skippedNoFile};
+    }
+
+    /**
+     * Process a single inspection descriptor and add to allProblems if valid.
+     *
+     * @return 0=added, 1=skippedNoDescription, 2=skippedNoFile, 3=filtered by severity
+     */
+    @SuppressWarnings("UnstableApiUsage")
+    private int processInspectionDescriptor(
+        com.intellij.codeInspection.CommonProblemDescriptor descriptor,
+        String toolId, String basePath, Set<String> filesSet,
+        Map<String, Integer> severityRank, int requiredRank, List<String> allProblems) {
+        String formatted = formatInspectionDescriptor(descriptor, toolId, basePath, filesSet);
+        if (formatted == null) return 1;
+        if (formatted.isEmpty()) return 2;
+
+        String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
+            ? pd.getHighlightType().toString() : "WARNING";
+        if (requiredRank > 0) {
+            int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
+            if (rank < requiredRank) return 3;
+        }
+
+        allProblems.add(formatted);
+        return 0;
     }
 
     private String formatInspectionDescriptor(
@@ -2987,45 +2997,12 @@ public final class PsiBridgeService implements Disposable {
      * Extract text from any type of ExecutionConsole (regular, test runner, etc.)
      */
     private String extractConsoleText(com.intellij.execution.ui.ExecutionConsole console) {
-        // 1. Try SMTRunnerConsoleView (test runner) — get both test tree and console output
         try {
             var getResultsViewer = console.getClass().getMethod("getResultsViewer");
             var viewer = getResultsViewer.invoke(console);
             if (viewer != null) {
-                StringBuilder testOutput = new StringBuilder();
-                // Get test tree summary via reflection
-                var getAllTests = viewer.getClass().getMethod("getAllTests");
-                var tests = (java.util.List<?>) getAllTests.invoke(viewer);
-                if (tests != null && !tests.isEmpty()) {
-                    testOutput.append("=== Test Results ===\n");
-                    for (var test : tests) {
-                        var getName = test.getClass().getMethod("getPresentableName");
-                        var isPassed = test.getClass().getMethod("isPassed");
-                        var isDefect = test.getClass().getMethod("isDefect");
-                        String name = (String) getName.invoke(test);
-                        boolean passed = (boolean) isPassed.invoke(test);
-                        boolean defect = (boolean) isDefect.invoke(test);
-                        String status;
-                        if (passed) {
-                            status = "? PASSED";
-                        } else if (defect) {
-                            status = "? FAILED";
-                        } else {
-                            status = "? UNKNOWN";
-                        }
-                        testOutput.append("  ").append(status).append(" ").append(name).append("\n");
-
-                        // For failed tests, try to get the error message
-                        if (defect) {
-                            appendTestErrorDetails(test, testOutput);
-                        }
-                    }
-                }
-
-                // Also get the console text portion of the test runner
-                appendTestConsoleOutput(console, testOutput);
-
-                if (!testOutput.isEmpty()) return testOutput.toString();
+                String testOutput = extractTestRunnerResults(viewer, console);
+                if (testOutput != null && !testOutput.isEmpty()) return testOutput;
             }
         } catch (NoSuchMethodException ignored) {
             // Not an SMTRunnerConsoleView
@@ -3033,8 +3010,44 @@ public final class PsiBridgeService implements Disposable {
             LOG.warn("Failed to extract test runner output", e);
         }
 
-        // 2. Try plain ConsoleView getText()
         return extractPlainConsoleText(console);
+    }
+
+    private String extractTestRunnerResults(Object viewer,
+                                            com.intellij.execution.ui.ExecutionConsole console) throws Exception {
+        StringBuilder testOutput = new StringBuilder();
+        var getAllTests = viewer.getClass().getMethod("getAllTests");
+        var tests = (java.util.List<?>) getAllTests.invoke(viewer);
+        if (tests != null && !tests.isEmpty()) {
+            testOutput.append("=== Test Results ===\n");
+            for (var test : tests) {
+                appendTestResult(test, testOutput);
+            }
+        }
+        appendTestConsoleOutput(console, testOutput);
+        return testOutput.toString();
+    }
+
+    private void appendTestResult(Object test, StringBuilder testOutput) throws Exception {
+        var getName = test.getClass().getMethod("getPresentableName");
+        var isPassed = test.getClass().getMethod("isPassed");
+        var isDefect = test.getClass().getMethod("isDefect");
+        String name = (String) getName.invoke(test);
+        boolean passed = (boolean) isPassed.invoke(test);
+        boolean defect = (boolean) isDefect.invoke(test);
+        String status;
+        if (passed) {
+            status = "? PASSED";
+        } else if (defect) {
+            status = "? FAILED";
+        } else {
+            status = "? UNKNOWN";
+        }
+        testOutput.append("  ").append(status).append(" ").append(name).append("\n");
+
+        if (defect) {
+            appendTestErrorDetails(test, testOutput);
+        }
     }
 
     private void appendTestErrorDetails(Object test, StringBuilder testOutput) {
@@ -3349,29 +3362,14 @@ public final class PsiBridgeService implements Disposable {
             var junitType = findJUnitConfigurationType();
             if (junitType == null) return null;
 
-            // Parse target: "com.example.MyTest" or "MyTest.testFoo" or "*Test"
-            String testClass = target;
-            String testMethod = null;
-            if (target.contains("*")) {
-                // Pattern-based — can't map to a single JUnit class, fall back to Gradle
-                return null;
-            }
+            if (target.contains("*")) return null;
 
-            // Check for "ClassName.methodName" pattern (not a package separator)
-            int lastDot = target.lastIndexOf('.');
-            if (lastDot > 0) {
-                String possibleMethod = target.substring(lastDot + 1);
-                String possibleClass = target.substring(0, lastDot);
-                // If the part after the last dot starts with lowercase, it's likely a method name
-                if (!possibleMethod.isEmpty() && Character.isLowerCase(possibleMethod.charAt(0))) {
-                    testClass = possibleClass;
-                    testMethod = possibleMethod;
-                }
-            }
+            String[] parsed = parseTestTarget(target);
+            String testClass = parsed[0];
+            String testMethod = parsed[1];
 
-            // Resolve the class via PSI to get FQN and module
             ClassInfo classInfo = resolveClass(testClass);
-            if (classInfo.fqn() == null) return null; // class not found, fall back to Gradle
+            if (classInfo.fqn() == null) return null;
 
             CompletableFuture<String> resultFuture = new CompletableFuture<>();
             final String resolvedClass = classInfo.fqn();
@@ -3380,52 +3378,9 @@ public final class PsiBridgeService implements Disposable {
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 try {
-                    RunManager runManager = RunManager.getInstance(project);
-                    var factory = junitType.getConfigurationFactories()[0];
-                    String configName = "Test: " + (resolvedMethod != null
-                        ? resolvedClass.substring(resolvedClass.lastIndexOf('.') + 1) + "." + resolvedMethod
-                        : resolvedClass.substring(resolvedClass.lastIndexOf('.') + 1));
-                    var settings = runManager.createConfiguration(configName, factory);
-                    RunConfiguration config = settings.getConfiguration();
-
-                    // Set test class/method via getPersistentData()
-                    var getData = config.getClass().getMethod("getPersistentData");
-                    Object data = getData.invoke(config);
-                    data.getClass().getField("MAIN_CLASS_NAME").set(data, resolvedClass);
-                    if (resolvedMethod != null) {
-                        data.getClass().getField("METHOD_NAME").set(data, resolvedMethod);
-                        data.getClass().getField("TEST_OBJECT").set(data, TEST_TYPE_METHOD);
-                    } else {
-                        data.getClass().getField("TEST_OBJECT").set(data, TEST_TYPE_CLASS);
-                    }
-
-                    // Set module
-                    if (resolvedModule != null) {
-                        try {
-                            var setModule = config.getClass().getMethod("setModule", Module.class);
-                            setModule.invoke(config, resolvedModule);
-                        } catch (NoSuchMethodException ignored) {
-                            // Method not available in this version
-                        }
-                    }
-
-                    settings.setTemporary(true);
-                    runManager.addConfiguration(settings);
-                    runManager.setSelectedConfiguration(settings);
-
-                    // Execute via IntelliJ's test runner
-                    var executor = DefaultRunExecutor.getRunExecutorInstance();
-                    var envBuilder = ExecutionEnvironmentBuilder.createOrNull(executor, settings);
-                    if (envBuilder == null) {
-                        resultFuture.complete("Error: Cannot create execution environment for JUnit test");
-                        return;
-                    }
-
-                    var env = envBuilder.build();
-                    ExecutionManager.getInstance(project).restartRunProfile(env);
-                    resultFuture.complete("Started tests via IntelliJ JUnit runner: " + configName
-                        + "\nResults will appear in the IntelliJ Test Runner panel."
-                        + "\nUse get_test_results to check results after completion.");
+                    String result = createAndRunJUnitConfig(
+                        junitType, resolvedClass, resolvedMethod, resolvedModule);
+                    resultFuture.complete(result);
                 } catch (Exception e) {
                     LOG.warn("Failed to run JUnit natively, will fall back to Gradle", e);
                     resultFuture.complete(null);
@@ -3440,6 +3395,73 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             LOG.warn("tryRunJUnitNatively failed", e);
             return null;
+        }
+    }
+
+    private String[] parseTestTarget(String target) {
+        String testClass = target;
+        String testMethod = null;
+        int lastDot = target.lastIndexOf('.');
+        if (lastDot > 0) {
+            String possibleMethod = target.substring(lastDot + 1);
+            String possibleClass = target.substring(0, lastDot);
+            if (!possibleMethod.isEmpty() && Character.isLowerCase(possibleMethod.charAt(0))) {
+                testClass = possibleClass;
+                testMethod = possibleMethod;
+            }
+        }
+        return new String[]{testClass, testMethod};
+    }
+
+    private String createAndRunJUnitConfig(
+        com.intellij.execution.configurations.ConfigurationType junitType,
+        String resolvedClass, String resolvedMethod, Module resolvedModule) throws Exception {
+        RunManager runManager = RunManager.getInstance(project);
+        var factory = junitType.getConfigurationFactories()[0];
+        String simpleName = resolvedClass.substring(resolvedClass.lastIndexOf('.') + 1);
+        String configName = "Test: " + (resolvedMethod != null
+            ? simpleName + "." + resolvedMethod : simpleName);
+        var settings = runManager.createConfiguration(configName, factory);
+        RunConfiguration config = settings.getConfiguration();
+
+        configureJUnitTestData(config, resolvedClass, resolvedMethod, resolvedModule);
+
+        settings.setTemporary(true);
+        runManager.addConfiguration(settings);
+        runManager.setSelectedConfiguration(settings);
+
+        var executor = DefaultRunExecutor.getRunExecutorInstance();
+        var envBuilder = ExecutionEnvironmentBuilder.createOrNull(executor, settings);
+        if (envBuilder == null) {
+            return "Error: Cannot create execution environment for JUnit test";
+        }
+
+        var env = envBuilder.build();
+        ExecutionManager.getInstance(project).restartRunProfile(env);
+        return "Started tests via IntelliJ JUnit runner: " + configName
+            + "\nResults will appear in the IntelliJ Test Runner panel."
+            + "\nUse get_test_results to check results after completion.";
+    }
+
+    private static void configureJUnitTestData(RunConfiguration config, String resolvedClass,
+                                               String resolvedMethod, Module resolvedModule) throws Exception {
+        var getData = config.getClass().getMethod("getPersistentData");
+        Object data = getData.invoke(config);
+        data.getClass().getField("MAIN_CLASS_NAME").set(data, resolvedClass);
+        if (resolvedMethod != null) {
+            data.getClass().getField("METHOD_NAME").set(data, resolvedMethod);
+            data.getClass().getField("TEST_OBJECT").set(data, TEST_TYPE_METHOD);
+        } else {
+            data.getClass().getField("TEST_OBJECT").set(data, TEST_TYPE_CLASS);
+        }
+
+        if (resolvedModule != null) {
+            try {
+                var setModule = config.getClass().getMethod("setModule", Module.class);
+                setModule.invoke(config, resolvedModule);
+            } catch (NoSuchMethodException ignored) {
+                // Method not available in this version
+            }
         }
     }
 
@@ -4021,31 +4043,11 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private void scanLibrarySources(String library, StringBuilder sb) {
-        Module[] modules = ModuleManager.getInstance(project).getModules();
         List<String> withSources = new ArrayList<>();
         List<String> withoutSources = new ArrayList<>();
 
-        for (Module module : modules) {
-            ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
-            for (var entry : rootManager.getOrderEntries()) {
-                if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry))
-                    continue;
-
-                var lib = libEntry.getLibrary();
-                if (lib == null) continue;
-
-                String entryName = entry.getPresentableName();
-                if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
-                    continue;
-                }
-
-                VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
-                if (sources.length > 0) {
-                    withSources.add(entryName);
-                } else {
-                    withoutSources.add(entryName);
-                }
-            }
+        for (Module module : ModuleManager.getInstance(project).getModules()) {
+            collectModuleLibrarySources(module, library, withSources, withoutSources);
         }
 
         sb.append("Libraries with sources: ").append(withSources.size()).append("\n");
@@ -4062,6 +4064,27 @@ public final class PsiBridgeService implements Disposable {
             sb.append("\nWith sources:\n");
             for (String lib : withSources) {
                 sb.append("  ? ").append(lib).append("\n");
+            }
+        }
+    }
+
+    private void collectModuleLibrarySources(Module module, String library,
+                                             List<String> withSources, List<String> withoutSources) {
+        ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
+        for (var entry : rootManager.getOrderEntries()) {
+            if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry)) continue;
+
+            var lib = libEntry.getLibrary();
+            if (lib == null) continue;
+
+            String entryName = entry.getPresentableName();
+            if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) continue;
+
+            VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
+            if (sources.length > 0) {
+                withSources.add(entryName);
+            } else {
+                withoutSources.add(entryName);
             }
         }
     }
