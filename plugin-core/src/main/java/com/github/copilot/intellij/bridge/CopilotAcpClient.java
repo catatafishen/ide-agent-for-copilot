@@ -104,7 +104,6 @@ public class CopilotAcpClient implements Closeable {
 
     // Permission tracking: set when a built-in permission is denied during a prompt turn
     private volatile boolean builtInActionDeniedDuringTurn = false;
-    private volatile boolean isRetryInProgress = false; // Prevent nested retries
     private volatile String lastDeniedKind = "";
 
     // Debug event listeners for UI debug tab
@@ -455,25 +454,11 @@ public class CopilotAcpClient implements Closeable {
 
             String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
 
-            // If turn ended with denied tool(s), automatically retry ONCE (prevent nested retries)
-            if (builtInActionDeniedDuringTurn && !isRetryInProgress) {
-                LOG.info("Turn ended with denied tools - sending automatic retry (once only)");
-                fireDebugEvent("AUTO_RETRY", "Turn ended with tool denials - retrying once",
+            // Log if tools were denied but don't retry here (retry should be at UI level)
+            if (builtInActionDeniedDuringTurn) {
+                LOG.info("Turn ended with denied tools - agent may need manual retry");
+                fireDebugEvent("TURN_ENDED_WITH_DENIALS", "Tools were denied", 
                     "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
-
-                // Set flag to prevent nested retries
-                isRetryInProgress = true;
-                try {
-                    // Send follow-up prompt to continue the task
-                    String retryPrompt = "Please continue with the task using the correct tools (intellij-code-tools- prefix).";
-                    return sendPrompt(sessionId, retryPrompt, model, references, onChunk, onUpdate);
-                } finally {
-                    isRetryInProgress = false; // Reset flag after retry completes
-                }
-            } else if (builtInActionDeniedDuringTurn && isRetryInProgress) {
-                LOG.info("Turn ended with denied tools but already in retry - stopping to prevent loop");
-                fireDebugEvent("RETRY_STOPPED", "Prevented nested retry", 
-                    "Would have caused infinite loop");
             }
 
             return stopReason;
@@ -1079,6 +1064,13 @@ public class CopilotAcpClient implements Closeable {
     }
 
     // ---- End agent request handlers ----
+
+    /**
+     * Check if the last prompt turn had tools denied (for UI to handle retry).
+     */
+    public boolean hadToolsDenied() {
+        return builtInActionDeniedDuringTurn;
+    }
 
     /**
      * Get the usage multiplier for a model ID (e.g., "1x", "3x", "0.33x").
