@@ -3569,7 +3569,10 @@ public final class PsiBridgeService implements Disposable {
             var doc = dbf.newDocumentBuilder().parse(xmlFile.toFile());
             var suites = doc.getElementsByTagName("testsuite");
 
-            int tests = 0, failed = 0, errors = 0, skipped = 0;
+            int tests = 0;
+            int failed = 0;
+            int errors = 0;
+            int skipped = 0;
             double time = 0;
             List<String> failures = new ArrayList<>();
 
@@ -3754,7 +3757,6 @@ public final class PsiBridgeService implements Disposable {
             case "KtClass", "KtObjectDeclaration" -> classifyKotlinClass(element);
             case "KtNamedFunction" -> ELEMENT_TYPE_FUNCTION;
             case "KtProperty" -> ELEMENT_TYPE_FIELD;
-            case "KtParameter" -> null;
             case "KtTypeAlias" -> ELEMENT_TYPE_CLASS;
             default -> null;
         };
@@ -4388,126 +4390,7 @@ public final class PsiBridgeService implements Disposable {
 
                 ApplicationManager.getApplication().runWriteAction(() -> {
                     try {
-                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                        if (psiFile == null) {
-                            resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr);
-                            return;
-                        }
-
-                        Document document = FileDocumentManager.getInstance().getDocument(vf);
-                        if (document == null) {
-                            resultFuture.complete("Error: Cannot get document for: " + pathStr);
-                            return;
-                        }
-
-                        // Find the PsiElement at the target line
-                        if (targetLine < 1 || targetLine > document.getLineCount()) {
-                            resultFuture.complete("Error: Line " + targetLine + " is out of bounds " +
-                                "(file has " + document.getLineCount() + FORMAT_LINES_SUFFIX);
-                            return;
-                        }
-                        int lineStartOffset = document.getLineStartOffset(targetLine - 1);
-                        int lineEndOffset = document.getLineEndOffset(targetLine - 1);
-
-                        // Run local inspections on the file to find the matching problem
-                        var inspectionManager = com.intellij.codeInspection.InspectionManager.getInstance(project);
-                        var profile = com.intellij.profile.codeInspection.InspectionProjectProfileManager
-                            .getInstance(project).getCurrentProfile();
-                        var toolWrapper = profile.getInspectionTool(inspectionId, project);
-
-                        if (toolWrapper == null) {
-                            resultFuture.complete("Error: Inspection '" + inspectionId + "' not found. " +
-                                "Use the inspection ID from run_inspections output (e.g., 'RedundantCast', 'unused').");
-                            return;
-                        }
-
-                        var tool = toolWrapper.getTool();
-                        List<com.intellij.codeInspection.ProblemDescriptor> problems = new ArrayList<>();
-
-                        if (tool instanceof com.intellij.codeInspection.LocalInspectionTool localTool) {
-                            var visitor = localTool.buildVisitor(
-                                new com.intellij.codeInspection.ProblemsHolder(inspectionManager, psiFile, false),
-                                false);
-                            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-                                @Override
-                                public void visitElement(@NotNull PsiElement element) {
-                                    element.accept(visitor);
-                                    super.visitElement(element);
-                                }
-                            });
-                            var holder = new com.intellij.codeInspection.ProblemsHolder(inspectionManager, psiFile, false);
-                            var visitor2 = localTool.buildVisitor(holder, false);
-                            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-                                @Override
-                                public void visitElement(@NotNull PsiElement element) {
-                                    element.accept(visitor2);
-                                    super.visitElement(element);
-                                }
-                            });
-                            problems.addAll(holder.getResults());
-                        }
-
-                        // Filter to problems on the target line
-                        List<com.intellij.codeInspection.ProblemDescriptor> lineProblems = new ArrayList<>();
-                        for (var problem : problems) {
-                            PsiElement elem = problem.getPsiElement();
-                            if (elem != null) {
-                                int offset = elem.getTextOffset();
-                                if (offset >= lineStartOffset && offset <= lineEndOffset) {
-                                    lineProblems.add(problem);
-                                }
-                            }
-                        }
-
-                        if (lineProblems.isEmpty()) {
-                            // Also try highlights-based approach for problems not found via local inspection
-                            resultFuture.complete("No problems found for inspection '" + inspectionId +
-                                "' at line " + targetLine + " in " + pathStr +
-                                ". The inspection may have been resolved, or it may be a global inspection " +
-                                "that doesn't support quickfixes. Try using intellij_write_file instead.");
-                            return;
-                        }
-
-                        com.intellij.codeInspection.ProblemDescriptor targetProblem =
-                            lineProblems.get(Math.min(fixIndex, lineProblems.size() - 1));
-
-                        var fixes = targetProblem.getFixes();
-                        if (fixes == null || fixes.length == 0) {
-                            resultFuture.complete("No quickfixes available for this problem. " +
-                                "Description: " + targetProblem.getDescriptionTemplate() +
-                                ". Use intellij_write_file to fix manually.");
-                            return;
-                        }
-
-                        // List fixes if multiple available
-                        StringBuilder sb = new StringBuilder();
-                        var fix = fixes[Math.min(fixIndex, fixes.length - 1)];
-
-                        //noinspection unchecked
-                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                            project,
-                            () -> fix.applyFix(project, targetProblem),
-                            "Apply Quick Fix: " + fix.getName(),
-                            null
-                        );
-
-                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                        FileDocumentManager.getInstance().saveAllDocuments();
-
-                        sb.append("✓ Applied fix: ").append(fix.getName()).append("\n");
-                        sb.append("  File: ").append(pathStr).append(" line ").append(targetLine).append("\n");
-                        if (fixes.length > 1) {
-                            sb.append("  (").append(fixes.length).append(" fixes were available, applied #")
-                                .append(Math.min(fixIndex, fixes.length - 1)).append(")\n");
-                            sb.append("  Other available fixes:\n");
-                            for (int i = 0; i < fixes.length; i++) {
-                                if (i != Math.min(fixIndex, fixes.length - 1)) {
-                                    sb.append("    ").append(i).append(": ").append(fixes[i].getName()).append("\n");
-                                }
-                            }
-                        }
-
-                        resultFuture.complete(sb.toString());
+                        resultFuture.complete(executeQuickfix(vf, pathStr, targetLine, inspectionId, fixIndex));
                     } catch (Exception e) {
                         LOG.warn("Error applying quickfix", e);
                         resultFuture.complete("Error applying quickfix: " + e.getMessage());
@@ -4520,6 +4403,113 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    private String executeQuickfix(VirtualFile vf, String pathStr, int targetLine,
+                                   String inspectionId, int fixIndex) {
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr;
+
+        Document document = FileDocumentManager.getInstance().getDocument(vf);
+        if (document == null) return "Error: Cannot get document for: " + pathStr;
+
+        if (targetLine < 1 || targetLine > document.getLineCount()) {
+            return "Error: Line " + targetLine + " is out of bounds (file has " + document.getLineCount() + FORMAT_LINES_SUFFIX;
+        }
+
+        int lineStartOffset = document.getLineStartOffset(targetLine - 1);
+        int lineEndOffset = document.getLineEndOffset(targetLine - 1);
+
+        var profile = com.intellij.profile.codeInspection.InspectionProjectProfileManager
+            .getInstance(project).getCurrentProfile();
+        var toolWrapper = profile.getInspectionTool(inspectionId, project);
+
+        if (toolWrapper == null) {
+            return "Error: Inspection '" + inspectionId + "' not found. " +
+                "Use the inspection ID from run_inspections output (e.g., 'RedundantCast', 'unused').";
+        }
+
+        List<com.intellij.codeInspection.ProblemDescriptor> lineProblems =
+            findProblemsOnLine(toolWrapper.getTool(), psiFile, lineStartOffset, lineEndOffset);
+
+        if (lineProblems.isEmpty()) {
+            return "No problems found for inspection '" + inspectionId + "' at line " + targetLine +
+                " in " + pathStr + ". The inspection may have been resolved, or it may be a global inspection " +
+                "that doesn't support quickfixes. Try using intellij_write_file instead.";
+        }
+
+        return applyAndReportFix(lineProblems, fixIndex, pathStr, targetLine);
+    }
+
+    private List<com.intellij.codeInspection.ProblemDescriptor> findProblemsOnLine(
+        com.intellij.codeInspection.InspectionProfileEntry tool, PsiFile psiFile,
+        int lineStartOffset, int lineEndOffset) {
+        List<com.intellij.codeInspection.ProblemDescriptor> problems = new ArrayList<>();
+        if (tool instanceof com.intellij.codeInspection.LocalInspectionTool localTool) {
+            var inspectionManager = com.intellij.codeInspection.InspectionManager.getInstance(project);
+            var holder = new com.intellij.codeInspection.ProblemsHolder(inspectionManager, psiFile, false);
+            var visitor = localTool.buildVisitor(holder, false);
+            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+                @Override
+                public void visitElement(@NotNull PsiElement element) {
+                    element.accept(visitor);
+                    super.visitElement(element);
+                }
+            });
+            problems.addAll(holder.getResults());
+        }
+
+        List<com.intellij.codeInspection.ProblemDescriptor> lineProblems = new ArrayList<>();
+        for (var problem : problems) {
+            PsiElement elem = problem.getPsiElement();
+            if (elem != null) {
+                int offset = elem.getTextOffset();
+                if (offset >= lineStartOffset && offset <= lineEndOffset) {
+                    lineProblems.add(problem);
+                }
+            }
+        }
+        return lineProblems;
+    }
+
+    private String applyAndReportFix(List<com.intellij.codeInspection.ProblemDescriptor> lineProblems,
+                                     int fixIndex, String pathStr, int targetLine) {
+        com.intellij.codeInspection.ProblemDescriptor targetProblem =
+            lineProblems.get(Math.min(fixIndex, lineProblems.size() - 1));
+
+        var fixes = targetProblem.getFixes();
+        if (fixes == null || fixes.length == 0) {
+            return "No quickfixes available for this problem. Description: " +
+                targetProblem.getDescriptionTemplate() + ". Use intellij_write_file to fix manually.";
+        }
+
+        var fix = fixes[Math.min(fixIndex, fixes.length - 1)];
+
+        //noinspection unchecked
+        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+            project,
+            () -> fix.applyFix(project, targetProblem),
+            "Apply Quick Fix: " + fix.getName(),
+            null
+        );
+
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+        FileDocumentManager.getInstance().saveAllDocuments();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("? Applied fix: ").append(fix.getName()).append("\n");
+        sb.append("  File: ").append(pathStr).append(" line ").append(targetLine).append("\n");
+        if (fixes.length > 1) {
+            sb.append("  (").append(fixes.length).append(" fixes were available, applied #")
+                .append(Math.min(fixIndex, fixes.length - 1)).append(")\n");
+            sb.append("  Other available fixes:\n");
+            for (int i = 0; i < fixes.length; i++) {
+                if (i != Math.min(fixIndex, fixes.length - 1)) {
+                    sb.append("    ").append(i).append(": ").append(fixes[i].getName()).append("\n");
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private String refactor(JsonObject args) throws Exception {
@@ -5041,71 +5031,17 @@ public final class PsiBridgeService implements Disposable {
                 var compilerManager = com.intellij.openapi.compiler.CompilerManager.getInstance(project);
 
                 com.intellij.openapi.compiler.CompileStatusNotification callback =
-                    (aborted, errorCount, warningCount, context) -> {
-                        long elapsed = System.currentTimeMillis() - startTime;
-                        StringBuilder sb = new StringBuilder();
-
-                        if (aborted) {
-                            sb.append("Build aborted.\n");
-                        } else if (errorCount == 0) {
-                            sb.append("✓ Build succeeded");
-                        } else {
-                            sb.append("✗ Build failed");
-                        }
-                        sb.append(String.format(" (%d errors, %d warnings, %.1fs)%n",
-                            errorCount, warningCount, elapsed / 1000.0));
-
-                        // Collect error messages
-                        var messages = context.getMessages(
-                            com.intellij.openapi.compiler.CompilerMessageCategory.ERROR);
-                        for (var msg : messages) {
-                            String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
-                            sb.append("  ERROR ").append(file);
-                            // Try to get line number from implementation class
-                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl && impl.getLine() > 0) {
-                                sb.append(":").append(impl.getLine());
-                            }
-                            sb.append(" ").append(msg.getMessage()).append("\n");
-                        }
-
-                        var warnMessages = context.getMessages(
-                            com.intellij.openapi.compiler.CompilerMessageCategory.WARNING);
-                        int warnShown = 0;
-                        for (var msg : warnMessages) {
-                            if (warnShown++ >= 20) {
-                                sb.append("  ... and ").append(warnMessages.length - 20).append(" more warnings\n");
-                                break;
-                            }
-                            String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
-                            sb.append("  WARN ").append(file);
-                            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl && impl.getLine() > 0) {
-                                sb.append(":").append(impl.getLine());
-                            }
-                            sb.append(" ").append(msg.getMessage()).append("\n");
-                        }
-
-                        resultFuture.complete(sb.toString());
-                    };
+                    (aborted, errorCount, warningCount, context) ->
+                        resultFuture.complete(formatBuildResult(aborted, errorCount, warningCount, context, startTime));
 
                 if (!moduleName.isEmpty()) {
-                    // Build specific module
-                    Module module = ModuleManager.getInstance(project).findModuleByName(moduleName);
+                    Module module = resolveModule(moduleName);
                     if (module == null) {
-                        // Try with project name prefix
-                        String projectName = project.getName();
-                        module = ModuleManager.getInstance(project).findModuleByName(projectName + "." + moduleName);
-                    }
-                    if (module == null) {
-                        StringBuilder available = new StringBuilder("Available modules:\n");
-                        for (Module m : ModuleManager.getInstance(project).getModules()) {
-                            available.append("  ").append(m.getName()).append("\n");
-                        }
-                        resultFuture.complete("Error: Module '" + moduleName + "' not found.\n" + available);
+                        resultFuture.complete("Error: Module '" + moduleName + "' not found.\n" + listAvailableModules());
                         return;
                     }
                     compilerManager.compile(module, callback);
                 } else {
-                    // Build whole project (no-arg make)
                     compilerManager.make(callback);
                 }
             } catch (Exception e) {
@@ -5115,6 +5051,63 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(300, TimeUnit.SECONDS);
+    }
+
+    private String formatBuildResult(boolean aborted, int errorCount, int warningCount,
+                                     com.intellij.openapi.compiler.CompileContext context, long startTime) {
+        long elapsed = System.currentTimeMillis() - startTime;
+        StringBuilder sb = new StringBuilder();
+
+        if (aborted) {
+            sb.append("Build aborted.\n");
+        } else if (errorCount == 0) {
+            sb.append("? Build succeeded");
+        } else {
+            sb.append("? Build failed");
+        }
+        sb.append(String.format(" (%d errors, %d warnings, %.1fs)%n",
+            errorCount, warningCount, elapsed / 1000.0));
+
+        appendCompilerMessages(sb, context, com.intellij.openapi.compiler.CompilerMessageCategory.ERROR, "ERROR", Integer.MAX_VALUE);
+        appendCompilerMessages(sb, context, com.intellij.openapi.compiler.CompilerMessageCategory.WARNING, "WARN", 20);
+
+        return sb.toString();
+    }
+
+    private static void appendCompilerMessages(StringBuilder sb, com.intellij.openapi.compiler.CompileContext context,
+                                               com.intellij.openapi.compiler.CompilerMessageCategory category,
+                                               String label, int maxCount) {
+        var messages = context.getMessages(category);
+        int shown = 0;
+        for (var msg : messages) {
+            if (shown++ >= maxCount) {
+                sb.append("  ... and ").append(messages.length - maxCount).append(" more ").append(label.toLowerCase()).append("s\n");
+                break;
+            }
+            String file = msg.getVirtualFile() != null ? msg.getVirtualFile().getName() : "";
+            sb.append("  ").append(label).append(" ").append(file);
+            if (msg instanceof com.intellij.compiler.CompilerMessageImpl impl && impl.getLine() > 0) {
+                sb.append(":").append(impl.getLine());
+            }
+            sb.append(" ").append(msg.getMessage()).append("\n");
+        }
+    }
+
+    private Module resolveModule(String moduleName) {
+        Module module = ModuleManager.getInstance(project).findModuleByName(moduleName);
+        if (module == null) {
+            String projectName = project.getName();
+            module = ModuleManager.getInstance(project).findModuleByName(projectName + "." + moduleName);
+        }
+        return module;
+    }
+
+    private String listAvailableModules() {
+        StringBuilder available = new StringBuilder("Available modules:\n");
+        for (Module m : ModuleManager.getInstance(project).getModules()) {
+            available.append("  ").append(m.getName()).append("\n");
+        }
+        return available.toString();
     }
 
     /**
