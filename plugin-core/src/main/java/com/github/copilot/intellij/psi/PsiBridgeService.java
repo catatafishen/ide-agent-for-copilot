@@ -111,10 +111,19 @@ public final class PsiBridgeService implements Disposable {
     private static final String PARAM_COMMIT = "commit";
     private static final String PARAM_STAT_ONLY = "stat_only";
     private static final String PARAM_BRANCH = "branch";
+    private static final String PARAM_METHOD = "method";
 
     // Test Type Values
     private static final String TEST_TYPE_METHOD = "method";
     private static final String TEST_TYPE_CLASS = "class";
+
+    // Element Type Classifications
+    private static final String ELEMENT_TYPE_CLASS = "class";
+    private static final String ELEMENT_TYPE_INTERFACE = "interface";
+    private static final String ELEMENT_TYPE_ENUM = "enum";
+    private static final String ELEMENT_TYPE_FIELD = "field";
+    private static final String ELEMENT_TYPE_FUNCTION = "function";
+    private static final String ELEMENT_TYPE_METHOD = "method";
 
     // File Extensions
     private static final String JAVA_EXTENSION = ".java";
@@ -126,6 +135,9 @@ public final class PsiBridgeService implements Disposable {
     private static final String FORMAT_LOCATION = "%s:%d [%s] %s";
     private static final String FORMAT_LINES_SUFFIX = " lines)";
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
+
+    // Diff Labels
+    private static final String DIFF_LABEL_CURRENT = "Current";
 
     // Display Strings
     private static final String LABEL_SUPPRESS_INSPECTION = "Suppress Inspection";
@@ -1141,7 +1153,6 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    @SuppressWarnings("TestOnlyProblems")
     private com.intellij.analysis.AnalysisScope createAnalysisScope(
         String scopePath, CompletableFuture<String> resultFuture) {
         if (scopePath == null || scopePath.isEmpty()) {
@@ -2409,7 +2420,7 @@ public final class PsiBridgeService implements Disposable {
 
     private String httpRequest(JsonObject args) throws Exception {
         String urlStr = args.get("url").getAsString();
-        String method = args.has("method") ? args.get("method").getAsString().toUpperCase() : "GET";
+        String method = args.has(PARAM_METHOD) ? args.get(PARAM_METHOD).getAsString().toUpperCase() : "GET";
         String body = args.has("body") ? args.get("body").getAsString() : null;
 
         URL url = URI.create(urlStr).toURL();
@@ -3159,7 +3170,7 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
                 String type = classifyElement(element);
-                if (("method".equals(type) || "function".equals(type)) && hasTestAnnotation(element)) {
+                if ((ELEMENT_TYPE_METHOD.equals(type) || ELEMENT_TYPE_FUNCTION.equals(type)) && hasTestAnnotation(element)) {
                     String methodName = named.getName();
                     String className = getContainingClassName(element);
                     String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
@@ -3257,7 +3268,7 @@ public final class PsiBridgeService implements Disposable {
     private String getTestResults(JsonObject args) {
         String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
         String basePath = project.getBasePath();
-        if (basePath == null) return "No project base path";
+        if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
         String results = parseJunitXmlResults(basePath, module);
         return results.isEmpty() ? "No test results found. Run tests first." : results;
@@ -3266,7 +3277,7 @@ public final class PsiBridgeService implements Disposable {
     private String getCoverage(JsonObject args) {
         String file = args.has("file") ? args.get("file").getAsString() : "";
         String basePath = project.getBasePath();
-        if (basePath == null) return "No project base path";
+        if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
         // Try JaCoCo XML report
         for (String module : List.of("", "plugin-core", "mcp-server")) {
@@ -3491,7 +3502,7 @@ public final class PsiBridgeService implements Disposable {
         while (parent != null) {
             if (parent instanceof PsiNamedElement named) {
                 String type = classifyElement(parent);
-                if ("class".equals(type)) return named.getName();
+                if (ELEMENT_TYPE_CLASS.equals(type)) return named.getName();
             }
             parent = parent.getParent();
         }
@@ -3562,6 +3573,7 @@ public final class PsiBridgeService implements Disposable {
                     }
                 }
             } catch (IOException ignored) {
+                // IO errors during directory listing are non-fatal
             }
         }
 
@@ -3569,7 +3581,7 @@ public final class PsiBridgeService implements Disposable {
 
         int passed = totalTests - totalFailed - totalErrors - totalSkipped;
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("Test Results: %d tests, %d passed, %d failed, %d errors, %d skipped (%.1fs)\n",
+        sb.append(String.format("Test Results: %d tests, %d passed, %d failed, %d errors, %d skipped (%.1fs)%n",
             totalTests, passed, totalFailed, totalErrors, totalSkipped, totalTime));
 
         if (!failures.isEmpty()) {
@@ -3610,7 +3622,7 @@ public final class PsiBridgeService implements Disposable {
 
             if (lines.isEmpty()) return "No line coverage data in JaCoCo report";
             double totalPct = coveredLines * 100.0 / Math.max(1, totalLines);
-            return String.format("Coverage: %.1f%% overall (%d/%d lines)\n\n%s",
+            return String.format("Coverage: %.1f%% overall (%d/%d lines)%n%n%s",
                 totalPct, coveredLines, totalLines, String.join("\n", lines));
         } catch (Exception e) {
             return "Error parsing JaCoCo report: " + e.getMessage();
@@ -3660,7 +3672,7 @@ public final class PsiBridgeService implements Disposable {
                 PsiElement parent = element.getParent();
                 if (parent instanceof PsiNamedElement named && name.equals(named.getName())) {
                     String type = classifyElement(parent);
-                    if (type != null && !type.equals("field")) {
+                    if (type != null && !type.equals(ELEMENT_TYPE_FIELD)) {
                         result[0] = parent;
                         return false; // found one, stop
                     }
@@ -3684,16 +3696,18 @@ public final class PsiBridgeService implements Disposable {
         if (cls.contains("PsiClass") && !cls.contains("Initializer")) {
             // Distinguish interfaces and enums from regular classes via reflection
             try {
-                if ((boolean) element.getClass().getMethod("isInterface").invoke(element)) return "interface";
-                if ((boolean) element.getClass().getMethod("isEnum").invoke(element)) return "enum";
+                if ((boolean) element.getClass().getMethod("isInterface").invoke(element))
+                    return ELEMENT_TYPE_INTERFACE;
+                if ((boolean) element.getClass().getMethod("isEnum").invoke(element)) return ELEMENT_TYPE_ENUM;
             } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
                      | IllegalAccessException ignored) {
+                // Reflection unavailable for this PsiClass variant
             }
-            return "class";
+            return ELEMENT_TYPE_CLASS;
         }
-        if (cls.contains("PsiMethod")) return "method";
-        if (cls.contains("PsiField")) return "field";
-        if (cls.contains("PsiEnumConstant")) return "field";
+        if (cls.contains("PsiMethod")) return ELEMENT_TYPE_METHOD;
+        if (cls.contains("PsiField")) return ELEMENT_TYPE_FIELD;
+        if (cls.contains("PsiEnumConstant")) return ELEMENT_TYPE_FIELD;
 
         // Kotlin PSI
         switch (cls) {
@@ -3702,25 +3716,26 @@ public final class PsiBridgeService implements Disposable {
                 try {
                     // KtClass has isInterface() and isEnum() methods
                     var isInterface = element.getClass().getMethod("isInterface");
-                    if ((boolean) isInterface.invoke(element)) return "interface";
+                    if ((boolean) isInterface.invoke(element)) return ELEMENT_TYPE_INTERFACE;
                     var isEnum = element.getClass().getMethod("isEnum");
-                    if ((boolean) isEnum.invoke(element)) return "enum";
+                    if ((boolean) isEnum.invoke(element)) return ELEMENT_TYPE_ENUM;
                 } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
                          | IllegalAccessException ignored) {
+                    // Reflection unavailable for this Kotlin class variant
                 }
-                return "class";
+                return ELEMENT_TYPE_CLASS;
             }
             case "KtNamedFunction" -> {
-                return "function";
+                return ELEMENT_TYPE_FUNCTION;
             }
             case "KtProperty" -> {
-                return "field";
+                return ELEMENT_TYPE_FIELD;
             }
             case "KtParameter" -> {
                 return null; // skip parameters
             }
             case "KtTypeAlias" -> {
-                return "class";
+                return ELEMENT_TYPE_CLASS;
             }
             default -> {
                 // fall through to generic patterns below
@@ -3728,8 +3743,8 @@ public final class PsiBridgeService implements Disposable {
         }
 
         // Generic patterns
-        if (cls.contains("Interface") && !cls.contains("Reference")) return "interface";
-        if (cls.contains("Enum") && cls.contains("Class")) return "class";
+        if (cls.contains("Interface") && !cls.contains("Reference")) return ELEMENT_TYPE_INTERFACE;
+        if (cls.contains("Enum") && cls.contains("Class")) return ELEMENT_TYPE_CLASS;
 
         return null;
     }
@@ -3766,7 +3781,7 @@ public final class PsiBridgeService implements Disposable {
 
     private static String fileType(String name) {
         String l = name.toLowerCase();
-        if (l.endsWith(".java")) return "Java";
+        if (l.endsWith(JAVA_EXTENSION)) return "Java";
         if (l.endsWith(".kt") || l.endsWith(".kts")) return "Kotlin";
         if (l.endsWith(".py")) return "Python";
         if (l.endsWith(".js") || l.endsWith(".jsx")) return "JavaScript";
@@ -3782,7 +3797,7 @@ public final class PsiBridgeService implements Disposable {
 // ---- Documentation Tools ----
 
     private String getDocumentation(JsonObject args) {
-        String symbol = args.has("symbol") ? args.get("symbol").getAsString() : "";
+        String symbol = args.has(PARAM_SYMBOL) ? args.get(PARAM_SYMBOL).getAsString() : "";
         if (symbol.isEmpty())
             return "Error: 'symbol' parameter required (e.g. java.util.List, com.google.gson.Gson.fromJson)";
 
@@ -3938,7 +3953,8 @@ public final class PsiBridgeService implements Disposable {
                     for (Module module : modules) {
                         ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
                         for (var entry : rootManager.getOrderEntries()) {
-                            if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry)) continue;
+                            if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry))
+                                continue;
 
                             var lib = libEntry.getLibrary();
                             if (lib == null) continue;
@@ -3981,7 +3997,7 @@ public final class PsiBridgeService implements Disposable {
 
                     future.complete(truncateOutput(sb.toString()));
                 } catch (Exception e) {
-                    future.complete("Error: " + e.getMessage());
+                    future.complete(ERROR_PREFIX + e.getMessage());
                 }
             });
 
@@ -3992,7 +4008,7 @@ public final class PsiBridgeService implements Disposable {
             return "Error: Operation interrupted";
         } catch (Exception e) {
             LOG.warn("download_sources error", e);
-            return "Error: " + e.getMessage();
+            return ERROR_PREFIX + e.getMessage();
         }
     }
 
@@ -4029,6 +4045,7 @@ public final class PsiBridgeService implements Disposable {
                         anyChanged = true;
                     }
                 } catch (NoSuchMethodException ignored) {
+                    // Method not available in this IDE version
                 }
 
                 // AdvancedSettings is a platform API — use it directly
@@ -4142,7 +4159,7 @@ public final class PsiBridgeService implements Disposable {
      */
     private String createScratchFile(JsonObject args) {
         String name = args.has("name") ? args.get("name").getAsString() : "scratch.txt";
-        String content = args.has("content") ? args.get("content").getAsString() : "";
+        String content = args.has(PARAM_CONTENT) ? args.get(PARAM_CONTENT).getAsString() : "";
 
         try {
             // Execute on EDT using invokeAndWait to block until completion
@@ -4199,7 +4216,7 @@ public final class PsiBridgeService implements Disposable {
                     (errorMsg[0] != null ? ": " + errorMsg[0] : "");
             }
 
-            return "Created scratch file: " + resultFile[0].getPath() + " (" + content.length() + " chars)";
+            return "Created scratch file: " + resultFile[0].getPath() + " (" + content.length() + FORMAT_CHARS_SUFFIX;
         } catch (Exception e) {
             LOG.warn("Failed to create scratch file", e);
             return "Error creating scratch file: " + e.getMessage();
@@ -4270,7 +4287,8 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    private void listScratchFilesRecursive(VirtualFile dir, StringBuilder result, int[] count, int depth, Set<String> seenPaths) {
+    private void listScratchFilesRecursive(VirtualFile dir, StringBuilder result, int[] count, int depth, Set<
+        String> seenPaths) {
         if (depth > 3) return; // Prevent excessive recursion
 
         for (VirtualFile child : dir.getChildren()) {
@@ -4440,7 +4458,7 @@ public final class PsiBridgeService implements Disposable {
                 });
             } catch (Exception e) {
                 LOG.warn("Error in applyQuickfix", e);
-                resultFuture.complete("Error: " + e.getMessage());
+                resultFuture.complete(ERROR_PREFIX + e.getMessage());
             }
         });
 
@@ -4448,12 +4466,12 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String refactor(JsonObject args) throws Exception {
-        if (!args.has("operation") || !args.has("file") || !args.has("symbol")) {
+        if (!args.has("operation") || !args.has("file") || !args.has(PARAM_SYMBOL)) {
             return "Error: 'operation', 'file', and 'symbol' parameters are required";
         }
         String operation = args.get("operation").getAsString();
         String pathStr = args.get("file").getAsString();
-        String symbolName = args.get("symbol").getAsString();
+        String symbolName = args.get(PARAM_SYMBOL).getAsString();
         int targetLine = args.has("line") ? args.get("line").getAsInt() : -1;
         String newName = args.has("new_name") ? args.get("new_name").getAsString() : null;
 
@@ -4576,7 +4594,7 @@ public final class PsiBridgeService implements Disposable {
                     }
                 });
             } catch (Exception e) {
-                resultFuture.complete("Error: " + e.getMessage());
+                resultFuture.complete(ERROR_PREFIX + e.getMessage());
             }
         });
 
@@ -4609,11 +4627,11 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String goToDeclaration(JsonObject args) {
-        if (!args.has("file") || !args.has("symbol") || !args.has("line")) {
+        if (!args.has("file") || !args.has(PARAM_SYMBOL) || !args.has("line")) {
             return "Error: 'file', 'symbol', and 'line' parameters are required";
         }
         String pathStr = args.get("file").getAsString();
-        String symbolName = args.get("symbol").getAsString();
+        String symbolName = args.get(PARAM_SYMBOL).getAsString();
         int targetLine = args.get("line").getAsInt();
 
         return ReadAction.compute(() -> {
@@ -4628,7 +4646,7 @@ public final class PsiBridgeService implements Disposable {
 
             if (targetLine < 1 || targetLine > document.getLineCount()) {
                 return "Error: Line " + targetLine + " is out of bounds (file has " +
-                    document.getLineCount() + " lines)";
+                    document.getLineCount() + FORMAT_LINES_SUFFIX;
             }
             int lineStartOffset = document.getLineStartOffset(targetLine - 1);
             int lineEndOffset = document.getLineEndOffset(targetLine - 1);
@@ -4753,8 +4771,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String getTypeHierarchy(JsonObject args) {
-        if (!args.has("symbol")) return "Error: 'symbol' parameter is required";
-        String symbolName = args.get("symbol").getAsString();
+        if (!args.has(PARAM_SYMBOL)) return "Error: 'symbol' parameter is required";
+        String symbolName = args.get(PARAM_SYMBOL).getAsString();
         String direction = args.has("direction") ? args.get("direction").getAsString() : "both";
 
         return ReadAction.compute(() -> {
@@ -4858,11 +4876,11 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String createFile(JsonObject args) throws Exception {
-        if (!args.has("path") || !args.has("content")) {
+        if (!args.has("path") || !args.has(PARAM_CONTENT)) {
             return "Error: 'path' and 'content' parameters are required";
         }
         String pathStr = args.get("path").getAsString();
-        String content = args.get("content").getAsString();
+        String content = args.get(PARAM_CONTENT).getAsString();
 
         // Resolve path
         String basePath = project.getBasePath();
@@ -4947,7 +4965,7 @@ public final class PsiBridgeService implements Disposable {
                 );
                 return null;
             } catch (Exception e) {
-                resultFuture.complete("Error: " + e.getMessage());
+                resultFuture.complete(ERROR_PREFIX + e.getMessage());
                 return null;
             }
         }).inSmartMode(project).submit(AppExecutorUtil.getAppExecutorService());
@@ -4977,7 +4995,7 @@ public final class PsiBridgeService implements Disposable {
                         } else {
                             sb.append("✗ Build failed");
                         }
-                        sb.append(String.format(" (%d errors, %d warnings, %.1fs)\n",
+                        sb.append(String.format(" (%d errors, %d warnings, %.1fs)%n",
                             errorCount, warningCount, elapsed / 1000.0));
 
                         // Collect error messages
@@ -5128,9 +5146,9 @@ public final class PsiBridgeService implements Disposable {
                         vf.getName(), vf2.getName());
                     com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
                     resultFuture.complete("Showing diff: " + pathStr + " vs " + pathStr2);
-                } else if (args.has("content")) {
+                } else if (args.has(PARAM_CONTENT)) {
                     // Diff file against provided content
-                    String newContent = args.get("content").getAsString();
+                    String newContent = args.get(PARAM_CONTENT).getAsString();
                     String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : "Proposed Changes";
                     var content1 = com.intellij.diff.DiffContentFactory.getInstance()
                         .create(project, vf);
@@ -5139,7 +5157,7 @@ public final class PsiBridgeService implements Disposable {
                     var request = new com.intellij.diff.requests.SimpleDiffRequest(
                         title,
                         content1, content2,
-                        "Current", "Proposed");
+                        DIFF_LABEL_CURRENT, "Proposed");
                     com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
                     resultFuture.complete("Showing diff for " + pathStr + ": current vs proposed changes");
                 } else {
@@ -5148,7 +5166,7 @@ public final class PsiBridgeService implements Disposable {
                         .create(project, vf);
                     com.intellij.diff.DiffManager.getInstance().showDiff(project,
                         new com.intellij.diff.requests.SimpleDiffRequest(
-                            "File: " + vf.getName(), content1, content1, "Current", "Current"));
+                            "File: " + vf.getName(), content1, content1, DIFF_LABEL_CURRENT, DIFF_LABEL_CURRENT));
                     resultFuture.complete("Opened " + pathStr + " in diff viewer. " +
                         "Tip: pass 'file2' for two-file diff, or 'content' to diff against proposed changes.");
                 }
