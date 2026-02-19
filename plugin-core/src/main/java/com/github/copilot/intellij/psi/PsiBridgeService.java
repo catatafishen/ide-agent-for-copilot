@@ -959,8 +959,9 @@ public final class PsiBridgeService implements Disposable {
             // Analyze each file for problems using existing highlights
             int count = 0;
             int filesWithProblems = 0;
-            outerLoop:
+            boolean limitReached = false;
             for (VirtualFile vf : allFiles) {
+                if (limitReached) break;
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) continue;
 
@@ -984,7 +985,10 @@ public final class PsiBridgeService implements Disposable {
                     }
 
                     for (var h : highlights) {
-                        if (count >= limit) break outerLoop;
+                        if (count >= limit) {
+                            limitReached = true;
+                            break;
+                        }
 
                         if (h.getDescription() == null) continue;
 
@@ -1552,8 +1556,12 @@ public final class PsiBridgeService implements Disposable {
             if (qodanaService == null) return; // Already completed with fallback
 
             waitForQodanaCompletion(qodanaService, serviceClass, limit, resultFuture);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.error("Error polling Qodana results", e);
+            resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
+                "Polling error: " + e.getMessage());
         } catch (Exception e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             LOG.error("Error polling Qodana results", e);
             resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
                 "Polling error: " + e.getMessage());
@@ -1946,8 +1954,14 @@ public final class PsiBridgeService implements Disposable {
                             try {
                                 String normalized = pathStr.replace('\\', '/');
                                 String basePath = project.getBasePath();
-                                String fullPath = normalized.startsWith("/") ? normalized
-                                    : (basePath != null ? Path.of(basePath, normalized).toString() : normalized);
+                                String fullPath;
+                                if (normalized.startsWith("/")) {
+                                    fullPath = normalized;
+                                } else if (basePath != null) {
+                                    fullPath = Path.of(basePath, normalized).toString();
+                                } else {
+                                    fullPath = normalized;
+                                }
                                 Path filePath = Path.of(fullPath);
                                 Files.createDirectories(filePath.getParent());
                                 Files.writeString(filePath, newContent);
@@ -2579,8 +2593,10 @@ public final class PsiBridgeService implements Disposable {
 
         try {
             return resultFuture.get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "Terminal opened (response timed out, but command was likely sent).";
         } catch (Exception e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "Terminal opened (response timed out, but command was likely sent).";
         }
     }
@@ -2683,8 +2699,10 @@ public final class PsiBridgeService implements Disposable {
 
         try {
             return resultFuture.get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "Timed out reading terminal output.";
         } catch (Exception e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "Timed out reading terminal output.";
         }
     }
@@ -2939,20 +2957,7 @@ public final class PsiBridgeService implements Disposable {
 
                         // For failed tests, try to get the error message
                         if (defect) {
-                            try {
-                                var getErrorMessage = test.getClass().getMethod("getErrorMessage");
-                                String errorMsg = (String) getErrorMessage.invoke(test);
-                                if (errorMsg != null && !errorMsg.isEmpty()) {
-                                    testOutput.append("    Error: ").append(errorMsg).append("\n");
-                                }
-                                var getStacktrace = test.getClass().getMethod("getStacktrace");
-                                String stacktrace = (String) getStacktrace.invoke(test);
-                                if (stacktrace != null && !stacktrace.isEmpty()) {
-                                    testOutput.append("    Stacktrace:\n").append(stacktrace).append("\n");
-                                }
-                            } catch (NoSuchMethodException ignored) {
-                                // Method not available on this test result type
-                            }
+                            appendTestErrorDetails(test, testOutput);
                         }
                     }
                 }
@@ -2981,6 +2986,25 @@ public final class PsiBridgeService implements Disposable {
 
         // 2. Try plain ConsoleView getText()
         return extractPlainConsoleText(console);
+    }
+
+    private void appendTestErrorDetails(Object test, StringBuilder testOutput) {
+        try {
+            var getErrorMessage = test.getClass().getMethod("getErrorMessage");
+            String errorMsg = (String) getErrorMessage.invoke(test);
+            if (errorMsg != null && !errorMsg.isEmpty()) {
+                testOutput.append("    Error: ").append(errorMsg).append("\n");
+            }
+            var getStacktrace = test.getClass().getMethod("getStacktrace");
+            String stacktrace = (String) getStacktrace.invoke(test);
+            if (stacktrace != null && !stacktrace.isEmpty()) {
+                testOutput.append("    Stacktrace:\n").append(stacktrace).append("\n");
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Method not available on this test result type
+        } catch (Exception e) {
+            LOG.debug("Failed to get test error details", e);
+        }
     }
 
     /**
@@ -3348,8 +3372,11 @@ public final class PsiBridgeService implements Disposable {
             });
 
             return resultFuture.get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("tryRunJUnitNatively failed", e);
+            return null;
         } catch (Exception e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             LOG.warn("tryRunJUnitNatively failed", e);
             return null;
         }
