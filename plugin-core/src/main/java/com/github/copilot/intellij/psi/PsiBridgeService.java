@@ -1207,37 +1207,54 @@ public final class PsiBridgeService implements Disposable {
             //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
             if (presentation == null) continue;
 
-            var problemElements = presentation.getProblemElements();
-            //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
-            if (problemElements == null || problemElements.isEmpty()) continue;
-
-            for (var refEntity : problemElements.keys()) {
-                var descriptors = problemElements.get(refEntity);
-                if (descriptors == null) continue;
-
-                for (var descriptor : descriptors) {
-                    String formatted = formatInspectionDescriptor(descriptor, toolId, basePath, filesSet);
-                    if (formatted == null) {
-                        skippedNoDescription++;
-                        continue;
-                    }
-                    if (formatted.isEmpty()) {
-                        skippedNoFile++;
-                        continue;
-                    }
-
-                    String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
-                        ? pd.getHighlightType().toString() : "WARNING";
-                    if (requiredRank > 0) {
-                        int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
-                        if (rank < requiredRank) continue;
-                    }
-
-                    allProblems.add(formatted);
-                }
-            }
+            int[] skipped = collectProblemsFromTool(presentation, toolId, basePath,
+                filesSet, severityRank, requiredRank, allProblems);
+            skippedNoDescription += skipped[0];
+            skippedNoFile += skipped[1];
         }
         return new InspectionCollectionResult(allProblems, filesSet.size(), skippedNoDescription, skippedNoFile);
+    }
+
+    @SuppressWarnings("UnstableApiUsage")
+    private int[] collectProblemsFromTool(
+        com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
+        String toolId, String basePath, Set<String> filesSet,
+        Map<String, Integer> severityRank, int requiredRank, List<String> allProblems) {
+        int skippedNoDescription = 0;
+        int skippedNoFile = 0;
+
+        var problemElements = presentation.getProblemElements();
+        //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
+        if (problemElements == null || problemElements.isEmpty()) {
+            return new int[]{0, 0};
+        }
+
+        for (var refEntity : problemElements.keys()) {
+            var descriptors = problemElements.get(refEntity);
+            if (descriptors == null) continue;
+
+            for (var descriptor : descriptors) {
+                String formatted = formatInspectionDescriptor(descriptor, toolId, basePath, filesSet);
+                if (formatted == null) {
+                    skippedNoDescription++;
+                    continue;
+                }
+                if (formatted.isEmpty()) {
+                    skippedNoFile++;
+                    continue;
+                }
+
+                String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
+                    ? pd.getHighlightType().toString() : "WARNING";
+                if (requiredRank > 0) {
+                    int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
+                    if (rank < requiredRank) continue;
+                }
+
+                allProblems.add(formatted);
+            }
+        }
+        return new int[]{skippedNoDescription, skippedNoFile};
     }
 
     private String formatInspectionDescriptor(
@@ -3188,20 +3205,19 @@ public final class PsiBridgeService implements Disposable {
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
-        // Try to find matching run config first
         String configResult = tryRunTestConfig(target);
         if (configResult != null) return configResult;
 
-        // Try IntelliJ's native JUnit test runner
         String junitResult = tryRunJUnitNatively(target);
         if (junitResult != null) return junitResult;
 
-        // Fall back to Gradle
+        return runTestsViaGradle(target, module, basePath);
+    }
+
+    private String runTestsViaGradle(String target, String module, String basePath) throws Exception {
         String gradlew = basePath + (System.getProperty(OS_NAME_PROPERTY).contains("Win")
             ? "\\gradlew.bat" : "/gradlew");
         String taskPrefix = module.isEmpty() ? "" : ":" + module + ":";
-
-        // Get JAVA_HOME from project SDK
         String javaHome = getProjectJavaHome();
 
         GeneralCommandLine cmd = new GeneralCommandLine();
@@ -3228,7 +3244,6 @@ public final class PsiBridgeService implements Disposable {
             }
         });
 
-        // Show in IntelliJ Run panel
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
                 new RunContentExecutor(project, processHandler)
@@ -3241,7 +3256,6 @@ public final class PsiBridgeService implements Disposable {
             }
         });
 
-        // Wait for completion (up to 120 seconds)
         int exitCode;
         try {
             exitCode = exitFuture.get(120, TimeUnit.SECONDS);
@@ -3251,8 +3265,6 @@ public final class PsiBridgeService implements Disposable {
                 + truncateOutput(output.toString());
         }
 
-        // Only use JUnit XML results if the build actually succeeded or tests ran
-        // (exit code 0 or XML was freshly generated)
         if (exitCode == 0) {
             String xmlResults = parseJunitXmlResults(basePath, module);
             if (!xmlResults.isEmpty()) {
@@ -3260,8 +3272,7 @@ public final class PsiBridgeService implements Disposable {
             }
         }
 
-        // Report failure with process output
-        return (exitCode == 0 ? "✓ Tests PASSED" : "✗ Tests FAILED (exit code " + exitCode + ")")
+        return (exitCode == 0 ? "? Tests PASSED" : "? Tests FAILED (exit code " + exitCode + ")")
             + "\n\n" + truncateOutput(output.toString());
     }
 
@@ -3987,60 +3998,11 @@ public final class PsiBridgeService implements Disposable {
             ApplicationManager.getApplication().invokeLater(() -> {
                 try {
                     StringBuilder sb = new StringBuilder();
-
-                    // Step 1: Enable "Download sources" in Gradle/Maven settings via ExternalSystem API
                     boolean settingChanged = enableDownloadSources(sb);
-
-                    // Step 2: List current library source status
-                    Module[] modules = ModuleManager.getInstance(project).getModules();
-                    List<String> withSources = new ArrayList<>();
-                    List<String> withoutSources = new ArrayList<>();
-
-                    for (Module module : modules) {
-                        ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
-                        for (var entry : rootManager.getOrderEntries()) {
-                            if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry))
-                                continue;
-
-                            var lib = libEntry.getLibrary();
-                            if (lib == null) continue;
-
-                            String entryName = entry.getPresentableName();
-                            if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
-                                continue;
-                            }
-
-                            VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
-                            if (sources.length > 0) {
-                                withSources.add(entryName);
-                            } else {
-                                withoutSources.add(entryName);
-                            }
-                        }
-                    }
-
-                    sb.append("Libraries with sources: ").append(withSources.size()).append("\n");
-                    sb.append("Libraries without sources: ").append(withoutSources.size()).append("\n");
-
-                    if (!withoutSources.isEmpty()) {
-                        sb.append("\nMissing sources:\n");
-                        for (String lib : withoutSources) {
-                            sb.append("  - ").append(lib).append("\n");
-                        }
-                    }
-
-                    if (!withSources.isEmpty() && !library.isEmpty()) {
-                        sb.append("\nWith sources:\n");
-                        for (String lib : withSources) {
-                            sb.append("  ✓ ").append(lib).append("\n");
-                        }
-                    }
-
-                    // Step 3: Trigger Gradle/Maven re-sync if setting was changed
+                    scanLibrarySources(library, sb);
                     if (settingChanged) {
                         triggerProjectResync(sb);
                     }
-
                     future.complete(truncateOutput(sb.toString()));
                 } catch (Exception e) {
                     future.complete(ERROR_PREFIX + e.getMessage());
@@ -4055,6 +4017,52 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             LOG.warn("download_sources error", e);
             return ERROR_PREFIX + e.getMessage();
+        }
+    }
+
+    private void scanLibrarySources(String library, StringBuilder sb) {
+        Module[] modules = ModuleManager.getInstance(project).getModules();
+        List<String> withSources = new ArrayList<>();
+        List<String> withoutSources = new ArrayList<>();
+
+        for (Module module : modules) {
+            ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
+            for (var entry : rootManager.getOrderEntries()) {
+                if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry))
+                    continue;
+
+                var lib = libEntry.getLibrary();
+                if (lib == null) continue;
+
+                String entryName = entry.getPresentableName();
+                if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) {
+                    continue;
+                }
+
+                VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
+                if (sources.length > 0) {
+                    withSources.add(entryName);
+                } else {
+                    withoutSources.add(entryName);
+                }
+            }
+        }
+
+        sb.append("Libraries with sources: ").append(withSources.size()).append("\n");
+        sb.append("Libraries without sources: ").append(withoutSources.size()).append("\n");
+
+        if (!withoutSources.isEmpty()) {
+            sb.append("\nMissing sources:\n");
+            for (String lib : withoutSources) {
+                sb.append("  - ").append(lib).append("\n");
+            }
+        }
+
+        if (!withSources.isEmpty() && !library.isEmpty()) {
+            sb.append("\nWith sources:\n");
+            for (String lib : withSources) {
+                sb.append("  ? ").append(lib).append("\n");
+            }
         }
     }
 
@@ -4530,7 +4538,6 @@ public final class PsiBridgeService implements Disposable {
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                // Phase 1: Read — find the target element (read action is implicit on EDT)
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
                     resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
@@ -4544,7 +4551,6 @@ public final class PsiBridgeService implements Disposable {
                 }
 
                 Document document = FileDocumentManager.getInstance().getDocument(vf);
-
                 PsiNamedElement targetElement = findNamedElement(psiFile, document, symbolName, targetLine);
                 if (targetElement == null) {
                     resultFuture.complete("Error: Symbol '" + symbolName + "' not found in " + pathStr +
@@ -4553,88 +4559,10 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
 
-                // Phase 2: Write — perform the refactoring
                 ApplicationManager.getApplication().runWriteAction(() -> {
                     try {
-                        switch (operation) {
-                            case "rename" -> {
-                                var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project))
-                                    .findAll();
-                                int refCount = refs.size();
-
-                                var factory = com.intellij.refactoring.RefactoringFactory.getInstance(project);
-                                var rename = factory.createRename(targetElement, newName);
-                                rename.setSearchInComments(true);
-                                rename.setSearchInNonJavaFiles(true);
-                                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                    project,
-                                    () -> {
-                                        var usages = rename.findUsages();
-                                        rename.doRefactoring(usages);
-                                    },
-                                    "Rename " + symbolName + " to " + newName,
-                                    null
-                                );
-
-                                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                                FileDocumentManager.getInstance().saveAllDocuments();
-
-                                resultFuture.complete("✓ Renamed '" + symbolName + "' to '" + newName + "'\n" +
-                                    "  Updated " + refCount + " references across the project.\n" +
-                                    "  File: " + pathStr);
-                            }
-                            case "safe_delete" -> {
-                                var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project))
-                                    .findAll();
-
-                                if (!refs.isEmpty()) {
-                                    StringBuilder sb = new StringBuilder();
-                                    sb.append("Cannot safely delete '").append(symbolName)
-                                        .append("' — it has ").append(refs.size()).append(" usages:\n");
-                                    int shown = 0;
-                                    for (var ref : refs) {
-                                        if (shown++ >= 10) {
-                                            sb.append("  ... and ").append(refs.size() - 10).append(" more\n");
-                                            break;
-                                        }
-                                        PsiFile refFile = ref.getElement().getContainingFile();
-                                        int line = -1;
-                                        if (refFile != null) {
-                                            Document refDoc = FileDocumentManager.getInstance()
-                                                .getDocument(refFile.getVirtualFile());
-                                            if (refDoc != null) {
-                                                line = refDoc.getLineNumber(ref.getElement().getTextOffset()) + 1;
-                                            }
-                                        }
-                                        sb.append("  ").append(refFile != null ? refFile.getName() : "?")
-                                            .append(":").append(line).append("\n");
-                                    }
-                                    resultFuture.complete(sb.toString());
-                                    return;
-                                }
-
-                                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                    project,
-                                    targetElement::delete,
-                                    "Safe Delete " + symbolName,
-                                    null
-                                );
-                                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                                FileDocumentManager.getInstance().saveAllDocuments();
-
-                                resultFuture.complete("✓ Safely deleted '" + symbolName + "' (no usages found).\n" +
-                                    "  File: " + pathStr);
-                            }
-                            case "inline" ->
-                                resultFuture.complete("Error: 'inline' refactoring is not yet supported via this tool. " +
-                                    "Use intellij_write_file to manually inline the code.");
-                            case "extract_method" ->
-                                resultFuture.complete("Error: 'extract_method' requires a code selection range " +
-                                    "which is not well-suited for tool-based invocation. " +
-                                    "Use intellij_write_file to manually extract the method.");
-                            default -> resultFuture.complete("Error: Unknown operation '" + operation +
-                                "'. Supported: rename, safe_delete");
-                        }
+                        String result = executeRefactoring(operation, targetElement, symbolName, newName, pathStr);
+                        resultFuture.complete(result);
                     } catch (Exception e) {
                         LOG.warn("Refactoring error", e);
                         resultFuture.complete("Error during refactoring: " + e.getMessage());
@@ -4646,6 +4574,91 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    private String executeRefactoring(String operation, PsiNamedElement targetElement,
+                                      String symbolName, String newName, String pathStr) {
+        return switch (operation) {
+            case "rename" -> performRename(targetElement, symbolName, newName, pathStr);
+            case "safe_delete" -> performSafeDelete(targetElement, symbolName, pathStr);
+            case "inline" -> "Error: 'inline' refactoring is not yet supported via this tool. " +
+                "Use intellij_write_file to manually inline the code.";
+            case "extract_method" -> "Error: 'extract_method' requires a code selection range " +
+                "which is not well-suited for tool-based invocation. " +
+                "Use intellij_write_file to manually extract the method.";
+            default -> "Error: Unknown operation '" + operation + "'. Supported: rename, safe_delete";
+        };
+    }
+
+    private String performRename(PsiNamedElement targetElement, String symbolName,
+                                 String newName, String pathStr) {
+        var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project)).findAll();
+        int refCount = refs.size();
+
+        var factory = com.intellij.refactoring.RefactoringFactory.getInstance(project);
+        var rename = factory.createRename(targetElement, newName);
+        rename.setSearchInComments(true);
+        rename.setSearchInNonJavaFiles(true);
+        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+            project,
+            () -> {
+                var usages = rename.findUsages();
+                rename.doRefactoring(usages);
+            },
+            "Rename " + symbolName + " to " + newName,
+            null
+        );
+
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+        FileDocumentManager.getInstance().saveAllDocuments();
+
+        return "? Renamed '" + symbolName + "' to '" + newName + "'\n" +
+            "  Updated " + refCount + " references across the project.\n" +
+            "  File: " + pathStr;
+    }
+
+    private String performSafeDelete(PsiNamedElement targetElement, String symbolName, String pathStr) {
+        var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project)).findAll();
+
+        if (!refs.isEmpty()) {
+            return formatUsageReport(symbolName, refs);
+        }
+
+        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+            project,
+            targetElement::delete,
+            "Safe Delete " + symbolName,
+            null
+        );
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+        FileDocumentManager.getInstance().saveAllDocuments();
+
+        return "? Safely deleted '" + symbolName + "' (no usages found).\n  File: " + pathStr;
+    }
+
+    private String formatUsageReport(String symbolName, Collection<PsiReference> refs) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Cannot safely delete '").append(symbolName)
+            .append("' ? it has ").append(refs.size()).append(" usages:\n");
+        int shown = 0;
+        for (var ref : refs) {
+            if (shown++ >= 10) {
+                sb.append("  ... and ").append(refs.size() - 10).append(" more\n");
+                break;
+            }
+            PsiFile refFile = ref.getElement().getContainingFile();
+            int line = -1;
+            if (refFile != null) {
+                Document refDoc = FileDocumentManager.getInstance()
+                    .getDocument(refFile.getVirtualFile());
+                if (refDoc != null) {
+                    line = refDoc.getLineNumber(ref.getElement().getTextOffset()) + 1;
+                }
+            }
+            sb.append("  ").append(refFile != null ? refFile.getName() : "?")
+                .append(":").append(line).append("\n");
+        }
+        return sb.toString();
     }
 
     /**
@@ -4823,25 +4836,10 @@ public final class PsiBridgeService implements Disposable {
         String direction = args.has("direction") ? args.get("direction").getAsString() : "both";
 
         return ReadAction.compute(() -> {
-            // Find the class by name
-            var javaPsiFacade = com.intellij.psi.JavaPsiFacade.getInstance(project);
-            var scope = GlobalSearchScope.allScope(project);
-
-            // Try fully qualified first, then simple name
-            com.intellij.psi.PsiClass psiClass = javaPsiFacade.findClass(symbolName, scope);
+            com.intellij.psi.PsiClass psiClass = resolveClassByName(symbolName);
             if (psiClass == null) {
-                // Search by simple name
-                var classes = javaPsiFacade.findClasses(symbolName, scope);
-                if (classes.length == 0) {
-                    // Try short name search
-                    var shortNameCache = com.intellij.psi.search.PsiShortNamesCache.getInstance(project);
-                    classes = shortNameCache.getClassesByName(symbolName, scope);
-                }
-                if (classes.length == 0) {
-                    return "Error: Class/interface '" + symbolName + "' not found. " +
-                        "Use search_symbols to find the correct name.";
-                }
-                psiClass = classes[0];
+                return "Error: Class/interface '" + symbolName + "' not found. " +
+                    "Use search_symbols to find the correct name.";
             }
 
             StringBuilder sb = new StringBuilder();
@@ -4851,38 +4849,51 @@ public final class PsiBridgeService implements Disposable {
             sb.append("Type hierarchy for: ").append(qualifiedName != null ? qualifiedName : symbolName);
             sb.append(psiClass.isInterface() ? " (interface)" : " (class)").append("\n\n");
 
-            // Supertypes
             if ("supertypes".equals(direction) || "both".equals(direction)) {
                 sb.append("Supertypes:\n");
                 appendSupertypes(psiClass, sb, basePath, "  ", new HashSet<>(), 0);
                 sb.append("\n");
             }
 
-            // Subtypes
             if ("subtypes".equals(direction) || "both".equals(direction)) {
-                sb.append("Subtypes/Implementations:\n");
-                var searcher = com.intellij.psi.search.searches.ClassInheritorsSearch.search(
-                    psiClass, GlobalSearchScope.projectScope(project), true);
-                var inheritors = searcher.findAll();
-                if (inheritors.isEmpty()) {
-                    sb.append("  (none found in project scope)\n");
-                } else {
-                    for (var inheritor : inheritors) {
-                        String iName = inheritor.getQualifiedName();
-                        String iFile = "";
-                        PsiFile containingFile = inheritor.getContainingFile();
-                        if (containingFile != null && containingFile.getVirtualFile() != null && basePath != null) {
-                            iFile = " (" + relativize(basePath, containingFile.getVirtualFile().getPath()) + ")";
-                        }
-                        sb.append("  ").append(inheritor.isInterface() ? "interface " : "class ")
-                            .append(iName != null ? iName : inheritor.getName())
-                            .append(iFile).append("\n");
-                    }
-                }
+                appendSubtypes(psiClass, sb, basePath);
             }
 
             return sb.toString();
         });
+    }
+
+    private com.intellij.psi.PsiClass resolveClassByName(String symbolName) {
+        var javaPsiFacade = com.intellij.psi.JavaPsiFacade.getInstance(project);
+        var scope = GlobalSearchScope.allScope(project);
+
+        com.intellij.psi.PsiClass psiClass = javaPsiFacade.findClass(symbolName, scope);
+        if (psiClass != null) return psiClass;
+
+        var classes = javaPsiFacade.findClasses(symbolName, scope);
+        if (classes.length == 0) {
+            var shortNameCache = com.intellij.psi.search.PsiShortNamesCache.getInstance(project);
+            classes = shortNameCache.getClassesByName(symbolName, scope);
+        }
+        return classes.length > 0 ? classes[0] : null;
+    }
+
+    private void appendSubtypes(com.intellij.psi.PsiClass psiClass, StringBuilder sb, String basePath) {
+        sb.append("Subtypes/Implementations:\n");
+        var searcher = com.intellij.psi.search.searches.ClassInheritorsSearch.search(
+            psiClass, GlobalSearchScope.projectScope(project), true);
+        var inheritors = searcher.findAll();
+        if (inheritors.isEmpty()) {
+            sb.append("  (none found in project scope)\n");
+            return;
+        }
+        for (var inheritor : inheritors) {
+            String iName = inheritor.getQualifiedName();
+            String iFile = getClassFile(inheritor, basePath);
+            sb.append("  ").append(inheritor.isInterface() ? "interface " : "class ")
+                .append(iName != null ? iName : inheritor.getName())
+                .append(iFile).append("\n");
+        }
     }
 
     private void appendSupertypes(com.intellij.psi.PsiClass psiClass, StringBuilder sb,
@@ -5178,54 +5189,60 @@ public final class PsiBridgeService implements Disposable {
                     return;
                 }
 
-                if (args.has("file2")) {
-                    // Diff two files
-                    String pathStr2 = args.get("file2").getAsString();
-                    VirtualFile vf2 = resolveVirtualFile(pathStr2);
-                    if (vf2 == null) {
-                        resultFuture.complete("Error: Second file not found: " + pathStr2);
-                        return;
-                    }
-                    var content1 = com.intellij.diff.DiffContentFactory.getInstance()
-                        .create(project, vf);
-                    var content2 = com.intellij.diff.DiffContentFactory.getInstance()
-                        .create(project, vf2);
-                    var request = new com.intellij.diff.requests.SimpleDiffRequest(
-                        "Diff: " + vf.getName() + " vs " + vf2.getName(),
-                        content1, content2,
-                        vf.getName(), vf2.getName());
-                    com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
-                    resultFuture.complete("Showing diff: " + pathStr + " vs " + pathStr2);
-                } else if (args.has(PARAM_CONTENT)) {
-                    // Diff file against provided content
-                    String newContent = args.get(PARAM_CONTENT).getAsString();
-                    String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : "Proposed Changes";
-                    var content1 = com.intellij.diff.DiffContentFactory.getInstance()
-                        .create(project, vf);
-                    var content2 = com.intellij.diff.DiffContentFactory.getInstance()
-                        .create(project, newContent, vf.getFileType());
-                    var request = new com.intellij.diff.requests.SimpleDiffRequest(
-                        title,
-                        content1, content2,
-                        DIFF_LABEL_CURRENT, "Proposed");
-                    com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
-                    resultFuture.complete("Showing diff for " + pathStr + ": current vs proposed changes");
-                } else {
-                    // Show VCS diff (uncommitted changes)
-                    var content1 = com.intellij.diff.DiffContentFactory.getInstance()
-                        .create(project, vf);
-                    com.intellij.diff.DiffManager.getInstance().showDiff(project,
-                        new com.intellij.diff.requests.SimpleDiffRequest(
-                            "File: " + vf.getName(), content1, content1, DIFF_LABEL_CURRENT, DIFF_LABEL_CURRENT));
-                    resultFuture.complete("Opened " + pathStr + " in diff viewer. " +
-                        "Tip: pass 'file2' for two-file diff, or 'content' to diff against proposed changes.");
-                }
+                String result = showDiffForFile(args, vf, pathStr);
+                resultFuture.complete(result);
             } catch (Exception e) {
                 resultFuture.complete("Error showing diff: " + e.getMessage());
             }
         });
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String showDiffForFile(JsonObject args, VirtualFile vf, String pathStr) {
+        if (args.has("file2")) {
+            return showTwoFileDiff(args, vf, pathStr);
+        } else if (args.has(PARAM_CONTENT)) {
+            return showContentDiff(args, vf, pathStr);
+        } else {
+            return showVcsDiff(vf, pathStr);
+        }
+    }
+
+    private String showTwoFileDiff(JsonObject args, VirtualFile vf, String pathStr) {
+        String pathStr2 = args.get("file2").getAsString();
+        VirtualFile vf2 = resolveVirtualFile(pathStr2);
+        if (vf2 == null) {
+            return "Error: Second file not found: " + pathStr2;
+        }
+        var content1 = com.intellij.diff.DiffContentFactory.getInstance().create(project, vf);
+        var content2 = com.intellij.diff.DiffContentFactory.getInstance().create(project, vf2);
+        var request = new com.intellij.diff.requests.SimpleDiffRequest(
+            "Diff: " + vf.getName() + " vs " + vf2.getName(),
+            content1, content2, vf.getName(), vf2.getName());
+        com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
+        return "Showing diff: " + pathStr + " vs " + pathStr2;
+    }
+
+    private String showContentDiff(JsonObject args, VirtualFile vf, String pathStr) {
+        String newContent = args.get(PARAM_CONTENT).getAsString();
+        String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : "Proposed Changes";
+        var content1 = com.intellij.diff.DiffContentFactory.getInstance().create(project, vf);
+        var content2 = com.intellij.diff.DiffContentFactory.getInstance()
+            .create(project, newContent, vf.getFileType());
+        var request = new com.intellij.diff.requests.SimpleDiffRequest(
+            title, content1, content2, DIFF_LABEL_CURRENT, "Proposed");
+        com.intellij.diff.DiffManager.getInstance().showDiff(project, request);
+        return "Showing diff for " + pathStr + ": current vs proposed changes";
+    }
+
+    private String showVcsDiff(VirtualFile vf, String pathStr) {
+        var content1 = com.intellij.diff.DiffContentFactory.getInstance().create(project, vf);
+        com.intellij.diff.DiffManager.getInstance().showDiff(project,
+            new com.intellij.diff.requests.SimpleDiffRequest(
+                "File: " + vf.getName(), content1, content1, DIFF_LABEL_CURRENT, DIFF_LABEL_CURRENT));
+        return "Opened " + pathStr + " in diff viewer. " +
+            "Tip: pass 'file2' for two-file diff, or 'content' to diff against proposed changes.";
     }
 
     public void dispose() {
