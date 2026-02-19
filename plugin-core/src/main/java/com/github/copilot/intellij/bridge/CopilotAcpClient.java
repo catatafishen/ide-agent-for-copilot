@@ -112,7 +112,7 @@ public class CopilotAcpClient implements Closeable {
 
     // Activity tracking for inactivity-based timeout
     private volatile long lastActivityTimestamp = System.currentTimeMillis();
-    private volatile int toolCallsInTurn = 0;
+    private final AtomicInteger toolCallsInTurn = new AtomicInteger(0);
 
     // Debug event listeners for UI debug tab
     private final CopyOnWriteArrayList<Consumer<DebugEvent>> debugListeners = new CopyOnWriteArrayList<>();
@@ -456,7 +456,7 @@ public class CopilotAcpClient implements Closeable {
                 // Reset turn tracking
                 builtInActionDeniedDuringTurn = false;
                 lastActivityTimestamp = System.currentTimeMillis();
-                toolCallsInTurn = 0;
+                toolCallsInTurn.set(0);
 
                 LOG.info("sendPrompt: sending session/prompt request" + (retryCount > 0 ? " (retry #" + retryCount + ")" : ""));
                 JsonObject result = sendPromptRequest(params);
@@ -538,22 +538,22 @@ public class CopilotAcpClient implements Closeable {
                         LOG.warn("Agent inactive for " + (inactiveMs / 1000) + "s, terminating");
                         fireDebugEvent("INACTIVITY_TIMEOUT",
                             "No activity for " + (inactiveMs / 1000) + "s (limit: " + inactivityTimeoutSec + "s)",
-                            "Tool calls this turn: " + toolCallsInTurn);
+                            "Tool calls this turn: " + toolCallsInTurn.get());
                         terminateAgent();
                         throw new CopilotException(
                             "Agent stopped: no activity for " + (inactiveMs / 1000) + " seconds", e, true);
                     }
 
                     // Check credit limit (0 = unlimited)
-                    if (maxToolCalls > 0 && toolCallsInTurn >= maxToolCalls) {
+                    if (maxToolCalls > 0 && toolCallsInTurn.get() >= maxToolCalls) {
                         pendingRequests.remove(id);
-                        LOG.warn("Tool call limit reached: " + toolCallsInTurn + "/" + maxToolCalls);
+                        LOG.warn("Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls);
                         fireDebugEvent("CREDIT_LIMIT",
-                            "Tool call limit reached: " + toolCallsInTurn + "/" + maxToolCalls,
+                            "Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls,
                             "Terminating agent to prevent excess usage");
                         terminateAgent();
                         throw new CopilotException(
-                            "Agent stopped: tool call limit reached (" + toolCallsInTurn + "/" + maxToolCalls + ")", e, true);
+                            "Agent stopped: tool call limit reached (" + toolCallsInTurn.get() + "/" + maxToolCalls + ")", e, true);
                     }
                 }
             }
@@ -741,27 +741,6 @@ public class CopilotAcpClient implements Closeable {
      */
     @NotNull
     private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params) throws CopilotException {
-        return sendRequest(method, params, REQUEST_TIMEOUT_SECONDS);
-    }
-
-    /**
-     * Send a raw JSON-RPC message (used for responding to agent-to-client requests).
-     */
-    private void sendRawMessage(@NotNull JsonObject message) {
-        try {
-            String json = gson.toJson(message);
-            synchronized (writerLock) {
-                writer.write(json);
-                writer.newLine();
-                writer.flush();
-            }
-        } catch (IOException e) {
-            LOG.warn("Failed to send raw message", e);
-        }
-    }
-
-    @NotNull
-    private JsonObject sendRequest(@NotNull String method, @NotNull JsonObject params, long timeoutSeconds) throws CopilotException {
         if (closed) throw new CopilotException("ACP client is closed", null, false);
 
         long id = requestIdCounter.getAndIncrement();
@@ -784,7 +763,7 @@ public class CopilotAcpClient implements Closeable {
                 writer.flush();
             }
 
-            return future.get(timeoutSeconds, TimeUnit.SECONDS);
+            return future.get(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
         } catch (TimeoutException e) {
             pendingRequests.remove(id);
@@ -801,6 +780,22 @@ public class CopilotAcpClient implements Closeable {
         } catch (IOException e) {
             pendingRequests.remove(id);
             throw new CopilotException("ACP write failed: " + method, e, true);
+        }
+    }
+
+    /**
+     * Send a raw JSON-RPC message (used for responding to agent-to-client requests).
+     */
+    private void sendRawMessage(@NotNull JsonObject message) {
+        try {
+            String json = gson.toJson(message);
+            synchronized (writerLock) {
+                writer.write(json);
+                writer.newLine();
+                writer.flush();
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to send raw message", e);
         }
     }
 
@@ -1017,7 +1012,7 @@ public class CopilotAcpClient implements Closeable {
 
         // Track activity and tool call count
         lastActivityTimestamp = System.currentTimeMillis();
-        toolCallsInTurn++;
+        toolCallsInTurn.incrementAndGet();
 
         // Check if run_command is trying to do something we have a dedicated tool for
         String commandAbuse = detectCommandAbuse(toolCall);

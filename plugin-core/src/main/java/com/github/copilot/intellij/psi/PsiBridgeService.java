@@ -2517,9 +2517,55 @@ public final class PsiBridgeService implements Disposable {
             cmd.withEnvironment(JAVA_HOME_ENV, javaHome);
         }
 
+        ProcessResult result = executeInRunPanel(cmd, tabTitle, timeoutSec);
+
+        if (result.timedOut()) {
+            return "Command timed out after " + timeoutSec + " seconds.\n\n" + truncateOutput(result.output());
+        }
+
+        return (result.exitCode() == 0 ? "? Command succeeded" : "? Command failed (exit code " + result.exitCode() + ")")
+            + "\n\n" + truncateOutput(result.output());
+    }
+
+    private static String truncateForTitle(String command) {
+        return command.length() > 40 ? command.substring(0, 37) + "..." : command;
+    }
+
+    private record ProcessResult(int exitCode, String output, boolean timedOut) {
+    }
+
+    /**
+     * Executes a command in the IntelliJ Run panel, capturing output and waiting for exit.
+     */
+    private ProcessResult executeInRunPanel(GeneralCommandLine cmd, String title, int timeoutSec) throws Exception {
         CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
         StringBuilder output = new StringBuilder();
 
+        OSProcessHandler processHandler = createCapturingProcessHandler(cmd, output, exitFuture);
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                new RunContentExecutor(project, processHandler)
+                    .withTitle(title)
+                    .withActivateToolWindow(true)
+                    .run();
+            } catch (Exception e) {
+                LOG.warn("Could not show in Run panel", e);
+                processHandler.startNotify();
+            }
+        });
+
+        try {
+            int exitCode = exitFuture.get(timeoutSec, TimeUnit.SECONDS);
+            return new ProcessResult(exitCode, output.toString(), false);
+        } catch (TimeoutException e) {
+            processHandler.destroyProcess();
+            return new ProcessResult(-1, output.toString(), true);
+        }
+    }
+
+    private static OSProcessHandler createCapturingProcessHandler(
+        GeneralCommandLine cmd, StringBuilder output, CompletableFuture<Integer> exitFuture) throws Exception {
         OSProcessHandler processHandler = new OSProcessHandler(cmd);
         processHandler.addProcessListener(new ProcessListener() {
             @Override
@@ -2532,34 +2578,7 @@ public final class PsiBridgeService implements Disposable {
                 exitFuture.complete(event.getExitCode());
             }
         });
-
-        // Show in IntelliJ Run panel
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try {
-                new RunContentExecutor(project, processHandler)
-                    .withTitle(tabTitle)
-                    .withActivateToolWindow(true)
-                    .run();
-            } catch (Exception e) {
-                LOG.warn("Could not show in Run panel", e);
-                processHandler.startNotify();
-            }
-        });
-
-        int exitCode;
-        try {
-            exitCode = exitFuture.get(timeoutSec, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            processHandler.destroyProcess();
-            return "Command timed out after " + timeoutSec + " seconds.\n\n" + truncateOutput(output.toString());
-        }
-
-        return (exitCode == 0 ? "✓ Command succeeded" : "✗ Command failed (exit code " + exitCode + ")")
-            + "\n\n" + truncateOutput(output.toString());
-    }
-
-    private static String truncateForTitle(String command) {
-        return command.length() > 40 ? command.substring(0, 37) + "..." : command;
+        return processHandler;
     }
 
     private String readIdeLog(JsonObject args) throws IOException {
@@ -3140,7 +3159,7 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
-    @SuppressWarnings("java:S3516") // always returns true to continue PSI search
+    @SuppressWarnings({"java:S3516", "SameReturnValue"}) // always returns true to continue PSI search
     private boolean processClassCandidate(PsiElement element, String searchName,
                                           String className, List<ClassInfo> matches) {
         String type = classifyElement(element);
@@ -3248,52 +3267,22 @@ public final class PsiBridgeService implements Disposable {
             cmd.withEnvironment(JAVA_HOME_ENV, javaHome);
         }
 
-        CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
-        StringBuilder output = new StringBuilder();
+        ProcessResult result = executeInRunPanel(cmd, "Test: " + target, 120);
 
-        OSProcessHandler processHandler = new OSProcessHandler(cmd);
-        processHandler.addProcessListener(new ProcessListener() {
-            @Override
-            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
-                output.append(event.getText());
-            }
-
-            @Override
-            public void processTerminated(@NotNull ProcessEvent event) {
-                exitFuture.complete(event.getExitCode());
-            }
-        });
-
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try {
-                new RunContentExecutor(project, processHandler)
-                    .withTitle("Test: " + target)
-                    .withActivateToolWindow(true)
-                    .run();
-            } catch (Exception e) {
-                LOG.warn("Could not show in Run panel, starting headless", e);
-                processHandler.startNotify();
-            }
-        });
-
-        int exitCode;
-        try {
-            exitCode = exitFuture.get(120, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            processHandler.destroyProcess();
+        if (result.timedOut()) {
             return "Tests timed out after 120 seconds. Partial output:\n"
-                + truncateOutput(output.toString());
+                + truncateOutput(result.output());
         }
 
-        if (exitCode == 0) {
+        if (result.exitCode() == 0) {
             String xmlResults = parseJunitXmlResults(basePath, module);
             if (!xmlResults.isEmpty()) {
                 return xmlResults;
             }
         }
 
-        return (exitCode == 0 ? "? Tests PASSED" : "? Tests FAILED (exit code " + exitCode + ")")
-            + "\n\n" + truncateOutput(output.toString());
+        return (result.exitCode() == 0 ? "? Tests PASSED" : "? Tests FAILED (exit code " + result.exitCode() + ")")
+            + "\n\n" + truncateOutput(result.output());
     }
 
     private String getTestResults(JsonObject args) {

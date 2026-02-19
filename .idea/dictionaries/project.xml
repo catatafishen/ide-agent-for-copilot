@@ -25,6 +25,7 @@
       <w>envs</w>
       <w>errorlevel</w>
       <w>failsafe</w>
+      <w>gitignored</w>
       <w>goroot</w>
       <w>gradle</w>
       <w>gradlew</w>
