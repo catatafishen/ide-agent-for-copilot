@@ -97,6 +97,7 @@ public final class PsiBridgeService implements Disposable {
     private static final String ERROR_PATH_REQUIRED = "Error: 'path' parameter is required";
     private static final String ERROR_FILE_NOT_FOUND = "File not found: ";
     private static final String ERROR_CANNOT_PARSE = "Cannot parse file: ";
+    private static final String ERROR_QODANA_POLLING = "Error polling Qodana results";
 
     // Common Parameters
     private static final String PARAM_SYMBOL = "symbol";
@@ -1531,7 +1532,7 @@ public final class PsiBridgeService implements Disposable {
                     try {
                         pollQodanaResults(limit, resultFuture);
                     } catch (Exception e) {
-                        LOG.error("Error polling Qodana results", e);
+                        LOG.error(ERROR_QODANA_POLLING, e);
                         resultFuture.complete("Qodana analysis was triggered but result polling failed: " +
                             e.getMessage() + ". Check the Qodana tab in the Problems tool window for results.");
                     }
@@ -1558,11 +1559,11 @@ public final class PsiBridgeService implements Disposable {
             waitForQodanaCompletion(qodanaService, serviceClass, limit, resultFuture);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOG.error("Error polling Qodana results", e);
+            LOG.error(ERROR_QODANA_POLLING, e);
             resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
                 "Polling error: " + e.getMessage());
         } catch (Exception e) {
-            LOG.error("Error polling Qodana results", e);
+            LOG.error(ERROR_QODANA_POLLING, e);
             resultFuture.complete("Qodana analysis was triggered. Check the Qodana tab for results. " +
                 "Polling error: " + e.getMessage());
         }
@@ -2963,18 +2964,7 @@ public final class PsiBridgeService implements Disposable {
                 }
 
                 // Also get the console text portion of the test runner
-                try {
-                    var getConsole = console.getClass().getMethod("getConsole");
-                    var innerConsole = getConsole.invoke(console);
-                    if (innerConsole != null) {
-                        String consoleText = extractPlainConsoleText(innerConsole);
-                        if (consoleText != null && !consoleText.isEmpty()) {
-                            testOutput.append("\n=== Console Output ===\n").append(consoleText);
-                        }
-                    }
-                } catch (NoSuchMethodException ignored) {
-                    // Method not available in this version
-                }
+                appendTestConsoleOutput(console, testOutput);
 
                 if (!testOutput.isEmpty()) return testOutput.toString();
             }
@@ -3004,6 +2994,23 @@ public final class PsiBridgeService implements Disposable {
             // Method not available on this test result type
         } catch (Exception e) {
             LOG.debug("Failed to get test error details", e);
+        }
+    }
+
+    private void appendTestConsoleOutput(Object console, StringBuilder testOutput) {
+        try {
+            var getConsole = console.getClass().getMethod("getConsole");
+            var innerConsole = getConsole.invoke(console);
+            if (innerConsole != null) {
+                String consoleText = extractPlainConsoleText(innerConsole);
+                if (consoleText != null && !consoleText.isEmpty()) {
+                    testOutput.append("\n=== Console Output ===\n").append(consoleText);
+                }
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Method not available in this version
+        } catch (Exception e) {
+            LOG.debug("Failed to get test console output", e);
         }
     }
 
