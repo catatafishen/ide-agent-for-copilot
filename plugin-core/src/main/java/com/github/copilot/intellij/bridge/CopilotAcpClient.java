@@ -444,24 +444,39 @@ public class CopilotAcpClient implements Closeable {
         notificationListeners.add(listener);
 
         try {
-            JsonObject params = buildPromptParams(sessionId, prompt, model, references);
+            String currentPrompt = prompt;
+            int maxRetries = 3;
+            int retryCount = 0;
 
-            // Send request - response comes after all streaming chunks
-            builtInActionDeniedDuringTurn = false;
-            LOG.info("sendPrompt: sending session/prompt request");
-            JsonObject result = sendRequest("session/prompt", params, 600);
-            LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
+            while (true) {
+                JsonObject params = buildPromptParams(sessionId, currentPrompt, model, references);
 
-            String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
+                // Send request - response comes after all streaming chunks
+                builtInActionDeniedDuringTurn = false;
+                LOG.info("sendPrompt: sending session/prompt request" + (retryCount > 0 ? " (retry #" + retryCount + ")" : ""));
+                JsonObject result = sendRequest("session/prompt", params, 600);
+                LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
-            // Log if tools were denied but don't retry here (retry should be at UI level)
-            if (builtInActionDeniedDuringTurn) {
-                LOG.info("Turn ended with denied tools - agent may need manual retry");
-                fireDebugEvent("TURN_ENDED_WITH_DENIALS", "Tools were denied", 
-                    "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+                String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
+
+                // If tools were denied, retry with guidance (same listener, no nesting)
+                if (builtInActionDeniedDuringTurn && retryCount < maxRetries) {
+                    retryCount++;
+                    LOG.info("Turn ended with denied tools - auto-retry #" + retryCount);
+                    fireDebugEvent("AUTO_RETRY", "Retrying after tool denial #" + retryCount,
+                        "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+                    currentPrompt = "The previous tool calls were denied. Please continue with the task using the correct tools with 'intellij-code-tools-' prefix.";
+                    continue;
+                }
+
+                if (builtInActionDeniedDuringTurn) {
+                    LOG.info("Turn ended with denied tools after " + retryCount + " retries - giving up");
+                    fireDebugEvent("RETRY_EXHAUSTED", "Still denied after " + retryCount + " retries",
+                        "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+                }
+
+                return stopReason;
             }
-
-            return stopReason;
         } finally {
             notificationListeners.remove(listener);
         }
