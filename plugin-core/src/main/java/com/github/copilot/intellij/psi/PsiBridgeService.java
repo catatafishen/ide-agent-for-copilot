@@ -3140,6 +3140,7 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
+    @SuppressWarnings("java:S3516") // always returns true to continue PSI search
     private boolean processClassCandidate(PsiElement element, String searchName,
                                           String className, List<ClassInfo> matches) {
         String type = classifyElement(element);
