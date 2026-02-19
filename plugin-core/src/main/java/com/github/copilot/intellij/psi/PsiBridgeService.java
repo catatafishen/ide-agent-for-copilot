@@ -3510,20 +3510,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private String parseJunitXmlResults(String basePath, String module) {
-        List<Path> reportDirs = new ArrayList<>();
-        if (module.isEmpty()) {
-            // Search all modules
-            try (var dirs = Files.walk(Path.of(basePath), 4)) {
-                dirs.filter(p -> p.endsWith("test-results/test") && Files.isDirectory(p))
-                    .forEach(reportDirs::add);
-            } catch (IOException ignored) {
-                // Directory walk errors are non-fatal
-            }
-        } else {
-            Path dir = Path.of(basePath, module, BUILD_DIR, "test-results", "test");
-            if (Files.isDirectory(dir)) reportDirs.add(dir);
-        }
-
+        List<Path> reportDirs = findTestReportDirs(basePath, module);
         if (reportDirs.isEmpty()) return "";
 
         int totalTests = 0;
@@ -3536,41 +3523,14 @@ public final class PsiBridgeService implements Disposable {
         for (Path reportDir : reportDirs) {
             try (var xmlFiles = Files.list(reportDir)) {
                 for (Path xmlFile : xmlFiles.filter(p -> p.toString().endsWith(".xml")).toList()) {
-                    try {
-                        var dbf = DocumentBuilderFactory.newInstance();
-                        //noinspection HttpUrlsUsage - XML feature URI, not an actual URL
-                        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-                        var doc = dbf.newDocumentBuilder().parse(xmlFile.toFile());
-                        var suites = doc.getElementsByTagName("testsuite");
-                        for (int i = 0; i < suites.getLength(); i++) {
-                            var suite = suites.item(i);
-                            totalTests += intAttr(suite, "tests");
-                            totalFailed += intAttr(suite, "failures");
-                            totalErrors += intAttr(suite, "errors");
-                            totalSkipped += intAttr(suite, "skipped");
-                            totalTime += doubleAttr(suite, "time");
-
-                            // Collect failure details
-                            var testcases = ((org.w3c.dom.Element) suite)
-                                .getElementsByTagName("testcase");
-                            for (int j = 0; j < testcases.getLength(); j++) {
-                                var tc = testcases.item(j);
-                                var failNodes = ((org.w3c.dom.Element) tc)
-                                    .getElementsByTagName("failure");
-                                if (failNodes.getLength() > 0) {
-                                    String tcName = tc.getAttributes().getNamedItem("name")
-                                        .getNodeValue();
-                                    String cls = tc.getAttributes().getNamedItem("classname")
-                                        .getNodeValue();
-                                    String msg = failNodes.item(0).getAttributes()
-                                        .getNamedItem("message").getNodeValue();
-                                    failures.add(String.format("  ? %s.%s: %s", cls, tcName, msg));
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {
-                        // XML parsing errors are non-fatal
-                    }
+                    TestSuiteResult result = parseTestSuiteXml(xmlFile);
+                    if (result == null) continue;
+                    totalTests += result.tests;
+                    totalFailed += result.failed;
+                    totalErrors += result.errors;
+                    totalSkipped += result.skipped;
+                    totalTime += result.time;
+                    failures.addAll(result.failures);
                 }
             } catch (IOException ignored) {
                 // IO errors during directory listing are non-fatal
@@ -3578,7 +3538,73 @@ public final class PsiBridgeService implements Disposable {
         }
 
         if (totalTests == 0) return "";
+        return formatTestResults(totalTests, totalFailed, totalErrors, totalSkipped, totalTime, failures);
+    }
 
+    private List<Path> findTestReportDirs(String basePath, String module) {
+        List<Path> reportDirs = new ArrayList<>();
+        if (module.isEmpty()) {
+            try (var dirs = Files.walk(Path.of(basePath), 4)) {
+                dirs.filter(p -> p.endsWith("test-results/test") && Files.isDirectory(p))
+                    .forEach(reportDirs::add);
+            } catch (IOException ignored) {
+                // Directory walk errors are non-fatal
+            }
+        } else {
+            Path dir = Path.of(basePath, module, BUILD_DIR, "test-results", "test");
+            if (Files.isDirectory(dir)) reportDirs.add(dir);
+        }
+        return reportDirs;
+    }
+
+    private record TestSuiteResult(int tests, int failed, int errors, int skipped,
+                                   double time, List<String> failures) {
+    }
+
+    private TestSuiteResult parseTestSuiteXml(Path xmlFile) {
+        try {
+            var dbf = DocumentBuilderFactory.newInstance();
+            //noinspection HttpUrlsUsage - XML feature URI, not an actual URL
+            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            var doc = dbf.newDocumentBuilder().parse(xmlFile.toFile());
+            var suites = doc.getElementsByTagName("testsuite");
+
+            int tests = 0, failed = 0, errors = 0, skipped = 0;
+            double time = 0;
+            List<String> failures = new ArrayList<>();
+
+            for (int i = 0; i < suites.getLength(); i++) {
+                var suite = suites.item(i);
+                tests += intAttr(suite, "tests");
+                failed += intAttr(suite, "failures");
+                errors += intAttr(suite, "errors");
+                skipped += intAttr(suite, "skipped");
+                time += doubleAttr(suite, "time");
+                collectFailureDetails((org.w3c.dom.Element) suite, failures);
+            }
+            return new TestSuiteResult(tests, failed, errors, skipped, time, failures);
+        } catch (Exception ignored) {
+            // XML parsing errors are non-fatal
+            return null;
+        }
+    }
+
+    private static void collectFailureDetails(org.w3c.dom.Element suite, List<String> failures) {
+        var testcases = suite.getElementsByTagName("testcase");
+        for (int j = 0; j < testcases.getLength(); j++) {
+            var tc = testcases.item(j);
+            var failNodes = ((org.w3c.dom.Element) tc).getElementsByTagName("failure");
+            if (failNodes.getLength() > 0) {
+                String tcName = tc.getAttributes().getNamedItem("name").getNodeValue();
+                String cls = tc.getAttributes().getNamedItem("classname").getNodeValue();
+                String msg = failNodes.item(0).getAttributes().getNamedItem("message").getNodeValue();
+                failures.add(String.format("  ? %s.%s: %s", cls, tcName, msg));
+            }
+        }
+    }
+
+    private static String formatTestResults(int totalTests, int totalFailed, int totalErrors,
+                                            int totalSkipped, double totalTime, List<String> failures) {
         int passed = totalTests - totalFailed - totalErrors - totalSkipped;
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("Test Results: %d tests, %d passed, %d failed, %d errors, %d skipped (%.1fs)%n",
@@ -3694,59 +3720,57 @@ public final class PsiBridgeService implements Disposable {
 
         // Java PSI
         if (cls.contains("PsiClass") && !cls.contains("Initializer")) {
-            // Distinguish interfaces and enums from regular classes via reflection
-            try {
-                if ((boolean) element.getClass().getMethod("isInterface").invoke(element))
-                    return ELEMENT_TYPE_INTERFACE;
-                if ((boolean) element.getClass().getMethod("isEnum").invoke(element)) return ELEMENT_TYPE_ENUM;
-            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
-                     | IllegalAccessException ignored) {
-                // Reflection unavailable for this PsiClass variant
-            }
-            return ELEMENT_TYPE_CLASS;
+            return classifyJavaClass(element);
         }
         if (cls.contains("PsiMethod")) return ELEMENT_TYPE_METHOD;
         if (cls.contains("PsiField")) return ELEMENT_TYPE_FIELD;
         if (cls.contains("PsiEnumConstant")) return ELEMENT_TYPE_FIELD;
 
         // Kotlin PSI
-        switch (cls) {
-            case "KtClass", "KtObjectDeclaration" -> {
-                // KtClass can be class, interface, or enum — check via hasModifier or text
-                try {
-                    // KtClass has isInterface() and isEnum() methods
-                    var isInterface = element.getClass().getMethod("isInterface");
-                    if ((boolean) isInterface.invoke(element)) return ELEMENT_TYPE_INTERFACE;
-                    var isEnum = element.getClass().getMethod("isEnum");
-                    if ((boolean) isEnum.invoke(element)) return ELEMENT_TYPE_ENUM;
-                } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
-                         | IllegalAccessException ignored) {
-                    // Reflection unavailable for this Kotlin class variant
-                }
-                return ELEMENT_TYPE_CLASS;
-            }
-            case "KtNamedFunction" -> {
-                return ELEMENT_TYPE_FUNCTION;
-            }
-            case "KtProperty" -> {
-                return ELEMENT_TYPE_FIELD;
-            }
-            case "KtParameter" -> {
-                return null; // skip parameters
-            }
-            case "KtTypeAlias" -> {
-                return ELEMENT_TYPE_CLASS;
-            }
-            default -> {
-                // fall through to generic patterns below
-            }
-        }
+        String kotlinType = classifyKotlinElement(cls, element);
+        if (kotlinType != null) return kotlinType;
 
         // Generic patterns
         if (cls.contains("Interface") && !cls.contains("Reference")) return ELEMENT_TYPE_INTERFACE;
         if (cls.contains("Enum") && cls.contains("Class")) return ELEMENT_TYPE_CLASS;
 
         return null;
+    }
+
+    private static String classifyJavaClass(PsiElement element) {
+        try {
+            if ((boolean) element.getClass().getMethod("isInterface").invoke(element))
+                return ELEMENT_TYPE_INTERFACE;
+            if ((boolean) element.getClass().getMethod("isEnum").invoke(element)) return ELEMENT_TYPE_ENUM;
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                 | IllegalAccessException ignored) {
+            // Reflection unavailable for this PsiClass variant
+        }
+        return ELEMENT_TYPE_CLASS;
+    }
+
+    private static String classifyKotlinElement(String cls, PsiElement element) {
+        return switch (cls) {
+            case "KtClass", "KtObjectDeclaration" -> classifyKotlinClass(element);
+            case "KtNamedFunction" -> ELEMENT_TYPE_FUNCTION;
+            case "KtProperty" -> ELEMENT_TYPE_FIELD;
+            case "KtParameter" -> null;
+            case "KtTypeAlias" -> ELEMENT_TYPE_CLASS;
+            default -> null;
+        };
+    }
+
+    private static String classifyKotlinClass(PsiElement element) {
+        try {
+            var isInterface = element.getClass().getMethod("isInterface");
+            if ((boolean) isInterface.invoke(element)) return ELEMENT_TYPE_INTERFACE;
+            var isEnum = element.getClass().getMethod("isEnum");
+            if ((boolean) isEnum.invoke(element)) return ELEMENT_TYPE_ENUM;
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                 | IllegalAccessException ignored) {
+            // Reflection unavailable for this Kotlin class variant
+        }
+        return ELEMENT_TYPE_CLASS;
     }
 
     private VirtualFile resolveVirtualFile(String path) {
@@ -3803,105 +3827,125 @@ public final class PsiBridgeService implements Disposable {
 
         return ReadAction.compute(() -> {
             try {
-                // Try to resolve as a fully qualified class name first
                 GlobalSearchScope scope = GlobalSearchScope.allScope(project);
-                PsiElement element;
+                String[] parts = splitSymbolParts(symbol);
+                String className = parts[0];
+                String memberName = parts[1];
 
-                // Split into class and member parts
-                String className;
-                String memberName = null;
-
-                // Check if symbol contains a member reference (e.g. java.util.List.add)
-                // Try progressively shorter class names to find the class part
-                Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
-                Object facade = javaPsiFacadeClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
-
-                // Try the full symbol as a class first
-                PsiElement resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
-                    .invoke(facade, symbol, scope);
-
-                if (resolvedClass == null) {
-                    // Try splitting at the last dot to find class + member
-                    int lastDot = symbol.lastIndexOf('.');
-                    if (lastDot > 0) {
-                        className = symbol.substring(0, lastDot);
-                        memberName = symbol.substring(lastDot + 1);
-                        resolvedClass = (PsiElement) javaPsiFacadeClass.getMethod("findClass", String.class, GlobalSearchScope.class)
-                            .invoke(facade, className, scope);
-                    }
+                PsiElement resolvedClass = resolveJavaClass(className, scope);
+                if (resolvedClass == null && memberName == null) {
+                    return "Symbol not found: " + symbol + ". Use a fully qualified name (e.g. java.util.List).";
                 }
-
                 if (resolvedClass == null) {
                     return "Symbol not found: " + symbol + ". Use a fully qualified name (e.g. java.util.List).";
                 }
 
-                element = resolvedClass;
-
-                // If member name specified, find the member within the class
+                PsiElement element = resolvedClass;
                 if (memberName != null) {
-                    PsiElement foundMember = null;
-                    // Look for methods and fields
-                    for (PsiElement child : resolvedClass.getChildren()) {
-                        if (child instanceof PsiNamedElement named && memberName.equals(named.getName())) {
-                            foundMember = child;
-                            break;
-                        }
-                    }
-                    if (foundMember != null) {
-                        element = foundMember;
-                    } else {
-                        // Try inner classes
-                        for (PsiElement child : resolvedClass.getChildren()) {
-                            if (child instanceof PsiNamedElement) {
-                                for (PsiElement grandchild : child.getChildren()) {
-                                    if (grandchild instanceof PsiNamedElement named && memberName.equals(named.getName())) {
-                                        foundMember = grandchild;
-                                        break;
-                                    }
-                                }
-                                if (foundMember != null) break;
-                            }
-                        }
-                        if (foundMember != null) {
-                            element = foundMember;
-                        }
-                    }
+                    PsiElement member = findMemberInClass(resolvedClass, memberName);
+                    if (member != null) element = member;
                 }
 
-                // Use DocumentationProvider to generate documentation
-                Class<?> langDocClass = Class.forName("com.intellij.lang.LanguageDocumentation");
-                Object langDocInstance = langDocClass.getField("INSTANCE").get(null);
-                Object provider = langDocClass.getMethod("forLanguage", com.intellij.lang.Language.class)
-                    .invoke(langDocInstance, element.getLanguage());
-
-                if (provider == null) {
-                    // Fallback: extract PsiDocComment directly for Java elements
-                    return extractDocComment(element, symbol);
-                }
-
-                String doc = (String) provider.getClass().getMethod("generateDoc", PsiElement.class, PsiElement.class)
-                    .invoke(provider, element, null);
-
-                if (doc == null || doc.isEmpty()) {
-                    return extractDocComment(element, symbol);
-                }
-
-                // Strip HTML tags for clean text output
-                String text = doc.replaceAll("<[^>]+>", "")
-                    .replace("&nbsp;", " ")
-                    .replace("&lt;", "<")
-                    .replace("&gt;", ">")
-                    .replace("&amp;", "&")
-                    .replaceAll("&#\\d+;", "")
-                    .replaceAll("\n{3,}", "\n\n")
-                    .trim();
-
-                return truncateOutput("Documentation for " + symbol + ":\n\n" + text);
+                return generateDocumentation(element, symbol);
             } catch (Exception e) {
                 LOG.warn("get_documentation error", e);
                 return "Error retrieving documentation: " + e.getMessage();
             }
         });
+    }
+
+    private String[] splitSymbolParts(String symbol) {
+        try {
+            Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
+            Object facade = javaPsiFacadeClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
+            GlobalSearchScope scope = GlobalSearchScope.allScope(project);
+
+            PsiElement resolvedClass = (PsiElement) javaPsiFacadeClass
+                .getMethod("findClass", String.class, GlobalSearchScope.class)
+                .invoke(facade, symbol, scope);
+
+            if (resolvedClass != null) {
+                return new String[]{symbol, null};
+            }
+        } catch (Exception ignored) {
+            // Reflection errors handled by caller
+        }
+
+        int lastDot = symbol.lastIndexOf('.');
+        if (lastDot > 0) {
+            return new String[]{symbol.substring(0, lastDot), symbol.substring(lastDot + 1)};
+        }
+        return new String[]{symbol, null};
+    }
+
+    private PsiElement resolveJavaClass(String className, GlobalSearchScope scope) {
+        try {
+            Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
+            Object facade = javaPsiFacadeClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
+            return (PsiElement) javaPsiFacadeClass
+                .getMethod("findClass", String.class, GlobalSearchScope.class)
+                .invoke(facade, className, scope);
+        } catch (Exception e) {
+            LOG.warn("resolveJavaClass error", e);
+            return null;
+        }
+    }
+
+    private PsiElement findMemberInClass(PsiElement resolvedClass, String memberName) {
+        // Direct children first
+        for (PsiElement child : resolvedClass.getChildren()) {
+            if (child instanceof PsiNamedElement named && memberName.equals(named.getName())) {
+                return child;
+            }
+        }
+        // Try inner classes
+        for (PsiElement child : resolvedClass.getChildren()) {
+            if (child instanceof PsiNamedElement) {
+                for (PsiElement grandchild : child.getChildren()) {
+                    if (grandchild instanceof PsiNamedElement named && memberName.equals(named.getName())) {
+                        return grandchild;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String generateDocumentation(PsiElement element, String symbol) {
+        try {
+            Class<?> langDocClass = Class.forName("com.intellij.lang.LanguageDocumentation");
+            Object langDocInstance = langDocClass.getField("INSTANCE").get(null);
+            Object provider = langDocClass.getMethod("forLanguage", com.intellij.lang.Language.class)
+                .invoke(langDocInstance, element.getLanguage());
+
+            if (provider == null) {
+                return extractDocComment(element, symbol);
+            }
+
+            String doc = (String) provider.getClass().getMethod("generateDoc", PsiElement.class, PsiElement.class)
+                .invoke(provider, element, null);
+
+            if (doc == null || doc.isEmpty()) {
+                return extractDocComment(element, symbol);
+            }
+
+            String text = stripHtmlForDocumentation(doc);
+            return truncateOutput("Documentation for " + symbol + ":\n\n" + text);
+        } catch (Exception e) {
+            LOG.warn("generateDocumentation error", e);
+            return extractDocComment(element, symbol);
+        }
+    }
+
+    private static String stripHtmlForDocumentation(String doc) {
+        return doc.replaceAll("<[^>]+>", "")
+            .replace("&nbsp;", " ")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replaceAll("&#\\d+;", "")
+            .replaceAll("\n{3,}", "\n\n")
+            .trim();
     }
 
     private String extractDocComment(PsiElement element, String symbol) {
@@ -4014,13 +4058,11 @@ public final class PsiBridgeService implements Disposable {
 
     private boolean enableDownloadSources(StringBuilder sb) {
         try {
-            // Access GradleSettings or ExternalSystemSettings to enable source download
             Class<?> gradleSettingsClass = Class.forName(
                 "org.jetbrains.plugins.gradle.settings.GradleSettings");
             Object gradleSettings = gradleSettingsClass.getMethod(GET_INSTANCE_METHOD, Project.class)
                 .invoke(null, project);
 
-            // Get linked project settings
             java.util.Collection<?> linkedSettings = (java.util.Collection<?>)
                 gradleSettingsClass.getMethod("getLinkedProjectsSettings").invoke(gradleSettings);
 
@@ -4034,60 +4076,75 @@ public final class PsiBridgeService implements Disposable {
                 "org.jetbrains.plugins.gradle.settings.GradleProjectSettings");
 
             for (Object projectSettings : linkedSettings) {
-                // isResolveExternalAnnotations is on GradleProjectSettings, not ExternalProjectSettings
-                try {
-                    Method getResolve = gradleProjectSettingsClass.getMethod("isResolveExternalAnnotations");
-                    boolean currentValue = (boolean) getResolve.invoke(projectSettings);
-                    if (!currentValue) {
-                        Method setResolve = gradleProjectSettingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
-                        setResolve.invoke(projectSettings, true);
-                        sb.append("Enabled 'Resolve external annotations' for Gradle project.\n");
-                        anyChanged = true;
-                    }
-                } catch (NoSuchMethodException ignored) {
-                    // Method not available in this IDE version
-                }
-
-                // AdvancedSettings is a platform API — use it directly
-                try {
-                    boolean downloadOnSync = AdvancedSettings.getBoolean("gradle.download.sources.on.sync");
-                    if (!downloadOnSync) {
-                        AdvancedSettings.setBoolean("gradle.download.sources.on.sync", true);
-                        sb.append("Enabled 'Download sources on sync' in Advanced Settings.\n");
-                        anyChanged = true;
-                    } else {
-                        sb.append("'Download sources on sync' is already enabled.\n");
-                    }
-                } catch (Exception e) {
-                    LOG.info("AdvancedSettings download sources not available: " + e.getMessage());
-                    // Try older API path via GradleProjectSettings
-                    try {
-                        Method getDownload = gradleProjectSettingsClass.getMethod("isDownloadSources");
-                        Method setDownload = gradleProjectSettingsClass.getMethod("setDownloadSources", boolean.class);
-                        boolean current = (boolean) getDownload.invoke(projectSettings);
-                        if (!current) {
-                            setDownload.invoke(projectSettings, true);
-                            sb.append("Enabled 'Download sources' for Gradle project.\n");
-                            anyChanged = true;
-                        } else {
-                            sb.append("'Download sources' is already enabled.\n");
-                        }
-                    } catch (NoSuchMethodException ex) {
-                        sb.append("Download sources setting not found in this IntelliJ version.\n");
-                    }
-                }
+                anyChanged |= enableExternalAnnotations(gradleProjectSettingsClass, projectSettings, sb);
+                anyChanged |= enableDownloadSourcesSetting(gradleProjectSettingsClass, projectSettings, sb);
             }
             return anyChanged;
         } catch (ClassNotFoundException e) {
-            // Not a Gradle project or Gradle plugin not available
             sb.append("Gradle plugin not available. ");
-            // Try Maven
             return enableMavenDownloadSources(sb);
         } catch (Exception e) {
             LOG.warn("enableDownloadSources error", e);
             sb.append("Error enabling download sources: ").append(e.getMessage()).append("\n");
             return false;
         }
+    }
+
+    private static boolean enableExternalAnnotations(Class<?> settingsClass, Object projectSettings, StringBuilder sb) {
+        try {
+            Method getResolve = settingsClass.getMethod("isResolveExternalAnnotations");
+            boolean currentValue = (boolean) getResolve.invoke(projectSettings);
+            if (!currentValue) {
+                Method setResolve = settingsClass.getMethod("setResolveExternalAnnotations", boolean.class);
+                setResolve.invoke(projectSettings, true);
+                sb.append("Enabled 'Resolve external annotations' for Gradle project.\n");
+                return true;
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Method not available in this IDE version
+        } catch (Exception e) {
+            LOG.warn("enableExternalAnnotations error", e);
+        }
+        return false;
+    }
+
+    private boolean enableDownloadSourcesSetting(Class<?> gradleProjectSettingsClass,
+                                                 Object projectSettings, StringBuilder sb) {
+        try {
+            boolean downloadOnSync = AdvancedSettings.getBoolean("gradle.download.sources.on.sync");
+            if (!downloadOnSync) {
+                AdvancedSettings.setBoolean("gradle.download.sources.on.sync", true);
+                sb.append("Enabled 'Download sources on sync' in Advanced Settings.\n");
+                return true;
+            } else {
+                sb.append("'Download sources on sync' is already enabled.\n");
+            }
+        } catch (Exception e) {
+            LOG.info("AdvancedSettings download sources not available: " + e.getMessage());
+            return enableDownloadSourcesLegacy(gradleProjectSettingsClass, projectSettings, sb);
+        }
+        return false;
+    }
+
+    private static boolean enableDownloadSourcesLegacy(Class<?> settingsClass,
+                                                       Object projectSettings, StringBuilder sb) {
+        try {
+            Method getDownload = settingsClass.getMethod("isDownloadSources");
+            Method setDownload = settingsClass.getMethod("setDownloadSources", boolean.class);
+            boolean current = (boolean) getDownload.invoke(projectSettings);
+            if (!current) {
+                setDownload.invoke(projectSettings, true);
+                sb.append("Enabled 'Download sources' for Gradle project.\n");
+                return true;
+            } else {
+                sb.append("'Download sources' is already enabled.\n");
+            }
+        } catch (NoSuchMethodException ex) {
+            sb.append("Download sources setting not found in this IntelliJ version.\n");
+        } catch (Exception e) {
+            LOG.warn("enableDownloadSourcesLegacy error", e);
+        }
+        return false;
     }
 
     private boolean enableMavenDownloadSources(StringBuilder sb) {
