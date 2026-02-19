@@ -487,19 +487,21 @@ public final class PsiBridgeService implements Disposable {
     private void collectSymbolsFromFile(PsiFile psiFile, Document doc, VirtualFile vf,
                                         String typeFilter, String basePath,
                                         Set<String> seen, List<String> results) {
+        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
         psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
             @Override
             public void visitElement(@NotNull PsiElement element) {
                 if (results.size() >= 200) return;
-                if (element instanceof PsiNamedElement named) {
-                    String name = named.getName();
-                    String type = classifyElement(element);
-                    if (name != null && type != null && type.equals(typeFilter)) {
-                        int line = doc.getLineNumber(element.getTextOffset()) + 1;
-                        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
-                        if (seen.add(relPath + ":" + line)) {
-                            results.add(String.format(FORMAT_LOCATION, relPath, line, type, name));
-                        }
+                if (!(element instanceof PsiNamedElement named)) {
+                    super.visitElement(element);
+                    return;
+                }
+                String name = named.getName();
+                String type = classifyElement(element);
+                if (name != null && type != null && type.equals(typeFilter)) {
+                    int line = doc.getLineNumber(element.getTextOffset()) + 1;
+                    if (seen.add(relPath + ":" + line)) {
+                        results.add(String.format(FORMAT_LOCATION, relPath, line, type, name));
                     }
                 }
                 super.visitElement(element);
@@ -800,62 +802,66 @@ public final class PsiBridgeService implements Disposable {
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                ReadAction.run(() -> {
-                    List<String> problems = new ArrayList<>();
-                    String basePath = project.getBasePath();
-                    List<VirtualFile> filesToCheck = new ArrayList<>();
-
-                    if (!pathStr.isEmpty()) {
-                        VirtualFile vf = resolveVirtualFile(pathStr);
-                        if (vf != null) filesToCheck.add(vf);
-                        else {
-                            resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
-                            return;
-                        }
-                    } else {
-                        // Check all open files with highlights
-                        var fem = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
-                        filesToCheck.addAll(List.of(fem.getOpenFiles()));
-                    }
-
-                    for (VirtualFile vf : filesToCheck) {
-                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                        if (psiFile == null) continue;
-                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                        if (doc == null) continue;
-
-                        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
-                        com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                            doc, project,
-                            com.intellij.lang.annotation.HighlightSeverity.WARNING,
-                            0, doc.getTextLength(),
-                            highlights::add
-                        );
-
-                        for (var h : highlights) {
-                            if (h.getDescription() == null) continue;
-                            int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                            String severity = h.getSeverity().getName();
-                            problems.add(String.format(FORMAT_LOCATION,
-                                relPath, line, severity, h.getDescription()));
-                        }
-                    }
-
-                    if (problems.isEmpty()) {
-                        resultFuture.complete("No problems found"
-                            + (pathStr.isEmpty() ? " in open files" : " in " + pathStr)
-                            + ". Analysis is based on IntelliJ's inspections — file must be open in editor for highlights to be available.");
-                    } else {
-                        resultFuture.complete(problems.size() + " problems:\n" + String.join("\n", problems));
-                    }
-                });
+                ReadAction.run(() -> collectProblems(pathStr, resultFuture));
             } catch (Exception e) {
                 resultFuture.complete("Error getting problems: " + e.getMessage());
             }
         });
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private void collectProblems(String pathStr, CompletableFuture<String> resultFuture) {
+        List<VirtualFile> filesToCheck = new ArrayList<>();
+        if (!pathStr.isEmpty()) {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) {
+                resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
+                return;
+            }
+            filesToCheck.add(vf);
+        } else {
+            var fem = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+            filesToCheck.addAll(List.of(fem.getOpenFiles()));
+        }
+
+        String basePath = project.getBasePath();
+        List<String> problems = new ArrayList<>();
+        for (VirtualFile vf : filesToCheck) {
+            collectProblemsForFile(vf, basePath, problems);
+        }
+
+        if (problems.isEmpty()) {
+            resultFuture.complete("No problems found"
+                + (pathStr.isEmpty() ? " in open files" : " in " + pathStr)
+                + ". Analysis is based on IntelliJ's inspections — file must be open in editor for highlights to be available.");
+        } else {
+            resultFuture.complete(problems.size() + " problems:\n" + String.join("\n", problems));
+        }
+    }
+
+    private void collectProblemsForFile(VirtualFile vf, String basePath, List<String> problems) {
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return;
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc == null) return;
+
+        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+        com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+            doc, project,
+            com.intellij.lang.annotation.HighlightSeverity.WARNING,
+            0, doc.getTextLength(),
+            highlights::add
+        );
+
+        for (var h : highlights) {
+            if (h.getDescription() == null) continue;
+            int line = doc.getLineNumber(h.getStartOffset()) + 1;
+            String severity = h.getSeverity().getName();
+            problems.add(String.format(FORMAT_LOCATION,
+                relPath, line, severity, h.getDescription()));
+        }
     }
 
     /**
@@ -964,36 +970,15 @@ public final class PsiBridgeService implements Disposable {
             List<String> problems = new ArrayList<>();
             String basePath = project.getBasePath();
 
-            // Get files to analyze
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
-            Collection<VirtualFile> allFiles = new ArrayList<>();
-
-            if (pathStr != null && !pathStr.isEmpty()) {
-                // Analyze specific file
-                VirtualFile vf = resolveVirtualFile(pathStr);
-                if (vf != null && fileIndex.isInSourceContent(vf)) {
-                    allFiles.add(vf);
-                } else {
-                    resultFuture.complete("Error: File not found or not in source content: " + pathStr);
-                    return;
-                }
-            } else {
-                // Analyze all project source files
-                fileIndex.iterateContent(file -> {
-                    if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
-                        allFiles.add(file);
-                    }
-                    return true;
-                });
-            }
+            Collection<VirtualFile> allFiles = collectFilesForHighlightAnalysis(pathStr, fileIndex, resultFuture);
+            if (allFiles == null) return; // resultFuture already completed with error
 
             LOG.info("Analyzing " + allFiles.size() + " files for highlights (cached mode)");
 
-            // Analyze each file for problems using existing highlights
             int[] counts = {0, 0}; // [totalCount, filesWithProblems]
-            boolean limitReached = false;
             for (VirtualFile vf : allFiles) {
-                if (limitReached) break;
+                if (counts[0] >= limit) break;
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                 if (psiFile == null) continue;
 
@@ -1004,7 +989,6 @@ public final class PsiBridgeService implements Disposable {
                 int added = collectFileHighlights(doc, relPath, limit - counts[0], problems);
                 if (added > 0) counts[1]++;
                 counts[0] += added;
-                if (counts[0] >= limit) limitReached = true;
             }
 
             if (problems.isEmpty()) {
@@ -1018,6 +1002,28 @@ public final class PsiBridgeService implements Disposable {
                 resultFuture.complete(summary + String.join("\n", problems));
             }
         });
+    }
+
+    private Collection<VirtualFile> collectFilesForHighlightAnalysis(
+        String pathStr, ProjectFileIndex fileIndex, CompletableFuture<String> resultFuture) {
+        Collection<VirtualFile> files = new ArrayList<>();
+        if (pathStr != null && !pathStr.isEmpty()) {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf != null && fileIndex.isInSourceContent(vf)) {
+                files.add(vf);
+            } else {
+                resultFuture.complete("Error: File not found or not in source content: " + pathStr);
+                return null;
+            }
+        } else {
+            fileIndex.iterateContent(file -> {
+                if (!file.isDirectory() && fileIndex.isInSourceContent(file)) {
+                    files.add(file);
+                }
+                return true;
+            });
+        }
+        return files;
     }
 
     private int collectFileHighlights(Document doc, String relPath, int remaining, List<String> problems) {
@@ -1063,17 +1069,13 @@ public final class PsiBridgeService implements Disposable {
     private void runInspectionAnalysis(int limit, int offset, String minSeverity,
                                        String scopePath,
                                        CompletableFuture<String> resultFuture) {
-        // Severity ranking for filtering
         Map<String, Integer> severityRank = Map.of(
             "ERROR", 4, "WARNING", 3, "WEAK_WARNING", 2,
             "LIKE_UNUSED_SYMBOL", 2, "INFORMATION", 1, "INFO", 1,
             "TEXT_ATTRIBUTES", 0, "GENERIC_SERVER_ERROR_OR_WARNING", 3
         );
-        int minRank = 0;
-        if (minSeverity != null && !minSeverity.isEmpty()) {
-            minRank = severityRank.getOrDefault(minSeverity.toUpperCase(), 0);
-        }
-        final int requiredRank = minRank;
+        final int requiredRank = (minSeverity != null && !minSeverity.isEmpty())
+            ? severityRank.getOrDefault(minSeverity.toUpperCase(), 0) : 0;
         try {
             LOG.info("Starting inspection analysis...");
 
@@ -1082,176 +1084,43 @@ public final class PsiBridgeService implements Disposable {
             var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
             var currentProfile = profileManager.getCurrentProfile();
 
-            // Create scope based on scopePath parameter
-            com.intellij.analysis.AnalysisScope scope;
-            if (scopePath != null && !scopePath.isEmpty()) {
-                VirtualFile scopeFile = resolveVirtualFile(scopePath);
-                if (scopeFile == null) {
-                    resultFuture.complete("Error: File or directory not found: " + scopePath);
-                    return;
-                }
-                if (scopeFile.isDirectory()) {
-                    PsiDirectory psiDir = com.intellij.openapi.application.ReadAction.compute(() ->
-                        PsiManager.getInstance(project).findDirectory(scopeFile)
-                    );
-                    if (psiDir == null) {
-                        resultFuture.complete("Error: Cannot resolve directory: " + scopePath);
-                        return;
-                    }
-                    scope = new com.intellij.analysis.AnalysisScope(psiDir);
-                    LOG.info("Analysis scope: directory " + scopePath);
-                } else {
-                    PsiFile psiFile = com.intellij.openapi.application.ReadAction.compute(() ->
-                        PsiManager.getInstance(project).findFile(scopeFile)
-                    );
-                    if (psiFile == null) {
-                        resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + scopePath);
-                        return;
-                    }
-                    scope = new com.intellij.analysis.AnalysisScope(psiFile);
-                    LOG.info("Analysis scope: file " + scopePath);
-                }
-            } else {
-                scope = new com.intellij.analysis.AnalysisScope(project);
-                LOG.info("Analysis scope: entire project");
-            }
+            com.intellij.analysis.AnalysisScope scope = createAnalysisScope(scopePath, resultFuture);
+            if (scope == null) return;
 
             LOG.info("Using inspection profile: " + currentProfile.getName());
 
             String basePath = project.getBasePath();
             String profileName = currentProfile.getName();
 
-            // Create context following JetBrains' InspectionCommandEx pattern:
-            // Use GlobalInspectionContextImpl with contentManager, override notifyInspectionsFinished
             GlobalInspectionContextImpl context = new GlobalInspectionContextImpl(
                 project, inspectionManagerEx.getContentManager()) {
 
                 @Override
                 protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope scope) {
                     super.notifyInspectionsFinished(scope);
-
                     LOG.info("Inspection analysis completed, collecting results...");
-
-                    // Capture context for lambda
                     final GlobalInspectionContextImpl ctx = this;
 
-                    // Move PSI access off EDT to avoid "Slow operations prohibited on EDT" errors
                     ReadAction.nonBlocking(() -> {
                             try {
-                                List<String> allProblems = new ArrayList<>();
-                                Set<String> filesSet = new HashSet<>();
-                                int skippedNoDescription = 0;
-                                int skippedNoFile = 0;
+                                InspectionCollectionResult collected = collectInspectionProblems(
+                                    ctx, severityRank, requiredRank, basePath);
 
-                                var usedTools = ctx.getUsedTools();
-                                for (var tools : usedTools) {
-                                    var toolWrapper = tools.getTool();
-                                    String toolId = toolWrapper.getShortName();
-
-                                    // Null checks required: getPresentation() and getProblemElements() can return null at runtime
-                                    // despite @NotNull annotations – these are inspection API calls on dynamic tool wrappers
-                                    var presentation = ctx.getPresentation(toolWrapper);
-                                    //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
-                                    if (presentation == null) continue;
-
-                                    var problemElements = presentation.getProblemElements();
-                                    //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
-                                    if (problemElements == null || problemElements.isEmpty()) continue;
-
-                                    for (var refEntity : problemElements.keys()) {
-                                        var descriptors = problemElements.get(refEntity);
-                                        if (descriptors == null) continue;
-
-                                        for (var descriptor : descriptors) {
-                                            // getDescriptionTemplate() can return null despite @NotNull annotation
-                                            String description = descriptor.getDescriptionTemplate();
-                                            //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
-                                            if (description == null || description.isEmpty()) {
-                                                skippedNoDescription++;
-                                                continue;
-                                            }
-
-                                            // Resolve #ref placeholder with actual element text
-                                            String refText = "";
-                                            if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-                                                var psiEl = pd.getPsiElement();
-                                                if (psiEl != null) {
-                                                    refText = psiEl.getText();
-                                                    if (refText != null && refText.length() > 80) {
-                                                        refText = refText.substring(0, 80) + "...";
-                                                    }
-                                                }
-                                            }
-
-                                            // Clean up HTML/template markers from description
-                                            description = description.replaceAll("<[^>]+>", "")
-                                                .replace("&lt;", "<")
-                                                .replace("&gt;", ">")
-                                                .replace("&amp;", "&")
-                                                .replace("#ref", refText != null ? refText : "")
-                                                .replace("#loc", "")
-                                                .trim();
-
-                                            if (description.isEmpty()) {
-                                                skippedNoDescription++;
-                                                continue;
-                                            }
-
-                                            int line = -1;
-                                            String filePath = "";
-                                            String severity = "WARNING";
-
-                                            if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-                                                line = pd.getLineNumber() + 1;
-                                                var psiElement = pd.getPsiElement();
-                                                if (psiElement != null) {
-                                                    var containingFile = psiElement.getContainingFile();
-                                                    if (containingFile != null) {
-                                                        var vf = containingFile.getVirtualFile();
-                                                        if (vf != null) {
-                                                            filePath = basePath != null
-                                                                ? relativize(basePath, vf.getPath())
-                                                                : vf.getName();
-                                                            filesSet.add(filePath);
-                                                        }
-                                                    }
-                                                }
-                                                severity = pd.getHighlightType().toString();
-                                            } else {
-                                                skippedNoFile++;
-                                            }
-
-                                            // Filter by minimum severity
-                                            if (requiredRank > 0) {
-                                                int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
-                                                if (rank < requiredRank) continue;
-                                            }
-
-                                            allProblems.add(String.format("%s:%d [%s/%s] %s",
-                                                filePath, line, severity, toolId, description));
-                                        }
-                                    }
-                                }
-
-                                int total = allProblems.size();
-                                int filesWithProblems = filesSet.size();
-
-                                // Cache results for fast pagination
-                                cachedInspectionResults = new ArrayList<>(allProblems);
-                                cachedInspectionFileCount = filesWithProblems;
+                                cachedInspectionResults = new ArrayList<>(collected.problems);
+                                cachedInspectionFileCount = collected.fileCount;
                                 cachedInspectionProfile = profileName;
                                 cachedInspectionTimestamp = System.currentTimeMillis();
-                                LOG.info("Cached " + total + " inspection results for pagination" +
-                                    " (skipped: " + skippedNoDescription + " no-description, " +
-                                    skippedNoFile + " no-file)");
+                                LOG.info("Cached " + collected.problems.size() + " inspection results for pagination" +
+                                    " (skipped: " + collected.skippedNoDescription + " no-description, " +
+                                    collected.skippedNoFile + " no-file)");
 
-                                if (total == 0) {
+                                if (collected.problems.isEmpty()) {
                                     resultFuture.complete("No inspection problems found. " +
                                         "The code passed all enabled inspections in the current profile (" +
                                         profileName + "). Results are also visible in the IDE's Inspection Results view.");
                                 } else {
                                     resultFuture.complete(formatInspectionPage(
-                                        allProblems, filesWithProblems, profileName, offset, limit));
+                                        collected.problems, collected.fileCount, profileName, offset, limit));
                                 }
                             } catch (Exception e) {
                                 LOG.error("Error collecting inspection results", e);
@@ -1263,14 +1132,149 @@ public final class PsiBridgeService implements Disposable {
                 }
             };
 
-            // doInspections handles everything: EDT dispatch, ProgressWindow creation,
-            // background thread execution, and UI view creation
             context.doInspections(scope);
 
         } catch (Exception e) {
             LOG.error("Error setting up inspections", e);
             resultFuture.complete("Error setting up inspections: " + e.getMessage());
         }
+    }
+
+    @SuppressWarnings("TestOnlyProblems")
+    private com.intellij.analysis.AnalysisScope createAnalysisScope(
+        String scopePath, CompletableFuture<String> resultFuture) {
+        if (scopePath == null || scopePath.isEmpty()) {
+            LOG.info("Analysis scope: entire project");
+            return new com.intellij.analysis.AnalysisScope(project);
+        }
+        VirtualFile scopeFile = resolveVirtualFile(scopePath);
+        if (scopeFile == null) {
+            resultFuture.complete("Error: File or directory not found: " + scopePath);
+            return null;
+        }
+        if (scopeFile.isDirectory()) {
+            PsiDirectory psiDir = com.intellij.openapi.application.ReadAction.compute(() ->
+                PsiManager.getInstance(project).findDirectory(scopeFile)
+            );
+            if (psiDir == null) {
+                resultFuture.complete("Error: Cannot resolve directory: " + scopePath);
+                return null;
+            }
+            LOG.info("Analysis scope: directory " + scopePath);
+            return new com.intellij.analysis.AnalysisScope(psiDir);
+        }
+        PsiFile psiFile = com.intellij.openapi.application.ReadAction.compute(() ->
+            PsiManager.getInstance(project).findFile(scopeFile)
+        );
+        if (psiFile == null) {
+            resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + scopePath);
+            return null;
+        }
+        LOG.info("Analysis scope: file " + scopePath);
+        return new com.intellij.analysis.AnalysisScope(psiFile);
+    }
+
+    private record InspectionCollectionResult(List<String> problems, int fileCount,
+                                              int skippedNoDescription, int skippedNoFile) {
+    }
+
+    @SuppressWarnings("UnstableApiUsage")
+    private InspectionCollectionResult collectInspectionProblems(
+        GlobalInspectionContextImpl ctx, Map<String, Integer> severityRank,
+        int requiredRank, String basePath) {
+        List<String> allProblems = new ArrayList<>();
+        Set<String> filesSet = new HashSet<>();
+        int skippedNoDescription = 0;
+        int skippedNoFile = 0;
+
+        for (var tools : ctx.getUsedTools()) {
+            var toolWrapper = tools.getTool();
+            String toolId = toolWrapper.getShortName();
+
+            var presentation = ctx.getPresentation(toolWrapper);
+            //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
+            if (presentation == null) continue;
+
+            var problemElements = presentation.getProblemElements();
+            //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
+            if (problemElements == null || problemElements.isEmpty()) continue;
+
+            for (var refEntity : problemElements.keys()) {
+                var descriptors = problemElements.get(refEntity);
+                if (descriptors == null) continue;
+
+                for (var descriptor : descriptors) {
+                    String formatted = formatInspectionDescriptor(descriptor, toolId, basePath, filesSet);
+                    if (formatted == null) {
+                        skippedNoDescription++;
+                        continue;
+                    }
+                    if (formatted.isEmpty()) {
+                        skippedNoFile++;
+                        continue;
+                    }
+
+                    String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
+                        ? pd.getHighlightType().toString() : "WARNING";
+                    if (requiredRank > 0) {
+                        int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
+                        if (rank < requiredRank) continue;
+                    }
+
+                    allProblems.add(formatted);
+                }
+            }
+        }
+        return new InspectionCollectionResult(allProblems, filesSet.size(), skippedNoDescription, skippedNoFile);
+    }
+
+    private String formatInspectionDescriptor(
+        com.intellij.codeInspection.CommonProblemDescriptor descriptor,
+        String toolId, String basePath, Set<String> filesSet) {
+        String description = descriptor.getDescriptionTemplate();
+        //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
+        if (description == null || description.isEmpty()) return null;
+
+        String refText = "";
+        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+            var psiEl = pd.getPsiElement();
+            if (psiEl != null) {
+                refText = psiEl.getText();
+                if (refText != null && refText.length() > 80) {
+                    refText = refText.substring(0, 80) + "...";
+                }
+            }
+        }
+
+        description = description.replaceAll("<[^>]+>", "")
+            .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+            .replace("#ref", refText != null ? refText : "").replace("#loc", "").trim();
+
+        if (description.isEmpty()) return null;
+
+        int line = -1;
+        String filePath = "";
+        String severity = "WARNING";
+
+        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+            line = pd.getLineNumber() + 1;
+            severity = pd.getHighlightType().toString();
+            var psiElement = pd.getPsiElement();
+            if (psiElement != null) {
+                var containingFile = psiElement.getContainingFile();
+                if (containingFile != null) {
+                    var vf = containingFile.getVirtualFile();
+                    if (vf != null) {
+                        filePath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                        filesSet.add(filePath);
+                    }
+                }
+            }
+        } else {
+            return ""; // sentinel for skippedNoFile
+        }
+
+        return String.format("%s:%d [%s/%s] %s", filePath, line, severity, toolId, description);
     }
 
     private String addToDictionary(JsonObject args) throws Exception {
@@ -4628,58 +4632,12 @@ public final class PsiBridgeService implements Disposable {
             int lineStartOffset = document.getLineStartOffset(targetLine - 1);
             int lineEndOffset = document.getLineEndOffset(targetLine - 1);
 
-            // Find references on the target line matching the symbol name
-            List<PsiElement> declarations = new ArrayList<>();
-
-            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-                @Override
-                public void visitElement(@NotNull PsiElement element) {
-                    int offset = element.getTextOffset();
-                    if (offset >= lineStartOffset && offset <= lineEndOffset
-                        && (element.getText().equals(symbolName) || (element instanceof PsiNamedElement named
-                        && symbolName.equals(named.getName())))) {
-                        // Try to resolve references
-                        PsiReference ref = element.getReference();
-                        if (ref != null) {
-                            PsiElement resolved = ref.resolve();
-                            if (resolved != null) declarations.add(resolved);
-                        }
-                        // Also check if this IS a declaration
-                        if (element instanceof PsiNamedElement) {
-                            // For a declaration, look for the actual type/superclass
-                            for (PsiReference r : element.getReferences()) {
-                                PsiElement res = r.resolve();
-                                if (res != null && res != element) declarations.add(res);
-                            }
-                        }
-                    }
-                    super.visitElement(element);
-                }
-            });
+            List<PsiElement> declarations = findDeclarationsOnLine(
+                psiFile, lineStartOffset, lineEndOffset, symbolName);
 
             if (declarations.isEmpty()) {
-                // Try broader search — find any reference to this symbol on the line
-                String lineText = document.getText(new com.intellij.openapi.util.TextRange(lineStartOffset, lineEndOffset));
-                int symIdx = lineText.indexOf(symbolName);
-                if (symIdx >= 0) {
-                    int offset = lineStartOffset + symIdx;
-                    PsiElement elemAtOffset = psiFile.findElementAt(offset);
-                    if (elemAtOffset != null) {
-                        // Walk up to find a referenceable element
-                        PsiElement current = elemAtOffset;
-                        for (int i = 0; i < 5 && current != null; i++) {
-                            PsiReference ref = current.getReference();
-                            if (ref != null) {
-                                PsiElement resolved = ref.resolve();
-                                if (resolved != null) {
-                                    declarations.add(resolved);
-                                    break;
-                                }
-                            }
-                            current = current.getParent();
-                        }
-                    }
-                }
+                declarations = findDeclarationByOffset(
+                    psiFile, document, lineStartOffset, lineEndOffset, symbolName);
             }
 
             if (declarations.isEmpty()) {
@@ -4687,48 +4645,110 @@ public final class PsiBridgeService implements Disposable {
                     " in " + pathStr + ". The symbol may be unresolved or from an unindexed library.";
             }
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("Declaration of '").append(symbolName).append("':\n\n");
-            String basePath = project.getBasePath();
+            return formatDeclarationResults(declarations, symbolName);
+        });
+    }
 
-            for (PsiElement decl : declarations) {
-                PsiFile declFile = decl.getContainingFile();
-                if (declFile == null) continue;
-
-                VirtualFile declVf = declFile.getVirtualFile();
-                String declPath;
-                if (declVf != null && basePath != null) {
-                    declPath = relativize(basePath, declVf.getPath());
-                } else if (declVf != null) {
-                    declPath = declVf.getName();
-                } else {
-                    declPath = "?";
+    private List<PsiElement> findDeclarationsOnLine(
+        PsiFile psiFile, int lineStartOffset, int lineEndOffset, String symbolName) {
+        List<PsiElement> declarations = new ArrayList<>();
+        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+            @Override
+            public void visitElement(@NotNull PsiElement element) {
+                int offset = element.getTextOffset();
+                if (offset < lineStartOffset || offset > lineEndOffset) {
+                    super.visitElement(element);
+                    return;
                 }
-
-                Document declDoc = declVf != null ? FileDocumentManager.getInstance().getDocument(declVf) : null;
-                int declLine = declDoc != null ? declDoc.getLineNumber(decl.getTextOffset()) + 1 : -1;
-
-                sb.append("  File: ").append(declPath).append("\n");
-                sb.append("  Line: ").append(declLine).append("\n");
-
-                // Show context (5 lines around declaration)
-                if (declDoc != null && declLine > 0) {
-                    int startLine = Math.max(0, declLine - 3);
-                    int endLine = Math.min(declDoc.getLineCount() - 1, declLine + 2);
-                    sb.append("  Context:\n");
-                    for (int l = startLine; l <= endLine; l++) {
-                        int ls = declDoc.getLineStartOffset(l);
-                        int le = declDoc.getLineEndOffset(l);
-                        String lineContent = declDoc.getText(new com.intellij.openapi.util.TextRange(ls, le));
-                        sb.append(l == declLine - 1 ? "  → " : "    ")
-                            .append(l + 1).append(": ").append(lineContent).append("\n");
+                if (!element.getText().equals(symbolName)
+                    && !(element instanceof PsiNamedElement named && symbolName.equals(named.getName()))) {
+                    super.visitElement(element);
+                    return;
+                }
+                PsiReference ref = element.getReference();
+                if (ref != null) {
+                    PsiElement resolved = ref.resolve();
+                    if (resolved != null) declarations.add(resolved);
+                }
+                if (element instanceof PsiNamedElement) {
+                    for (PsiReference r : element.getReferences()) {
+                        PsiElement res = r.resolve();
+                        if (res != null && res != element) declarations.add(res);
                     }
                 }
-                sb.append("\n");
+                super.visitElement(element);
             }
-
-            return sb.toString();
         });
+        return declarations;
+    }
+
+    private List<PsiElement> findDeclarationByOffset(
+        PsiFile psiFile, Document document, int lineStartOffset, int lineEndOffset, String symbolName) {
+        List<PsiElement> declarations = new ArrayList<>();
+        String lineText = document.getText(new com.intellij.openapi.util.TextRange(lineStartOffset, lineEndOffset));
+        int symIdx = lineText.indexOf(symbolName);
+        if (symIdx < 0) return declarations;
+
+        int offset = lineStartOffset + symIdx;
+        PsiElement elemAtOffset = psiFile.findElementAt(offset);
+        if (elemAtOffset == null) return declarations;
+
+        PsiElement current = elemAtOffset;
+        for (int i = 0; i < 5 && current != null; i++) {
+            PsiReference ref = current.getReference();
+            if (ref != null) {
+                PsiElement resolved = ref.resolve();
+                if (resolved != null) {
+                    declarations.add(resolved);
+                    break;
+                }
+            }
+            current = current.getParent();
+        }
+        return declarations;
+    }
+
+    private String formatDeclarationResults(List<PsiElement> declarations, String symbolName) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Declaration of '").append(symbolName).append("':\n\n");
+        String basePath = project.getBasePath();
+
+        for (PsiElement decl : declarations) {
+            PsiFile declFile = decl.getContainingFile();
+            if (declFile == null) continue;
+
+            VirtualFile declVf = declFile.getVirtualFile();
+            String declPath = resolveDeclPath(declVf, basePath);
+
+            Document declDoc = declVf != null ? FileDocumentManager.getInstance().getDocument(declVf) : null;
+            int declLine = declDoc != null ? declDoc.getLineNumber(decl.getTextOffset()) + 1 : -1;
+
+            sb.append("  File: ").append(declPath).append("\n");
+            sb.append("  Line: ").append(declLine).append("\n");
+            appendDeclarationContext(sb, declDoc, declLine);
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+    private String resolveDeclPath(VirtualFile declVf, String basePath) {
+        if (declVf != null && basePath != null) return relativize(basePath, declVf.getPath());
+        if (declVf != null) return declVf.getName();
+        return "?";
+    }
+
+    private void appendDeclarationContext(StringBuilder sb, Document declDoc, int declLine) {
+        if (declDoc == null || declLine <= 0) return;
+        int startLine = Math.max(0, declLine - 3);
+        int endLine = Math.min(declDoc.getLineCount() - 1, declLine + 2);
+        sb.append("  Context:\n");
+        for (int l = startLine; l <= endLine; l++) {
+            int ls = declDoc.getLineStartOffset(l);
+            int le = declDoc.getLineEndOffset(l);
+            String lineContent = declDoc.getText(new com.intellij.openapi.util.TextRange(ls, le));
+            sb.append(l == declLine - 1 ? "  → " : "    ")
+                .append(l + 1).append(": ").append(lineContent).append("\n");
+        }
     }
 
     private String getTypeHierarchy(JsonObject args) {
