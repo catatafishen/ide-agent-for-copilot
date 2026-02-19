@@ -1247,7 +1247,6 @@ public final class PsiBridgeService implements Disposable {
      *
      * @return 0=added, 1=skippedNoDescription, 2=skippedNoFile, 3=filtered by severity
      */
-    @SuppressWarnings("UnstableApiUsage")
     private int processInspectionDescriptor(
         com.intellij.codeInspection.CommonProblemDescriptor descriptor,
         String toolId, String basePath, Set<String> filesSet,
@@ -3002,7 +3001,7 @@ public final class PsiBridgeService implements Disposable {
             var viewer = getResultsViewer.invoke(console);
             if (viewer != null) {
                 String testOutput = extractTestRunnerResults(viewer, console);
-                if (testOutput != null && !testOutput.isEmpty()) return testOutput;
+                if (!testOutput.isEmpty()) return testOutput;
             }
         } catch (NoSuchMethodException ignored) {
             // Not an SMTRunnerConsoleView
@@ -3131,27 +3130,7 @@ public final class PsiBridgeService implements Disposable {
             String searchName = className.contains(".") ? className.substring(className.lastIndexOf('.') + 1) : className;
             List<ClassInfo> matches = new ArrayList<>();
             PsiSearchHelper.getInstance(project).processElementsWithWord(
-                (element, offset) -> {
-                    String type = classifyElement(element);
-                    if (TEST_TYPE_CLASS.equals(type) && element instanceof PsiNamedElement named
-                        && searchName.equals(named.getName())) {
-                        try {
-                            var getQualifiedName = element.getClass().getMethod("getQualifiedName");
-                            String fqn = (String) getQualifiedName.invoke(element);
-                            if (fqn != null && (!className.contains(".") || fqn.equals(className))) {
-                                VirtualFile vf = element.getContainingFile().getVirtualFile();
-                                Module mod = vf != null
-                                    ? ProjectFileIndex.getInstance(project).getModuleForFile(vf)
-                                    : null;
-                                matches.add(new ClassInfo(fqn, mod));
-                            }
-                        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
-                                 | IllegalAccessException ignored) {
-                            // Reflection method not available or failed
-                        }
-                    }
-                    return true;
-                },
+                (element, offset) -> processClassCandidate(element, searchName, className, matches),
                 GlobalSearchScope.projectScope(project),
                 searchName,
                 UsageSearchContext.IN_CODE,
@@ -3159,6 +3138,29 @@ public final class PsiBridgeService implements Disposable {
             );
             return matches.isEmpty() ? new ClassInfo(className, null) : matches.getFirst();
         });
+    }
+
+    private boolean processClassCandidate(PsiElement element, String searchName,
+                                          String className, List<ClassInfo> matches) {
+        String type = classifyElement(element);
+        if (!TEST_TYPE_CLASS.equals(type) || !(element instanceof PsiNamedElement named)
+            || !searchName.equals(named.getName())) {
+            return true;
+        }
+        try {
+            var getQualifiedName = element.getClass().getMethod("getQualifiedName");
+            String fqn = (String) getQualifiedName.invoke(element);
+            if (fqn != null && (!className.contains(".") || fqn.equals(className))) {
+                VirtualFile vf = element.getContainingFile().getVirtualFile();
+                Module mod = vf != null
+                    ? ProjectFileIndex.getInstance(project).getModuleForFile(vf) : null;
+                matches.add(new ClassInfo(fqn, mod));
+            }
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
+                 | IllegalAccessException ignored) {
+            // Reflection method not available or failed
+        }
+        return true;
     }
 
 // ---- Test Tools ----
@@ -3172,19 +3174,23 @@ public final class PsiBridgeService implements Disposable {
             ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
 
             fileIndex.iterateContent(vf -> {
-                if (vf.isDirectory()) return true;
-                String name = vf.getName();
-                if (!name.endsWith(JAVA_EXTENSION) && !name.endsWith(".kt")) return true;
-                if (!filePattern.isEmpty() && doesNotMatchGlob(name, filePattern)) return true;
-                if (!fileIndex.isInTestSourceContent(vf)) return true;
-
-                collectTestMethodsFromFile(vf, basePath, tests);
+                if (isTestSourceFile(vf, filePattern, fileIndex)) {
+                    collectTestMethodsFromFile(vf, basePath, tests);
+                }
                 return tests.size() < 500;
             });
 
             if (tests.isEmpty()) return "No tests found";
             return tests.size() + " tests:\n" + String.join("\n", tests);
         });
+    }
+
+    private boolean isTestSourceFile(VirtualFile vf, String filePattern, ProjectFileIndex fileIndex) {
+        if (vf.isDirectory()) return false;
+        String name = vf.getName();
+        if (!name.endsWith(JAVA_EXTENSION) && !name.endsWith(".kt")) return false;
+        if (!filePattern.isEmpty() && doesNotMatchGlob(name, filePattern)) return false;
+        return fileIndex.isInTestSourceContent(vf);
     }
 
     private void collectTestMethodsFromFile(VirtualFile vf, String basePath, List<String> tests) {
@@ -4252,54 +4258,11 @@ public final class PsiBridgeService implements Disposable {
         String content = args.has(PARAM_CONTENT) ? args.get(PARAM_CONTENT).getAsString() : "";
 
         try {
-            // Execute on EDT using invokeAndWait to block until completion
             final com.intellij.openapi.vfs.VirtualFile[] resultFile = new com.intellij.openapi.vfs.VirtualFile[1];
             final String[] errorMsg = new String[1];
 
-            ApplicationManager.getApplication().invokeAndWait(() -> {
-                try {
-                    // Get scratch file service
-                    com.intellij.ide.scratch.ScratchFileService scratchService =
-                        com.intellij.ide.scratch.ScratchFileService.getInstance();
-                    com.intellij.ide.scratch.ScratchRootType scratchRoot =
-                        com.intellij.ide.scratch.ScratchRootType.getInstance();
-
-                    // Create scratch file in write action (now on EDT)
-                    // Cast needed: runWriteAction is overloaded (Computable vs. ThrowableComputable)
-                    //noinspection RedundantCast
-                    resultFile[0] = ApplicationManager.getApplication().runWriteAction(
-                        (com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
-                            try {
-                                VirtualFile file = scratchService.findFile(
-                                    scratchRoot,
-                                    name,
-                                    com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
-                                );
-
-                                if (file != null) {
-                                    OutputStream out = file.getOutputStream(null);
-                                    out.write(content.getBytes(StandardCharsets.UTF_8));
-                                    out.close();
-                                }
-                                return file;
-                            } catch (IOException e) {
-                                LOG.warn("Failed to create/write scratch file", e);
-                                errorMsg[0] = e.getMessage();
-                                return null;
-                            }
-                        }
-                    );
-
-                    // Open in editor (already on EDT)
-                    if (resultFile[0] != null) {
-                        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-                            .openFile(resultFile[0], true);
-                    }
-                } catch (Exception e) {
-                    LOG.warn("Failed in EDT execution", e);
-                    errorMsg[0] = e.getMessage();
-                }
-            });
+            ApplicationManager.getApplication().invokeAndWait(() ->
+                createAndOpenScratchFile(name, content, resultFile, errorMsg));
 
             if (resultFile[0] == null) {
                 return "Error: Failed to create scratch file" +
@@ -4310,6 +4273,47 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             LOG.warn("Failed to create scratch file", e);
             return "Error creating scratch file: " + e.getMessage();
+        }
+    }
+
+    private void createAndOpenScratchFile(String name, String content,
+                                          VirtualFile[] resultFile, String[] errorMsg) {
+        try {
+            com.intellij.ide.scratch.ScratchFileService scratchService =
+                com.intellij.ide.scratch.ScratchFileService.getInstance();
+            com.intellij.ide.scratch.ScratchRootType scratchRoot =
+                com.intellij.ide.scratch.ScratchRootType.getInstance();
+
+            // Cast needed: runWriteAction is overloaded (Computable vs. ThrowableComputable)
+            //noinspection RedundantCast
+            resultFile[0] = ApplicationManager.getApplication().runWriteAction(
+                (com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
+                    try {
+                        VirtualFile file = scratchService.findFile(
+                            scratchRoot, name,
+                            com.intellij.ide.scratch.ScratchFileService.Option.create_if_missing
+                        );
+                        if (file != null) {
+                            OutputStream out = file.getOutputStream(null);
+                            out.write(content.getBytes(StandardCharsets.UTF_8));
+                            out.close();
+                        }
+                        return file;
+                    } catch (IOException e) {
+                        LOG.warn("Failed to create/write scratch file", e);
+                        errorMsg[0] = e.getMessage();
+                        return null;
+                    }
+                }
+            );
+
+            if (resultFile[0] != null) {
+                com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                    .openFile(resultFile[0], true);
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed in EDT execution", e);
+            errorMsg[0] = e.getMessage();
         }
     }
 
@@ -4561,42 +4565,42 @@ public final class PsiBridgeService implements Disposable {
 
         ApplicationManager.getApplication().invokeLater(() -> {
             try {
-                VirtualFile vf = resolveVirtualFile(pathStr);
-                if (vf == null) {
-                    resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
-                    return;
-                }
-
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                if (psiFile == null) {
-                    resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr);
-                    return;
-                }
-
-                Document document = FileDocumentManager.getInstance().getDocument(vf);
-                PsiNamedElement targetElement = findNamedElement(psiFile, document, symbolName, targetLine);
-                if (targetElement == null) {
-                    resultFuture.complete("Error: Symbol '" + symbolName + "' not found in " + pathStr +
-                        (targetLine > 0 ? " at line " + targetLine : "") +
-                        ". Use search_symbols to find the correct name and location.");
-                    return;
-                }
-
-                ApplicationManager.getApplication().runWriteAction(() -> {
-                    try {
-                        String result = executeRefactoring(operation, targetElement, symbolName, newName, pathStr);
-                        resultFuture.complete(result);
-                    } catch (Exception e) {
-                        LOG.warn("Refactoring error", e);
-                        resultFuture.complete("Error during refactoring: " + e.getMessage());
-                    }
-                });
+                String result = resolveAndRefactor(operation, pathStr, symbolName, targetLine, newName);
+                resultFuture.complete(result);
             } catch (Exception e) {
                 resultFuture.complete(ERROR_PREFIX + e.getMessage());
             }
         });
 
         return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    private String resolveAndRefactor(String operation, String pathStr, String symbolName,
+                                      int targetLine, String newName) {
+        VirtualFile vf = resolveVirtualFile(pathStr);
+        if (vf == null) return ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr;
+
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr;
+
+        Document document = FileDocumentManager.getInstance().getDocument(vf);
+        PsiNamedElement targetElement = findNamedElement(psiFile, document, symbolName, targetLine);
+        if (targetElement == null) {
+            return "Error: Symbol '" + symbolName + "' not found in " + pathStr +
+                (targetLine > 0 ? " at line " + targetLine : "") +
+                ". Use search_symbols to find the correct name and location.";
+        }
+
+        String[] result = new String[1];
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            try {
+                result[0] = executeRefactoring(operation, targetElement, symbolName, newName, pathStr);
+            } catch (Exception e) {
+                LOG.warn("Refactoring error", e);
+                result[0] = "Error during refactoring: " + e.getMessage();
+            }
+        });
+        return result[0];
     }
 
     private String executeRefactoring(String operation, PsiNamedElement targetElement,
@@ -4692,21 +4696,21 @@ public final class PsiBridgeService implements Disposable {
         psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
             @Override
             public void visitElement(@NotNull PsiElement element) {
-                if (element instanceof PsiNamedElement named && name.equals(named.getName())) {
-                    if (targetLine <= 0) {
-                        // No line constraint — take first match
-                        if (found[0] == null) found[0] = named;
-                    } else if (document != null) {
-                        int line = document.getLineNumber(element.getTextOffset()) + 1;
-                        if (line == targetLine) {
-                            found[0] = named;
-                        }
-                    }
+                if (element instanceof PsiNamedElement named && name.equals(named.getName())
+                    && isMatchingLine(element, document, targetLine, found[0] == null)) {
+                    found[0] = named;
                 }
                 if (found[0] == null) super.visitElement(element);
             }
         });
         return found[0];
+    }
+
+    private boolean isMatchingLine(PsiElement element, Document document, int targetLine, boolean noMatchYet) {
+        if (targetLine <= 0) return noMatchYet;
+        if (document == null) return false;
+        int line = document.getLineNumber(element.getTextOffset()) + 1;
+        return line == targetLine;
     }
 
     private String goToDeclaration(JsonObject args) {
@@ -4758,30 +4762,33 @@ public final class PsiBridgeService implements Disposable {
             @Override
             public void visitElement(@NotNull PsiElement element) {
                 int offset = element.getTextOffset();
-                if (offset < lineStartOffset || offset > lineEndOffset) {
-                    super.visitElement(element);
-                    return;
-                }
-                if (!element.getText().equals(symbolName)
-                    && !(element instanceof PsiNamedElement named && symbolName.equals(named.getName()))) {
-                    super.visitElement(element);
-                    return;
-                }
-                PsiReference ref = element.getReference();
-                if (ref != null) {
-                    PsiElement resolved = ref.resolve();
-                    if (resolved != null) declarations.add(resolved);
-                }
-                if (element instanceof PsiNamedElement) {
-                    for (PsiReference r : element.getReferences()) {
-                        PsiElement res = r.resolve();
-                        if (res != null && res != element) declarations.add(res);
-                    }
+                if (offset >= lineStartOffset && offset <= lineEndOffset
+                    && matchesSymbolName(element, symbolName)) {
+                    resolveDeclarations(element, declarations);
                 }
                 super.visitElement(element);
             }
         });
         return declarations;
+    }
+
+    private boolean matchesSymbolName(PsiElement element, String symbolName) {
+        return element.getText().equals(symbolName)
+            || (element instanceof PsiNamedElement named && symbolName.equals(named.getName()));
+    }
+
+    private void resolveDeclarations(PsiElement element, List<PsiElement> declarations) {
+        PsiReference ref = element.getReference();
+        if (ref != null) {
+            PsiElement resolved = ref.resolve();
+            if (resolved != null) declarations.add(resolved);
+        }
+        if (element instanceof PsiNamedElement) {
+            for (PsiReference r : element.getReferences()) {
+                PsiElement res = r.resolve();
+                if (res != null && res != element) declarations.add(res);
+            }
+        }
     }
 
     private List<PsiElement> findDeclarationByOffset(
@@ -5008,7 +5015,6 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        // Resolve VirtualFile in read action on background thread to avoid EDT violations
         ReadAction.nonBlocking(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
@@ -5016,34 +5022,11 @@ public final class PsiBridgeService implements Disposable {
                     resultFuture.complete(ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr);
                     return null;
                 }
-
                 if (vf.isDirectory()) {
                     resultFuture.complete("Error: Cannot delete directories. Path is a directory: " + pathStr);
                     return null;
                 }
-
-                // Schedule delete on EDT after VFS resolution
-                ApplicationManager.getApplication().invokeLater(() ->
-                    ApplicationManager.getApplication().runWriteAction(() -> {
-                        try {
-                            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                project,
-                                () -> {
-                                    try {
-                                        vf.delete(PsiBridgeService.this);
-                                    } catch (IOException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                },
-                                "Delete File: " + vf.getName(),
-                                null
-                            );
-                            resultFuture.complete("? Deleted file: " + pathStr);
-                        } catch (Exception e) {
-                            resultFuture.complete("Error deleting file: " + e.getMessage());
-                        }
-                    })
-                );
+                scheduleFileDeletion(vf, pathStr, resultFuture);
                 return null;
             } catch (Exception e) {
                 resultFuture.complete(ERROR_PREFIX + e.getMessage());
@@ -5052,6 +5035,30 @@ public final class PsiBridgeService implements Disposable {
         }).inSmartMode(project).submit(AppExecutorUtil.getAppExecutorService());
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private void scheduleFileDeletion(VirtualFile vf, String pathStr, CompletableFuture<String> resultFuture) {
+        ApplicationManager.getApplication().invokeLater(() ->
+            ApplicationManager.getApplication().runWriteAction(() -> {
+                try {
+                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                        project,
+                        () -> {
+                            try {
+                                vf.delete(PsiBridgeService.this);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        },
+                        "Delete File: " + vf.getName(),
+                        null
+                    );
+                    resultFuture.complete("? Deleted file: " + pathStr);
+                } catch (Exception e) {
+                    resultFuture.complete("Error deleting file: " + e.getMessage());
+                }
+            })
+        );
     }
 
     private String buildProject(JsonObject args) throws Exception {
