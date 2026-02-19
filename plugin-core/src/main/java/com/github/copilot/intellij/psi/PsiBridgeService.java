@@ -382,14 +382,13 @@ public final class PsiBridgeService implements Disposable {
         List<String> files = new ArrayList<>();
         ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
         fileIndex.iterateContent(vf -> {
-            if (!vf.isDirectory()) {
-                String relPath = relativize(basePath, vf.getPath());
-                if (relPath == null) return true;
-                if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
-                if (!pattern.isEmpty() && doesNotMatchGlob(vf.getName(), pattern)) return true;
-                String tag = fileIndex.isInTestSourceContent(vf) ? "test " : "";
-                files.add(String.format("%s [%s%s]", relPath, tag, fileType(vf.getName())));
-            }
+            if (vf.isDirectory()) return true;
+            String relPath = relativize(basePath, vf.getPath());
+            if (relPath == null) return true;
+            if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
+            if (!pattern.isEmpty() && doesNotMatchGlob(vf.getName(), pattern)) return true;
+            String tag = fileIndex.isInTestSourceContent(vf) ? "test " : "";
+            files.add(String.format("%s [%s%s]", relPath, tag, fileType(vf.getName())));
             return files.size() < 500;
         });
 
@@ -967,29 +966,14 @@ public final class PsiBridgeService implements Disposable {
      */
     private void getHighlightsCached(String pathStr, int limit, CompletableFuture<String> resultFuture) {
         ReadAction.run(() -> {
-            List<String> problems = new ArrayList<>();
-            String basePath = project.getBasePath();
-
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> allFiles = collectFilesForHighlightAnalysis(pathStr, fileIndex, resultFuture);
-            if (resultFuture.isDone()) return; // error was reported
+            if (resultFuture.isDone()) return;
 
             LOG.info("Analyzing " + allFiles.size() + " files for highlights (cached mode)");
 
-            int[] counts = {0, 0}; // [totalCount, filesWithProblems]
-            for (VirtualFile vf : allFiles) {
-                if (counts[0] >= limit) break;
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                if (psiFile == null) continue;
-
-                Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                if (doc == null) continue;
-
-                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                int added = collectFileHighlights(doc, relPath, limit - counts[0], problems);
-                if (added > 0) counts[1]++;
-                counts[0] += added;
-            }
+            List<String> problems = new ArrayList<>();
+            int[] counts = analyzeFilesForHighlights(allFiles, limit, problems);
 
             if (problems.isEmpty()) {
                 resultFuture.complete(String.format("No highlights found in %d files analyzed (0 files with issues). " +
@@ -1002,6 +986,23 @@ public final class PsiBridgeService implements Disposable {
                 resultFuture.complete(summary + String.join("\n", problems));
             }
         });
+    }
+
+    private int[] analyzeFilesForHighlights(Collection<VirtualFile> files, int limit, List<String> problems) {
+        String basePath = project.getBasePath();
+        int totalCount = 0;
+        int filesWithProblems = 0;
+        for (VirtualFile vf : files) {
+            if (totalCount >= limit) break;
+            Document doc = FileDocumentManager.getInstance().getDocument(vf);
+            if (doc == null) continue;
+
+            String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+            int added = collectFileHighlights(doc, relPath, limit - totalCount, problems);
+            if (added > 0) filesWithProblems++;
+            totalCount += added;
+        }
+        return new int[]{totalCount, filesWithProblems};
     }
 
     private Collection<VirtualFile> collectFilesForHighlightAnalysis(
