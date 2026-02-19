@@ -413,23 +413,7 @@ public final class PsiBridgeService implements Disposable {
             Document document = FileDocumentManager.getInstance().getDocument(vf);
             if (document == null) return "Cannot read file: " + pathStr;
 
-            List<String> outline = new ArrayList<>();
-            psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-                @Override
-                public void visitElement(@NotNull PsiElement element) {
-                    if (element instanceof PsiNamedElement named) {
-                        String name = named.getName();
-                        if (name != null && !name.isEmpty()) {
-                            String type = classifyElement(element);
-                            if (type != null) {
-                                int line = document.getLineNumber(element.getTextOffset()) + 1;
-                                outline.add(String.format("  %d: %s %s", line, type, name));
-                            }
-                        }
-                    }
-                    super.visitElement(element);
-                }
-            });
+            List<String> outline = collectOutlineEntries(psiFile, document);
 
             if (outline.isEmpty()) return "No structural elements found in " + pathStr;
             String basePath = project.getBasePath();
@@ -439,93 +423,131 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
+    private List<String> collectOutlineEntries(PsiFile psiFile, Document document) {
+        List<String> outline = new ArrayList<>();
+        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+            @Override
+            public void visitElement(@NotNull PsiElement element) {
+                if (element instanceof PsiNamedElement named) {
+                    String name = named.getName();
+                    if (name != null && !name.isEmpty()) {
+                        String type = classifyElement(element);
+                        if (type != null) {
+                            int line = document.getLineNumber(element.getTextOffset()) + 1;
+                            outline.add(String.format("  %d: %s %s", line, type, name));
+                        }
+                    }
+                }
+                super.visitElement(element);
+            }
+        });
+        return outline;
+    }
+
     private String searchSymbols(JsonObject args) {
         String query = args.has("query") ? args.get("query").getAsString() : "";
         String typeFilter = args.has("type") ? args.get("type").getAsString() : "";
 
         return ReadAction.compute(() -> {
-            List<String> results = new ArrayList<>();
-            Set<String> seen = new HashSet<>();
-            String basePath = project.getBasePath();
-            GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
-
-            // Wildcard/empty query: iterate all project files to collect symbols by type
             if (query.isEmpty() || "*".equals(query)) {
-                if (typeFilter.isEmpty())
-                    return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
-                int[] fileCount = {0};
-                ProjectFileIndex.getInstance(project).iterateContent(vf -> {
-                    if (vf.isDirectory() || (!vf.getName().endsWith(JAVA_EXTENSION) && !vf.getName().endsWith(".kt")))
-                        return true;
-                    fileCount[0]++;
-                    PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                    if (psiFile == null) return true;
-                    Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                    if (doc == null) return true;
-
-                    psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-                        @Override
-                        public void visitElement(@NotNull PsiElement element) {
-                            if (results.size() >= 200) return;
-                            if (element instanceof PsiNamedElement named) {
-                                String name = named.getName();
-                                String type = classifyElement(element);
-                                if (name != null && type != null && type.equals(typeFilter)) {
-                                    int line = doc.getLineNumber(element.getTextOffset()) + 1;
-                                    String relPath = basePath != null ? relativize(basePath, vf.getPath()) : null;
-                                    String key = (relPath != null ? relPath : vf.getPath()) + ":" + line;
-                                    if (seen.add(key)) {
-                                        results.add(String.format(FORMAT_LOCATION,
-                                            relPath != null ? relPath : vf.getPath(), line, type, name));
-                                    }
-                                }
-                            }
-                            super.visitElement(element);
-                        }
-                    });
-                    return results.size() < 200;
-                });
-                if (results.isEmpty())
-                    return "No " + typeFilter + " symbols found (scanned " + fileCount[0]
-                        + " source files using AST analysis). This is a definitive result — no grep needed.";
-                return results.size() + " " + typeFilter + " symbols:\n" + String.join("\n", results);
+                return searchSymbolsWildcard(typeFilter);
             }
+            return searchSymbolsExact(query, typeFilter);
+        });
+    }
 
-            // Exact word search via PSI index
+    private String searchSymbolsWildcard(String typeFilter) {
+        if (typeFilter.isEmpty())
+            return "Provide a 'type' filter (class, interface, method, field) when using wildcard query";
 
-            PsiSearchHelper.getInstance(project).processElementsWithWord(
-                (element, offsetInElement) -> {
-                    PsiElement parent = element.getParent();
-                    if (parent instanceof PsiNamedElement named && query.equals(named.getName())) {
-                        String type = classifyElement(parent);
-                        if (type != null && (typeFilter.isEmpty() || type.equals(typeFilter))) {
-                            PsiFile file = parent.getContainingFile();
-                            if (file != null && file.getVirtualFile() != null) {
-                                Document doc = FileDocumentManager.getInstance()
-                                    .getDocument(file.getVirtualFile());
-                                if (doc != null) {
-                                    int line = doc.getLineNumber(parent.getTextOffset()) + 1;
-                                    String relPath = basePath != null
-                                        ? relativize(basePath, file.getVirtualFile().getPath())
-                                        : file.getVirtualFile().getPath();
-                                    String key = relPath + ":" + line;
-                                    if (seen.add(key)) {
-                                        String lineText = getLineText(doc, line - 1);
-                                        results.add(String.format(FORMAT_LOCATION,
-                                            relPath, line, type, lineText));
-                                    }
-                                }
-                            }
+        List<String> results = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        String basePath = project.getBasePath();
+        int[] fileCount = {0};
+
+        ProjectFileIndex.getInstance(project).iterateContent(vf -> {
+            if (vf.isDirectory() || (!vf.getName().endsWith(JAVA_EXTENSION) && !vf.getName().endsWith(".kt")))
+                return true;
+            fileCount[0]++;
+            PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+            if (psiFile == null) return true;
+            Document doc = FileDocumentManager.getInstance().getDocument(vf);
+            if (doc == null) return true;
+
+            collectSymbolsFromFile(psiFile, doc, vf, typeFilter, basePath, seen, results);
+            return results.size() < 200;
+        });
+
+        if (results.isEmpty())
+            return "No " + typeFilter + " symbols found (scanned " + fileCount[0]
+                + " source files using AST analysis). This is a definitive result ? no grep needed.";
+        return results.size() + " " + typeFilter + " symbols:\n" + String.join("\n", results);
+    }
+
+    private void collectSymbolsFromFile(PsiFile psiFile, Document doc, VirtualFile vf,
+                                        String typeFilter, String basePath,
+                                        Set<String> seen, List<String> results) {
+        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+            @Override
+            public void visitElement(@NotNull PsiElement element) {
+                if (results.size() >= 200) return;
+                if (element instanceof PsiNamedElement named) {
+                    String name = named.getName();
+                    String type = classifyElement(element);
+                    if (name != null && type != null && type.equals(typeFilter)) {
+                        int line = doc.getLineNumber(element.getTextOffset()) + 1;
+                        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
+                        if (seen.add(relPath + ":" + line)) {
+                            results.add(String.format(FORMAT_LOCATION, relPath, line, type, name));
                         }
                     }
-                    return results.size() < 50;
-                },
-                scope, query, UsageSearchContext.IN_CODE, true
-            );
-
-            if (results.isEmpty()) return "No symbols found matching '" + query + "'";
-            return String.join("\n", results);
+                }
+                super.visitElement(element);
+            }
         });
+    }
+
+    private String searchSymbolsExact(String query, String typeFilter) {
+        List<String> results = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        String basePath = project.getBasePath();
+        GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
+
+        PsiSearchHelper.getInstance(project).processElementsWithWord(
+            (element, offsetInElement) -> {
+                PsiElement parent = element.getParent();
+                if (parent instanceof PsiNamedElement named && query.equals(named.getName())) {
+                    String type = classifyElement(parent);
+                    if (type != null && (typeFilter.isEmpty() || type.equals(typeFilter))) {
+                        addSymbolResult(parent, basePath, seen, results);
+                    }
+                }
+                return results.size() < 50;
+            },
+            scope, query, UsageSearchContext.IN_CODE, true
+        );
+
+        if (results.isEmpty()) return "No symbols found matching '" + query + "'";
+        return String.join("\n", results);
+    }
+
+    private void addSymbolResult(PsiElement element, String basePath,
+                                 Set<String> seen, List<String> results) {
+        PsiFile file = element.getContainingFile();
+        if (file == null || file.getVirtualFile() == null) return;
+
+        Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
+        if (doc == null) return;
+
+        int line = doc.getLineNumber(element.getTextOffset()) + 1;
+        String relPath = basePath != null
+            ? relativize(basePath, file.getVirtualFile().getPath())
+            : file.getVirtualFile().getPath();
+        if (seen.add(relPath + ":" + line)) {
+            String lineText = getLineText(doc, line - 1);
+            String type = classifyElement(element);
+            results.add(String.format(FORMAT_LOCATION, relPath, line, type, lineText));
+        }
     }
 
     private String findReferences(JsonObject args) {
@@ -543,55 +565,65 @@ public final class PsiBridgeService implements Disposable {
             PsiElement definition = findDefinition(symbol, scope);
 
             if (definition != null) {
-                for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
-                    if (results.size() >= 100) break;
-
-                    PsiElement refEl = ref.getElement();
-                    PsiFile file = refEl.getContainingFile();
-                    if (file == null || file.getVirtualFile() == null) continue;
-                    if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern)) continue;
-
-                    Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
-                    if (doc != null) {
-                        int line = doc.getLineNumber(refEl.getTextOffset()) + 1;
-                        String relPath = basePath != null
-                            ? relativize(basePath, file.getVirtualFile().getPath())
-                            : file.getVirtualFile().getPath();
-                        String lineText = getLineText(doc, line - 1);
-                        results.add(String.format("%s:%d: %s", relPath, line, lineText));
-                    }
-                }
+                collectPsiReferences(definition, scope, filePattern, basePath, results);
             }
 
             // Fall back to word search if no PSI references found
             if (results.isEmpty()) {
-                PsiSearchHelper.getInstance(project).processElementsWithWord(
-                    (element, offsetInElement) -> {
-                        PsiFile file = element.getContainingFile();
-                        if (file == null || file.getVirtualFile() == null) return true;
-                        if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern))
-                            return true;
-
-                        Document doc = FileDocumentManager.getInstance()
-                            .getDocument(file.getVirtualFile());
-                        if (doc != null) {
-                            int line = doc.getLineNumber(element.getTextOffset()) + 1;
-                            String relPath = basePath != null
-                                ? relativize(basePath, file.getVirtualFile().getPath())
-                                : file.getVirtualFile().getPath();
-                            String lineText = getLineText(doc, line - 1);
-                            String entry = String.format("%s:%d: %s", relPath, line, lineText);
-                            if (!results.contains(entry)) results.add(entry);
-                        }
-                        return results.size() < 100;
-                    },
-                    scope, symbol, UsageSearchContext.IN_CODE, true
-                );
+                collectWordReferences(symbol, scope, filePattern, basePath, results);
             }
 
             if (results.isEmpty()) return "No references found for '" + symbol + "'";
             return results.size() + " references found:\n" + String.join("\n", results);
         });
+    }
+
+    private void collectPsiReferences(PsiElement definition, GlobalSearchScope scope,
+                                      String filePattern, String basePath, List<String> results) {
+        for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
+            if (results.size() >= 100) break;
+
+            PsiElement refEl = ref.getElement();
+            PsiFile file = refEl.getContainingFile();
+            if (file == null || file.getVirtualFile() == null) continue;
+            if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern)) continue;
+
+            Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
+            if (doc != null) {
+                int line = doc.getLineNumber(refEl.getTextOffset()) + 1;
+                String relPath = basePath != null
+                    ? relativize(basePath, file.getVirtualFile().getPath())
+                    : file.getVirtualFile().getPath();
+                String lineText = getLineText(doc, line - 1);
+                results.add(String.format("%s:%d: %s", relPath, line, lineText));
+            }
+        }
+    }
+
+    private void collectWordReferences(String symbol, GlobalSearchScope scope,
+                                       String filePattern, String basePath, List<String> results) {
+        PsiSearchHelper.getInstance(project).processElementsWithWord(
+            (element, offsetInElement) -> {
+                PsiFile file = element.getContainingFile();
+                if (file == null || file.getVirtualFile() == null) return true;
+                if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern))
+                    return true;
+
+                Document doc = FileDocumentManager.getInstance()
+                    .getDocument(file.getVirtualFile());
+                if (doc != null) {
+                    int line = doc.getLineNumber(element.getTextOffset()) + 1;
+                    String relPath = basePath != null
+                        ? relativize(basePath, file.getVirtualFile().getPath())
+                        : file.getVirtualFile().getPath();
+                    String lineText = getLineText(doc, line - 1);
+                    String entry = String.format("%s:%d: %s", relPath, line, lineText);
+                    if (!results.contains(entry)) results.add(entry);
+                }
+                return results.size() < 100;
+            },
+            scope, symbol, UsageSearchContext.IN_CODE, true
+        );
     }
 
     // ---- Project Environment Tools ----
@@ -958,8 +990,7 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("Analyzing " + allFiles.size() + " files for highlights (cached mode)");
 
             // Analyze each file for problems using existing highlights
-            int count = 0;
-            int filesWithProblems = 0;
+            int[] counts = {0, 0}; // [totalCount, filesWithProblems]
             boolean limitReached = false;
             for (VirtualFile vf : allFiles) {
                 if (limitReached) break;
@@ -970,45 +1001,10 @@ public final class PsiBridgeService implements Disposable {
                 if (doc == null) continue;
 
                 String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
-
-                try {
-                    // Get ALL severity levels
-                    com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                        doc, project,
-                        null,  // Get all severities
-                        0, doc.getTextLength(),
-                        highlights::add
-                    );
-
-                    if (!highlights.isEmpty()) {
-                        filesWithProblems++;
-                    }
-
-                    for (var h : highlights) {
-                        if (count >= limit) {
-                            limitReached = true;
-                            break;
-                        }
-
-                        if (h.getDescription() == null) continue;
-
-                        // Filter to only show actual problems (not info/hints)
-                        var severity = h.getSeverity();
-                        if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
-                            severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
-                            continue;
-                        }
-
-                        int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                        String severityName = severity.getName();
-                        problems.add(String.format(FORMAT_LOCATION,
-                            relPath, line, severityName, h.getDescription()));
-                        count++;
-                    }
-                } catch (Exception e) {
-                    LOG.warn("Failed to analyze file: " + relPath, e);
-                }
+                int added = collectFileHighlights(doc, relPath, limit - counts[0], problems);
+                if (added > 0) counts[1]++;
+                counts[0] += added;
+                if (counts[0] >= limit) limitReached = true;
             }
 
             if (problems.isEmpty()) {
@@ -1018,10 +1014,41 @@ public final class PsiBridgeService implements Disposable {
                     allFiles.size()));
             } else {
                 String summary = String.format("Found %d problems across %d files (showing up to %d):%n%n",
-                    count, filesWithProblems, limit);
+                    counts[0], counts[1], limit);
                 resultFuture.complete(summary + String.join("\n", problems));
             }
         });
+    }
+
+    private int collectFileHighlights(Document doc, String relPath, int remaining, List<String> problems) {
+        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+        int added = 0;
+        try {
+            com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+                doc, project,
+                null,
+                0, doc.getTextLength(),
+                highlights::add
+            );
+
+            for (var h : highlights) {
+                if (added >= remaining) break;
+                if (h.getDescription() == null) continue;
+
+                var severity = h.getSeverity();
+                if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
+                    severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
+                    continue;
+                }
+
+                int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                problems.add(String.format(FORMAT_LOCATION, relPath, line, severity.getName(), h.getDescription()));
+                added++;
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to analyze file: " + relPath, e);
+        }
+        return added;
     }
 
     /**
