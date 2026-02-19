@@ -102,8 +102,9 @@ public class CopilotAcpClient implements Closeable {
     private String currentSessionId;
     private List<Model> availableModels;
 
-    // Flag: set when a built-in permission (edit/create/runInTerminal) is denied during a prompt turn
+    // Permission tracking: set when a built-in permission is denied during a prompt turn
     private volatile boolean builtInActionDeniedDuringTurn = false;
+    private volatile boolean isRetryInProgress = false; // Prevent nested retries
     private volatile String lastDeniedKind = "";
 
     // Debug event listeners for UI debug tab
@@ -454,13 +455,25 @@ public class CopilotAcpClient implements Closeable {
 
             String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
 
-            // TODO: Auto-retry disabled - was causing infinite loops when retry also got tools denied
-            // The retry needs to be smarter: only retry once, or include more context
-            // For now, pre-rejection guidance is sufficient to inform the agent
-            if (builtInActionDeniedDuringTurn) {
-                LOG.info("Turn ended with denied tools (auto-retry disabled to prevent loops)");
-                fireDebugEvent("TURN_ENDED_WITH_DENIALS", "Tools were denied but no auto-retry",
+            // If turn ended with denied tool(s), automatically retry ONCE (prevent nested retries)
+            if (builtInActionDeniedDuringTurn && !isRetryInProgress) {
+                LOG.info("Turn ended with denied tools - sending automatic retry (once only)");
+                fireDebugEvent("AUTO_RETRY", "Turn ended with tool denials - retrying once",
                     "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+
+                // Set flag to prevent nested retries
+                isRetryInProgress = true;
+                try {
+                    // Send follow-up prompt to continue the task
+                    String retryPrompt = "Please continue with the task using the correct tools (intellij-code-tools- prefix).";
+                    return sendPrompt(sessionId, retryPrompt, model, references, onChunk, onUpdate);
+                } finally {
+                    isRetryInProgress = false; // Reset flag after retry completes
+                }
+            } else if (builtInActionDeniedDuringTurn && isRetryInProgress) {
+                LOG.info("Turn ended with denied tools but already in retry - stopping to prevent loop");
+                fireDebugEvent("RETRY_STOPPED", "Prevented nested retry", 
+                    "Would have caused infinite loop");
             }
 
             return stopReason;
