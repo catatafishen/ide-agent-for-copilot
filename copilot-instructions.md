@@ -94,12 +94,72 @@ Commit 2: "fix: add null safety checks"
 
 ---
 
-## 5) SonarQube / SonarLint Findings
+## 5) Fixing Inspection Issues (SonarQube, IntelliJ, Qodana)
 
-- Use constants for duplicate string literals
-- Extract methods for cognitive complexity
-- Add proper exception handling (don't leave empty catch blocks)
-- Fix `InterruptedException`: always call `Thread.currentThread().interrupt()`
+### Philosophy: Fix Root Causes, Don't Suppress
+
+**When asked to fix inspection issues:**
+
+✅ **DO**:
+- **Investigate thoroughly** — understand WHY the issue is flagged
+- **Fix the underlying problem** — refactor code to eliminate the issue
+- **Test your fix** — ensure it doesn't break functionality
+- **Question false positives** — if genuinely wrong, document why and get confirmation
+
+❌ **DON'T**:
+- **Suppress warnings** without investigation
+- **Add `@SuppressWarnings` as first resort**
+- **Disable inspection rules** to make count go down
+- **Assume all issues are false positives**
+
+### Common Issues & Proper Fixes
+
+**Duplicate string literals**:
+- ✅ Extract to private static final constants
+- ❌ Don't suppress — it's real technical debt
+
+**Cognitive complexity**:
+- ✅ Extract methods, simplify conditions, reduce nesting
+- ❌ Don't suppress — refactor the complex logic
+
+**Empty catch blocks**:
+- ✅ Log the exception or add comment explaining why it's safe to ignore
+- ❌ Don't suppress — either handle it or document why it's intentional
+
+**InterruptedException**:
+- ✅ Always call `Thread.currentThread().interrupt()` after catching
+- ❌ Don't suppress — this is critical for thread safety
+
+**Unused parameters/methods**:
+- ✅ Remove if truly unused; keep if required by interface/override
+- ✅ Add `@SuppressWarnings("unused")` ONLY if kept for API compatibility
+- ❌ Don't suppress private methods that can be deleted
+
+### When Suppression IS Appropriate
+
+Only suppress when:
+1. **Required by framework** (override signature, interface implementation)
+2. **Public API** that must be kept for backward compatibility
+3. **Defensive code** that IntelliJ marks as "always true/false" but protects against edge cases
+4. **Known false positive** that has been investigated and documented
+
+Example of appropriate suppression:
+```java
+@Override
+@SuppressWarnings("unused") // Required by SomeInterface contract
+public void methodUsedByFramework(Object param) {
+    // Framework calls this reflectively
+}
+```
+
+### Workflow for Fixing Issues
+
+1. **Run inspections**: `run_inspections` to see all issues
+2. **Understand the issue**: Read the description, check the flagged code
+3. **Fix properly**: Refactor code to eliminate root cause
+4. **Verify**: Re-run inspections to confirm issue is gone
+5. **Test**: Build project to ensure no breakage
+6. **Commit**: Group related fixes in logical commits
 
 ---
 
