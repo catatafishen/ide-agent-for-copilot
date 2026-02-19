@@ -13,8 +13,18 @@ public final class CopilotSettings {
     private static final String KEY_MONTHLY_REQUESTS = "copilot.monthlyRequests";
     private static final String KEY_MONTHLY_COST = "copilot.monthlyCost";
     private static final String KEY_USAGE_RESET_MONTH = "copilot.usageResetMonth";
+    private static final String KEY_PROMPT_TIMEOUT = "copilot.promptTimeout";
+    private static final int DEFAULT_PROMPT_TIMEOUT = 600;
 
     private CopilotSettings() {
+    }
+
+    public static int getPromptTimeout() {
+        return PropertiesComponent.getInstance().getInt(KEY_PROMPT_TIMEOUT, DEFAULT_PROMPT_TIMEOUT);
+    }
+
+    public static void setPromptTimeout(int seconds) {
+        PropertiesComponent.getInstance().setValue(KEY_PROMPT_TIMEOUT, seconds, DEFAULT_PROMPT_TIMEOUT);
     }
 
     @Nullable

@@ -1371,6 +1371,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         optimizeImports.isSelected = true
         panel.add(optimizeImports, gbc)
 
+        // Agent behavior section
+        gbc.gridx = 0
+        gbc.gridy++
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(20, 5, 5, 5)
+        val agentLabel = JBLabel("<html><b>Agent behavior</b></html>")
+        panel.add(agentLabel, gbc)
+
+        gbc.gridy++
+        gbc.gridwidth = 1
+        gbc.insets = JBUI.insets(5)
+        panel.add(JBLabel("Prompt timeout (seconds):"), gbc)
+
+        gbc.gridx = 1
+        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 60, 3600, 60))
+        timeoutSpinner.toolTipText = "Maximum time to wait for agent response (60-3600s)"
+        panel.add(timeoutSpinner, gbc)
+
         // Save button
         gbc.gridy++
         gbc.gridx = 0
@@ -1380,9 +1398,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         val saveButton = JButton("Save Settings")
         saveButton.addActionListener {
+            CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
             JOptionPane.showMessageDialog(
                 panel,
-                "Settings saved!\n\n(Settings persistence coming in Phase 3)",
+                "Settings saved!",
                 "Success",
                 JOptionPane.INFORMATION_MESSAGE
             )

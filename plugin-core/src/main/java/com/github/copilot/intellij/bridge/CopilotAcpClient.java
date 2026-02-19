@@ -1,5 +1,6 @@
 package com.github.copilot.intellij.bridge;
 
+import com.github.copilot.intellij.services.CopilotSettings;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -451,7 +452,7 @@ public class CopilotAcpClient implements Closeable {
                 // Send request - response comes after all streaming chunks
                 builtInActionDeniedDuringTurn = false;
                 LOG.info("sendPrompt: sending session/prompt request" + (retryCount > 0 ? " (retry #" + retryCount + ")" : ""));
-                JsonObject result = sendRequest("session/prompt", params, 600);
+                JsonObject result = sendRequest("session/prompt", params, CopilotSettings.getPromptTimeout());
                 LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
                 String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : UNKNOWN;
