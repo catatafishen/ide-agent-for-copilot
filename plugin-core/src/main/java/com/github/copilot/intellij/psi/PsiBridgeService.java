@@ -64,7 +64,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -103,13 +102,6 @@ public final class PsiBridgeService implements Disposable {
     private static final String PARAM_SYMBOL = "symbol";
     private static final String PARAM_FILE_PATTERN = "file_pattern";
     private static final String PARAM_TIMEOUT = "timeout";
-    private static final String PARAM_JVM_ARGS = "jvm_args";
-    private static final String PARAM_PROGRAM_ARGS = "program_args";
-    private static final String PARAM_WORKING_DIR = "working_dir";
-    private static final String PARAM_MAIN_CLASS = "main_class";
-    private static final String PARAM_TEST_CLASS = "test_class";
-    private static final String PARAM_TEST_METHOD = "test_method";
-    private static final String PARAM_MODULE_NAME = "module_name";
     private static final String PARAM_LIMIT = "limit";
     private static final String PARAM_INSPECTION_ID = "inspection_id";
     private static final String PARAM_LEVEL = "level";
@@ -118,11 +110,6 @@ public final class PsiBridgeService implements Disposable {
     private static final String PARAM_COMMIT = "commit";
     private static final String PARAM_STAT_ONLY = "stat_only";
     private static final String PARAM_BRANCH = "branch";
-
-    // Reflection Field/Method Names
-    private static final String FIELD_TEST_OBJECT = "TEST_OBJECT";
-    private static final String FIELD_METHOD_NAME = "METHOD_NAME";
-    private static final String METHOD_SET_MODULE = "setModule";
 
     // Test Type Values
     private static final String TEST_TYPE_METHOD = "method";
@@ -641,72 +628,84 @@ public final class PsiBridgeService implements Disposable {
             sb.append("Path: ").append(basePath).append("\n");
             sb.append("Agent Workspace: ").append(basePath).append("/.agent-work/ (for temp/working files)\n");
 
-            // SDK / JDK
-            try {
-                Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
-                if (sdk != null) {
-                    sb.append("SDK: ").append(sdk.getName()).append("\n");
-                    sb.append("SDK Path: ").append(sdk.getHomePath()).append("\n");
-                    sb.append("SDK Version: ").append(sdk.getVersionString()).append("\n");
-                }
-            } catch (Exception e) {
-                sb.append("SDK: unavailable (").append(e.getMessage()).append(")\n");
-            }
-
-            // Modules
-            try {
-                Module[] modules = ModuleManager.getInstance(project).getModules();
-                sb.append("\nModules (").append(modules.length).append("):\n");
-                for (Module module : modules) {
-                    sb.append("  - ").append(module.getName());
-                    try {
-                        Sdk moduleSdk = ModuleRootManager.getInstance(module).getSdk();
-                        if (moduleSdk != null) {
-                            sb.append(" [SDK: ").append(moduleSdk.getName()).append("]");
-                        }
-                        VirtualFile[] sourceRoots = ModuleRootManager.getInstance(module)
-                            .getSourceRoots(false);
-                        if (sourceRoots.length > 0) {
-                            sb.append(" (").append(sourceRoots.length).append(" source roots)");
-                        }
-                    } catch (Exception ignored) {
-                        // Module may not support source roots
-                    }
-                    sb.append("\n");
-                }
-            } catch (Exception e) {
-                sb.append("Modules: unavailable\n");
-            }
-
-            // Build system
-            if (basePath != null) {
-                if (Files.exists(Path.of(basePath, "build.gradle.kts"))
-                    || Files.exists(Path.of(basePath, "build.gradle"))) {
-                    sb.append("\nBuild System: Gradle\n");
-                    Path gradlew = Path.of(basePath,
-                        System.getProperty(OS_NAME_PROPERTY).contains("Win") ? "gradlew.bat" : "gradlew");
-                    sb.append("Gradle Wrapper: ").append(gradlew).append("\n");
-                } else if (Files.exists(Path.of(basePath, "pom.xml"))) {
-                    sb.append("\nBuild System: Maven\n");
-                }
-            }
-
-            // Run configurations
-            try {
-                var configs = RunManager.getInstance(project).getAllSettings();
-                if (!configs.isEmpty()) {
-                    sb.append("\nRun Configurations (").append(configs.size()).append("):\n");
-                    for (var config : configs) {
-                        sb.append("  - ").append(config.getName())
-                            .append(" [").append(config.getType().getDisplayName()).append("]\n");
-                    }
-                }
-            } catch (Exception e) {
-                sb.append("Run Configurations: unavailable\n");
-            }
+            appendSdkInfo(sb);
+            appendModulesInfo(sb);
+            appendBuildSystemInfo(sb, basePath);
+            appendRunConfigsInfo(sb);
 
             return sb.toString().trim();
         });
+    }
+
+    private void appendSdkInfo(StringBuilder sb) {
+        try {
+            Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
+            if (sdk != null) {
+                sb.append("SDK: ").append(sdk.getName()).append("\n");
+                sb.append("SDK Path: ").append(sdk.getHomePath()).append("\n");
+                sb.append("SDK Version: ").append(sdk.getVersionString()).append("\n");
+            }
+        } catch (Exception e) {
+            sb.append("SDK: unavailable (").append(e.getMessage()).append(")\n");
+        }
+    }
+
+    private void appendModulesInfo(StringBuilder sb) {
+        try {
+            Module[] modules = ModuleManager.getInstance(project).getModules();
+            sb.append("\nModules (").append(modules.length).append("):\n");
+            for (Module module : modules) {
+                sb.append("  - ").append(module.getName());
+                appendModuleDetails(sb, module);
+                sb.append("\n");
+            }
+        } catch (Exception e) {
+            sb.append("Modules: unavailable\n");
+        }
+    }
+
+    private void appendBuildSystemInfo(StringBuilder sb, String basePath) {
+        if (basePath == null) return;
+        if (Files.exists(Path.of(basePath, "build.gradle.kts"))
+            || Files.exists(Path.of(basePath, "build.gradle"))) {
+            sb.append("\nBuild System: Gradle\n");
+            Path gradlew = Path.of(basePath,
+                System.getProperty(OS_NAME_PROPERTY).contains("Win") ? "gradlew.bat" : "gradlew");
+            sb.append("Gradle Wrapper: ").append(gradlew).append("\n");
+        } else if (Files.exists(Path.of(basePath, "pom.xml"))) {
+            sb.append("\nBuild System: Maven\n");
+        }
+    }
+
+    private void appendRunConfigsInfo(StringBuilder sb) {
+        try {
+            var configs = RunManager.getInstance(project).getAllSettings();
+            if (!configs.isEmpty()) {
+                sb.append("\nRun Configurations (").append(configs.size()).append("):\n");
+                for (var config : configs) {
+                    sb.append("  - ").append(config.getName())
+                        .append(" [").append(config.getType().getDisplayName()).append("]\n");
+                }
+            }
+        } catch (Exception e) {
+            sb.append("Run Configurations: unavailable\n");
+        }
+    }
+
+    private void appendModuleDetails(StringBuilder sb, Module module) {
+        try {
+            Sdk moduleSdk = ModuleRootManager.getInstance(module).getSdk();
+            if (moduleSdk != null) {
+                sb.append(" [SDK: ").append(moduleSdk.getName()).append("]");
+            }
+            VirtualFile[] sourceRoots = ModuleRootManager.getInstance(module)
+                .getSourceRoots(false);
+            if (sourceRoots.length > 0) {
+                sb.append(" (").append(sourceRoots.length).append(" source roots)");
+            }
+        } catch (Exception ignored) {
+            // Module may not support source roots
+        }
     }
 
     private String runConfiguration(JsonObject args) throws Exception {
@@ -744,152 +743,19 @@ public final class PsiBridgeService implements Disposable {
         return resultFuture.get(10, TimeUnit.SECONDS);
     }
 
-    // ---- Run Config Helper Methods ----
+    private static final String JUNIT_TYPE_ID = "junit";
 
-    private com.intellij.execution.configurations.ConfigurationType findConfigurationType(String type) {
+    // ---- JUnit Helper ----
+
+    private com.intellij.execution.configurations.ConfigurationType findJUnitConfigurationType() {
         for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
             String displayName = ct.getDisplayName().toLowerCase();
-            if (displayName.equals(type) || displayName.contains(type)
-                || ct.getId().toLowerCase().contains(type)) {
+            if (displayName.contains(JUNIT_TYPE_ID)
+                || ct.getId().toLowerCase().contains(JUNIT_TYPE_ID)) {
                 return ct;
             }
         }
         return null;
-    }
-
-    private void applyConfigProperties(RunConfiguration config, JsonObject args) {
-        List<String> ignore = new ArrayList<>();
-        if (args.has("env")) applyEnvVars(config, args.getAsJsonObject("env"), ignore);
-        if (args.has(PARAM_JVM_ARGS))
-            setViaReflection(config, "setVMParameters", args.get(PARAM_JVM_ARGS).getAsString(), ignore, null);
-        if (args.has(PARAM_PROGRAM_ARGS))
-            setViaReflection(config, "setProgramParameters", args.get(PARAM_PROGRAM_ARGS).getAsString(), ignore, null);
-        if (args.has(PARAM_WORKING_DIR))
-            setViaReflection(config, "setWorkingDirectory", args.get(PARAM_WORKING_DIR).getAsString(), ignore, null);
-    }
-
-    private void applyTypeSpecificProperties(RunConfiguration config, JsonObject args) {
-        List<String> ignore = new ArrayList<>();
-        if (args.has(PARAM_MAIN_CLASS))
-            setViaReflection(config, "setMainClassName", args.get(PARAM_MAIN_CLASS).getAsString(), ignore, null);
-
-        // JUnit: test class/method via getPersistentData()
-        if (args.has(PARAM_TEST_CLASS) || args.has(PARAM_TEST_METHOD)) {
-            applyJUnitTestProperties(config, args);
-        }
-
-        if (args.has(PARAM_MODULE_NAME)) {
-            applyModuleProperty(config, args);
-        }
-    }
-
-    private void applyJUnitTestProperties(RunConfiguration config, JsonObject args) {
-        try {
-            Object data = getJUnitPersistentData(config);
-
-            if (args.has(PARAM_TEST_CLASS)) {
-                applyTestClass(config, args, data);
-            }
-            if (args.has(PARAM_TEST_METHOD)) {
-                setJUnitField(data, FIELD_METHOD_NAME, args.get(PARAM_TEST_METHOD).getAsString());
-                setJUnitField(data, FIELD_TEST_OBJECT, TEST_TYPE_METHOD);
-            }
-        } catch (Exception e) {
-            LOG.warn("Failed to set JUnit test class/method via getPersistentData", e);
-            // Fallback: try direct setter
-            List<String> ignore = new ArrayList<>();
-            setViaReflection(config, "setMainClassName",
-                args.has(PARAM_TEST_CLASS) ? args.get(PARAM_TEST_CLASS).getAsString() : "", ignore, null);
-        }
-    }
-
-    private Object getJUnitPersistentData(RunConfiguration config) throws ReflectiveOperationException {
-        var getData = config.getClass().getMethod("getPersistentData");
-        return getData.invoke(config);
-    }
-
-    private void setJUnitField(Object data, String fieldName, Object value) throws ReflectiveOperationException {
-        data.getClass().getField(fieldName).set(data, value);
-    }
-
-    private void applyTestClass(RunConfiguration config, JsonObject args, Object data) throws ReflectiveOperationException {
-        String testClass = args.get(PARAM_TEST_CLASS).getAsString();
-        ClassInfo classInfo = resolveClass(testClass);
-        setJUnitField(data, "MAIN_CLASS_NAME", classInfo.fqn());
-        setJUnitField(data, FIELD_TEST_OBJECT,
-            args.has(PARAM_TEST_METHOD) ? TEST_TYPE_METHOD : TEST_TYPE_CLASS);
-
-        // Auto-set module if not explicitly provided
-        if (!args.has(PARAM_MODULE_NAME) && classInfo.module() != null) {
-            trySetModuleOnConfig(config, classInfo.module());
-        }
-    }
-
-    private void trySetModuleOnConfig(RunConfiguration config, Module module) {
-        try {
-            var setModule = config.getClass().getMethod(METHOD_SET_MODULE, Module.class);
-            setModule.invoke(config, module);
-        } catch (NoSuchMethodException e) {
-            LOG.warn("Cannot set module on config: " + config.getClass().getName(), e);
-        } catch (Exception e) {
-            LOG.warn("Failed to set module on config", e);
-        }
-    }
-
-    private void applyModuleProperty(RunConfiguration config, JsonObject args) {
-        Module module = ModuleManager.getInstance(project)
-            .findModuleByName(args.get(PARAM_MODULE_NAME).getAsString());
-        if (module != null) {
-            trySetModuleOnConfig(config, module);
-        }
-    }
-
-    private void applyEnvVars(RunConfiguration config, JsonObject envObj, List<String> changes) {
-        try {
-            Map<String, String> envs = getConfigEnvVars(config);
-
-            // Merge new values (null value removes the key)
-            for (var entry : envObj.entrySet()) {
-                if (entry.getValue().isJsonNull()) {
-                    envs.remove(entry.getKey());
-                    changes.add("removed env " + entry.getKey());
-                } else {
-                    envs.put(entry.getKey(), entry.getValue().getAsString());
-                    changes.add("env " + entry.getKey());
-                }
-            }
-
-            setConfigEnvVars(config, envs);
-        } catch (Exception e) {
-            changes.add("env vars (failed: " + e.getMessage() + ")");
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, String> getConfigEnvVars(RunConfiguration config) {
-        try {
-            var getEnvs = config.getClass().getMethod("getEnvs");
-            return new HashMap<>((Map<String, String>) getEnvs.invoke(config));
-        } catch (Exception e) {
-            return new HashMap<>();
-        }
-    }
-
-    private void setConfigEnvVars(RunConfiguration config, Map<String, String> envs)
-        throws ReflectiveOperationException {
-        var setEnvs = config.getClass().getMethod("setEnvs", Map.class);
-        setEnvs.invoke(config, envs);
-    }
-
-    private void setViaReflection(Object target, String methodName, String value,
-                                  List<String> changes, String label) {
-        try {
-            var method = target.getClass().getMethod(methodName, String.class);
-            method.invoke(target, value);
-            if (label != null) changes.add(label);
-        } catch (Exception ignored) {
-            // Reflection method may not exist on this config type
-        }
     }
 
 // ---- Code Quality Tools ----
@@ -1543,7 +1409,7 @@ public final class PsiBridgeService implements Disposable {
                         int endBrace = value.getTextRange().getEndOffset() - 1;
                         document.insertString(endBrace, ", \"" + inspectionId + "\"");
                     } else {
-                        // Single value: "X" -- convert to {"X", "inspectionId"}
+                        // Single value -- wrap in array with new inspection ID
                         var range = value.getTextRange();
                         String existing = document.getText(range);
                         document.replaceString(range.getStartOffset(), range.getEndOffset(),
@@ -1874,36 +1740,11 @@ public final class PsiBridgeService implements Disposable {
 
                     String ruleId = result.has("ruleId") ? result.get("ruleId").getAsString() : "unknown";
                     String level = result.has(PARAM_LEVEL) ? result.get(PARAM_LEVEL).getAsString() : "warning";
-                    String message = "";
-                    if (result.has(PARAM_MESSAGE) && result.getAsJsonObject(PARAM_MESSAGE).has("text")) {
-                        message = result.getAsJsonObject(PARAM_MESSAGE).get("text").getAsString();
-                    }
+                    String message = extractSarifMessage(result);
+                    SarifLocation loc = extractSarifLocation(result, basePath);
 
-                    String filePath = "";
-                    int line = -1;
-                    if (result.has("locations")) {
-                        var locations = result.getAsJsonArray("locations");
-                        if (!locations.isEmpty()) {
-                            var loc = locations.get(0).getAsJsonObject();
-                            if (loc.has("physicalLocation")) {
-                                var phys = loc.getAsJsonObject("physicalLocation");
-                                if (phys.has(JSON_ARTIFACT_LOCATION) &&
-                                    phys.getAsJsonObject(JSON_ARTIFACT_LOCATION).has("uri")) {
-                                    filePath = phys.getAsJsonObject(JSON_ARTIFACT_LOCATION).get("uri").getAsString();
-                                    // Remove file:// prefix if present
-                                    if (filePath.startsWith("file://")) filePath = filePath.substring(7);
-                                    if (basePath != null) filePath = relativize(basePath, filePath);
-                                    filesSet.add(filePath);
-                                }
-                                if (phys.has(JSON_REGION) &&
-                                    phys.getAsJsonObject(JSON_REGION).has("startLine")) {
-                                    line = phys.getAsJsonObject(JSON_REGION).get("startLine").getAsInt();
-                                }
-                            }
-                        }
-                    }
-
-                    problems.add(String.format("%s:%d [%s/%s] %s", filePath, line, level, ruleId, message));
+                    if (!loc.filePath.isEmpty()) filesSet.add(loc.filePath);
+                    problems.add(String.format("%s:%d [%s/%s] %s", loc.filePath, loc.line, level, ruleId, message));
                     count++;
                 }
             }
@@ -1927,6 +1768,41 @@ public final class PsiBridgeService implements Disposable {
             return "Qodana analysis completed but SARIF parsing failed: " + e.getMessage() +
                 ". Check the Qodana tab in the Problems tool window for results.";
         }
+    }
+
+    private record SarifLocation(String filePath, int line) {
+    }
+
+    private String extractSarifMessage(JsonObject result) {
+        if (result.has(PARAM_MESSAGE) && result.getAsJsonObject(PARAM_MESSAGE).has("text")) {
+            return result.getAsJsonObject(PARAM_MESSAGE).get("text").getAsString();
+        }
+        return "";
+    }
+
+    private SarifLocation extractSarifLocation(JsonObject result, String basePath) {
+        String filePath = "";
+        int line = -1;
+        if (!result.has("locations")) return new SarifLocation(filePath, line);
+
+        var locations = result.getAsJsonArray("locations");
+        if (locations.isEmpty()) return new SarifLocation(filePath, line);
+
+        var loc = locations.get(0).getAsJsonObject();
+        if (!loc.has("physicalLocation")) return new SarifLocation(filePath, line);
+
+        var phys = loc.getAsJsonObject("physicalLocation");
+        if (phys.has(JSON_ARTIFACT_LOCATION) &&
+            phys.getAsJsonObject(JSON_ARTIFACT_LOCATION).has("uri")) {
+            filePath = phys.getAsJsonObject(JSON_ARTIFACT_LOCATION).get("uri").getAsString();
+            if (filePath.startsWith("file://")) filePath = filePath.substring(7);
+            if (basePath != null) filePath = relativize(basePath, filePath);
+        }
+        if (phys.has(JSON_REGION) &&
+            phys.getAsJsonObject(JSON_REGION).has("startLine")) {
+            line = phys.getAsJsonObject(JSON_REGION).get("startLine").getAsInt();
+        }
+        return new SarifLocation(filePath, line);
     }
 
     private String optimizeImports(JsonObject args) throws Exception {
@@ -3385,7 +3261,7 @@ public final class PsiBridgeService implements Disposable {
      */
     private String tryRunJUnitNatively(String target) {
         try {
-            var junitType = findConfigurationType("junit");
+            var junitType = findJUnitConfigurationType();
             if (junitType == null) return null;
 
             // Parse target: "com.example.MyTest" or "MyTest.testFoo" or "*Test"
