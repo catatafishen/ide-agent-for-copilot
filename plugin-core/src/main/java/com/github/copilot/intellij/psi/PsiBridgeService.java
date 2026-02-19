@@ -1966,8 +1966,6 @@ public final class PsiBridgeService implements Disposable {
         if (!args.has("path") || args.get("path").isJsonNull())
             return ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
-
-        // Check if auto-format should be applied (default: true)
         boolean autoFormat = !args.has("auto_format") || args.get("auto_format").getAsBoolean();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -1977,110 +1975,11 @@ public final class PsiBridgeService implements Disposable {
                 VirtualFile vf = resolveVirtualFile(pathStr);
 
                 if (args.has(PARAM_CONTENT)) {
-                    // Full file write
-                    String newContent = args.get(PARAM_CONTENT).getAsString();
-                    if (vf == null) {
-                        // Create new file via VFS
-                        ApplicationManager.getApplication().runWriteAction(() -> {
-                            try {
-                                String normalized = pathStr.replace('\\', '/');
-                                String basePath = project.getBasePath();
-                                String fullPath;
-                                if (normalized.startsWith("/")) {
-                                    fullPath = normalized;
-                                } else if (basePath != null) {
-                                    fullPath = Path.of(basePath, normalized).toString();
-                                } else {
-                                    fullPath = normalized;
-                                }
-                                Path filePath = Path.of(fullPath);
-                                Files.createDirectories(filePath.getParent());
-                                Files.writeString(filePath, newContent);
-                                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath);
-                                resultFuture.complete("Created: " + pathStr);
-                            } catch (IOException e) {
-                                resultFuture.complete("Error creating file: " + e.getMessage());
-                            }
-                        });
-                    } else {
-                        // Overwrite existing file via Document API for undo support
-                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                        if (doc != null) {
-                            ApplicationManager.getApplication().runWriteAction(() ->
-                                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                    project, () -> doc.setText(newContent), "Write File", null)
-                            );
-                            if (autoFormat) {
-                                autoFormatAfterWrite(pathStr);
-                            }
-                            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
-                        } else {
-                            // Fallback: write to VFS directly
-                            ApplicationManager.getApplication().runWriteAction(() -> {
-                                try (var os = vf.getOutputStream(this)) {
-                                    os.write(newContent.getBytes(StandardCharsets.UTF_8));
-                                } catch (IOException e) {
-                                    resultFuture.complete("Error writing: " + e.getMessage());
-                                }
-                            });
-                            resultFuture.complete("Written: " + pathStr);
-                        }
-                    }
+                    writeFileFullContent(vf, pathStr, args.get(PARAM_CONTENT).getAsString(),
+                        autoFormat, resultFuture);
                 } else if (args.has("old_str") && args.has("new_str")) {
-                    // Partial edit: replace old_str with new_str in the file
-                    if (vf == null) {
-                        resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
-                        return;
-                    }
-                    Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                    if (doc == null) {
-                        resultFuture.complete("Cannot open document: " + pathStr);
-                        return;
-                    }
-                    String oldStr = args.get("old_str").getAsString();
-                    String newStr = args.get("new_str").getAsString();
-                    String text = doc.getText();
-                    int idx = text.indexOf(oldStr);
-                    int matchLen = oldStr.length();
-                    if (idx == -1) {
-                        // Fallback: normalize Unicode chars and retry
-                        String normText = normalizeForMatch(text);
-                        String normOld = normalizeForMatch(oldStr);
-                        idx = normText.indexOf(normOld);
-                        if (idx != -1) {
-                            LOG.info("write_file: normalized match succeeded for " + pathStr);
-                            matchLen = findOriginalLength(text, idx, normOld.length());
-                        } else {
-                            LOG.warn("write_file: old_str not found in " + pathStr +
-                                " (exact and normalized both failed)");
-                        }
-                    }
-                    if (idx == -1) {
-                        // Show a snippet of the document to help debug
-                        String preview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
-                        resultFuture.complete("old_str not found in " + pathStr +
-                            ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
-                            "\nFile starts with: " + preview.replace("\n", "\\n").substring(0, Math.min(preview.length(), 150)));
-                        return;
-                    }
-                    // Check for multiple matches using same strategy
-                    String checkText = (matchLen == oldStr.length()) ? text : normalizeForMatch(text);
-                    String checkOld = (matchLen == oldStr.length()) ? oldStr : normalizeForMatch(oldStr);
-                    if (checkText.indexOf(checkOld, idx + 1) != -1) {
-                        resultFuture.complete("old_str matches multiple locations in " + pathStr + ". Make it more specific.");
-                        return;
-                    }
-                    final int finalIdx = idx;
-                    final int finalLen = matchLen;
-                    ApplicationManager.getApplication().runWriteAction(() ->
-                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                            project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
-                            "Edit File", null)
-                    );
-                    if (autoFormat) {
-                        autoFormatAfterWrite(pathStr);
-                    }
-                    resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + FORMAT_CHARS_SUFFIX);
+                    writeFilePartialEdit(vf, pathStr, args.get("old_str").getAsString(),
+                        args.get("new_str").getAsString(), autoFormat, resultFuture);
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
                 }
@@ -2090,6 +1989,108 @@ public final class PsiBridgeService implements Disposable {
         });
 
         return resultFuture.get(15, TimeUnit.SECONDS);
+    }
+
+    private void writeFileFullContent(VirtualFile vf, String pathStr, String newContent,
+                                      boolean autoFormat, CompletableFuture<String> resultFuture) {
+        if (vf == null) {
+            createNewFile(pathStr, newContent, resultFuture);
+            return;
+        }
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc != null) {
+            ApplicationManager.getApplication().runWriteAction(() ->
+                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                    project, () -> doc.setText(newContent), "Write File", null)
+            );
+            if (autoFormat) autoFormatAfterWrite(pathStr);
+            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
+        } else {
+            ApplicationManager.getApplication().runWriteAction(() -> {
+                try (var os = vf.getOutputStream(this)) {
+                    os.write(newContent.getBytes(StandardCharsets.UTF_8));
+                } catch (IOException e) {
+                    resultFuture.complete("Error writing: " + e.getMessage());
+                }
+            });
+            resultFuture.complete("Written: " + pathStr);
+        }
+    }
+
+    private void createNewFile(String pathStr, String content, CompletableFuture<String> resultFuture) {
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            try {
+                String normalized = pathStr.replace('\\', '/');
+                String basePath = project.getBasePath();
+                String fullPath;
+                if (normalized.startsWith("/")) {
+                    fullPath = normalized;
+                } else if (basePath != null) {
+                    fullPath = Path.of(basePath, normalized).toString();
+                } else {
+                    fullPath = normalized;
+                }
+                Path filePath = Path.of(fullPath);
+                Files.createDirectories(filePath.getParent());
+                Files.writeString(filePath, content);
+                LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath);
+                resultFuture.complete("Created: " + pathStr);
+            } catch (IOException e) {
+                resultFuture.complete("Error creating file: " + e.getMessage());
+            }
+        });
+    }
+
+    private void writeFilePartialEdit(VirtualFile vf, String pathStr, String oldStr, String newStr,
+                                      boolean autoFormat, CompletableFuture<String> resultFuture) {
+        if (vf == null) {
+            resultFuture.complete(ERROR_FILE_NOT_FOUND + pathStr);
+            return;
+        }
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc == null) {
+            resultFuture.complete("Cannot open document: " + pathStr);
+            return;
+        }
+        String text = doc.getText();
+        int idx = text.indexOf(oldStr);
+        int matchLen = oldStr.length();
+        if (idx == -1) {
+            // Fallback: normalize Unicode chars and retry
+            String normText = normalizeForMatch(text);
+            String normOld = normalizeForMatch(oldStr);
+            idx = normText.indexOf(normOld);
+            if (idx != -1) {
+                LOG.info("write_file: normalized match succeeded for " + pathStr);
+                matchLen = findOriginalLength(text, idx, normOld.length());
+            } else {
+                LOG.warn("write_file: old_str not found in " + pathStr +
+                    " (exact and normalized both failed)");
+            }
+        }
+        if (idx == -1) {
+            String preview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
+            resultFuture.complete("old_str not found in " + pathStr +
+                ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
+                "\nFile starts with: " + preview.replace("\n", "\\n").substring(0, Math.min(preview.length(), 150)));
+            return;
+        }
+        // Check for multiple matches using same strategy
+        String checkText = (matchLen == oldStr.length()) ? text : normalizeForMatch(text);
+        String checkOld = (matchLen == oldStr.length()) ? oldStr : normalizeForMatch(oldStr);
+        if (checkText.indexOf(checkOld, idx + 1) != -1) {
+            resultFuture.complete("old_str matches multiple locations in " + pathStr + ". Make it more specific.");
+            return;
+        }
+        final int finalIdx = idx;
+        final int finalLen = matchLen;
+        ApplicationManager.getApplication().runWriteAction(() ->
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
+                "Edit File", null)
+        );
+        if (autoFormat) autoFormatAfterWrite(pathStr);
+        resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + FORMAT_CHARS_SUFFIX);
     }
 
     /**
@@ -3174,7 +3175,7 @@ public final class PsiBridgeService implements Disposable {
         String target = args.get("target").getAsString();
         String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
         String basePath = project.getBasePath();
-        if (basePath == null) return "No project base path";
+        if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
         // Try to find matching run config first
         String configResult = tryRunTestConfig(target);
@@ -3306,7 +3307,7 @@ public final class PsiBridgeService implements Disposable {
             var configs = RunManager.getInstance(project).getAllSettings();
             for (var config : configs) {
                 String typeName = config.getType().getDisplayName().toLowerCase();
-                if ((typeName.contains("junit") || typeName.contains("test"))
+                if ((typeName.contains(JUNIT_TYPE_ID) || typeName.contains("test"))
                     && config.getName().contains(target)) {
                     return runConfiguration(createJsonWithName(config.getName()));
                 }
