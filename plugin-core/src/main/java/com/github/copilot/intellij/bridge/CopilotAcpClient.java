@@ -452,10 +452,20 @@ public class CopilotAcpClient implements Closeable {
             JsonObject result = sendRequest("session/prompt", params, 600);
             LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
-            // Note: Permission guidance is now sent BEFORE rejection (see handlePermissionRequest)
-            // so the agent sees it while still in turn, not as a separate message afterward.
+            String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
 
-            return result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
+            // If turn ended with denied tool(s), automatically retry with guidance
+            if (builtInActionDeniedDuringTurn) {
+                LOG.info("Turn ended with denied tools - sending automatic retry");
+                fireDebugEvent("AUTO_RETRY", "Turn ended with tool denials - retrying",
+                    "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+
+                // Send follow-up prompt to continue the task
+                String retryPrompt = "Please continue with the task using the correct tools (intellij-code-tools- prefix).";
+                return sendPrompt(sessionId, retryPrompt, model, references, onChunk, onUpdate);
+            }
+
+            return stopReason;
         } finally {
             notificationListeners.remove(listener);
         }
