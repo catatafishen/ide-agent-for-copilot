@@ -14,17 +14,29 @@ public final class CopilotSettings {
     private static final String KEY_MONTHLY_COST = "copilot.monthlyCost";
     private static final String KEY_USAGE_RESET_MONTH = "copilot.usageResetMonth";
     private static final String KEY_PROMPT_TIMEOUT = "copilot.promptTimeout";
-    private static final int DEFAULT_PROMPT_TIMEOUT = 600;
+    private static final String KEY_MAX_TOOL_CALLS = "copilot.maxToolCallsPerTurn";
+    private static final int DEFAULT_PROMPT_TIMEOUT = 120;
+    private static final int DEFAULT_MAX_TOOL_CALLS = 0;
 
     private CopilotSettings() {
     }
 
+    /** Inactivity timeout in seconds (no activity = stop agent). */
     public static int getPromptTimeout() {
         return PropertiesComponent.getInstance().getInt(KEY_PROMPT_TIMEOUT, DEFAULT_PROMPT_TIMEOUT);
     }
 
     public static void setPromptTimeout(int seconds) {
         PropertiesComponent.getInstance().setValue(KEY_PROMPT_TIMEOUT, seconds, DEFAULT_PROMPT_TIMEOUT);
+    }
+
+    /** Max tool calls per turn (0 = unlimited). */
+    public static int getMaxToolCallsPerTurn() {
+        return PropertiesComponent.getInstance().getInt(KEY_MAX_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS);
+    }
+
+    public static void setMaxToolCallsPerTurn(int count) {
+        PropertiesComponent.getInstance().setValue(KEY_MAX_TOOL_CALLS, count, DEFAULT_MAX_TOOL_CALLS);
     }
 
     @Nullable

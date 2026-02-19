@@ -1382,12 +1382,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.gridy++
         gbc.gridwidth = 1
         gbc.insets = JBUI.insets(5)
-        panel.add(JBLabel("Prompt timeout (seconds):"), gbc)
+        panel.add(JBLabel("Inactivity timeout (seconds):"), gbc)
 
         gbc.gridx = 1
-        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 60, 3600, 60))
-        timeoutSpinner.toolTipText = "Maximum time to wait for agent response (60-3600s)"
+        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 30, 600, 10))
+        timeoutSpinner.toolTipText = "Stop agent after this many seconds of no activity (30-600s, default 120s)"
         panel.add(timeoutSpinner, gbc)
+
+        gbc.gridx = 0
+        gbc.gridy++
+        panel.add(JBLabel("Max tool calls per turn:"), gbc)
+
+        gbc.gridx = 1
+        val toolCallSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getMaxToolCallsPerTurn(), 0, 500, 10))
+        toolCallSpinner.toolTipText = "Limit tool calls per turn to control credit usage (0 = unlimited)"
+        panel.add(toolCallSpinner, gbc)
 
         // Save button
         gbc.gridy++
@@ -1399,6 +1408,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val saveButton = JButton("Save Settings")
         saveButton.addActionListener {
             CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
+            CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
             JOptionPane.showMessageDialog(
                 panel,
                 "Settings saved!",

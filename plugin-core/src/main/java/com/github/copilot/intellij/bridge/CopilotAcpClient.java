@@ -110,6 +110,10 @@ public class CopilotAcpClient implements Closeable {
     private volatile boolean builtInActionDeniedDuringTurn = false;
     private volatile String lastDeniedKind = "";
 
+    // Activity tracking for inactivity-based timeout
+    private volatile long lastActivityTimestamp = System.currentTimeMillis();
+    private volatile int toolCallsInTurn = 0;
+
     // Debug event listeners for UI debug tab
     private final CopyOnWriteArrayList<Consumer<DebugEvent>> debugListeners = new CopyOnWriteArrayList<>();
 
@@ -449,10 +453,13 @@ public class CopilotAcpClient implements Closeable {
             while (true) {
                 JsonObject params = buildPromptParams(sessionId, currentPrompt, model, references);
 
-                // Send request - response comes after all streaming chunks
+                // Reset turn tracking
                 builtInActionDeniedDuringTurn = false;
+                lastActivityTimestamp = System.currentTimeMillis();
+                toolCallsInTurn = 0;
+
                 LOG.info("sendPrompt: sending session/prompt request" + (retryCount > 0 ? " (retry #" + retryCount + ")" : ""));
-                JsonObject result = sendRequest("session/prompt", params, CopilotSettings.getPromptTimeout());
+                JsonObject result = sendPromptRequest(params);
                 LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
                 String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : UNKNOWN;
@@ -484,6 +491,107 @@ public class CopilotAcpClient implements Closeable {
         return lastDeniedKind != null ? lastDeniedKind : UNKNOWN;
     }
 
+    /**
+     * Send a session/prompt request with activity-based timeout and per-turn credit limit.
+     * Instead of a fixed timeout, polls for completion and checks:
+     * 1. Inactivity: no streaming chunks or tool calls for N seconds
+     * 2. Credit limit: too many tool calls in this turn
+     * On either condition, terminates the CLI process gracefully.
+     */
+    @NotNull
+    private JsonObject sendPromptRequest(@NotNull JsonObject params) throws CopilotException {
+        if (closed) throw new CopilotException("ACP client is closed", null, false);
+
+        long id = requestIdCounter.getAndIncrement();
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
+        pendingRequests.put(id, future);
+
+        try {
+            JsonObject request = new JsonObject();
+            request.addProperty(JSONRPC, "2.0");
+            request.addProperty("id", id);
+            request.addProperty(METHOD, "session/prompt");
+            request.add(PARAMS, params);
+
+            String json = gson.toJson(request);
+            LOG.info("ACP request: session/prompt id=" + id + " params=" + gson.toJson(params));
+
+            synchronized (writerLock) {
+                writer.write(json);
+                writer.newLine();
+                writer.flush();
+            }
+
+            // Poll for completion with activity-based timeout
+            int inactivityTimeoutSec = CopilotSettings.getPromptTimeout();
+            int maxToolCalls = CopilotSettings.getMaxToolCallsPerTurn();
+            long pollIntervalMs = 5000;
+
+            while (true) {
+                try {
+                    return future.get(pollIntervalMs, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    // Check inactivity
+                    long inactiveMs = System.currentTimeMillis() - lastActivityTimestamp;
+                    if (inactiveMs > inactivityTimeoutSec * 1000L) {
+                        pendingRequests.remove(id);
+                        LOG.warn("Agent inactive for " + (inactiveMs / 1000) + "s, terminating");
+                        fireDebugEvent("INACTIVITY_TIMEOUT",
+                            "No activity for " + (inactiveMs / 1000) + "s (limit: " + inactivityTimeoutSec + "s)",
+                            "Tool calls this turn: " + toolCallsInTurn);
+                        terminateAgent();
+                        throw new CopilotException(
+                            "Agent stopped: no activity for " + (inactiveMs / 1000) + " seconds", e, true);
+                    }
+
+                    // Check credit limit (0 = unlimited)
+                    if (maxToolCalls > 0 && toolCallsInTurn >= maxToolCalls) {
+                        pendingRequests.remove(id);
+                        LOG.warn("Tool call limit reached: " + toolCallsInTurn + "/" + maxToolCalls);
+                        fireDebugEvent("CREDIT_LIMIT",
+                            "Tool call limit reached: " + toolCallsInTurn + "/" + maxToolCalls,
+                            "Terminating agent to prevent excess usage");
+                        terminateAgent();
+                        throw new CopilotException(
+                            "Agent stopped: tool call limit reached (" + toolCallsInTurn + "/" + maxToolCalls + ")", e, true);
+                    }
+                }
+            }
+        } catch (ExecutionException e) {
+            pendingRequests.remove(id);
+            Throwable cause = e.getCause();
+            if (cause instanceof CopilotException copilotException) throw copilotException;
+            throw new CopilotException("ACP request failed: session/prompt - " + cause.getMessage(), e, false);
+        } catch (InterruptedException e) {
+            pendingRequests.remove(id);
+            Thread.currentThread().interrupt();
+            throw new CopilotException("ACP request interrupted: session/prompt", e, true);
+        } catch (IOException e) {
+            pendingRequests.remove(id);
+            throw new CopilotException("ACP write failed: session/prompt", e, true);
+        }
+    }
+
+    /**
+     * Terminate the Copilot CLI process gracefully.
+     * Called when inactivity timeout or credit limit is reached.
+     */
+    private void terminateAgent() {
+        if (process != null && process.isAlive()) {
+            LOG.info("Terminating Copilot CLI process (PID: " + process.pid() + ")");
+            process.destroy();
+            try {
+                if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                    LOG.warn("Force-killing Copilot CLI process");
+                    process.destroyForcibly();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                process.destroyForcibly();
+            }
+        }
+    }
+
     private Consumer<JsonObject> createStreamingListener(@NotNull String sessionId,
                                                          @Nullable Consumer<String> onChunk,
                                                          @Nullable Consumer<JsonObject> onUpdate) {
@@ -512,6 +620,9 @@ public class CopilotAcpClient implements Closeable {
                                      @Nullable Consumer<JsonObject> onUpdate) {
         String updateType = update.has("sessionUpdate") ? update.get("sessionUpdate").getAsString() : "";
         LOG.debug("sendPrompt: received update type=" + updateType);
+
+        // Track activity for inactivity timeout
+        lastActivityTimestamp = System.currentTimeMillis();
 
         if ("agent_message_chunk".equals(updateType) && onChunk != null) {
             JsonObject content = update.has(CONTENT) ? update.getAsJsonObject(CONTENT) : null;
@@ -903,6 +1014,10 @@ public class CopilotAcpClient implements Closeable {
         String formattedPermission = formatPermissionDisplay(permKind, permTitle);
         fireDebugEvent("PERMISSION_REQUEST", formattedPermission,
             toolCall != null ? toolCall.toString() : "");
+
+        // Track activity and tool call count
+        lastActivityTimestamp = System.currentTimeMillis();
+        toolCallsInTurn++;
 
         // Check if run_command is trying to do something we have a dedicated tool for
         String commandAbuse = detectCommandAbuse(toolCall);
