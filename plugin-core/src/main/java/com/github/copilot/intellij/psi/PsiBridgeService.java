@@ -972,7 +972,7 @@ public final class PsiBridgeService implements Disposable {
 
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> allFiles = collectFilesForHighlightAnalysis(pathStr, fileIndex, resultFuture);
-            if (allFiles == null) return; // resultFuture already completed with error
+            if (resultFuture.isDone()) return; // error was reported
 
             LOG.info("Analyzing " + allFiles.size() + " files for highlights (cached mode)");
 
@@ -1013,7 +1013,7 @@ public final class PsiBridgeService implements Disposable {
                 files.add(vf);
             } else {
                 resultFuture.complete("Error: File not found or not in source content: " + pathStr);
-                return null;
+                return Collections.emptyList();
             }
         } else {
             fileIndex.iterateContent(file -> {
@@ -1231,18 +1231,19 @@ public final class PsiBridgeService implements Disposable {
     private String formatInspectionDescriptor(
         com.intellij.codeInspection.CommonProblemDescriptor descriptor,
         String toolId, String basePath, Set<String> filesSet) {
+        if (!(descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)) {
+            return ""; // sentinel for skippedNoFile
+        }
         String description = descriptor.getDescriptionTemplate();
         //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
         if (description == null || description.isEmpty()) return null;
 
         String refText = "";
-        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-            var psiEl = pd.getPsiElement();
-            if (psiEl != null) {
-                refText = psiEl.getText();
-                if (refText != null && refText.length() > 80) {
-                    refText = refText.substring(0, 80) + "...";
-                }
+        var psiEl = pd.getPsiElement();
+        if (psiEl != null) {
+            refText = psiEl.getText();
+            if (refText != null && refText.length() > 80) {
+                refText = refText.substring(0, 80) + "...";
             }
         }
 
@@ -1252,29 +1253,24 @@ public final class PsiBridgeService implements Disposable {
 
         if (description.isEmpty()) return null;
 
-        int line = -1;
-        String filePath = "";
-        String severity = "WARNING";
-
-        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
-            line = pd.getLineNumber() + 1;
-            severity = pd.getHighlightType().toString();
-            var psiElement = pd.getPsiElement();
-            if (psiElement != null) {
-                var containingFile = psiElement.getContainingFile();
-                if (containingFile != null) {
-                    var vf = containingFile.getVirtualFile();
-                    if (vf != null) {
-                        filePath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                        filesSet.add(filePath);
-                    }
-                }
-            }
-        } else {
-            return ""; // sentinel for skippedNoFile
-        }
+        int line = pd.getLineNumber() + 1;
+        String severity = pd.getHighlightType().toString();
+        String filePath = resolveDescriptorFilePath(pd, basePath, filesSet);
 
         return String.format("%s:%d [%s/%s] %s", filePath, line, severity, toolId, description);
+    }
+
+    private String resolveDescriptorFilePath(com.intellij.codeInspection.ProblemDescriptor pd,
+                                             String basePath, Set<String> filesSet) {
+        var psiElement = pd.getPsiElement();
+        if (psiElement == null) return "";
+        var containingFile = psiElement.getContainingFile();
+        if (containingFile == null) return "";
+        var vf = containingFile.getVirtualFile();
+        if (vf == null) return "";
+        String filePath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+        filesSet.add(filePath);
+        return filePath;
     }
 
     private String addToDictionary(JsonObject args) throws Exception {
@@ -1767,26 +1763,9 @@ public final class PsiBridgeService implements Disposable {
             List<String> problems = new ArrayList<>();
             Set<String> filesSet = new HashSet<>();
             String basePath = project.getBasePath();
-            int count = 0;
 
             for (var runElement : runs) {
-                var run = runElement.getAsJsonObject();
-                var results = run.getAsJsonArray("results");
-                if (results == null) continue;
-
-                for (var resultElement : results) {
-                    if (count >= limit) break;
-                    var result = resultElement.getAsJsonObject();
-
-                    String ruleId = result.has("ruleId") ? result.get("ruleId").getAsString() : "unknown";
-                    String level = result.has(PARAM_LEVEL) ? result.get(PARAM_LEVEL).getAsString() : "warning";
-                    String message = extractSarifMessage(result);
-                    SarifLocation loc = extractSarifLocation(result, basePath);
-
-                    if (!loc.filePath.isEmpty()) filesSet.add(loc.filePath);
-                    problems.add(String.format("%s:%d [%s/%s] %s", loc.filePath, loc.line, level, ruleId, message));
-                    count++;
-                }
+                collectSarifRunProblems(runElement.getAsJsonObject(), basePath, limit, problems, filesSet);
             }
 
             if (problems.isEmpty()) {
@@ -1807,6 +1786,25 @@ public final class PsiBridgeService implements Disposable {
             LOG.error("Error parsing SARIF results", e);
             return "Qodana analysis completed but SARIF parsing failed: " + e.getMessage() +
                 ". Check the Qodana tab in the Problems tool window for results.";
+        }
+    }
+
+    private void collectSarifRunProblems(com.google.gson.JsonObject run, String basePath,
+                                         int limit, List<String> problems, Set<String> filesSet) {
+        var results = run.getAsJsonArray("results");
+        if (results == null) return;
+
+        for (var resultElement : results) {
+            if (problems.size() >= limit) break;
+            var result = resultElement.getAsJsonObject();
+
+            String ruleId = result.has("ruleId") ? result.get("ruleId").getAsString() : "unknown";
+            String level = result.has(PARAM_LEVEL) ? result.get(PARAM_LEVEL).getAsString() : "warning";
+            String message = extractSarifMessage(result);
+            SarifLocation loc = extractSarifLocation(result, basePath);
+
+            if (!loc.filePath.isEmpty()) filesSet.add(loc.filePath);
+            problems.add(String.format("%s:%d [%s/%s] %s", loc.filePath, loc.line, level, ruleId, message));
         }
     }
 
@@ -3135,38 +3133,39 @@ public final class PsiBridgeService implements Disposable {
                 String name = vf.getName();
                 if (!name.endsWith(JAVA_EXTENSION) && !name.endsWith(".kt")) return true;
                 if (!filePattern.isEmpty() && doesNotMatchGlob(name, filePattern)) return true;
-
-                // Use IntelliJ's own test source classification (green background in project view)
                 if (!fileIndex.isInTestSourceContent(vf)) return true;
 
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                if (psiFile == null) return true;
-                Document doc = FileDocumentManager.getInstance().getDocument(vf);
-
-                psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-                    @Override
-                    public void visitElement(@NotNull PsiElement element) {
-                        if (element instanceof PsiNamedElement named) {
-                            String type = classifyElement(element);
-                            if (("method".equals(type) || "function".equals(type))
-                                && hasTestAnnotation(element)) {
-                                String methodName = named.getName();
-                                String className = getContainingClassName(element);
-                                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
-                                int line = doc != null
-                                    ? doc.getLineNumber(element.getTextOffset()) + 1 : 0;
-                                tests.add(String.format("%s.%s (%s:%d)",
-                                    className, methodName, relPath, line));
-                            }
-                        }
-                        super.visitElement(element);
-                    }
-                });
+                collectTestMethodsFromFile(vf, basePath, tests);
                 return tests.size() < 500;
             });
 
             if (tests.isEmpty()) return "No tests found";
             return tests.size() + " tests:\n" + String.join("\n", tests);
+        });
+    }
+
+    private void collectTestMethodsFromFile(VirtualFile vf, String basePath, List<String> tests) {
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return;
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+
+        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+            @Override
+            public void visitElement(@NotNull PsiElement element) {
+                if (!(element instanceof PsiNamedElement named)) {
+                    super.visitElement(element);
+                    return;
+                }
+                String type = classifyElement(element);
+                if (("method".equals(type) || "function".equals(type)) && hasTestAnnotation(element)) {
+                    String methodName = named.getName();
+                    String className = getContainingClassName(element);
+                    String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getPath();
+                    int line = doc != null ? doc.getLineNumber(element.getTextOffset()) + 1 : 0;
+                    tests.add(String.format("%s.%s (%s:%d)", className, methodName, relPath, line));
+                }
+                super.visitElement(element);
+            }
         });
     }
 
