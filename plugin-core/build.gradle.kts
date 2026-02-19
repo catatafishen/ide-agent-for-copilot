@@ -13,8 +13,8 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Use your locally installed IDE instead of downloading
-        local(providers.gradleProperty("intellijPlatform.localPath"))
+        // Use a downloaded IDE distribution for proper code analysis
+        create("IU", "2025.3.2")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
@@ -23,7 +23,7 @@ dependencies {
 
     // Kotlin stdlib for UI layer
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    
+
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:2.13.1")
 
@@ -39,7 +39,10 @@ tasks.named("prepareSandbox") {
     doLast {
         val mcpJar = project(":mcp-server").tasks.named("jar").get().outputs.files.singleFile
         // Copy to the versioned sandbox directory where the IDE actually runs
-        val ideDirs = File(layout.buildDirectory.asFile.get(), "idea-sandbox").listFiles { f -> f.isDirectory && f.name.startsWith("IU-") }
+        val ideDirs = File(
+            layout.buildDirectory.asFile.get(),
+            "idea-sandbox"
+        ).listFiles { f -> f.isDirectory && f.name.startsWith("IU-") }
         ideDirs?.forEach { ideDir ->
             val sandboxLib = File(ideDir, "plugins/plugin-core/lib")
             sandboxLib.mkdirs()
@@ -93,12 +96,13 @@ tasks.named("prepareSandbox") {
                 // Also keep the zips in system/plugins/ for IntelliJ's plugin manager UI
                 val systemPlugins = File(ideDir, "system/plugins")
                 systemPlugins.mkdirs()
-                persistentPlugins.listFiles()?.filter { it.extension == "zip" || it.extension == "jar" }?.forEach { src ->
-                    val dest = File(systemPlugins, src.name)
-                    if (!dest.exists()) {
-                        src.copyTo(dest)
+                persistentPlugins.listFiles()?.filter { it.extension == "zip" || it.extension == "jar" }
+                    ?.forEach { src ->
+                        val dest = File(systemPlugins, src.name)
+                        if (!dest.exists()) {
+                            src.copyTo(dest)
+                        }
                     }
-                }
             }
             logger.lifecycle("Restored marketplace plugins from .sandbox-plugins/")
         }
@@ -121,10 +125,10 @@ intellijPlatform {
         name = "Agentic Copilot"
         version = project.version.toString()
         description = """
-            Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities 
+            Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities
             with full context awareness, planning, and Git integration.
         """.trimIndent()
-        
+
         ideaVersion {
             sinceBuild = "253"
             untilBuild = "253.*"
@@ -164,7 +168,7 @@ tasks {
 
         // Auto-open this project in the sandbox IDE (skips welcome screen)
         args = listOf(project.rootDir.absolutePath)
-        
+
         // System properties to skip setup and preserve state
         jvmArgs = listOf(
             "-Didea.trust.all.projects=true",           // Skip trust dialog

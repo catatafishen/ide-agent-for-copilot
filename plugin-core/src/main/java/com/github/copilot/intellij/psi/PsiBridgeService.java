@@ -61,7 +61,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -109,9 +108,6 @@ public final class PsiBridgeService implements Disposable {
     private static final String PARAM_LEVEL = "level";
     private static final String PARAM_MESSAGE = "message";
     private static final String PARAM_CONTENT = "content";
-    private static final String PARAM_COMMIT = "commit";
-    private static final String PARAM_STAT_ONLY = "stat_only";
-    private static final String PARAM_BRANCH = "branch";
     private static final String PARAM_METHOD = "method";
 
     // Test Type Values
@@ -146,19 +142,10 @@ public final class PsiBridgeService implements Disposable {
     // JSON Field Names
     private static final String JSON_ARTIFACT_LOCATION = "artifactLocation";
     private static final String JSON_REGION = "region";
-    private static final String JSON_PATHS = "paths";
-    private static final String JSON_ACTION = "action";
-    private static final String JSON_STASH = "stash";
-    private static final String JSON_INDEX = "index";
-    private static final String JSON_STASH_PREFIX = "stash@{";
-    private static final String JSON_APPLY = "apply";
     private static final String JSON_HEADERS = "headers";
     private static final String JSON_TITLE = "title";
     private static final String JSON_MODULE = "module";
     private static final String JSON_TAB_NAME = "tab_name";
-
-    // Git Constants
-    private static final String GIT_FLAG_ALL = "--all";
 
     // System Properties
     private static final String OS_NAME_PROPERTY = "os.name";
@@ -171,6 +158,7 @@ public final class PsiBridgeService implements Disposable {
 
     private final Project project;
     private final RunConfigurationService runConfigService;
+    private final GitToolHandler gitToolHandler;
     private HttpServer httpServer;
     private int port;
 
@@ -183,6 +171,7 @@ public final class PsiBridgeService implements Disposable {
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
         this.runConfigService = new RunConfigurationService(project, this::resolveClass);
+        this.gitToolHandler = new GitToolHandler(project);
     }
 
     public static PsiBridgeService getInstance(@NotNull Project project) {
@@ -324,16 +313,16 @@ public final class PsiBridgeService implements Disposable {
                 case "read_file", "intellij_read_file" -> readFile(arguments);
                 case "write_file", "intellij_write_file" -> writeFile(arguments);
                 // Git tools
-                case "git_status" -> gitStatus(arguments);
-                case "git_diff" -> gitDiff(arguments);
-                case "git_log" -> gitLog(arguments);
-                case "git_blame" -> gitBlame(arguments);
-                case "git_commit" -> gitCommit(arguments);
-                case "git_stage" -> gitStage(arguments);
-                case "git_unstage" -> gitUnstage(arguments);
-                case "git_branch" -> gitBranch(arguments);
-                case "git_stash" -> gitStash(arguments);
-                case "git_show" -> gitShow(arguments);
+                case "git_status" -> gitToolHandler.gitStatus(arguments);
+                case "git_diff" -> gitToolHandler.gitDiff(arguments);
+                case "git_log" -> gitToolHandler.gitLog(arguments);
+                case "git_blame" -> gitToolHandler.gitBlame(arguments);
+                case "git_commit" -> gitToolHandler.gitCommit(arguments);
+                case "git_stage" -> gitToolHandler.gitStage(arguments);
+                case "git_unstage" -> gitToolHandler.gitUnstage(arguments);
+                case "git_branch" -> gitToolHandler.gitBranch(arguments);
+                case "git_stash" -> gitToolHandler.gitStash(arguments);
+                case "git_show" -> gitToolHandler.gitShow(arguments);
                 // Infrastructure tools
                 case "http_request" -> httpRequest(arguments);
                 case "run_command" -> runCommand(arguments);
@@ -593,7 +582,6 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
-    @SuppressWarnings("java:S135") // multiple loop exits are clearer than restructuring
     private void collectPsiReferences(PsiElement definition, GlobalSearchScope scope,
                                       String filePattern, String basePath, List<String> results) {
         for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
@@ -601,17 +589,17 @@ public final class PsiBridgeService implements Disposable {
 
             PsiElement refEl = ref.getElement();
             PsiFile file = refEl.getContainingFile();
-            if (file == null || file.getVirtualFile() == null) continue;
-            if (!filePattern.isEmpty() && doesNotMatchGlob(file.getName(), filePattern)) continue;
-
-            Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
-            if (doc != null) {
-                int line = doc.getLineNumber(refEl.getTextOffset()) + 1;
-                String relPath = basePath != null
-                    ? relativize(basePath, file.getVirtualFile().getPath())
-                    : file.getVirtualFile().getPath();
-                String lineText = getLineText(doc, line - 1);
-                results.add(String.format("%s:%d: %s", relPath, line, lineText));
+            if (file != null && file.getVirtualFile() != null
+                && (filePattern.isEmpty() || !doesNotMatchGlob(file.getName(), filePattern))) {
+                Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
+                if (doc != null) {
+                    int line = doc.getLineNumber(refEl.getTextOffset()) + 1;
+                    String relPath = basePath != null
+                        ? relativize(basePath, file.getVirtualFile().getPath())
+                        : file.getVirtualFile().getPath();
+                    String lineText = getLineText(doc, line - 1);
+                    results.add(String.format("%s:%d: %s", relPath, line, lineText));
+                }
             }
         }
     }
@@ -1003,7 +991,6 @@ public final class PsiBridgeService implements Disposable {
         });
     }
 
-    @SuppressWarnings("java:S135") // multiple loop exits are clearer than restructuring
     private int[] analyzeFilesForHighlights(Collection<VirtualFile> files, int limit, List<String> problems) {
         String basePath = project.getBasePath();
         int totalCount = 0;
@@ -1011,12 +998,12 @@ public final class PsiBridgeService implements Disposable {
         for (VirtualFile vf : files) {
             if (totalCount >= limit) break;
             Document doc = FileDocumentManager.getInstance().getDocument(vf);
-            if (doc == null) continue;
-
-            String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-            int added = collectFileHighlights(doc, relPath, limit - totalCount, problems);
-            if (added > 0) filesWithProblems++;
-            totalCount += added;
+            if (doc != null) {
+                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                int added = collectFileHighlights(doc, relPath, limit - totalCount, problems);
+                if (added > 0) filesWithProblems++;
+                totalCount += added;
+            }
         }
         return new int[]{totalCount, filesWithProblems};
     }
@@ -1043,7 +1030,6 @@ public final class PsiBridgeService implements Disposable {
         return files;
     }
 
-    @SuppressWarnings("java:S135") // multiple loop exits are clearer than restructuring
     private int collectFileHighlights(Document doc, String relPath, int remaining, List<String> problems) {
         List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
         int added = 0;
@@ -1057,17 +1043,14 @@ public final class PsiBridgeService implements Disposable {
 
             for (var h : highlights) {
                 if (added >= remaining) break;
-                if (h.getDescription() == null) continue;
-
                 var severity = h.getSeverity();
-                if (severity == com.intellij.lang.annotation.HighlightSeverity.INFORMATION ||
-                    severity.myVal < com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
-                    continue;
+                if (h.getDescription() != null
+                    && severity != com.intellij.lang.annotation.HighlightSeverity.INFORMATION
+                    && severity.myVal >= com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
+                    int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                    problems.add(String.format(FORMAT_LOCATION, relPath, line, severity.getName(), h.getDescription()));
+                    added++;
                 }
-
-                int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                problems.add(String.format(FORMAT_LOCATION, relPath, line, severity.getName(), h.getDescription()));
-                added++;
             }
         } catch (Exception e) {
             LOG.warn("Failed to analyze file: " + relPath, e);
@@ -2200,255 +2183,6 @@ public final class PsiBridgeService implements Disposable {
         return origPos - startIdx;
     }
 
-// ---- Git tools ----
-
-    /**
-     * Execute a git command in the project root directory.
-     * Returns stdout on success, or "Error: ..." on failure.
-     */
-    private String runGit(String... args) throws Exception {
-        String basePath = project.getBasePath();
-        if (basePath == null) return "Error: no project base path";
-
-        List<String> cmd = new ArrayList<>();
-        cmd.add("git");
-        cmd.add("--no-pager");
-        cmd.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.directory(new java.io.File(basePath));
-        pb.redirectErrorStream(false);
-        Process p = pb.start();
-
-        String stdout = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        String stderr = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-
-        boolean finished = p.waitFor(30, TimeUnit.SECONDS);
-        if (!finished) {
-            p.destroyForcibly();
-            return "Error: git command timed out";
-        }
-
-        if (p.exitValue() != 0) {
-            return "Error (exit " + p.exitValue() + "): " + stderr.trim();
-        }
-        return stdout;
-    }
-
-    private String gitStatus(JsonObject args) throws Exception {
-        boolean verbose = args.has("verbose") && args.get("verbose").getAsBoolean();
-        if (verbose) {
-            return runGit(STATUS_PARAM);
-        }
-        return runGit(STATUS_PARAM, "--short", "--branch");
-    }
-
-    private String gitDiff(JsonObject args) throws Exception {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("diff");
-
-        if (args.has("staged") && args.get("staged").getAsBoolean()) {
-            gitArgs.add("--cached");
-        }
-        if (args.has(PARAM_COMMIT)) {
-            gitArgs.add(args.get(PARAM_COMMIT).getAsString());
-        }
-        if (args.has("path")) {
-            gitArgs.add("--");
-            gitArgs.add(args.get("path").getAsString());
-        }
-        if (args.has(PARAM_STAT_ONLY) && args.get(PARAM_STAT_ONLY).getAsBoolean()) {
-            gitArgs.add(1, "--stat");
-        }
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-    private String gitLog(JsonObject args) throws Exception {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("log");
-
-        int maxCount = args.has("max_count") ? args.get("max_count").getAsInt() : 20;
-        gitArgs.add("-" + maxCount);
-
-        String format = args.has("format") ? args.get("format").getAsString() : "medium";
-        switch (format) {
-            case "oneline" -> gitArgs.add("--oneline");
-            case "short" -> gitArgs.add("--format=%h %s (%an, %ar)");
-            case "full" -> gitArgs.add("--format=commit %H%nAuthor: %an <%ae>%nDate:   %ad%n%n    %s%n%n%b");
-            default -> {
-                // "medium" is git default - no flag needed
-            }
-        }
-
-        if (args.has("author")) {
-            gitArgs.add("--author=" + args.get("author").getAsString());
-        }
-        if (args.has("since")) {
-            gitArgs.add("--since=" + args.get("since").getAsString());
-        }
-        if (args.has("path")) {
-            gitArgs.add("--");
-            gitArgs.add(args.get("path").getAsString());
-        }
-        if (args.has(PARAM_BRANCH)) {
-            gitArgs.add(2, args.get(PARAM_BRANCH).getAsString());
-        }
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-    private String gitBlame(JsonObject args) throws Exception {
-        if (!args.has("path")) return ERROR_PATH_REQUIRED;
-
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("blame");
-
-        if (args.has("line_start") && args.has("line_end")) {
-            gitArgs.add("-L");
-            gitArgs.add(args.get("line_start").getAsInt() + "," + args.get("line_end").getAsInt());
-        }
-
-        gitArgs.add(args.get("path").getAsString());
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-    private String gitCommit(JsonObject args) throws Exception {
-        if (!args.has(PARAM_MESSAGE)) return "Error: 'message' parameter is required";
-
-        // Save all documents before committing to ensure disk matches editor state
-        ApplicationManager.getApplication().invokeAndWait(() ->
-            ApplicationManager.getApplication().runWriteAction(() ->
-                FileDocumentManager.getInstance().saveAllDocuments()));
-
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add(PARAM_COMMIT);
-
-        if (args.has("amend") && args.get("amend").getAsBoolean()) {
-            gitArgs.add("--amend");
-        }
-        if (args.has("all") && args.get("all").getAsBoolean()) {
-            gitArgs.add(GIT_FLAG_ALL);
-        }
-
-        gitArgs.add("-m");
-        gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
-
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-    private String gitStage(JsonObject args) throws Exception {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("add");
-
-        if (args.has("all") && args.get("all").getAsBoolean()) {
-            gitArgs.add(GIT_FLAG_ALL);
-        } else if (args.has(JSON_PATHS)) {
-            for (var elem : args.getAsJsonArray(JSON_PATHS)) {
-                gitArgs.add(elem.getAsString());
-            }
-        } else if (args.has("path")) {
-            gitArgs.add(args.get("path").getAsString());
-        } else {
-            return "Error: 'path', 'paths', or 'all' parameter is required";
-        }
-
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-    private String gitUnstage(JsonObject args) throws Exception {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("restore");
-        gitArgs.add("--staged");
-
-        if (args.has(JSON_PATHS)) {
-            for (var elem : args.getAsJsonArray(JSON_PATHS)) {
-                gitArgs.add(elem.getAsString());
-            }
-        } else if (args.has("path")) {
-            gitArgs.add(args.get("path").getAsString());
-        } else {
-            return "Error: 'path' or 'paths' parameter is required";
-        }
-
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-    private String gitBranch(JsonObject args) throws Exception {
-        String action = args.has(JSON_ACTION) ? args.get(JSON_ACTION).getAsString() : "list";
-
-        return switch (action) {
-            case "list" -> {
-                boolean all = args.has("all") && args.get("all").getAsBoolean();
-                yield runGit(PARAM_BRANCH, all ? GIT_FLAG_ALL : "--list", "-v");
-            }
-            case "create" -> {
-                if (!args.has("name")) yield "Error: 'name' required for create";
-                String base = args.has("base") ? args.get("base").getAsString() : "HEAD";
-                yield runGit(PARAM_BRANCH, args.get("name").getAsString(), base);
-            }
-            case "switch", "checkout" -> {
-                if (!args.has("name")) yield "Error: 'name' required for switch";
-                yield runGit("switch", args.get("name").getAsString());
-            }
-            case "delete" -> {
-                if (!args.has("name")) yield "Error: 'name' required for delete";
-                boolean force = args.has("force") && args.get("force").getAsBoolean();
-                yield runGit(PARAM_BRANCH, force ? "-D" : "-d", args.get("name").getAsString());
-            }
-            default -> "Error: unknown action '" + action + "'. Use: list, create, switch, delete";
-        };
-    }
-
-    private String gitStash(JsonObject args) throws Exception {
-        String action = args.has(JSON_ACTION) ? args.get(JSON_ACTION).getAsString() : "list";
-
-        return switch (action) {
-            case "list" -> runGit(JSON_STASH, "list");
-            case "push", "save" -> {
-                List<String> gitArgs = new ArrayList<>(List.of(JSON_STASH, "push"));
-                if (args.has(PARAM_MESSAGE)) {
-                    gitArgs.add("-m");
-                    gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
-                }
-                if (args.has("include_untracked") && args.get("include_untracked").getAsBoolean()) {
-                    gitArgs.add("--include-untracked");
-                }
-                yield runGit(gitArgs.toArray(new String[0]));
-            }
-            case "pop" -> {
-                String index = args.has(JSON_INDEX) ? args.get(JSON_INDEX).getAsString() : "";
-                yield index.isEmpty() ? runGit(JSON_STASH, "pop") : runGit(JSON_STASH, "pop", JSON_STASH_PREFIX + index + "}");
-            }
-            case JSON_APPLY -> {
-                String index = args.has(JSON_INDEX) ? args.get(JSON_INDEX).getAsString() : "";
-                yield index.isEmpty() ? runGit(JSON_STASH, JSON_APPLY) : runGit(JSON_STASH, JSON_APPLY, JSON_STASH_PREFIX + index + "}");
-            }
-            case "drop" -> {
-                String index = args.has(JSON_INDEX) ? args.get(JSON_INDEX).getAsString() : "";
-                yield index.isEmpty() ? runGit(JSON_STASH, "drop") : runGit(JSON_STASH, "drop", JSON_STASH_PREFIX + index + "}");
-            }
-            default -> "Error: unknown stash action '" + action + "'. Use: list, push, pop, apply, drop";
-        };
-    }
-
-    private String gitShow(JsonObject args) throws Exception {
-        List<String> gitArgs = new ArrayList<>();
-        gitArgs.add("show");
-
-        String ref = args.has("ref") ? args.get("ref").getAsString() : "HEAD";
-        gitArgs.add(ref);
-
-        if (args.has(PARAM_STAT_ONLY) && args.get(PARAM_STAT_ONLY).getAsBoolean()) {
-            gitArgs.add("--stat");
-        }
-        if (args.has("path")) {
-            gitArgs.add("--");
-            gitArgs.add(args.get("path").getAsString());
-        }
-        return runGit(gitArgs.toArray(new String[0]));
-    }
-
-// ---- End git tools ----
-
 // ---- Infrastructure tools ----
 
     private String httpRequest(JsonObject args) throws Exception {
@@ -2530,7 +2264,7 @@ public final class PsiBridgeService implements Disposable {
             return "Command timed out after " + timeoutSec + " seconds.\n\n" + truncateOutput(result.output());
         }
 
-        return (result.exitCode() == 0 ? "? Command succeeded" : "? Command failed (exit code " + result.exitCode() + ")")
+        return (result.exitCode() == 0 ? "✅ Command succeeded" : "❌ Command failed (exit code " + result.exitCode() + ")")
             + "\n\n" + truncateOutput(result.output());
     }
 
@@ -4075,24 +3809,21 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    @SuppressWarnings("java:S135") // multiple loop exits are clearer than restructuring
     private void collectModuleLibrarySources(Module module, String library,
                                              List<String> withSources, List<String> withoutSources) {
         ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
         for (var entry : rootManager.getOrderEntries()) {
-            if (!(entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry)) continue;
-
-            var lib = libEntry.getLibrary();
-            if (lib == null) continue;
-
-            String entryName = entry.getPresentableName();
-            if (!library.isEmpty() && !entryName.toLowerCase().contains(library.toLowerCase())) continue;
-
-            VirtualFile[] sources = lib.getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
-            if (sources.length > 0) {
-                withSources.add(entryName);
-            } else {
-                withoutSources.add(entryName);
+            if (entry instanceof com.intellij.openapi.roots.LibraryOrderEntry libEntry
+                && libEntry.getLibrary() != null) {
+                String entryName = entry.getPresentableName();
+                if (library.isEmpty() || entryName.toLowerCase().contains(library.toLowerCase())) {
+                    VirtualFile[] sources = libEntry.getLibrary().getFiles(com.intellij.openapi.roots.OrderRootType.SOURCES);
+                    if (sources.length > 0) {
+                        withSources.add(entryName);
+                    } else {
+                        withoutSources.add(entryName);
+                    }
+                }
             }
         }
     }
