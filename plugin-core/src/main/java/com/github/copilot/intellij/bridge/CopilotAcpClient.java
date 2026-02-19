@@ -522,41 +522,7 @@ public class CopilotAcpClient implements Closeable {
                 writer.flush();
             }
 
-            // Poll for completion with activity-based timeout
-            int inactivityTimeoutSec = CopilotSettings.getPromptTimeout();
-            int maxToolCalls = CopilotSettings.getMaxToolCallsPerTurn();
-            long pollIntervalMs = 5000;
-
-            while (true) {
-                try {
-                    return future.get(pollIntervalMs, TimeUnit.MILLISECONDS);
-                } catch (TimeoutException e) {
-                    // Check inactivity
-                    long inactiveMs = System.currentTimeMillis() - lastActivityTimestamp;
-                    if (inactiveMs > inactivityTimeoutSec * 1000L) {
-                        pendingRequests.remove(id);
-                        LOG.warn("Agent inactive for " + (inactiveMs / 1000) + "s, terminating");
-                        fireDebugEvent("INACTIVITY_TIMEOUT",
-                            "No activity for " + (inactiveMs / 1000) + "s (limit: " + inactivityTimeoutSec + "s)",
-                            "Tool calls this turn: " + toolCallsInTurn.get());
-                        terminateAgent();
-                        throw new CopilotException(
-                            "Agent stopped: no activity for " + (inactiveMs / 1000) + " seconds", e, true);
-                    }
-
-                    // Check credit limit (0 = unlimited)
-                    if (maxToolCalls > 0 && toolCallsInTurn.get() >= maxToolCalls) {
-                        pendingRequests.remove(id);
-                        LOG.warn("Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls);
-                        fireDebugEvent("CREDIT_LIMIT",
-                            "Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls,
-                            "Terminating agent to prevent excess usage");
-                        terminateAgent();
-                        throw new CopilotException(
-                            "Agent stopped: tool call limit reached (" + toolCallsInTurn.get() + "/" + maxToolCalls + ")", e, true);
-                    }
-                }
-            }
+            return pollForPromptCompletion(id, future);
         } catch (ExecutionException e) {
             pendingRequests.remove(id);
             Throwable cause = e.getCause();
@@ -569,6 +535,54 @@ public class CopilotAcpClient implements Closeable {
         } catch (IOException e) {
             pendingRequests.remove(id);
             throw new CopilotException("ACP write failed: session/prompt", e, true);
+        }
+    }
+
+    /**
+     * Polls for prompt completion, checking for inactivity timeout and credit limit.
+     */
+    private JsonObject pollForPromptCompletion(long id, CompletableFuture<JsonObject> future)
+        throws CopilotException, ExecutionException, InterruptedException {
+        int inactivityTimeoutSec = CopilotSettings.getPromptTimeout();
+        int maxToolCalls = CopilotSettings.getMaxToolCallsPerTurn();
+        long pollIntervalMs = 5000;
+
+        while (true) {
+            try {
+                return future.get(pollIntervalMs, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                checkInactivityTimeout(id, inactivityTimeoutSec, e);
+                checkCreditLimit(id, maxToolCalls, e);
+            }
+        }
+    }
+
+    private void checkInactivityTimeout(long id, int inactivityTimeoutSec, TimeoutException cause)
+        throws CopilotException {
+        long inactiveMs = System.currentTimeMillis() - lastActivityTimestamp;
+        if (inactiveMs > inactivityTimeoutSec * 1000L) {
+            pendingRequests.remove(id);
+            LOG.warn("Agent inactive for " + (inactiveMs / 1000) + "s, terminating");
+            fireDebugEvent("INACTIVITY_TIMEOUT",
+                "No activity for " + (inactiveMs / 1000) + "s (limit: " + inactivityTimeoutSec + "s)",
+                "Tool calls this turn: " + toolCallsInTurn.get());
+            terminateAgent();
+            throw new CopilotException(
+                "Agent stopped: no activity for " + (inactiveMs / 1000) + " seconds", cause, true);
+        }
+    }
+
+    private void checkCreditLimit(long id, int maxToolCalls, TimeoutException cause)
+        throws CopilotException {
+        if (maxToolCalls > 0 && toolCallsInTurn.get() >= maxToolCalls) {
+            pendingRequests.remove(id);
+            LOG.warn("Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls);
+            fireDebugEvent("CREDIT_LIMIT",
+                "Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls,
+                "Terminating agent to prevent excess usage");
+            terminateAgent();
+            throw new CopilotException(
+                "Agent stopped: tool call limit reached (" + toolCallsInTurn.get() + "/" + maxToolCalls + ")", cause, true);
         }
     }
 
