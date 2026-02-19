@@ -867,7 +867,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, String> getConfigEnvVars(RunConfiguration config) throws Exception {
+    private Map<String, String> getConfigEnvVars(RunConfiguration config) {
         try {
             var getEnvs = config.getClass().getMethod("getEnvs");
             return new HashMap<>((Map<String, String>) getEnvs.invoke(config));
@@ -5108,7 +5108,9 @@ public final class PsiBridgeService implements Disposable {
                 // Force DaemonCodeAnalyzer to run on this file
                 PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
                 if (psiFile != null) {
-                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart();
+                    // Using deprecated restart() method - no alternative available
+                    //noinspection deprecation
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
                 }
 
                 resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : "") +

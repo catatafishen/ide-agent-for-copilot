@@ -12,6 +12,7 @@ import com.intellij.ui.components.*
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import java.awt.*
+import java.awt.datatransfer.StringSelection
 import javax.swing.*
 
 /**
@@ -1206,18 +1207,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val toolbar = JPanel(FlowLayout(FlowLayout.LEFT))
         val clearBtn = JButton("Clear")
         clearBtn.addActionListener { debugModel.clear() }
-        
+
         val copyBtn = JButton("Copy Selected")
         copyBtn.addActionListener {
             val selected = list.selectedValue
             if (selected != null) {
                 val content = "${selected.timestamp} [${selected.type}] ${selected.message}\n${selected.details}"
-                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                    java.awt.datatransfer.StringSelection(content), null
+                Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                    StringSelection(content), null
                 )
             }
         }
-        
+
         val exportBtn = JButton("Export All")
         exportBtn.addActionListener {
             val sb = StringBuilder()
@@ -1229,11 +1230,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
                 sb.append("\n")
             }
-            java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                java.awt.datatransfer.StringSelection(sb.toString()), null
+            Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                StringSelection(sb.toString()), null
             )
         }
-        
+
         toolbar.add(clearBtn)
         toolbar.add(copyBtn)
         toolbar.add(exportBtn)
@@ -1251,7 +1252,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 list.ensureIndexIsVisible(debugModel.size() - 1)
             }
         }
-        
+
         val copilotService = CopilotService.getInstance(project)
         try {
             val client = copilotService.getClient()

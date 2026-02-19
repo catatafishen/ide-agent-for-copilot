@@ -267,7 +267,7 @@ public class CopilotAcpClient implements Closeable {
                     args.add(mcpJarPath);
                     args.add(System.getProperty(USER_HOME));
                     codeTools.add("args", args);
-                    codeTools.add("env", new JsonArray());
+                    // env is optional - omit if empty
                     servers.add("intellij-code-tools", codeTools);
                     mcpConfig.add("mcpServers", servers);
 
@@ -334,13 +334,10 @@ public class CopilotAcpClient implements Closeable {
         JsonObject params = new JsonObject();
         params.addProperty("cwd", cwd != null ? cwd : System.getProperty(USER_HOME));
 
-        // Reference MCP servers by name (must be configured via --additional-mcp-config CLI flag)
-        // mcpServers expects an array of SERVER NAMES, not full config objects
-        JsonArray mcpServers = new JsonArray();
-        if (findMcpServerJar() != null) {
-            mcpServers.add("intellij-code-tools");
-        }
-        params.add("mcpServers", mcpServers);
+        // mcpServers must be an array in session/new (agent validates this)
+        // MCP servers are configured via --additional-mcp-config CLI flag
+        // Empty array here because servers are loaded from the config file
+        params.add("mcpServers", new JsonArray());
 
         // Do NOT send availableTools param - it would filter out MCP tools!
         // We want the agent to see both CLI tools AND MCP tools.
@@ -348,7 +345,7 @@ public class CopilotAcpClient implements Closeable {
         // so we handle it via permission denial (see handlePermissionRequest).
 
         LOG.warn("=== DEBUG: session/new params: " + params);
-        LOG.info("Session created with MCP server names: " + mcpServers);
+        LOG.info("Session created (MCP servers configured via --additional-mcp-config)");
 
         JsonObject result = sendRequest("session/new", params);
 
@@ -880,7 +877,8 @@ public class CopilotAcpClient implements Closeable {
             permTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
         }
         LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
-        fireDebugEvent("PERMISSION_REQUEST", permKind + (permTitle.isEmpty() ? "" : " - " + permTitle), 
+        String formattedPermission = formatPermissionDisplay(permKind, permTitle);
+        fireDebugEvent("PERMISSION_REQUEST", formattedPermission,
             toolCall != null ? toolCall.toString() : "");
 
         // Check if run_command is trying to do something we have a dedicated tool for
@@ -888,15 +886,15 @@ public class CopilotAcpClient implements Closeable {
         if (commandAbuse != null) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING run_command abuse: " + commandAbuse);
-            
+
             // Send guidance BEFORE rejecting so agent sees it while still in turn
             Map<String, Object> retryParams = buildRetryParams("run_command_abuse:" + commandAbuse);
             String retryMessage = (String) retryParams.get("message");
             fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
             sendPromptMessage(retryMessage);
-            
-            fireDebugEvent("PERMISSION_DENIED", "run_command abuse: " + commandAbuse, 
-                toolCall != null ? toolCall.toString() : "");
+
+            fireDebugEvent("PERMISSION_DENIED", "run_command abuse: " + commandAbuse,
+                toolCall.toString());
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = "run_command_abuse:" + commandAbuse;
             sendPermissionResponse(reqId, rejectOptionId);
@@ -906,14 +904,14 @@ public class CopilotAcpClient implements Closeable {
         if (DENIED_PERMISSION_KINDS.contains(permKind)) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
-            
+
             // Send guidance BEFORE rejecting so agent sees it while still in turn
             Map<String, Object> retryParams = buildRetryParams(permKind);
             String retryMessage = (String) retryParams.get("message");
             fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
             sendPromptMessage(retryMessage);
-            
-            fireDebugEvent("PERMISSION_DENIED", "Built-in " + permKind + " denied", 
+
+            fireDebugEvent("PERMISSION_DENIED", "Built-in " + permKind + " denied",
                 "Will retry with intellij-code-tools- prefix");
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = permKind;
@@ -921,9 +919,13 @@ public class CopilotAcpClient implements Closeable {
         } else {
             String allowOptionId = findAllowOption(reqParams);
             LOG.info("ACP request_permission: auto-approving " + permKind + ", option=" + allowOptionId);
-            fireDebugEvent("PERMISSION_APPROVED", permKind + (permTitle.isEmpty() ? "" : " - " + permTitle), "");
+            fireDebugEvent("PERMISSION_APPROVED", formattedPermission, "");
             sendPermissionResponse(reqId, allowOptionId);
         }
+    }
+
+    private String formatPermissionDisplay(String permKind, String permTitle) {
+        return permKind + (permTitle.isEmpty() ? "" : " - " + permTitle);
     }
 
     /**
@@ -1025,7 +1027,7 @@ public class CopilotAcpClient implements Closeable {
     private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
         Map<String, Object> retryData = buildRetryParams(deniedKind);
         String message = (String) retryData.get("message");
-        
+
         JsonObject retryParams = new JsonObject();
         retryParams.addProperty(SESSION_ID, sessionId);
         JsonArray retryPrompt = new JsonArray();
@@ -1037,7 +1039,7 @@ public class CopilotAcpClient implements Closeable {
         if (model != null) {
             retryParams.addProperty("model", model);
         }
-        
+
         JsonObject result = sendRequest("session/prompt", retryParams, 600);
         LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
         return result;
@@ -1251,7 +1253,7 @@ public class CopilotAcpClient implements Closeable {
      */
     private void sendPromptMessage(String message) {
         LOG.info("Sending pre-rejection guidance message: " + message.substring(0, Math.min(100, message.length())));
-        
+
         JsonObject params = new JsonObject();
         JsonArray messages = new JsonArray();
         JsonObject userMsg = new JsonObject();
@@ -1259,13 +1261,13 @@ public class CopilotAcpClient implements Closeable {
         userMsg.addProperty("content", message);
         messages.add(userMsg);
         params.add("messages", messages);
-        
+
         // Fire-and-forget notification (no request ID)
         JsonObject notification = new JsonObject();
         notification.addProperty(JSONRPC, "2.0");
         notification.addProperty("method", "session/message");
         notification.add(PARAMS, params);
-        
+
         LOG.info("Sending session/message notification: " + notification);
         sendRawMessage(notification);
     }

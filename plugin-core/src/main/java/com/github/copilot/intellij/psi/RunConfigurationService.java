@@ -332,7 +332,7 @@ public final class RunConfigurationService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, String> getConfigEnvVars(RunConfiguration config) throws Exception {
+    private Map<String, String> getConfigEnvVars(RunConfiguration config) {
         try {
             var getEnvs = config.getClass().getMethod("getEnvs");
             return new HashMap<>((Map<String, String>) getEnvs.invoke(config));
