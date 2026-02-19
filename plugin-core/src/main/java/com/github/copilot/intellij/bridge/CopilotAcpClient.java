@@ -454,15 +454,13 @@ public class CopilotAcpClient implements Closeable {
 
             String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
 
-            // If turn ended with denied tool(s), automatically retry with guidance
+            // TODO: Auto-retry disabled - was causing infinite loops when retry also got tools denied
+            // The retry needs to be smarter: only retry once, or include more context
+            // For now, pre-rejection guidance is sufficient to inform the agent
             if (builtInActionDeniedDuringTurn) {
-                LOG.info("Turn ended with denied tools - sending automatic retry");
-                fireDebugEvent("AUTO_RETRY", "Turn ended with tool denials - retrying",
+                LOG.info("Turn ended with denied tools (auto-retry disabled to prevent loops)");
+                fireDebugEvent("TURN_ENDED_WITH_DENIALS", "Tools were denied but no auto-retry",
                     "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
-
-                // Send follow-up prompt to continue the task
-                String retryPrompt = "Please continue with the task using the correct tools (intellij-code-tools- prefix).";
-                return sendPrompt(sessionId, retryPrompt, model, references, onChunk, onUpdate);
             }
 
             return stopReason;

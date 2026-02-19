@@ -130,7 +130,6 @@ public final class PsiBridgeService implements Disposable {
 
     // File Extensions
     private static final String JAVA_EXTENSION = ".java";
-    private static final String KOTLIN_EXTENSION = ".kt";
 
     // Directory Names
     private static final String BUILD_DIR = "build";
@@ -1147,7 +1146,7 @@ public final class PsiBridgeService implements Disposable {
                         "For comprehensive code quality analysis, use run_inspections instead.",
                     allFiles.size()));
             } else {
-                String summary = String.format("Found %d problems across %d files (showing up to %d):\n\n",
+                String summary = String.format("Found %d problems across %d files (showing up to %d):%n%n",
                     count, filesWithProblems, limit);
                 resultFuture.complete(summary + String.join("\n", problems));
             }
@@ -1404,7 +1403,7 @@ public final class PsiBridgeService implements Disposable {
         String inspectionId = args.get(PARAM_INSPECTION_ID).getAsString().trim();
 
         if (inspectionId.isEmpty()) {
-            return "Error: " + PARAM_INSPECTION_ID + " cannot be empty";
+            return ERROR_PREFIX + PARAM_INSPECTION_ID + " cannot be empty";
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -2165,7 +2164,7 @@ public final class PsiBridgeService implements Disposable {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
                 }
             } catch (Exception e) {
-                resultFuture.complete("Error: " + e.getMessage());
+                resultFuture.complete(ERROR_PREFIX + e.getMessage());
             }
         });
 
@@ -2541,7 +2540,7 @@ public final class PsiBridgeService implements Disposable {
         String command = args.get("command").getAsString();
         String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
         String basePath = project.getBasePath();
-        if (basePath == null) return "No project base path";
+        if (basePath == null) return ERROR_NO_PROJECT_PATH;
         int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
         String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
 
@@ -3093,6 +3092,7 @@ public final class PsiBridgeService implements Disposable {
                         }
                     }
                 } catch (NoSuchMethodException ignored) {
+                    // Method not available in this version
                 }
 
                 if (!testOutput.isEmpty()) return testOutput.toString();
@@ -3117,6 +3117,7 @@ public final class PsiBridgeService implements Disposable {
             String text = (String) getTextMethod.invoke(console);
             if (text != null && !text.isEmpty()) return text;
         } catch (NoSuchMethodException ignored) {
+            // Method not available in this version
         } catch (Exception e) {
             LOG.warn("getText() failed", e);
         }
@@ -3133,6 +3134,7 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
         } catch (Exception ignored) {
+            // XML parsing or file access errors are non-fatal
         }
 
         return null;
@@ -3152,7 +3154,7 @@ public final class PsiBridgeService implements Disposable {
             PsiSearchHelper.getInstance(project).processElementsWithWord(
                 (element, offset) -> {
                     String type = classifyElement(element);
-                    if ("class".equals(type) && element instanceof PsiNamedElement named
+                    if (TEST_TYPE_CLASS.equals(type) && element instanceof PsiNamedElement named
                         && searchName.equals(named.getName())) {
                         try {
                             var getQualifiedName = element.getClass().getMethod("getQualifiedName");
@@ -3166,6 +3168,7 @@ public final class PsiBridgeService implements Disposable {
                             }
                         } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
                                  | IllegalAccessException ignored) {
+                            // Reflection method not available or failed
                         }
                     }
                     return true;
@@ -3182,7 +3185,7 @@ public final class PsiBridgeService implements Disposable {
 // ---- Test Tools ----
 
     private String listTests(JsonObject args) {
-        String filePattern = args.has("file_pattern") ? args.get("file_pattern").getAsString() : "";
+        String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
 
         return ReadAction.compute(() -> {
             List<String> tests = new ArrayList<>();
@@ -3192,7 +3195,7 @@ public final class PsiBridgeService implements Disposable {
             fileIndex.iterateContent(vf -> {
                 if (vf.isDirectory()) return true;
                 String name = vf.getName();
-                if (!name.endsWith(".java") && !name.endsWith(".kt")) return true;
+                if (!name.endsWith(JAVA_EXTENSION) && !name.endsWith(".kt")) return true;
                 if (!filePattern.isEmpty() && doesNotMatchGlob(name, filePattern)) return true;
 
                 // Use IntelliJ's own test source classification (green background in project view)
@@ -3329,8 +3332,8 @@ public final class PsiBridgeService implements Disposable {
         // Try JaCoCo XML report
         for (String module : List.of("", "plugin-core", "mcp-server")) {
             Path jacocoXml = module.isEmpty()
-                ? Path.of(basePath, "build", "reports", "jacoco", "test", "jacocoTestReport.xml")
-                : Path.of(basePath, module, "build", "reports", "jacoco", "test", "jacocoTestReport.xml");
+                ? Path.of(basePath, BUILD_DIR, "reports", "jacoco", "test", "jacocoTestReport.xml")
+                : Path.of(basePath, module, BUILD_DIR, "reports", "jacoco", "test", "jacocoTestReport.xml");
             if (Files.exists(jacocoXml)) {
                 return parseJacocoXml(jacocoXml, file);
             }
@@ -3348,6 +3351,7 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
         } catch (Exception ignored) {
+            // XML parsing or file access errors are non-fatal
         }
 
         return """
@@ -3370,6 +3374,7 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
         } catch (Exception ignored) {
+            // XML parsing or file access errors are non-fatal
         }
         return null;
     }
@@ -3428,9 +3433,9 @@ public final class PsiBridgeService implements Disposable {
                     data.getClass().getField("MAIN_CLASS_NAME").set(data, resolvedClass);
                     if (resolvedMethod != null) {
                         data.getClass().getField("METHOD_NAME").set(data, resolvedMethod);
-                        data.getClass().getField("TEST_OBJECT").set(data, "method");
+                        data.getClass().getField("TEST_OBJECT").set(data, TEST_TYPE_METHOD);
                     } else {
-                        data.getClass().getField("TEST_OBJECT").set(data, "class");
+                        data.getClass().getField("TEST_OBJECT").set(data, TEST_TYPE_CLASS);
                     }
 
                     // Set module
@@ -3439,6 +3444,7 @@ public final class PsiBridgeService implements Disposable {
                             var setModule = config.getClass().getMethod("setModule", Module.class);
                             setModule.invoke(config, resolvedModule);
                         } catch (NoSuchMethodException ignored) {
+                            // Method not available in this version
                         }
                     }
 
@@ -3480,6 +3486,7 @@ public final class PsiBridgeService implements Disposable {
                 return sdk.getHomePath();
             }
         } catch (Exception ignored) {
+            // SDK access errors are non-fatal
         }
         // Don't fall back to IDE's JBR ? let the system JAVA_HOME take effect
         return System.getenv(JAVA_HOME_ENV);
@@ -3557,9 +3564,10 @@ public final class PsiBridgeService implements Disposable {
                 dirs.filter(p -> p.endsWith("test-results/test") && Files.isDirectory(p))
                     .forEach(reportDirs::add);
             } catch (IOException ignored) {
+                // Directory walk errors are non-fatal
             }
         } else {
-            Path dir = Path.of(basePath, module, "build", "test-results", "test");
+            Path dir = Path.of(basePath, module, BUILD_DIR, "test-results", "test");
             if (Files.isDirectory(dir)) reportDirs.add(dir);
         }
 
@@ -3603,11 +3611,12 @@ public final class PsiBridgeService implements Disposable {
                                         .getNodeValue();
                                     String msg = failNodes.item(0).getAttributes()
                                         .getNamedItem("message").getNodeValue();
-                                    failures.add(String.format("  ✗ %s.%s: %s", cls, tcName, msg));
+                                    failures.add(String.format("  ? %s.%s: %s", cls, tcName, msg));
                                 }
                             }
                         }
                     } catch (Exception ignored) {
+                        // XML parsing errors are non-fatal
                     }
                 }
             } catch (IOException ignored) {
