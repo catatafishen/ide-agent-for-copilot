@@ -55,6 +55,9 @@ public class CopilotAcpClient implements Closeable {
     private static final String META = "_meta";
     private static final String OPTIONS = "options";
     private static final String OPTION_ID = "optionId";
+    private static final String CONTENT = "content";
+    private static final String UNKNOWN = "unknown";
+    private static final String RUN_COMMAND_ABUSE_PREFIX = "run_command_abuse:";
     private static final String USER_HOME = "user.home";
 
     /**
@@ -136,13 +139,6 @@ public class CopilotAcpClient implements Closeable {
      */
     public void addDebugListener(Consumer<DebugEvent> listener) {
         debugListeners.add(listener);
-    }
-
-    /**
-     * Remove a debug event listener.
-     */
-    public void removeDebugListener(Consumer<DebugEvent> listener) {
-        debugListeners.remove(listener);
     }
 
     /**
@@ -437,7 +433,8 @@ public class CopilotAcpClient implements Closeable {
         throws CopilotException {
         ensureStarted();
 
-        LOG.info("sendPrompt: sessionId=" + sessionId + " model=" + model + " refs=" + (references != null ? references.size() : 0));
+        int refCount = references != null ? references.size() : 0;
+        LOG.info("sendPrompt: sessionId=" + sessionId + " model=" + model + " refs=" + refCount);
 
         // Register notification listener for streaming chunks
         Consumer<JsonObject> listener = createStreamingListener(sessionId, onChunk, onUpdate);
@@ -457,14 +454,14 @@ public class CopilotAcpClient implements Closeable {
                 JsonObject result = sendRequest("session/prompt", params, 600);
                 LOG.info("sendPrompt: got result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
 
-                String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : "unknown";
+                String stopReason = result.has("stopReason") ? result.get("stopReason").getAsString() : UNKNOWN;
 
                 // If tools were denied, retry with guidance (same listener, no nesting)
                 if (builtInActionDeniedDuringTurn && retryCount < maxRetries) {
                     retryCount++;
                     LOG.info("Turn ended with denied tools - auto-retry #" + retryCount);
                     fireDebugEvent("AUTO_RETRY", "Retrying after tool denial #" + retryCount,
-                        "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+                        "Last denied: " + getLastDeniedKind());
                     currentPrompt = "The previous tool calls were denied. Please continue with the task using the correct tools with 'intellij-code-tools-' prefix.";
                     continue;
                 }
@@ -472,7 +469,7 @@ public class CopilotAcpClient implements Closeable {
                 if (builtInActionDeniedDuringTurn) {
                     LOG.info("Turn ended with denied tools after " + retryCount + " retries - giving up");
                     fireDebugEvent("RETRY_EXHAUSTED", "Still denied after " + retryCount + " retries",
-                        "Last denied: " + (lastDeniedKind != null ? lastDeniedKind : "unknown"));
+                        "Last denied: " + getLastDeniedKind());
                 }
 
                 return stopReason;
@@ -480,6 +477,10 @@ public class CopilotAcpClient implements Closeable {
         } finally {
             notificationListeners.remove(listener);
         }
+    }
+
+    private String getLastDeniedKind() {
+        return lastDeniedKind != null ? lastDeniedKind : UNKNOWN;
     }
 
     private Consumer<JsonObject> createStreamingListener(@NotNull String sessionId,
@@ -512,7 +513,7 @@ public class CopilotAcpClient implements Closeable {
         LOG.debug("sendPrompt: received update type=" + updateType);
 
         if ("agent_message_chunk".equals(updateType) && onChunk != null) {
-            JsonObject content = update.has("content") ? update.getAsJsonObject("content") : null;
+            JsonObject content = update.has(CONTENT) ? update.getAsJsonObject(CONTENT) : null;
             if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
                 onChunk.accept(content.get("text").getAsString());
             }
@@ -909,15 +910,15 @@ public class CopilotAcpClient implements Closeable {
             LOG.info("ACP request_permission: DENYING run_command abuse: " + commandAbuse);
 
             // Send guidance BEFORE rejecting so agent sees it while still in turn
-            Map<String, Object> retryParams = buildRetryParams("run_command_abuse:" + commandAbuse);
-            String retryMessage = (String) retryParams.get("message");
+            Map<String, Object> retryParams = buildRetryParams(RUN_COMMAND_ABUSE_PREFIX + commandAbuse);
+            String retryMessage = (String) retryParams.get(MESSAGE);
             fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
             sendPromptMessage(retryMessage);
 
             fireDebugEvent("PERMISSION_DENIED", "run_command abuse: " + commandAbuse,
                 toolCall.toString());
             builtInActionDeniedDuringTurn = true;
-            lastDeniedKind = "run_command_abuse:" + commandAbuse;
+            lastDeniedKind = RUN_COMMAND_ABUSE_PREFIX + commandAbuse;
             sendPermissionResponse(reqId, rejectOptionId);
             return;
         }
@@ -928,7 +929,7 @@ public class CopilotAcpClient implements Closeable {
 
             // Send guidance BEFORE rejecting so agent sees it while still in turn
             Map<String, Object> retryParams = buildRetryParams(permKind);
-            String retryMessage = (String) retryParams.get("message");
+            String retryMessage = (String) retryParams.get(MESSAGE);
             fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
             sendPromptMessage(retryMessage);
 
@@ -961,18 +962,21 @@ public class CopilotAcpClient implements Closeable {
             return null;
         }
 
-        // Extract command from parameters
-        String command = "";
-        if (toolCall.has("parameters")) {
-            JsonObject params = toolCall.getAsJsonObject("parameters");
-            if (params.has("command")) {
-                command = params.get("command").getAsString().toLowerCase().trim();
-            }
-        }
-
+        String command = extractCommand(toolCall);
         if (command.isEmpty()) return null;
 
-        // Check for test patterns - must come before general 'test' word check
+        return detectAbusePattern(command);
+    }
+
+    private String extractCommand(JsonObject toolCall) {
+        if (!toolCall.has("parameters")) return "";
+        JsonObject params = toolCall.getAsJsonObject("parameters");
+        if (!params.has(COMMAND)) return "";
+        return params.get(COMMAND).getAsString().toLowerCase().trim();
+    }
+
+    private String detectAbusePattern(String command) {
+        // Check for test patterns
         if (command.matches(".*(gradlew|gradle|mvn|npm|yarn|pnpm|pytest|jest|mocha|go) test.*") ||
             command.matches(".*\\./gradlew.*test.*") ||
             command.matches(".*python.*-m.*pytest.*") ||
@@ -1015,8 +1019,8 @@ public class CopilotAcpClient implements Closeable {
         String instruction;
 
         // Specific guidance for run_command abuse
-        if (deniedKind.startsWith("run_command_abuse:")) {
-            String abuseType = deniedKind.substring("run_command_abuse:".length());
+        if (deniedKind.startsWith(RUN_COMMAND_ABUSE_PREFIX)) {
+            String abuseType = deniedKind.substring(RUN_COMMAND_ABUSE_PREFIX.length());
             instruction = switch (abuseType) {
                 case "test" -> "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
                     "Provides structured results, coverage, and failure details.";
@@ -1034,36 +1038,7 @@ public class CopilotAcpClient implements Closeable {
             instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
         }
 
-        return Map.of("message", instruction);
-    }
-
-    /**
-     * Build and send a retry prompt after a built-in action was denied,
-     * instructing the agent to use IntelliJ MCP tools instead.
-     * <p>
-     * DEPRECATED: Now using pre-rejection guidance (see handlePermissionRequest).
-     * Kept for reference only.
-     */
-    @Deprecated
-    private JsonObject sendRetryPrompt(@NotNull String sessionId, @Nullable String model, @NotNull String deniedKind) throws CopilotException {
-        Map<String, Object> retryData = buildRetryParams(deniedKind);
-        String message = (String) retryData.get("message");
-
-        JsonObject retryParams = new JsonObject();
-        retryParams.addProperty(SESSION_ID, sessionId);
-        JsonArray retryPrompt = new JsonArray();
-        JsonObject retryContent = new JsonObject();
-        retryContent.addProperty("type", "text");
-        retryContent.addProperty("text", message);
-        retryPrompt.add(retryContent);
-        retryParams.add("prompt", retryPrompt);
-        if (model != null) {
-            retryParams.addProperty("model", model);
-        }
-
-        JsonObject result = sendRequest("session/prompt", retryParams, 600);
-        LOG.info("sendPrompt: retry result: " + result.toString().substring(0, Math.min(200, result.toString().length())));
-        return result;
+        return Map.of(MESSAGE, instruction);
     }
 
     @SuppressWarnings("SameParameterValue") // Error code is standard JSON-RPC -32_601 for "Method not found"
@@ -1079,13 +1054,6 @@ public class CopilotAcpClient implements Closeable {
     }
 
     // ---- End agent request handlers ----
-
-    /**
-     * Check if the last prompt turn had tools denied (for UI to handle retry).
-     */
-    public boolean hadToolsDenied() {
-        return builtInActionDeniedDuringTurn;
-    }
 
     /**
      * Get the usage multiplier for a model ID (e.g., "1x", "3x", "0.33x").
@@ -1286,14 +1254,14 @@ public class CopilotAcpClient implements Closeable {
         JsonArray messages = new JsonArray();
         JsonObject userMsg = new JsonObject();
         userMsg.addProperty("role", "user");
-        userMsg.addProperty("content", message);
+        userMsg.addProperty(CONTENT, message);
         messages.add(userMsg);
         params.add("messages", messages);
 
         // Fire-and-forget notification (no request ID)
         JsonObject notification = new JsonObject();
         notification.addProperty(JSONRPC, "2.0");
-        notification.addProperty("method", "session/message");
+        notification.addProperty(METHOD, "session/message");
         notification.add(PARAMS, params);
 
         LOG.info("Sending session/message notification: " + notification);
