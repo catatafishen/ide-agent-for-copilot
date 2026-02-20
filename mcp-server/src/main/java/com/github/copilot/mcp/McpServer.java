@@ -33,6 +33,7 @@ import java.util.stream.Stream;
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
  * Provides 54 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
  */
+@SuppressWarnings("SpellCheckingInspection") // tool descriptions are intentionally brief
 public class McpServer {
 
     private static final Logger LOG = Logger.getLogger(McpServer.class.getName());

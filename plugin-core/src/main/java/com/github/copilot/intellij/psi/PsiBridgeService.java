@@ -2665,6 +2665,7 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
+        //noinspection RedundantCast — needed for Computable vs ThrowableComputable overload resolution
         return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
             try {
                 List<com.intellij.execution.ui.RunContentDescriptor> descriptors = collectRunDescriptors();
@@ -2881,6 +2882,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public interface ClassResolver {
+        @SuppressWarnings("unused")
+            // parameter used by implementations
         ClassInfo resolveClass(String className);
     }
 
@@ -4017,6 +4020,7 @@ public final class PsiBridgeService implements Disposable {
                 com.intellij.ide.scratch.ScratchRootType.getInstance();
 
             // Cast needed: runWriteAction is overloaded (Computable vs. ThrowableComputable)
+            //noinspection RedundantCast
             resultFile[0] = ApplicationManager.getApplication().runWriteAction(
                 (com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
                     try {

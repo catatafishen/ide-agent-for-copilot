@@ -1,7 +1,6 @@
 package com.github.copilot.intellij.psi;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
 import com.intellij.util.SlowOperations;
 
 /**
@@ -10,6 +9,7 @@ import com.intellij.util.SlowOperations;
  * tool handlers can resolve files and perform write actions without triggering
  * "Slow operations are prohibited on EDT" assertions.
  */
+@SuppressWarnings("UnstableApiUsage")
 public final class EdtUtil {
 
     private EdtUtil() {
@@ -24,18 +24,6 @@ public final class EdtUtil {
                 runnable.run();
             }
         });
-    }
-
-    /**
-     * Dispatch a runnable to the EDT with a specific modality state,
-     * allowing slow operations.
-     */
-    public static void invokeLater(Runnable runnable, ModalityState modalityState) {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try (var ignored = SlowOperations.startSection(SlowOperations.ACTION_PERFORM)) {
-                runnable.run();
-            }
-        }, modalityState);
     }
 
     /**

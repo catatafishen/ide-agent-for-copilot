@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="Markdown Files" pattern="file[intellij-copilot-plugin]:*.md||file[intellij-copilot-plugin]:docs//*.md" />
+</component>

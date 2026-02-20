@@ -27,10 +27,10 @@ dependencies {
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:2.13.1")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testImplementation("junit:junit:4.13.2")  // Required by IntelliJ test framework
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.1")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.11.4")
 }
 
 // Copy MCP server JAR into plugin lib for bundling
