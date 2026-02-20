@@ -750,7 +750,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var settings = RunManager.getInstance(project).findConfigurationByName(name);
                 if (settings == null) {
@@ -802,7 +802,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 ReadAction.run(() -> collectProblems(pathStr, resultFuture));
             } catch (Exception e) {
@@ -1333,7 +1333,7 @@ public final class PsiBridgeService implements Disposable {
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 processSuppressInspection(pathStr, line, inspectionId, resultFuture);
             } catch (Exception e) {
@@ -1551,7 +1551,7 @@ public final class PsiBridgeService implements Disposable {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
         // Trigger Qodana's Run action via the IDE action system
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance();
                 var qodanaAction = actionManager.getAction("Qodana.RunQodanaAction");
@@ -1876,7 +1876,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
@@ -1913,7 +1913,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
@@ -1997,7 +1997,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
 
@@ -2125,7 +2125,7 @@ public final class PsiBridgeService implements Disposable {
      * Runs asynchronously on EDT — does not block the caller.
      */
     private void autoFormatAfterWrite(String pathStr) {
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) return;
@@ -2284,7 +2284,7 @@ public final class PsiBridgeService implements Disposable {
 
         OSProcessHandler processHandler = createCapturingProcessHandler(cmd, output, exitFuture);
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 new RunContentExecutor(project, processHandler)
                     .withTitle(title)
@@ -2401,7 +2401,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
                 var manager = managerClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
@@ -2502,7 +2502,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var managerClass = Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager");
                 var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(TERMINAL_TOOL_WINDOW_ID);
@@ -2665,7 +2665,6 @@ public final class PsiBridgeService implements Disposable {
         int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
-        //noinspection RedundantCast
         return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
             try {
                 List<com.intellij.execution.ui.RunContentDescriptor> descriptors = collectRunDescriptors();
@@ -3113,7 +3112,7 @@ public final class PsiBridgeService implements Disposable {
             final String resolvedMethod = testMethod;
             final Module resolvedModule = classInfo.module();
 
-            ApplicationManager.getApplication().invokeLater(() -> {
+            EdtUtil.invokeLater(() -> {
                 try {
                     String result = createAndRunJUnitConfig(
                         junitType, resolvedClass, resolvedMethod, resolvedModule);
@@ -3758,7 +3757,7 @@ public final class PsiBridgeService implements Disposable {
         try {
             java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
 
-            ApplicationManager.getApplication().invokeLater(() -> {
+            EdtUtil.invokeLater(() -> {
                 try {
                     StringBuilder sb = new StringBuilder();
                     boolean settingChanged = enableDownloadSources(sb);
@@ -3994,7 +3993,7 @@ public final class PsiBridgeService implements Disposable {
             final com.intellij.openapi.vfs.VirtualFile[] resultFile = new com.intellij.openapi.vfs.VirtualFile[1];
             final String[] errorMsg = new String[1];
 
-            ApplicationManager.getApplication().invokeAndWait(() ->
+            EdtUtil.invokeAndWait(() ->
                 createAndOpenScratchFile(name, content, resultFile, errorMsg));
 
             if (resultFile[0] == null) {
@@ -4018,7 +4017,6 @@ public final class PsiBridgeService implements Disposable {
                 com.intellij.ide.scratch.ScratchRootType.getInstance();
 
             // Cast needed: runWriteAction is overloaded (Computable vs. ThrowableComputable)
-            //noinspection RedundantCast
             resultFile[0] = ApplicationManager.getApplication().runWriteAction(
                 (com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile>) () -> {
                     try {
@@ -4061,7 +4059,7 @@ public final class PsiBridgeService implements Disposable {
             final int[] count = {0};
             final Set<String> seenPaths = new HashSet<>();
 
-            ApplicationManager.getApplication().invokeAndWait(() -> {
+            EdtUtil.invokeAndWait(() -> {
                 try {
                     result.append("Scratch files:\n");
 
@@ -4148,7 +4146,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
@@ -4296,7 +4294,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 String result = resolveAndRefactor(operation, pathStr, symbolName, targetLine, newName);
                 resultFuture.complete(result);
@@ -4730,7 +4728,7 @@ public final class PsiBridgeService implements Disposable {
 
         // Refresh VFS so IntelliJ sees the file
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 LocalFileSystem.getInstance().refreshAndFindFileByPath(filePath.toString());
                 resultFuture.complete("✓ Created file: " + pathStr + " (" + content.length() + FORMAT_CHARS_SUFFIX);
@@ -4771,7 +4769,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private void scheduleFileDeletion(VirtualFile vf, String pathStr, CompletableFuture<String> resultFuture) {
-        ApplicationManager.getApplication().invokeLater(() ->
+        EdtUtil.invokeLater(() ->
             ApplicationManager.getApplication().runWriteAction(() -> {
                 try {
                     com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
@@ -4800,7 +4798,7 @@ public final class PsiBridgeService implements Disposable {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         long startTime = System.currentTimeMillis();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var compilerManager = com.intellij.openapi.compiler.CompilerManager.getInstance(project);
 
@@ -4898,7 +4896,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {
@@ -4944,7 +4942,7 @@ public final class PsiBridgeService implements Disposable {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) {

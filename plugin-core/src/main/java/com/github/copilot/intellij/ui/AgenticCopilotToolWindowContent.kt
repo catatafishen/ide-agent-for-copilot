@@ -646,7 +646,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                     references.add(CopilotAcpClient.ResourceReference(uri, mimeType, text))
                                 }
                             }
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             appendResponse("⚠ Could not read context: ${item.name}\n")
                         }
                     }
@@ -785,7 +785,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val lineCount = try {
                     val editor = fileEditorManager.selectedTextEditor
                     editor?.document?.lineCount ?: 0
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     0
                 }
 
@@ -1004,11 +1004,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Double-click or Enter opens file in editor
         fun openSelectedFile() {
             val node = tree.lastSelectedPathComponent as? FileTreeNode ?: return
-            val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
-                node.filePath.replace("\\", "/")
-            )
-            if (vFile != null) {
-                ApplicationManager.getApplication().invokeLater {
+            com.github.copilot.intellij.psi.EdtUtil.invokeLater {
+                val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
+                    node.filePath.replace("\\", "/")
+                )
+                if (vFile != null) {
                     com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vFile, true)
                 }
             }
@@ -1257,7 +1257,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         try {
             val client = copilotService.getClient()
             client.addDebugListener(listener)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Client not started yet - that's ok, will add listener when it starts
         }
 
@@ -1385,8 +1385,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.add(JBLabel("Inactivity timeout (seconds):"), gbc)
 
         gbc.gridx = 1
-        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 30, 600, 10))
-        timeoutSpinner.toolTipText = "Stop agent after this many seconds of no activity (30-600s, default 120s)"
+        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 30, 600, 30))
+        timeoutSpinner.toolTipText =
+            "Stop agent after this many seconds of no activity. Includes model thinking time, so keep generous for complex tasks (default 300s)"
         panel.add(timeoutSpinner, gbc)
 
         gbc.gridx = 0

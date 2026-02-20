@@ -148,7 +148,7 @@ final class GitToolHandler {
         if (!args.has(PARAM_MESSAGE)) return "Error: 'message' parameter is required";
 
         // Save all documents before committing to ensure disk matches editor state
-        ApplicationManager.getApplication().invokeAndWait(() ->
+        EdtUtil.invokeAndWait(() ->
             ApplicationManager.getApplication().runWriteAction(() ->
                 FileDocumentManager.getInstance().saveAllDocuments()));
 

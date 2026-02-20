@@ -6,7 +6,6 @@ import com.intellij.execution.RunManager;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
@@ -24,6 +23,7 @@ import java.util.concurrent.TimeUnit;
  * Service for managing IntelliJ run configurations.
  * Handles creation, editing, execution, and listing of run configurations.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 public final class RunConfigurationService {
     private static final Logger LOG = Logger.getInstance(RunConfigurationService.class);
 
@@ -79,7 +79,7 @@ public final class RunConfigurationService {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var settings = RunManager.getInstance(project).findConfigurationByName(name);
                 if (settings == null) {
@@ -115,7 +115,7 @@ public final class RunConfigurationService {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 RunManager runManager = RunManager.getInstance(project);
 
@@ -160,7 +160,7 @@ public final class RunConfigurationService {
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtUtil.invokeLater(() -> {
             try {
                 var settings = RunManager.getInstance(project).findConfigurationByName(name);
                 if (settings == null) {
@@ -168,31 +168,7 @@ public final class RunConfigurationService {
                     return;
                 }
 
-                RunConfiguration config = settings.getConfiguration();
-                List<String> changes = new ArrayList<>();
-
-                // Apply common properties
-                if (args.has("env")) {
-                    applyEnvVars(config, args.getAsJsonObject("env"), changes);
-                }
-                if (args.has(PARAM_JVM_ARGS)) {
-                    setViaReflection(config, "setVMParameters",
-                        args.get(PARAM_JVM_ARGS).getAsString(), changes, "JVM args");
-                }
-                if (args.has(PARAM_PROGRAM_ARGS)) {
-                    setViaReflection(config, "setProgramParameters",
-                        args.get(PARAM_PROGRAM_ARGS).getAsString(), changes, "program args");
-                }
-                if (args.has(PARAM_WORKING_DIR)) {
-                    setViaReflection(config, "setWorkingDirectory",
-                        args.get(PARAM_WORKING_DIR).getAsString(), changes, "working directory");
-                }
-
-                // Apply type-specific properties
-                applyTypeSpecificProperties(config, args);
-                if (args.has(PARAM_MAIN_CLASS)) changes.add("main class");
-                if (args.has(PARAM_TEST_CLASS)) changes.add("test class");
-                if (args.has("tasks")) changes.add("Gradle tasks");
+                List<String> changes = applyEditProperties(settings.getConfiguration(), args);
 
                 if (changes.isEmpty()) {
                     resultFuture.complete("No changes applied. Available properties: "
@@ -208,6 +184,33 @@ public final class RunConfigurationService {
         });
 
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private List<String> applyEditProperties(RunConfiguration config, JsonObject args) {
+        List<String> changes = new ArrayList<>();
+
+        if (args.has("env")) {
+            applyEnvVars(config, args.getAsJsonObject("env"), changes);
+        }
+        if (args.has(PARAM_JVM_ARGS)) {
+            setViaReflection(config, "setVMParameters",
+                args.get(PARAM_JVM_ARGS).getAsString(), changes, "JVM args");
+        }
+        if (args.has(PARAM_PROGRAM_ARGS)) {
+            setViaReflection(config, "setProgramParameters",
+                args.get(PARAM_PROGRAM_ARGS).getAsString(), changes, "program args");
+        }
+        if (args.has(PARAM_WORKING_DIR)) {
+            setViaReflection(config, "setWorkingDirectory",
+                args.get(PARAM_WORKING_DIR).getAsString(), changes, "working directory");
+        }
+
+        applyTypeSpecificProperties(config, args);
+        if (args.has(PARAM_MAIN_CLASS)) changes.add("main class");
+        if (args.has(PARAM_TEST_CLASS)) changes.add("test class");
+        if (args.has("tasks")) changes.add("Gradle tasks");
+
+        return changes;
     }
 
     // ---- Helper Methods ----
@@ -274,6 +277,7 @@ public final class RunConfigurationService {
         return getData.invoke(config);
     }
 
+    @SuppressWarnings("java:S3011") // reflection needed to set JUnit PersistentData fields
     private void setJUnitField(Object data, String fieldName, Object value) throws ReflectiveOperationException {
         data.getClass().getField(fieldName).set(data, value);
     }
