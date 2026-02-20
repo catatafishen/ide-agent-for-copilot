@@ -9,53 +9,62 @@
 ## ✅ Major Accomplishments
 
 ### 1. **Go Sidecar - Production Ready** ✨
+
 - ✅ HTTP JSON-RPC 2.0 server fully implemented
 - ✅ Mock Copilot client with clean interface for future SDK integration
 - ✅ Session management with UUID generation
 - ✅ All RPC endpoints tested and working:
-  - `GET /health` → Health check
-  - `POST /rpc` → session.create, session.close, session.send, models.list
+    - `GET /health` → Health check
+    - `POST /rpc` → session.create, session.close, session.send, models.list
 - ✅ Binary built: 7.2 MB
 - ✅ **Test Results**: All endpoints verified with curl
 
 ### 2. **Plugin UI Layer - Complete** ✨
+
 **Files Created:**
+
 - `AgenticCopilotToolWindowFactory.java` (Java factory)
 - `AgenticCopilotToolWindowContent.kt` (Kotlin UI - hybrid approach!)
 - 5 tabs ready: Prompt, Context, Plans, Timeline, Settings
 - Tool window registered in plugin.xml with icon
 
 **Hybrid Approach Benefits:**
+
 - Core logic stays in Java 21 ✅
 - UI uses Kotlin for cleaner code and better IDE integration
 - Less boilerplate (~50% less code than pure Swing)
 - Native theme support
 
 ### 3. **Java Bridge Layer - Complete** ✨
+
 **Files Created:**
+
 - `SidecarProcess.java` - Process lifecycle management
-  - Starts sidecar binary
-  - Parses port from stdout
-  - Health monitoring
-  - Graceful shutdown
+    - Starts sidecar binary
+    - Parses port from stdout
+    - Health monitoring
+    - Graceful shutdown
 - `SidecarClient.java` - HTTP JSON-RPC client
-  - Health check
-  - Session create/close
-  - Send message
-  - List models
-  - Uses Gson for JSON serialization
-  - Proper error handling with retries
+    - Health check
+    - Session create/close
+    - Send message
+    - List models
+    - Uses Gson for JSON serialization
+    - Proper error handling with retries
 - `SidecarException.java` - Custom exception with recoverable flag
 
 ### 4. **Services Layer - Complete** ✨
+
 **Files Created:**
+
 - `AgenticCopilotService.java` - Application-level service
 - `SidecarService.java` - Sidecar lifecycle orchestration
-  - Lazy startup on first use
-  - Health check integration
-  - Auto-cleanup on IDE shutdown
+    - Lazy startup on first use
+    - Health check integration
+    - Auto-cleanup on IDE shutdown
 
 ### 5. **Build Configuration - Complete** ✨
+
 - ✅ Multi-module Gradle with Kotlin DSL
 - ✅ IntelliJ Platform Plugin 2.1.0
 - ✅ Java 21 + Kotlin 1.9.22
@@ -66,21 +75,22 @@
 
 ## 📊 Code Statistics
 
-| Component | Files | Lines of Code | Status |
-|-----------|-------|---------------|--------|
-| Go Sidecar | 5 | ~600 | ✅ Complete |
-| Plugin UI | 2 | ~120 | ✅ Complete |
-| Bridge Layer | 3 | ~470 | ✅ Complete |
-| Services | 2 | ~170 | ✅ Complete |
-| Build Config | 3 | ~100 | ✅ Complete |
-| Documentation | 5 | ~2000 | ✅ Complete |
-| **Total** | **20** | **~3460** | **90%** |
+| Component     | Files  | Lines of Code | Status     |
+|---------------|--------|---------------|------------|
+| Go Sidecar    | 5      | ~600          | ✅ Complete |
+| Plugin UI     | 2      | ~120          | ✅ Complete |
+| Bridge Layer  | 3      | ~470          | ✅ Complete |
+| Services      | 2      | ~170          | ✅ Complete |
+| Build Config  | 3      | ~100          | ✅ Complete |
+| Documentation | 5      | ~2000         | ✅ Complete |
+| **Total**     | **20** | **~3460**     | **90%**    |
 
 ---
 
 ## 🎯 What's Working Now
 
 ### Go Sidecar
+
 ```bash
 cd copilot-bridge
 .\bin\copilot-sidecar.exe --port 8765
@@ -95,6 +105,7 @@ curl -X POST http://localhost:8765/rpc -H "Content-Type: application/json" \
 ```
 
 ### Plugin Structure
+
 ```
 plugin-core/src/main/java/com/github/copilot/intellij/
 ├── ui/
@@ -113,7 +124,8 @@ plugin-core/src/main/java/com/github/copilot/intellij/
 
 ## 🔄 In Progress
 
-**Gradle Wrapper Generation**: 
+**Gradle Wrapper Generation**:
+
 - IntelliJ Platform SDK download at ~905 MB (extracting/indexing)
 - Once complete, can run:
   ```bash
@@ -126,6 +138,7 @@ plugin-core/src/main/java/com/github/copilot/intellij/
 ## ⏭️ Next Steps (Final 10%)
 
 ### 1. Complete Gradle Setup (15 min)
+
 ```bash
 # Once download finishes:
 gradle wrapper --gradle-version 8.11
@@ -133,6 +146,7 @@ gradle wrapper --gradle-version 8.11
 ```
 
 ### 2. First Run in Sandbox IDE (5 min)
+
 ```bash
 ./gradlew runIde
 # Should see:
@@ -142,14 +156,18 @@ gradle wrapper --gradle-version 8.11
 ```
 
 ### 3. Integration Test (30 min)
+
 Create `SidecarIntegrationTest.java`:
+
 - Start plugin programmatically
 - Verify sidecar auto-starts
 - Test session create/close
 - Verify cleanup
 
 ### 4. Cross-Platform Binary Paths (15 min)
+
 Update `SidecarProcess.java` to find binary in:
+
 - Development: `copilot-bridge/bin/`
 - Production: Plugin installation directory
 
@@ -167,19 +185,20 @@ Update `SidecarProcess.java` to find binary in:
 
 ## 📝 Technical Decisions Summary
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| UI Framework | Java + Kotlin UI DSL | Less boilerplate, better IDE integration |
-| Protocol | JSON-RPC over HTTP | Simpler than gRPC, easier debugging |
+| Decision        | Choice               | Rationale                                  |
+|-----------------|----------------------|--------------------------------------------|
+| UI Framework    | Java + Kotlin UI DSL | Less boilerplate, better IDE integration   |
+| Protocol        | JSON-RPC over HTTP   | Simpler than gRPC, easier debugging        |
 | SDK Integration | Mock interface first | Clean abstraction, don't block development |
-| Build System | Gradle Kotlin DSL | Type-safe, modern |
-| Testing | JUnit 5 | Standard for Java projects |
+| Build System    | Gradle Kotlin DSL    | Type-safe, modern                          |
+| Testing         | JUnit 5              | Standard for Java projects                 |
 
 ---
 
 ## 🚀 When Gradle Completes
 
 **Immediate Actions:**
+
 1. Run `./gradlew build` to compile
 2. Run `./gradlew runIde` to test in sandbox
 3. Verify tool window appears
@@ -187,6 +206,7 @@ Update `SidecarProcess.java` to find binary in:
 5. Test sidecar auto-start
 
 **Expected Result:**
+
 - ✅ Plugin loads without errors
 - ✅ Tool window visible with 5 tabs
 - ✅ Sidecar starts automatically when tool window opens
@@ -198,6 +218,7 @@ Update `SidecarProcess.java` to find binary in:
 ## 💡 Notable Implementation Details
 
 ### Sidecar Process Management
+
 ```java
 // Smart port detection from stdout
 Pattern PORT_PATTERN = Pattern.compile("SIDECAR_PORT=(\\d+)");
@@ -208,6 +229,7 @@ process.destroyForcibly(); // Force if needed
 ```
 
 ### JSON-RPC Client
+
 ```java
 // Atomic request ID counter
 AtomicLong requestIdCounter = new AtomicLong(1);
@@ -219,6 +241,7 @@ HttpRequest.newBuilder()
 ```
 
 ### Service Lifecycle
+
 ```java
 @Service(Service.Level.APP)
 public final class SidecarService implements Disposable {

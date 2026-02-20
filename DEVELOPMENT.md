@@ -3,10 +3,11 @@
 ## Build & Deploy
 
 ### Prerequisites
+
 - JDK 21 (Gradle JVM pinned via `gradle.properties` → `org.gradle.java.home`)
 - GitHub Copilot CLI installed and authenticated
-  - **Windows**: `winget install GitHub.Copilot`
-  - **Linux**: `sudo npm install -g @anthropic-ai/copilot-cli` or download from GitHub releases
+    - **Windows**: `winget install GitHub.Copilot`
+    - **Linux**: `sudo npm install -g @anthropic-ai/copilot-cli` or download from GitHub releases
 
 ### Build Plugin
 
@@ -27,6 +28,7 @@ Output: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
 The plugin ZIP must be extracted into IntelliJ's plugin directory.
 
 **Linux:**
+
 ```bash
 # Find your IntelliJ config directory (adjust version as needed)
 PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3/plugins
@@ -43,6 +45,7 @@ idea &  # or full path to idea.sh
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 $ij = Get-Process -Name "idea64" -ErrorAction SilentlyContinue
 if ($ij) { Stop-Process -Id $ij.Id -Force; Start-Sleep -Seconds 5 }
@@ -71,9 +74,12 @@ Run the plugin in a sandboxed IntelliJ instance (separate config/data, doesn't t
 - Sandbox data stored in `plugin-core/build/idea-sandbox/`
 - Open a **different project** than the one open in your main IDE to avoid conflicts
 
-**Auto-reload (Linux only):** `autoReload = true` is configured in `build.gradle.kts`. On Linux, after code changes run `./gradlew :plugin-core:prepareSandbox` and the plugin reloads without restarting the sandbox IDE. On Windows, file locks prevent this — close the sandbox IDE first, then re-run `runIde`.
+**Auto-reload (Linux only):** `autoReload = true` is configured in `build.gradle.kts`. On Linux, after code changes run
+`./gradlew :plugin-core:prepareSandbox` and the plugin reloads without restarting the sandbox IDE. On Windows, file
+locks prevent this — close the sandbox IDE first, then re-run `runIde`.
 
 **Iterating on changes:**
+
 1. Close the sandbox IDE (Windows) or leave it open (Linux)
 2. `./gradlew :plugin-core:prepareSandbox` (rebuilds plugin into sandbox)
 3. On Windows: `./gradlew :plugin-core:runIde` (relaunches sandbox)
@@ -92,7 +98,8 @@ Run the plugin in a sandboxed IntelliJ instance (separate config/data, doesn't t
 
 ### ACP Protocol Flow
 
-The plugin communicates with GitHub Copilot CLI via the **Agent Client Protocol (ACP)** — JSON-RPC 2.0 over stdin/stdout:
+The plugin communicates with GitHub Copilot CLI via the **Agent Client Protocol (ACP)** — JSON-RPC 2.0 over
+stdin/stdout:
 
 ```
 Plugin (CopilotAcpClient)
@@ -138,6 +145,7 @@ Copilot CLI ──stdio──► MCP Server (JAR) ──HTTP──► PsiBridgeS
 ### Auto-Format After Write
 
 Every file write through `intellij_write_file` triggers:
+
 1. `PsiDocumentManager.commitAllDocuments()`
 2. `OptimizeImportsProcessor`
 3. `ReformatCodeProcessor`
@@ -146,23 +154,26 @@ This runs inside a single undoable command group on the EDT.
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `plugin-core/.../bridge/CopilotAcpClient.java` | ACP client, permission handler, retry logic |
-| `plugin-core/.../psi/PsiBridgeService.java` | 55 MCP tools via IntelliJ APIs |
-| `plugin-core/.../services/CopilotService.java` | Service entry point, starts ACP client |
-| `plugin-core/.../ui/AgenticCopilotToolWindowContent.kt` | Main UI (Kotlin Swing) |
-| `mcp-server/.../mcp/McpServer.java` | MCP stdio server, tool registrations |
+| File                                                    | Purpose                                     |
+|---------------------------------------------------------|---------------------------------------------|
+| `plugin-core/.../bridge/CopilotAcpClient.java`          | ACP client, permission handler, retry logic |
+| `plugin-core/.../psi/PsiBridgeService.java`             | 55 MCP tools via IntelliJ APIs              |
+| `plugin-core/.../services/CopilotService.java`          | Service entry point, starts ACP client      |
+| `plugin-core/.../ui/AgenticCopilotToolWindowContent.kt` | Main UI (Kotlin Swing)                      |
+| `mcp-server/.../mcp/McpServer.java`                     | MCP stdio server, tool registrations        |
 
 ## Debugging
 
 ### Enable Debug Logging
+
 Add to `Help > Diagnostic Tools > Debug Log Settings`:
+
 ```
 #com.github.copilot.intellij
 ```
 
 ### Log Locations
+
 - **Linux IDE**: `~/.local/share/JetBrains/IntelliJIdea2025.3/log/idea.log`
 - **Windows IDE**: `%LOCALAPPDATA%\JetBrains\IntelliJIdea2025.3\log\idea.log`
 - **Sandbox IDE**: `plugin-core/build/idea-sandbox/IU-2025.3.1.1/log/idea.log`
@@ -170,12 +181,12 @@ Add to `Help > Diagnostic Tools > Debug Log Settings`:
 
 ### Common Issues
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| "Error loading models" | Copilot CLI not authenticated | Run `copilot auth` |
-| "RPC call failed: session.create" | ACP process died | Check `idea.log` for stderr |
-| Agent uses built-in edit tool | Deny+retry not working | Check permission handler logs |
-| "file changed externally" dialog | Write bypassed Document API | Verify `intellij_write_file` is used |
+| Issue                             | Cause                         | Fix                                  |
+|-----------------------------------|-------------------------------|--------------------------------------|
+| "Error loading models"            | Copilot CLI not authenticated | Run `copilot auth`                   |
+| "RPC call failed: session.create" | ACP process died              | Check `idea.log` for stderr          |
+| Agent uses built-in edit tool     | Deny+retry not working        | Check permission handler logs        |
+| "file changed externally" dialog  | Write bypassed Document API   | Verify `intellij_write_file` is used |
 
 ## Test Coverage
 

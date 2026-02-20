@@ -93,20 +93,20 @@
 
 ## 📊 Phase 1 Progress
 
-| Task | Status | Completion |
-|------|--------|------------|
-| Project structure | ✅ Done | 100% |
-| Toolchain setup | ✅ Done | 100% |
-| Build configuration | ✅ Done | 100% |
-| Go sidecar scaffold | ✅ Done | 100% |
-| Protocol definition | ✅ Done | 100% |
-| Documentation | ✅ Done | 100% |
-| Gradle wrapper | 🔄 In Progress | 75% |
-| First build | ⏳ Pending | 0% |
-| Tool Window UI | ⏳ Pending | 0% |
-| Sidecar lifecycle | ⏳ Pending | 0% |
-| Integration test | ⏳ Pending | 0% |
-| **Overall Phase 1** | | **70%** |
+| Task                | Status         | Completion |
+|---------------------|----------------|------------|
+| Project structure   | ✅ Done         | 100%       |
+| Toolchain setup     | ✅ Done         | 100%       |
+| Build configuration | ✅ Done         | 100%       |
+| Go sidecar scaffold | ✅ Done         | 100%       |
+| Protocol definition | ✅ Done         | 100%       |
+| Documentation       | ✅ Done         | 100%       |
+| Gradle wrapper      | 🔄 In Progress | 75%        |
+| First build         | ⏳ Pending      | 0%         |
+| Tool Window UI      | ⏳ Pending      | 0%         |
+| Sidecar lifecycle   | ⏳ Pending      | 0%         |
+| Integration test    | ⏳ Pending      | 0%         |
+| **Overall Phase 1** |                | **70%**    |
 
 ---
 
@@ -226,14 +226,14 @@ Or add permanently:
 
 ## ⏰ Estimated Remaining Time
 
-| Phase | Tasks | Estimated Time |
-|-------|-------|----------------|
-| Complete Gradle setup | 1 task | 15-30 min |
-| Build Go sidecar | 2 tasks | 30-60 min |
-| Minimal Tool Window | 3 tasks | 1-2 hours |
-| Sidecar lifecycle | 3 tasks | 2-3 hours |
-| Integration test | 1 task | 1 hour |
-| **Total remaining** | | **5-7 hours** |
+| Phase                 | Tasks   | Estimated Time |
+|-----------------------|---------|----------------|
+| Complete Gradle setup | 1 task  | 15-30 min      |
+| Build Go sidecar      | 2 tasks | 30-60 min      |
+| Minimal Tool Window   | 3 tasks | 1-2 hours      |
+| Sidecar lifecycle     | 3 tasks | 2-3 hours      |
+| Integration test      | 1 task  | 1 hour         |
+| **Total remaining**   |         | **5-7 hours**  |
 
 ---
 
