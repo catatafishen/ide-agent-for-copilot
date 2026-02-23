@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+
 
 /**
  * Reflection-based integration with SonarQube for IDE (formerly SonarLint) plugin.
@@ -208,15 +208,20 @@ final class SonarQubeIntegration {
     /**
      * Subscribe to SonarLint's StatusListener.SONARLINT_STATUS_TOPIC via reflection
      * and dynamic proxy to detect analysis completion without polling.
+     * Uses RunningAnalysesTracker.isEmpty() to know when ALL modules are done.
      */
     private List<String> waitUsingStatusListener(String basePath) throws Exception {
         Class<?> statusListenerClass = loadSonarClass("org.sonarlint.intellij.messages.StatusListener");
         Field topicField = statusListenerClass.getDeclaredField("SONARLINT_STATUS_TOPIC");
         Object topic = topicField.get(null);
 
-        // Track the latest STOPPED timestamp to detect stabilization
-        AtomicLong lastStoppedTime = new AtomicLong(0);
-        CompletableFuture<Void> firstStopped = new CompletableFuture<>();
+        // Load RunningAnalysesTracker to check when all modules finish
+        Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
+        Object tracker = project.getService(trackerClass);
+        Method isEmptyMethod = trackerClass.getMethod("isEmpty");
+
+        // CompletableFuture that completes when all analyses are done
+        CompletableFuture<Void> allDone = new CompletableFuture<>();
 
         // Create dynamic proxy implementing StatusListener
         Object listener = Proxy.newProxyInstance(
@@ -225,9 +230,12 @@ final class SonarQubeIntegration {
             (proxy, method, args) -> {
                 if ("changed".equals(method.getName()) && args != null && args.length == 1) {
                     String status = args[0].toString();
-                    if ("STOPPED".equals(status)) {
-                        lastStoppedTime.set(System.currentTimeMillis());
-                        firstStopped.complete(null);
+                    if ("STOPPED".equals(status) && tracker != null) {
+                        // Check if ALL analyses have finished (not just this module)
+                        boolean empty = (boolean) isEmptyMethod.invoke(tracker);
+                        if (empty) {
+                            allDone.complete(null);
+                        }
                     }
                 }
                 return null;
@@ -237,27 +245,16 @@ final class SonarQubeIntegration {
         // Subscribe via IntelliJ message bus
         var connection = project.getMessageBus().connect();
         try {
-            // Topic<StatusListener> is generic, but at runtime it's just Topic — raw cast is safe
+            @SuppressWarnings("unchecked")
             com.intellij.util.messages.Topic<Object> rawTopic =
                 (com.intellij.util.messages.Topic<Object>) topic;
             connection.subscribe(rawTopic, listener);
 
-            // Wait for the first STOPPED event (analysis of at least one module completed)
-            firstStopped.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
+            // Wait until RunningAnalysesTracker is empty (all modules done)
+            allDone.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
 
-            // Stabilization: wait until no new STOPPED events for 3 seconds
-            // (handles multi-module where each module fires its own STOPPED)
-            while (true) {
-                long elapsed = System.currentTimeMillis() - lastStoppedTime.get();
-                if (elapsed >= 3000) {
-                    break;
-                }
-                //noinspection BusyWait
-                Thread.sleep(3000 - elapsed + 100);
-            }
-
-            // Wait a bit more for results to propagate to ReportTabManager
-            Thread.sleep(1000);
+            // Brief pause for results to propagate to ReportTabManager
+            Thread.sleep(500);
 
             List<String> results = collectFromReportTab(basePath);
             if (results.isEmpty()) {
