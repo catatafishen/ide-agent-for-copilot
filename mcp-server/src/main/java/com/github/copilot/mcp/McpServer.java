@@ -218,7 +218,12 @@ public class McpServer {
             - Unrelated changes need SEPARATE commits (don't mix grammar fixes with null checks).
             - Skip grammar issues (GrazieInspection) unless user specifically requests them.
             - Skip generated files (gradlew.bat, log files).
-            - If you see 200+ issues, prioritize: compilation errors > warnings > style > grammar.""");
+            - If you see 200+ issues, prioritize: compilation errors > warnings > style > grammar.
+
+            SONARQUBE FOR IDE:
+            If available, use run_sonarqube_analysis to find additional issues from SonarQube/SonarLint. \
+            SonarQube findings are SEPARATE from IntelliJ inspections — run both for complete coverage. \
+            SonarQube rules use keys like 'java:S1135' (TODO comments), 'java:S1172' (unused params).""");
         return result;
     }
 
@@ -368,6 +373,14 @@ public class McpServer {
         tools.add(buildTool("run_qodana", "Run Qodana",
             Map.of(
                 "limit", Map.of("type", "integer", "description", "Maximum number of problems to retur")
+            ),
+            List.of()));
+
+        tools.add(buildTool("run_sonarqube_analysis", "Run SonarQube for IDE analysis. Requires SonarQube for IDE (SonarLint) plugin to be installed. Triggers full project or changed-files analysis and returns findings",
+            Map.of(
+                "scope", Map.of("type", "string", "description", "Analysis scope: 'all' (full project) or 'changed' (VCS changed files only). Default: 'all'"),
+                "limit", Map.of("type", "integer", "description", "Maximum number of findings to return. Default: 100"),
+                "offset", Map.of("type", "integer", "description", "Pagination offset. Default: 0")
             ),
             List.of()));
 

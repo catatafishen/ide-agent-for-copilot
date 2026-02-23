@@ -73,6 +73,11 @@ class CodeQualityTools extends AbstractToolHandler {
         register("optimize_imports", this::optimizeImports);
         register("format_code", this::formatCode);
         register("add_to_dictionary", this::addToDictionary);
+        // Conditionally register SonarQube tool only if plugin is installed
+        if (SonarQubeIntegration.isInstalled()) {
+            register("run_sonarqube_analysis", this::runSonarQubeAnalysis);
+            LOG.info("SonarQube for IDE plugin detected — run_sonarqube_analysis tool registered");
+        }
     }
 
     // ---- get_problems ----
@@ -944,6 +949,17 @@ class CodeQualityTools extends AbstractToolHandler {
         );
 
         return "Added //noinspection " + inspectionId + " comment at line " + (targetLine + 1);
+    }
+
+    // ---- run_sonarqube_analysis ----
+
+    private String runSonarQubeAnalysis(JsonObject args) {
+        String scope = args.has("scope") ? args.get("scope").getAsString() : "all";
+        int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
+        int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
+
+        SonarQubeIntegration sonar = new SonarQubeIntegration(project);
+        return sonar.runAnalysis(scope, limit, offset);
     }
 
     // ---- run_qodana ----
