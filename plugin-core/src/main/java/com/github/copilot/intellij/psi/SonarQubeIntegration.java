@@ -38,6 +38,23 @@ final class SonarQubeIntegration {
     }
 
     /**
+     * Get SonarLint plugin's classloader for loading its classes via reflection.
+     */
+    private static ClassLoader getSonarLintClassLoader() {
+        var descriptor = PluginManagerCore.getPlugin(PluginId.getId(SONAR_PLUGIN_ID));
+        return descriptor != null ? descriptor.getPluginClassLoader() : null;
+    }
+
+    /**
+     * Load a class from SonarLint's plugin classloader.
+     */
+    private static Class<?> loadSonarClass(String className) throws ClassNotFoundException {
+        ClassLoader cl = getSonarLintClassLoader();
+        if (cl == null) throw new ClassNotFoundException("SonarLint classloader not available");
+        return Class.forName(className, true, cl);
+    }
+
+    /**
      * Check if SonarQube for IDE plugin is installed and enabled.
      */
     static boolean isInstalled() {
@@ -62,16 +79,18 @@ final class SonarQubeIntegration {
             String actionId = resolveActionId(scope);
             boolean triggered = triggerAction(actionId, scope);
             if (!triggered) {
-                return "Error: Could not trigger SonarQube analysis. Action '" + actionId + "' not found or not available.";
+                LOG.info("Could not trigger analysis action '" + actionId + "', reading existing results");
             }
 
-            // 2. Wait for analysis to complete
-            boolean completed = waitForAnalysisCompletion();
-            if (!completed) {
-                LOG.warn("SonarQube analysis did not complete within " + MAX_WAIT_SECONDS + "s, collecting partial results");
+            // 2. Wait for analysis to complete (only if we triggered)
+            if (triggered) {
+                boolean completed = waitForAnalysisCompletion();
+                if (!completed) {
+                    LOG.warn("SonarQube analysis may not have completed within timeout");
+                }
             }
 
-            // 3. Collect findings from OnTheFlyFindingsHolder
+            // 3. Collect findings
             List<String> findings = collectFindings();
 
             // 4. Format output
@@ -136,7 +155,7 @@ final class SonarQubeIntegration {
     private boolean waitForAnalysisCompletion() {
         try {
             // Try RunningAnalysesTracker first (more reliable for multi-module)
-            Class<?> trackerClass = Class.forName("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
+            Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
             Object tracker = project.getService(trackerClass);
             Method isEmptyMethod = tracker != null ? trackerClass.getMethod("isEmpty") : null;
 
@@ -144,7 +163,7 @@ final class SonarQubeIntegration {
             Method isRunningMethod = null;
             Object statusService = null;
             try {
-                Class<?> statusClass = Class.forName("org.sonarlint.intellij.analysis.AnalysisStatus");
+                Class<?> statusClass = loadSonarClass("org.sonarlint.intellij.analysis.AnalysisStatus");
                 statusService = project.getService(statusClass);
                 if (statusService != null) {
                     isRunningMethod = statusClass.getMethod("isRunning");
@@ -219,7 +238,7 @@ final class SonarQubeIntegration {
     private List<String> collectFromReportTab(String basePath) {
         List<String> results = new ArrayList<>();
         try {
-            Class<?> reportTabManagerClass = Class.forName("org.sonarlint.intellij.ui.report.ReportTabManager");
+            Class<?> reportTabManagerClass = loadSonarClass("org.sonarlint.intellij.ui.report.ReportTabManager");
             Object reportTabManager = project.getService(reportTabManagerClass);
             if (reportTabManager == null) {
                 LOG.info("ReportTabManager service not available");
@@ -286,7 +305,7 @@ final class SonarQubeIntegration {
                 LOG.info("getSecurityHotspotsPerFile not available");
             }
 
-            LOG.info("Collected " + results.size() + " findings from SonarLint Report tab");
+            LOG.info("Collected " + results.size() + " SonarQube findings from Report tab");
         } catch (ClassNotFoundException e) {
             LOG.info("ReportTabManager class not found — SonarLint API may have changed");
         } catch (Exception e) {
@@ -301,7 +320,7 @@ final class SonarQubeIntegration {
     private List<String> collectFromOnTheFlyHolder(String basePath) {
         List<String> results = new ArrayList<>();
         try {
-            Class<?> submitterClass = Class.forName("org.sonarlint.intellij.analysis.AnalysisSubmitter");
+            Class<?> submitterClass = loadSonarClass("org.sonarlint.intellij.analysis.AnalysisSubmitter");
             Object submitter = project.getService(submitterClass);
             if (submitter == null) return results;
 
@@ -411,30 +430,14 @@ final class SonarQubeIntegration {
 
     private int getLineNumber(Object finding) {
         try {
-            // Try getValidTextRange() -> getStartOffset(), then convert to line
-            Method getRange = findMethod(finding, "getValidTextRange");
-            if (getRange != null) {
-                Object range = getRange.invoke(finding);
-                if (range != null) {
-                    Method getStartOffset = findMethod(range, "getStartOffset");
-                    if (getStartOffset != null) {
-                        int offset = (int) getStartOffset.invoke(range);
-                        // Try to get line from the range
-                        Method getStartLine = findMethod(finding, "getLine");
-                        if (getStartLine != null) {
-                            Object lineObj = getStartLine.invoke(finding);
-                            if (lineObj instanceof Integer i) return i;
-                        }
-                        return offset; // fallback to offset
-                    }
+            // Use getRange() -> RangeMarker -> Document.getLineNumber(offset)
+            // RangeMarker stores character offsets; Document converts to line numbers
+            Method getRangeMethod = findMethod(finding, "getRange");
+            if (getRangeMethod != null) {
+                Object rangeObj = getRangeMethod.invoke(finding);
+                if (rangeObj instanceof com.intellij.openapi.editor.RangeMarker rm && rm.isValid()) {
+                    return rm.getDocument().getLineNumber(rm.getStartOffset()) + 1; // 0-based → 1-based
                 }
-            }
-
-            // Try getLine() directly
-            Method getLine = findMethod(finding, "getLine");
-            if (getLine != null) {
-                Object lineObj = getLine.invoke(finding);
-                if (lineObj instanceof Integer i) return i;
             }
         } catch (Exception e) {
             LOG.debug("Could not get line number from finding");
