@@ -42,7 +42,8 @@ class ProjectTools extends AbstractToolHandler {
 
     // ---- get_project_info ----
 
-    private String getProjectInfo(JsonObject args) throws Exception {
+    @SuppressWarnings("unused") // ToolHandler interface requires JsonObject parameter
+    private String getProjectInfo(JsonObject args) {
         return ReadAction.compute(() -> {
             StringBuilder sb = new StringBuilder();
             String basePath = project.getBasePath();
@@ -251,8 +252,8 @@ class ProjectTools extends AbstractToolHandler {
 
     // ---- download_sources ----
 
-    @SuppressWarnings({"JavaReflectionMemberAccess", "JavaReflectionInvocation"})
-    private String downloadSources(JsonObject args) throws Exception {
+    @SuppressWarnings("JavaReflectionMemberAccess")
+    private String downloadSources(JsonObject args) {
         String library = args.has("library") ? args.get("library").getAsString() : "";
 
         try {

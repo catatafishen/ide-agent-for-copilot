@@ -46,9 +46,9 @@ public final class RunConfigurationService {
     private static final String TEST_TYPE_CLASS = "class";
 
     private final Project project;
-    private final PsiBridgeService.ClassResolver classResolver;
+    private final RefactoringTools.ClassResolver classResolver;
 
-    public RunConfigurationService(Project project, PsiBridgeService.ClassResolver classResolver) {
+    public RunConfigurationService(Project project, RefactoringTools.ClassResolver classResolver) {
         this.project = project;
         this.classResolver = classResolver;
     }
@@ -284,7 +284,7 @@ public final class RunConfigurationService {
 
     private void applyTestClass(RunConfiguration config, JsonObject args, Object data) throws ReflectiveOperationException {
         String testClass = args.get(PARAM_TEST_CLASS).getAsString();
-        PsiBridgeService.ClassInfo classInfo = classResolver.resolveClass(testClass);
+        RefactoringTools.ClassInfo classInfo = classResolver.resolveClass(testClass);
         setJUnitField(data, "MAIN_CLASS_NAME", classInfo.fqn());
         setJUnitField(data, FIELD_TEST_OBJECT,
             args.has(PARAM_TEST_METHOD) ? TEST_TYPE_METHOD : TEST_TYPE_CLASS);
