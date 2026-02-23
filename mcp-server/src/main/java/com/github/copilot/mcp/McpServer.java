@@ -725,7 +725,13 @@ public class McpServer {
      * Try to delegate a tool call to the IntelliJ PSI bridge for accurate AST analysis.
      * Falls back to null if bridge is unavailable.
      */
+    private static boolean isLongRunningTool(String toolName) {
+        return "run_sonarqube_analysis".equals(toolName) || "run_qodana".equals(toolName);
+    }
+
     private static String delegateToPsiBridge(String toolName, JsonObject arguments) {
+        // Long-running tools need extended timeout
+        int readTimeoutMs = isLongRunningTool(toolName) ? 180_000 : 30_000;
         try {
             Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
             if (!Files.exists(bridgeFile)) return null;
@@ -748,7 +754,7 @@ public class McpServer {
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30000);
+            conn.setReadTimeout(readTimeoutMs);
             conn.setRequestProperty("Content-Type", "application/json");
 
             JsonObject request = new JsonObject();

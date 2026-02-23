@@ -75,29 +75,49 @@ final class SonarQubeIntegration {
         }
 
         try {
-            // 1. Trigger the appropriate SonarLint action
+            String basePath = project.getBasePath();
+
+            // Fast path: check for existing results first
+            List<String> existing = collectFromReportTab(basePath);
+            if (!existing.isEmpty()) {
+                // We have results from a previous analysis — use them
+                // Also trigger a fresh analysis in the background for next time
+                triggerAnalysisAsync(scope);
+                return formatOutput(existing, limit, offset);
+            }
+
+            // No existing results — trigger and wait
             String actionId = resolveActionId(scope);
             boolean triggered = triggerAction(actionId, scope);
             if (!triggered) {
-                LOG.info("Could not trigger analysis action '" + actionId + "', reading existing results");
-            }
-
-            // 2. Wait for analysis to complete (only if we triggered)
-            if (triggered) {
-                boolean completed = waitForAnalysisCompletion();
-                if (!completed) {
-                    LOG.warn("SonarQube analysis may not have completed within timeout");
+                LOG.warn("Could not trigger analysis action '" + actionId + "'");
+                // Try fallback: on-the-fly findings
+                List<String> fallback = collectFromOnTheFlyHolder(basePath);
+                if (!fallback.isEmpty()) {
+                    return formatOutput(fallback, limit, offset);
                 }
+                return "SonarQube analysis could not be triggered. Open the SonarLint Report tab and click 'Analyze All Files' manually, then call this tool again.";
             }
 
-            // 3. Collect findings
-            List<String> findings = collectFindings();
+            // Wait for results with polling (checks for actual results, not just status)
+            List<String> findings = waitAndCollectResults(basePath);
 
-            // 4. Format output
             return formatOutput(findings, limit, offset);
         } catch (Exception e) {
             LOG.warn("SonarQube analysis failed", e);
             return "Error running SonarQube analysis: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Trigger analysis in background without waiting for results.
+     */
+    private void triggerAnalysisAsync(String scope) {
+        try {
+            String actionId = resolveActionId(scope);
+            triggerAction(actionId, scope);
+        } catch (Exception e) {
+            LOG.info("Background analysis trigger failed: " + e.getMessage());
         }
     }
 
@@ -150,121 +170,52 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Two-phase wait: first wait for analysis to START, then wait for it to FINISH.
-     * This avoids the race condition where we check completion before the analysis registers.
+     * Wait for SonarQube analysis to complete by polling for results.
+     * Instead of only checking running status, we also check if results have appeared.
+     * This is more reliable since it directly checks what we care about.
      */
-    private boolean waitForAnalysisCompletion() {
-        try {
-            Method isRunningMethod = null;
-            Object statusService = null;
-            Method isEmptyMethod = null;
-            Object tracker = null;
+    private List<String> waitAndCollectResults(String basePath) {
+        long startTime = System.currentTimeMillis();
+        long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
 
-            try {
-                Class<?> statusClass = loadSonarClass("org.sonarlint.intellij.analysis.AnalysisStatus");
-                statusService = project.getService(statusClass);
-                if (statusService != null) {
-                    isRunningMethod = statusClass.getMethod("isRunning");
+        // Initial delay for analysis to start and process first files
+        try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+
+        while (System.currentTimeMillis() - startTime < maxWaitMs) {
+            // Check if results are available
+            List<String> results = collectFromReportTab(basePath);
+            if (!results.isEmpty()) {
+                // Results found — but analysis might still be running.
+                // Wait a bit more and re-check to get complete results.
+                try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                List<String> finalResults = collectFromReportTab(basePath);
+                // If count stabilized or grew, return
+                if (finalResults.size() >= results.size()) {
+                    return finalResults;
                 }
-            } catch (Exception e) {
-                LOG.info("AnalysisStatus not available");
+                return results;
             }
 
-            try {
-                Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
-                tracker = project.getService(trackerClass);
-                if (tracker != null) {
-                    isEmptyMethod = trackerClass.getMethod("isEmpty");
-                }
-            } catch (Exception e) {
-                LOG.info("RunningAnalysesTracker not available");
+            // Also check on-the-fly findings as partial results
+            List<String> onTheFly = collectFromOnTheFlyHolder(basePath);
+            if (!onTheFly.isEmpty() && System.currentTimeMillis() - startTime > 30000) {
+                // After 30s, return on-the-fly findings if that's all we have
+                return onTheFly;
             }
 
-            if (isRunningMethod == null && isEmptyMethod == null) {
-                LOG.info("No SonarLint status tracking available, using fixed wait");
-                Thread.sleep(15000);
-                return true;
-            }
-
-            // Phase 1: Wait for analysis to START (up to 15 seconds)
-            boolean started = false;
-            for (int i = 0; i < 30; i++) {
-                //noinspection BusyWait
-                Thread.sleep(POLL_INTERVAL_MS);
-                if (isAnalysisRunning(isRunningMethod, statusService, isEmptyMethod, tracker)) {
-                    started = true;
-                    LOG.info("SonarQube analysis started");
-                    break;
-                }
-            }
-
-            if (!started) {
-                // Analysis may have completed very quickly, or never started
-                LOG.info("SonarQube analysis did not appear to start, checking for results anyway");
-                Thread.sleep(2000);
-                return true;
-            }
-
-            // Phase 2: Wait for analysis to FINISH (up to MAX_WAIT_SECONDS)
-            long startTime = System.currentTimeMillis();
-            long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
-
-            while (System.currentTimeMillis() - startTime < maxWaitMs) {
-                //noinspection BusyWait
-                Thread.sleep(POLL_INTERVAL_MS);
-                if (!isAnalysisRunning(isRunningMethod, statusService, isEmptyMethod, tracker)) {
-                    // Wait for results to propagate to ReportTabManager
-                    Thread.sleep(2000);
-                    LOG.info("SonarQube analysis completed");
-                    return true;
-                }
-            }
-
-            LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s");
-            return false;
-        } catch (Exception e) {
-            LOG.warn("Error polling SonarQube analysis status", e);
-            return true;
+            //noinspection BusyWait
+            try { Thread.sleep(POLL_INTERVAL_MS * 4); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
-    }
 
-    private boolean isAnalysisRunning(Method isRunningMethod, Object statusService,
-                                       Method isEmptyMethod, Object tracker) {
-        try {
-            // AnalysisStatus.isRunning() is the primary indicator
-            if (isRunningMethod != null && statusService != null) {
-                if ((Boolean) isRunningMethod.invoke(statusService)) {
-                    return true;
-                }
-            }
-            // RunningAnalysesTracker.isEmpty() as secondary check
-            if (isEmptyMethod != null && tracker != null) {
-                if (!(Boolean) isEmptyMethod.invoke(tracker)) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            LOG.debug("Error checking analysis status: " + e.getMessage());
-        }
-        return false;
-    }
-
-    /**
-     * Collect findings from SonarLint's ReportTabManager (full project analysis)
-     * and fall back to OnTheFlyFindingsHolder (open files only).
-     */
-    @SuppressWarnings("unchecked")
-    private List<String> collectFindings() {
-        String basePath = project.getBasePath();
-
-        // Strategy 1: Read from ReportTabManager (has full project analysis results)
+        // Timeout: return whatever we can find
+        LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s, returning available results");
         List<String> results = collectFromReportTab(basePath);
-
-        // Strategy 2: Fall back to OnTheFlyFindingsHolder (open files only)
         if (results.isEmpty()) {
             results = collectFromOnTheFlyHolder(basePath);
         }
-
+        if (results.isEmpty()) {
+            return List.of("Analysis is still running. Call this tool again to check for results.");
+        }
         return results;
     }
 
