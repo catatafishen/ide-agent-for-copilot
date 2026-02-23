@@ -63,6 +63,23 @@ final class SonarQubeIntegration {
     }
 
     /**
+     * Check if a SonarQube analysis is currently running.
+     */
+    private boolean isAnalysisRunning() {
+        try {
+            Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
+            Object tracker = project.getService(trackerClass);
+            if (tracker != null) {
+                Method isEmptyMethod = trackerClass.getMethod("isEmpty");
+                return !(boolean) isEmptyMethod.invoke(tracker);
+            }
+        } catch (Exception e) {
+            LOG.debug("Could not check RunningAnalysesTracker: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
      * Trigger SonarQube analysis and collect results.
      *
      * @param scope    "all", "changed", or a file path
@@ -77,6 +94,13 @@ final class SonarQubeIntegration {
 
         try {
             String basePath = project.getBasePath();
+
+            // Check if an analysis is already running — if so, just wait for it
+            if (isAnalysisRunning()) {
+                LOG.info("SonarQube analysis already in progress, waiting for completion");
+                List<String> findings = waitForNewResults(basePath, null);
+                return formatOutput(findings, limit, offset);
+            }
 
             // 1. Record current analysis result (to detect when new results arrive)
             Object oldResult = getCurrentAnalysisResult();
