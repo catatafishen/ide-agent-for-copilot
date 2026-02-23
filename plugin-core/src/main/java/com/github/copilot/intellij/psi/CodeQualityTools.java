@@ -599,10 +599,10 @@ class CodeQualityTools extends AbstractToolHandler {
         int skippedNoFile = 0;
 
         // Try getProblemElements first (has file associations via RefEntity)
-        var problemElements = presentation.getProblemElements();
-        //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
-        if (problemElements != null && !problemElements.isEmpty()) {
-            return collectFromProblemElements(problemElements, toolId, inspCtx, allProblems);
+        // Runtime type may differ from declared SynchronizedBidiMultiMap (e.g. anonymous wrapper classes)
+        Object problemElements = presentation.getProblemElements();
+        if (problemElements instanceof com.intellij.util.containers.MultiMap<?, ?> mm && !mm.isEmpty()) {
+            return collectFromProblemElements(mm, toolId, inspCtx, allProblems);
         }
 
         // Try getProblemDescriptors() for tools that don't use RefEntity
@@ -622,7 +622,7 @@ class CodeQualityTools extends AbstractToolHandler {
 
     @SuppressWarnings("unchecked")
     private int[] collectFromProblemElements(
-        Object problemElements,
+        com.intellij.util.containers.MultiMap<?, ?> problemElements,
         String toolId, InspectionContext inspCtx, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
