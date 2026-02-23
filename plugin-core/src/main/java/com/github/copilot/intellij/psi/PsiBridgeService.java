@@ -51,12 +51,9 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -159,6 +156,8 @@ public final class PsiBridgeService implements Disposable {
     private final Project project;
     private final RunConfigurationService runConfigService;
     private final GitToolHandler gitToolHandler;
+    private final RefactoringTools refactoringTools;
+    private final InfrastructureTools infrastructureTools;
     private HttpServer httpServer;
     private int port;
 
@@ -170,7 +169,9 @@ public final class PsiBridgeService implements Disposable {
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
-        this.runConfigService = new RunConfigurationService(project, this::resolveClass);
+        this.refactoringTools = new RefactoringTools(project);
+        this.infrastructureTools = new InfrastructureTools(project);
+        this.runConfigService = new RunConfigurationService(project, refactoringTools::resolveClass);
         this.gitToolHandler = new GitToolHandler(project);
     }
 
@@ -324,17 +325,17 @@ public final class PsiBridgeService implements Disposable {
                 case "git_stash" -> gitToolHandler.gitStash(arguments);
                 case "git_show" -> gitToolHandler.gitShow(arguments);
                 // Infrastructure tools
-                case "http_request" -> httpRequest(arguments);
-                case "run_command" -> runCommand(arguments);
-                case "read_ide_log" -> readIdeLog(arguments);
-                case "get_notifications" -> getNotifications();
-                case "read_run_output" -> readRunOutput(arguments);
+                case "http_request" -> infrastructureTools.getTools().get("http_request").handle(arguments);
+                case "run_command" -> infrastructureTools.getTools().get("run_command").handle(arguments);
+                case "read_ide_log" -> infrastructureTools.getTools().get("read_ide_log").handle(arguments);
+                case "get_notifications" -> infrastructureTools.getTools().get("get_notifications").handle(arguments);
+                case "read_run_output" -> infrastructureTools.getTools().get("read_run_output").handle(arguments);
                 // Terminal tools
                 case "run_in_terminal" -> runInTerminal(arguments);
                 case "list_terminals" -> listTerminals();
                 case "read_terminal_output" -> readTerminalOutput(arguments);
                 // Documentation tools
-                case "get_documentation" -> getDocumentation(arguments);
+                case "get_documentation" -> refactoringTools.getTools().get("get_documentation").handle(arguments);
                 case "download_sources" -> downloadSources(arguments);
                 // Scratch file tools
                 case "create_scratch_file" -> createScratchFile(arguments);
@@ -343,9 +344,9 @@ public final class PsiBridgeService implements Disposable {
                 case "get_indexing_status" -> getIndexingStatus(arguments);
                 // Refactoring & code modification tools
                 case "apply_quickfix" -> applyQuickfix(arguments);
-                case "refactor" -> refactor(arguments);
-                case "go_to_declaration" -> goToDeclaration(arguments);
-                case "get_type_hierarchy" -> getTypeHierarchy(arguments);
+                case "refactor" -> refactoringTools.getTools().get("refactor").handle(arguments);
+                case "go_to_declaration" -> refactoringTools.getTools().get("go_to_declaration").handle(arguments);
+                case "get_type_hierarchy" -> refactoringTools.getTools().get("get_type_hierarchy").handle(arguments);
                 case "create_file" -> createFile(arguments);
                 case "delete_file" -> deleteFile(arguments);
                 case "build_project" -> buildProject(arguments);
@@ -2183,91 +2184,6 @@ public final class PsiBridgeService implements Disposable {
         return origPos - startIdx;
     }
 
-// ---- Infrastructure tools ----
-
-    private String httpRequest(JsonObject args) throws Exception {
-        String urlStr = args.get("url").getAsString();
-        String method = args.has(PARAM_METHOD) ? args.get(PARAM_METHOD).getAsString().toUpperCase() : "GET";
-        String body = args.has("body") ? args.get("body").getAsString() : null;
-
-        URL url = URI.create(urlStr).toURL();
-        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-        conn.setRequestMethod(method);
-        conn.setConnectTimeout(10_000);
-        conn.setReadTimeout(30_000);
-
-        // Set headers
-        if (args.has(JSON_HEADERS)) {
-            JsonObject headers = args.getAsJsonObject(JSON_HEADERS);
-            for (String key : headers.keySet()) {
-                conn.setRequestProperty(key, headers.get(key).getAsString());
-            }
-        }
-
-        // Write body
-        if (body != null && ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method))) {
-            if (!args.has(JSON_HEADERS) || !args.getAsJsonObject(JSON_HEADERS).has(CONTENT_TYPE_HEADER)) {
-                conn.setRequestProperty(CONTENT_TYPE_HEADER, APPLICATION_JSON);
-            }
-            conn.setDoOutput(true);
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(StandardCharsets.UTF_8));
-            }
-        }
-
-        int status = conn.getResponseCode();
-        StringBuilder result = new StringBuilder();
-        result.append("HTTP ").append(status).append(" ").append(conn.getResponseMessage()).append("\n");
-
-        // Response headers
-        result.append("\n--- Headers ---\n");
-        conn.getHeaderFields().forEach((k, v) -> {
-            if (k != null) result.append(k).append(": ").append(String.join(", ", v)).append("\n");
-        });
-
-        // Response body
-        result.append("\n--- Body ---\n");
-        try (InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream()) {
-            if (is != null) {
-                String responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                result.append(truncateOutput(responseBody));
-            }
-        }
-        return result.toString();
-    }
-
-    private String runCommand(JsonObject args) throws Exception {
-        String command = args.get("command").getAsString();
-        String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
-        String basePath = project.getBasePath();
-        if (basePath == null) return ERROR_NO_PROJECT_PATH;
-        int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
-        String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
-
-        GeneralCommandLine cmd;
-        if (System.getProperty(OS_NAME_PROPERTY).contains("Win")) {
-            cmd = new GeneralCommandLine("cmd", "/c", command);
-        } else {
-            cmd = new GeneralCommandLine("sh", "-c", command);
-        }
-        cmd.setWorkDirectory(basePath);
-
-        // Set JAVA_HOME from project SDK if available
-        String javaHome = getProjectJavaHome();
-        if (javaHome != null) {
-            cmd.withEnvironment(JAVA_HOME_ENV, javaHome);
-        }
-
-        ProcessResult result = executeInRunPanel(cmd, tabTitle, timeoutSec);
-
-        if (result.timedOut()) {
-            return "Command timed out after " + timeoutSec + " seconds.\n\n" + truncateOutput(result.output());
-        }
-
-        return (result.exitCode() == 0 ? "✅ Command succeeded" : "❌ Command failed (exit code " + result.exitCode() + ")")
-            + "\n\n" + truncateOutput(result.output());
-    }
-
     private static String truncateForTitle(String command) {
         return command.length() > 40 ? command.substring(0, 37) + "..." : command;
     }
@@ -2282,7 +2198,18 @@ public final class PsiBridgeService implements Disposable {
         CompletableFuture<Integer> exitFuture = new CompletableFuture<>();
         StringBuilder output = new StringBuilder();
 
-        OSProcessHandler processHandler = createCapturingProcessHandler(cmd, output, exitFuture);
+        OSProcessHandler processHandler = new OSProcessHandler(cmd);
+        processHandler.addProcessListener(new ProcessListener() {
+            @Override
+            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
+                output.append(event.getText());
+            }
+
+            @Override
+            public void processTerminated(@NotNull ProcessEvent event) {
+                exitFuture.complete(event.getExitCode());
+            }
+        });
 
         EdtUtil.invokeLater(() -> {
             try {
@@ -2303,92 +2230,6 @@ public final class PsiBridgeService implements Disposable {
             processHandler.destroyProcess();
             return new ProcessResult(-1, output.toString(), true);
         }
-    }
-
-    private static OSProcessHandler createCapturingProcessHandler(
-        GeneralCommandLine cmd, StringBuilder output, CompletableFuture<Integer> exitFuture) throws Exception {
-        OSProcessHandler processHandler = new OSProcessHandler(cmd);
-        processHandler.addProcessListener(new ProcessListener() {
-            @Override
-            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key outputType) {
-                output.append(event.getText());
-            }
-
-            @Override
-            public void processTerminated(@NotNull ProcessEvent event) {
-                exitFuture.complete(event.getExitCode());
-            }
-        });
-        return processHandler;
-    }
-
-    private String readIdeLog(JsonObject args) throws IOException {
-        int lines = args.has("lines") ? args.get("lines").getAsInt() : 50;
-        String filter = args.has("filter") ? args.get("filter").getAsString() : null;
-        String level = args.has(PARAM_LEVEL) ? args.get(PARAM_LEVEL).getAsString().toUpperCase() : null;
-
-        Path logFile = Path.of(System.getProperty("idea.log.path", ""), IDEA_LOG_FILENAME);
-        if (!Files.exists(logFile)) {
-            // Try standard location
-            String logDir = System.getProperty("idea.system.path");
-            if (logDir != null) {
-                logFile = Path.of(logDir, "..", "log", IDEA_LOG_FILENAME);
-            }
-        }
-        if (!Files.exists(logFile)) {
-            // Try via PathManager
-            try {
-                Class<?> pm = Class.forName("com.intellij.openapi.application.PathManager");
-                String logPath = (String) pm.getMethod("getLogPath").invoke(null);
-                logFile = Path.of(logPath, IDEA_LOG_FILENAME);
-            } catch (Exception ignored) {
-                // PathManager not available or reflection failed
-            }
-        }
-        if (!Files.exists(logFile)) {
-            return "Could not locate idea.log";
-        }
-
-        List<String> filtered = Files.readAllLines(logFile);
-
-        if (level != null) {
-            final String lvl = level;
-            filtered = filtered.stream()
-                .filter(l -> l.contains(lvl))
-                .toList();
-        }
-        if (filter != null) {
-            final String f = filter;
-            filtered = filtered.stream()
-                .filter(l -> l.contains(f))
-                .toList();
-        }
-
-        int start = Math.max(0, filtered.size() - lines);
-        List<String> result = filtered.subList(start, filtered.size());
-        return String.join("\n", result);
-    }
-
-    private String getNotifications() {
-        StringBuilder result = new StringBuilder();
-        try {
-            // Get notifications via EventLog / NotificationsManager
-            var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()
-                .getNotificationsOfType(com.intellij.notification.Notification.class, project);
-            if (notifications.length == 0) {
-                return "No recent notifications.";
-            }
-            for (var notification : notifications) {
-                result.append("[").append(notification.getType()).append("] ");
-                if (!notification.getTitle().isEmpty()) {
-                    result.append(notification.getTitle()).append(": ");
-                }
-                result.append(notification.getContent()).append("\n");
-            }
-        } catch (Exception e) {
-            return "Could not read notifications: " + e.getMessage();
-        }
-        return result.toString();
     }
 
 // ---- Terminal tools ----
@@ -2659,273 +2500,6 @@ public final class PsiBridgeService implements Disposable {
 
 // ---- End terminal tools ----
 
-// ---- End infrastructure tools ----
-
-    private String readRunOutput(JsonObject args) {
-        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
-        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
-
-        //noinspection RedundantCast — needed for Computable vs ThrowableComputable overload resolution
-        return ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<String>) () -> {
-            try {
-                List<com.intellij.execution.ui.RunContentDescriptor> descriptors = collectRunDescriptors();
-                if (descriptors.isEmpty()) {
-                    return "No Run or Debug panel tabs available.";
-                }
-
-                var result = findTargetRunDescriptor(descriptors, tabName);
-                if (result instanceof String errorMsg) {
-                    return errorMsg;
-                }
-
-                var target = (com.intellij.execution.ui.RunContentDescriptor) result;
-                var console = target.getExecutionConsole();
-                if (console == null) {
-                    return "Tab '" + target.getDisplayName() + "' has no console.";
-                }
-
-                String text = extractConsoleText(console);
-                if (text == null || text.isEmpty()) {
-                    return "Tab '" + target.getDisplayName() + "' has no text content (console may still be loading or is an unsupported type).";
-                }
-
-                return formatRunOutput(target.getDisplayName(), text, maxChars);
-            } catch (Exception e) {
-                return "Error reading Run output: " + e.getMessage();
-            }
-        });
-    }
-
-    private List<com.intellij.execution.ui.RunContentDescriptor> collectRunDescriptors() {
-        var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
-        var descriptors = new ArrayList<>(manager.getAllDescriptors());
-
-        // Also include debug session descriptors
-        try {
-            var debugManager = com.intellij.xdebugger.XDebuggerManager.getInstance(project);
-            for (var session : debugManager.getDebugSessions()) {
-                var rd = session.getRunContentDescriptor();
-                if (!descriptors.contains(rd)) {
-                    descriptors.add(rd);
-                }
-            }
-        } catch (Exception ignored) {
-            // XDebugger may not be available
-        }
-        return descriptors;
-    }
-
-    private Object findTargetRunDescriptor(List<com.intellij.execution.ui.RunContentDescriptor> descriptors,
-                                           String tabName) {
-        if (tabName == null) {
-            return descriptors.getLast();
-        }
-
-        // Find by name
-        for (var d : descriptors) {
-            if (d.getDisplayName() != null && d.getDisplayName().contains(tabName)) {
-                return d;
-            }
-        }
-
-        // Not found - return error message
-        StringBuilder available = new StringBuilder("No tab matching '").append(tabName).append("'. Available tabs:\n");
-        for (var d : descriptors) {
-            available.append("  - ").append(d.getDisplayName()).append("\n");
-        }
-        return available.toString();
-    }
-
-    private String formatRunOutput(String displayName, String text, int maxChars) {
-        StringBuilder result = new StringBuilder();
-        result.append("Tab: ").append(displayName).append("\n");
-        result.append("Total length: ").append(text.length()).append(" chars\n\n");
-
-        if (text.length() > maxChars) {
-            result.append("...(truncated, showing last ").append(maxChars).append(" of ").append(text.length())
-                .append(" chars. Use max_chars parameter to read more.)\n");
-            result.append(text.substring(text.length() - maxChars));
-        } else {
-            result.append(text);
-        }
-
-        return result.toString();
-    }
-
-    /**
-     * Extract text from any type of ExecutionConsole (regular, test runner, etc.)
-     */
-    private String extractConsoleText(com.intellij.execution.ui.ExecutionConsole console) {
-        try {
-            var getResultsViewer = console.getClass().getMethod("getResultsViewer");
-            var viewer = getResultsViewer.invoke(console);
-            if (viewer != null) {
-                String testOutput = extractTestRunnerResults(viewer, console);
-                if (!testOutput.isEmpty()) return testOutput;
-            }
-        } catch (NoSuchMethodException ignored) {
-            // Not an SMTRunnerConsoleView
-        } catch (Exception e) {
-            LOG.warn("Failed to extract test runner output", e);
-        }
-
-        return extractPlainConsoleText(console);
-    }
-
-    private String extractTestRunnerResults(Object viewer,
-                                            com.intellij.execution.ui.ExecutionConsole console) throws Exception {
-        StringBuilder testOutput = new StringBuilder();
-        var getAllTests = viewer.getClass().getMethod("getAllTests");
-        var tests = (java.util.List<?>) getAllTests.invoke(viewer);
-        if (tests != null && !tests.isEmpty()) {
-            testOutput.append("=== Test Results ===\n");
-            for (var test : tests) {
-                appendTestResult(test, testOutput);
-            }
-        }
-        appendTestConsoleOutput(console, testOutput);
-        return testOutput.toString();
-    }
-
-    private void appendTestResult(Object test, StringBuilder testOutput) throws Exception {
-        var getName = test.getClass().getMethod("getPresentableName");
-        var isPassed = test.getClass().getMethod("isPassed");
-        var isDefect = test.getClass().getMethod("isDefect");
-        String name = (String) getName.invoke(test);
-        boolean passed = (boolean) isPassed.invoke(test);
-        boolean defect = (boolean) isDefect.invoke(test);
-        String status;
-        if (passed) {
-            status = "? PASSED";
-        } else if (defect) {
-            status = "? FAILED";
-        } else {
-            status = "? UNKNOWN";
-        }
-        testOutput.append("  ").append(status).append(" ").append(name).append("\n");
-
-        if (defect) {
-            appendTestErrorDetails(test, testOutput);
-        }
-    }
-
-    private void appendTestErrorDetails(Object test, StringBuilder testOutput) {
-        try {
-            var getErrorMessage = test.getClass().getMethod("getErrorMessage");
-            String errorMsg = (String) getErrorMessage.invoke(test);
-            if (errorMsg != null && !errorMsg.isEmpty()) {
-                testOutput.append("    Error: ").append(errorMsg).append("\n");
-            }
-            var getStacktrace = test.getClass().getMethod("getStacktrace");
-            String stacktrace = (String) getStacktrace.invoke(test);
-            if (stacktrace != null && !stacktrace.isEmpty()) {
-                testOutput.append("    Stacktrace:\n").append(stacktrace).append("\n");
-            }
-        } catch (NoSuchMethodException ignored) {
-            // Method not available on this test result type
-        } catch (Exception e) {
-            LOG.debug("Failed to get test error details", e);
-        }
-    }
-
-    private void appendTestConsoleOutput(Object console, StringBuilder testOutput) {
-        try {
-            var getConsole = console.getClass().getMethod("getConsole");
-            var innerConsole = getConsole.invoke(console);
-            if (innerConsole != null) {
-                String consoleText = extractPlainConsoleText(innerConsole);
-                if (consoleText != null && !consoleText.isEmpty()) {
-                    testOutput.append("\n=== Console Output ===\n").append(consoleText);
-                }
-            }
-        } catch (NoSuchMethodException ignored) {
-            // Method not available in this version
-        } catch (Exception e) {
-            LOG.debug("Failed to get test console output", e);
-        }
-    }
-
-    /**
-     * Extract plain text from a ConsoleView via getText() or editor document.
-     */
-    private String extractPlainConsoleText(Object console) {
-        // Try getText()
-        try {
-            var getTextMethod = console.getClass().getMethod("getText");
-            String text = (String) getTextMethod.invoke(console);
-            if (text != null && !text.isEmpty()) return text;
-        } catch (NoSuchMethodException ignored) {
-            // Method not available in this version
-        } catch (Exception e) {
-            LOG.warn("getText() failed", e);
-        }
-
-        // Try editor → document
-        try {
-            var getEditorMethod = console.getClass().getMethod("getEditor");
-            var editor = getEditorMethod.invoke(console);
-            if (editor != null) {
-                var getDocMethod = editor.getClass().getMethod("getDocument");
-                var doc = getDocMethod.invoke(editor);
-                if (doc instanceof Document document) {
-                    return document.getText();
-                }
-            }
-        } catch (Exception ignored) {
-            // XML parsing or file access errors are non-fatal
-        }
-
-        return null;
-    }
-
-    public record ClassInfo(String fqn, Module module) {
-    }
-
-    public interface ClassResolver {
-        @SuppressWarnings("unused")
-            // parameter used by implementations
-        ClassInfo resolveClass(String className);
-    }
-
-    private ClassInfo resolveClass(String className) {
-        return ReadAction.compute(() -> {
-            String searchName = className.contains(".") ? className.substring(className.lastIndexOf('.') + 1) : className;
-            List<ClassInfo> matches = new ArrayList<>();
-            PsiSearchHelper.getInstance(project).processElementsWithWord(
-                (element, offset) -> processClassCandidate(element, searchName, className, matches),
-                GlobalSearchScope.projectScope(project),
-                searchName,
-                UsageSearchContext.IN_CODE,
-                true
-            );
-            return matches.isEmpty() ? new ClassInfo(className, null) : matches.getFirst();
-        });
-    }
-
-    @SuppressWarnings({"java:S3516", "SameReturnValue"}) // always returns true to continue PSI search
-    private boolean processClassCandidate(PsiElement element, String searchName,
-                                          String className, List<ClassInfo> matches) {
-        String type = classifyElement(element);
-        if (!TEST_TYPE_CLASS.equals(type) || !(element instanceof PsiNamedElement named)
-            || !searchName.equals(named.getName())) {
-            return true;
-        }
-        try {
-            var getQualifiedName = element.getClass().getMethod("getQualifiedName");
-            String fqn = (String) getQualifiedName.invoke(element);
-            if (fqn != null && (!className.contains(".") || fqn.equals(className))) {
-                VirtualFile vf = element.getContainingFile().getVirtualFile();
-                Module mod = vf != null
-                    ? ProjectFileIndex.getInstance(project).getModuleForFile(vf) : null;
-                matches.add(new ClassInfo(fqn, mod));
-            }
-        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException
-                 | IllegalAccessException ignored) {
-            // Reflection method not available or failed
-        }
-        return true;
-    }
-
 // ---- Test Tools ----
 
     private String listTests(JsonObject args) {
@@ -3107,7 +2681,7 @@ public final class PsiBridgeService implements Disposable {
             String testClass = parsed[0];
             String testMethod = parsed[1];
 
-            ClassInfo classInfo = resolveClass(testClass);
+            RefactoringTools.ClassInfo classInfo = refactoringTools.resolveClass(testClass);
             if (classInfo.fqn() == null) return null;
 
             CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -3597,162 +3171,6 @@ public final class PsiBridgeService implements Disposable {
     }
 
 // ---- Documentation Tools ----
-
-    private String getDocumentation(JsonObject args) {
-        String symbol = args.has(PARAM_SYMBOL) ? args.get(PARAM_SYMBOL).getAsString() : "";
-        if (symbol.isEmpty())
-            return "Error: 'symbol' parameter required (e.g. java.util.List, com.google.gson.Gson.fromJson)";
-
-        return ReadAction.compute(() -> {
-            try {
-                GlobalSearchScope scope = GlobalSearchScope.allScope(project);
-                String[] parts = splitSymbolParts(symbol);
-                String className = parts[0];
-                String memberName = parts[1];
-
-                PsiElement resolvedClass = resolveJavaClass(className, scope);
-                if (resolvedClass == null && memberName == null) {
-                    return "Symbol not found: " + symbol + ". Use a fully qualified name (e.g. java.util.List).";
-                }
-                if (resolvedClass == null) {
-                    return "Symbol not found: " + symbol + ". Use a fully qualified name (e.g. java.util.List).";
-                }
-
-                PsiElement element = resolvedClass;
-                if (memberName != null) {
-                    PsiElement member = findMemberInClass(resolvedClass, memberName);
-                    if (member != null) element = member;
-                }
-
-                return generateDocumentation(element, symbol);
-            } catch (Exception e) {
-                LOG.warn("get_documentation error", e);
-                return "Error retrieving documentation: " + e.getMessage();
-            }
-        });
-    }
-
-    private String[] splitSymbolParts(String symbol) {
-        try {
-            Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
-            Object facade = javaPsiFacadeClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
-            GlobalSearchScope scope = GlobalSearchScope.allScope(project);
-
-            PsiElement resolvedClass = (PsiElement) javaPsiFacadeClass
-                .getMethod("findClass", String.class, GlobalSearchScope.class)
-                .invoke(facade, symbol, scope);
-
-            if (resolvedClass != null) {
-                return new String[]{symbol, null};
-            }
-        } catch (Exception ignored) {
-            // Reflection errors handled by caller
-        }
-
-        int lastDot = symbol.lastIndexOf('.');
-        if (lastDot > 0) {
-            return new String[]{symbol.substring(0, lastDot), symbol.substring(lastDot + 1)};
-        }
-        return new String[]{symbol, null};
-    }
-
-    private PsiElement resolveJavaClass(String className, GlobalSearchScope scope) {
-        try {
-            Class<?> javaPsiFacadeClass = Class.forName("com.intellij.psi.JavaPsiFacade");
-            Object facade = javaPsiFacadeClass.getMethod(GET_INSTANCE_METHOD, Project.class).invoke(null, project);
-            return (PsiElement) javaPsiFacadeClass
-                .getMethod("findClass", String.class, GlobalSearchScope.class)
-                .invoke(facade, className, scope);
-        } catch (Exception e) {
-            LOG.warn("resolveJavaClass error", e);
-            return null;
-        }
-    }
-
-    private PsiElement findMemberInClass(PsiElement resolvedClass, String memberName) {
-        // Direct children first
-        for (PsiElement child : resolvedClass.getChildren()) {
-            if (child instanceof PsiNamedElement named && memberName.equals(named.getName())) {
-                return child;
-            }
-        }
-        // Try inner classes
-        for (PsiElement child : resolvedClass.getChildren()) {
-            if (child instanceof PsiNamedElement) {
-                for (PsiElement grandchild : child.getChildren()) {
-                    if (grandchild instanceof PsiNamedElement named && memberName.equals(named.getName())) {
-                        return grandchild;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private String generateDocumentation(PsiElement element, String symbol) {
-        try {
-            Class<?> langDocClass = Class.forName("com.intellij.lang.LanguageDocumentation");
-            Object langDocInstance = langDocClass.getField("INSTANCE").get(null);
-            Object provider = langDocClass.getMethod("forLanguage", com.intellij.lang.Language.class)
-                .invoke(langDocInstance, element.getLanguage());
-
-            if (provider == null) {
-                return extractDocComment(element, symbol);
-            }
-
-            String doc = (String) provider.getClass().getMethod("generateDoc", PsiElement.class, PsiElement.class)
-                .invoke(provider, element, null);
-
-            if (doc == null || doc.isEmpty()) {
-                return extractDocComment(element, symbol);
-            }
-
-            String text = stripHtmlForDocumentation(doc);
-            return truncateOutput("Documentation for " + symbol + ":\n\n" + text);
-        } catch (Exception e) {
-            LOG.warn("generateDocumentation error", e);
-            return extractDocComment(element, symbol);
-        }
-    }
-
-    private static String stripHtmlForDocumentation(String doc) {
-        return doc.replaceAll("<[^>]+>", "")
-            .replace("&nbsp;", " ")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
-            .replaceAll("&#\\d+;", "")
-            .replaceAll("\n{3,}", "\n\n")
-            .trim();
-    }
-
-    private String extractDocComment(PsiElement element, String symbol) {
-        // Fallback: try to get raw PsiDocComment for Java elements
-        try {
-            Class<?> docOwnerClass = Class.forName("com.intellij.psi.PsiDocCommentOwner");
-            if (docOwnerClass.isInstance(element)) {
-                Object docComment = docOwnerClass.getMethod("getDocComment").invoke(element);
-                if (docComment != null) {
-                    String text = ((PsiElement) docComment).getText();
-                    // Clean up the comment markers
-                    text = text.replace("/**", "")
-                        .replace("*/", "")
-                        .replaceAll("(?m)^\\s*\\*\\s?", "")
-                        .trim();
-                    return "Documentation for " + symbol + ":\n\n" + text;
-                }
-            }
-        } catch (ClassNotFoundException ignored) {
-            // Not a Java environment
-        } catch (Exception e) {
-            LOG.warn("extractDocComment error", e);
-        }
-
-        // Last resort: show element text signature
-        String elementText = element.getText();
-        if (elementText.length() > 500) elementText = elementText.substring(0, 500) + "...";
-        return "No documentation available for " + symbol + ". Element found:\n" + elementText;
-    }
 
     private String downloadSources(JsonObject args) {
         String library = args.has("library") ? args.get("library").getAsString() : "";
@@ -4280,422 +3698,6 @@ public final class PsiBridgeService implements Disposable {
             }
         }
         return sb.toString();
-    }
-
-    private String refactor(JsonObject args) throws Exception {
-        if (!args.has("operation") || !args.has("file") || !args.has(PARAM_SYMBOL)) {
-            return "Error: 'operation', 'file', and 'symbol' parameters are required";
-        }
-        String operation = args.get("operation").getAsString();
-        String pathStr = args.get("file").getAsString();
-        String symbolName = args.get(PARAM_SYMBOL).getAsString();
-        int targetLine = args.has("line") ? args.get("line").getAsInt() : -1;
-        String newName = args.has("new_name") ? args.get("new_name").getAsString() : null;
-
-        if ("rename".equals(operation) && (newName == null || newName.isEmpty())) {
-            return "Error: 'new_name' is required for rename operation";
-        }
-
-        CompletableFuture<String> resultFuture = new CompletableFuture<>();
-
-        EdtUtil.invokeLater(() -> {
-            try {
-                String result = resolveAndRefactor(operation, pathStr, symbolName, targetLine, newName);
-                resultFuture.complete(result);
-            } catch (Exception e) {
-                resultFuture.complete(ERROR_PREFIX + e.getMessage());
-            }
-        });
-
-        return resultFuture.get(30, TimeUnit.SECONDS);
-    }
-
-    private String resolveAndRefactor(String operation, String pathStr, String symbolName,
-                                      int targetLine, String newName) {
-        VirtualFile vf = resolveVirtualFile(pathStr);
-        if (vf == null) return ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr;
-
-        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-        if (psiFile == null) return ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr;
-
-        Document document = FileDocumentManager.getInstance().getDocument(vf);
-        PsiNamedElement targetElement = findNamedElement(psiFile, document, symbolName, targetLine);
-        if (targetElement == null) {
-            return "Error: Symbol '" + symbolName + "' not found in " + pathStr +
-                (targetLine > 0 ? " at line " + targetLine : "") +
-                ". Use search_symbols to find the correct name and location.";
-        }
-
-        String[] result = new String[1];
-        ApplicationManager.getApplication().runWriteAction(() -> {
-            try {
-                result[0] = executeRefactoring(operation, targetElement, symbolName, newName, pathStr);
-            } catch (Exception e) {
-                LOG.warn("Refactoring error", e);
-                result[0] = "Error during refactoring: " + e.getMessage();
-            }
-        });
-        return result[0];
-    }
-
-    private String executeRefactoring(String operation, PsiNamedElement targetElement,
-                                      String symbolName, String newName, String pathStr) {
-        return switch (operation) {
-            case "rename" -> performRename(targetElement, symbolName, newName, pathStr);
-            case "safe_delete" -> performSafeDelete(targetElement, symbolName, pathStr);
-            case "inline" -> "Error: 'inline' refactoring is not yet supported via this tool. " +
-                "Use intellij_write_file to manually inline the code.";
-            case "extract_method" -> "Error: 'extract_method' requires a code selection range " +
-                "which is not well-suited for tool-based invocation. " +
-                "Use intellij_write_file to manually extract the method.";
-            default -> "Error: Unknown operation '" + operation + "'. Supported: rename, safe_delete";
-        };
-    }
-
-    private String performRename(PsiNamedElement targetElement, String symbolName,
-                                 String newName, String pathStr) {
-        var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project)).findAll();
-        int refCount = refs.size();
-
-        var factory = com.intellij.refactoring.RefactoringFactory.getInstance(project);
-        var rename = factory.createRename(targetElement, newName);
-        rename.setSearchInComments(true);
-        rename.setSearchInNonJavaFiles(true);
-        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-            project,
-            () -> {
-                var usages = rename.findUsages();
-                rename.doRefactoring(usages);
-            },
-            "Rename " + symbolName + " to " + newName,
-            null
-        );
-
-        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-        FileDocumentManager.getInstance().saveAllDocuments();
-
-        return "? Renamed '" + symbolName + "' to '" + newName + "'\n" +
-            "  Updated " + refCount + " references across the project.\n" +
-            "  File: " + pathStr;
-    }
-
-    private String performSafeDelete(PsiNamedElement targetElement, String symbolName, String pathStr) {
-        var refs = ReferencesSearch.search(targetElement, GlobalSearchScope.projectScope(project)).findAll();
-
-        if (!refs.isEmpty()) {
-            return formatUsageReport(symbolName, refs);
-        }
-
-        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-            project,
-            targetElement::delete,
-            "Safe Delete " + symbolName,
-            null
-        );
-        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-        FileDocumentManager.getInstance().saveAllDocuments();
-
-        return "? Safely deleted '" + symbolName + "' (no usages found).\n  File: " + pathStr;
-    }
-
-    private String formatUsageReport(String symbolName, Collection<PsiReference> refs) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Cannot safely delete '").append(symbolName)
-            .append("' ? it has ").append(refs.size()).append(" usages:\n");
-        int shown = 0;
-        for (var ref : refs) {
-            if (shown++ >= 10) {
-                sb.append("  ... and ").append(refs.size() - 10).append(" more\n");
-                break;
-            }
-            PsiFile refFile = ref.getElement().getContainingFile();
-            int line = -1;
-            if (refFile != null) {
-                Document refDoc = FileDocumentManager.getInstance()
-                    .getDocument(refFile.getVirtualFile());
-                if (refDoc != null) {
-                    line = refDoc.getLineNumber(ref.getElement().getTextOffset()) + 1;
-                }
-            }
-            sb.append("  ").append(refFile != null ? refFile.getName() : "?")
-                .append(":").append(line).append("\n");
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Find a PsiNamedElement by name, optionally constrained to a specific line.
-     */
-    private PsiNamedElement findNamedElement(PsiFile psiFile, Document document, String name, int targetLine) {
-        PsiNamedElement[] found = {null};
-        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-            @Override
-            public void visitElement(@NotNull PsiElement element) {
-                if (element instanceof PsiNamedElement named && name.equals(named.getName())
-                    && isMatchingLine(element, document, targetLine, found[0] == null)) {
-                    found[0] = named;
-                }
-                if (found[0] == null) super.visitElement(element);
-            }
-        });
-        return found[0];
-    }
-
-    private boolean isMatchingLine(PsiElement element, Document document, int targetLine, boolean noMatchYet) {
-        if (targetLine <= 0) return noMatchYet;
-        if (document == null) return false;
-        int line = document.getLineNumber(element.getTextOffset()) + 1;
-        return line == targetLine;
-    }
-
-    private String goToDeclaration(JsonObject args) {
-        if (!args.has("file") || !args.has(PARAM_SYMBOL) || !args.has("line")) {
-            return "Error: 'file', 'symbol', and 'line' parameters are required";
-        }
-        String pathStr = args.get("file").getAsString();
-        String symbolName = args.get(PARAM_SYMBOL).getAsString();
-        int targetLine = args.get("line").getAsInt();
-
-        return ReadAction.compute(() -> {
-            VirtualFile vf = resolveVirtualFile(pathStr);
-            if (vf == null) return ERROR_PREFIX + ERROR_FILE_NOT_FOUND + pathStr;
-
-            PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-            if (psiFile == null) return ERROR_PREFIX + ERROR_CANNOT_PARSE + pathStr;
-
-            Document document = FileDocumentManager.getInstance().getDocument(vf);
-            if (document == null) return "Error: Cannot get document for: " + pathStr;
-
-            if (targetLine < 1 || targetLine > document.getLineCount()) {
-                return "Error: Line " + targetLine + " is out of bounds (file has " +
-                    document.getLineCount() + FORMAT_LINES_SUFFIX;
-            }
-            int lineStartOffset = document.getLineStartOffset(targetLine - 1);
-            int lineEndOffset = document.getLineEndOffset(targetLine - 1);
-
-            List<PsiElement> declarations = findDeclarationsOnLine(
-                psiFile, lineStartOffset, lineEndOffset, symbolName);
-
-            if (declarations.isEmpty()) {
-                declarations = findDeclarationByOffset(
-                    psiFile, document, lineStartOffset, lineEndOffset, symbolName);
-            }
-
-            if (declarations.isEmpty()) {
-                return "Could not resolve declaration for '" + symbolName + "' at line " + targetLine +
-                    " in " + pathStr + ". The symbol may be unresolved or from an unindexed library.";
-            }
-
-            return formatDeclarationResults(declarations, symbolName);
-        });
-    }
-
-    private List<PsiElement> findDeclarationsOnLine(
-        PsiFile psiFile, int lineStartOffset, int lineEndOffset, String symbolName) {
-        List<PsiElement> declarations = new ArrayList<>();
-        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
-            @Override
-            public void visitElement(@NotNull PsiElement element) {
-                int offset = element.getTextOffset();
-                if (offset >= lineStartOffset && offset <= lineEndOffset
-                    && matchesSymbolName(element, symbolName)) {
-                    resolveDeclarations(element, declarations);
-                }
-                super.visitElement(element);
-            }
-        });
-        return declarations;
-    }
-
-    private boolean matchesSymbolName(PsiElement element, String symbolName) {
-        return element.getText().equals(symbolName)
-            || (element instanceof PsiNamedElement named && symbolName.equals(named.getName()));
-    }
-
-    private void resolveDeclarations(PsiElement element, List<PsiElement> declarations) {
-        PsiReference ref = element.getReference();
-        if (ref != null) {
-            PsiElement resolved = ref.resolve();
-            if (resolved != null) declarations.add(resolved);
-        }
-        if (element instanceof PsiNamedElement) {
-            for (PsiReference r : element.getReferences()) {
-                PsiElement res = r.resolve();
-                if (res != null && res != element) declarations.add(res);
-            }
-        }
-    }
-
-    private List<PsiElement> findDeclarationByOffset(
-        PsiFile psiFile, Document document, int lineStartOffset, int lineEndOffset, String symbolName) {
-        List<PsiElement> declarations = new ArrayList<>();
-        String lineText = document.getText(new com.intellij.openapi.util.TextRange(lineStartOffset, lineEndOffset));
-        int symIdx = lineText.indexOf(symbolName);
-        if (symIdx < 0) return declarations;
-
-        int offset = lineStartOffset + symIdx;
-        PsiElement elemAtOffset = psiFile.findElementAt(offset);
-        if (elemAtOffset == null) return declarations;
-
-        PsiElement current = elemAtOffset;
-        for (int i = 0; i < 5 && current != null; i++) {
-            PsiReference ref = current.getReference();
-            if (ref != null) {
-                PsiElement resolved = ref.resolve();
-                if (resolved != null) {
-                    declarations.add(resolved);
-                    break;
-                }
-            }
-            current = current.getParent();
-        }
-        return declarations;
-    }
-
-    private String formatDeclarationResults(List<PsiElement> declarations, String symbolName) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Declaration of '").append(symbolName).append("':\n\n");
-        String basePath = project.getBasePath();
-
-        for (PsiElement decl : declarations) {
-            PsiFile declFile = decl.getContainingFile();
-            if (declFile == null) continue;
-
-            VirtualFile declVf = declFile.getVirtualFile();
-            String declPath = resolveDeclPath(declVf, basePath);
-
-            Document declDoc = declVf != null ? FileDocumentManager.getInstance().getDocument(declVf) : null;
-            int declLine = declDoc != null ? declDoc.getLineNumber(decl.getTextOffset()) + 1 : -1;
-
-            sb.append("  File: ").append(declPath).append("\n");
-            sb.append("  Line: ").append(declLine).append("\n");
-            appendDeclarationContext(sb, declDoc, declLine);
-            sb.append("\n");
-        }
-        return sb.toString();
-    }
-
-    private String resolveDeclPath(VirtualFile declVf, String basePath) {
-        if (declVf != null && basePath != null) return relativize(basePath, declVf.getPath());
-        if (declVf != null) return declVf.getName();
-        return "?";
-    }
-
-    private void appendDeclarationContext(StringBuilder sb, Document declDoc, int declLine) {
-        if (declDoc == null || declLine <= 0) return;
-        int startLine = Math.max(0, declLine - 3);
-        int endLine = Math.min(declDoc.getLineCount() - 1, declLine + 2);
-        sb.append("  Context:\n");
-        for (int l = startLine; l <= endLine; l++) {
-            int ls = declDoc.getLineStartOffset(l);
-            int le = declDoc.getLineEndOffset(l);
-            String lineContent = declDoc.getText(new com.intellij.openapi.util.TextRange(ls, le));
-            sb.append(l == declLine - 1 ? "  → " : "    ")
-                .append(l + 1).append(": ").append(lineContent).append("\n");
-        }
-    }
-
-    private String getTypeHierarchy(JsonObject args) {
-        if (!args.has(PARAM_SYMBOL)) return "Error: 'symbol' parameter is required";
-        String symbolName = args.get(PARAM_SYMBOL).getAsString();
-        String direction = args.has("direction") ? args.get("direction").getAsString() : "both";
-
-        return ReadAction.compute(() -> {
-            com.intellij.psi.PsiClass psiClass = resolveClassByName(symbolName);
-            if (psiClass == null) {
-                return "Error: Class/interface '" + symbolName + "' not found. " +
-                    "Use search_symbols to find the correct name.";
-            }
-
-            StringBuilder sb = new StringBuilder();
-            String basePath = project.getBasePath();
-
-            String qualifiedName = psiClass.getQualifiedName();
-            sb.append("Type hierarchy for: ").append(qualifiedName != null ? qualifiedName : symbolName);
-            sb.append(psiClass.isInterface() ? " (interface)" : " (class)").append("\n\n");
-
-            if ("supertypes".equals(direction) || "both".equals(direction)) {
-                sb.append("Supertypes:\n");
-                appendSupertypes(psiClass, sb, basePath, "  ", new HashSet<>(), 0);
-                sb.append("\n");
-            }
-
-            if ("subtypes".equals(direction) || "both".equals(direction)) {
-                appendSubtypes(psiClass, sb, basePath);
-            }
-
-            return sb.toString();
-        });
-    }
-
-    private com.intellij.psi.PsiClass resolveClassByName(String symbolName) {
-        var javaPsiFacade = com.intellij.psi.JavaPsiFacade.getInstance(project);
-        var scope = GlobalSearchScope.allScope(project);
-
-        com.intellij.psi.PsiClass psiClass = javaPsiFacade.findClass(symbolName, scope);
-        if (psiClass != null) return psiClass;
-
-        var classes = javaPsiFacade.findClasses(symbolName, scope);
-        if (classes.length == 0) {
-            var shortNameCache = com.intellij.psi.search.PsiShortNamesCache.getInstance(project);
-            classes = shortNameCache.getClassesByName(symbolName, scope);
-        }
-        return classes.length > 0 ? classes[0] : null;
-    }
-
-    private void appendSubtypes(com.intellij.psi.PsiClass psiClass, StringBuilder sb, String basePath) {
-        sb.append("Subtypes/Implementations:\n");
-        var searcher = com.intellij.psi.search.searches.ClassInheritorsSearch.search(
-            psiClass, GlobalSearchScope.projectScope(project), true);
-        var inheritors = searcher.findAll();
-        if (inheritors.isEmpty()) {
-            sb.append("  (none found in project scope)\n");
-            return;
-        }
-        for (var inheritor : inheritors) {
-            String iName = inheritor.getQualifiedName();
-            String iFile = getClassFile(inheritor, basePath);
-            sb.append("  ").append(inheritor.isInterface() ? "interface " : "class ")
-                .append(iName != null ? iName : inheritor.getName())
-                .append(iFile).append("\n");
-        }
-    }
-
-    private void appendSupertypes(com.intellij.psi.PsiClass psiClass, StringBuilder sb,
-                                  String basePath, String indent, Set<String> visited, int depth) {
-        if (depth > 10) return;
-        String qn = psiClass.getQualifiedName();
-        if (qn != null && !visited.add(qn)) return;
-
-        // Superclass
-        com.intellij.psi.PsiClass superClass = psiClass.getSuperClass();
-        if (superClass != null && !"java.lang.Object".equals(superClass.getQualifiedName())) {
-            String superName = superClass.getQualifiedName();
-            String file = getClassFile(superClass, basePath);
-            sb.append(indent).append("extends ").append(superName != null ? superName : superClass.getName())
-                .append(file).append("\n");
-            appendSupertypes(superClass, sb, basePath, indent + "  ", visited, depth + 1);
-        }
-
-        // Interfaces
-        for (var iface : psiClass.getInterfaces()) {
-            String ifaceName = iface.getQualifiedName();
-            if ("java.lang.Object".equals(ifaceName)) continue;
-            String file = getClassFile(iface, basePath);
-            sb.append(indent).append("implements ").append(ifaceName != null ? ifaceName : iface.getName())
-                .append(file).append("\n");
-            appendSupertypes(iface, sb, basePath, indent + "  ", visited, depth + 1);
-        }
-    }
-
-    private String getClassFile(com.intellij.psi.PsiClass cls, String basePath) {
-        PsiFile file = cls.getContainingFile();
-        if (file != null && file.getVirtualFile() != null && basePath != null) {
-            String path = file.getVirtualFile().getPath();
-            if (path.contains(".jar!")) return ""; // Library class — don't show path
-            return " (" + relativize(basePath, path) + ")";
-        }
-        return "";
     }
 
     private String createFile(JsonObject args) throws Exception {
