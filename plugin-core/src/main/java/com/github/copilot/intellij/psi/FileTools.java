@@ -175,23 +175,16 @@ class FileTools extends AbstractToolHandler {
             resultFuture.complete("Cannot open document: " + pathStr);
             return;
         }
-        String text = doc.getText();
-        int idx = text.indexOf(oldStr);
-        int matchLen = oldStr.length();
+        // Normalize line endings in old_str/new_str for consistent matching
+        String normalizedOld = oldStr.replace("\r\n", "\n").replace("\r", "\n");
+        String normalizedNew = newStr.replace("\r\n", "\n").replace("\r", "\n");
+
+        int[] match = findMatchPosition(doc, vf, pathStr, normalizedOld, autoFormat);
+        int idx = match[0];
+        int matchLen = match[1];
+
         if (idx == -1) {
-            // Fallback: normalize Unicode chars and retry
-            String normText = ToolUtils.normalizeForMatch(text);
-            String normOld = ToolUtils.normalizeForMatch(oldStr);
-            idx = normText.indexOf(normOld);
-            if (idx != -1) {
-                LOG.info("write_file: normalized match succeeded for " + pathStr);
-                matchLen = ToolUtils.findOriginalLength(text, idx, normOld.length());
-            } else {
-                LOG.warn("write_file: old_str not found in " + pathStr +
-                    " (exact and normalized both failed)");
-            }
-        }
-        if (idx == -1) {
+            String text = doc.getText();
             String preview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
             resultFuture.complete("old_str not found in " + pathStr +
                 ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
@@ -199,8 +192,9 @@ class FileTools extends AbstractToolHandler {
             return;
         }
         // Check for multiple matches using same strategy
-        String checkText = (matchLen == oldStr.length()) ? text : ToolUtils.normalizeForMatch(text);
-        String checkOld = (matchLen == oldStr.length()) ? oldStr : ToolUtils.normalizeForMatch(oldStr);
+        String text = doc.getText();
+        String checkText = (matchLen == normalizedOld.length()) ? text : ToolUtils.normalizeForMatch(text);
+        String checkOld = (matchLen == normalizedOld.length()) ? normalizedOld : ToolUtils.normalizeForMatch(normalizedOld);
         if (checkText.indexOf(checkOld, idx + 1) != -1) {
             resultFuture.complete("old_str matches multiple locations in " + pathStr + ". Make it more specific.");
             return;
@@ -209,11 +203,64 @@ class FileTools extends AbstractToolHandler {
         final int finalLen = matchLen;
         ApplicationManager.getApplication().runWriteAction(() ->
             com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
+                project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, normalizedNew),
                 "Edit File", null)
         );
         if (autoFormat) autoFormatAfterWrite(pathStr);
-        resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + FORMAT_CHARS_SUFFIX);
+        resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX);
+    }
+
+    /**
+     * Returns [index, matchLength] or [-1, 0] if not found.
+     */
+    private int[] findMatchPosition(Document doc, VirtualFile vf, String pathStr,
+                                    String normalizedOld, boolean autoFormat) {
+        String text = doc.getText();
+        int idx = text.indexOf(normalizedOld);
+        int matchLen = normalizedOld.length();
+
+        // Fallback 1: auto-format the file and retry (normalizes whitespace/line endings)
+        if (idx == -1 && autoFormat) {
+            formatFileSync(vf);
+            text = doc.getText();
+            idx = text.indexOf(normalizedOld);
+            if (idx != -1) {
+                LOG.info("write_file: match succeeded after auto-format for " + pathStr);
+                return new int[]{idx, matchLen};
+            }
+        }
+
+        if (idx == -1) {
+            // Fallback 2: normalize Unicode chars and retry
+            String normText = ToolUtils.normalizeForMatch(text);
+            String normOld = ToolUtils.normalizeForMatch(normalizedOld);
+            idx = normText.indexOf(normOld);
+            if (idx != -1) {
+                LOG.info("write_file: normalized match succeeded for " + pathStr);
+                matchLen = ToolUtils.findOriginalLength(text, idx, normOld.length());
+            } else {
+                LOG.warn("write_file: old_str not found in " + pathStr +
+                    " (exact, formatted, and normalized all failed)");
+            }
+        }
+        return new int[]{idx, matchLen};
+    }
+
+    /**
+     * Synchronously format a file on the current EDT thread.
+     * Used as a fallback when old_str matching fails — formatting normalizes
+     * line endings, whitespace, and indentation for more reliable matching.
+     */
+    private void formatFileSync(VirtualFile vf) {
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return;
+        ApplicationManager.getApplication().runWriteAction(() ->
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+            }, "Pre-Format for Edit", null)
+        );
     }
 
     /**

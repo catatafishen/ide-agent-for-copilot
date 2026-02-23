@@ -104,81 +104,89 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val updateType = update["sessionUpdate"]?.asString ?: return
 
         when (updateType) {
-            "tool_call" -> {
-                val title = update["title"]?.asString ?: "Unknown tool"
-                val status = update["status"]?.asString ?: "pending"
-                val toolCallId = update["toolCallId"]?.asString ?: ""
-                addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
+            "tool_call" -> handleToolCall(update)
+            "tool_call_update" -> handleToolCallUpdate(update)
+            "plan" -> handlePlanUpdate(update)
+        }
+    }
 
-                // Extract file path from locations or title
-                val locations = if (update.has("locations")) update.getAsJsonArray("locations") else null
-                var filePath: String? = null
-                if (locations != null && locations.size() > 0) {
-                    filePath = locations[0].asJsonObject["path"]?.asString
-                }
-                if (filePath == null) {
-                    val pathMatch = Regex("""(?:Creating|Writing|Editing|Reading)\s+(.+\.\w+)""").find(title)
-                    filePath = pathMatch?.groupValues?.get(1)
-                }
-                if (filePath != null && toolCallId.isNotEmpty()) {
-                    toolCallFiles[toolCallId] = filePath
-                }
-            }
+    private fun handleToolCall(update: com.google.gson.JsonObject) {
+        val title = update["title"]?.asString ?: "Unknown tool"
+        val status = update["status"]?.asString ?: "pending"
+        val toolCallId = update["toolCallId"]?.asString ?: ""
+        addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
 
-            "tool_call_update" -> {
-                val status = update["status"]?.asString ?: ""
-                val toolCallId = update["toolCallId"]?.asString ?: ""
-                if (status == "completed" || status == "failed") {
-                    addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
+        val filePath = extractFilePath(update, title)
+        if (filePath != null && toolCallId.isNotEmpty()) {
+            toolCallFiles[toolCallId] = filePath
+        }
+    }
 
-                    // If a file was written, read and show in Session tab
-                    val filePath = toolCallFiles[toolCallId]
-                    if (status == "completed" && filePath != null) {
-                        ApplicationManager.getApplication().executeOnPooledThread {
-                            try {
-                                val file = java.io.File(filePath)
-                                if (file.exists() && file.length() < 100_000) {
-                                    val content = file.readText()
-                                    SwingUtilities.invokeLater {
-                                        val fileNode = FileTreeNode(file.name, filePath, content)
-                                        planRoot.add(fileNode)
-                                        planTreeModel.reload()
-                                        planDetailsArea.text = "${file.name}\n${"─".repeat(40)}\n\n$content"
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                // Plan file loading is best-effort; errors are non-critical
-                            }
-                        }
+    private fun extractFilePath(update: com.google.gson.JsonObject, title: String): String? {
+        val locations = if (update.has("locations")) update.getAsJsonArray("locations") else null
+        if (locations != null && locations.size() > 0) {
+            val path = locations[0].asJsonObject["path"]?.asString
+            if (path != null) return path
+        }
+        val pathMatch = Regex("""(?:Creating|Writing|Editing|Reading)\s+(.+\.\w+)""").find(title)
+        return pathMatch?.groupValues?.get(1)
+    }
+
+    private fun handleToolCallUpdate(update: com.google.gson.JsonObject) {
+        val status = update["status"]?.asString ?: ""
+        val toolCallId = update["toolCallId"]?.asString ?: ""
+        if (status != "completed" && status != "failed") return
+
+        addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
+
+        val filePath = toolCallFiles[toolCallId]
+        if (status == "completed" && filePath != null) {
+            loadCompletedToolFile(filePath)
+        }
+    }
+
+    private fun loadCompletedToolFile(filePath: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val file = java.io.File(filePath)
+                if (file.exists() && file.length() < 100_000) {
+                    val content = file.readText()
+                    SwingUtilities.invokeLater {
+                        val fileNode = FileTreeNode(file.name, filePath, content)
+                        planRoot.add(fileNode)
+                        planTreeModel.reload()
+                        planDetailsArea.text = "${file.name}\n${"—".repeat(40)}\n\n$content"
                     }
                 }
+            } catch (_: Exception) {
+                // Plan file loading is best-effort; errors are non-critical
             }
+        }
+    }
 
-            "plan" -> {
-                val entries = update.getAsJsonArray("entries") ?: return
-                SwingUtilities.invokeLater {
-                    // Remove existing plan group, but keep Files group
-                    val toRemove = mutableListOf<javax.swing.tree.DefaultMutableTreeNode>()
-                    for (i in 0 until planRoot.childCount) {
-                        val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
-                        if (child.userObject == "Plan") toRemove.add(child)
-                    }
-                    toRemove.forEach { planRoot.remove(it) }
-
-                    val planNode = javax.swing.tree.DefaultMutableTreeNode("Plan")
-                    for (entry in entries) {
-                        val obj = entry.asJsonObject
-                        val content = obj["content"]?.asString ?: "Step"
-                        val entryStatus = obj["status"]?.asString ?: "pending"
-                        val priority = obj["priority"]?.asString ?: ""
-                        val label = "$content [$entryStatus]${if (priority.isNotEmpty()) " ($priority)" else ""}"
-                        planNode.add(javax.swing.tree.DefaultMutableTreeNode(label))
-                    }
-                    planRoot.add(planNode)
-                    planTreeModel.reload()
-                    addTimelineEvent(EventType.TOOL_CALL, "Plan updated (${entries.size()} steps)")
-                }
+    private fun handlePlanUpdate(update: com.google.gson.JsonObject) {
+        val entries = update.getAsJsonArray("entries") ?: return
+        SwingUtilities.invokeLater {
+            // Remove existing plan group, but keep Files group
+            val toRemove = mutableListOf<javax.swing.tree.DefaultMutableTreeNode>()
+            for (i in 0 until planRoot.childCount) {
+                val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
+                if (child.userObject == "Plan") toRemove.add(child)
             }
+            toRemove.forEach { planRoot.remove(it) }
+
+            val planNode = javax.swing.tree.DefaultMutableTreeNode("Plan")
+            for (entry in entries) {
+                val obj = entry.asJsonObject
+                val content = obj["content"]?.asString ?: "Step"
+                val entryStatus = obj["status"]?.asString ?: "pending"
+                val priority = obj["priority"]?.asString ?: ""
+                val label = "$content [$entryStatus]${if (priority.isNotEmpty()) " ($priority)" else ""}"
+                planNode.add(javax.swing.tree.DefaultMutableTreeNode(label))
+            }
+            planRoot.add(planNode)
+            planTreeModel.reload()
+            addTimelineEvent(EventType.TOOL_CALL, "Plan updated (${entries.size()} steps)")
         }
     }
 
@@ -190,81 +198,89 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val ghCli = findGhCli() ?: run {
-                    SwingUtilities.invokeLater {
-                        usageLabel.text = "Usage info unavailable (gh CLI not found)"
-                        usageLabel.toolTipText =
-                            "Install GitHub CLI: https://cli.github.com  then run 'gh auth login'"
-                        costLabel.text = ""
-                    }
+                    updateUsageUi(
+                        "Usage info unavailable (gh CLI not found)",
+                        "Install GitHub CLI: https://cli.github.com  then run 'gh auth login'"
+                    )
                     return@executeOnPooledThread
                 }
 
-                val process = ProcessBuilder(
-                    ghCli, "auth", "status"
-                ).redirectErrorStream(true).start()
-                val authOutput = process.inputStream.bufferedReader().readText()
-                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-
-                if (process.exitValue() != 0 || "not logged in" in authOutput.lowercase() || "gh auth login" in authOutput) {
-                    SwingUtilities.invokeLater {
-                        usageLabel.text = "Usage info unavailable (not authenticated)"
-                        usageLabel.toolTipText = "Run 'gh auth login' in a terminal to authenticate with GitHub"
-                        costLabel.text = ""
-                    }
+                if (!isGhAuthenticated(ghCli)) {
+                    updateUsageUi(
+                        "Usage info unavailable (not authenticated)",
+                        "Run 'gh auth login' in a terminal to authenticate with GitHub"
+                    )
                     return@executeOnPooledThread
                 }
 
-                val apiProcess = ProcessBuilder(
-                    ghCli, "api", "/copilot_internal/user"
-                ).redirectErrorStream(true).start()
-
-                val json = apiProcess.inputStream.bufferedReader().readText()
-                apiProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-
-                val gson = com.google.gson.Gson()
-                val obj =
-                    gson.fromJson(json, com.google.gson.JsonObject::class.java) ?: return@executeOnPooledThread
-
+                val obj = fetchCopilotUserData(ghCli) ?: return@executeOnPooledThread
                 val snapshots = obj.getAsJsonObject("quota_snapshots") ?: return@executeOnPooledThread
                 val premium = snapshots.getAsJsonObject("premium_interactions") ?: return@executeOnPooledThread
 
-                val entitlement = premium["entitlement"]?.asInt ?: 0
-                val remaining = premium["remaining"]?.asInt ?: 0
-                val unlimited = premium["unlimited"]?.asBoolean ?: false
-                val overagePermitted = premium["overage_permitted"]?.asBoolean ?: false
-                val resetDate = obj["quota_reset_date"]?.asString ?: ""
-
-                val used = entitlement - remaining
-
-                SwingUtilities.invokeLater {
-                    if (unlimited) {
-                        usageLabel.text = "Unlimited premium requests"
-                        usageLabel.toolTipText = "Resets $resetDate"
-                        costLabel.text = ""
-                    } else {
-                        usageLabel.text = "$used / $entitlement premium requests"
-                        usageLabel.toolTipText = "Resets $resetDate"
-
-                        if (remaining < 0) {
-                            val overageCost = -remaining * 0.04
-                            costLabel.text = if (overagePermitted) {
-                                "Est. overage: $${String.format("%.2f", overageCost)}"
-                            } else {
-                                "Quota exceeded - overages not permitted"
-                            }
-                            costLabel.foreground = JBColor.RED
-                        } else {
-                            costLabel.text = ""
-                        }
-                    }
-                }
+                displayBillingQuota(premium, obj)
             } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    usageLabel.text = "Usage info unavailable"
-                    usageLabel.toolTipText = "Error: ${e.message}. Ensure 'gh auth login' has been run."
-                    costLabel.text = ""
-                }
+                updateUsageUi(
+                    "Usage info unavailable",
+                    "Error: ${e.message}. Ensure 'gh auth login' has been run."
+                )
             }
+        }
+    }
+
+    private fun updateUsageUi(text: String, tooltip: String, cost: String = "") {
+        SwingUtilities.invokeLater {
+            usageLabel.text = text
+            usageLabel.toolTipText = tooltip
+            costLabel.text = cost
+        }
+    }
+
+    private fun isGhAuthenticated(ghCli: String): Boolean {
+        val process = ProcessBuilder(ghCli, "auth", "status").redirectErrorStream(true).start()
+        val authOutput = process.inputStream.bufferedReader().readText()
+        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+        return process.exitValue() == 0 && "not logged in" !in authOutput.lowercase() && "gh auth login" !in authOutput
+    }
+
+    private fun fetchCopilotUserData(ghCli: String): com.google.gson.JsonObject? {
+        val apiProcess = ProcessBuilder(ghCli, "api", "/copilot_internal/user").redirectErrorStream(true).start()
+        val json = apiProcess.inputStream.bufferedReader().readText()
+        apiProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+        return com.google.gson.Gson().fromJson(json, com.google.gson.JsonObject::class.java)
+    }
+
+    private fun displayBillingQuota(premium: com.google.gson.JsonObject, obj: com.google.gson.JsonObject) {
+        val entitlement = premium["entitlement"]?.asInt ?: 0
+        val remaining = premium["remaining"]?.asInt ?: 0
+        val unlimited = premium["unlimited"]?.asBoolean ?: false
+        val overagePermitted = premium["overage_permitted"]?.asBoolean ?: false
+        val resetDate = obj["quota_reset_date"]?.asString ?: ""
+        val used = entitlement - remaining
+
+        SwingUtilities.invokeLater {
+            if (unlimited) {
+                usageLabel.text = "Unlimited premium requests"
+                usageLabel.toolTipText = "Resets $resetDate"
+                costLabel.text = ""
+            } else {
+                usageLabel.text = "$used / $entitlement premium requests"
+                usageLabel.toolTipText = "Resets $resetDate"
+                updateCostLabel(remaining, overagePermitted)
+            }
+        }
+    }
+
+    private fun updateCostLabel(remaining: Int, overagePermitted: Boolean) {
+        if (remaining < 0) {
+            val overageCost = -remaining * 0.04
+            costLabel.text = if (overagePermitted) {
+                "Est. overage: $${String.format("%.2f", overageCost)}"
+            } else {
+                "Quota exceeded - overages not permitted"
+            }
+            costLabel.foreground = JBColor.RED
+        } else {
+            costLabel.text = ""
         }
     }
 
@@ -353,7 +369,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val toolbar = createPromptToolbar()
         val modelComboBox = toolbar.first
         val loadingSpinner = toolbar.second
-        val modeCombo = toolbar.third
 
         // Auth status panel
         val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
@@ -737,9 +752,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun buildSingleReference(item: ContextItem): CopilotAcpClient.ResourceReference? {
         val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
             ?: return null
-        val doc = com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
-            com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
-        } ?: return null
+        val doc =
+            com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
+                com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+            } ?: return null
 
         val text = if (item.isSelection && item.startLine > 0) {
             val startOffset = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
@@ -777,6 +793,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     appendResponse("\u2692 $title\n")
                 }
             }
+
             "tool_call_update" -> {
                 val status = update["status"]?.asString ?: ""
                 if (status == "completed") {
@@ -786,6 +803,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     appendResponse("\u2716 Tool failed: $toolId\n")
                 }
             }
+
             "agent_thought_chunk" -> {
                 if (!receivedContent) {
                     setResponseStatus(MSG_THINKING)
@@ -886,25 +904,39 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val currentFile = fileEditorManager.selectedFiles.firstOrNull()
 
         if (currentFile == null) {
-            JOptionPane.showMessageDialog(panel, "No file is currently open in the editor", "No File", JOptionPane.WARNING_MESSAGE)
+            JOptionPane.showMessageDialog(
+                panel,
+                "No file is currently open in the editor",
+                "No File",
+                JOptionPane.WARNING_MESSAGE
+            )
             return
         }
 
         val path = currentFile.path
         val lineCount = try {
             fileEditorManager.selectedTextEditor?.document?.lineCount ?: 0
-        } catch (_: Exception) { 0 }
+        } catch (_: Exception) {
+            0
+        }
 
         val exists = (0 until contextListModel.size()).any { contextListModel[it].path == path }
         if (exists) {
-            JOptionPane.showMessageDialog(panel, "File already in context: ${currentFile.name}", "Duplicate File", JOptionPane.INFORMATION_MESSAGE)
+            JOptionPane.showMessageDialog(
+                panel,
+                "File already in context: ${currentFile.name}",
+                "Duplicate File",
+                JOptionPane.INFORMATION_MESSAGE
+            )
             return
         }
 
-        contextListModel.addElement(ContextItem(
-            path = path, name = currentFile.name, startLine = 1, endLine = lineCount,
-            fileType = currentFile.fileType, isSelection = false
-        ))
+        contextListModel.addElement(
+            ContextItem(
+                path = path, name = currentFile.name, startLine = 1, endLine = lineCount,
+                fileType = currentFile.fileType, isSelection = false
+            )
+        )
     }
 
     private fun handleAddSelection(panel: JBPanel<JBPanel<*>>) {
@@ -913,13 +945,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val currentFile = fileEditorManager.selectedFiles.firstOrNull()
 
         if (editor == null || currentFile == null) {
-            JOptionPane.showMessageDialog(panel, "No editor is currently open", "No Editor", JOptionPane.WARNING_MESSAGE)
+            JOptionPane.showMessageDialog(
+                panel,
+                "No editor is currently open",
+                "No Editor",
+                JOptionPane.WARNING_MESSAGE
+            )
             return
         }
 
         val selectionModel = editor.selectionModel
         if (!selectionModel.hasSelection()) {
-            JOptionPane.showMessageDialog(panel, "No text is selected. Select some code first.", "No Selection", JOptionPane.WARNING_MESSAGE)
+            JOptionPane.showMessageDialog(
+                panel,
+                "No text is selected. Select some code first.",
+                "No Selection",
+                JOptionPane.WARNING_MESSAGE
+            )
             return
         }
 
@@ -927,11 +969,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val startLine = document.getLineNumber(selectionModel.selectionStart) + 1
         val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
 
-        contextListModel.addElement(ContextItem(
-            path = currentFile.path, name = "${currentFile.name}:$startLine-$endLine",
-            startLine = startLine, endLine = endLine,
-            fileType = currentFile.fileType, isSelection = true
-        ))
+        contextListModel.addElement(
+            ContextItem(
+                path = currentFile.path, name = "${currentFile.name}:$startLine-$endLine",
+                startLine = startLine, endLine = endLine,
+                fileType = currentFile.fileType, isSelection = true
+            )
+        )
     }
 
     private fun createContextCellRenderer(): DefaultListCellRenderer {
@@ -957,7 +1001,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-        private fun createSessionTab(): JComponent {
+    private fun createSessionTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
 
@@ -1079,7 +1123,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         if (node is FileTreeNode) {
             val fileLines = node.fileContent.lines()
             val preview = if (fileLines.size > 200) {
-                fileLines.take(200).joinToString("\n") + "\n\n--- Truncated (${fileLines.size} lines total, showing first 200) ---"
+                fileLines.take(200)
+                    .joinToString("\n") + "\n\n--- Truncated (${fileLines.size} lines total, showing first 200) ---"
             } else {
                 node.fileContent
             }
@@ -1091,7 +1136,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-        private fun createTimelineTab(): JComponent {
+    private fun createTimelineTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(10)
 
@@ -1216,7 +1261,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun createDebugToolbar(debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>, list: JBList<CopilotAcpClient.DebugEvent>): JPanel {
+    private fun createDebugToolbar(
+        debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>,
+        list: JBList<CopilotAcpClient.DebugEvent>
+    ): JPanel {
         val toolbar = JPanel(FlowLayout(FlowLayout.LEFT))
         val clearBtn = JButton("Clear")
         clearBtn.addActionListener { debugModel.clear() }
@@ -1257,7 +1305,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
     }
 
-    private fun registerDebugListener(debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>, list: JBList<CopilotAcpClient.DebugEvent>) {
+    private fun registerDebugListener(
+        debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>,
+        list: JBList<CopilotAcpClient.DebugEvent>
+    ) {
         val listener: (CopilotAcpClient.DebugEvent) -> Unit = { event ->
             SwingUtilities.invokeLater {
                 debugModel.addElement(event)
@@ -1277,7 +1328,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-        private fun createSettingsTab(): JComponent {
+    private fun createSettingsTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(GridBagLayout())
         panel.border = JBUI.Borders.empty(10)
 

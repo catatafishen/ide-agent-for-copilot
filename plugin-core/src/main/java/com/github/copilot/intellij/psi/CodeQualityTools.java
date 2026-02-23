@@ -602,7 +602,7 @@ class CodeQualityTools extends AbstractToolHandler {
         var problemElements = presentation.getProblemElements();
         //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
         if (problemElements != null && !problemElements.isEmpty()) {
-            return collectFromProblemElements((Object) problemElements, toolId, inspCtx, allProblems);
+            return collectFromProblemElements(problemElements, toolId, inspCtx, allProblems);
         }
 
         // Try getProblemDescriptors() for tools that don't use RefEntity
@@ -620,12 +620,12 @@ class CodeQualityTools extends AbstractToolHandler {
         return new int[]{skippedNoDescription, skippedNoFile};
     }
 
+    @SuppressWarnings("unchecked")
     private int[] collectFromProblemElements(
         Object problemElements,
         String toolId, InspectionContext inspCtx, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
-        @SuppressWarnings("unchecked")
         var elements = (com.intellij.util.containers.MultiMap<com.intellij.codeInspection.reference.RefEntity,
             com.intellij.codeInspection.CommonProblemDescriptor>) problemElements;
         for (var refEntity : elements.keySet()) {
@@ -656,47 +656,61 @@ class CodeQualityTools extends AbstractToolHandler {
     private int[] collectFromExportedResults(
         com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
         String toolId, InspectionContext inspCtx, List<String> allProblems) {
-        int skippedNoDescription = 0;
-        int skippedNoFile = 0;
         var hasProblems = presentation.hasReportedProblems();
         if (hasProblems != com.intellij.util.ThreeState.YES) {
             return new int[]{0, 0};
         }
         try {
-            presentation.updateContent();
-            var elements = new ArrayList<org.jdom.Element>();
-            presentation.exportResults(elements::add, entity -> true, desc -> true);
-
-            // If bulk export produced nothing, try per-entity export via getContent()
-            if (elements.isEmpty()) {
-                var content = presentation.getContent();
-                for (var entry : content.entrySet()) {
-                    for (var refEntity : entry.getValue()) {
-                        presentation.exportResults(elements::add, refEntity, desc -> true);
-                    }
-                }
-            }
-
-            for (var element : elements) {
-                String formatted = formatExportedElement(element, toolId,
-                    inspCtx.basePath, inspCtx.filesSet);
-                if (formatted != null && !formatted.isEmpty()) {
-                    if (inspCtx.requiredRank > 0) {
-                        String severity = extractSeverityFromElement(element);
-                        int rank = inspCtx.severityRank.getOrDefault(severity.toUpperCase(), 0);
-                        if (rank < inspCtx.requiredRank) continue;
-                    }
-                    allProblems.add(formatted);
-                } else if (formatted == null) {
-                    skippedNoDescription++;
-                } else {
-                    skippedNoFile++;
-                }
-            }
+            var elements = exportElements(presentation);
+            return tallyExportedElements(elements, toolId, inspCtx, allProblems);
         } catch (Exception e) {
             LOG.warn("Failed to export results for tool '" + toolId + "': " + e.getMessage());
         }
+        return new int[]{0, 0};
+    }
+
+    private List<org.jdom.Element> exportElements(
+        com.intellij.codeInspection.ui.InspectionToolPresentation presentation) {
+        presentation.updateContent();
+        var elements = new ArrayList<org.jdom.Element>();
+        presentation.exportResults(elements::add, entity -> true, desc -> true);
+
+        // If bulk export produced nothing, try per-entity export via getContent()
+        if (elements.isEmpty()) {
+            var content = presentation.getContent();
+            for (var entry : content.entrySet()) {
+                for (var refEntity : entry.getValue()) {
+                    presentation.exportResults(elements::add, refEntity, desc -> true);
+                }
+            }
+        }
+        return elements;
+    }
+
+    private int[] tallyExportedElements(List<org.jdom.Element> elements, String toolId,
+                                        InspectionContext inspCtx, List<String> allProblems) {
+        int skippedNoDescription = 0;
+        int skippedNoFile = 0;
+        for (var element : elements) {
+            String formatted = formatExportedElement(element, toolId,
+                inspCtx.basePath, inspCtx.filesSet);
+            if (formatted != null && !formatted.isEmpty()) {
+                if (shouldFilterBySeverity(element, inspCtx)) continue;
+                allProblems.add(formatted);
+            } else if (formatted == null) {
+                skippedNoDescription++;
+            } else {
+                skippedNoFile++;
+            }
+        }
         return new int[]{skippedNoDescription, skippedNoFile};
+    }
+
+    private boolean shouldFilterBySeverity(org.jdom.Element element, InspectionContext inspCtx) {
+        if (inspCtx.requiredRank <= 0) return false;
+        String severity = extractSeverityFromElement(element);
+        int rank = inspCtx.severityRank.getOrDefault(severity.toUpperCase(), 0);
+        return rank < inspCtx.requiredRank;
     }
 
     /**
