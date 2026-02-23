@@ -13,12 +13,13 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Use a downloaded IDE distribution for proper code analysis
-        create("IU", "2025.3.2")
+        // Use the local IDE installation (configured via intellijPlatform.localPath in gradle.properties)
+        local(providers.gradleProperty("intellijPlatform.localPath"))
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
         bundledPlugin("org.jetbrains.plugins.terminal")
+        instrumentationTools()
     }
 
     // Kotlin stdlib for UI layer

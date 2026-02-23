@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.components.ComponentManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -79,7 +80,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public static PsiBridgeService getInstance(@NotNull Project project) {
-        return project.getService(PsiBridgeService.class);
+        // ComponentManager cast works around IDE indexing issue (Project supertype chain not resolved)
+        return ((ComponentManager) project).getService(PsiBridgeService.class);
     }
 
     @SuppressWarnings("unused") // Public API - may be used by external integrations
