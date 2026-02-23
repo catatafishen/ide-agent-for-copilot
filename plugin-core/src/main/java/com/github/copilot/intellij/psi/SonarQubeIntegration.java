@@ -185,42 +185,36 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Wait for new analysis results to appear by polling until the lastAnalysisResult
-     * object reference changes from oldResult (meaning a new analysis completed).
-     * Falls back to stabilization check if no old result existed.
+     * Wait for new analysis results by polling until the result count stabilizes.
+     * SonarLint analyzes per-module and merges results progressively, so we wait
+     * until the count stops changing across multiple consecutive polls.
      */
     private List<String> waitForNewResults(String basePath, Object oldResult) {
         long startTime = System.currentTimeMillis();
         long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
 
         // Initial delay for analysis to start
-        try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { Thread.sleep(5000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
         int lastCount = -1;
         int stablePolls = 0;
+        boolean newResultDetected = false;
 
         while (System.currentTimeMillis() - startTime < maxWaitMs) {
-            // Check if a NEW analysis result has appeared
+            // Check if new results have appeared (different object than before trigger)
             Object currentResult = getCurrentAnalysisResult();
             if (currentResult != null && currentResult != oldResult) {
-                // New result arrived — wait briefly for it to fully populate, then collect
-                try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-                List<String> results = collectFromReportTab(basePath);
-                if (!results.isEmpty()) {
-                    // Double-check: wait and re-poll to ensure results are stable
-                    try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-                    List<String> moreResults = collectFromReportTab(basePath);
-                    return moreResults.size() >= results.size() ? moreResults : results;
-                }
+                newResultDetected = true;
             }
 
-            // Fallback stabilization: if we had no old result, check if results appear and stabilize
-            if (oldResult == null) {
+            // Once new results detected (or if there was no old result), track stabilization
+            if (newResultDetected || oldResult == null) {
                 List<String> results = collectFromReportTab(basePath);
                 int count = results.size();
                 if (count > 0 && count == lastCount) {
                     stablePolls++;
-                    if (stablePolls >= 3) {
+                    // Require 5 consecutive stable polls (~10 seconds of no change)
+                    if (stablePolls >= 5) {
                         return results;
                     }
                 } else {
@@ -444,13 +438,14 @@ final class SonarQubeIntegration {
 
     private int getLineNumber(Object finding) {
         try {
-            // Use getRange() -> RangeMarker -> Document.getLineNumber(offset)
-            // RangeMarker stores character offsets; Document converts to line numbers
             Method getRangeMethod = findMethod(finding, "getRange");
             if (getRangeMethod != null) {
                 Object rangeObj = getRangeMethod.invoke(finding);
                 if (rangeObj instanceof com.intellij.openapi.editor.RangeMarker rm && rm.isValid()) {
-                    return rm.getDocument().getLineNumber(rm.getStartOffset()) + 1; // 0-based → 1-based
+                    // RangeMarker.getDocument() requires read access
+                    return com.intellij.openapi.application.ReadAction.compute(() ->
+                        rm.getDocument().getLineNumber(rm.getStartOffset()) + 1 // 0-based → 1-based
+                    );
                 }
             }
         } catch (Exception e) {
