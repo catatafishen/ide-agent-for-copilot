@@ -15,6 +15,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -130,30 +131,50 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Poll AnalysisStatus.isRunning() via reflection until analysis completes.
+     * Poll RunningAnalysesTracker.isEmpty() and AnalysisStatus.isRunning() to wait for completion.
      */
     private boolean waitForAnalysisCompletion() {
         try {
-            Class<?> statusClass = Class.forName("org.sonarlint.intellij.analysis.AnalysisStatus");
-            Object statusService = project.getService(statusClass);
-            if (statusService == null) {
-                LOG.warn("Could not get AnalysisStatus service");
-                return true; // proceed anyway
-            }
+            // Try RunningAnalysesTracker first (more reliable for multi-module)
+            Class<?> trackerClass = Class.forName("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
+            Object tracker = project.getService(trackerClass);
+            Method isEmptyMethod = tracker != null ? trackerClass.getMethod("isEmpty") : null;
 
-            Method isRunningMethod = statusClass.getMethod("isRunning");
+            // Also try AnalysisStatus as fallback
+            Method isRunningMethod = null;
+            Object statusService = null;
+            try {
+                Class<?> statusClass = Class.forName("org.sonarlint.intellij.analysis.AnalysisStatus");
+                statusService = project.getService(statusClass);
+                if (statusService != null) {
+                    isRunningMethod = statusClass.getMethod("isRunning");
+                }
+            } catch (Exception e) {
+                LOG.info("AnalysisStatus not available, using tracker only");
+            }
 
             long startTime = System.currentTimeMillis();
             long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
 
-            // Wait a bit for analysis to start
-            Thread.sleep(1000);
+            // Wait for analysis to start
+            Thread.sleep(2000);
 
             while (System.currentTimeMillis() - startTime < maxWaitMs) {
-                Boolean running = (Boolean) isRunningMethod.invoke(statusService);
-                if (!running) {
-                    // Analysis completed — wait a moment for results to propagate
-                    Thread.sleep(500);
+                boolean done = false;
+
+                // Check tracker first
+                if (isEmptyMethod != null && tracker != null) {
+                    done = (Boolean) isEmptyMethod.invoke(tracker);
+                }
+                // Confirm with AnalysisStatus
+                if (!done && isRunningMethod != null) {
+                    Boolean running = (Boolean) isRunningMethod.invoke(statusService);
+                    done = !running;
+                }
+
+                if (done) {
+                    // Wait for results to propagate to ReportTabManager
+                    Thread.sleep(1000);
                     return true;
                 }
                 //noinspection BusyWait
@@ -163,8 +184,7 @@ final class SonarQubeIntegration {
             LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s");
             return false;
         } catch (ClassNotFoundException e) {
-            LOG.info("AnalysisStatus class not found — SonarLint API may have changed");
-            // Can't poll, just wait a fixed time
+            LOG.info("SonarLint tracker classes not found");
             try { Thread.sleep(5000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             return true;
         } catch (Exception e) {
@@ -174,61 +194,148 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Collect findings from SonarLint's OnTheFlyFindingsHolder and AnalysisSubmitter.
+     * Collect findings from SonarLint's ReportTabManager (full project analysis)
+     * and fall back to OnTheFlyFindingsHolder (open files only).
      */
     @SuppressWarnings("unchecked")
     private List<String> collectFindings() {
-        List<String> results = new ArrayList<>();
         String basePath = project.getBasePath();
 
+        // Strategy 1: Read from ReportTabManager (has full project analysis results)
+        List<String> results = collectFromReportTab(basePath);
+
+        // Strategy 2: Fall back to OnTheFlyFindingsHolder (open files only)
+        if (results.isEmpty()) {
+            results = collectFromOnTheFlyHolder(basePath);
+        }
+
+        return results;
+    }
+
+    /**
+     * Collect findings from ReportTabManager → ReportPanel.lastAnalysisResult → LiveFindings.
+     * This is where analyzeAllFiles() stores its results.
+     */
+    private List<String> collectFromReportTab(String basePath) {
+        List<String> results = new ArrayList<>();
         try {
-            // Get AnalysisSubmitter service
-            Class<?> submitterClass = Class.forName("org.sonarlint.intellij.analysis.AnalysisSubmitter");
-            Object submitter = project.getService(submitterClass);
-            if (submitter == null) {
-                LOG.warn("Could not get AnalysisSubmitter service");
+            Class<?> reportTabManagerClass = Class.forName("org.sonarlint.intellij.ui.report.ReportTabManager");
+            Object reportTabManager = project.getService(reportTabManagerClass);
+            if (reportTabManager == null) {
+                LOG.info("ReportTabManager service not available");
                 return results;
             }
 
-            // Access onTheFlyFindingsHolder field
+            // Access reportTabs: ConcurrentHashMap<String, ReportPanel>
+            Field reportTabsField = reportTabManagerClass.getDeclaredField("reportTabs");
+            reportTabsField.setAccessible(true);
+            Map<?, ?> reportTabs = (Map<?, ?>) reportTabsField.get(reportTabManager);
+            if (reportTabs == null || reportTabs.isEmpty()) {
+                LOG.info("No report tabs found");
+                return results;
+            }
+
+            // Get the most recent report panel (iterate to last value)
+            Object latestPanel = null;
+            for (Object panel : reportTabs.values()) {
+                latestPanel = panel;
+            }
+            if (latestPanel == null) return results;
+
+            // Access lastAnalysisResult field on ReportPanel
+            Field resultField = latestPanel.getClass().getDeclaredField("lastAnalysisResult");
+            resultField.setAccessible(true);
+            Object analysisResult = resultField.get(latestPanel);
+            if (analysisResult == null) {
+                LOG.info("ReportPanel has no analysis result yet");
+                return results;
+            }
+
+            // Get findings: AnalysisResult.findings -> LiveFindings
+            Method getFindingsMethod = analysisResult.getClass().getMethod("getFindings");
+            Object liveFindings = getFindingsMethod.invoke(analysisResult);
+            if (liveFindings == null) return results;
+
+            // Get issuesPerFile: Map<VirtualFile, Collection<LiveIssue>>
+            Method getIssuesMethod = liveFindings.getClass().getMethod("getIssuesPerFile");
+            Map<?, ?> issuesPerFile = (Map<?, ?>) getIssuesMethod.invoke(liveFindings);
+            if (issuesPerFile != null) {
+                for (Map.Entry<?, ?> entry : issuesPerFile.entrySet()) {
+                    Collection<?> issues = (Collection<?>) entry.getValue();
+                    for (Object issue : issues) {
+                        String formatted = formatLiveFinding(issue, basePath);
+                        if (formatted != null) results.add(formatted);
+                    }
+                }
+            }
+
+            // Get securityHotspotsPerFile: Map<VirtualFile, Collection<LiveSecurityHotspot>>
+            try {
+                Method getHotspotsMethod = liveFindings.getClass().getMethod("getSecurityHotspotsPerFile");
+                Map<?, ?> hotspotsPerFile = (Map<?, ?>) getHotspotsMethod.invoke(liveFindings);
+                if (hotspotsPerFile != null) {
+                    for (Map.Entry<?, ?> entry : hotspotsPerFile.entrySet()) {
+                        Collection<?> hotspots = (Collection<?>) entry.getValue();
+                        for (Object hotspot : hotspots) {
+                            String formatted = formatLiveFinding(hotspot, basePath);
+                            if (formatted != null) results.add(formatted);
+                        }
+                    }
+                }
+            } catch (NoSuchMethodException e) {
+                LOG.info("getSecurityHotspotsPerFile not available");
+            }
+
+            LOG.info("Collected " + results.size() + " findings from SonarLint Report tab");
+        } catch (ClassNotFoundException e) {
+            LOG.info("ReportTabManager class not found — SonarLint API may have changed");
+        } catch (Exception e) {
+            LOG.warn("Error collecting from ReportTab", e);
+        }
+        return results;
+    }
+
+    /**
+     * Fallback: collect from OnTheFlyFindingsHolder (only open file findings).
+     */
+    private List<String> collectFromOnTheFlyHolder(String basePath) {
+        List<String> results = new ArrayList<>();
+        try {
+            Class<?> submitterClass = Class.forName("org.sonarlint.intellij.analysis.AnalysisSubmitter");
+            Object submitter = project.getService(submitterClass);
+            if (submitter == null) return results;
+
             Field holderField = submitterClass.getDeclaredField("onTheFlyFindingsHolder");
             holderField.setAccessible(true);
             Object holder = holderField.get(submitter);
-            if (holder == null) {
-                LOG.warn("OnTheFlyFindingsHolder is null");
-                return results;
-            }
+            if (holder == null) return results;
 
-            // Get issues: getAllIssues() -> Collection<LiveIssue>
             Method getAllIssues = holder.getClass().getMethod("getAllIssues");
             Collection<?> issues = (Collection<?>) getAllIssues.invoke(holder);
             for (Object issue : issues) {
                 String formatted = formatLiveFinding(issue, basePath);
-                if (formatted != null) {
-                    results.add(formatted);
-                }
+                if (formatted != null) results.add(formatted);
             }
 
-            // Get hotspots: getAllHotspots() -> Collection<LiveSecurityHotspot>
             try {
                 Method getAllHotspots = holder.getClass().getMethod("getAllHotspots");
                 Collection<?> hotspots = (Collection<?>) getAllHotspots.invoke(holder);
                 for (Object hotspot : hotspots) {
                     String formatted = formatLiveFinding(hotspot, basePath);
-                    if (formatted != null) {
-                        results.add(formatted);
-                    }
+                    if (formatted != null) results.add(formatted);
                 }
             } catch (NoSuchMethodException e) {
-                LOG.info("getAllHotspots not available — SonarLint version may differ");
+                LOG.info("getAllHotspots not available");
             }
 
+            if (!results.isEmpty()) {
+                LOG.info("Collected " + results.size() + " findings from OnTheFlyFindingsHolder");
+            }
         } catch (ClassNotFoundException e) {
-            LOG.info("SonarLint classes not found — plugin may have been updated");
+            LOG.info("SonarLint classes not found");
         } catch (Exception e) {
-            LOG.warn("Error collecting SonarQube findings", e);
+            LOG.warn("Error collecting from OnTheFlyFindingsHolder", e);
         }
-
         return results;
     }
 
