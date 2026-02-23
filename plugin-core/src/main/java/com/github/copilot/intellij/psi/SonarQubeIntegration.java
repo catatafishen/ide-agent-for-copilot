@@ -231,11 +231,17 @@ final class SonarQubeIntegration {
                 if ("changed".equals(method.getName()) && args != null && args.length == 1) {
                     String status = args[0].toString();
                     if ("STOPPED".equals(status) && tracker != null) {
-                        // Check if ALL analyses have finished (not just this module)
-                        boolean empty = (boolean) isEmptyMethod.invoke(tracker);
-                        if (empty) {
-                            allDone.complete(null);
-                        }
+                        // Delay the isEmpty() check: this listener fires via syncPublisher
+                        // inside RunningAnalysesTracker.finish(), BEFORE it removes the entry.
+                        // A short delay lets finish() complete its remove() call.
+                        CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS)
+                            .execute(() -> {
+                                try {
+                                    if ((boolean) isEmptyMethod.invoke(tracker)) {
+                                        allDone.complete(null);
+                                    }
+                                } catch (Exception ignored) {}
+                            });
                     }
                 }
                 return null;
