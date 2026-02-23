@@ -12,7 +12,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -187,135 +186,56 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Wait for analysis completion using SonarLint's StatusListener message bus topic.
-     * This is event-driven: we subscribe to SONARLINT_STATUS_TOPIC and wait for STOPPED.
-     * For multi-module projects, STOPPED may fire per-module, so we also do a short
-     * stabilization check after the last STOPPED event.
+     * Wait for all module analyses to complete by polling RunningAnalysesTracker.isEmpty().
+     * This is the most reliable signal: the tracker holds one entry per running module analysis
+     * and removes each when done. When empty, all modules have finished.
+     *
+     * Phase 1: Wait for tracker to become non-empty (modules registered after async trigger).
+     * Phase 2: Wait for tracker to become empty (all modules finished).
      */
-    @SuppressWarnings("unchecked")
     private List<String> waitForNewResults(String basePath, Object oldResult) {
-        // Try event-driven approach first
         try {
-            return waitUsingStatusListener(basePath);
+            Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
+            Object tracker = project.getService(trackerClass);
+            Method isEmptyMethod = trackerClass.getMethod("isEmpty");
+
+            if (tracker != null) {
+                long startTime = System.currentTimeMillis();
+                long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
+
+                // Phase 1: wait for tracker to become non-empty (analysis registered)
+                boolean started = false;
+                while (System.currentTimeMillis() - startTime < maxWaitMs) {
+                    if (!(boolean) isEmptyMethod.invoke(tracker)) {
+                        started = true;
+                        break;
+                    }
+                    //noinspection BusyWait
+                    Thread.sleep(POLL_INTERVAL_MS);
+                }
+
+                if (started) {
+                    // Phase 2: wait for tracker to become empty (all modules done)
+                    while (System.currentTimeMillis() - startTime < maxWaitMs) {
+                        if ((boolean) isEmptyMethod.invoke(tracker)) {
+                            break;
+                        }
+                        //noinspection BusyWait
+                        Thread.sleep(POLL_INTERVAL_MS);
+                    }
+                }
+            }
         } catch (Exception e) {
-            LOG.info("StatusListener approach failed (" + e.getMessage() + "), falling back to polling");
+            LOG.info("RunningAnalysesTracker polling failed: " + e.getMessage());
         }
 
-        // Fallback: polling with stabilization
-        return waitWithPolling(basePath, oldResult);
-    }
-
-    /**
-     * Subscribe to SonarLint's StatusListener.SONARLINT_STATUS_TOPIC via reflection
-     * and dynamic proxy to detect analysis completion without polling.
-     * Uses RunningAnalysesTracker.isEmpty() to know when ALL modules are done.
-     */
-    private List<String> waitUsingStatusListener(String basePath) throws Exception {
-        Class<?> statusListenerClass = loadSonarClass("org.sonarlint.intellij.messages.StatusListener");
-        Field topicField = statusListenerClass.getDeclaredField("SONARLINT_STATUS_TOPIC");
-        Object topic = topicField.get(null);
-
-        // Load RunningAnalysesTracker to check when all modules finish
-        Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
-        Object tracker = project.getService(trackerClass);
-        Method isEmptyMethod = trackerClass.getMethod("isEmpty");
-
-        // CompletableFuture that completes when all analyses are done
-        CompletableFuture<Void> allDone = new CompletableFuture<>();
-
-        // Create dynamic proxy implementing StatusListener
-        Object listener = Proxy.newProxyInstance(
-            statusListenerClass.getClassLoader(),
-            new Class<?>[]{statusListenerClass},
-            (proxy, method, args) -> {
-                if ("changed".equals(method.getName()) && args != null && args.length == 1) {
-                    String status = args[0].toString();
-                    if ("STOPPED".equals(status) && tracker != null) {
-                        // Delay the isEmpty() check: this listener fires via syncPublisher
-                        // inside RunningAnalysesTracker.finish(), BEFORE it removes the entry.
-                        // A short delay lets finish() complete its remove() call.
-                        CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS)
-                            .execute(() -> {
-                                try {
-                                    if ((boolean) isEmptyMethod.invoke(tracker)) {
-                                        allDone.complete(null);
-                                    }
-                                } catch (Exception ignored) {}
-                            });
-                    }
-                }
-                return null;
-            }
-        );
-
-        // Subscribe via IntelliJ message bus
-        var connection = project.getMessageBus().connect();
-        try {
-            @SuppressWarnings("unchecked")
-            com.intellij.util.messages.Topic<Object> rawTopic =
-                (com.intellij.util.messages.Topic<Object>) topic;
-            connection.subscribe(rawTopic, listener);
-
-            // Wait until RunningAnalysesTracker is empty (all modules done)
-            allDone.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
-
-            // Brief pause for results to propagate to ReportTabManager
-            Thread.sleep(500);
-
-            List<String> results = collectFromReportTab(basePath);
-            if (results.isEmpty()) {
-                results = collectFromOnTheFlyHolder(basePath);
-            }
-            return results;
-        } finally {
-            connection.disconnect();
-        }
-    }
-
-    /**
-     * Fallback: poll until result count stabilizes.
-     */
-    private List<String> waitWithPolling(String basePath, Object oldResult) {
-        long startTime = System.currentTimeMillis();
-        long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
-
-        try { Thread.sleep(5000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-
-        int lastCount = -1;
-        int stablePolls = 0;
-        boolean newResultDetected = false;
-
-        while (System.currentTimeMillis() - startTime < maxWaitMs) {
-            Object currentResult = getCurrentAnalysisResult();
-            if (currentResult != null && currentResult != oldResult) {
-                newResultDetected = true;
-            }
-
-            if (newResultDetected || oldResult == null) {
-                List<String> results = collectFromReportTab(basePath);
-                int count = results.size();
-                if (count > 0 && count == lastCount) {
-                    stablePolls++;
-                    if (stablePolls >= 5) {
-                        return results;
-                    }
-                } else {
-                    stablePolls = 0;
-                }
-                lastCount = count;
-            }
-
-            //noinspection BusyWait
-            try { Thread.sleep(POLL_INTERVAL_MS * 4); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        }
-
-        LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s");
+        // Collect results
         List<String> results = collectFromReportTab(basePath);
         if (results.isEmpty()) {
             results = collectFromOnTheFlyHolder(basePath);
         }
         if (results.isEmpty()) {
-            return List.of("Analysis is still running. Call this tool again to check for results.");
+            return List.of("Analysis may still be running. Call this tool again to check for results.");
         }
         return results;
     }
