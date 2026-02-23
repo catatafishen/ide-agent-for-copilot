@@ -352,40 +352,52 @@ class CodeQualityTools extends AbstractToolHandler {
                 @Override
                 protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope scope) {
                     super.notifyInspectionsFinished(scope);
-                    LOG.info("Inspection analysis completed, collecting results...");
                     final GlobalInspectionContextImpl ctx = this;
+                    LOG.info("Inspection analysis completed, collecting results...");
+                    LOG.info("Used tools count: " + ctx.getUsedTools().size());
 
-                    ReadAction.nonBlocking(() -> {
-                            try {
-                                InspectionCollectionResult collected = collectInspectionProblems(
-                                    ctx, severityRank, requiredRank, basePath);
-
-                                cachedInspectionResults = new ArrayList<>(collected.problems);
-                                cachedInspectionFileCount = collected.fileCount;
-                                cachedInspectionProfile = profileName;
-                                cachedInspectionTimestamp = System.currentTimeMillis();
-                                LOG.info("Cached " + collected.problems.size() + " inspection results for pagination" +
-                                    " (skipped: " + collected.skippedNoDescription + " no-description, " +
-                                    collected.skippedNoFile + " no-file)");
-
-                                if (collected.problems.isEmpty()) {
-                                    resultFuture.complete("No inspection problems found. " +
-                                        "The code passed all enabled inspections in the current profile (" +
-                                        profileName + "). Results are also visible in the IDE's Inspection Results view.");
-                                } else {
-                                    resultFuture.complete(formatInspectionPage(
-                                        collected.problems, collected.fileCount, profileName, offset, limit));
+                    // Delay collection to allow inspection tool presentations to fully populate.
+                    // notifyInspectionsFinished fires when scope iteration ends, but tool results
+                    // may still be written asynchronously. We retry up to 3 times with increasing delay.
+                    AppExecutorUtil.getAppExecutorService().submit(() -> {
+                        try {
+                            InspectionCollectionResult collected = null;
+                            for (int attempt = 0; attempt < 3; attempt++) {
+                                if (attempt > 0) {
+                                    Thread.sleep(500L * attempt);
                                 }
-                            } catch (Exception e) {
-                                LOG.error("Error collecting inspection results", e);
-                                resultFuture.completeExceptionally(e);
+                                collected = ReadAction.compute(() ->
+                                    collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
+                                if (!collected.problems.isEmpty()) break;
+                                LOG.info("Inspection collection attempt " + (attempt + 1) +
+                                    " found 0 problems, retrying...");
                             }
-                            return null;
-                        }).inSmartMode(project)
-                        .submit(AppExecutorUtil.getAppExecutorService());
+
+                            cachedInspectionResults = new ArrayList<>(collected.problems);
+                            cachedInspectionFileCount = collected.fileCount;
+                            cachedInspectionProfile = profileName;
+                            cachedInspectionTimestamp = System.currentTimeMillis();
+                            LOG.info("Cached " + collected.problems.size() + " inspection results for pagination" +
+                                " (skipped: " + collected.skippedNoDescription + " no-description, " +
+                                collected.skippedNoFile + " no-file)");
+
+                            if (collected.problems.isEmpty()) {
+                                resultFuture.complete("No inspection problems found. " +
+                                    "The code passed all enabled inspections in the current profile (" +
+                                    profileName + "). Results are also visible in the IDE's Inspection Results view.");
+                            } else {
+                                resultFuture.complete(formatInspectionPage(
+                                    collected.problems, collected.fileCount, profileName, offset, limit));
+                            }
+                        } catch (Exception e) {
+                            LOG.error("Error collecting inspection results", e);
+                            resultFuture.completeExceptionally(e);
+                        }
+                    });
                 }
             };
 
+            context.setExternalProfile(currentProfile);
             context.doInspections(scope);
 
         } catch (Exception e) {
@@ -442,6 +454,7 @@ class CodeQualityTools extends AbstractToolHandler {
         Set<String> filesSet = new HashSet<>();
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
+        int toolsWithProblems = 0;
 
         for (var tools : ctx.getUsedTools()) {
             var toolWrapper = tools.getTool();
@@ -451,11 +464,19 @@ class CodeQualityTools extends AbstractToolHandler {
             //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
             if (presentation == null) continue;
 
+            int beforeSize = allProblems.size();
             int[] skipped = collectProblemsFromTool(presentation, toolId, basePath,
                 filesSet, severityRank, requiredRank, allProblems);
             skippedNoDescription += skipped[0];
             skippedNoFile += skipped[1];
+            if (allProblems.size() > beforeSize) {
+                toolsWithProblems++;
+                LOG.info("Inspection tool '" + toolId + "' found " +
+                    (allProblems.size() - beforeSize) + " problems");
+            }
         }
+        LOG.info("Total: " + allProblems.size() + " problems from " + toolsWithProblems +
+            " tools (out of " + ctx.getUsedTools().size() + " used tools)");
         return new InspectionCollectionResult(allProblems, filesSet.size(), skippedNoDescription, skippedNoFile);
     }
 
@@ -466,24 +487,124 @@ class CodeQualityTools extends AbstractToolHandler {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
 
+        // Try getProblemElements first (has file associations via RefEntity)
         var problemElements = presentation.getProblemElements();
         //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
-        if (problemElements == null || problemElements.isEmpty()) {
-            return new int[]{0, 0};
+        if (problemElements != null && !problemElements.isEmpty()) {
+            for (var refEntity : problemElements.keys()) {
+                var descriptors = problemElements.get(refEntity);
+                if (descriptors == null) continue;
+
+                for (var descriptor : descriptors) {
+                    int result = processInspectionDescriptor(
+                        descriptor, refEntity, toolId, basePath, filesSet, severityRank, requiredRank, allProblems);
+                    if (result == 1) skippedNoDescription++;
+                    else if (result == 2) skippedNoFile++;
+                }
+            }
+            return new int[]{skippedNoDescription, skippedNoFile};
         }
 
-        for (var refEntity : problemElements.keys()) {
-            var descriptors = problemElements.get(refEntity);
-            if (descriptors == null) continue;
+        // Try getProblemDescriptors() for tools that don't use RefEntity
+        var flatDescriptors = presentation.getProblemDescriptors();
+        for (var descriptor : flatDescriptors) {
+            int result = processInspectionDescriptor(
+                descriptor, null, toolId, basePath, filesSet, severityRank, requiredRank, allProblems);
+            if (result == 1) skippedNoDescription++;
+            else if (result == 2) skippedNoFile++;
+        }
 
-            for (var descriptor : descriptors) {
-                int result = processInspectionDescriptor(
-                    descriptor, toolId, basePath, filesSet, severityRank, requiredRank, allProblems);
-                if (result == 1) skippedNoDescription++;
-                else if (result == 2) skippedNoFile++;
+        // Fallback: for tools like UnusedDeclarationPresentation that store results
+        // in the reference graph, use exportResults() to extract XML and parse it
+        var hasProblems = presentation.hasReportedProblems();
+        if (hasProblems == com.intellij.util.ThreeState.YES) {
+            try {
+                presentation.updateContent();
+                var elements = new ArrayList<org.jdom.Element>();
+                presentation.exportResults(elements::add, entity -> true, desc -> true);
+
+                // If bulk export produced nothing, try per-entity export via getContent()
+                if (elements.isEmpty()) {
+                    var content = presentation.getContent();
+                    for (var entry : content.entrySet()) {
+                        for (var refEntity : entry.getValue()) {
+                            presentation.exportResults(elements::add, refEntity, desc -> true);
+                        }
+                    }
+                }
+
+                for (var element : elements) {
+                    String formatted = formatExportedElement(element, toolId, basePath, filesSet);
+                    if (formatted != null && !formatted.isEmpty()) {
+                        if (requiredRank > 0) {
+                            String severity = extractSeverityFromElement(element);
+                            int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
+                            if (rank < requiredRank) continue;
+                        }
+                        allProblems.add(formatted);
+                    } else if (formatted == null) {
+                        skippedNoDescription++;
+                    } else {
+                        skippedNoFile++;
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to export results for tool '" + toolId + "': " + e.getMessage());
             }
         }
+
         return new int[]{skippedNoDescription, skippedNoFile};
+    }
+
+    /**
+     * Parse an exported XML Element (from exportResults) to produce a problem string.
+     * Element structure: {@code <problem><file>...</file><line>...</line>
+     * <problem_class severity="WARNING">...</problem_class><description>...</description></problem>}
+     */
+    private String formatExportedElement(org.jdom.Element element, String toolId,
+                                         String basePath, Set<String> filesSet) {
+        String description = element.getChildText("description");
+        if (description == null || description.isEmpty()) return null;
+
+        String fileUrl = element.getChildText("file");
+        if (fileUrl == null || fileUrl.isEmpty()) return "";
+
+        // Convert file URL format: "file://$PROJECT_DIR$/path/to/file" -> relative path
+        String filePath = fileUrl;
+        if (filePath.contains("$PROJECT_DIR$")) {
+            filePath = filePath.replaceAll(".*\\$PROJECT_DIR\\$/", "");
+        } else if (filePath.startsWith("file://")) {
+            filePath = filePath.substring(7);
+            if (basePath != null) {
+                filePath = relativize(basePath, filePath);
+            }
+        }
+        filesSet.add(filePath);
+
+        String lineStr = element.getChildText("line");
+        int line = 0;
+        if (lineStr != null) {
+            try {
+                line = Integer.parseInt(lineStr);
+            } catch (NumberFormatException ignored) { /* empty */ }
+        }
+
+        String severity = extractSeverityFromElement(element);
+
+        // Clean up HTML tags in description
+        description = description.replaceAll("<[^>]+>", "")
+            .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").trim();
+
+        return String.format("%s:%d [%s/%s] %s", filePath, line, severity, toolId, description);
+    }
+
+    private String extractSeverityFromElement(org.jdom.Element element) {
+        var problemClass = element.getChild("problem_class");
+        if (problemClass != null) {
+            String severity = problemClass.getAttributeValue("severity");
+            if (severity != null) return severity;
+        }
+        return "WARNING";
     }
 
     /**
@@ -493,9 +614,10 @@ class CodeQualityTools extends AbstractToolHandler {
      */
     private int processInspectionDescriptor(
         com.intellij.codeInspection.CommonProblemDescriptor descriptor,
+        com.intellij.codeInspection.reference.RefEntity refEntity,
         String toolId, String basePath, Set<String> filesSet,
         Map<String, Integer> severityRank, int requiredRank, List<String> allProblems) {
-        String formatted = formatInspectionDescriptor(descriptor, toolId, basePath, filesSet);
+        String formatted = formatInspectionDescriptor(descriptor, refEntity, toolId, basePath, filesSet);
         if (formatted == null) return 1;
         if (formatted.isEmpty()) return 2;
 
@@ -513,21 +635,30 @@ class CodeQualityTools extends AbstractToolHandler {
     @SuppressWarnings("java:S2589") // null check is defensive against runtime nulls despite @NotNull
     private String formatInspectionDescriptor(
         com.intellij.codeInspection.CommonProblemDescriptor descriptor,
+        com.intellij.codeInspection.reference.RefEntity refEntity,
         String toolId, String basePath, Set<String> filesSet) {
-        if (!(descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)) {
-            return ""; // sentinel for skippedNoFile
-        }
         String description = descriptor.getDescriptionTemplate();
         //noinspection ConstantValue - description can be null at runtime despite @NotNull annotation
         if (description == null || description.isEmpty()) return null;
 
         String refText = "";
-        var psiEl = pd.getPsiElement();
-        if (psiEl != null) {
-            refText = psiEl.getText();
-            if (refText != null && refText.length() > 80) {
-                refText = refText.substring(0, 80) + "...";
+        int line = 0;
+        String filePath = "";
+
+        if (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd) {
+            var psiEl = pd.getPsiElement();
+            if (psiEl != null) {
+                refText = psiEl.getText();
+                if (refText != null && refText.length() > 80) {
+                    refText = refText.substring(0, 80) + "...";
+                }
             }
+            line = pd.getLineNumber() + 1;
+            filePath = resolveDescriptorFilePath(pd, basePath, filesSet);
+        } else if (refEntity != null) {
+            // For global inspections (unused, module dependency, etc.), extract file from RefEntity
+            filePath = resolveRefEntityFilePath(refEntity, basePath, filesSet);
+            refText = refEntity.getName();
         }
 
         description = description.replaceAll("<[^>]+>", "")
@@ -535,12 +666,38 @@ class CodeQualityTools extends AbstractToolHandler {
             .replace("#ref", refText != null ? refText : "").replace("#loc", "").trim();
 
         if (description.isEmpty()) return null;
+        if (filePath.isEmpty()) return ""; // sentinel for skippedNoFile
 
-        int line = pd.getLineNumber() + 1;
-        String severity = pd.getHighlightType().toString();
-        String filePath = resolveDescriptorFilePath(pd, basePath, filesSet);
+        String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd2)
+            ? pd2.getHighlightType().toString() : "WARNING";
 
         return String.format("%s:%d [%s/%s] %s", filePath, line, severity, toolId, description);
+    }
+
+    private String resolveRefEntityFilePath(com.intellij.codeInspection.reference.RefEntity refEntity,
+                                            String basePath, Set<String> filesSet) {
+        if (refEntity instanceof com.intellij.codeInspection.reference.RefElement refElement) {
+            var psiElement = refElement.getPsiElement();
+            if (psiElement != null) {
+                var containingFile = psiElement.getContainingFile();
+                if (containingFile != null) {
+                    var vf = containingFile.getVirtualFile();
+                    if (vf != null) {
+                        String filePath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                        filesSet.add(filePath);
+                        return filePath;
+                    }
+                }
+            }
+        }
+        // For module-level problems (RefModuleImpl), use "[module:name]" as file path
+        if (refEntity instanceof com.intellij.codeInspection.reference.RefModule refModule) {
+            String moduleName = refModule.getName();
+            String moduleLabel = "[module:" + moduleName + "]";
+            filesSet.add(moduleLabel);
+            return moduleLabel;
+        }
+        return "";
     }
 
     private String resolveDescriptorFilePath(com.intellij.codeInspection.ProblemDescriptor pd,
