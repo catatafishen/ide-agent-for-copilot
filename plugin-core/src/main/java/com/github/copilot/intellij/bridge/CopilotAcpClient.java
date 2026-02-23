@@ -894,6 +894,8 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private void processLine(String line) {
+        // Any message from the CLI means it's still active
+        lastActivityTimestamp = System.currentTimeMillis();
         try {
             JsonObject msg = JsonParser.parseString(line).getAsJsonObject();
             handleJsonRpcMessage(msg);
@@ -1299,13 +1301,11 @@ public class CopilotAcpClient implements Closeable {
             // The JAR is bundled in the plugin's lib directory alongside plugin-core
             PluginId pluginId = PluginId.getId("com.github.copilot.intellij");
             IdeaPluginDescriptor[] plugins = PluginManagerCore.getPlugins();
-            @SuppressWarnings("EqualsBetweenInconvertibleTypes")
             String pluginPath = plugins.length > 0 ?
                 java.util.Arrays.stream(plugins)
-                    // Cast needed - IDE fails to resolve inherited methods from PluginDescriptor interface
-                    .filter(p -> pluginId.equals(((com.intellij.openapi.extensions.PluginDescriptor) p).getPluginId())) //NOSONAR
+                    .filter(p -> pluginId.equals(p.getPluginId()))
                     .findFirst()
-                    .map(p -> ((com.intellij.openapi.extensions.PluginDescriptor) p).getPluginPath().resolve("lib").resolve("mcp-server.jar").toString()) //NOSONAR
+                    .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
                     .orElse(null) : null;
             if (pluginPath != null && new File(pluginPath).exists()) {
                 LOG.info("Found MCP server JAR: " + pluginPath);

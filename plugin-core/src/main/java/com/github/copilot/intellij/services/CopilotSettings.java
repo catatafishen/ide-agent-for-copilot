@@ -15,7 +15,7 @@ public final class CopilotSettings {
     private static final String KEY_USAGE_RESET_MONTH = "copilot.usageResetMonth";
     private static final String KEY_PROMPT_TIMEOUT = "copilot.promptTimeout";
     private static final String KEY_MAX_TOOL_CALLS = "copilot.maxToolCallsPerTurn";
-    private static final int DEFAULT_PROMPT_TIMEOUT = 120;
+    private static final int DEFAULT_PROMPT_TIMEOUT = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS = 0;
 
     private CopilotSettings() {

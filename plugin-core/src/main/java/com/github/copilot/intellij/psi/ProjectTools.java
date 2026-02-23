@@ -252,7 +252,7 @@ class ProjectTools extends AbstractToolHandler {
 
     // ---- download_sources ----
 
-    @SuppressWarnings("JavaReflectionMemberAccess")
+    @SuppressWarnings({"JavaReflectionMemberAccess", "RedundantSuppression"})
     private String downloadSources(JsonObject args) {
         String library = args.has("library") ? args.get("library").getAsString() : "";
 
