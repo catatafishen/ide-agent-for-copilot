@@ -13,7 +13,7 @@
 Tool filtering does not work in Copilot CLI's `--acp` mode (or `--agent` mode):
 - CLI flags: `--available-tools`, `--excluded-tools` - IGNORED
 - Session params: `availableTools`, `excludedTools` in `session/new` - IGNORED
-- Agent configs: `tools: ["read"]` in agent markdown files - IGNORED
+- Agent configs: `tools: ["read"]` in agent Markdown files - IGNORED
 
 **Result:** Agent receives ALL tools regardless of filtering attempts.
 

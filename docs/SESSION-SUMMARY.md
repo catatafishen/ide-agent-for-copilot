@@ -148,7 +148,7 @@
 
 2. **Target IDE**: IntelliJ 2025.1 (sinceBuild="251")
    - Latest stable platform
-   - Access to newest APIs
+   - Access to the newest APIs
 
 3. **Development Approach**: Infrastructure first
    - Build system → Sidecar → UI → Features
