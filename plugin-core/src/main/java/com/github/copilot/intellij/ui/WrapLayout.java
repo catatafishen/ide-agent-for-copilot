@@ -2,11 +2,7 @@ package com.github.copilot.intellij.ui;
 
 import org.intellij.lang.annotations.MagicConstant;
 
-import java.awt.Component;
-import java.awt.Container;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Insets;
+import java.awt.*;
 
 /**
  * FlowLayout subclass that fully supports wrapping of components.
@@ -14,10 +10,6 @@ import java.awt.Insets;
  * so parent containers allocate the correct height.
  */
 public class WrapLayout extends FlowLayout {
-
-    public WrapLayout() {
-        super(LEFT);
-    }
 
     public WrapLayout(@MagicConstant(intValues = {LEFT, CENTER, RIGHT, LEADING, TRAILING}) int align, int hgap, int vgap) {
         super(align, hgap, vgap);

@@ -44,7 +44,7 @@ public final class CopilotService implements Disposable {
             if (acpClient != null) {
                 acpClient.close();
             }
-            
+
             String projectPath = project.getBasePath();
             acpClient = new CopilotAcpClient(projectPath);
             acpClient.start();
@@ -67,13 +67,6 @@ public final class CopilotService implements Disposable {
             start();
         }
         return acpClient;
-    }
-
-    /**
-     * Check if the ACP client is running and healthy.
-     */
-    public boolean isHealthy() {
-        return started && acpClient != null && acpClient.isHealthy();
     }
 
     /**

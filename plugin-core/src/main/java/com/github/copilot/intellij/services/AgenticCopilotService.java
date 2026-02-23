@@ -1,10 +1,8 @@
 package com.github.copilot.intellij.services;
 
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * Application-level service for managing the Agentic Copilot plugin.
@@ -16,11 +14,6 @@ public final class AgenticCopilotService implements Disposable {
 
     public AgenticCopilotService() {
         LOG.info("Agentic Copilot Service initialized");
-    }
-
-    @NotNull
-    public static AgenticCopilotService getInstance() {
-        return ApplicationManager.getApplication().getService(AgenticCopilotService.class);
     }
 
     @Override

@@ -21,7 +21,6 @@ final class GitToolHandler {
     private static final String PARAM_STAT_ONLY = "stat_only";
     private static final String PARAM_BRANCH = "branch";
     private static final String PARAM_MESSAGE = "message";
-    private static final String PARAM_METHOD = "method";
     private static final String GIT_FLAG_ALL = "--all";
 
     private static final String JSON_PATHS = "paths";
