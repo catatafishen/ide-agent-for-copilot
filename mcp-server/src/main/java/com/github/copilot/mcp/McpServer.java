@@ -44,6 +44,7 @@ public class McpServer {
      * Sends a JSON-RPC response to the client via stdout.
      * The MCP protocol requires communication over stdin/stdout. System.out is intentional and necessary.
      */
+    @SuppressWarnings("java:S106") // System.out is intentional — MCP protocol requires stdout
     private static void sendMcpResponse(JsonObject response) {
         String json = GSON.toJson(response);
         System.out.println(json);
@@ -165,6 +166,8 @@ public class McpServer {
             b) IntelliJ analyzes files automatically in background. get_highlights returns current state. \
             c) DO NOT use shell commands like "sleep" or "wait for daemon" - just call get_highlights. \
             d) If you want to open file in editor first: open_in_editor(file) → get_highlights(file). \
+            e) IMPORTANT: get_highlights only works for files ALREADY OPEN in the editor (cached daemon results). \
+            For project-wide analysis, ALWAYS use run_inspections instead — it runs the full inspection engine. \
             Example: get_highlights("PsiBridgeService.java") returns all problems in that file.
 
             6. NEVER use grep/glob for IntelliJ project files or scratch files. \
@@ -185,7 +188,9 @@ public class McpServer {
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
             ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
 
-            Step 1: run_inspections() to get an overview of all issues.
+            Step 1: run_inspections() to get a COMPLETE overview of all issues. \
+            TRUST the run_inspections output — it IS the authoritative source of all warnings/errors. \
+            Do NOT use get_highlights to re-scan files — run_inspections already found everything.
             Step 2: Group issues by PROBLEM TYPE (not by file). Examples: \
             "Unused parameters: 5 across 3 files", "Redundant casts: 3 in PsiBridge", "Grammar: 50+ issues".
             Step 3: Pick the FIRST problem category and fix ALL instances of that problem \
@@ -328,14 +333,14 @@ public class McpServer {
             ),
             List.of("path")));
 
-        tools.add(buildTool("get_highlights", "Get Highlights",
+        tools.add(buildTool("get_highlights", "Get cached editor highlights for open files. Use run_inspections for comprehensive project-wide analysis",
             Map.of(
                 "path", Map.of("type", "string", "description", "Optional: file path to check. If om", "default", ""),
                 "limit", Map.of("type", "integer", "description", "Maximum number of highlights to ret")
             ),
             List.of()));
 
-        tools.add(buildTool("run_inspections", "Run Inspections",
+        tools.add(buildTool("run_inspections", "Run full IntelliJ inspection engine on project or scope. This is the PRIMARY tool for finding all warnings, errors, and code issues",
             Map.of(
                 "scope", Map.of("type", "string", "description", "Optional: file or directory path to" +
                     "Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"),
@@ -481,7 +486,7 @@ public class McpServer {
             ),
             List.of("url")));
 
-        tools.add(buildTool("run_command", "Run Command",
+        tools.add(buildTool("run_command", "Run Command. For running tests use run_tests; for code search use search_symbols instead.",
             Map.of(
                 "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gr"),
                 "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),
@@ -579,7 +584,7 @@ public class McpServer {
             ),
             List.of("file", "line", "inspection_id")));
 
-        tools.add(buildTool("refactor", "Refactor",
+        tools.add(buildTool("refactor", "Refactor code: supports rename, extract_method, inline, and safe_delete operations",
             Map.of(
                 "operation", Map.of("type", "string", "description", "Refactoring type: 'rename', 'extrac"),
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
@@ -597,7 +602,7 @@ public class McpServer {
             ),
             List.of("file", "symbol", "line")));
 
-        tools.add(buildTool("get_type_hierarchy", "Get Type Hierarchy",
+        tools.add(buildTool("get_type_hierarchy", "Get Type Hierarchy: shows supertypes (superclasses/interfaces) and subtypes (subclasses/implementations)",
             Map.of(
                 "symbol", Map.of("type", "string", "description", "Fully qualified or simple class/int"),
                 "direction", Map.of("type", "string", "description", "Direction: 'supertypes' (ancestors)")
@@ -617,7 +622,7 @@ public class McpServer {
             ),
             List.of("path")));
 
-        tools.add(buildTool("build_project", "Build Project",
+        tools.add(buildTool("build_project", "Build Project: triggers incremental compilation of the project or a specific module",
             Map.of(
                 "module", Map.of("type", "string", "description", "Optional: build only a specific mod")
             ),

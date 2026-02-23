@@ -8,7 +8,7 @@ import com.google.gson.JsonObject;
  */
 @FunctionalInterface
 interface ToolHandler {
-    @SuppressWarnings("RedundantThrows")
+    @SuppressWarnings({"RedundantThrows", "unused"})
         // handlers may throw checked exceptions
     String handle(JsonObject args) throws Exception;
 }
