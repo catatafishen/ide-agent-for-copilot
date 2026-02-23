@@ -77,47 +77,32 @@ final class SonarQubeIntegration {
         try {
             String basePath = project.getBasePath();
 
-            // Fast path: check for existing results first
-            List<String> existing = collectFromReportTab(basePath);
-            if (!existing.isEmpty()) {
-                // We have results from a previous analysis — use them
-                // Also trigger a fresh analysis in the background for next time
-                triggerAnalysisAsync(scope);
-                return formatOutput(existing, limit, offset);
-            }
+            // 1. Record current analysis result (to detect when new results arrive)
+            Object oldResult = getCurrentAnalysisResult();
 
-            // No existing results — trigger and wait
+            // 2. Trigger analysis
             String actionId = resolveActionId(scope);
             boolean triggered = triggerAction(actionId, scope);
             if (!triggered) {
                 LOG.warn("Could not trigger analysis action '" + actionId + "'");
-                // Try fallback: on-the-fly findings
-                List<String> fallback = collectFromOnTheFlyHolder(basePath);
+                // Return whatever existing results we have
+                List<String> fallback = collectFromReportTab(basePath);
+                if (fallback.isEmpty()) {
+                    fallback = collectFromOnTheFlyHolder(basePath);
+                }
                 if (!fallback.isEmpty()) {
                     return formatOutput(fallback, limit, offset);
                 }
                 return "SonarQube analysis could not be triggered. Open the SonarLint Report tab and click 'Analyze All Files' manually, then call this tool again.";
             }
 
-            // Wait for results with polling (checks for actual results, not just status)
-            List<String> findings = waitAndCollectResults(basePath);
+            // 3. Wait for NEW results (different from the ones we had before triggering)
+            List<String> findings = waitForNewResults(basePath, oldResult);
 
             return formatOutput(findings, limit, offset);
         } catch (Exception e) {
             LOG.warn("SonarQube analysis failed", e);
             return "Error running SonarQube analysis: " + e.getMessage();
-        }
-    }
-
-    /**
-     * Trigger analysis in background without waiting for results.
-     */
-    private void triggerAnalysisAsync(String scope) {
-        try {
-            String actionId = resolveActionId(scope);
-            triggerAction(actionId, scope);
-        } catch (Exception e) {
-            LOG.info("Background analysis trigger failed: " + e.getMessage());
         }
     }
 
@@ -170,37 +155,78 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Wait for SonarQube analysis to complete by polling for results.
-     * Instead of only checking running status, we also check if results have appeared.
-     * This is more reliable since it directly checks what we care about.
+     * Get the current lastAnalysisResult object from the latest ReportPanel.
+     * Used to detect when a new analysis completes (the reference changes).
      */
-    private List<String> waitAndCollectResults(String basePath) {
+    private Object getCurrentAnalysisResult() {
+        try {
+            Class<?> reportTabManagerClass = loadSonarClass("org.sonarlint.intellij.ui.report.ReportTabManager");
+            Object reportTabManager = project.getService(reportTabManagerClass);
+            if (reportTabManager == null) return null;
+
+            Field reportTabsField = reportTabManagerClass.getDeclaredField("reportTabs");
+            reportTabsField.setAccessible(true);
+            Map<?, ?> reportTabs = (Map<?, ?>) reportTabsField.get(reportTabManager);
+            if (reportTabs == null || reportTabs.isEmpty()) return null;
+
+            Object latestPanel = null;
+            for (Object panel : reportTabs.values()) {
+                latestPanel = panel;
+            }
+            if (latestPanel == null) return null;
+
+            Field resultField = latestPanel.getClass().getDeclaredField("lastAnalysisResult");
+            resultField.setAccessible(true);
+            return resultField.get(latestPanel);
+        } catch (Exception e) {
+            LOG.debug("Could not read current analysis result");
+            return null;
+        }
+    }
+
+    /**
+     * Wait for new analysis results to appear by polling until the lastAnalysisResult
+     * object reference changes from oldResult (meaning a new analysis completed).
+     * Falls back to stabilization check if no old result existed.
+     */
+    private List<String> waitForNewResults(String basePath, Object oldResult) {
         long startTime = System.currentTimeMillis();
         long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
 
-        // Initial delay for analysis to start and process first files
+        // Initial delay for analysis to start
         try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
+        int lastCount = -1;
+        int stablePolls = 0;
+
         while (System.currentTimeMillis() - startTime < maxWaitMs) {
-            // Check if results are available
-            List<String> results = collectFromReportTab(basePath);
-            if (!results.isEmpty()) {
-                // Results found — but analysis might still be running.
-                // Wait a bit more and re-check to get complete results.
-                try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-                List<String> finalResults = collectFromReportTab(basePath);
-                // If count stabilized or grew, return
-                if (finalResults.size() >= results.size()) {
-                    return finalResults;
+            // Check if a NEW analysis result has appeared
+            Object currentResult = getCurrentAnalysisResult();
+            if (currentResult != null && currentResult != oldResult) {
+                // New result arrived — wait briefly for it to fully populate, then collect
+                try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                List<String> results = collectFromReportTab(basePath);
+                if (!results.isEmpty()) {
+                    // Double-check: wait and re-poll to ensure results are stable
+                    try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    List<String> moreResults = collectFromReportTab(basePath);
+                    return moreResults.size() >= results.size() ? moreResults : results;
                 }
-                return results;
             }
 
-            // Also check on-the-fly findings as partial results
-            List<String> onTheFly = collectFromOnTheFlyHolder(basePath);
-            if (!onTheFly.isEmpty() && System.currentTimeMillis() - startTime > 30000) {
-                // After 30s, return on-the-fly findings if that's all we have
-                return onTheFly;
+            // Fallback stabilization: if we had no old result, check if results appear and stabilize
+            if (oldResult == null) {
+                List<String> results = collectFromReportTab(basePath);
+                int count = results.size();
+                if (count > 0 && count == lastCount) {
+                    stablePolls++;
+                    if (stablePolls >= 3) {
+                        return results;
+                    }
+                } else {
+                    stablePolls = 0;
+                }
+                lastCount = count;
             }
 
             //noinspection BusyWait
@@ -208,7 +234,7 @@ final class SonarQubeIntegration {
         }
 
         // Timeout: return whatever we can find
-        LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s, returning available results");
+        LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s");
         List<String> results = collectFromReportTab(basePath);
         if (results.isEmpty()) {
             results = collectFromOnTheFlyHolder(basePath);
