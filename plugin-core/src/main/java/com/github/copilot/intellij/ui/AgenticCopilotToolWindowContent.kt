@@ -41,6 +41,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Current conversation session — reused for multi-turn
     private var currentSessionId: String? = null
 
+    // Prompt tab fields (promoted from local variables for footer layout)
+    private lateinit var modelComboBox: ComboBox<String>
+    private lateinit var promptTextArea: JBTextArea
+    private lateinit var sendStopButton: JButton
+    private var currentPromptThread: Thread? = null
+    private var isSending = false
+
     // Timeline events (populated from ACP session/update notifications)
     private val timelineModel = DefaultListModel<TimelineEvent>()
 
@@ -364,51 +371,33 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(10)
 
-        val toolbar = createPromptToolbar()
-        val modelComboBox = toolbar.first
-        val loadingSpinner = toolbar.second
-
-        // Auth status panel
+        // Auth status panel (shown on error only)
         val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
         authPanel.isVisible = false
         authPanel.border = JBUI.Borders.emptyLeft(5)
-        authPanel.alignmentX = Component.LEFT_ALIGNMENT
-
         val modelErrorLabel = JBLabel()
         val loginButton = JButton("Login")
         val retryButton = JButton("Retry")
         createAuthButtons(modelErrorLabel, loginButton, retryButton, authPanel)
 
-        val usagePanel = createUsagePanel()
+        // Response/chat history area (CENTER)
+        val responsePanel = createResponsePanel()
+        val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
+        topPanel.add(authPanel, BorderLayout.NORTH)
+        topPanel.add(responsePanel, BorderLayout.CENTER)
+        panel.add(topPanel, BorderLayout.CENTER)
 
-        val topPanel = JBPanel<JBPanel<*>>()
-        topPanel.layout = BoxLayout(topPanel, BoxLayout.Y_AXIS)
-        topPanel.add(toolbar.fourth)
-        topPanel.add(authPanel)
-        topPanel.add(usagePanel)
-        panel.add(topPanel, BorderLayout.NORTH)
+        // Footer: input row + controls row (SOUTH)
+        val footer = createChatFooter()
+        panel.add(footer, BorderLayout.SOUTH)
 
         loadBillingData()
 
-        val splitPane = OnePixelSplitter(true, 0.4f)
-        val promptPanel = createPromptInputPanel()
-        val promptTextArea = promptPanel.second
-        val responsePanel = createResponsePanel()
-
-        val buttonPanel = createPromptButtons(promptTextArea, modelComboBox)
-        promptPanel.first.add(buttonPanel, BorderLayout.SOUTH)
-
-        splitPane.firstComponent = promptPanel.first
-        splitPane.secondComponent = responsePanel
-
-        panel.add(splitPane, BorderLayout.CENTER)
-
-        // Reusable model loading function
+        // Load models
         fun loadModels() {
             loadModelsAsync(
-                loadingSpinner,
+                footer.getClientProperty("loadingSpinner") as AsyncProcessIcon,
                 modelComboBox,
                 modelErrorLabel,
                 loginButton,
@@ -425,20 +414,137 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return panel
     }
 
-    private data class ToolbarResult(
-        val first: ComboBox<String>,
-        val second: AsyncProcessIcon,
-        val third: ComboBox<String>,
-        val fourth: JBPanel<JBPanel<*>>
-    )
+    private fun createChatFooter(): JBPanel<JBPanel<*>> {
+        val footer = JBPanel<JBPanel<*>>()
+        footer.layout = BoxLayout(footer, BoxLayout.Y_AXIS)
+        footer.border = JBUI.Borders.merge(
+            JBUI.Borders.customLine(JBColor.border(), 1, 0, 0, 0),
+            JBUI.Borders.empty(8),
+            true
+        )
 
-    private fun createPromptToolbar(): ToolbarResult {
-        val toolbar = JBPanel<JBPanel<*>>()
-        toolbar.layout = WrapLayout(FlowLayout.LEFT, JBUI.scale(5), JBUI.scale(5)) as LayoutManager
-        toolbar.alignmentX = Component.LEFT_ALIGNMENT
+        // Row 1: Input with send/stop button
+        val inputRow = createInputRow()
+        inputRow.alignmentX = Component.LEFT_ALIGNMENT
+        footer.add(inputRow)
 
-        val modelComboBox = ComboBox(arrayOf(MSG_LOADING))
-        modelComboBox.preferredSize = JBUI.size(280, 30)
+        footer.add(Box.createVerticalStrut(JBUI.scale(6)))
+
+        // Row 2: Model, mode, status, usage
+        val loadingSpinner = AsyncProcessIcon("loading-models")
+        loadingSpinner.preferredSize = JBUI.size(16, 16)
+        footer.putClientProperty("loadingSpinner", loadingSpinner)
+
+        val controlsRow = createControlsRow(loadingSpinner)
+        controlsRow.alignmentX = Component.LEFT_ALIGNMENT
+        footer.add(controlsRow)
+
+        return footer
+    }
+
+    private fun createInputRow(): JBPanel<JBPanel<*>> {
+        val row = JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(4), 0))
+
+        promptTextArea = JBTextArea()
+        promptTextArea.lineWrap = true
+        promptTextArea.wrapStyleWord = true
+        promptTextArea.rows = 2
+        promptTextArea.border = JBUI.Borders.empty(4)
+
+        setupPromptKeyBindings(promptTextArea)
+        setupPromptPlaceholder(promptTextArea)
+
+        // Auto-resize rows (2-6)
+        promptTextArea.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+            override fun insertUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
+            override fun removeUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) {}
+            private fun adjustRows() {
+                val newRows = promptTextArea.lineCount.coerceIn(2, 6)
+                if (promptTextArea.rows != newRows) {
+                    promptTextArea.rows = newRows
+                    SwingUtilities.invokeLater { promptTextArea.revalidate() }
+                }
+            }
+        })
+
+        val scrollPane = JBScrollPane(promptTextArea)
+        scrollPane.border = JBUI.Borders.customLine(JBColor.border(), 1)
+        row.add(scrollPane, BorderLayout.CENTER)
+
+        // Send/stop toggle button
+        sendStopButton = JButton(com.intellij.icons.AllIcons.Actions.Execute)
+        sendStopButton.toolTipText = "Send (Enter)"
+        sendStopButton.preferredSize = JBUI.size(32, 32)
+        sendStopButton.isFocusable = false
+        sendStopButton.addActionListener { onSendStopClicked() }
+
+        // Connect Enter key
+        promptTextArea.actionMap.put("sendPrompt", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                if (promptTextArea.text.isNotBlank() && promptTextArea.text != PROMPT_PLACEHOLDER && !isSending) {
+                    onSendStopClicked()
+                }
+            }
+        })
+
+        val buttonWrapper = JBPanel<JBPanel<*>>(BorderLayout())
+        buttonWrapper.add(sendStopButton, BorderLayout.SOUTH)
+        row.add(buttonWrapper, BorderLayout.EAST)
+
+        return row
+    }
+
+    private fun onSendStopClicked() {
+        if (isSending) {
+            handleStopRequest(currentPromptThread)
+            setSendingState(false)
+        } else {
+            val prompt = promptTextArea.text.trim()
+            if (prompt.isEmpty() || prompt == PROMPT_PLACEHOLDER) return
+
+            setSendingState(true)
+            setResponseStatus(MSG_THINKING)
+
+            if (currentSessionId == null) {
+                responseTextArea.text = ""
+            }
+            appendResponse("\n>>> $prompt\n\n")
+            promptTextArea.text = ""
+
+            ApplicationManager.getApplication().executeOnPooledThread {
+                currentPromptThread = Thread.currentThread()
+                executePrompt(prompt)
+                currentPromptThread = null
+            }
+        }
+    }
+
+    private fun setSendingState(sending: Boolean) {
+        isSending = sending
+        SwingUtilities.invokeLater {
+            if (sending) {
+                sendStopButton.icon = com.intellij.icons.AllIcons.Actions.Suspend
+                sendStopButton.toolTipText = "Stop"
+            } else {
+                sendStopButton.icon = com.intellij.icons.AllIcons.Actions.Execute
+                sendStopButton.toolTipText = "Send (Enter)"
+            }
+        }
+    }
+
+    private fun createControlsRow(loadingSpinner: AsyncProcessIcon): JBPanel<JBPanel<*>> {
+        val row = JBPanel<JBPanel<*>>(GridBagLayout())
+        val gbc = GridBagConstraints()
+        gbc.gridy = 0
+        gbc.anchor = GridBagConstraints.WEST
+        gbc.fill = GridBagConstraints.NONE
+
+        // Model selector
+        gbc.gridx = 0
+        gbc.insets = JBUI.insetsRight(4)
+        modelComboBox = ComboBox(arrayOf(MSG_LOADING))
+        modelComboBox.preferredSize = JBUI.size(240, 26)
         modelComboBox.isEnabled = false
         modelComboBox.renderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
@@ -448,89 +554,78 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 return this
             }
         }
-        toolbar.add(modelComboBox)
+        row.add(modelComboBox, gbc)
 
-        val loadingSpinner = AsyncProcessIcon("loading-models")
-        loadingSpinner.preferredSize = JBUI.size(16, 16)
-        toolbar.add(loadingSpinner)
+        // Loading spinner
+        gbc.gridx++
+        gbc.insets = JBUI.insetsRight(8)
+        row.add(loadingSpinner, gbc)
 
+        // Mode selector
+        gbc.gridx++
+        gbc.insets = JBUI.insetsRight(8)
         val modeCombo = ComboBox(arrayOf("Agent", "Plan"))
-        modeCombo.preferredSize = JBUI.size(90, 30)
+        modeCombo.preferredSize = JBUI.size(90, 26)
         modeCombo.selectedItem = if (CopilotSettings.getSessionMode() == "plan") "Plan" else "Agent"
         modeCombo.addActionListener {
             val mode = if (modeCombo.selectedItem == "Plan") "plan" else "agent"
             CopilotSettings.setSessionMode(mode)
         }
-        toolbar.add(modeCombo)
+        row.add(modeCombo, gbc)
 
-        return ToolbarResult(modelComboBox, loadingSpinner, modeCombo, toolbar)
-    }
+        // Status
+        gbc.gridx++
+        gbc.insets = JBUI.insetsRight(4)
+        responseSpinner = AsyncProcessIcon("response-loading")
+        responseSpinner.preferredSize = JBUI.size(16, 16)
+        responseSpinner.isVisible = false
+        row.add(responseSpinner, gbc)
 
-    private fun createUsagePanel(): JBPanel<JBPanel<*>> {
-        val usagePanel = JBPanel<JBPanel<*>>()
-        usagePanel.layout = BoxLayout(usagePanel, BoxLayout.Y_AXIS)
-        usagePanel.border = JBUI.Borders.emptyLeft(10)
-        usagePanel.alignmentX = Component.LEFT_ALIGNMENT
+        gbc.gridx++
+        gbc.insets = JBUI.insetsRight(4)
+        responseStatus = JBLabel("")
+        responseStatus.font = JBUI.Fonts.smallFont()
+        responseStatus.foreground = JBColor.GRAY
+        row.add(responseStatus, gbc)
 
+        // Spacer
+        gbc.gridx++
+        gbc.weightx = 1.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        row.add(Box.createHorizontalGlue(), gbc)
+
+        // Usage (right-aligned)
+        gbc.gridx++
+        gbc.weightx = 0.0
+        gbc.fill = GridBagConstraints.NONE
+        gbc.anchor = GridBagConstraints.EAST
+        gbc.insets = JBUI.insetsRight(4)
         usageLabel = JBLabel("")
         usageLabel.font = JBUI.Fonts.smallFont()
-        usageLabel.alignmentX = Component.LEFT_ALIGNMENT
-        usagePanel.add(usageLabel)
+        row.add(usageLabel, gbc)
 
+        gbc.gridx++
+        gbc.insets = JBUI.emptyInsets()
         costLabel = JBLabel("")
         costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-        costLabel.alignmentX = Component.LEFT_ALIGNMENT
-        usagePanel.add(costLabel)
+        row.add(costLabel, gbc)
 
-        return usagePanel
-    }
-
-    private fun createPromptInputPanel(): Pair<JBPanel<JBPanel<*>>, JBTextArea> {
-        val promptPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        promptPanel.border = JBUI.Borders.empty(5)
-
-        val promptLabel = JBLabel("Prompt:")
-        promptPanel.add(promptLabel, BorderLayout.NORTH)
-
-        val promptTextArea = JBTextArea()
-        promptTextArea.lineWrap = true
-        promptTextArea.wrapStyleWord = true
-        promptTextArea.rows = 3
-
-        setupPromptKeyBindings(promptTextArea)
-        setupPromptPlaceholder(promptTextArea)
-
-        val promptScrollPane = JBScrollPane(promptTextArea)
-        promptPanel.add(promptScrollPane, BorderLayout.CENTER)
-
-        return Pair(promptPanel, promptTextArea)
+        return row
     }
 
     private fun createResponsePanel(): JBPanel<JBPanel<*>> {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(5)
-
-        val responseHeaderPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
-        val responseLabel = JBLabel("Response:")
-        responseSpinner = AsyncProcessIcon("response-loading")
-        responseSpinner.preferredSize = JBUI.size(16, 16)
-        responseSpinner.isVisible = false
-        responseStatus = JBLabel("")
-        responseStatus.font = JBUI.Fonts.smallFont()
-        responseStatus.foreground = JBColor.GRAY
-        responseHeaderPanel.add(responseLabel)
-        responseHeaderPanel.add(responseSpinner)
-        responseHeaderPanel.add(responseStatus)
-        panel.add(responseHeaderPanel, BorderLayout.NORTH)
+        panel.border = JBUI.Borders.empty(8)
 
         responseTextArea = JBTextArea()
         responseTextArea.isEditable = false
         responseTextArea.lineWrap = true
         responseTextArea.wrapStyleWord = true
-        responseTextArea.text =
-            "Response will appear here after running a prompt...\n\nFirst run will auto-start the Copilot process."
+        responseTextArea.text = "Start a conversation with Copilot...\n\nFirst run will auto-start the Copilot process."
+        responseTextArea.foreground = JBColor.GRAY
 
         val responseScrollPane = JBScrollPane(responseTextArea)
+        responseScrollPane.border = null
         panel.add(responseScrollPane, BorderLayout.CENTER)
 
         return panel
@@ -538,6 +633,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun appendResponse(text: String) {
         SwingUtilities.invokeLater {
+            // Clear placeholder styling on first real content
+            if (responseTextArea.foreground == JBColor.GRAY) {
+                responseTextArea.foreground = UIManager.getColor("TextArea.foreground")
+            }
             responseTextArea.append(text)
             responseTextArea.caretPosition = responseTextArea.document.length
         }
@@ -591,73 +690,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.foreground = JBColor.GRAY
     }
 
-    private fun createPromptButtons(
-        promptTextArea: JBTextArea,
-        modelComboBox: ComboBox<String>
-    ): JBPanel<JBPanel<*>> {
-        val buttonPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
-        val runButton = JButton("Run")
-        runButton.toolTipText = "Send prompt (Enter)"
-        val stopButton = JButton("Stop")
-        stopButton.isVisible = false
-        stopButton.toolTipText = "Cancel the current request"
-        val newChatButton = JButton("New Chat")
-        newChatButton.toolTipText = "Start a fresh conversation (clears session history)"
-        newChatButton.addActionListener {
-            currentSessionId = null
-            responseTextArea.text = "New conversation started.\n"
-            addTimelineEvent(EventType.SESSION_START, "New conversation started")
-            updateSessionInfo()
-            SwingUtilities.invokeLater {
-                planRoot.removeAllChildren()
-                planTreeModel.reload()
-                planDetailsArea.text =
-                    "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
-            }
-        }
-        buttonPanel.add(runButton)
-        buttonPanel.add(stopButton)
-        buttonPanel.add(newChatButton)
-
-        // Connect Enter key to run button
-        promptTextArea.actionMap.put("sendPrompt", object : AbstractAction() {
-            override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                if (promptTextArea.text.isNotBlank() && runButton.isEnabled) {
-                    runButton.doClick()
-                }
-            }
-        })
-
-        var currentPromptThread: Thread? = null
-
-        stopButton.addActionListener {
-            handleStopRequest(currentPromptThread)
-        }
-
-        runButton.addActionListener {
-            val prompt = promptTextArea.text.trim()
-            if (prompt.isEmpty() || prompt == PROMPT_PLACEHOLDER) return@addActionListener
-
-            runButton.isEnabled = false
-            stopButton.isVisible = true
-            setResponseStatus(MSG_THINKING)
-
-            if (currentSessionId == null) {
-                responseTextArea.text = ""
-            }
-            appendResponse("\n>>> $prompt\n\n")
-            promptTextArea.text = ""
-
-            ApplicationManager.getApplication().executeOnPooledThread {
-                currentPromptThread = Thread.currentThread()
-                executePrompt(prompt, modelComboBox, runButton, stopButton)
-                currentPromptThread = null
-            }
-        }
-
-        return buttonPanel
-    }
-
     private fun handleStopRequest(promptThread: Thread?) {
         val sessionId = currentSessionId
         if (sessionId != null) {
@@ -673,12 +705,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         addTimelineEvent(EventType.ERROR, "Prompt cancelled by user")
     }
 
-    private fun executePrompt(
-        prompt: String,
-        modelComboBox: ComboBox<String>,
-        runButton: JButton,
-        stopButton: JButton
-    ) {
+    private fun executePrompt(prompt: String) {
         try {
             val service = CopilotService.getInstance(project)
             val client = service.getClient()
@@ -728,10 +755,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         } catch (e: Exception) {
             handlePromptError(e)
         } finally {
-            SwingUtilities.invokeLater {
-                runButton.isEnabled = true
-                stopButton.isVisible = false
-            }
+            setSendingState(false)
         }
     }
 
@@ -1493,6 +1517,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     fun getComponent(): JComponent = mainPanel
+
+    fun resetSession() {
+        currentSessionId = null
+        responseTextArea.text = ""
+        responseTextArea.foreground = JBColor.GRAY
+        appendResponse("New conversation started.\n")
+        addTimelineEvent(EventType.SESSION_START, "New conversation started")
+        updateSessionInfo()
+        SwingUtilities.invokeLater {
+            if (::planRoot.isInitialized) {
+                planRoot.removeAllChildren()
+                planTreeModel.reload()
+                planDetailsArea.text =
+                    "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
+            }
+        }
+    }
 
     // Helper methods to reduce code duplication
     private fun setLoadingState(
