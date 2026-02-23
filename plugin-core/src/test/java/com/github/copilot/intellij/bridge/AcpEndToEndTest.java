@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * These tests exercise the full JSON-RPC protocol flow including streaming,
  * tool calls, permissions, and error handling ? all without API costs.
  */
-@SuppressWarnings("UnusedReturnValue")
+@SuppressWarnings({"UnusedReturnValue", "java:S2925"})
 class AcpEndToEndTest {
 
     private MockAcpServer server;
@@ -456,11 +456,21 @@ class AcpEndToEndTest {
                 return result;
             });
 
+            JsonObject promptParams = buildResourcePromptParams(sessionId);
+            sendRequest(3, "session/prompt", promptParams);
+            readResponse();
+
+            assertNotNull(capturedPrompt.get());
+            assertEquals(2, capturedPrompt.get().size(), "Should have resource + text");
+            assertEquals("resource", capturedPrompt.get().get(0).getAsJsonObject().get("type").getAsString());
+            assertEquals("text", capturedPrompt.get().get(1).getAsJsonObject().get("type").getAsString());
+        }
+
+        private static JsonObject buildResourcePromptParams(String sessionId) {
             JsonObject promptParams = new JsonObject();
             promptParams.addProperty("sessionId", sessionId);
             JsonArray prompt = new JsonArray();
 
-            // Add resource reference
             JsonObject resource = new JsonObject();
             resource.addProperty("type", "resource");
             JsonObject resourceData = new JsonObject();
@@ -470,20 +480,13 @@ class AcpEndToEndTest {
             resource.add("resource", resourceData);
             prompt.add(resource);
 
-            // Add text prompt
             JsonObject text = new JsonObject();
             text.addProperty("type", "text");
             text.addProperty("text", "Analyze this file");
             prompt.add(text);
 
             promptParams.add("prompt", prompt);
-            sendRequest(3, "session/prompt", promptParams);
-            readResponse();
-
-            assertNotNull(capturedPrompt.get());
-            assertEquals(2, capturedPrompt.get().size(), "Should have resource + text");
-            assertEquals("resource", capturedPrompt.get().get(0).getAsJsonObject().get("type").getAsString());
-            assertEquals("text", capturedPrompt.get().get(1).getAsJsonObject().get("type").getAsString());
+            return promptParams;
         }
     }
 

@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,12 +37,7 @@ public class MockAcpServer implements Closeable {
 
     private final Map<String, Function<JsonObject, JsonObject>> requestHandlers = new ConcurrentHashMap<>();
     private final List<JsonObject> receivedRequests = new CopyOnWriteArrayList<>();
-    private final List<JsonObject> sentResponses = new CopyOnWriteArrayList<>();
     private Thread readerThread;
-
-    public List<JsonObject> getSentResponses() {
-        return sentResponses;
-    }
 
     private volatile boolean running = true;
 
@@ -111,7 +105,6 @@ public class MockAcpServer implements Closeable {
      */
     public synchronized void sendMessage(JsonObject msg) throws IOException {
         String json = new Gson().toJson(msg);
-        sentResponses.add(msg);
         serverToClient.write((json + "\n").getBytes());
         serverToClient.flush();
     }
@@ -169,23 +162,16 @@ public class MockAcpServer implements Closeable {
         return clientFromServer;
     }
 
-    /**
-     * Create a mock Process object that uses this server's pipes.
-     */
-    public Process createMockProcess() {
-        return new MockProcess(clientToServer, clientFromServer);
-    }
-
     @Override
     public void close() {
         running = false;
         try {
             clientToServer.close();
-        } catch (IOException ignored) {
+        } catch (IOException ignored) { // streams closing on shutdown
         }
         try {
             serverToClient.close();
-        } catch (IOException ignored) {
+        } catch (IOException ignored) { // streams closing on shutdown
         }
         if (readerThread != null) readerThread.interrupt();
     }
@@ -297,6 +283,12 @@ public class MockAcpServer implements Closeable {
         toolCall.addProperty("title", title);
         params.add("toolCall", toolCall);
 
+        params.add("options", buildPermissionOptions());
+
+        return params;
+    }
+
+    private static JsonArray buildPermissionOptions() {
         JsonArray options = new JsonArray();
         JsonObject allowOnce = new JsonObject();
         allowOnce.addProperty("optionId", "allow_once");
@@ -308,55 +300,6 @@ public class MockAcpServer implements Closeable {
         rejectOnce.addProperty("name", "Reject");
         rejectOnce.addProperty("kind", "reject_once");
         options.add(rejectOnce);
-        params.add("options", options);
-
-        return params;
-    }
-
-    /**
-     * Minimal mock Process implementation backed by piped streams.
-     */
-    private static class MockProcess extends Process {
-        private final OutputStream stdin;
-        private final InputStream stdout;
-
-        MockProcess(OutputStream stdin, InputStream stdout) {
-            this.stdin = stdin;
-            this.stdout = stdout;
-        }
-
-        @Override
-        public OutputStream getOutputStream() {
-            return stdin;
-        }
-
-        @Override
-        public InputStream getInputStream() {
-            return stdout;
-        }
-
-        @Override
-        public InputStream getErrorStream() {
-            return new ByteArrayInputStream(new byte[0]);
-        }
-
-        @Override
-        public int waitFor() {
-            return 0;
-        }
-
-        @Override
-        public int exitValue() {
-            return 0;
-        }
-
-        @Override
-        public void destroy() {
-        }
-
-        @Override
-        public boolean isAlive() {
-            return true;
-        }
+        return options;
     }
 }

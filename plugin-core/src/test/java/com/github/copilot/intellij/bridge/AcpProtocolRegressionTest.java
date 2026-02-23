@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Regression tests using MockAcpServer to verify bug fixes.
  * Each test reproduces a specific bug that was found during manual testing.
  */
+@SuppressWarnings("java:S2925") // Thread.sleep is necessary for async protocol test synchronization
 class AcpProtocolRegressionTest {
 
     /**
@@ -38,31 +39,7 @@ class AcpProtocolRegressionTest {
      */
     @Test
     void testAgentRequestPermissionGetsResponse() throws Exception {
-        MockAcpServer server = new MockAcpServer();
-        // Register a prompt handler that sends a request_permission before responding
-        server.registerHandler("session/prompt", params -> {
-            String sessionId = params.get("sessionId").getAsString();
-            try {
-                // Send tool_call notification
-                server.sendNotification("session/update",
-                    MockAcpServer.buildToolCall(sessionId, "call_001", "Write file", "edit", "pending"));
-
-                // Send request_permission (agent-to-client request with id)
-                server.sendAgentRequest(100, "session/request_permission",
-                    MockAcpServer.buildRequestPermission(sessionId, "call_001"));
-
-                // Small delay to allow client to process and respond
-                Thread.sleep(500);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-
-            // Return prompt result
-            JsonObject result = new JsonObject();
-            result.addProperty("stopReason", "end_turn");
-            return result;
-        });
-        server.start();
+        MockAcpServer server = createServerWithPermissionHandler();
 
         // We need to test that the client properly responds to request_permission.
         // Since CopilotAcpClient uses an internal Process, we test the protocol
@@ -347,26 +324,7 @@ class AcpProtocolRegressionTest {
      */
     @Test
     void testPlanNotificationFormat() {
-        JsonObject params = new JsonObject();
-        params.addProperty("sessionId", "s1");
-        JsonObject update = new JsonObject();
-        update.addProperty("sessionUpdate", "plan");
-        JsonArray entries = new JsonArray();
-
-        JsonObject entry1 = new JsonObject();
-        entry1.addProperty("content", "Analyze codebase");
-        entry1.addProperty("priority", "high");
-        entry1.addProperty("status", "completed");
-        entries.add(entry1);
-
-        JsonObject entry2 = new JsonObject();
-        entry2.addProperty("content", "Refactor module");
-        entry2.addProperty("priority", "medium");
-        entry2.addProperty("status", "pending");
-        entries.add(entry2);
-
-        update.add("entries", entries);
-        params.add("update", update);
+        JsonObject params = buildPlanNotificationParams();
 
         assertEquals("plan", params.getAsJsonObject("update").get("sessionUpdate").getAsString());
         assertEquals(2, params.getAsJsonObject("update").getAsJsonArray("entries").size());
@@ -382,23 +340,9 @@ class AcpProtocolRegressionTest {
      */
     @Test
     void testToolCallUpdateWithContent() {
+        JsonObject update = buildToolCallUpdate();
         JsonObject params = new JsonObject();
         params.addProperty("sessionId", "s1");
-        JsonObject update = new JsonObject();
-        update.addProperty("sessionUpdate", "tool_call_update");
-        update.addProperty("toolCallId", "call_001");
-        update.addProperty("status", "completed");
-
-        JsonArray content = new JsonArray();
-        JsonObject contentBlock = new JsonObject();
-        contentBlock.addProperty("type", "content");
-        JsonObject innerContent = new JsonObject();
-        innerContent.addProperty("type", "text");
-        innerContent.addProperty("text", "Analysis complete");
-        contentBlock.add("content", innerContent);
-        content.add(contentBlock);
-        update.add("content", content);
-
         params.add("update", update);
 
         JsonObject u = params.getAsJsonObject("update");
@@ -584,6 +528,69 @@ class AcpProtocolRegressionTest {
         JsonArray options = params.getAsJsonArray("options");
         String allowOptionId = options.get(0).getAsJsonObject().get("optionId").getAsString();
         assertEquals("allow_once", allowOptionId, "First option should be allow_once for auto-approval");
+    }
+
+    private MockAcpServer createServerWithPermissionHandler() throws IOException {
+        MockAcpServer server = new MockAcpServer();
+        server.registerHandler("session/prompt", params -> {
+            String sessionId = params.get("sessionId").getAsString();
+            try {
+                server.sendNotification("session/update",
+                    MockAcpServer.buildToolCall(sessionId, "call_001", "Write file", "edit", "pending"));
+                server.sendAgentRequest(100, "session/request_permission",
+                    MockAcpServer.buildRequestPermission(sessionId, "call_001"));
+                Thread.sleep(500);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            JsonObject result = new JsonObject();
+            result.addProperty("stopReason", "end_turn");
+            return result;
+        });
+        server.start();
+        return server;
+    }
+
+    private static JsonObject buildPlanNotificationParams() {
+        JsonObject params = new JsonObject();
+        params.addProperty("sessionId", "s1");
+        JsonObject update = new JsonObject();
+        update.addProperty("sessionUpdate", "plan");
+        JsonArray entries = new JsonArray();
+
+        JsonObject entry1 = new JsonObject();
+        entry1.addProperty("content", "Analyze codebase");
+        entry1.addProperty("priority", "high");
+        entry1.addProperty("status", "completed");
+        entries.add(entry1);
+
+        JsonObject entry2 = new JsonObject();
+        entry2.addProperty("content", "Refactor module");
+        entry2.addProperty("priority", "medium");
+        entry2.addProperty("status", "pending");
+        entries.add(entry2);
+
+        update.add("entries", entries);
+        params.add("update", update);
+        return params;
+    }
+
+    private static JsonObject buildToolCallUpdate() {
+        JsonObject update = new JsonObject();
+        update.addProperty("sessionUpdate", "tool_call_update");
+        update.addProperty("toolCallId", "call_001");
+        update.addProperty("status", "completed");
+
+        JsonArray content = new JsonArray();
+        JsonObject contentBlock = new JsonObject();
+        contentBlock.addProperty("type", "content");
+        JsonObject innerContent = new JsonObject();
+        innerContent.addProperty("type", "text");
+        innerContent.addProperty("text", "Analysis complete");
+        contentBlock.add("content", innerContent);
+        content.add(contentBlock);
+        update.add("content", content);
+        return update;
     }
 
     private static JsonObject buildRequest(long id, String method, JsonObject params) {
