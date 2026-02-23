@@ -101,15 +101,6 @@ final class SonarQubeIntegration {
         }
     }
 
-    private String handleUntriggeredAnalysis(String basePath, int limit, int offset) {
-        List<String> fallback = collectAllFindings(basePath);
-        if (!fallback.isEmpty()) {
-            return formatOutput(fallback, limit, offset);
-        }
-        return "SonarQube analysis could not be triggered. Open the SonarLint Report tab " +
-            "and click 'Analyze All Files' manually, then call this tool again.";
-    }
-
     private String resolveActionId(String scope) {
         if ("changed".equalsIgnoreCase(scope)) {
             return "SonarLint.AnalyzeChangedFiles";
@@ -181,7 +172,7 @@ final class SonarQubeIntegration {
                 if (!completed) {
                     return collectAllFindings(basePath).isEmpty()
                         ? List.of("SonarQube analysis could not be triggered. " +
-                            "Open the SonarLint Report tab and click 'Analyze All Files' manually, then call this tool again.")
+                        "Open the SonarLint Report tab and click 'Analyze All Files' manually, then call this tool again.")
                         : collectAllFindings(basePath);
                 }
             }
@@ -207,37 +198,9 @@ final class SonarQubeIntegration {
         long deadline = System.currentTimeMillis() + MAX_WAIT_SECONDS * 1000L;
 
         var scheduler = com.intellij.util.concurrency.AppExecutorUtil.getAppScheduledExecutorService();
-        ScheduledFuture<?> poller = scheduler.scheduleAtFixedRate(() -> {
-            try {
-                if (System.currentTimeMillis() > deadline) {
-                    done.complete(true);
-                    return;
-                }
-                // In Phase 1, check if trigger failed early
-                if (!started.get() && triggerResult != null && triggerResult.isDone()) {
-                    try {
-                        if (Boolean.FALSE.equals(triggerResult.get())) {
-                            LOG.warn("Trigger failed, aborting wait");
-                            done.complete(false);
-                            return;
-                        }
-                    } catch (Exception e) {
-                        done.complete(false);
-                        return;
-                    }
-                }
-                boolean empty = (boolean) isEmptyMethod.invoke(tracker);
-                if (!started.get()) {
-                    if (!empty) {
-                        started.set(true);
-                    }
-                } else if (empty) {
-                    done.complete(true);
-                }
-            } catch (Exception e) {
-                done.completeExceptionally(e);
-            }
-        }, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> poller = scheduler.scheduleAtFixedRate(() ->
+                pollOnce(tracker, isEmptyMethod, triggerResult, done, started, deadline),
+            0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
         try {
             return done.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
@@ -250,6 +213,51 @@ final class SonarQubeIntegration {
         } finally {
             poller.cancel(false);
         }
+    }
+
+    private void pollOnce(Object tracker, Method isEmptyMethod,
+                          CompletableFuture<Boolean> triggerResult,
+                          CompletableFuture<Boolean> done,
+                          AtomicBoolean started, long deadline) {
+        try {
+            if (System.currentTimeMillis() > deadline) {
+                done.complete(true);
+                return;
+            }
+            if (!started.get() && checkTriggerFailed(triggerResult, done)) {
+                return;
+            }
+            boolean empty = (boolean) isEmptyMethod.invoke(tracker);
+            if (!started.get()) {
+                if (!empty) {
+                    started.set(true);
+                }
+            } else if (empty) {
+                done.complete(true);
+            }
+        } catch (Exception e) {
+            done.completeExceptionally(e);
+        }
+    }
+
+    private boolean checkTriggerFailed(CompletableFuture<Boolean> triggerResult,
+                                       CompletableFuture<Boolean> done) {
+        if (triggerResult == null || !triggerResult.isDone()) return false;
+        try {
+            if (Boolean.FALSE.equals(triggerResult.get())) {
+                LOG.warn("Trigger failed, aborting wait");
+                done.complete(false);
+                return true;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            done.complete(false);
+            return true;
+        } catch (Exception e) {
+            done.complete(false);
+            return true;
+        }
+        return false;
     }
 
     private List<String> collectOrFallback(String basePath) {
@@ -293,7 +301,7 @@ final class SonarQubeIntegration {
         return results;
     }
 
-    private Object getLatestAnalysisResult() throws Exception {
+    private Object getLatestAnalysisResult() throws ReflectiveOperationException {
         Class<?> reportTabManagerClass = loadSonarClass("org.sonarlint.intellij.ui.report.ReportTabManager");
         Object reportTabManager = project.getService(reportTabManagerClass);
         if (reportTabManager == null) {
@@ -325,7 +333,7 @@ final class SonarQubeIntegration {
     }
 
     private void collectIssuesFromFindings(Object liveFindings, String basePath, List<String> results)
-        throws Exception {
+        throws ReflectiveOperationException {
         Method getIssuesMethod = liveFindings.getClass().getMethod("getIssuesPerFile");
         Map<?, ?> issuesPerFile = (Map<?, ?>) getIssuesMethod.invoke(liveFindings);
         if (issuesPerFile == null) return;
@@ -389,7 +397,7 @@ final class SonarQubeIntegration {
     }
 
     private void collectOnTheFlyIssues(Object holder, String basePath, List<String> results)
-        throws Exception {
+        throws ReflectiveOperationException {
         Method getAllIssues = holder.getClass().getMethod("getAllIssues");
         Collection<?> issues = (Collection<?>) getAllIssues.invoke(holder);
         for (Object issue : issues) {

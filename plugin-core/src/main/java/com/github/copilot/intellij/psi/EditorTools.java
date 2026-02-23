@@ -67,9 +67,9 @@ class EditorTools extends AbstractToolHandler {
                 // Force DaemonCodeAnalyzer to run on this file
                 PsiFile psiFile = ReadAction.compute(() -> PsiManager.getInstance(project).findFile(vf));
                 if (psiFile != null) {
-                    // Using deprecated restart() method - no alternative available
+                    // Using deprecated restart(PsiFile) method - no alternative available
                     //noinspection deprecation
-                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project).restart(psiFile); //NOSONAR S1874 - no non-deprecated alternative for per-file restart
                 }
 
                 resultFuture.complete("Opened " + pathStr + (line > 0 ? " at line " + line : "") +
