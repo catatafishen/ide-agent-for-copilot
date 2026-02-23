@@ -77,6 +77,7 @@ class CodeQualityTools extends AbstractToolHandler {
         register("optimize_imports", this::optimizeImports);
         register("format_code", this::formatCode);
         register("add_to_dictionary", this::addToDictionary);
+        register("get_compilation_errors", this::getCompilationErrors);
         // Conditionally register SonarQube tool only if plugin is installed
         if (SonarQubeIntegration.isInstalled()) {
             register("run_sonarqube_analysis", this::runSonarQubeAnalysis);
@@ -267,6 +268,73 @@ class CodeQualityTools extends AbstractToolHandler {
             LOG.warn("Failed to analyze file: " + relPath, e);
         }
         return added;
+    }
+
+    // ---- get_compilation_errors ----
+
+    /**
+     * Lightweight compilation check — scans open/specified files for ERROR-severity highlights.
+     * Much faster than build_project since it uses cached daemon analysis results.
+     */
+    @SuppressWarnings("UnstableApiUsage")
+    private String getCompilationErrors(JsonObject args) throws Exception {
+        String pathStr = args.has("path") ? args.get("path").getAsString() : null;
+
+        if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
+            return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+        }
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            try {
+                collectCompilationErrors(pathStr, resultFuture);
+            } catch (Exception e) {
+                LOG.error("Error getting compilation errors", e);
+                resultFuture.complete("Error getting compilation errors: " + e.getMessage());
+            }
+        });
+        return resultFuture.get(30, TimeUnit.SECONDS);
+    }
+
+    private void collectCompilationErrors(String pathStr, CompletableFuture<String> resultFuture) {
+        ReadAction.run(() -> {
+            ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
+            Collection<VirtualFile> files = collectFilesForHighlightAnalysis(pathStr, fileIndex, resultFuture);
+            if (resultFuture.isDone()) return;
+
+            String basePath = project.getBasePath();
+            List<String> errors = new ArrayList<>();
+            int filesWithErrors = 0;
+
+            for (VirtualFile vf : files) {
+                Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                if (doc == null) continue;
+
+                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+                List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+                com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+                    doc, project, null, 0, doc.getTextLength(), highlights::add);
+
+                boolean fileHasErrors = false;
+                for (var h : highlights) {
+                    if (h.getDescription() != null
+                        && h.getSeverity() == com.intellij.lang.annotation.HighlightSeverity.ERROR) {
+                        int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                        errors.add(String.format(FORMAT_LOCATION, relPath, line, "ERROR", h.getDescription()));
+                        fileHasErrors = true;
+                    }
+                }
+                if (fileHasErrors) filesWithErrors++;
+            }
+
+            if (errors.isEmpty()) {
+                resultFuture.complete(String.format("✓ No compilation errors in %d files checked.", files.size()));
+            } else {
+                String summary = String.format("✗ Found %d compilation errors across %d files:%n%n",
+                    errors.size(), filesWithErrors);
+                resultFuture.complete(summary + String.join("\n", errors));
+            }
+        });
     }
 
     // ---- run_inspections ----

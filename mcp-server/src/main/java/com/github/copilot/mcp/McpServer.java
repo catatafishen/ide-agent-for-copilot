@@ -156,12 +156,16 @@ public class McpServer {
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
         result.addProperty("instructions", """
-            You are running inside an IntelliJ IDEA plugin with access to 54 IDE tools.
+            You are running inside an IntelliJ IDEA plugin with access to 56 IDE tools.
 
             FILE OPERATIONS:
-            - intellij_read_file: Read any file (project files, logs, etc). Reads live editor buffer with unsaved changes.
-            - intellij_write_file: Write/edit files. Use 'content' for full replacement or 'old_str'+'new_str' for edits.
-              Supports undo (Ctrl+Z), VCS tracking, editor sync.
+            - intellij_read_file: Read any file. Supports 'start_line'/'end_line' for partial reads. \
+              ⚠️ ALWAYS use start_line/end_line when you only need a section — full file reads waste tokens. \
+              Example: intellij_read_file(path, start_line=50, end_line=100) reads only lines 50-100.
+            - intellij_write_file: Write/edit files. \
+              ⚠️ ALWAYS use 'old_str'+'new_str' for targeted edits. NEVER send full file content unless creating a new file. \
+              Full file writes waste tokens and risk overwriting concurrent changes. \
+              Example: intellij_write_file(path, old_str="old code", new_str="new code")
 
             CODE SEARCH (AST-based, searches live editor buffers):
             - search_symbols: Find class/method/function definitions by name
@@ -176,20 +180,25 @@ public class McpServer {
 
             1. TRUST TOOL OUTPUTS - they return data directly. Don't try to read temp files or invent processing tools.
 
-            2. READ FILES EFFICIENTLY - Read 300-500 lines per call (each call has overhead).
+            2. READ FILES EFFICIENTLY - Use start_line/end_line to read only the section you need. \
+            Only read full files when you need the complete picture (e.g., first time reading a file).
 
-            3. WORKSPACE: Use '.agent-work/' for temp files (git-ignored, persists across sessions).
+            3. WORKSPACE: ALL temp files, plans, notes MUST go in '.agent-work/' inside the project root. \
+            NEVER write to /tmp/, home directory, or any location outside the project. \
+            '.agent-work/' is git-ignored and persists across sessions.
 
-            4. AFTER EDITING - IMMEDIATELY after intellij_write_file: \
-            a) Run 'get_highlights' on that SAME file to check for errors. \
+            4. ⚠️ MANDATORY AFTER EVERY EDIT: IMMEDIATELY after EACH intellij_write_file call: \
+            a) Run 'get_highlights' on that SAME file — this is a fast cached check (milliseconds). \
             b) If errors exist, FIX THEM IMMEDIATELY before editing other files. \
-            c) This mimics how human users see red squiggles instantly in IntelliJ. \
-            d) Early error detection prevents cascade failures across multiple files. \
+            c) DO NOT skip this step. DO NOT batch multiple edits before checking. \
+            d) get_highlights is MUCH faster than build_project — use it after every single edit. \
+            e) Only use build_project before committing (final verification). \
+            f) For quick multi-file error checks, use get_compilation_errors (errors only, no warnings). \
             Example workflow: intellij_write_file(file.java) → get_highlights(file.java) → verify no errors → continue.
 
             5. For MULTIPLE SEQUENTIAL EDITS: \
             When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
-            Check for errors with get_highlights after EACH edit (still required!). \
+            ⚠️ You MUST still call get_highlights after EACH edit — this is non-negotiable. \
             After all edits complete, call format_code and optimize_imports ONCE. \
             Example: intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
             intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
@@ -217,7 +226,11 @@ public class McpServer {
 
             9. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
 
-            10. ALWAYS run 'build_project' before committing to verify no compilation errors were introduced.
+            10. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
+            a) get_highlights(file) — after EACH edit. Instant. Catches most errors. \
+            b) get_compilation_errors() — after editing multiple files. Fast scan of open files for ERROR-level only. \
+            c) build_project — ONLY before committing. Full incremental compilation. \
+            NEVER use build_project as your first error check after an edit — it's 100x slower than get_highlights.
 
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
             ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
@@ -376,6 +389,12 @@ public class McpServer {
             Map.of(
                 "path", Map.of("type", "string", "description", "Optional: file path to check. If om", "default", ""),
                 "limit", Map.of("type", "integer", "description", "Maximum number of highlights to ret")
+            ),
+            List.of()));
+
+        tools.add(buildTool("get_compilation_errors", "Fast compilation error check using cached daemon results. Much faster than build_project. Use after editing multiple files to quickly verify no compile errors were introduced",
+            Map.of(
+                "path", Map.of("type", "string", "description", "Optional: specific file to check. If omitted, checks all open source files", "default", "")
             ),
             List.of()));
 

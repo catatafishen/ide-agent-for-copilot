@@ -73,11 +73,8 @@ final class SonarQubeIntegration {
 
     /**
      * Trigger SonarQube analysis and collect results.
-     *
-     * @param scope  "all", "changed", or a file path
-     * @param limit  max results to return
-     * @param offset pagination offset
-     * @return formatted findings string
+     * The trigger is fire-and-forget — no arbitrary timeout.
+     * Completion is detected via RunningAnalysesTracker polling.
      */
     String runAnalysis(String scope, int limit, int offset) {
         if (!isInstalled()) {
@@ -89,18 +86,14 @@ final class SonarQubeIntegration {
 
             if (isAnalysisRunning()) {
                 LOG.info("SonarQube analysis already in progress, waiting for completion");
-                List<String> findings = waitForNewResults(basePath);
+                List<String> findings = waitForNewResults(basePath, null);
                 return formatOutput(findings, limit, offset);
             }
 
             String actionId = resolveActionId(scope);
-            boolean triggered = triggerAction(actionId);
-            if (!triggered) {
-                LOG.warn("Could not trigger analysis action '" + actionId + "'");
-                return handleUntriggeredAnalysis(basePath, limit, offset);
-            }
+            CompletableFuture<Boolean> triggerResult = triggerAction(actionId);
 
-            List<String> findings = waitForNewResults(basePath);
+            List<String> findings = waitForNewResults(basePath, triggerResult);
             return formatOutput(findings, limit, offset);
         } catch (Exception e) {
             LOG.warn("SonarQube analysis failed", e);
@@ -124,14 +117,20 @@ final class SonarQubeIntegration {
         return "SonarLint.AnalyzeAllFiles";
     }
 
-    private boolean triggerAction(String actionId) {
+    /**
+     * Fire-and-forget action trigger. Returns a CompletableFuture that resolves
+     * when the EDT processes the action. No arbitrary timeout — the overall
+     * analysis polling handles completion detection.
+     */
+    private CompletableFuture<Boolean> triggerAction(String actionId) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+
         AnAction action = ActionManager.getInstance().getAction(actionId);
         if (action == null) {
             LOG.warn("SonarLint action not found: " + actionId);
-            return false;
+            future.complete(false);
+            return future;
         }
-
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
 
         EdtUtil.invokeLater(() -> {
             try {
@@ -157,16 +156,7 @@ final class SonarQubeIntegration {
             }
         });
 
-        try {
-            return future.get(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOG.warn("Interrupted waiting for SonarLint action trigger", e);
-            return false;
-        } catch (Exception e) {
-            LOG.warn("Timeout waiting for SonarLint action trigger", e);
-            return false;
-        }
+        return future;
     }
 
     /**
@@ -176,15 +166,24 @@ final class SonarQubeIntegration {
      * <p>
      * Phase 1: Wait for tracker to become non-empty (modules registered after async trigger).
      * Phase 2: Wait for tracker to become empty (all modules finished).
+     * <p>
+     * If triggerResult is provided, Phase 1 also checks if the trigger failed — if so,
+     * falls back to collecting existing results immediately.
      */
-    private List<String> waitForNewResults(String basePath) {
+    private List<String> waitForNewResults(String basePath, CompletableFuture<Boolean> triggerResult) {
         try {
             Class<?> trackerClass = loadSonarClass("org.sonarlint.intellij.analysis.RunningAnalysesTracker");
             Object tracker = project.getService(trackerClass);
             Method isEmptyMethod = trackerClass.getMethod("isEmpty");
 
             if (tracker != null) {
-                pollUntilComplete(tracker, isEmptyMethod);
+                boolean completed = pollUntilComplete(tracker, isEmptyMethod, triggerResult);
+                if (!completed) {
+                    return collectAllFindings(basePath).isEmpty()
+                        ? List.of("SonarQube analysis could not be triggered. " +
+                            "Open the SonarLint Report tab and click 'Analyze All Files' manually, then call this tool again.")
+                        : collectAllFindings(basePath);
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -198,10 +197,12 @@ final class SonarQubeIntegration {
 
     /**
      * Poll the tracker using a ScheduledExecutorService instead of Thread.sleep loops.
+     * Returns true if analysis completed normally, false if trigger failed early.
      */
-    private void pollUntilComplete(Object tracker, Method isEmptyMethod)
+    private boolean pollUntilComplete(Object tracker, Method isEmptyMethod,
+                                      CompletableFuture<Boolean> triggerResult)
         throws InterruptedException {
-        CompletableFuture<Void> done = new CompletableFuture<>();
+        CompletableFuture<Boolean> done = new CompletableFuture<>();
         AtomicBoolean started = new AtomicBoolean(false);
         long deadline = System.currentTimeMillis() + MAX_WAIT_SECONDS * 1000L;
 
@@ -209,8 +210,21 @@ final class SonarQubeIntegration {
         ScheduledFuture<?> poller = scheduler.scheduleAtFixedRate(() -> {
             try {
                 if (System.currentTimeMillis() > deadline) {
-                    done.complete(null);
+                    done.complete(true);
                     return;
+                }
+                // In Phase 1, check if trigger failed early
+                if (!started.get() && triggerResult != null && triggerResult.isDone()) {
+                    try {
+                        if (Boolean.FALSE.equals(triggerResult.get())) {
+                            LOG.warn("Trigger failed, aborting wait");
+                            done.complete(false);
+                            return;
+                        }
+                    } catch (Exception e) {
+                        done.complete(false);
+                        return;
+                    }
                 }
                 boolean empty = (boolean) isEmptyMethod.invoke(tracker);
                 if (!started.get()) {
@@ -218,7 +232,7 @@ final class SonarQubeIntegration {
                         started.set(true);
                     }
                 } else if (empty) {
-                    done.complete(null);
+                    done.complete(true);
                 }
             } catch (Exception e) {
                 done.completeExceptionally(e);
@@ -226,12 +240,13 @@ final class SonarQubeIntegration {
         }, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
         try {
-            done.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
+            return done.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw e;
         } catch (Exception e) {
             LOG.debug("Polling ended: " + e.getMessage());
+            return true;
         } finally {
             poller.cancel(false);
         }
