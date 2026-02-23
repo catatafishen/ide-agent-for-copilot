@@ -20,10 +20,13 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Lightweight HTTP bridge exposing IntelliJ PSI/AST analysis to the MCP server.
@@ -183,6 +186,12 @@ public final class PsiBridgeService implements Disposable {
             result = "Error: " + e.getMessage();
         }
 
+        // Piggyback highlights after successful write operations
+        if (isSuccessfulWrite(toolName, result) && arguments.has("path")) {
+            LOG.info("Auto-highlights: piggybacking on write to " + arguments.get("path").getAsString());
+            result = appendAutoHighlights(result, arguments.get("path").getAsString());
+        }
+
         JsonObject response = new JsonObject();
         response.addProperty("result", result);
         byte[] bytes = GSON.toJson(response).getBytes(StandardCharsets.UTF_8);
@@ -190,6 +199,71 @@ public final class PsiBridgeService implements Disposable {
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.getResponseBody().close();
+    }
+
+    private static boolean isSuccessfulWrite(String toolName, String result) {
+        return ("write_file".equals(toolName) || "intellij_write_file".equals(toolName))
+            && (result.startsWith("Edited:") || result.startsWith("Written:"));
+    }
+
+    /**
+     * Auto-run get_highlights on the edited file and append results to the write response.
+     * Waits for the DaemonCodeAnalyzer to complete a pass after the edit, then collects highlights.
+     */
+    private String appendAutoHighlights(String writeResult, String path) {
+        try {
+            ToolHandler highlightHandler = toolRegistry.get("get_highlights");
+            if (highlightHandler == null) return writeResult;
+
+            // Wait for daemon to finish re-analyzing after the edit
+            waitForDaemonPass();
+
+            JsonObject highlightArgs = new JsonObject();
+            highlightArgs.addProperty("path", path);
+            String highlights = highlightHandler.handle(highlightArgs);
+            LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
+
+            return writeResult + "\n\n--- Highlights (auto) ---\n" + highlights;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return writeResult;
+        } catch (Exception e) {
+            LOG.info("Auto-highlights after write failed: " + e.getMessage());
+            return writeResult;
+        }
+    }
+
+    /**
+     * Wait for the next DaemonCodeAnalyzer pass to complete.
+     * Subscribes to DAEMON_EVENT_TOPIC and waits for daemonFinished, with a 3s timeout.
+     * This replaces an arbitrary Thread.sleep with event-driven waiting.
+     */
+    private void waitForDaemonPass() throws InterruptedException {
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        var disposable = com.intellij.openapi.util.Disposer.newDisposable("auto-highlights-wait");
+
+        project.getMessageBus().connect(disposable)
+            .subscribe(com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
+                new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
+                    @Override
+                    public void daemonFinished(@NotNull Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
+                        done.complete(null);
+                    }
+
+                    @Override
+                    public void daemonCancelEventOccurred(@NotNull String reason) {
+                        done.complete(null);
+                    }
+                });
+
+        try {
+            done.get(3, TimeUnit.SECONDS);
+            LOG.info("Auto-highlights: daemon pass completed, collecting highlights");
+        } catch (java.util.concurrent.TimeoutException | java.util.concurrent.ExecutionException e) {
+            LOG.info("Auto-highlights: daemon pass wait timed out (3s), using cached highlights");
+        } finally {
+            com.intellij.openapi.util.Disposer.dispose(disposable);
+        }
     }
 
     public void dispose() {

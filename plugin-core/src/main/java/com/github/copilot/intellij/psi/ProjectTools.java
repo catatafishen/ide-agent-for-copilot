@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Handles project environment tools: get_project_info, build_project, get_indexing_status, download_sources.
@@ -32,6 +33,8 @@ class ProjectTools extends AbstractToolHandler {
     private static final String JSON_MODULE = "module";
     private static final String OS_NAME_PROPERTY = "os.name";
     private static final String GET_INSTANCE_METHOD = "getInstance";
+
+    private final AtomicBoolean buildInProgress = new AtomicBoolean(false);
 
     ProjectTools(Project project) {
         super(project);
@@ -135,6 +138,10 @@ class ProjectTools extends AbstractToolHandler {
     // ---- build_project ----
 
     private String buildProject(JsonObject args) throws Exception {
+        if (!buildInProgress.compareAndSet(false, true)) {
+            return "Build already in progress. Please wait for the current build to complete before requesting another.";
+        }
+
         String moduleName = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -145,12 +152,15 @@ class ProjectTools extends AbstractToolHandler {
                 var compilerManager = com.intellij.openapi.compiler.CompilerManager.getInstance(project);
 
                 com.intellij.openapi.compiler.CompileStatusNotification callback =
-                    (aborted, errorCount, warningCount, context) ->
+                    (aborted, errorCount, warningCount, context) -> {
+                        buildInProgress.set(false);
                         resultFuture.complete(formatBuildResult(aborted, errorCount, warningCount, context, startTime));
+                    };
 
                 if (!moduleName.isEmpty()) {
                     Module module = resolveModule(moduleName);
                     if (module == null) {
+                        buildInProgress.set(false);
                         resultFuture.complete("Error: Module '" + moduleName + "' not found.\n" + listAvailableModules());
                         return;
                     }
@@ -159,12 +169,18 @@ class ProjectTools extends AbstractToolHandler {
                     compilerManager.make(callback);
                 }
             } catch (Exception e) {
+                buildInProgress.set(false);
                 LOG.warn("Build error", e);
                 resultFuture.complete("Error starting build: " + e.getMessage());
             }
         });
 
-        return resultFuture.get(300, TimeUnit.SECONDS);
+        try {
+            return resultFuture.get(300, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            buildInProgress.set(false);
+            throw e;
+        }
     }
 
     private String formatBuildResult(boolean aborted, int errorCount, int warningCount,

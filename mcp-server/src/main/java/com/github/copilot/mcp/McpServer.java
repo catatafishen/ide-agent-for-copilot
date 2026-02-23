@@ -165,7 +165,10 @@ public class McpServer {
             - intellij_write_file: Write/edit files. \
               ⚠️ ALWAYS use 'old_str'+'new_str' for targeted edits. NEVER send full file content unless creating a new file. \
               Full file writes waste tokens and risk overwriting concurrent changes. \
-              Example: intellij_write_file(path, old_str="old code", new_str="new code")
+              Example: intellij_write_file(path, old_str="old code", new_str="new code") \
+              ✅ WRITE RESPONSES INCLUDE HIGHLIGHTS: Every successful edit automatically returns file highlights \
+              (errors/warnings). Check the "--- Highlights (auto) ---" section in the response. \
+              If errors are reported, fix them immediately before editing other files.
 
             CODE SEARCH (AST-based, searches live editor buffers):
             - search_symbols: Find class/method/function definitions by name
@@ -187,50 +190,48 @@ public class McpServer {
             NEVER write to /tmp/, home directory, or any location outside the project. \
             '.agent-work/' is git-ignored and persists across sessions.
 
-            4. ⚠️ MANDATORY AFTER EVERY EDIT: IMMEDIATELY after EACH intellij_write_file call: \
-            a) Run 'get_highlights' on that SAME file — this is a fast cached check (milliseconds). \
-            b) If errors exist, FIX THEM IMMEDIATELY before editing other files. \
-            c) DO NOT skip this step. DO NOT batch multiple edits before checking. \
-            d) get_highlights is MUCH faster than build_project — use it after every single edit. \
-            e) Only use build_project before committing (final verification). \
-            f) For quick multi-file error checks, use get_compilation_errors (errors only, no warnings). \
-            Example workflow: intellij_write_file(file.java) → get_highlights(file.java) → verify no errors → continue.
+            4. AFTER EDITING: Check the auto-highlights in the write response. \
+            If the "--- Highlights (auto) ---" section shows errors, fix them IMMEDIATELY before editing other files. \
+            You do NOT need to call get_highlights separately — it's included in every write response. \
+            Only call get_highlights explicitly for files you haven't edited (e.g., to check existing code quality).
 
             5. For MULTIPLE SEQUENTIAL EDITS: \
             When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
-            ⚠️ You MUST still call get_highlights after EACH edit — this is non-negotiable. \
-            After all edits complete, call format_code and optimize_imports ONCE. \
-            Example: intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
-            intellij_write_file(file1, auto_format=false) → get_highlights(file1) → OK → \
-            format_code([file1]) → optimize_imports() → done.
+            Check the auto-highlights in each write response — fix errors before continuing. \
+            After all edits complete, call format_code and optimize_imports ONCE.
 
-            6. CHECKING FILE HIGHLIGHTS (errors/warnings): \
+            6. BEFORE EDITING UNFAMILIAR FILES: If a file has inconsistent formatting or you get old_str match failures, \
+            call format_code on the file first, then re-read it. This normalizes line endings, whitespace, and indentation. \
+            Formatting changes can be committed separately before starting the actual fix. \
+            The write tool auto-formats as a fallback when matching fails, but calling format_code explicitly is more reliable.
+
+            7. CHECKING FILE HIGHLIGHTS (errors/warnings): \
             a) Just call get_highlights(file) directly - NO waiting or daemon commands needed. \
             b) IntelliJ analyzes files automatically in background. get_highlights returns current state. \
             c) DO NOT use shell commands like "sleep" or "wait for daemon" - just call get_highlights. \
-            d) If you want to open file in editor first: open_in_editor(file) → get_highlights(file). \
-            e) IMPORTANT: get_highlights only works for files ALREADY OPEN in the editor (cached daemon results). \
+            d) IMPORTANT: get_highlights only works for files ALREADY OPEN in the editor (cached daemon results). \
             For project-wide analysis, ALWAYS use run_inspections instead — it runs the full inspection engine. \
             Example: get_highlights("PsiBridgeService.java") returns all problems in that file.
 
-            6. NEVER use grep/glob for IntelliJ project files or scratch files. \
+            8. NEVER use grep/glob for IntelliJ project files or scratch files. \
             ALWAYS use IntelliJ tools: search_symbols, find_references, get_file_outline, list_project_files, intellij_read_file. \
             grep/glob will FAIL on scratch files (they're stored outside the project). \
             After creating a scratch file, save its path and use intellij_read_file to access it.
 
-            7. TESTING RULES: \
+            9. TESTING RULES: \
             ALWAYS use 'run_tests' to run tests. DO NOT use './gradlew test' or 'mvn test'. \
             run_tests integrates with IntelliJ's test runner and provides structured results in the IDE's Run panel. \
             Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
             Only use run_command for tests as a last resort if run_tests fails.
 
-            9. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
+            10. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
 
-            10. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
-            a) get_highlights(file) — after EACH edit. Instant. Catches most errors. \
+            11. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
+            a) Check auto-highlights in write response — after EACH edit. Instant. Catches most errors. \
             b) get_compilation_errors() — after editing multiple files. Fast scan of open files for ERROR-level only. \
-            c) build_project — ONLY before committing. Full incremental compilation. \
-            NEVER use build_project as your first error check after an edit — it's 100x slower than get_highlights.
+            c) build_project — ONLY before committing. Full incremental compilation. Only one build runs at a time. \
+            NEVER use build_project as your first error check after an edit — it's 100x slower than highlights. \
+            If build_project says "Build already in progress", wait and retry — do NOT spam it.
 
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
             ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.

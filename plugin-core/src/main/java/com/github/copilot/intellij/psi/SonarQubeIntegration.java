@@ -14,8 +14,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -170,10 +172,11 @@ final class SonarQubeIntegration {
             if (tracker != null) {
                 boolean completed = pollUntilComplete(tracker, isEmptyMethod, triggerResult);
                 if (!completed) {
-                    return collectAllFindings(basePath).isEmpty()
+                    List<String> existing = collectViaEdt(basePath);
+                    return existing.isEmpty()
                         ? List.of("SonarQube analysis could not be triggered. " +
                         "Open the SonarLint Report tab and click 'Analyze All Files' manually, then call this tool again.")
-                        : collectAllFindings(basePath);
+                        : existing;
                 }
             }
         } catch (InterruptedException e) {
@@ -198,7 +201,7 @@ final class SonarQubeIntegration {
         long deadline = System.currentTimeMillis() + MAX_WAIT_SECONDS * 1000L;
 
         var scheduler = com.intellij.util.concurrency.AppExecutorUtil.getAppScheduledExecutorService();
-        ScheduledFuture<?> poller = scheduler.scheduleAtFixedRate(() ->
+        ScheduledFuture<?> poller = scheduler.scheduleWithFixedDelay(() ->
                 pollOnce(tracker, isEmptyMethod, triggerResult, done, started, deadline),
             0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
@@ -261,11 +264,32 @@ final class SonarQubeIntegration {
     }
 
     private List<String> collectOrFallback(String basePath) {
-        List<String> results = collectAllFindings(basePath);
+        // Collect via EDT first — SonarLint updates ReportPanel on EDT,
+        // so running our collection on EDT ensures memory visibility of the latest results
+        List<String> results = collectViaEdt(basePath);
         if (results.isEmpty()) {
             return List.of("Analysis may still be running. Call this tool again to check for results.");
         }
         return results;
+    }
+
+    /**
+     * Collect findings via EDT dispatch to ensure we see the latest results.
+     * SonarLint updates ReportPanel on EDT, so queuing our collection on EDT
+     * guarantees it runs after any pending SonarLint UI updates.
+     */
+    private List<String> collectViaEdt(String basePath) {
+        CompletableFuture<List<String>> future = new CompletableFuture<>();
+        EdtUtil.invokeLater(() -> future.complete(collectAllFindings(basePath)));
+        try {
+            return future.get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return collectAllFindings(basePath);
+        } catch (Exception e) {
+            LOG.debug("EDT collection failed, falling back to direct: " + e.getMessage());
+            return collectAllFindings(basePath);
+        }
     }
 
     private List<String> collectAllFindings(String basePath) {
@@ -277,22 +301,37 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Collect findings from ReportTabManager → ReportPanel.lastAnalysisResult → LiveFindings.
+     * Collect findings from ReportTabManager → ALL ReportPanels → LiveFindings.
+     * Iterates all panels to avoid missing results in a specific tab,
+     * and deduplicates findings by formatted string.
      */
     private List<String> collectFromReportTab(String basePath) {
         List<String> results = new ArrayList<>();
         try {
-            Object analysisResult = getLatestAnalysisResult();
-            if (analysisResult == null) return results;
+            Class<?> reportTabManagerClass = loadSonarClass("org.sonarlint.intellij.ui.report.ReportTabManager");
+            Object reportTabManager = project.getService(reportTabManagerClass);
+            if (reportTabManager == null) {
+                LOG.info("ReportTabManager service not available");
+                return results;
+            }
 
-            Method getFindingsMethod = analysisResult.getClass().getMethod("getFindings");
-            Object liveFindings = getFindingsMethod.invoke(analysisResult);
-            if (liveFindings == null) return results;
+            Field reportTabsField = reportTabManagerClass.getDeclaredField("reportTabs");
+            reportTabsField.setAccessible(true);
+            Map<?, ?> reportTabs = (Map<?, ?>) reportTabsField.get(reportTabManager);
+            if (reportTabs == null || reportTabs.isEmpty()) {
+                LOG.info("No report tabs found");
+                return results;
+            }
 
-            collectIssuesFromFindings(liveFindings, basePath, results);
-            collectHotspotsFromFindings(liveFindings, basePath, results);
+            LOG.info("Found " + reportTabs.size() + " report tab(s)");
+            Set<String> seen = new HashSet<>();
 
-            LOG.info("Collected " + results.size() + " SonarQube findings from Report tab");
+            for (Map.Entry<?, ?> entry : reportTabs.entrySet()) {
+                Object panel = entry.getValue();
+                collectFindingsFromPanel(panel, basePath, results, seen);
+            }
+
+            LOG.info("Collected " + results.size() + " unique SonarQube findings from " + reportTabs.size() + " Report tab(s)");
         } catch (ClassNotFoundException e) {
             LOG.info("ReportTabManager class not found — SonarLint API may have changed");
         } catch (Exception e) {
@@ -301,38 +340,50 @@ final class SonarQubeIntegration {
         return results;
     }
 
-    private Object getLatestAnalysisResult() throws ReflectiveOperationException {
-        Class<?> reportTabManagerClass = loadSonarClass("org.sonarlint.intellij.ui.report.ReportTabManager");
-        Object reportTabManager = project.getService(reportTabManagerClass);
-        if (reportTabManager == null) {
-            LOG.info("ReportTabManager service not available");
-            return null;
-        }
+    private void collectFindingsFromPanel(Object panel, String basePath,
+                                          List<String> results, Set<String> seen) {
+        try {
+            Object analysisResult = getAnalysisResultFromPanel(panel);
+            if (analysisResult == null) return;
 
-        Field reportTabsField = reportTabManagerClass.getDeclaredField("reportTabs");
-        reportTabsField.setAccessible(true);
-        Map<?, ?> reportTabs = (Map<?, ?>) reportTabsField.get(reportTabManager);
-        if (reportTabs == null || reportTabs.isEmpty()) {
-            LOG.info("No report tabs found");
-            return null;
-        }
+            Method getFindingsMethod = analysisResult.getClass().getMethod("getFindings");
+            Object liveFindings = getFindingsMethod.invoke(analysisResult);
+            if (liveFindings == null) return;
 
-        Object latestPanel = null;
-        for (Object panel : reportTabs.values()) {
-            latestPanel = panel;
+            collectIssuesFromFindings(liveFindings, basePath, results, seen);
+            collectHotspotsFromFindings(liveFindings, basePath, results, seen);
+        } catch (Exception e) {
+            LOG.debug("Could not collect findings from panel: " + e.getMessage());
         }
-        if (latestPanel == null) return null;
-
-        Field resultField = latestPanel.getClass().getDeclaredField("lastAnalysisResult");
-        resultField.setAccessible(true);
-        Object analysisResult = resultField.get(latestPanel);
-        if (analysisResult == null) {
-            LOG.info("ReportPanel has no analysis result yet");
-        }
-        return analysisResult;
     }
 
-    private void collectIssuesFromFindings(Object liveFindings, String basePath, List<String> results)
+    /**
+     * Try method access first (public API), then fall back to field access (internal).
+     */
+    private Object getAnalysisResultFromPanel(Object panel) {
+        // Try getter method first (more stable across versions)
+        try {
+            Method getter = findMethod(panel, "getLastAnalysisResult");
+            if (getter != null) {
+                return getter.invoke(panel);
+            }
+        } catch (Exception e) {
+            LOG.debug("getLastAnalysisResult method not available: " + e.getMessage());
+        }
+
+        // Fall back to field access
+        try {
+            Field resultField = panel.getClass().getDeclaredField("lastAnalysisResult");
+            resultField.setAccessible(true);
+            return resultField.get(panel);
+        } catch (Exception e) {
+            LOG.debug("lastAnalysisResult field not available: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private void collectIssuesFromFindings(Object liveFindings, String basePath,
+                                           List<String> results, Set<String> seen)
         throws ReflectiveOperationException {
         Method getIssuesMethod = liveFindings.getClass().getMethod("getIssuesPerFile");
         Map<?, ?> issuesPerFile = (Map<?, ?>) getIssuesMethod.invoke(liveFindings);
@@ -342,12 +393,13 @@ final class SonarQubeIntegration {
             Collection<?> issues = (Collection<?>) entry.getValue();
             for (Object issue : issues) {
                 String formatted = formatLiveFinding(issue, basePath);
-                if (formatted != null) results.add(formatted);
+                if (formatted != null && seen.add(formatted)) results.add(formatted);
             }
         }
     }
 
-    private void collectHotspotsFromFindings(Object liveFindings, String basePath, List<String> results) {
+    private void collectHotspotsFromFindings(Object liveFindings, String basePath,
+                                              List<String> results, Set<String> seen) {
         try {
             Method getHotspotsMethod = liveFindings.getClass().getMethod("getSecurityHotspotsPerFile");
             Map<?, ?> hotspotsPerFile = (Map<?, ?>) getHotspotsMethod.invoke(liveFindings);
@@ -357,7 +409,7 @@ final class SonarQubeIntegration {
                 Collection<?> hotspots = (Collection<?>) entry.getValue();
                 for (Object hotspot : hotspots) {
                     String formatted = formatLiveFinding(hotspot, basePath);
-                    if (formatted != null) results.add(formatted);
+                    if (formatted != null && seen.add(formatted)) results.add(formatted);
                 }
             }
         } catch (NoSuchMethodException e) {
