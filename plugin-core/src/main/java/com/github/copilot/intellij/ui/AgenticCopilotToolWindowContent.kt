@@ -3,6 +3,8 @@ package com.github.copilot.intellij.ui
 import com.github.copilot.intellij.bridge.CopilotAcpClient
 import com.github.copilot.intellij.services.CopilotService
 import com.github.copilot.intellij.services.CopilotSettings
+import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -42,9 +44,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private var currentSessionId: String? = null
 
     // Prompt tab fields (promoted from local variables for footer layout)
-    private lateinit var modelComboBox: ComboBox<String>
+    private var selectedModelIndex = -1
+    private var modelsStatusText: String? = MSG_LOADING
+    private lateinit var controlsToolbar: ActionToolbar
     private lateinit var promptTextArea: JBTextArea
-    private lateinit var sendStopButton: JButton
+    private lateinit var loadingSpinner: AsyncProcessIcon
     private var currentPromptThread: Thread? = null
     private var isSending = false
 
@@ -69,7 +73,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun setupUI() {
-        // Create tabs
+        // Create tabs — remove default content insets for tight layout
+        tabbedPane.putClientProperty("JTabbedPane.tabAreaInsets", JBUI.emptyInsets())
+        tabbedPane.putClientProperty("JTabbedPane.contentBorderInsets", JBUI.emptyInsets())
+        tabbedPane.tabComponentInsets = JBUI.emptyInsets()
+
         tabbedPane.addTab("Prompt", createPromptTab())
         tabbedPane.addTab("Context", createContextTab())
         tabbedPane.addTab("Session", createSessionTab())
@@ -381,24 +389,34 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val retryButton = JButton("Retry")
         createAuthButtons(modelErrorLabel, loginButton, retryButton, authPanel)
 
-        // Response/chat history area (CENTER)
+        // Response/chat history area (top of splitter)
         val responsePanel = createResponsePanel()
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
         topPanel.add(authPanel, BorderLayout.NORTH)
         topPanel.add(responsePanel, BorderLayout.CENTER)
-        panel.add(topPanel, BorderLayout.CENTER)
 
-        // Footer: input row + controls row (SOUTH)
-        val footer = createChatFooter()
-        panel.add(footer, BorderLayout.SOUTH)
+        // Input row (bottom of splitter — resizable)
+        val inputRow = createInputRow()
+
+        // Splitter between output and input only
+        val splitter = OnePixelSplitter(true, 0.75f)
+        splitter.firstComponent = topPanel
+        splitter.secondComponent = inputRow
+        splitter.setHonorComponentsMinimumSize(true)
+        panel.add(splitter, BorderLayout.CENTER)
+
+        // Fixed footer: controls + usage (not resized by splitter)
+        loadingSpinner = AsyncProcessIcon("loading-models")
+        loadingSpinner.preferredSize = JBUI.size(16, 16)
+        val fixedFooter = createFixedFooter()
+        panel.add(fixedFooter, BorderLayout.SOUTH)
 
         loadBillingData()
 
         // Load models
         fun loadModels() {
             loadModelsAsync(
-                footer.getClientProperty("loadingSpinner") as AsyncProcessIcon,
-                modelComboBox,
+                loadingSpinner,
                 modelErrorLabel,
                 loginButton,
                 retryButton,
@@ -414,36 +432,27 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return panel
     }
 
-    private fun createChatFooter(): JBPanel<JBPanel<*>> {
+    private fun createFixedFooter(): JBPanel<JBPanel<*>> {
         val footer = JBPanel<JBPanel<*>>()
         footer.layout = BoxLayout(footer, BoxLayout.Y_AXIS)
-        footer.border = JBUI.Borders.merge(
-            JBUI.Borders.customLine(JBColor.border(), 1, 0, 0, 0),
-            JBUI.Borders.empty(8),
-            true
-        )
+        footer.border = JBUI.Borders.empty(0, 0, 2, 0)
 
-        // Row 1: Input with send/stop button
-        val inputRow = createInputRow()
-        inputRow.alignmentX = Component.LEFT_ALIGNMENT
-        footer.add(inputRow)
-
-        footer.add(Box.createVerticalStrut(JBUI.scale(6)))
-
-        // Row 2: Model, mode, status, usage
-        val loadingSpinner = AsyncProcessIcon("loading-models")
-        loadingSpinner.preferredSize = JBUI.size(16, 16)
-        footer.putClientProperty("loadingSpinner", loadingSpinner)
-
-        val controlsRow = createControlsRow(loadingSpinner)
+        // Row 1: Send/stop + Model + Mode + status (ActionToolbar)
+        val controlsRow = createControlsRow()
         controlsRow.alignmentX = Component.LEFT_ALIGNMENT
         footer.add(controlsRow)
+
+        // Row 2: Usage (right-aligned)
+        val usageRow = createUsageRow()
+        usageRow.alignmentX = Component.LEFT_ALIGNMENT
+        footer.add(usageRow)
 
         return footer
     }
 
     private fun createInputRow(): JBPanel<JBPanel<*>> {
-        val row = JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(4), 0))
+        val row = JBPanel<JBPanel<*>>(BorderLayout())
+        row.minimumSize = JBUI.size(100, 40)
 
         promptTextArea = JBTextArea()
         promptTextArea.lineWrap = true
@@ -471,26 +480,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val scrollPane = JBScrollPane(promptTextArea)
         scrollPane.border = JBUI.Borders.customLine(JBColor.border(), 1)
         row.add(scrollPane, BorderLayout.CENTER)
-
-        // Send/stop toggle button
-        sendStopButton = JButton(com.intellij.icons.AllIcons.Actions.Execute)
-        sendStopButton.toolTipText = "Send (Enter)"
-        sendStopButton.preferredSize = JBUI.size(32, 32)
-        sendStopButton.isFocusable = false
-        sendStopButton.addActionListener { onSendStopClicked() }
-
-        // Connect Enter key
-        promptTextArea.actionMap.put("sendPrompt", object : AbstractAction() {
-            override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                if (promptTextArea.text.isNotBlank() && promptTextArea.text != PROMPT_PLACEHOLDER && !isSending) {
-                    onSendStopClicked()
-                }
-            }
-        })
-
-        val buttonWrapper = JBPanel<JBPanel<*>>(BorderLayout())
-        buttonWrapper.add(sendStopButton, BorderLayout.SOUTH)
-        row.add(buttonWrapper, BorderLayout.EAST)
 
         return row
     }
@@ -523,99 +512,135 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun setSendingState(sending: Boolean) {
         isSending = sending
         SwingUtilities.invokeLater {
-            if (sending) {
-                sendStopButton.icon = com.intellij.icons.AllIcons.Actions.Suspend
-                sendStopButton.toolTipText = "Stop"
+            controlsToolbar.updateActionsImmediately()
+        }
+    }
+
+    private fun createControlsRow(): JBPanel<JBPanel<*>> {
+        val row = JBPanel<JBPanel<*>>(BorderLayout())
+
+        // ActionToolbar with send/stop, model, and mode selectors
+        val actionGroup = DefaultActionGroup()
+        actionGroup.add(SendStopAction())
+        actionGroup.addSeparator()
+        actionGroup.add(ModelSelectorAction())
+        actionGroup.addSeparator()
+        actionGroup.add(ModeSelectorAction())
+
+        controlsToolbar = ActionManager.getInstance().createActionToolbar(
+            "CopilotControls", actionGroup, true
+        )
+        controlsToolbar.targetComponent = row
+        controlsToolbar.setReservePlaceAutoPopupIcon(false)
+        row.add(controlsToolbar.component, BorderLayout.WEST)
+
+        // Status panel (spinner + label)
+        val statusPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0))
+        statusPanel.isOpaque = false
+        statusPanel.add(loadingSpinner)
+        responseSpinner = AsyncProcessIcon("response-loading")
+        responseSpinner.preferredSize = JBUI.size(16, 16)
+        responseSpinner.isVisible = false
+        statusPanel.add(responseSpinner)
+        responseStatus = JBLabel("")
+        responseStatus.font = JBUI.Fonts.smallFont()
+        responseStatus.foreground = JBColor.GRAY
+        statusPanel.add(responseStatus)
+        row.add(statusPanel, BorderLayout.CENTER)
+
+        return row
+    }
+
+    // Send/Stop toggle action for the toolbar
+    private inner class SendStopAction : AnAction(
+        "Send", "Send prompt (Enter)", com.intellij.icons.AllIcons.Actions.Execute
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun actionPerformed(e: AnActionEvent) {
+            onSendStopClicked()
+        }
+
+        override fun update(e: AnActionEvent) {
+            if (isSending) {
+                e.presentation.icon = com.intellij.icons.AllIcons.Actions.Suspend
+                e.presentation.text = "Stop"
+                e.presentation.description = "Stop"
             } else {
-                sendStopButton.icon = com.intellij.icons.AllIcons.Actions.Execute
-                sendStopButton.toolTipText = "Send (Enter)"
+                e.presentation.icon = com.intellij.icons.AllIcons.Actions.Execute
+                e.presentation.text = "Send"
+                e.presentation.description = "Send prompt (Enter)"
             }
         }
     }
 
-    private fun createControlsRow(loadingSpinner: AsyncProcessIcon): JBPanel<JBPanel<*>> {
-        val row = JBPanel<JBPanel<*>>(GridBagLayout())
-        val gbc = GridBagConstraints()
-        gbc.gridy = 0
-        gbc.anchor = GridBagConstraints.WEST
-        gbc.fill = GridBagConstraints.NONE
+    // ComboBoxAction for model selection — matches Run panel dropdown style
+    private inner class ModelSelectorAction : ComboBoxAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
-        // Model selector
-        gbc.gridx = 0
-        gbc.insets = JBUI.insetsRight(4)
-        modelComboBox = ComboBox(arrayOf(MSG_LOADING))
-        modelComboBox.preferredSize = JBUI.size(240, 26)
-        modelComboBox.isEnabled = false
-        modelComboBox.renderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                return this
+        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
+            val group = DefaultActionGroup()
+            loadedModels.forEachIndexed { index, model ->
+                val cost = model.usage ?: "1x"
+                group.add(object : AnAction("${model.name}  ($cost)") {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        selectedModelIndex = index
+                        CopilotSettings.setSelectedModel(model.id)
+                    }
+                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                })
             }
+            return group
         }
-        row.add(modelComboBox, gbc)
 
-        // Loading spinner
-        gbc.gridx++
-        gbc.insets = JBUI.insetsRight(8)
-        row.add(loadingSpinner, gbc)
-
-        // Mode selector
-        gbc.gridx++
-        gbc.insets = JBUI.insetsRight(8)
-        val modeCombo = ComboBox(arrayOf("Agent", "Plan"))
-        modeCombo.preferredSize = JBUI.size(90, 26)
-        modeCombo.selectedItem = if (CopilotSettings.getSessionMode() == "plan") "Plan" else "Agent"
-        modeCombo.addActionListener {
-            val mode = if (modeCombo.selectedItem == "Plan") "plan" else "agent"
-            CopilotSettings.setSessionMode(mode)
+        override fun update(e: AnActionEvent) {
+            val text = modelsStatusText
+                ?: loadedModels.getOrNull(selectedModelIndex)?.name
+                ?: MSG_LOADING
+            e.presentation.text = text
+            e.presentation.isEnabled = modelsStatusText == null && loadedModels.isNotEmpty()
         }
-        row.add(modeCombo, gbc)
+    }
 
-        // Status
-        gbc.gridx++
-        gbc.insets = JBUI.insetsRight(4)
-        responseSpinner = AsyncProcessIcon("response-loading")
-        responseSpinner.preferredSize = JBUI.size(16, 16)
-        responseSpinner.isVisible = false
-        row.add(responseSpinner, gbc)
+    // ComboBoxAction for mode selection — matches Run panel dropdown style
+    private inner class ModeSelectorAction : ComboBoxAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
-        gbc.gridx++
-        gbc.insets = JBUI.insetsRight(4)
-        responseStatus = JBLabel("")
-        responseStatus.font = JBUI.Fonts.smallFont()
-        responseStatus.foreground = JBColor.GRAY
-        row.add(responseStatus, gbc)
+        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
+            val group = DefaultActionGroup()
+            group.add(object : AnAction("Agent") {
+                override fun actionPerformed(e: AnActionEvent) {
+                    CopilotSettings.setSessionMode("agent")
+                }
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            })
+            group.add(object : AnAction("Plan") {
+                override fun actionPerformed(e: AnActionEvent) {
+                    CopilotSettings.setSessionMode("plan")
+                }
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            })
+            return group
+        }
 
-        // Spacer
-        gbc.gridx++
-        gbc.weightx = 1.0
-        gbc.fill = GridBagConstraints.HORIZONTAL
-        row.add(Box.createHorizontalGlue(), gbc)
+        override fun update(e: AnActionEvent) {
+            e.presentation.text = if (CopilotSettings.getSessionMode() == "plan") "Plan" else "Agent"
+        }
+    }
 
-        // Usage (right-aligned)
-        gbc.gridx++
-        gbc.weightx = 0.0
-        gbc.fill = GridBagConstraints.NONE
-        gbc.anchor = GridBagConstraints.EAST
-        gbc.insets = JBUI.insetsRight(4)
+    private fun createUsageRow(): JBPanel<JBPanel<*>> {
+        val row = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), 0))
         usageLabel = JBLabel("")
         usageLabel.font = JBUI.Fonts.smallFont()
-        row.add(usageLabel, gbc)
-
-        gbc.gridx++
-        gbc.insets = JBUI.emptyInsets()
+        row.add(usageLabel)
         costLabel = JBLabel("")
         costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-        row.add(costLabel, gbc)
-
+        row.add(costLabel)
         return row
     }
 
     private fun createResponsePanel(): JBPanel<JBPanel<*>> {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(8)
 
         responseTextArea = JBTextArea()
         responseTextArea.isEditable = false
@@ -658,7 +683,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
         promptTextArea.actionMap.put("sendPrompt", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                // Will be connected via button click
+                if (promptTextArea.text.isNotBlank() && promptTextArea.text != PROMPT_PLACEHOLDER && !isSending) {
+                    onSendStopClicked()
+                }
             }
         })
         promptTextArea.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
@@ -722,9 +749,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 "Prompt: ${prompt.take(80)}${if (prompt.length > 80) "..." else ""}"
             )
 
-            val selIdx = modelComboBox.selectedIndex
             val selectedModelObj =
-                if (selIdx >= 0 && selIdx < loadedModels.size) loadedModels[selIdx] else null
+                if (selectedModelIndex >= 0 && selectedModelIndex < loadedModels.size) loadedModels[selectedModelIndex] else null
             val modelId = selectedModelObj?.id ?: ""
 
             val references = buildContextReferences()
@@ -1397,14 +1423,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Reusable settings model loading function
         fun loadSettingsModels() {
-            loadModelsAsync(
+            loadSettingsModelsAsync(
                 settingsSpinner,
                 defaultModelCombo,
                 settingsModelError,
                 settingsLoginButton,
                 settingsRetryButton,
                 settingsAuthPanel
-            ) { }
+            )
         }
 
         settingsRetryButton.addActionListener { loadSettingsModels() }
@@ -1538,7 +1564,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Helper methods to reduce code duplication
     private fun setLoadingState(
         spinner: AsyncProcessIcon,
-        comboBox: JComboBox<String>,
         loginButton: JButton,
         retryButton: JButton,
         authPanel: JPanel
@@ -1548,9 +1573,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             authPanel.isVisible = false
             retryButton.isVisible = false
             loginButton.isVisible = false
-            comboBox.removeAllItems()
-            comboBox.addItem(MSG_LOADING)
-            comboBox.isEnabled = false
+            modelsStatusText = MSG_LOADING
+            selectedModelIndex = -1
         }
     }
 
@@ -1560,37 +1584,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             message.contains("authenticated")
     }
 
-    private fun populateModelComboBox(
-        comboBox: JComboBox<String>,
-        models: List<CopilotAcpClient.Model>,
-        onSelectionChange: ((Int) -> Unit)? = null
-    ) {
-        comboBox.removeAllItems()
-        models.forEach { model ->
-            val cost = model.usage ?: "1x"
-            comboBox.addItem("${model.name}  ($cost)")
-        }
-        // Restore persisted model selection
+    private fun restoreModelSelection(models: List<CopilotAcpClient.Model>) {
         val savedModel = CopilotSettings.getSelectedModel()
         if (savedModel != null) {
             val idx = models.indexOfFirst { it.id == savedModel }
-            if (idx >= 0) comboBox.selectedIndex = idx
-        } else if (models.isNotEmpty()) {
-            comboBox.selectedIndex = 0
+            if (idx >= 0) { selectedModelIndex = idx; return }
         }
-        comboBox.isEnabled = true
-        // Save selection on change
-        if (onSelectionChange != null) {
-            comboBox.addActionListener {
-                val selIdx = comboBox.selectedIndex
-                onSelectionChange(selIdx)
-            }
-        }
+        if (models.isNotEmpty()) selectedModelIndex = 0
     }
 
     private fun showModelError(
         spinner: AsyncProcessIcon,
-        comboBox: JComboBox<String>,
         errorLabel: JBLabel,
         loginButton: JButton,
         retryButton: JButton,
@@ -1603,9 +1607,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         SwingUtilities.invokeLater {
             spinner.suspend()
             spinner.isVisible = false
-            comboBox.removeAllItems()
-            comboBox.addItem("Unavailable")
-            comboBox.isEnabled = false
+            modelsStatusText = "Unavailable"
             errorLabel.text = when {
                 isAuthError -> "⚠️ Not authenticated"
                 isTimeout -> "⚠️ Connection timed out"
@@ -1619,34 +1621,32 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun loadModelsAsync(
         spinner: AsyncProcessIcon,
-        comboBox: JComboBox<String>,
         errorLabel: JBLabel,
         loginButton: JButton,
         retryButton: JButton,
         authPanel: JPanel,
         onSuccess: (List<CopilotAcpClient.Model>) -> Unit
     ) {
-        setLoadingState(spinner, comboBox, loginButton, retryButton, authPanel)
+        setLoadingState(spinner, loginButton, retryButton, authPanel)
         ApplicationManager.getApplication().executeOnPooledThread {
             var lastError: Exception? = null
             val maxRetries = 3
             val retryDelayMs = 2000L
 
             for (attempt in 1..maxRetries) {
-                lastError = attemptLoadModels(spinner, comboBox, authPanel, onSuccess)
+                lastError = attemptLoadModels(spinner, authPanel, onSuccess)
                 if (lastError == null) return@executeOnPooledThread
                 if (isAuthenticationError(lastError.message ?: "")) break
                 if (attempt < maxRetries) Thread.sleep(retryDelayMs)
             }
 
             val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
-            showModelError(spinner, comboBox, errorLabel, loginButton, retryButton, authPanel, errorMsg)
+            showModelError(spinner, errorLabel, loginButton, retryButton, authPanel, errorMsg)
         }
     }
 
     private fun attemptLoadModels(
         spinner: AsyncProcessIcon,
-        comboBox: JComboBox<String>,
         authPanel: JPanel,
         onSuccess: (List<CopilotAcpClient.Model>) -> Unit
     ): Exception? {
@@ -1655,17 +1655,63 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val models = service.getClient().listModels().toList()
             SwingUtilities.invokeLater {
                 spinner.isVisible = false
-                populateModelComboBox(comboBox, models) { selIdx ->
-                    if (selIdx >= 0 && selIdx < models.size) {
-                        CopilotSettings.setSelectedModel(models[selIdx].id)
-                    }
-                }
+                modelsStatusText = null
+                restoreModelSelection(models)
                 authPanel.isVisible = false
                 onSuccess(models)
             }
             null
         } catch (e: Exception) {
             e
+        }
+    }
+
+    // Settings tab model loading (uses JComboBox)
+    private fun loadSettingsModelsAsync(
+        spinner: AsyncProcessIcon,
+        comboBox: JComboBox<String>,
+        errorLabel: JBLabel,
+        loginButton: JButton,
+        retryButton: JButton,
+        authPanel: JPanel
+    ) {
+        SwingUtilities.invokeLater {
+            spinner.isVisible = true
+            authPanel.isVisible = false
+            comboBox.removeAllItems()
+            comboBox.addItem(MSG_LOADING)
+            comboBox.isEnabled = false
+        }
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val models = CopilotService.getInstance(project).getClient().listModels().toList()
+                SwingUtilities.invokeLater {
+                    spinner.isVisible = false
+                    comboBox.removeAllItems()
+                    models.forEach { comboBox.addItem("${it.name}  (${it.usage ?: "1x"})") }
+                    val savedModel = CopilotSettings.getSelectedModel()
+                    val idx = if (savedModel != null) models.indexOfFirst { it.id == savedModel } else 0
+                    if (idx >= 0) comboBox.selectedIndex = idx
+                    comboBox.isEnabled = true
+                    comboBox.addActionListener {
+                        val selIdx = comboBox.selectedIndex
+                        if (selIdx >= 0 && selIdx < models.size) CopilotSettings.setSelectedModel(models[selIdx].id)
+                    }
+                    authPanel.isVisible = false
+                }
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: MSG_UNKNOWN_ERROR
+                SwingUtilities.invokeLater {
+                    spinner.isVisible = false
+                    comboBox.removeAllItems()
+                    comboBox.addItem("Unavailable")
+                    comboBox.isEnabled = false
+                    errorLabel.text = "⚠️ $errorMsg"
+                    loginButton.isVisible = isAuthenticationError(errorMsg)
+                    retryButton.isVisible = !isAuthenticationError(errorMsg)
+                    authPanel.isVisible = true
+                }
+            }
         }
     }
 
