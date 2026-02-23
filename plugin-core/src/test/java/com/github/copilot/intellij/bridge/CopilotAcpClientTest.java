@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -26,43 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CopilotAcpClientTest {
 
     // ========================
-    // Unit tests with mock ACP server
+    // Unit tests
     // ========================
-
-    /**
-     * Creates a mock ACP process that responds to JSON-RPC requests.
-     * Simulates the copilot --acp protocol for testing.
-     */
-    private static Process startMockAcpProcess(String... responses) throws IOException {
-        // Build a script that echoes predefined JSON-RPC responses for each line of input
-        String script = "import sys, json\n" +
-            "responses = " + toPythonList(responses) + "\n" +
-            "idx = 0\n" +
-            "for line in sys.stdin:\n" +
-            "    line = line.strip()\n" +
-            "    if not line: continue\n" +
-            "    msg = json.loads(line)\n" +
-            "    if 'id' in msg and idx < len(responses):\n" +
-            "        print(responses[idx], flush=True)\n" +
-            "        idx += 1\n" +
-            "    elif msg.get('method') == 'initialized':\n" +
-            "        pass\n";
-
-        ProcessBuilder pb = new ProcessBuilder("python", "-c", script);
-        pb.redirectErrorStream(false);
-        return pb.start();
-    }
-
-    private static String toPythonList(String[] items) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < items.length; i++) {
-            if (i > 0) sb.append(", ");
-            // Escape for Python string
-            sb.append("'").append(items[i].replace("'", "\\'").replace("\\", "\\\\")).append("'");
-        }
-        sb.append("]");
-        return sb.toString();
-    }
 
     @Test
     void testCopilotExceptionRecoverable() {

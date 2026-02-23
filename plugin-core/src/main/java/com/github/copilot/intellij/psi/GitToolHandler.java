@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Handles all git-related tool calls for the PSI Bridge.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 final class GitToolHandler {
     private static final String ERROR_PATH_REQUIRED = "Error: 'path' parameter is required";
 

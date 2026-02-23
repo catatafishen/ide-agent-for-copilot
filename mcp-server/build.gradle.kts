@@ -4,8 +4,8 @@ plugins {
 }
 
 dependencies {
-    implementation("com.google.code.gson:gson:2.13.1")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
+    testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
 }
 
 application {

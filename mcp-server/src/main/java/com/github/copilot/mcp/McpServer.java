@@ -33,12 +33,46 @@ import java.util.stream.Stream;
  * Launched as a subprocess by the Copilot agent via the ACP mcpServers parameter.
  * Provides 54 tools: code navigation, file I/O, testing, code quality, run configs, git, infrastructure, and terminal.
  */
-@SuppressWarnings("SpellCheckingInspection") // tool descriptions are intentionally brief
+@SuppressWarnings({"SpellCheckingInspection", "java:S1192", "java:S5843", "java:S5998", "java:S5855"})
+// tool schema definitions use repeated JSON property names by design; regex patterns are intentionally complex for symbol parsing
 public class McpServer {
 
     private static final Logger LOG = Logger.getLogger(McpServer.class.getName());
     private static final Gson GSON = new GsonBuilder().create();
     private static String projectRoot = ".";
+
+    private static final Map<String, Pattern> SYMBOL_PATTERNS = new LinkedHashMap<>();
+
+    static {
+        SYMBOL_PATTERNS.put("class", Pattern.compile(
+            "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum)\\s+(\\w+)"));
+        SYMBOL_PATTERNS.put("interface", Pattern.compile(
+            "^\\s*(?:public|private|protected)?\\s*interface\\s+(\\w+)"));
+        SYMBOL_PATTERNS.put("method", Pattern.compile(
+            "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)"));
+        SYMBOL_PATTERNS.put("function", Pattern.compile(
+            "^\\s*(?:public|private|protected|static|final|synchronized)?\\s*(?:\\w+(?:<[^>]+>)?\\s+)+(\\w+)\\s*\\("));
+        SYMBOL_PATTERNS.put("field", Pattern.compile(
+            "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var|let|const)?\\s+(\\w+)\\s*[:=]"));
+    }
+
+    private static final Pattern OUTLINE_CLASS_PATTERN = Pattern.compile(
+        "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum|interface)\\s+(\\w+)");
+    private static final Pattern OUTLINE_METHOD_PATTERN = Pattern.compile(
+        "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)");
+    private static final Pattern OUTLINE_JAVA_METHOD_PATTERN = Pattern.compile(
+        "^\\s*(?:public|private|protected|static|final|synchronized|abstract)?\\s*(?:void|int|long|boolean|String|\\w+(?:<[^>]+>)?)\\s+(\\w+)\\s*\\(");
+    private static final Pattern OUTLINE_FIELD_PATTERN = Pattern.compile(
+        "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var)?\\s+(\\w+)\\s*[:=]");
+
+    private static final Map<String, String> FILE_TYPE_MAP = Map.ofEntries(
+        Map.entry(".java", "Java"), Map.entry(".kt", "Kotlin"), Map.entry(".kts", "Kotlin"),
+        Map.entry(".py", "Python"), Map.entry(".js", "JavaScript"), Map.entry(".jsx", "JavaScript"),
+        Map.entry(".ts", "TypeScript"), Map.entry(".tsx", "TypeScript"), Map.entry(".go", "Go"),
+        Map.entry(".rs", "Rust"), Map.entry(".xml", "XML"), Map.entry(".json", "JSON"),
+        Map.entry(".md", "Markdown"), Map.entry(".gradle", "Gradle"), Map.entry(".gradle.kts", "Gradle"),
+        Map.entry(".yaml", "YAML"), Map.entry(".yml", "YAML")
+    );
 
     /**
      * Sends a JSON-RPC response to the client via stdout.
@@ -690,13 +724,13 @@ public class McpServer {
 
             String resultText;
             if (bridgeResult != null) {
-                LOG.fine("MCP: tool '" + toolName + "' handled by PSI bridge");
+                LOG.fine(() -> "MCP: tool '" + toolName + "' handled by PSI bridge");
                 resultText = bridgeResult;
             } else {
                 resultText = "ERROR: IntelliJ PSI bridge is unavailable. " +
                     "The tool '" + toolName + "' requires IntelliJ to be running with the Agentic Copilot plugin active. " +
                     "Please check that IntelliJ is open and the plugin is enabled.";
-                LOG.warning("MCP: PSI bridge unavailable for tool '" + toolName + "'");
+                LOG.warning(() -> String.format("MCP: PSI bridge unavailable for tool '%s'", toolName));
             }
 
             JsonObject result = new JsonObject();
@@ -788,19 +822,6 @@ public class McpServer {
         List<String> results = new ArrayList<>();
         Path root = Path.of(projectRoot);
 
-        // Patterns for different symbol types across languages
-        Map<String, Pattern> symbolPatterns = new LinkedHashMap<>();
-        symbolPatterns.put("class", Pattern.compile(
-            "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum)\\s+(\\w+)"));
-        symbolPatterns.put("interface", Pattern.compile(
-            "^\\s*(?:public|private|protected)?\\s*interface\\s+(\\w+)"));
-        symbolPatterns.put("method", Pattern.compile(
-            "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)"));
-        symbolPatterns.put("function", Pattern.compile(
-            "^\\s*(?:public|private|protected|static|final|synchronized)?\\s*(?:\\w+(?:<[^>]+>)?\\s+)+(\\w+)\\s*\\("));
-        symbolPatterns.put("field", Pattern.compile(
-            "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var|let|const)?\\s+(\\w+)\\s*[:=]"));
-
         try (Stream<Path> files = Files.walk(root)) {
             List<Path> sourceFiles = files
                 .filter(Files::isRegularFile)
@@ -809,26 +830,7 @@ public class McpServer {
                 .toList();
 
             for (Path file : sourceFiles) {
-                try {
-                    List<String> lines = Files.readAllLines(file);
-                    for (int i = 0; i < lines.size(); i++) {
-                        String line = lines.get(i);
-                        for (var entry : symbolPatterns.entrySet()) {
-                            if (!typeFilter.isEmpty() && !entry.getKey().equals(typeFilter)) continue;
-                            Matcher m = entry.getValue().matcher(line);
-                            if (m.find()) {
-                                String symbolName = m.group(1);
-                                if (queryPattern.matcher(symbolName).find()) {
-                                    String relPath = root.relativize(file).toString();
-                                    results.add(String.format("%s:%d [%s] %s", relPath, i + 1, entry.getKey(), line.trim()));
-                                }
-                            }
-                        }
-                        if (results.size() >= 50) break;
-                    }
-                } catch (Exception e) {
-                    // Skip unreadable files
-                }
+                searchFileForSymbols(file, root, SYMBOL_PATTERNS, typeFilter, queryPattern, results);
                 if (results.size() >= 50) break;
             }
         } catch (java.io.UncheckedIOException e) {
@@ -847,36 +849,8 @@ public class McpServer {
         List<String> lines = Files.readAllLines(file);
         List<String> outline = new ArrayList<>();
 
-        Pattern classPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|abstract|final|open|data|sealed|internal)?\\s*(?:class|object|enum|interface)\\s+(\\w+)");
-        Pattern methodPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|internal|override|abstract|static|final|suspend)?\\s*(?:fun|def)\\s+(\\w+)");
-        Pattern javaMethodPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|static|final|synchronized|abstract)?\\s*(?:void|int|long|boolean|String|\\w+(?:<[^>]+>)?)\\s+(\\w+)\\s*\\(");
-        Pattern fieldPattern = Pattern.compile(
-            "^\\s*(?:public|private|protected|internal)?\\s*(?:val|var|const|static|final)?\\s*(?:val|var)?\\s+(\\w+)\\s*[:=]");
-
         for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-            Matcher cm = classPattern.matcher(line);
-            if (cm.find()) {
-                outline.add(String.format("  %d: class %s", i + 1, cm.group(1)));
-                continue;
-            }
-            Matcher mm = methodPattern.matcher(line);
-            if (mm.find()) {
-                outline.add(String.format("  %d:   fun %s()", i + 1, mm.group(1)));
-                continue;
-            }
-            Matcher jm = javaMethodPattern.matcher(line);
-            if (jm.find() && !line.contains("new ") && !line.trim().startsWith("return") && !line.trim().startsWith("if")) {
-                outline.add(String.format("  %d:   method %s()", i + 1, jm.group(1)));
-                continue;
-            }
-            Matcher fm = fieldPattern.matcher(line);
-            if (fm.find() && !line.trim().startsWith("//") && !line.trim().startsWith("*")) {
-                outline.add(String.format("  %d:   field %s", i + 1, fm.group(1)));
-            }
+            classifyOutlineLine(lines.get(i), i + 1, outline);
         }
 
         if (outline.isEmpty()) return "No structural elements found in " + pathStr;
@@ -901,17 +875,7 @@ public class McpServer {
                 .toList();
 
             for (Path file : sourceFiles) {
-                try {
-                    List<String> lines = Files.readAllLines(file);
-                    for (int i = 0; i < lines.size(); i++) {
-                        if (pattern.matcher(lines.get(i)).find()) {
-                            String relPath = root.relativize(file).toString();
-                            results.add(String.format("%s:%d: %s", relPath, i + 1, lines.get(i).trim()));
-                        }
-                    }
-                } catch (Exception e) {
-                    // Skip unreadable files
-                }
+                searchFileForReferences(file, root, pattern, results);
                 if (results.size() >= 100) break;
             }
         } catch (java.io.UncheckedIOException e) {
@@ -952,6 +916,62 @@ public class McpServer {
 
     // --- Utility methods ---
 
+    private static void classifyOutlineLine(String line, int lineNum, List<String> outline) {
+        Matcher cm = OUTLINE_CLASS_PATTERN.matcher(line);
+        if (cm.find()) {
+            outline.add(String.format("  %d: class %s", lineNum, cm.group(1)));
+            return;
+        }
+        Matcher mm = OUTLINE_METHOD_PATTERN.matcher(line);
+        if (mm.find()) {
+            outline.add(String.format("  %d:   fun %s()", lineNum, mm.group(1)));
+            return;
+        }
+        Matcher jm = OUTLINE_JAVA_METHOD_PATTERN.matcher(line);
+        if (jm.find() && !line.contains("new ") && !line.trim().startsWith("return") && !line.trim().startsWith("if")) {
+            outline.add(String.format("  %d:   method %s()", lineNum, jm.group(1)));
+            return;
+        }
+        Matcher fm = OUTLINE_FIELD_PATTERN.matcher(line);
+        if (fm.find() && !line.trim().startsWith("//") && !line.trim().startsWith("*")) {
+            outline.add(String.format("  %d:   field %s", lineNum, fm.group(1)));
+        }
+    }
+
+    private static void searchFileForSymbols(Path file, Path root, Map<String, Pattern> symbolPatterns,
+                                             String typeFilter, Pattern queryPattern, List<String> results) {
+        try {
+            List<String> lines = Files.readAllLines(file);
+            for (int i = 0; i < lines.size() && results.size() < 50; i++) {
+                String line = lines.get(i);
+                for (var entry : symbolPatterns.entrySet()) {
+                    if (!typeFilter.isEmpty() && !entry.getKey().equals(typeFilter)) continue;
+                    Matcher m = entry.getValue().matcher(line);
+                    if (m.find() && queryPattern.matcher(m.group(1)).find()) {
+                        String relPath = root.relativize(file).toString();
+                        results.add(String.format("%s:%d [%s] %s", relPath, i + 1, entry.getKey(), line.trim()));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Skip unreadable files
+        }
+    }
+
+    private static void searchFileForReferences(Path file, Path root, Pattern pattern, List<String> results) {
+        try {
+            List<String> lines = Files.readAllLines(file);
+            for (int i = 0; i < lines.size(); i++) {
+                if (pattern.matcher(lines.get(i)).find()) {
+                    String relPath = root.relativize(file).toString();
+                    results.add(String.format("%s:%d: %s", relPath, i + 1, lines.get(i).trim()));
+                }
+            }
+        } catch (Exception e) {
+            // Skip unreadable files
+        }
+    }
+
     private static Path resolvePath(String pathStr) throws IOException {
         Path path = Path.of(pathStr);
         Path resolved = path.isAbsolute() ? path : Path.of(projectRoot).resolve(path);
@@ -991,18 +1011,9 @@ public class McpServer {
 
     private static String getFileType(String path) {
         String lower = path.toLowerCase();
-        if (lower.endsWith(".java")) return "Java";
-        if (lower.endsWith(".kt") || lower.endsWith(".kts")) return "Kotlin";
-        if (lower.endsWith(".py")) return "Python";
-        if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "JavaScript";
-        if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "TypeScript";
-        if (lower.endsWith(".go")) return "Go";
-        if (lower.endsWith(".rs")) return "Rust";
-        if (lower.endsWith(".xml")) return "XML";
-        if (lower.endsWith(".json")) return "JSON";
-        if (lower.endsWith(".md")) return "Markdown";
-        if (lower.endsWith(".gradle") || lower.endsWith(".gradle.kts")) return "Gradle";
-        if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "YAML";
+        for (var entry : FILE_TYPE_MAP.entrySet()) {
+            if (lower.endsWith(entry.getKey())) return entry.getValue();
+        }
         return "Other";
     }
 }

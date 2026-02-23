@@ -26,12 +26,16 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
     // JSON processing (Gson)
-    implementation("com.google.code.gson:gson:2.13.1")
+    implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testImplementation("junit:junit:4.13.2")  // Required by IntelliJ test framework
+    testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
+    testImplementation(
+        "junit:junit:${
+            providers.gradleProperty("junit4Version").get()
+        }"
+    )  // Required by IntelliJ test framework
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.11.4")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:${providers.gradleProperty("junitVersion").get()}")
 }
 
 // Copy MCP server JAR into plugin lib for bundling

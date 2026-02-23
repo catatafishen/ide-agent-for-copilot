@@ -3,12 +3,12 @@ package com.github.copilot.intellij.psi;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
  * Handles refactoring tool calls: refactor, go_to_declaration,
  * get_type_hierarchy, and get_documentation.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class RefactoringTools extends AbstractToolHandler {
 
     private static final Logger LOG = Logger.getInstance(RefactoringTools.class);

@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Terminal tool handlers: run_in_terminal, read_terminal_output, list_terminals.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 final class TerminalTools extends AbstractToolHandler {
 
     private static final Logger LOG = Logger.getInstance(TerminalTools.class);
@@ -67,8 +68,8 @@ final class TerminalTools extends AbstractToolHandler {
     }
 
     private TerminalWidgetResult getOrCreateTerminalWidget(Class<?> managerClass, Object manager,
-                                                            String tabName, boolean newTab,
-                                                            String shell, String command) throws Exception {
+                                                           String tabName, boolean newTab,
+                                                           String shell, String command) throws Exception {
         // Try to reuse existing terminal tab
         if (tabName != null && !newTab) {
             Object widget = findTerminalWidgetByTabName(managerClass, tabName);

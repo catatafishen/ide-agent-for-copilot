@@ -13,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
  * Each project has its own instance with session state in .agent-work/
  */
 @Service(Service.Level.PROJECT)
+@SuppressWarnings("java:S112") // RuntimeException wraps startup failures for service initialization
 public final class CopilotService implements Disposable {
     private static final Logger LOG = Logger.getInstance(CopilotService.class);
 

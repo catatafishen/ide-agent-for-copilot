@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Handles test-related tool calls: list_tests, run_tests, get_test_results, get_coverage.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class TestTools extends AbstractToolHandler {
     private static final Logger LOG = Logger.getInstance(TestTools.class);
 

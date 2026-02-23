@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * No API costs — all tools are local IntelliJ operations.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class McpToolsExtendedTest {
+class McpToolsExtendedTest {
 
     private static HttpClient httpClient;
     private static String psiBridgeUrl;
@@ -348,7 +348,7 @@ public class McpToolsExtendedTest {
         // PsiBridgeService references Project — navigate to its declaration
         String result = callTool("go_to_declaration",
             "{\"file\":\"plugin-core/src/main/java/com/github/copilot/intellij/psi/PsiBridgeService.java\"," +
-            "\"symbol\":\"Project\",\"line\":28}");
+                "\"symbol\":\"Project\",\"line\":28}");
 
         assertTrue(result.contains("Declaration") || result.contains("Project"),
             "Should return declaration info for Project: " + result);
@@ -362,7 +362,7 @@ public class McpToolsExtendedTest {
     void testGoToDeclarationNotFound() throws Exception {
         String result = callTool("go_to_declaration",
             "{\"file\":\"plugin-core/src/main/java/com/github/copilot/intellij/psi/PsiBridgeService.java\"," +
-            "\"symbol\":\"NonExistentSymbol12345\",\"line\":1}");
+                "\"symbol\":\"NonExistentSymbol12345\",\"line\":1}");
 
         assertTrue(result.contains("Could not resolve") || result.contains("Error"),
             "Should report symbol not found: " + result);
@@ -470,7 +470,7 @@ public class McpToolsExtendedTest {
             "{\"module\":\"mcp-server\"}");
 
         assertTrue(result.contains("Build") || result.contains("succeeded")
-            || result.contains("errors") || result.contains("not found"),
+                || result.contains("errors") || result.contains("not found"),
             "Should return build result or module not found: " + result);
     }
 

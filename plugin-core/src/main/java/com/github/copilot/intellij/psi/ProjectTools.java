@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Handles project environment tools: get_project_info, build_project, get_indexing_status, download_sources.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class ProjectTools extends AbstractToolHandler {
     private static final Logger LOG = Logger.getInstance(ProjectTools.class);
 

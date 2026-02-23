@@ -24,6 +24,7 @@ import java.util.List;
  * Handles infrastructure tool calls: http_request, run_command, read_ide_log,
  * get_notifications, read_run_output.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class InfrastructureTools extends AbstractToolHandler {
     private static final Logger LOG = Logger.getInstance(InfrastructureTools.class);
 

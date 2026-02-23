@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
  * Handles editor-related tool calls: open_in_editor, show_diff,
  * create_scratch_file, and list_scratch_files.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class EditorTools extends AbstractToolHandler {
 
     private static final Logger LOG = Logger.getInstance(EditorTools.class);

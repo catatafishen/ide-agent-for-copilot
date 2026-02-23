@@ -10,6 +10,7 @@ import java.util.Map;
  * Base class for tool handler groups. Each subclass registers its tools
  * in the constructor via {@link #register(String, ToolHandler)}.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 abstract class AbstractToolHandler {
     protected final Project project;
     private final Map<String, ToolHandler> tools = new LinkedHashMap<>();

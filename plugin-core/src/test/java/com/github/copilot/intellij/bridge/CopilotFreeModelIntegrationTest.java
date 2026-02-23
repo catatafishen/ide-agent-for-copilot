@@ -38,12 +38,14 @@ class CopilotFreeModelIntegrationTest {
             Process p = new ProcessBuilder("which", "copilot").start();
             if (p.waitFor() == 0) return true;
         } catch (Exception ignored) {
+            // copilot CLI detection is best-effort
         }
         try {
             // Try Windows
             Process p = new ProcessBuilder("where", "copilot").start();
             return p.waitFor() == 0;
-        } catch (Exception e) {
+        } catch (
+            Exception e) {
             return false;
         }
     }

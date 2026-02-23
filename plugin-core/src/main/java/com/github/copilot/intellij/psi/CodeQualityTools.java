@@ -55,6 +55,10 @@ class CodeQualityTools extends AbstractToolHandler {
     private static final String LABEL_SUPPRESS_INSPECTION = "Suppress Inspection";
     private static final String JSON_ARTIFACT_LOCATION = "artifactLocation";
     private static final String JSON_REGION = "region";
+    private static final String SEVERITY_WARNING = "WARNING";
+    private static final String FORMAT_FINDING = "%s:%d [%s/%s] %s";
+    private static final String PARAM_SCOPE = "scope";
+    private static final String PARAM_OFFSET = "offset";
 
     // Cached inspection results for pagination
     private List<String> cachedInspectionResults;
@@ -270,9 +274,9 @@ class CodeQualityTools extends AbstractToolHandler {
     @SuppressWarnings("UnstableApiUsage")
     private String runInspections(JsonObject args) throws Exception {
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
-        int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
+        int offset = args.has(PARAM_OFFSET) ? args.get(PARAM_OFFSET).getAsInt() : 0;
         String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
-        String scopePath = args.has("scope") ? args.get("scope").getAsString() : null;
+        String scopePath = args.has(PARAM_SCOPE) ? args.get(PARAM_SCOPE).getAsString() : null;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
             return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
@@ -329,7 +333,7 @@ class CodeQualityTools extends AbstractToolHandler {
                                        String scopePath,
                                        CompletableFuture<String> resultFuture) {
         Map<String, Integer> severityRank = Map.of(
-            "ERROR", 4, "WARNING", 3, "WEAK_WARNING", 2,
+            "ERROR", 4, SEVERITY_WARNING, 3, "WEAK_WARNING", 2,
             "LIKE_UNUSED_SYMBOL", 2, "INFORMATION", 1, "INFO", 1,
             "TEXT_ATTRIBUTES", 0, "GENERIC_SERVER_ERROR_OR_WARNING", 3
         );
@@ -361,44 +365,10 @@ class CodeQualityTools extends AbstractToolHandler {
                     LOG.info("Inspection analysis completed, collecting results...");
                     LOG.info("Used tools count: " + ctx.getUsedTools().size());
 
-                    // Delay collection to allow inspection tool presentations to fully populate.
-                    // notifyInspectionsFinished fires when scope iteration ends, but tool results
-                    // may still be written asynchronously. We retry up to 3 times with increasing delay.
-                    AppExecutorUtil.getAppExecutorService().submit(() -> {
-                        try {
-                            InspectionCollectionResult collected = null;
-                            for (int attempt = 0; attempt < 3; attempt++) {
-                                if (attempt > 0) {
-                                    Thread.sleep(500L * attempt);
-                                }
-                                collected = ReadAction.compute(() ->
-                                    collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
-                                if (!collected.problems.isEmpty()) break;
-                                LOG.info("Inspection collection attempt " + (attempt + 1) +
-                                    " found 0 problems, retrying...");
-                            }
-
-                            cachedInspectionResults = new ArrayList<>(collected.problems);
-                            cachedInspectionFileCount = collected.fileCount;
-                            cachedInspectionProfile = profileName;
-                            cachedInspectionTimestamp = System.currentTimeMillis();
-                            LOG.info("Cached " + collected.problems.size() + " inspection results for pagination" +
-                                " (skipped: " + collected.skippedNoDescription + " no-description, " +
-                                collected.skippedNoFile + " no-file)");
-
-                            if (collected.problems.isEmpty()) {
-                                resultFuture.complete("No inspection problems found. " +
-                                    "The code passed all enabled inspections in the current profile (" +
-                                    profileName + "). Results are also visible in the IDE's Inspection Results view.");
-                            } else {
-                                resultFuture.complete(formatInspectionPage(
-                                    collected.problems, collected.fileCount, profileName, offset, limit));
-                            }
-                        } catch (Exception e) {
-                            LOG.error("Error collecting inspection results", e);
-                            resultFuture.completeExceptionally(e);
-                        }
-                    });
+                    // Use scheduled retries instead of Thread.sleep to allow inspection tool
+                    // presentations to fully populate before collecting results.
+                    scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
+                        profileName, offset, limit, resultFuture, 0);
                 }
             };
 
@@ -408,6 +378,60 @@ class CodeQualityTools extends AbstractToolHandler {
         } catch (Exception e) {
             LOG.error("Error setting up inspections", e);
             resultFuture.complete("Error setting up inspections: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Schedule inspection result collection with retries using the app scheduler
+     * instead of blocking Thread.sleep. Retries up to 3 times with increasing delay
+     * (0ms, 500ms, 1000ms) to allow tool presentations to populate.
+     */
+    private void scheduleInspectionCollection(
+        GlobalInspectionContextImpl ctx, Map<String, Integer> severityRank, int requiredRank,
+        String basePath, String profileName, int offset, int limit,
+        CompletableFuture<String> resultFuture, int attempt) {
+
+        long delayMs = attempt > 0 ? 500L * attempt : 0;
+
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(() -> {
+            try {
+                InspectionCollectionResult collected = ReadAction.compute(() ->
+                    collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
+
+                if (collected.problems.isEmpty() && attempt < 2) {
+                    LOG.info("Inspection collection attempt " + (attempt + 1) +
+                        " found 0 problems, scheduling retry...");
+                    scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
+                        profileName, offset, limit, resultFuture, attempt + 1);
+                    return;
+                }
+
+                cacheAndCompleteInspection(collected, profileName, offset, limit, resultFuture);
+            } catch (Exception e) {
+                LOG.error("Error collecting inspection results", e);
+                resultFuture.completeExceptionally(e);
+            }
+        }, delayMs, TimeUnit.MILLISECONDS);
+    }
+
+    private void cacheAndCompleteInspection(InspectionCollectionResult collected,
+                                            String profileName, int offset, int limit,
+                                            CompletableFuture<String> resultFuture) {
+        cachedInspectionResults = new ArrayList<>(collected.problems);
+        cachedInspectionFileCount = collected.fileCount;
+        cachedInspectionProfile = profileName;
+        cachedInspectionTimestamp = System.currentTimeMillis();
+        LOG.info("Cached " + collected.problems.size() + " inspection results for pagination" +
+            " (skipped: " + collected.skippedNoDescription + " no-description, " +
+            collected.skippedNoFile + " no-file)");
+
+        if (collected.problems.isEmpty()) {
+            resultFuture.complete("No inspection problems found. " +
+                "The code passed all enabled inspections in the current profile (" +
+                profileName + "). Results are also visible in the IDE's Inspection Results view.");
+        } else {
+            resultFuture.complete(formatInspectionPage(
+                collected.problems, collected.fileCount, profileName, offset, limit));
         }
     }
 
@@ -600,7 +624,7 @@ class CodeQualityTools extends AbstractToolHandler {
         description = description.replaceAll("<[^>]+>", "")
             .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").trim();
 
-        return String.format("%s:%d [%s/%s] %s", filePath, line, severity, toolId, description);
+        return String.format(FORMAT_FINDING, filePath, line, severity, toolId, description);
     }
 
     private String extractSeverityFromElement(org.jdom.Element element) {
@@ -609,7 +633,7 @@ class CodeQualityTools extends AbstractToolHandler {
             String severity = problemClass.getAttributeValue("severity");
             if (severity != null) return severity;
         }
-        return "WARNING";
+        return SEVERITY_WARNING;
     }
 
     /**
@@ -627,7 +651,7 @@ class CodeQualityTools extends AbstractToolHandler {
         if (formatted.isEmpty()) return 2;
 
         String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
-            ? pd.getHighlightType().toString() : "WARNING";
+            ? pd.getHighlightType().toString() : SEVERITY_WARNING;
         if (requiredRank > 0) {
             int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
             if (rank < requiredRank) return 3;
@@ -674,13 +698,14 @@ class CodeQualityTools extends AbstractToolHandler {
         if (filePath.isEmpty()) return ""; // sentinel for skippedNoFile
 
         String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd2)
-            ? pd2.getHighlightType().toString() : "WARNING";
+            ? pd2.getHighlightType().toString() : SEVERITY_WARNING;
 
-        return String.format("%s:%d [%s/%s] %s", filePath, line, severity, toolId, description);
+        return String.format(FORMAT_FINDING, filePath, line, severity, toolId, description);
     }
 
-    private String resolveRefEntityFilePath(com.intellij.codeInspection.reference.RefEntity refEntity,
-                                            String basePath, Set<String> filesSet) {
+    private String resolveRefEntityFilePath(
+        com.intellij.codeInspection.reference.RefEntity refEntity,
+        String basePath, Set<String> filesSet) {
         if (refEntity instanceof com.intellij.codeInspection.reference.RefElement refElement) {
             var psiElement = refElement.getPsiElement();
             if (psiElement != null) {
@@ -954,9 +979,9 @@ class CodeQualityTools extends AbstractToolHandler {
     // ---- run_sonarqube_analysis ----
 
     private String runSonarQubeAnalysis(JsonObject args) {
-        String scope = args.has("scope") ? args.get("scope").getAsString() : "all";
+        String scope = args.has(PARAM_SCOPE) ? args.get(PARAM_SCOPE).getAsString() : "all";
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
-        int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
+        int offset = args.has(PARAM_OFFSET) ? args.get(PARAM_OFFSET).getAsInt() : 0;
 
         SonarQubeIntegration sonar = new SonarQubeIntegration(project);
         return sonar.runAnalysis(scope, limit, offset);
@@ -1045,17 +1070,46 @@ class CodeQualityTools extends AbstractToolHandler {
             return Class.forName("org.jetbrains.qodana.run.QodanaRunInIdeService");
         } catch (ClassNotFoundException e) {
             LOG.info("QodanaRunInIdeService not available, waiting for SARIF output...");
-            for (int i = 0; i < 300; i++) {
+            pollForSarifOutput(limit, resultFuture);
+            return null;
+        }
+    }
+
+    /**
+     * Poll for SARIF output using a scheduled executor instead of Thread.sleep loop.
+     */
+    private void pollForSarifOutput(int limit, CompletableFuture<String> resultFuture)
+        throws InterruptedException {
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        var scheduler = AppExecutorUtil.getAppScheduledExecutorService();
+        final int maxPolls = 300;
+        final int[] counter = {0};
+
+        java.util.concurrent.ScheduledFuture<?> poller = scheduler.scheduleAtFixedRate(() -> {
+            try {
                 String fallbackResult = tryFindSarifOutput(limit);
                 if (fallbackResult != null) {
                     resultFuture.complete(fallbackResult);
-                    return null;
+                    done.complete(null);
+                } else if (++counter[0] >= maxPolls) {
+                    resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
+                        "(Qodana service class not available for result polling)");
+                    done.complete(null);
                 }
-                Thread.sleep(1000);
+            } catch (Exception ex) {
+                done.completeExceptionally(ex);
             }
-            resultFuture.complete("Qodana analysis triggered. Check the Qodana tab in Problems for results. " +
-                "(Qodana service class not available for result polling)");
-            return null;
+        }, 0, 1000, TimeUnit.MILLISECONDS);
+
+        try {
+            done.get(maxPolls, TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw ie;
+        } catch (Exception ex) {
+            LOG.debug("SARIF polling ended: " + ex.getMessage());
+        } finally {
+            poller.cancel(false);
         }
     }
 
@@ -1085,30 +1139,56 @@ class CodeQualityTools extends AbstractToolHandler {
         tryReadQodanaSarifResults(qodanaService, serviceClass, getValueMethod, limit, resultFuture);
     }
 
+    /**
+     * Poll Qodana run state using a scheduled executor instead of Thread.sleep loop.
+     */
     private boolean pollQodanaRunState(java.lang.reflect.Method getValueMethod, Object runStateFlow,
                                        CompletableFuture<String> resultFuture) throws Exception {
-        int maxPolls = 480;
-        boolean wasRunning = false;
-        for (int i = 0; i < maxPolls; i++) {
-            var state = getValueMethod.invoke(runStateFlow);
-            String stateName = state.getClass().getSimpleName();
+        CompletableFuture<Boolean> done = new CompletableFuture<>();
+        var scheduler = AppExecutorUtil.getAppScheduledExecutorService();
+        final int maxPolls = 480;
+        final int[] counter = {0};
+        final boolean[] wasRunning = {false};
 
-            if (stateName.contains("Running")) {
-                wasRunning = true;
-                if (i % 30 == 0) {
-                    LOG.info("Qodana analysis still running... (" + i + "s)");
+        java.util.concurrent.ScheduledFuture<?> poller = scheduler.scheduleAtFixedRate(() -> {
+            try {
+                var state = getValueMethod.invoke(runStateFlow);
+                String stateName = state.getClass().getSimpleName();
+                int i = counter[0]++;
+
+                if (stateName.contains("Running")) {
+                    wasRunning[0] = true;
+                    if (i % 30 == 0) {
+                        LOG.info("Qodana analysis still running... (" + i + "s)");
+                    }
+                } else if (wasRunning[0]) {
+                    LOG.info("Qodana analysis completed after ~" + i + "s");
+                    done.complete(true);
+                } else if (i > 10) {
+                    resultFuture.complete("Qodana analysis was triggered but may require user interaction. " +
+                        "Check the IDE for any Qodana dialogs or the Qodana tab in Problems for results.");
+                    done.complete(false);
                 }
-            } else if (wasRunning) {
-                LOG.info("Qodana analysis completed after ~" + i + "s");
-                return true;
-            } else if (i > 10) {
-                resultFuture.complete("Qodana analysis was triggered but may require user interaction. " +
-                    "Check the IDE for any Qodana dialogs or the Qodana tab in Problems for results.");
-                return false;
+
+                if (i >= maxPolls) {
+                    done.complete(true);
+                }
+            } catch (Exception ex) {
+                done.completeExceptionally(ex);
             }
-            Thread.sleep(1000);
+        }, 0, 1000, TimeUnit.MILLISECONDS);
+
+        try {
+            return done.get(maxPolls, TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw ie;
+        } catch (Exception ex) {
+            LOG.debug("Qodana polling ended: " + ex.getMessage());
+            return true;
+        } finally {
+            poller.cancel(false);
         }
-        return true;
     }
 
     private void tryReadQodanaSarifResults(Object qodanaService, Class<?> serviceClass,
@@ -1244,7 +1324,7 @@ class CodeQualityTools extends AbstractToolHandler {
             SarifLocation loc = extractSarifLocation(result, basePath);
 
             if (!loc.filePath.isEmpty()) filesSet.add(loc.filePath);
-            problems.add(String.format("%s:%d [%s/%s] %s", loc.filePath, loc.line, level, ruleId, message));
+            problems.add(String.format(FORMAT_FINDING, loc.filePath, loc.line, level, ruleId, message));
         }
     }
 

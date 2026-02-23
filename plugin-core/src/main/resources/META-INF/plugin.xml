@@ -47,7 +47,6 @@
   <!-- Plugin dependencies -->
   <depends>com.intellij.modules.platform</depends>
   <depends optional="true" config-file="java-features.xml">com.intellij.modules.java</depends>
-  <!-- <depends>Git4Idea</depends> -->
   <depends optional="true" config-file="git-features.xml">Git4Idea</depends>
   <depends optional="true">org.jetbrains.plugins.terminal</depends>
 

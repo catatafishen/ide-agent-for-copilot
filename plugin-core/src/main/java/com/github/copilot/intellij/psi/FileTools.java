@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Handles file read/write/create/delete tool calls for the PSI Bridge.
  */
+@SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class FileTools extends AbstractToolHandler {
 
     private static final Logger LOG = Logger.getInstance(FileTools.class);
@@ -98,10 +99,10 @@ class FileTools extends AbstractToolHandler {
 
                 if (args.has(PARAM_CONTENT)) {
                     writeFileFullContent(vf, pathStr, args.get(PARAM_CONTENT).getAsString(),
-                            autoFormat, resultFuture);
+                        autoFormat, resultFuture);
                 } else if (args.has("old_str") && args.has("new_str")) {
                     writeFilePartialEdit(vf, pathStr, args.get("old_str").getAsString(),
-                            args.get("new_str").getAsString(), autoFormat, resultFuture);
+                        args.get("new_str").getAsString(), autoFormat, resultFuture);
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
                 }
@@ -122,8 +123,8 @@ class FileTools extends AbstractToolHandler {
         Document doc = FileDocumentManager.getInstance().getDocument(vf);
         if (doc != null) {
             ApplicationManager.getApplication().runWriteAction(() ->
-                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                            project, () -> doc.setText(newContent), "Write File", null)
+                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                    project, () -> doc.setText(newContent), "Write File", null)
             );
             if (autoFormat) autoFormatAfterWrite(pathStr);
             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
@@ -187,14 +188,14 @@ class FileTools extends AbstractToolHandler {
                 matchLen = ToolUtils.findOriginalLength(text, idx, normOld.length());
             } else {
                 LOG.warn("write_file: old_str not found in " + pathStr +
-                        " (exact and normalized both failed)");
+                    " (exact and normalized both failed)");
             }
         }
         if (idx == -1) {
             String preview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
             resultFuture.complete("old_str not found in " + pathStr +
-                    ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
-                    "\nFile starts with: " + preview.replace("\n", "\\n").substring(0, Math.min(preview.length(), 150)));
+                ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
+                "\nFile starts with: " + preview.replace("\n", "\\n").substring(0, Math.min(preview.length(), 150)));
             return;
         }
         // Check for multiple matches using same strategy
@@ -207,9 +208,9 @@ class FileTools extends AbstractToolHandler {
         final int finalIdx = idx;
         final int finalLen = matchLen;
         ApplicationManager.getApplication().runWriteAction(() ->
-                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                        project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
-                        "Edit File", null)
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, newStr),
+                "Edit File", null)
         );
         if (autoFormat) autoFormatAfterWrite(pathStr);
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + newStr.length() + FORMAT_CHARS_SUFFIX);
@@ -228,11 +229,11 @@ class FileTools extends AbstractToolHandler {
                 if (psiFile == null) return;
 
                 ApplicationManager.getApplication().runWriteAction(() ->
-                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
-                            com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                            new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
-                            new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
-                        }, "Auto-Format After Write", null)
+                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                        new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                        new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
+                    }, "Auto-Format After Write", null)
                 );
                 LOG.info("Auto-formatted after write: " + pathStr);
             } catch (Exception e) {
@@ -262,7 +263,7 @@ class FileTools extends AbstractToolHandler {
 
         if (Files.exists(filePath)) {
             return "Error: File already exists: " + pathStr +
-                    ". Use intellij_write_file to modify existing files.";
+                ". Use intellij_write_file to modify existing files.";
         }
 
         // Create parent directories
@@ -317,25 +318,25 @@ class FileTools extends AbstractToolHandler {
 
     private void scheduleFileDeletion(VirtualFile vf, String pathStr, CompletableFuture<String> resultFuture) {
         EdtUtil.invokeLater(() ->
-                ApplicationManager.getApplication().runWriteAction(() -> {
-                    try {
-                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
-                                project,
-                                () -> {
-                                    try {
-                                        vf.delete(FileTools.this);
-                                    } catch (IOException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                },
-                                "Delete File: " + vf.getName(),
-                                null
-                        );
-                        resultFuture.complete("✓ Deleted file: " + pathStr);
-                    } catch (Exception e) {
-                        resultFuture.complete("Error deleting file: " + e.getMessage());
-                    }
-                })
+            ApplicationManager.getApplication().runWriteAction(() -> {
+                try {
+                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                        project,
+                        () -> {
+                            try {
+                                vf.delete(FileTools.this);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        },
+                        "Delete File: " + vf.getName(),
+                        null
+                    );
+                    resultFuture.complete("✓ Deleted file: " + pathStr);
+                } catch (Exception e) {
+                    resultFuture.complete("Error deleting file: " + e.getMessage());
+                }
+            })
         );
     }
 }

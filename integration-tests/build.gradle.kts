@@ -1,6 +1,6 @@
 dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation(project(":plugin-core"))
-    testImplementation("com.google.code.gson:gson:2.13.1")
+    testImplementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
 }

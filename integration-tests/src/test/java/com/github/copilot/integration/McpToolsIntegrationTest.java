@@ -2,7 +2,12 @@ package com.github.copilot.integration;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.IOException;
 import java.net.URI;
@@ -26,7 +31,7 @@ import java.nio.file.Path;
  * be run in CI pipelines. They validate end-to-end tool functionality.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class McpToolsIntegrationTest {
+class McpToolsIntegrationTest {
 
     private static HttpClient httpClient;
     private static String psiBridgeUrl;
@@ -40,7 +45,7 @@ public class McpToolsIntegrationTest {
 
         if (!Files.exists(bridgeConfig)) {
             throw new IllegalStateException(
-                    "PSI Bridge not running. Start sandbox IDE first: ./restart-sandbox.sh");
+                "PSI Bridge not running. Start sandbox IDE first: ./restart-sandbox.sh");
         }
 
         String json = Files.readString(bridgeConfig);
@@ -58,15 +63,15 @@ public class McpToolsIntegrationTest {
     @Order(1)
     void testPsiBridgeAlive() throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(psiBridgeUrl + "/health"))
-                .GET()
-                .build();
+            .uri(URI.create(psiBridgeUrl + "/health"))
+            .GET()
+            .build();
 
         HttpResponse<String> response = httpClient.send(request,
-                HttpResponse.BodyHandlers.ofString());
+            HttpResponse.BodyHandlers.ofString());
 
         Assertions.assertEquals(200, response.statusCode(),
-                "PSI Bridge should respond to health check");
+            "PSI Bridge should respond to health check");
     }
 
     /**
@@ -87,7 +92,7 @@ public class McpToolsIntegrationTest {
         } catch (Exception e) {
             // Plain text format
             Assertions.assertTrue(result.contains(".java") || result.contains(".kt"),
-                    "Should list some source files");
+                "Should list some source files");
             System.out.println("✓ Listed project files (text format)");
         }
     }
@@ -102,7 +107,7 @@ public class McpToolsIntegrationTest {
         String result = callTool("intellij_read_file", args);
 
         Assertions.assertTrue(result.contains("IntelliJ"),
-                "README.md should contain 'IntelliJ'");
+            "README.md should contain 'IntelliJ'");
 
         System.out.println("✓ Successfully read README.md (" + result.length() + " chars)");
     }
@@ -114,16 +119,16 @@ public class McpToolsIntegrationTest {
     @Order(4)
     void testCreateScratchFile() throws Exception {
         String args = "{"
-                + "\"name\":\"integration-test.md\","
-                + "\"content\":\"# Integration Test\\n\\nThis file was created by automated tests.\""
-                + "}";
+            + "\"name\":\"integration-test.md\","
+            + "\"content\":\"# Integration Test\\n\\nThis file was created by automated tests.\""
+            + "}";
 
         String result = callTool("create_scratch_file", args);
 
         Assertions.assertTrue(result.contains("Created scratch file"),
-                "Should return success message");
+            "Should return success message");
         Assertions.assertTrue(result.contains("integration-test.md"),
-                "Should mention file name");
+            "Should mention file name");
 
         System.out.println("✓ " + result);
     }
@@ -138,7 +143,7 @@ public class McpToolsIntegrationTest {
         String result = callTool("search_symbols", args);
 
         Assertions.assertTrue(result.toLowerCase().contains("mcp") || result.contains("symbol"),
-                "Should find symbols or indicate search completed");
+            "Should find symbols or indicate search completed");
 
         System.out.println("✓ Symbol search completed for 'McpServer'");
     }
@@ -152,7 +157,7 @@ public class McpToolsIntegrationTest {
         String result = callTool("get_project_info", "{}");
 
         Assertions.assertTrue(result.contains("intellij-copilot-plugin") || result.contains("Project"),
-                "Should return project information");
+            "Should return project information");
 
         System.out.println("✓ Project info retrieved");
     }
@@ -162,22 +167,22 @@ public class McpToolsIntegrationTest {
      */
     private String callTool(String toolName, String argsJson) throws Exception {
         String requestBody = "{"
-                + "\"name\":\"" + toolName + "\","
-                + "\"arguments\":" + argsJson
-                + "}";
+            + "\"name\":\"" + toolName + "\","
+            + "\"arguments\":" + argsJson
+            + "}";
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(psiBridgeUrl + "/tools/call"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
+            .uri(URI.create(psiBridgeUrl + "/tools/call"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+            .build();
 
         HttpResponse<String> response = httpClient.send(request,
-                HttpResponse.BodyHandlers.ofString());
+            HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() != 200) {
             throw new RuntimeException("Tool call failed: HTTP " + response.statusCode()
-                    + " - " + response.body());
+                + " - " + response.body());
         }
 
         // Parse response and extract "result" field

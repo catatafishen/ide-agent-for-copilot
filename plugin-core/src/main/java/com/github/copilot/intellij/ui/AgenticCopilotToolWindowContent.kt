@@ -26,6 +26,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         const val MSG_LOADING = "Loading..."
         const val MSG_THINKING = "Thinking..."
         const val MSG_UNKNOWN_ERROR = "Unknown error"
+        const val PROMPT_PLACEHOLDER = "Ask Copilot... (Shift+Enter for new line)"
     }
 
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -97,20 +98,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     /** Handle ACP session/update notifications — routes to timeline and session tab. */
     private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
-        val updateType = update.get("sessionUpdate")?.asString ?: return
+        val updateType = update["sessionUpdate"]?.asString ?: return
 
         when (updateType) {
             "tool_call" -> {
-                val title = update.get("title")?.asString ?: "Unknown tool"
-                val status = update.get("status")?.asString ?: "pending"
-                val toolCallId = update.get("toolCallId")?.asString ?: ""
+                val title = update["title"]?.asString ?: "Unknown tool"
+                val status = update["status"]?.asString ?: "pending"
+                val toolCallId = update["toolCallId"]?.asString ?: ""
                 addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
 
                 // Extract file path from locations or title
                 val locations = if (update.has("locations")) update.getAsJsonArray("locations") else null
                 var filePath: String? = null
                 if (locations != null && locations.size() > 0) {
-                    filePath = locations[0].asJsonObject.get("path")?.asString
+                    filePath = locations[0].asJsonObject["path"]?.asString
                 }
                 if (filePath == null) {
                     val pathMatch = Regex("""(?:Creating|Writing|Editing|Reading)\s+(.+\.\w+)""").find(title)
@@ -122,8 +123,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
 
             "tool_call_update" -> {
-                val status = update.get("status")?.asString ?: ""
-                val toolCallId = update.get("toolCallId")?.asString ?: ""
+                val status = update["status"]?.asString ?: ""
+                val toolCallId = update["toolCallId"]?.asString ?: ""
                 if (status == "completed" || status == "failed") {
                     addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
 
@@ -143,6 +144,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                     }
                                 }
                             } catch (_: Exception) {
+                                // Plan file loading is best-effort; errors are non-critical
                             }
                         }
                     }
@@ -163,9 +165,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val planNode = javax.swing.tree.DefaultMutableTreeNode("Plan")
                     for (entry in entries) {
                         val obj = entry.asJsonObject
-                        val content = obj.get("content")?.asString ?: "Step"
-                        val entryStatus = obj.get("status")?.asString ?: "pending"
-                        val priority = obj.get("priority")?.asString ?: ""
+                        val content = obj["content"]?.asString ?: "Step"
+                        val entryStatus = obj["status"]?.asString ?: "pending"
+                        val priority = obj["priority"]?.asString ?: ""
                         val label = "$content [$entryStatus]${if (priority.isNotEmpty()) " ($priority)" else ""}"
                         planNode.add(javax.swing.tree.DefaultMutableTreeNode(label))
                     }
@@ -187,7 +189,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val ghCli = findGhCli() ?: run {
                     SwingUtilities.invokeLater {
                         usageLabel.text = "Usage info unavailable (gh CLI not found)"
-                        usageLabel.toolTipText = "Install GitHub CLI: https://cli.github.com  then run 'gh auth login'"
+                        usageLabel.toolTipText =
+                            "Install GitHub CLI: https://cli.github.com  then run 'gh auth login'"
                         costLabel.text = ""
                     }
                     return@executeOnPooledThread
@@ -216,16 +219,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 apiProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
 
                 val gson = com.google.gson.Gson()
-                val obj = gson.fromJson(json, com.google.gson.JsonObject::class.java) ?: return@executeOnPooledThread
+                val obj =
+                    gson.fromJson(json, com.google.gson.JsonObject::class.java) ?: return@executeOnPooledThread
 
                 val snapshots = obj.getAsJsonObject("quota_snapshots") ?: return@executeOnPooledThread
                 val premium = snapshots.getAsJsonObject("premium_interactions") ?: return@executeOnPooledThread
 
-                val entitlement = premium.get("entitlement")?.asInt ?: 0
-                val remaining = premium.get("remaining")?.asInt ?: 0
-                val unlimited = premium.get("unlimited")?.asBoolean ?: false
-                val overagePermitted = premium.get("overage_permitted")?.asBoolean ?: false
-                val resetDate = obj.get("quota_reset_date")?.asString ?: ""
+                val entitlement = premium["entitlement"]?.asInt ?: 0
+                val remaining = premium["remaining"]?.asInt ?: 0
+                val unlimited = premium["unlimited"]?.asBoolean ?: false
+                val overagePermitted = premium["overage_permitted"]?.asBoolean ?: false
+                val resetDate = obj["quota_reset_date"]?.asString ?: ""
 
                 val used = entitlement - remaining
 
@@ -271,6 +275,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val check = ProcessBuilder(cmd, "gh").start()
             if (check.waitFor() == 0) return "gh"
         } catch (_: Exception) {
+            // gh CLI detection is best-effort
         }
 
         // Check known install locations
@@ -314,6 +319,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         authArgs = authMethod.args
                     }
                 } catch (_: Exception) {
+                    // Auth method extraction is best-effort
                 }
 
                 if (authCommand != null) {
@@ -525,7 +531,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Placeholder hint text
         promptTextArea.addFocusListener(object : java.awt.event.FocusListener {
-            private val placeholder = "Ask Copilot... (Shift+Enter for new line)"
+            private val placeholder = PROMPT_PLACEHOLDER
             override fun focusGained(e: java.awt.event.FocusEvent) {
                 if (promptTextArea.text == placeholder) {
                     promptTextArea.text = ""
@@ -540,7 +546,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             }
         })
-        promptTextArea.text = "Ask Copilot... (Shift+Enter for new line)"
+        promptTextArea.text = PROMPT_PLACEHOLDER
         promptTextArea.foreground = JBColor.GRAY
 
         // Track current prompt thread for cancellation
@@ -553,6 +559,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     val service = CopilotService.getInstance(project)
                     service.getClient().cancelSession(sessionId)
                 } catch (_: Exception) {
+                    // Best-effort cancellation; session may already be closed
                 }
             }
             currentPromptThread?.interrupt()
@@ -562,7 +569,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         runButton.addActionListener {
-            val placeholderText = "Ask Copilot... (Shift+Enter for new line)"
+            val placeholderText = PROMPT_PLACEHOLDER
             val prompt = promptTextArea.text.trim()
             if (prompt.isEmpty() || prompt == placeholderText) {
                 return@addActionListener
@@ -604,7 +611,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                     // Get selected model from loaded models list
                     val selIdx = modelComboBox.selectedIndex
-                    val selectedModelObj = if (selIdx >= 0 && selIdx < loadedModels.size) loadedModels[selIdx] else null
+                    val selectedModelObj =
+                        if (selIdx >= 0 && selIdx < loadedModels.size) loadedModels[selIdx] else null
                     val modelId = selectedModelObj?.id ?: ""
                     // Build context references from Context tab
                     val references = mutableListOf<CopilotAcpClient.ResourceReference>()
@@ -670,11 +678,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             appendResponse(chunk)
                         },
                         { update ->
-                            val updateType = update.get("sessionUpdate")?.asString ?: ""
+                            val updateType = update["sessionUpdate"]?.asString ?: ""
                             when (updateType) {
                                 "tool_call" -> {
-                                    val title = update.get("title")?.asString ?: "tool"
-                                    val status = update.get("status")?.asString ?: ""
+                                    val title = update["title"]?.asString ?: "tool"
+                                    val status = update["status"]?.asString ?: ""
                                     setResponseStatus("Running: $title")
                                     if (status != "completed") {
                                         appendResponse("🔧 $title\n")
@@ -682,11 +690,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 }
 
                                 "tool_call_update" -> {
-                                    val status = update.get("status")?.asString ?: ""
+                                    val status = update["status"]?.asString ?: ""
                                     if (status == "completed") {
                                         setResponseStatus(MSG_THINKING)
                                     } else if (status == "failed") {
-                                        val toolId = update.get("toolCallId")?.asString ?: ""
+                                        val toolId = update["toolCallId"]?.asString ?: ""
                                         appendResponse("⚠ Tool failed: $toolId\n")
                                     }
                                 }
@@ -801,7 +809,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                 // Check if already added
                 val exists = (0 until contextListModel.size()).any {
-                    contextListModel.get(it).path == path
+                    contextListModel[it].path == path
                 }
 
                 if (!exists) {
@@ -900,7 +908,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 cellHasFocus: Boolean
             ): Component {
                 val item = value as? ContextItem
-                val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
+                val label =
+                    super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
 
                 if (item != null) {
                     // Set icon based on file type
@@ -1105,7 +1114,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 cellHasFocus: Boolean
             ): Component {
                 val event = value as? TimelineEvent
-                val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
+                val label =
+                    super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
 
                 if (event != null) {
                     val icon = when (event.type) {
@@ -1212,7 +1222,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         copyBtn.addActionListener {
             val selected = list.selectedValue
             if (selected != null) {
-                val content = "${selected.timestamp} [${selected.type}] ${selected.message}\n${selected.details}"
+                val content =
+                    "${selected.timestamp} [${selected.type}] ${selected.message}\n${selected.details}"
                 Toolkit.getDefaultToolkit().systemClipboard.setContents(
                     StringSelection(content), null
                 )
@@ -1531,7 +1542,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 try {
                     val service = CopilotService.getInstance(project)
                     val client = service.getClient()
-                    val models = client.listModels()
+                    val models = client.listModels().toList()
 
                     SwingUtilities.invokeLater {
                         spinner.isVisible = false
