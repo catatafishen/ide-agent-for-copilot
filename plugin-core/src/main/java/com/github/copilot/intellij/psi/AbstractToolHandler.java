@@ -50,8 +50,10 @@ abstract class AbstractToolHandler {
         java.util.concurrent.CompletableFuture<Integer> exitFuture = new java.util.concurrent.CompletableFuture<>();
         StringBuilder output = new StringBuilder();
 
+        // Use Process-based constructor to avoid cross-JAR @NotNull annotation resolution issue
+        Process process = cmd.createProcess();
         com.intellij.execution.process.OSProcessHandler processHandler =
-            new com.intellij.execution.process.OSProcessHandler(cmd);
+            new com.intellij.execution.process.OSProcessHandler(process, cmd.getCommandLineString());
         processHandler.addProcessListener(new com.intellij.execution.process.ProcessListener() {
             @Override
             public void onTextAvailable(
