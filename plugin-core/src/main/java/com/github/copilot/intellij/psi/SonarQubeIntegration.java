@@ -12,12 +12,14 @@ import com.intellij.openapi.vfs.VirtualFile;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Reflection-based integration with SonarQube for IDE (formerly SonarLint) plugin.
@@ -185,15 +187,95 @@ final class SonarQubeIntegration {
     }
 
     /**
-     * Wait for new analysis results by polling until the result count stabilizes.
-     * SonarLint analyzes per-module and merges results progressively, so we wait
-     * until the count stops changing across multiple consecutive polls.
+     * Wait for analysis completion using SonarLint's StatusListener message bus topic.
+     * This is event-driven: we subscribe to SONARLINT_STATUS_TOPIC and wait for STOPPED.
+     * For multi-module projects, STOPPED may fire per-module, so we also do a short
+     * stabilization check after the last STOPPED event.
      */
+    @SuppressWarnings("unchecked")
     private List<String> waitForNewResults(String basePath, Object oldResult) {
+        // Try event-driven approach first
+        try {
+            return waitUsingStatusListener(basePath);
+        } catch (Exception e) {
+            LOG.info("StatusListener approach failed (" + e.getMessage() + "), falling back to polling");
+        }
+
+        // Fallback: polling with stabilization
+        return waitWithPolling(basePath, oldResult);
+    }
+
+    /**
+     * Subscribe to SonarLint's StatusListener.SONARLINT_STATUS_TOPIC via reflection
+     * and dynamic proxy to detect analysis completion without polling.
+     */
+    private List<String> waitUsingStatusListener(String basePath) throws Exception {
+        Class<?> statusListenerClass = loadSonarClass("org.sonarlint.intellij.messages.StatusListener");
+        Field topicField = statusListenerClass.getDeclaredField("SONARLINT_STATUS_TOPIC");
+        Object topic = topicField.get(null);
+
+        // Track the latest STOPPED timestamp to detect stabilization
+        AtomicLong lastStoppedTime = new AtomicLong(0);
+        CompletableFuture<Void> firstStopped = new CompletableFuture<>();
+
+        // Create dynamic proxy implementing StatusListener
+        Object listener = Proxy.newProxyInstance(
+            statusListenerClass.getClassLoader(),
+            new Class<?>[]{statusListenerClass},
+            (proxy, method, args) -> {
+                if ("changed".equals(method.getName()) && args != null && args.length == 1) {
+                    String status = args[0].toString();
+                    if ("STOPPED".equals(status)) {
+                        lastStoppedTime.set(System.currentTimeMillis());
+                        firstStopped.complete(null);
+                    }
+                }
+                return null;
+            }
+        );
+
+        // Subscribe via IntelliJ message bus
+        var connection = project.getMessageBus().connect();
+        try {
+            // Topic<StatusListener> is generic, but at runtime it's just Topic — raw cast is safe
+            com.intellij.util.messages.Topic<Object> rawTopic =
+                (com.intellij.util.messages.Topic<Object>) topic;
+            connection.subscribe(rawTopic, listener);
+
+            // Wait for the first STOPPED event (analysis of at least one module completed)
+            firstStopped.get(MAX_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            // Stabilization: wait until no new STOPPED events for 3 seconds
+            // (handles multi-module where each module fires its own STOPPED)
+            while (true) {
+                long elapsed = System.currentTimeMillis() - lastStoppedTime.get();
+                if (elapsed >= 3000) {
+                    break;
+                }
+                //noinspection BusyWait
+                Thread.sleep(3000 - elapsed + 100);
+            }
+
+            // Wait a bit more for results to propagate to ReportTabManager
+            Thread.sleep(1000);
+
+            List<String> results = collectFromReportTab(basePath);
+            if (results.isEmpty()) {
+                results = collectFromOnTheFlyHolder(basePath);
+            }
+            return results;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /**
+     * Fallback: poll until result count stabilizes.
+     */
+    private List<String> waitWithPolling(String basePath, Object oldResult) {
         long startTime = System.currentTimeMillis();
         long maxWaitMs = MAX_WAIT_SECONDS * 1000L;
 
-        // Initial delay for analysis to start
         try { Thread.sleep(5000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
         int lastCount = -1;
@@ -201,19 +283,16 @@ final class SonarQubeIntegration {
         boolean newResultDetected = false;
 
         while (System.currentTimeMillis() - startTime < maxWaitMs) {
-            // Check if new results have appeared (different object than before trigger)
             Object currentResult = getCurrentAnalysisResult();
             if (currentResult != null && currentResult != oldResult) {
                 newResultDetected = true;
             }
 
-            // Once new results detected (or if there was no old result), track stabilization
             if (newResultDetected || oldResult == null) {
                 List<String> results = collectFromReportTab(basePath);
                 int count = results.size();
                 if (count > 0 && count == lastCount) {
                     stablePolls++;
-                    // Require 5 consecutive stable polls (~10 seconds of no change)
                     if (stablePolls >= 5) {
                         return results;
                     }
@@ -227,7 +306,6 @@ final class SonarQubeIntegration {
             try { Thread.sleep(POLL_INTERVAL_MS * 4); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
 
-        // Timeout: return whatever we can find
         LOG.warn("SonarQube analysis timed out after " + MAX_WAIT_SECONDS + "s");
         List<String> results = collectFromReportTab(basePath);
         if (results.isEmpty()) {
