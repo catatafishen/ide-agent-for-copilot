@@ -59,6 +59,8 @@ class CodeQualityTools extends AbstractToolHandler {
     private static final String FORMAT_FINDING = "%s:%d [%s/%s] %s";
     private static final String PARAM_SCOPE = "scope";
     private static final String PARAM_OFFSET = "offset";
+    private static final String ERROR_IDE_INITIALIZING =
+        "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
 
     // Cached inspection results for pagination
     private List<String> cachedInspectionResults;
@@ -164,7 +166,7 @@ class CodeQualityTools extends AbstractToolHandler {
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
-            return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+            return ERROR_IDE_INITIALIZING;
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -281,7 +283,7 @@ class CodeQualityTools extends AbstractToolHandler {
         String pathStr = args.has("path") ? args.get("path").getAsString() : null;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
-            return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+            return ERROR_IDE_INITIALIZING;
         }
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -307,34 +309,39 @@ class CodeQualityTools extends AbstractToolHandler {
             int filesWithErrors = 0;
 
             for (VirtualFile vf : files) {
-                Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                if (doc == null) continue;
-
-                String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
-                com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
-                    doc, project, null, 0, doc.getTextLength(), highlights::add);
-
-                boolean fileHasErrors = false;
-                for (var h : highlights) {
-                    if (h.getDescription() != null
-                        && h.getSeverity() == com.intellij.lang.annotation.HighlightSeverity.ERROR) {
-                        int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                        errors.add(String.format(FORMAT_LOCATION, relPath, line, "ERROR", h.getDescription()));
-                        fileHasErrors = true;
-                    }
-                }
-                if (fileHasErrors) filesWithErrors++;
+                boolean hasErrors = collectFileErrors(vf, basePath, errors);
+                if (hasErrors) filesWithErrors++;
             }
 
             if (errors.isEmpty()) {
-                resultFuture.complete(String.format("✓ No compilation errors in %d files checked.", files.size()));
+                resultFuture.complete(String.format("? No compilation errors in %d files checked.", files.size()));
             } else {
-                String summary = String.format("✗ Found %d compilation errors across %d files:%n%n",
+                String summary = String.format("? Found %d compilation errors across %d files:%n%n",
                     errors.size(), filesWithErrors);
                 resultFuture.complete(summary + String.join("\n", errors));
             }
         });
+    }
+
+    private boolean collectFileErrors(VirtualFile vf, String basePath, List<String> errors) {
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc == null) return false;
+
+        String relPath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
+        List<com.intellij.codeInsight.daemon.impl.HighlightInfo> highlights = new ArrayList<>();
+        com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx.processHighlights(
+            doc, project, null, 0, doc.getTextLength(), highlights::add);
+
+        boolean fileHasErrors = false;
+        for (var h : highlights) {
+            if (h.getDescription() != null
+                && h.getSeverity() == com.intellij.lang.annotation.HighlightSeverity.ERROR) {
+                int line = doc.getLineNumber(h.getStartOffset()) + 1;
+                errors.add(String.format(FORMAT_LOCATION, relPath, line, "ERROR", h.getDescription()));
+                fileHasErrors = true;
+            }
+        }
+        return fileHasErrors;
     }
 
     // ---- run_inspections ----
@@ -347,7 +354,7 @@ class CodeQualityTools extends AbstractToolHandler {
         String scopePath = args.has(PARAM_SCOPE) ? args.get(PARAM_SCOPE).getAsString() : null;
 
         if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
-            return "{\"error\": \"IDE is still initializing. Please wait a moment and try again.\"}";
+            return ERROR_IDE_INITIALIZING;
         }
 
         // Serve from cache if available and fresh (5 min TTL)
@@ -436,7 +443,7 @@ class CodeQualityTools extends AbstractToolHandler {
                     // Use scheduled retries instead of Thread.sleep to allow inspection tool
                     // presentations to fully populate before collecting results.
                     scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
-                        profileName, offset, limit, resultFuture, 0);
+                        new InspectionPageParams(profileName, offset, limit), resultFuture, 0);
                 }
             };
 
@@ -456,7 +463,7 @@ class CodeQualityTools extends AbstractToolHandler {
      */
     private void scheduleInspectionCollection(
         GlobalInspectionContextImpl ctx, Map<String, Integer> severityRank, int requiredRank,
-        String basePath, String profileName, int offset, int limit,
+        String basePath, InspectionPageParams pageParams,
         CompletableFuture<String> resultFuture, int attempt) {
 
         long delayMs = attempt > 0 ? 500L * attempt : 0;
@@ -470,11 +477,11 @@ class CodeQualityTools extends AbstractToolHandler {
                     LOG.info("Inspection collection attempt " + (attempt + 1) +
                         " found 0 problems, scheduling retry...");
                     scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
-                        profileName, offset, limit, resultFuture, attempt + 1);
+                        pageParams, resultFuture, attempt + 1);
                     return;
                 }
 
-                cacheAndCompleteInspection(collected, profileName, offset, limit, resultFuture);
+                cacheAndCompleteInspection(collected, pageParams, resultFuture);
             } catch (Exception e) {
                 LOG.error("Error collecting inspection results", e);
                 resultFuture.completeExceptionally(e);
@@ -483,11 +490,11 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private void cacheAndCompleteInspection(InspectionCollectionResult collected,
-                                            String profileName, int offset, int limit,
+                                            InspectionPageParams pageParams,
                                             CompletableFuture<String> resultFuture) {
         cachedInspectionResults = new ArrayList<>(collected.problems);
         cachedInspectionFileCount = collected.fileCount;
-        cachedInspectionProfile = profileName;
+        cachedInspectionProfile = pageParams.profileName;
         cachedInspectionTimestamp = System.currentTimeMillis();
         LOG.info("Cached " + collected.problems.size() + " inspection results for pagination" +
             " (skipped: " + collected.skippedNoDescription + " no-description, " +
@@ -496,10 +503,11 @@ class CodeQualityTools extends AbstractToolHandler {
         if (collected.problems.isEmpty()) {
             resultFuture.complete("No inspection problems found. " +
                 "The code passed all enabled inspections in the current profile (" +
-                profileName + "). Results are also visible in the IDE's Inspection Results view.");
+                pageParams.profileName + "). Results are also visible in the IDE's Inspection Results view.");
         } else {
             resultFuture.complete(formatInspectionPage(
-                collected.problems, collected.fileCount, profileName, offset, limit));
+                collected.problems, collected.fileCount,
+                pageParams.profileName, pageParams.offset, pageParams.limit));
         }
     }
 
@@ -542,6 +550,13 @@ class CodeQualityTools extends AbstractToolHandler {
                                               int skippedNoDescription, int skippedNoFile) {
     }
 
+    private record InspectionPageParams(String profileName, int offset, int limit) {
+    }
+
+    private record InspectionContext(String basePath, Set<String> filesSet,
+                                     Map<String, Integer> severityRank, int requiredRank) {
+    }
+
     @SuppressWarnings({"UnstableApiUsage", "java:S2583"})
     // null check is defensive against runtime nulls despite @NotNull
     private InspectionCollectionResult collectInspectionProblems(
@@ -561,9 +576,9 @@ class CodeQualityTools extends AbstractToolHandler {
             //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
             if (presentation == null) continue;
 
+            var inspCtx = new InspectionContext(basePath, filesSet, severityRank, requiredRank);
             int beforeSize = allProblems.size();
-            int[] skipped = collectProblemsFromTool(presentation, toolId, basePath,
-                filesSet, severityRank, requiredRank, allProblems);
+            int[] skipped = collectProblemsFromTool(presentation, toolId, inspCtx, allProblems);
             skippedNoDescription += skipped[0];
             skippedNoFile += skipped[1];
             if (allProblems.size() > beforeSize) {
@@ -579,8 +594,7 @@ class CodeQualityTools extends AbstractToolHandler {
 
     private int[] collectProblemsFromTool(
         com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
-        String toolId, String basePath, Set<String> filesSet,
-        Map<String, Integer> severityRank, int requiredRank, List<String> allProblems) {
+        String toolId, InspectionContext inspCtx, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
 
@@ -588,68 +602,100 @@ class CodeQualityTools extends AbstractToolHandler {
         var problemElements = presentation.getProblemElements();
         //noinspection ConstantValue - problemElements can be null at runtime despite @NotNull annotation
         if (problemElements != null && !problemElements.isEmpty()) {
-            for (var refEntity : problemElements.keys()) {
-                var descriptors = problemElements.get(refEntity);
-                if (descriptors == null) continue;
-
-                for (var descriptor : descriptors) {
-                    int result = processInspectionDescriptor(
-                        descriptor, refEntity, toolId, basePath, filesSet, severityRank, requiredRank, allProblems);
-                    if (result == 1) skippedNoDescription++;
-                    else if (result == 2) skippedNoFile++;
-                }
-            }
-            return new int[]{skippedNoDescription, skippedNoFile};
+            return collectFromProblemElements((Object) problemElements, toolId, inspCtx, allProblems);
         }
 
         // Try getProblemDescriptors() for tools that don't use RefEntity
         var flatDescriptors = presentation.getProblemDescriptors();
-        for (var descriptor : flatDescriptors) {
-            int result = processInspectionDescriptor(
-                descriptor, null, toolId, basePath, filesSet, severityRank, requiredRank, allProblems);
-            if (result == 1) skippedNoDescription++;
-            else if (result == 2) skippedNoFile++;
-        }
+        int[] flatSkipped = collectFromFlatDescriptors(flatDescriptors, toolId, inspCtx, allProblems);
+        skippedNoDescription += flatSkipped[0];
+        skippedNoFile += flatSkipped[1];
 
         // Fallback: for tools like UnusedDeclarationPresentation that store results
         // in the reference graph, use exportResults() to extract XML and parse it
-        var hasProblems = presentation.hasReportedProblems();
-        if (hasProblems == com.intellij.util.ThreeState.YES) {
-            try {
-                presentation.updateContent();
-                var elements = new ArrayList<org.jdom.Element>();
-                presentation.exportResults(elements::add, entity -> true, desc -> true);
+        int[] exportSkipped = collectFromExportedResults(presentation, toolId, inspCtx, allProblems);
+        skippedNoDescription += exportSkipped[0];
+        skippedNoFile += exportSkipped[1];
 
-                // If bulk export produced nothing, try per-entity export via getContent()
-                if (elements.isEmpty()) {
-                    var content = presentation.getContent();
-                    for (var entry : content.entrySet()) {
-                        for (var refEntity : entry.getValue()) {
-                            presentation.exportResults(elements::add, refEntity, desc -> true);
-                        }
-                    }
-                }
+        return new int[]{skippedNoDescription, skippedNoFile};
+    }
 
-                for (var element : elements) {
-                    String formatted = formatExportedElement(element, toolId, basePath, filesSet);
-                    if (formatted != null && !formatted.isEmpty()) {
-                        if (requiredRank > 0) {
-                            String severity = extractSeverityFromElement(element);
-                            int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
-                            if (rank < requiredRank) continue;
-                        }
-                        allProblems.add(formatted);
-                    } else if (formatted == null) {
-                        skippedNoDescription++;
-                    } else {
-                        skippedNoFile++;
-                    }
-                }
-            } catch (Exception e) {
-                LOG.warn("Failed to export results for tool '" + toolId + "': " + e.getMessage());
+    private int[] collectFromProblemElements(
+        Object problemElements,
+        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        int skippedNoDescription = 0;
+        int skippedNoFile = 0;
+        @SuppressWarnings("unchecked")
+        var elements = (com.intellij.util.containers.MultiMap<com.intellij.codeInspection.reference.RefEntity,
+            com.intellij.codeInspection.CommonProblemDescriptor>) problemElements;
+        for (var refEntity : elements.keySet()) {
+            var descriptors = elements.get(refEntity);
+            if (descriptors == null) continue;
+            for (var descriptor : descriptors) {
+                int result = processInspectionDescriptor(descriptor, refEntity, toolId, inspCtx, allProblems);
+                if (result == 1) skippedNoDescription++;
+                else if (result == 2) skippedNoFile++;
             }
         }
+        return new int[]{skippedNoDescription, skippedNoFile};
+    }
 
+    private int[] collectFromFlatDescriptors(
+        java.util.Collection<com.intellij.codeInspection.CommonProblemDescriptor> flatDescriptors,
+        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        int skippedNoDescription = 0;
+        int skippedNoFile = 0;
+        for (var descriptor : flatDescriptors) {
+            int result = processInspectionDescriptor(descriptor, null, toolId, inspCtx, allProblems);
+            if (result == 1) skippedNoDescription++;
+            else if (result == 2) skippedNoFile++;
+        }
+        return new int[]{skippedNoDescription, skippedNoFile};
+    }
+
+    private int[] collectFromExportedResults(
+        com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
+        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        int skippedNoDescription = 0;
+        int skippedNoFile = 0;
+        var hasProblems = presentation.hasReportedProblems();
+        if (hasProblems != com.intellij.util.ThreeState.YES) {
+            return new int[]{0, 0};
+        }
+        try {
+            presentation.updateContent();
+            var elements = new ArrayList<org.jdom.Element>();
+            presentation.exportResults(elements::add, entity -> true, desc -> true);
+
+            // If bulk export produced nothing, try per-entity export via getContent()
+            if (elements.isEmpty()) {
+                var content = presentation.getContent();
+                for (var entry : content.entrySet()) {
+                    for (var refEntity : entry.getValue()) {
+                        presentation.exportResults(elements::add, refEntity, desc -> true);
+                    }
+                }
+            }
+
+            for (var element : elements) {
+                String formatted = formatExportedElement(element, toolId,
+                    inspCtx.basePath, inspCtx.filesSet);
+                if (formatted != null && !formatted.isEmpty()) {
+                    if (inspCtx.requiredRank > 0) {
+                        String severity = extractSeverityFromElement(element);
+                        int rank = inspCtx.severityRank.getOrDefault(severity.toUpperCase(), 0);
+                        if (rank < inspCtx.requiredRank) continue;
+                    }
+                    allProblems.add(formatted);
+                } else if (formatted == null) {
+                    skippedNoDescription++;
+                } else {
+                    skippedNoFile++;
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to export results for tool '" + toolId + "': " + e.getMessage());
+        }
         return new int[]{skippedNoDescription, skippedNoFile};
     }
 
@@ -712,17 +758,17 @@ class CodeQualityTools extends AbstractToolHandler {
     private int processInspectionDescriptor(
         com.intellij.codeInspection.CommonProblemDescriptor descriptor,
         com.intellij.codeInspection.reference.RefEntity refEntity,
-        String toolId, String basePath, Set<String> filesSet,
-        Map<String, Integer> severityRank, int requiredRank, List<String> allProblems) {
-        String formatted = formatInspectionDescriptor(descriptor, refEntity, toolId, basePath, filesSet);
+        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        String formatted = formatInspectionDescriptor(
+            descriptor, refEntity, toolId, inspCtx.basePath, inspCtx.filesSet);
         if (formatted == null) return 1;
         if (formatted.isEmpty()) return 2;
 
         String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
             ? pd.getHighlightType().toString() : SEVERITY_WARNING;
-        if (requiredRank > 0) {
-            int rank = severityRank.getOrDefault(severity.toUpperCase(), 0);
-            if (rank < requiredRank) return 3;
+        if (inspCtx.requiredRank > 0) {
+            int rank = inspCtx.severityRank.getOrDefault(severity.toUpperCase(), 0);
+            if (rank < inspCtx.requiredRank) return 3;
         }
 
         allProblems.add(formatted);
@@ -775,27 +821,30 @@ class CodeQualityTools extends AbstractToolHandler {
         com.intellij.codeInspection.reference.RefEntity refEntity,
         String basePath, Set<String> filesSet) {
         if (refEntity instanceof com.intellij.codeInspection.reference.RefElement refElement) {
-            var psiElement = refElement.getPsiElement();
-            if (psiElement != null) {
-                var containingFile = psiElement.getContainingFile();
-                if (containingFile != null) {
-                    var vf = containingFile.getVirtualFile();
-                    if (vf != null) {
-                        String filePath = basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
-                        filesSet.add(filePath);
-                        return filePath;
-                    }
-                }
+            String path = resolveRefElementFilePath(refElement, basePath);
+            if (!path.isEmpty()) {
+                filesSet.add(path);
+                return path;
             }
         }
         // For module-level problems (RefModuleImpl), use "[module:name]" as file path
         if (refEntity instanceof com.intellij.codeInspection.reference.RefModule refModule) {
-            String moduleName = refModule.getName();
-            String moduleLabel = "[module:" + moduleName + "]";
+            String moduleLabel = "[module:" + refModule.getName() + "]";
             filesSet.add(moduleLabel);
             return moduleLabel;
         }
         return "";
+    }
+
+    private String resolveRefElementFilePath(
+        com.intellij.codeInspection.reference.RefElement refElement, String basePath) {
+        var psiElement = refElement.getPsiElement();
+        if (psiElement == null) return "";
+        var containingFile = psiElement.getContainingFile();
+        if (containingFile == null) return "";
+        var vf = containingFile.getVirtualFile();
+        if (vf == null) return "";
+        return basePath != null ? relativize(basePath, vf.getPath()) : vf.getName();
     }
 
     private String resolveDescriptorFilePath(com.intellij.codeInspection.ProblemDescriptor pd,
