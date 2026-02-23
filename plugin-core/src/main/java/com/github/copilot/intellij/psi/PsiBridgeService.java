@@ -20,13 +20,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Lightweight HTTP bridge exposing IntelliJ PSI/AST analysis to the MCP server.
@@ -234,36 +231,24 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Wait for the next DaemonCodeAnalyzer pass to complete.
-     * Subscribes to DAEMON_EVENT_TOPIC and waits for daemonFinished, with a 3s timeout.
-     * This replaces an arbitrary Thread.sleep with event-driven waiting.
+     * Wait for the DaemonCodeAnalyzer to finish its current pass.
+     * Polls isRunning() with short intervals instead of subscribing to MessageBus
+     * (MessageBus/MessageBusConnection have IDE resolution issues with Kotlin-compiled platform APIs).
      */
     private void waitForDaemonPass() throws InterruptedException {
-        CompletableFuture<Void> done = new CompletableFuture<>();
-        var disposable = com.intellij.openapi.util.Disposer.newDisposable("auto-highlights-wait");
-
-        var connection = project.getMessageBus().connect();
-        com.intellij.openapi.util.Disposer.register(disposable, connection);
-        connection.subscribe(com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
-            new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
-                @Override
-                public void daemonFinished(@NotNull Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
-                    done.complete(null);
-                }
-
-                @Override
-                public void daemonCancelEventOccurred(@NotNull String reason) {
-                    done.complete(null);
-                }
-            });
-
-        try {
-            done.get(3, TimeUnit.SECONDS);
+        var analyzer = com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project);
+        long deadline = System.currentTimeMillis() + 3000;
+        // Wait for daemon to start (it may not have begun re-analyzing yet)
+        Thread.sleep(200);
+        // Poll until daemon finishes or timeout
+        while (analyzer.isRunning() && System.currentTimeMillis() < deadline) {
+            //noinspection BusyWait
+            Thread.sleep(100);
+        }
+        if (System.currentTimeMillis() < deadline) {
             LOG.info("Auto-highlights: daemon pass completed, collecting highlights");
-        } catch (java.util.concurrent.TimeoutException | java.util.concurrent.ExecutionException e) {
+        } else {
             LOG.info("Auto-highlights: daemon pass wait timed out (3s), using cached highlights");
-        } finally {
-            com.intellij.openapi.util.Disposer.dispose(disposable);
         }
     }
 
