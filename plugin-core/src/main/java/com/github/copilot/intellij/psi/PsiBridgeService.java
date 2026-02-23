@@ -242,19 +242,20 @@ public final class PsiBridgeService implements Disposable {
         CompletableFuture<Void> done = new CompletableFuture<>();
         var disposable = com.intellij.openapi.util.Disposer.newDisposable("auto-highlights-wait");
 
-        project.getMessageBus().connect(disposable)
-            .subscribe(com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
-                new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
-                    @Override
-                    public void daemonFinished(@NotNull Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
-                        done.complete(null);
-                    }
+        var connection = project.getMessageBus().connect();
+        com.intellij.openapi.util.Disposer.register(disposable, connection);
+        connection.subscribe(com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
+            new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
+                @Override
+                public void daemonFinished(@NotNull Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
+                    done.complete(null);
+                }
 
-                    @Override
-                    public void daemonCancelEventOccurred(@NotNull String reason) {
-                        done.complete(null);
-                    }
-                });
+                @Override
+                public void daemonCancelEventOccurred(@NotNull String reason) {
+                    done.complete(null);
+                }
+            });
 
         try {
             done.get(3, TimeUnit.SECONDS);
