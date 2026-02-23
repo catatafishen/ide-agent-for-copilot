@@ -79,8 +79,8 @@ public final class PsiBridgeService implements Disposable {
         toolRegistry.put("edit_run_configuration", runConfigService::editRunConfiguration);
     }
 
+    @SuppressWarnings("java:S1905") // Cast needed: IDE doesn't resolve Project→ComponentManager supertype
     public static PsiBridgeService getInstance(@NotNull Project project) {
-        // ComponentManager cast works around IDE indexing issue (Project supertype chain not resolved)
         return ((ComponentManager) project).getService(PsiBridgeService.class);
     }
 
