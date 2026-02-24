@@ -411,21 +411,23 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         appendHtml("<div class='status-row info'>ℹ ${escapeHtml(message)}</div>")
     }
 
-
     /** Show a bouncing-dots indicator at the bottom of the chat while the agent is processing. */
     fun showProcessingIndicator() {
-        executeJs("""(function(){
+        executeJs(
+            """(function(){
             if(document.getElementById('processing-ind'))return;
             var d=document.createElement('div');d.id='processing-ind';d.className='processing-indicator';
             d.innerHTML='<div class="processing-dot"></div><div class="processing-dot"></div><div class="processing-dot"></div>';
             document.getElementById('container').appendChild(d);scrollIfNeeded();
-        })()""")
+        })()"""
+        )
     }
 
     /** Remove the bouncing-dots processing indicator. */
     fun hideProcessingIndicator() {
         executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
     }
+
     fun hasContent(): Boolean = entries.isNotEmpty()
 
     /** Adds a visual separator marking previous session content as stale */
@@ -588,12 +590,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     sb.appendLine("Agent: $truncated")
                 }
             }
+
             is EntryData.ToolCall -> {
                 val baseName = e.title.substringAfterLast("-")
                 val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
                 val name = info?.displayName ?: e.title
                 sb.appendLine("Tool: $name")
             }
+
             is EntryData.ContextFiles -> sb.appendLine("Context: ${e.files.joinToString(", ") { it.first }}")
             is EntryData.SessionSeparator -> sb.appendLine("--- ${e.timestamp} ---")
             is EntryData.Thinking -> {}
@@ -602,7 +606,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val result = sb.toString()
         if (result.length <= maxChars) return result
         return "[Previous conversation summary - trimmed to recent]\n..." +
-            result.substring(result.length - maxChars + 60)
             result.substring(result.length - maxChars + 60)
     }
 
