@@ -40,7 +40,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private val THINK_COLOR = JBColor(Color(0x99, 0x99, 0x99), Color(0x88, 0x88, 0x88))
 
         private const val ICON_ERROR = "\u274C"
-        private const val JS_REMOVE_PROCESSING = "(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()"
+        private const val JS_REMOVE_PROCESSING =
+            "(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()"
         private const val HTML_TABLE_CLOSE = "</table>"
 
         private val FILE_PATH_REGEX = Regex(
@@ -148,7 +149,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** Format current time as HH:mm for timestamps */
         private fun timestamp(): String {
             val cal = Calendar.getInstance()
-            return "%02d:%02d".format(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+            return "%02d:%02d".format(cal[Calendar.HOUR_OF_DAY], cal[Calendar.MINUTE])
         }
 
         private fun rgb(c: Color) = "rgb(${c.red},${c.green},${c.blue})"
@@ -411,6 +412,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             )
         }
     }
+
     fun addErrorEntry(message: String) {
         finalizeCurrentText()
         entries.add(EntryData.Status(ICON_ERROR, message))
@@ -630,6 +632,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val msg = obj["message"]?.asString ?: ""
                 if (icon == ICON_ERROR) addErrorEntry(msg) else addInfoEntry(msg)
             }
+
             "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
         }
     }
@@ -777,7 +780,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 if (e.arguments != null) sb.appendLine("  params: ${e.arguments}")
             }
 
-            is EntryData.ContextFiles -> sb.appendLine("\uD83D\uDCCE ${e.files.size} context file(s): ${e.files.joinToString(", ") { it.first }}")
+            is EntryData.ContextFiles -> sb.appendLine(
+                "\uD83D\uDCCE ${e.files.size} context file(s): ${
+                    e.files.joinToString(
+                        ", "
+                    ) { it.first }
+                }"
+            )
+
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
             is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${e.timestamp} ---")
         }
@@ -811,8 +821,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             is EntryData.ContextFiles -> sb.appendLine("Context: ${e.files.joinToString(", ") { it.first }}")
             is EntryData.SessionSeparator -> sb.appendLine("--- ${e.timestamp} ---")
-            is EntryData.Thinking -> {}
-            is EntryData.Status -> {}
+            is EntryData.Thinking -> { /* Thinking entries are rendered in HTML only */
+            }
+
+            is EntryData.Status -> { /* Status entries are rendered in HTML only */
+            }
         }
         val result = sb.toString()
         if (result.length <= maxChars) return result
@@ -1495,7 +1508,8 @@ document.addEventListener('mouseover',function(e){
 
     private fun findProjectFileByName(name: String): String? = try {
         ReadAction.compute<String?, Throwable> {
-            val files = FilenameIndex.getVirtualFilesByName(name, GlobalSearchScope.projectScope(project))
+            val files: Collection<com.intellij.openapi.vfs.VirtualFile> =
+                FilenameIndex.getVirtualFilesByName(name, GlobalSearchScope.projectScope(project))
             if (files.size == 1) files.first().path else null
         }
     } catch (_: Exception) {

@@ -1575,6 +1575,84 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    private fun handleAddCurrentFile(panel: JBPanel<JBPanel<*>>) {
+        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+        val currentFile = fileEditorManager.selectedFiles.firstOrNull()
+
+        if (currentFile == null) {
+            javax.swing.JOptionPane.showMessageDialog(
+                panel,
+                "No file is currently open in the editor",
+                "No File",
+                javax.swing.JOptionPane.WARNING_MESSAGE
+            )
+            return
+        }
+
+        val path = currentFile.path
+        val lineCount = try {
+            fileEditorManager.selectedTextEditor?.document?.lineCount ?: 0
+        } catch (_: Exception) {
+            0
+        }
+
+        val exists = (0 until contextListModel.size()).any { contextListModel[it].path == path }
+        if (exists) {
+            javax.swing.JOptionPane.showMessageDialog(
+                panel,
+                "File already in context: ${currentFile.name}",
+                "Duplicate File",
+                javax.swing.JOptionPane.INFORMATION_MESSAGE
+            )
+            return
+        }
+
+        contextListModel.addElement(
+            ContextItem(
+                path = path, name = currentFile.name, startLine = 1, endLine = lineCount,
+                fileType = currentFile.fileType, isSelection = false
+            )
+        )
+    }
+
+    private fun handleAddSelection(panel: JBPanel<JBPanel<*>>) {
+        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+        val editor = fileEditorManager.selectedTextEditor
+        val currentFile = fileEditorManager.selectedFiles.firstOrNull()
+
+        if (editor == null || currentFile == null) {
+            javax.swing.JOptionPane.showMessageDialog(
+                panel,
+                "No editor is currently open",
+                "No Editor",
+                javax.swing.JOptionPane.WARNING_MESSAGE
+            )
+            return
+        }
+
+        val selectionModel = editor.selectionModel
+        if (!selectionModel.hasSelection()) {
+            javax.swing.JOptionPane.showMessageDialog(
+                panel,
+                "No text is selected. Select some code first.",
+                "No Selection",
+                javax.swing.JOptionPane.WARNING_MESSAGE
+            )
+            return
+        }
+
+        val document = editor.document
+        val startLine = document.getLineNumber(selectionModel.selectionStart) + 1
+        val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
+
+        contextListModel.addElement(
+            ContextItem(
+                path = currentFile.path, name = "${currentFile.name}:$startLine-$endLine",
+                startLine = startLine, endLine = endLine,
+                fileType = currentFile.fileType, isSelection = true
+            )
+        )
+    }
 
     private fun createTimelineTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -2063,7 +2141,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         updateSessionInfo()
         // Clear saved conversation
         try {
-            conversationFile().delete()
+            val deleted = conversationFile().delete()
+            if (!deleted) {
+                LOG.debug("Conversation file could not be deleted (may not exist)")
+            }
         } catch (_: Exception) { /* Best-effort cleanup — ignore deletion failures */
         }
         SwingUtilities.invokeLater {
