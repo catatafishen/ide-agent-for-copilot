@@ -165,6 +165,7 @@ tasks {
     val generateBuildInfo by registering {
         val outputDir = layout.buildDirectory.dir("generated/buildinfo")
         outputs.dir(outputDir)
+        outputs.upToDateWhen { false }
         doLast {
             val propsFile = outputDir.get().file("build-info.properties").asFile
             propsFile.parentFile.mkdirs()
