@@ -175,6 +175,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var browserReady = false
     private val pendingJs = mutableListOf<String>()
     private var cursorBridgeJs = ""
+    private var loadMoreBridgeJs = ""
+    private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
+    private var deferredIdCounter = 0
 
     // Swing fallback
     private val fallbackArea: JBTextArea?
@@ -201,6 +204,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
             Disposer.register(this, cursorQuery)
             cursorBridgeJs = cursorQuery.inject("c")
+
+            // Lazy-load bridge: JS calls Kotlin to load more deferred entries
+            val loadMoreQueryBridge = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            loadMoreQueryBridge.addHandler { loadMoreEntries(); null }
+            Disposer.register(this, loadMoreQueryBridge)
+            loadMoreBridgeJs = loadMoreQueryBridge.inject("'load'")
 
             add(browser.component, BorderLayout.CENTER)
 
@@ -521,43 +530,232 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun restoreEntries(json: String) {
         try {
             val arr = com.google.gson.JsonParser.parseString(json).asJsonArray
-            for (elem in arr) {
-                val obj = elem.asJsonObject
-                when (obj["type"]?.asString) {
-                    "prompt" -> addPromptEntry(obj["text"]?.asString ?: "")
-                    "text" -> {
-                        appendText(obj["raw"]?.asString ?: ""); finalizeCurrentText()
-                    }
-
-                    "thinking" -> {
-                        appendThinkingText(obj["raw"]?.asString ?: ""); collapseThinking()
-                    }
-
-                    "tool" -> addToolCallEntry(
-                        "restored-${entryCounter}", obj["title"]?.asString ?: "",
-                        obj["args"]?.asString?.ifEmpty { null }
-                    )
-
-                    "context" -> {
-                        val files = obj["files"]?.asJsonArray?.map {
-                            val f = it.asJsonObject; Pair(f["name"]?.asString ?: "", f["path"]?.asString ?: "")
-                        } ?: emptyList()
-                        addContextFilesEntry(files)
-                    }
-
-                    "status" -> {
-                        val icon = obj["icon"]?.asString ?: ""
-                        val msg = obj["message"]?.asString ?: ""
-                        if (icon == "✖") addErrorEntry(msg) else addInfoEntry(msg)
-                    }
-
-                    "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
-                }
+            val initialVisible = 10
+            // Find split point at a prompt boundary to keep complete turns visible
+            var splitAt = maxOf(0, arr.size() - initialVisible)
+            while (splitAt > 0 && arr[splitAt].asJsonObject["type"]?.asString != "prompt") {
+                splitAt--
             }
-            // Collapse all restored entries into chips
+            if (splitAt <= 0) {
+                // Small conversation or no good split point — render everything
+                restoreAndRenderEntries(arr)
+                return
+            }
+            // Phase 1: Add older entries to data model only (no rendering)
+            for (i in 0 until splitAt) {
+                deferredRestoreJson.add(arr[i])
+                addEntryDataOnly(arr[i].asJsonObject)
+            }
+            // Phase 2: Show "load more" banner
+            val bannerHtml = "<div id='load-more-sentinel' class='load-more-banner'>" +
+                "<span class='load-more-text'>\u25B2 Load earlier messages (${deferredRestoreJson.size} more)</span></div>"
+            appendHtml(bannerHtml)
+            // Phase 3: Render recent entries using existing methods
+            for (i in splitAt until arr.size()) {
+                renderRestoredEntry(arr[i].asJsonObject)
+            }
             executeJs("finalizeTurn({})")
+            // Phase 4: Set up IntersectionObserver for auto-loading
+            executeJs(
+                """(function(){
+                var sentinel=document.getElementById('load-more-sentinel');
+                if(!sentinel)return;
+                var obs=new IntersectionObserver(function(entries){
+                    if(entries[0].isIntersecting&&!window._loadingMore){loadMore();}
+                },{threshold:0.1});
+                obs.observe(sentinel);
+            })()"""
+            )
         } catch (_: Exception) { /* best-effort restore */
         }
+    }
+
+    private fun addEntryDataOnly(obj: com.google.gson.JsonObject) {
+        when (obj["type"]?.asString) {
+            "prompt" -> entries.add(EntryData.Prompt(obj["text"]?.asString ?: ""))
+            "text" -> entries.add(EntryData.Text(StringBuilder(obj["raw"]?.asString ?: "")))
+            "thinking" -> entries.add(EntryData.Thinking(StringBuilder(obj["raw"]?.asString ?: "")))
+            "tool" -> entries.add(
+                EntryData.ToolCall(
+                    obj["title"]?.asString ?: "",
+                    obj["args"]?.asString?.ifEmpty { null })
+            )
+
+            "context" -> {
+                val files = obj["files"]?.asJsonArray?.map {
+                    val f = it.asJsonObject; Pair(f["name"]?.asString ?: "", f["path"]?.asString ?: "")
+                } ?: emptyList()
+                entries.add(EntryData.ContextFiles(files))
+            }
+
+            "status" -> entries.add(
+                EntryData.Status(
+                    obj["icon"]?.asString ?: "",
+                    obj["message"]?.asString ?: ""
+                )
+            )
+
+            "separator" -> entries.add(EntryData.SessionSeparator(obj["timestamp"]?.asString ?: ""))
+        }
+    }
+
+    private fun renderRestoredEntry(obj: com.google.gson.JsonObject) {
+        when (obj["type"]?.asString) {
+            "prompt" -> addPromptEntry(obj["text"]?.asString ?: "")
+            "text" -> {
+                appendText(obj["raw"]?.asString ?: ""); finalizeCurrentText()
+            }
+
+            "thinking" -> {
+                appendThinkingText(obj["raw"]?.asString ?: ""); collapseThinking()
+            }
+
+            "tool" -> addToolCallEntry(
+                "restored-${entryCounter}", obj["title"]?.asString ?: "",
+                obj["args"]?.asString?.ifEmpty { null }
+            )
+
+            "context" -> {
+                val files = obj["files"]?.asJsonArray?.map {
+                    val f = it.asJsonObject; Pair(f["name"]?.asString ?: "", f["path"]?.asString ?: "")
+                } ?: emptyList()
+                addContextFilesEntry(files)
+            }
+
+            "status" -> {
+                val icon = obj["icon"]?.asString ?: ""
+                val msg = obj["message"]?.asString ?: ""
+                if (icon == "?") addErrorEntry(msg) else addInfoEntry(msg)
+            }
+
+            "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
+        }
+    }
+
+    private fun restoreAndRenderEntries(arr: com.google.gson.JsonArray) {
+        for (elem in arr) {
+            renderRestoredEntry(elem.asJsonObject)
+        }
+        executeJs("finalizeTurn({})")
+    }
+
+    private fun loadMoreEntries() {
+        if (deferredRestoreJson.isEmpty()) return
+        val batchSize = 10
+        var start = maxOf(0, deferredRestoreJson.size - batchSize)
+        // Align to a prompt boundary for complete turns
+        while (start > 0 && deferredRestoreJson[start].asJsonObject["type"]?.asString != "prompt") {
+            start--
+        }
+        val batch = deferredRestoreJson.subList(start, deferredRestoreJson.size).toList()
+        deferredRestoreJson.subList(start, deferredRestoreJson.size).clear()
+        val remaining = deferredRestoreJson.size
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val html = renderBatchHtml(batch)
+            val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
+            SwingUtilities.invokeLater {
+                executeJs(
+                    """(function(){
+                    var c=document.getElementById('container');
+                    var sentinel=document.getElementById('load-more-sentinel');
+                    var scrollH=document.body.scrollHeight;var scrollY=window.scrollY;
+                    if(sentinel){sentinel.insertAdjacentHTML('afterend',b64('$encoded'));}
+                    else{c.insertAdjacentHTML('afterbegin',b64('$encoded'));}
+                    window.scrollTo(0,scrollY+(document.body.scrollHeight-scrollH));
+                    finalizeTurn({});
+                    window._loadingMore=false;
+                    ${
+                        if (remaining == 0) "if(sentinel)sentinel.remove();"
+                        else "var t=sentinel?sentinel.querySelector('.load-more-text'):null;" +
+                            "if(t)t.textContent='\\u25B2 Load earlier messages ($remaining more)';"
+                    }
+                })()"""
+                )
+            }
+        }
+    }
+
+    private fun renderBatchHtml(batch: List<com.google.gson.JsonElement>): String {
+        val sb = StringBuilder()
+        val doneColor = rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))
+        for (elem in batch) {
+            val obj = elem.asJsonObject
+            when (obj["type"]?.asString) {
+                "prompt" -> {
+                    val text = obj["text"]?.asString ?: ""
+                    sb.append("<div class='prompt-row'><div class='meta'><span class='ts'></span></div>")
+                    sb.append("<div class='prompt-bubble' onclick='toggleMeta(this)'>${escapeHtml(text)}</div></div>")
+                }
+
+                "text" -> {
+                    val raw = obj["raw"]?.asString ?: ""
+                    val html = markdownToHtml(raw)
+                    deferredIdCounter++
+                    sb.append("<div class='agent-row'><div class='meta'><span class='ts'></span></div>")
+                    sb.append("<div class='agent-bubble' onclick='toggleMeta(this)'>$html</div></div>")
+                }
+
+                "thinking" -> {
+                    deferredIdCounter++
+                    val raw = obj["raw"]?.asString ?: ""
+                    val id = "def-think-$deferredIdCounter"
+                    sb.append("<div class='collapse-section thinking-section collapsed' id='$id'>")
+                    sb.append(
+                        "<div class='collapse-header' onclick='toggleThinking(\"$id\")'>" +
+                            "<span class='collapse-icon'>\uD83D\uDCAD</span>" +
+                            "<span class='collapse-label'>Thought process</span>" +
+                            "<span class='caret'>\u25B8</span></div>"
+                    )
+                    sb.append("<div class='collapse-content'>${escapeHtml(raw)}</div></div>")
+                }
+
+                "tool" -> {
+                    deferredIdCounter++
+                    val title = obj["title"]?.asString ?: ""
+                    val args = obj["args"]?.asString?.ifEmpty { null }
+                    val baseName = title.substringAfterLast("-")
+                    val info = TOOL_DISPLAY_INFO[title] ?: TOOL_DISPLAY_INFO[baseName]
+                    val displayName =
+                        info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
+                    val id = "def-tool-$deferredIdCounter"
+                    val contentParts = StringBuilder()
+                    if (info?.description != null) {
+                        contentParts.append("<div class='tool-desc'>${escapeHtml(info.description)}</div>")
+                    }
+                    if (!args.isNullOrBlank()) {
+                        contentParts.append("<div class='tool-params-label'>Parameters:</div>")
+                        contentParts.append("<pre class='tool-params'><code>${escapeHtml(args)}</code></pre>")
+                    }
+                    contentParts.append("\u2705 Completed")
+                    sb.append("<div class='collapse-section tool-section collapsed' id='$id'>")
+                    sb.append(
+                        "<div class='collapse-header' onclick='toggleTool(\"$id\")'>" +
+                            "<span class='collapse-icon' style='color:$doneColor'>\u2705</span>" +
+                            "<span class='collapse-label'>${escapeHtml(displayName)}</span>" +
+                            "<span class='caret'>\u25B8</span></div>"
+                    )
+                    sb.append("<div class='collapse-content'>$contentParts</div></div>")
+                }
+
+                "status" -> {
+                    val icon = obj["icon"]?.asString ?: ""
+                    val msg = obj["message"]?.asString ?: ""
+                    if (icon == "\u274C") {
+                        sb.append("<div class='status-row error'>\u274C ${escapeHtml(msg)}</div>")
+                    } else {
+                        sb.append("<div class='status-row info'>\u2139\uFE0F ${escapeHtml(msg)}</div>")
+                    }
+                }
+
+                "separator" -> {
+                    val ts = obj["timestamp"]?.asString ?: ""
+                    sb.append("<div class='session-sep'><span class='session-sep-line'></span>")
+                    sb.append("<span class='session-sep-label'>New session \u00B7 ${escapeHtml(ts)}</span>")
+                    sb.append("<span class='session-sep-line'></span></div>")
+                }
+            }
+        }
+        return sb.toString()
     }
 
     fun getConversationText(): String {
@@ -752,7 +950,7 @@ ul,ol{margin:4px 0;padding-left:22px}
     override fun dispose() { /* children auto-disposed via Disposer */
     }
 
-    // --- Internal ---
+// --- Internal ---
 
     private fun finalizeCurrentText() {
         val data = currentTextData ?: return
@@ -800,7 +998,7 @@ ul,ol{margin:4px 0;padding-left:22px}
         }
     }
 
-    // --- Initial HTML page ---
+// --- Initial HTML page ---
 
     private fun buildInitialPage(): String {
         val font = UIUtil.getLabelFont()
@@ -948,6 +1146,11 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
     background:${rgb(AGENT_COLOR)};animation:indeterminate 1.5s ease-in-out infinite}
 @keyframes indeterminate{0%{left:-30%;width:30%}50%{left:50%;width:40%}100%{left:100%;width:30%}}
 
+/* --- Load more banner (lazy loading) --- */
+.load-more-banner{text-align:center;padding:10px;cursor:pointer;opacity:0.6;transition:opacity .2s}
+.load-more-banner:hover{opacity:1}
+.load-more-text{font-size:0.82em;color:${rgb(THINK_COLOR)}}
+
 /* --- Markdown content --- */
 h2,h3,h4,h5{margin:8px 0 4px 0}
 p{margin:3px 0}
@@ -973,6 +1176,11 @@ window.addEventListener('scroll',function(){
 });
 function scrollIfNeeded(){if(autoScroll)window.scrollTo(0,document.body.scrollHeight)}
 function b64(s){var r=atob(s),b=new Uint8Array(r.length);for(var i=0;i<r.length;i++)b[i]=r.charCodeAt(i);return new TextDecoder().decode(b)}
+var _loadingMore=false;
+function loadMore(){if(_loadingMore)return;_loadingMore=true;
+  var s=document.getElementById('load-more-sentinel');
+  if(s){var t=s.querySelector('.load-more-text');if(t)t.textContent='Loading...';}
+  $loadMoreBridgeJs}
 function toggleTool(id){
   var el=document.getElementById(id);if(!el)return;
   if(el.dataset.chipOwned&&!el.classList.contains('collapsed')){
@@ -1140,7 +1348,7 @@ document.addEventListener('mouseover',function(e){
 </script></body></html>"""
     }
 
-    // --- Markdown to HTML ---
+// --- Markdown to HTML ---
 
     private fun markdownToHtml(text: String): String {
         val lines = text.lines()
@@ -1260,7 +1468,7 @@ document.addEventListener('mouseover',function(e){
         return html
     }
 
-    // --- File resolution ---
+// --- File resolution ---
 
     private fun resolveFileReference(ref: String): Pair<String, Int?>? {
         val colonIdx = ref.indexOf(':')
