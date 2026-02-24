@@ -1,6 +1,7 @@
 # Linux Development Guide - Sandbox Mode
 
 ## Your Configuration
+
 - **IntelliJ**: 2025.2.5 (Toolbox installation)
 - **Java**: 21.0.2 (GraalVM via SDKMAN)
 - **Copilot CLI**: 0.0.409
@@ -8,16 +9,20 @@
 ## Sandbox Development Workflow (RECOMMENDED)
 
 The sandbox mode is **much faster** than manual installation because:
+
 - ✅ **Auto-reload enabled** - plugin reloads without IDE restart on Linux
 - ✅ Isolated environment - won't affect your main IDE
 - ✅ Separate config/data - no conflicts with existing projects
 - ✅ First launch ~90s, subsequent restarts ~20s
 
 ### Initial Launch
+
 ```bash
 ./gradlew :plugin-core:runIde
 ```
+
 This will:
+
 1. Download dependencies (first time only)
 2. Build the plugin
 3. Launch a sandboxed IntelliJ with plugin pre-installed
@@ -26,6 +31,7 @@ This will:
 ### Development Iteration (FAST!)
 
 **Option A - Hot Reload (Keep Sandbox Running):**
+
 ```bash
 # 1. Make code changes in your editor
 # 2. In a separate terminal, run:
@@ -36,6 +42,7 @@ This will:
 ```
 
 **Option B - Full Rebuild:**
+
 ```bash
 # Close sandbox IDE, then:
 ./gradlew :plugin-core:buildPlugin
@@ -43,6 +50,7 @@ This will:
 ```
 
 ### Quick Test Cycle
+
 ```bash
 # Run tests before launching sandbox:
 ./gradlew :mcp-server:test          # Fast - MCP server only (~5s)
@@ -58,12 +66,13 @@ Only use this if you need to test in your main IDE:
 # 1. Build
 ./gradlew :plugin-core:buildPlugin
 
-# 2. Find your IDE config directory (adjust version):
-PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.2/plugins
+# 2. Find your IDE plugin directory (adjust version)
+# Toolbox-managed: plugins are direct subfolders (no /plugins parent)
+PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3
 
 # 3. Close your main IntelliJ, then install:
 rm -rf "$PLUGIN_DIR/plugin-core"
-unzip -o plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip -d "$PLUGIN_DIR"
+unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 
 # 4. Restart IntelliJ
 ```
@@ -71,16 +80,20 @@ unzip -o plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip -d "$PLU
 ## Debugging
 
 ### Enable Debug Logging
+
 In the sandbox IDE:
+
 1. **Help → Diagnostic Tools → Debug Log Settings**
 2. Add: `#com.github.copilot.intellij`
 
 ### Log Locations
+
 - **Sandbox IDE**: `plugin-core/build/idea-sandbox/config/log/idea.log`
 - **Main IDE**: `~/.local/share/JetBrains/IntelliJIdea2025.2/log/idea.log`
 - **PSI Bridge**: `~/.copilot/psi-bridge.json`
 
 ### Tail Logs in Real-Time
+
 ```bash
 tail -f plugin-core/build/idea-sandbox/config/log/idea.log | grep -i copilot
 ```
@@ -88,23 +101,27 @@ tail -f plugin-core/build/idea-sandbox/config/log/idea.log | grep -i copilot
 ## Common Tasks
 
 ### Clean Build
+
 ```bash
 ./gradlew clean
 ./gradlew :plugin-core:buildPlugin
 ```
 
 ### Test Specific Class
+
 ```bash
 ./gradlew :mcp-server:test --tests McpServerTest
 ```
 
 ### Check Copilot CLI
+
 ```bash
 copilot --version
 copilot auth status
 ```
 
 ### Reset Sandbox
+
 ```bash
 rm -rf plugin-core/build/idea-sandbox/
 ./gradlew :plugin-core:runIde
@@ -137,6 +154,7 @@ mcp-server/
 ## Next Steps
 
 To verify everything works:
+
 1. Launch sandbox: `./gradlew :plugin-core:runIde` (wait ~90s first launch)
 2. In sandbox IDE: **View → Tool Windows → Agentic Copilot**
 3. Models dropdown should load

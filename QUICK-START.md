@@ -21,12 +21,14 @@ org.gradle.java.home=/path/to/jdk-21
 ```
 
 **Linux example:**
+
 ```properties
 intellijPlatform.localPath=/opt/idea-IU-253.29346.240
 org.gradle.java.home=/usr/lib/jvm/java-21-openjdk
 ```
 
 **Windows example:**
+
 ```properties
 intellijPlatform.localPath=C:\\Users\\YOU\\AppData\\Local\\JetBrains\\IntelliJ IDEA 2023.3.3
 org.gradle.java.home=C:\\Users\\YOU\\.jdks\\temurin-21.0.6
@@ -43,14 +45,16 @@ Output: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
 ### 3. Install
 
 **Option A — Deploy to existing IDE:**
+
 ```bash
-# Linux
-PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3/plugins
+# Linux (Toolbox-managed: no /plugins parent)
+PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3
 rm -rf "$PLUGIN_DIR/plugin-core"
-unzip -o plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip -d "$PLUGIN_DIR"
+unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 ```
 
 **Option B — Sandbox IDE (recommended for development):**
+
 ```bash
 ./gradlew :plugin-core:runIde
 # Opens a sandboxed IntelliJ with plugin pre-installed (~90s first launch)
@@ -75,7 +79,8 @@ unzip -o plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip -d "$PLU
 ./gradlew :mcp-server:test             # MCP server only (fast)
 ```
 
-**Linux auto-reload:** With sandbox IDE running, `./gradlew :plugin-core:prepareSandbox` hot-reloads the plugin without restarting.
+**Linux auto-reload:** With sandbox IDE running, `./gradlew :plugin-core:prepareSandbox` hot-reloads the plugin without
+restarting.
 
 ## What's Included
 

@@ -27,18 +27,19 @@ Output: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
 
 The plugin ZIP must be extracted into IntelliJ's plugin directory.
 
+> **Note:** For Toolbox-managed IntelliJ on Linux, plugins are direct subfolders under
+> `~/.local/share/JetBrains/IntelliJIdea<version>/` — there is **no** `plugins/` parent directory.
+
 **Linux:**
 
 ```bash
-# Find your IntelliJ config directory (adjust version as needed)
-PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3/plugins
+# Find your IntelliJ plugin directory (adjust version as needed)
+# Toolbox-managed: plugins are direct subfolders (no /plugins parent)
+PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3
 
-# Stop IntelliJ if running
-pkill -f idea 2>/dev/null; sleep 3
-
-# Install
+# Stop IntelliJ if running, then install
 rm -rf "$PLUGIN_DIR/plugin-core"
-unzip -o plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip -d "$PLUGIN_DIR"
+unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 
 # Launch IntelliJ
 idea &  # or full path to idea.sh

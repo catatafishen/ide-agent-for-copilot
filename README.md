@@ -111,11 +111,22 @@ $env:JAVA_HOME = "path\to\jdk-21"
 
 ### Installing
 
+**Windows (PowerShell):**
+
 ```powershell
 # Close IntelliJ first, then:
 Remove-Item "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins\plugin-core" -Recurse -Force
 Expand-Archive "plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip" `
     "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins" -Force
+```
+
+**Linux:**
+
+```bash
+# Toolbox-managed: plugins are direct subfolders (no /plugins parent)
+PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3
+rm -rf "$PLUGIN_DIR/plugin-core"
+unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 ```
 
 ### Running Tests
