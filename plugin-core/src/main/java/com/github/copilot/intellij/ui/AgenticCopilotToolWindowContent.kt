@@ -25,7 +25,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // UI String Constants
     private companion object {
-        private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(AgenticCopilotToolWindowContent::class.java)
+        private val LOG =
+            com.intellij.openapi.diagnostic.Logger.getInstance(AgenticCopilotToolWindowContent::class.java)
         const val MSG_LOADING = "Loading..."
         const val MSG_THINKING = "Thinking..."
         const val MSG_UNKNOWN_ERROR = "Unknown error"
@@ -70,6 +71,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Per-turn premium request tracking
     private var turnToolCallCount = 0
     private var turnModelId = ""
+
+    // Animation state for usage indicator
+    private var previousUsedCount = -1
+    private var usageAnimationTimer: javax.swing.Timer? = null
 
     init {
         setupUI()
@@ -265,6 +270,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val overagePermitted = premium["overage_permitted"]?.asBoolean ?: false
         val resetDate = obj["quota_reset_date"]?.asString ?: ""
         val used = entitlement - remaining
+        val shouldAnimate = previousUsedCount >= 0 && used > previousUsedCount
+        previousUsedCount = used
 
         SwingUtilities.invokeLater {
             if (unlimited) {
@@ -276,6 +283,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 usageLabel.toolTipText = "Resets $resetDate"
                 updateCostLabel(remaining, overagePermitted)
             }
+            if (shouldAnimate) animateUsageChange()
         }
     }
 
@@ -291,6 +299,35 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         } else {
             costLabel.text = ""
         }
+    }
+
+    /** Briefly pulses [usageLabel] foreground from a green accent back to normal. */
+    private fun animateUsageChange() {
+        usageAnimationTimer?.stop()
+        val normalColor = usageLabel.foreground
+        val highlightColor = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
+        val totalSteps = 20
+        var step = 0
+
+        usageLabel.foreground = highlightColor
+        usageAnimationTimer = javax.swing.Timer(50) {
+            step++
+            if (step >= totalSteps) {
+                usageLabel.foreground = normalColor
+                usageAnimationTimer?.stop()
+            } else {
+                val ratio = step.toFloat() / totalSteps
+                usageLabel.foreground = interpolateColor(highlightColor, normalColor, ratio)
+            }
+        }
+        usageAnimationTimer!!.start()
+    }
+
+    private fun interpolateColor(from: Color, to: Color, ratio: Float): Color {
+        val r = (from.red + (to.red - from.red) * ratio).toInt()
+        val g = (from.green + (to.green - from.green) * ratio).toInt()
+        val b = (from.blue + (to.blue - from.blue) * ratio).toInt()
+        return Color(r, g, b)
     }
 
     /**
@@ -639,7 +676,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         "Attach File", "Attach current file to prompt", com.intellij.icons.AllIcons.Actions.AddFile
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) { handleAddCurrentFile(mainPanel) }
+        override fun actionPerformed(e: AnActionEvent) {
+            handleAddCurrentFile(mainPanel)
+        }
     }
 
     // Attach current selection to the next prompt
@@ -647,7 +686,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         "Attach Selection", "Attach selected text to prompt", com.intellij.icons.AllIcons.Actions.AddMulticaret
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) { handleAddSelection(mainPanel) }
+        override fun actionPerformed(e: AnActionEvent) {
+            handleAddSelection(mainPanel)
+        }
     }
 
     // Copy conversation to clipboard (popup with Text / HTML options)
@@ -665,6 +706,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
                     }
                 }
+
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
             group.add(object : AnAction("Copy as HTML") {
@@ -674,6 +716,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(html), null)
                     }
                 }
+
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
             val popup = ActionManager.getInstance()
@@ -697,6 +740,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         CopilotSettings.setSelectedModel(model.id)
                         LOG.info("Model selected: ${model.id} (index=$index)")
                     }
+
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 })
             }
@@ -722,12 +766,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 override fun actionPerformed(e: AnActionEvent) {
                     CopilotSettings.setSessionMode("agent")
                 }
+
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
             group.add(object : AnAction("Plan") {
                 override fun actionPerformed(e: AnActionEvent) {
                     CopilotSettings.setSessionMode("plan")
                 }
+
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             })
             return group
@@ -909,9 +955,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             try {
                 val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
                     ?: continue
-                val doc = com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
-                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
-                } ?: continue
+                val doc =
+                    com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
+                        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+                    } ?: continue
                 val snippet = com.intellij.openapi.application.ReadAction.compute<String, Throwable> {
                     val s = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
                     val e = doc.getLineEndOffset((item.endLine - 1).coerceIn(0, doc.lineCount - 1))
@@ -920,7 +967,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val fileName = item.path.substringAfterLast("/")
                 val ext = fileName.substringAfterLast(".", "")
                 parts.add("Selected lines ${item.startLine}-${item.endLine} of `$fileName`:\n```$ext\n$snippet\n```")
-            } catch (_: Exception) { /* skip */ }
+            } catch (_: Exception) { /* skip */
+            }
         }
         return parts.joinToString("\n\n")
     }
@@ -955,7 +1003,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
         val mimeType = getMimeTypeForFileType(file.fileType.name.lowercase())
         val LOG = com.intellij.openapi.diagnostic.Logger.getInstance("ContextSnippet")
-        LOG.info("Context ref: uri=$uri, isSelection=${item.isSelection}, lines=${item.startLine}-${item.endLine}, textLength=${text.length}, textPreview=${text.take(100)}")
+        LOG.info(
+            "Context ref: uri=$uri, isSelection=${item.isSelection}, lines=${item.startLine}-${item.endLine}, textLength=${text.length}, textPreview=${
+                text.take(
+                    100
+                )
+            }"
+        )
         return CopilotAcpClient.ResourceReference(uri, mimeType, text)
     }
 
@@ -1017,6 +1071,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                         } ?: obj["text"]?.asString
                                     }.joinToString("\n").ifEmpty { null }
                                 }
+
                                 c.isJsonObject -> c.asJsonObject["text"]?.asString
                                 c.isJsonPrimitive -> c.asString
                                 else -> null
@@ -1072,7 +1127,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun getModelMultiplier(modelId: String): String {
         return try {
             CopilotService.getInstance(project).getClient().getModelMultiplier(modelId)
-        } catch (_: Exception) { "1x" }
+        } catch (_: Exception) {
+            "1x"
+        }
     }
 
     private fun saveTurnStatistics(prompt: String, toolCalls: Int, modelId: String) {
@@ -1089,7 +1146,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     addProperty("toolCalls", toolCalls)
                 }
                 statsFile.appendText(entry.toString() + "\n")
-            } catch (_: Exception) { /* best-effort */ }
+            } catch (_: Exception) { /* best-effort */
+            }
         }
     }
 
@@ -1103,7 +1161,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 conversationFile().writeText(consolePanel.serializeEntries())
-            } catch (_: Exception) { /* best-effort */ }
+            } catch (_: Exception) { /* best-effort */
+            }
         }
     }
 
@@ -1651,7 +1710,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 .takeLast(500)
                         }
                     } else emptyList()
-                } catch (_: Exception) { emptyList() }
+                } catch (_: Exception) {
+                    emptyList()
+                }
                 SwingUtilities.invokeLater {
                     logArea.text = if (lines.isEmpty()) "No plugin logs found."
                     else lines.joinToString("\n")
@@ -1910,7 +1971,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         addTimelineEvent(EventType.SESSION_START, "New conversation started")
         updateSessionInfo()
         // Clear saved conversation
-        try { conversationFile().delete() } catch (_: Exception) {}
+        try {
+            conversationFile().delete()
+        } catch (_: Exception) {
+        }
         SwingUtilities.invokeLater {
             if (::planRoot.isInitialized) {
                 planRoot.removeAllChildren()
@@ -1949,7 +2013,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         LOG.info("Restoring model selection: saved='$savedModel', available=${models.map { it.id }}")
         if (savedModel != null) {
             val idx = models.indexOfFirst { it.id == savedModel }
-            if (idx >= 0) { selectedModelIndex = idx; LOG.info("Restored model index=$idx"); return }
+            if (idx >= 0) {
+                selectedModelIndex = idx; LOG.info("Restored model index=$idx"); return
+            }
             LOG.info("Saved model '$savedModel' not found in available models")
         }
         if (models.isNotEmpty()) selectedModelIndex = 0
