@@ -197,11 +197,11 @@ public class McpServer {
 
             5. For MULTIPLE SEQUENTIAL EDITS: \
             When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
-            Check the auto-highlights in each write response ? fix errors before continuing. \
+            Check the auto-highlights in each write response \u2192 fix errors before continuing. \
             After all edits complete, call format_code and optimize_imports ONCE.
 
             AUTO_FORMAT IMPORTANT NOTES: \
-            a) auto_format runs SYNCHRONOUSLY ? the write response reflects the formatted state. \
+            a) auto_format runs SYNCHRONOUSLY \u2192 the write response reflects the formatted state. \
             b) auto_format includes optimize_imports which REMOVES imports it considers unused. \
                If you add imports in one edit and the code using them in a later edit, \
                set auto_format=false on the import edit or add imports and code in the SAME edit. \
@@ -235,13 +235,13 @@ public class McpServer {
             Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
             Only use run_command for tests as a last resort if run_tests fails.
 
-            10. GrazieInspection (grammar) does NOT support apply_quickfix ? use intellij_write_file instead.
+            10. GrazieInspection (grammar) does NOT support apply_quickfix \u2192 use intellij_write_file instead.
 
             11. GIT OPERATIONS: \
             ALWAYS use the built-in git tools (git_status, git_diff, git_log, git_blame, git_commit, \
             git_stage, git_unstage, git_branch, git_stash, git_show). \
             NEVER use 'run_command' for git operations (e.g., 'git checkout', 'git reset', 'git pull'). \
-            Shell git commands bypass IntelliJ's VCS layer and cause editor buffer desync ? \
+            Shell git commands bypass IntelliJ's VCS layer and cause editor buffer desync \u2192 \
             the editor will show stale content that doesn't match the files on disk. \
             IntelliJ git tools properly sync editor buffers, undo history, and VFS state. \
             If you need a git operation not covered by the built-in tools, ask the user to perform it manually.
@@ -249,42 +249,42 @@ public class McpServer {
             12. UNDO: \
             Use the 'undo' tool to revert bad edits. Each write registers as an undo step, \
             and auto_format registers a separate step. So a write with auto_format=true creates 2 undo steps. \
-            Undo is the fastest way to recover from a bad edit ? faster than re-reading and re-editing.
+            Undo is the fastest way to recover from a bad edit \u2192 faster than re-reading and re-editing.
 
             13. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
-            a) Check auto-highlights in write response — after EACH edit. Instant. Catches most errors. \
-            b) get_compilation_errors() — after editing multiple files. Fast scan of open files for ERROR-level only. \
-            c) build_project — ONLY before committing. Full incremental compilation. Only one build runs at a time. \
-            NEVER use build_project as your first error check after an edit — it's 100x slower than highlights. \
-            If build_project says "Build already in progress", wait and retry — do NOT spam it.
+            a) Check auto-highlights in write response \u2192 after EACH edit. Instant. Catches most errors. \
+            b) get_compilation_errors() \u2192 after editing multiple files. Fast scan of open files for ERROR-level only. \
+            c) build_project \u2192 ONLY before committing. Full incremental compilation. Only one build runs at a time. \
+            NEVER use build_project as your first error check after an edit \u2192 it's 100x slower than highlights. \
+            If build_project says "Build already in progress", wait and retry \u2192 do NOT spam it.
 
             WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
-            ⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
+            \u26A0\uFE0F CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
 
             Step 1: run_inspections() to get a COMPLETE overview of all issues. \
-            TRUST the run_inspections output — it IS the authoritative source of all warnings/errors. \
-            Do NOT use get_highlights to re-scan files — run_inspections already found everything.
+            TRUST the run_inspections output \u2192 it IS the authoritative source of all warnings/errors. \
+            Do NOT use get_highlights to re-scan files \u2192 run_inspections already found everything.
             Step 2: Group issues by PROBLEM TYPE (not by file). Examples: \
             "Unused parameters: 5 across 3 files", "Redundant casts: 3 in PsiBridge", "Grammar: 50+ issues".
             Step 3: Pick the FIRST problem category and fix ALL instances of that problem \
-            (this may span multiple files if they share the same issue — that's fine).
+            (this may span multiple files if they share the same issue \u2192 that's fine).
             Step 4: format_code + optimize_imports on changed files, then build_project to verify.
             Step 5: Commit the logical unit with a descriptive message like "fix: resolve unused parameters in test mocks".
-            Step 6: ⚠️ STOP HERE AND ASK THE USER ⚠️
-               Say: "✅ Fixed [problem type] ([N] issues across [M] files). Should I continue with [next category]?"
+            Step 6: \u26A0\uFE0F STOP HERE AND ASK THE USER \u26A0\uFE0F
+               Say: "\u2705 Fixed [problem type] ([N] issues across [M] files). Should I continue with [next category]?"
                WAIT for user response. DO NOT proceed to the next category automatically.
             Step 7: If user says yes, repeat from Step 3 with the next problem category.
 
-            ⚠️ RULE: After fixing EACH problem TYPE, you MUST stop and ask before continuing. \
+            \u26A0\uFE0F RULE: After fixing EACH problem TYPE, you MUST stop and ask before continuing. \
             Even if you found 10 different problem types, fix ONE type at a time and ask after EACH one.
 
             Example correct workflow:
             - Find issues: 5 unused params, 3 StringBuilder, 2 XXE vulnerabilities
-            - Fix unused params → commit → ASK "Continue with StringBuilder?"
+            - Fix unused params \u2192 commit \u2192 ASK "Continue with StringBuilder?"
             - (user says yes)
-            - Fix StringBuilder → commit → ASK "Continue with XXE vulnerabilities?"
+            - Fix StringBuilder \u2192 commit \u2192 ASK "Continue with XXE vulnerabilities?"
             - (user says yes)
-            - Fix XXE → commit → DONE
+            - Fix XXE \u2192 commit \u2192 DONE
 
             KEY PRINCIPLES:
             - Related changes belong in ONE commit (e.g. refactoring that touches 4 files).
@@ -590,7 +590,7 @@ public class McpServer {
             ),
             List.of("url")));
 
-        tools.add(buildTool("run_command", "Run a shell command in the project directory. Output is paginated (default 8000 chars). For running tests use run_tests; for code search use search_symbols instead. NEVER use for git commands (use git_status, git_diff, git_commit etc. instead ? shell git causes buffer desync).",
+        tools.add(buildTool("run_command", "Run a shell command in the project directory. Output is paginated (default 8000 chars). For running tests use run_tests; for code search use search_symbols instead. NEVER use for git commands (use git_status, git_diff, git_commit etc. instead \u2192 shell git causes buffer desync).",
             Map.of(
                 "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'cat file.txt')"),
                 "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),

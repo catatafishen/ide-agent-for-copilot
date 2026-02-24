@@ -660,11 +660,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 chip.isOpaque = true
                 chip.background = JBColor(Color(0xE8, 0xEE, 0xF7), Color(0x35, 0x3B, 0x48))
                 chip.border = JBUI.Borders.empty(1, 6, 1, 2)
-                val icon = if (item.isSelection) "✂" else "📄"
+                val icon = if (item.isSelection) "\u2702" else "\uD83D\uDCC4"
                 val label = JBLabel("$icon ${item.name}")
                 label.font = JBUI.Fonts.smallFont()
                 chip.add(label)
-                val removeBtn = JBLabel("✕")
+                val removeBtn = JBLabel("\u2715")
                 removeBtn.font = JBUI.Fonts.smallFont()
                 removeBtn.foreground = JBColor.GRAY
                 removeBtn.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
@@ -2463,7 +2463,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val fileName: String,
         val filePath: String,
         val fileContent: String
-    ) : javax.swing.tree.DefaultMutableTreeNode("📄 $fileName")
+    ) : javax.swing.tree.DefaultMutableTreeNode("\uD83D\uDCC4 $fileName")
 
 // --- Usage graph ---
 

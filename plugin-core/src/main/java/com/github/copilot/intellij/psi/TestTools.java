@@ -209,7 +209,7 @@ class TestTools extends AbstractToolHandler {
             }
         }
 
-        return (result.exitCode() == 0 ? "? Tests PASSED" : "? Tests FAILED (exit code " + result.exitCode() + ")")
+        return (result.exitCode() == 0 ? "\u2705 Tests PASSED" : "\u274C Tests FAILED (exit code " + result.exitCode() + ")")
             + "\n\n" + ToolUtils.truncateOutput(result.output());
     }
 
@@ -560,7 +560,7 @@ class TestTools extends AbstractToolHandler {
                 String tcName = tc.getAttributes().getNamedItem("name").getNodeValue();
                 String cls = tc.getAttributes().getNamedItem("classname").getNodeValue();
                 String msg = failNodes.item(0).getAttributes().getNamedItem(PARAM_MESSAGE).getNodeValue();
-                failures.add(String.format("  ? %s.%s: %s", cls, tcName, msg));
+                failures.add(String.format("  \u274C %s.%s: %s", cls, tcName, msg));
             }
         }
     }

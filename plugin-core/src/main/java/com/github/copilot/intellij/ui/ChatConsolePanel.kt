@@ -246,7 +246,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val ctxChips = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
-                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>? ${
+                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>\uD83D\uDCC4 ${
                     escapeHtml(
                         name
                     )
@@ -407,17 +407,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             )
         }
     }
-
     fun addErrorEntry(message: String) {
         finalizeCurrentText()
-        entries.add(EntryData.Status("✖", message))
-        appendHtml("<div class='status-row error'>✖ ${escapeHtml(message)}</div>")
+        entries.add(EntryData.Status("\u274C", message))
+        appendHtml("<div class='status-row error'>\u274C ${escapeHtml(message)}</div>")
     }
 
     fun addInfoEntry(message: String) {
         finalizeCurrentText()
-        entries.add(EntryData.Status("ℹ", message))
-        appendHtml("<div class='status-row info'>ℹ ${escapeHtml(message)}</div>")
+        entries.add(EntryData.Status("\u2139", message))
+        appendHtml("<div class='status-row info'>\u2139 ${escapeHtml(message)}</div>")
     }
 
     private var processingShownAt = 0L
@@ -625,9 +624,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "status" -> {
                 val icon = obj["icon"]?.asString ?: ""
                 val msg = obj["message"]?.asString ?: ""
-                if (icon == "?") addErrorEntry(msg) else addInfoEntry(msg)
+                if (icon == "\u274C") addErrorEntry(msg) else addInfoEntry(msg)
             }
-
             "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
         }
     }
@@ -771,13 +769,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val baseName = e.title.substringAfterLast("-")
                 val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
                 val name = info?.displayName ?: e.title
-                sb.appendLine("⚒ $name")
+                sb.appendLine("\uD83D\uDD27 $name")
                 if (e.arguments != null) sb.appendLine("  params: ${e.arguments}")
             }
 
-            is EntryData.ContextFiles -> sb.appendLine("📎 ${e.files.size} context file(s): ${e.files.joinToString(", ") { it.first }}")
+            is EntryData.ContextFiles -> sb.appendLine("\uD83D\uDCCE ${e.files.size} context file(s): ${e.files.joinToString(", ") { it.first }}")
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
-            is EntryData.SessionSeparator -> sb.appendLine("--- Previous session — ${e.timestamp} ---")
+            is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${e.timestamp} ---")
         }
         return sb.toString()
     }
@@ -901,17 +899,17 @@ ul,ol{margin:4px 0;padding-left:22px}
 
             is EntryData.ContextFiles -> {
                 val label = "${e.files.size} context file${if (e.files.size != 1) "s" else ""} attached"
-                sb.append("<details class='context'><summary>📎 $label</summary>")
+                sb.append("<details class='context'><summary>\uD83D\uDCCE $label</summary>")
                 e.files.forEach { (name, _) -> sb.append("<div class='ctx-file'><code>${escapeHtml(name)}</code></div>") }
                 sb.append("</details>\n")
             }
 
             is EntryData.Status -> sb.append(
-                "<div class='status ${if (e.icon == "✖") "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
+                "<div class='status ${if (e.icon == "\u274C") "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
             )
 
             is EntryData.SessionSeparator -> sb.append(
-                "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session — ${
+                "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${
                     escapeHtml(
                         e.timestamp
                     )
@@ -1231,7 +1229,7 @@ function finalizeTurn(stats){
     var chip=document.createElement('span');
     var elId=el.id||'';
     if(el.classList.contains('thinking-section')){
-      chip.className='turn-chip';chip.textContent='💭 Thought';
+      chip.className='turn-chip';chip.textContent='\uD83D\uDCAD Thought';
     } else if(el.classList.contains('tool-section')){
       var lbl=el.querySelector('.collapse-label');
       var icon=el.querySelector('.collapse-icon');
@@ -1239,9 +1237,9 @@ function finalizeTurn(stats){
       chip.className='turn-chip tool'+(failed?' failed':'');
       chip.textContent=(lbl?lbl.textContent:'Tool');
     } else if(el.classList.contains('context-section')){
-      chip.className='turn-chip ctx';chip.textContent='📎 Context';
+      chip.className='turn-chip ctx';chip.textContent='\uD83D\uDCCE Context';
     } else if(el.classList.contains('status-row')&&el.classList.contains('error')){
-      chip.className='turn-chip err';chip.textContent='✖ '+el.textContent.trim().substring(0,60);
+      chip.className='turn-chip err';chip.textContent='\u2716 '+el.textContent.trim().substring(0,60);
     } else return;
     el.classList.add('turn-hidden');
     el.dataset.chipOwned='1';

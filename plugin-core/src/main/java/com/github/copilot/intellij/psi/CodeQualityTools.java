@@ -313,9 +313,9 @@ class CodeQualityTools extends AbstractToolHandler {
             }
 
             if (errors.isEmpty()) {
-                resultFuture.complete(String.format("? No compilation errors in %d files checked.", files.size()));
+                resultFuture.complete(String.format("\u2705 No compilation errors in %d files checked.", files.size()));
             } else {
-                String summary = String.format("? Found %d compilation errors across %d files:%n%n",
+                String summary = String.format("\u274C Found %d compilation errors across %d files:%n%n",
                     errors.size(), filesWithErrors);
                 resultFuture.complete(summary + String.join("\n", errors));
             }
@@ -1701,7 +1701,7 @@ class CodeQualityTools extends AbstractToolHandler {
         FileDocumentManager.getInstance().saveAllDocuments();
 
         StringBuilder sb = new StringBuilder();
-        sb.append("? Applied fix: ").append(fix.getName()).append("\n");
+        sb.append("\u2705 Applied fix: ").append(fix.getName()).append("\n");
         sb.append("  File: ").append(pathStr).append(" line ").append(targetLine).append("\n");
         if (fixes.length > 1) {
             sb.append("  (").append(fixes.length).append(" fixes were available, applied #")
