@@ -93,6 +93,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private var lastBillingRemaining = 0
     private var lastBillingOveragePermitted = false
     private var lastBillingResetDate = ""
+    private var conversationSummaryInjected = false
 
     init {
         setupUI()
@@ -693,6 +694,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
+            consolePanel.showProcessingIndicator()
 
             // Add session separator before new prompt if old content exists and no active session
             if (currentSessionId == null && consolePanel.hasContent()) {
@@ -1011,6 +1013,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun handleStopRequest(promptThread: Thread?) {
+        consolePanel.hideProcessingIndicator()
         val sessionId = currentSessionId
         if (sessionId != null) {
             try {
@@ -1058,7 +1061,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val references = buildContextReferences()
             // Inline selection snippets into the prompt so the agent can't ignore them
             val snippetSuffix = buildSnippetSuffix()
-            val effectivePrompt = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
+            var effectivePrompt = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
+
+            // Inject compressed conversation history on first prompt of a new session
+            if (!conversationSummaryInjected) {
+                conversationSummaryInjected = true
+                val summary = consolePanel.getCompressedSummary()
+                if (summary.isNotEmpty()) {
+                    effectivePrompt = "$summary\n\n$effectivePrompt"
+                }
+            }
             if (references.isNotEmpty()) {
                 val contextFiles = (0 until contextListModel.size()).map { i ->
                     val item = contextListModel.getElementAt(i)
@@ -1250,6 +1262,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (status == "completed") {
                     setResponseStatus(MSG_THINKING)
                     consolePanel.updateToolCall(toolCallId, "completed", result)
+                    consolePanel.showProcessingIndicator()
                 } else if (status == "failed") {
                     val error = update["error"]?.asString
                         ?: result
@@ -1273,6 +1286,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun handlePromptError(e: Exception) {
+        consolePanel.hideProcessingIndicator()
         val msg = if (e is InterruptedException || e.cause is InterruptedException) {
             "Request cancelled"
         } else {
@@ -2383,9 +2397,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         init {
             isOpaque = false
-            preferredSize = Dimension(JBUI.scale(120), JBUI.scale(24))
+            val h = JBUI.scale(28)
+            preferredSize = Dimension(JBUI.scale(120), h)
             minimumSize = preferredSize
-            maximumSize = Dimension(JBUI.scale(120), JBUI.scale(24))
+            maximumSize = Dimension(JBUI.scale(120), h)
+            border = JBUI.Borders.empty(0, JBUI.scale(2))
         }
 
         override fun paintComponent(g: Graphics) {
@@ -2403,7 +2419,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             // Background
             g2.color = JBColor(Color(0, 0, 0, 0x0A), Color(255, 255, 255, 0x0A))
-            g2.fillRoundRect(pad, pad, w, h, JBUI.scale(4), JBUI.scale(4))
+            g2.fillRoundRect(pad, pad, w, h, JBUI.scale(6), JBUI.scale(6))
 
             val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
             val projected = (rate * data.totalDays).toInt()
@@ -2495,10 +2511,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 JBUI.scale(4), JBUI.scale(4)
             )
 
-            // Border
-            g2.color = JBColor(Color(0, 0, 0, 0x18), Color(255, 255, 255, 0x18))
-            g2.stroke = BasicStroke(0.5f)
-            g2.drawRoundRect(pad, pad, w, h, JBUI.scale(4), JBUI.scale(4))
+            // Border – match ComboBox / dropdown control border
+            g2.color = com.intellij.util.ui.JBUI.CurrentTheme.ActionButton.hoverBorder()
+                ?: JBColor.border()
+            g2.stroke = BasicStroke(1f)
+            g2.drawRoundRect(pad, pad, w, h, JBUI.scale(6), JBUI.scale(6))
         }
     }
 }

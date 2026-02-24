@@ -282,6 +282,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     fun appendThinkingText(text: String) {
+        hideProcessingIndicator()
         if (currentThinkingData == null) {
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
             thinkingCounter++
@@ -319,6 +320,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun appendText(text: String) {
         collapseThinking()
+        hideProcessingIndicator()
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
             entryCounter++
@@ -335,6 +337,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun addToolCallEntry(id: String, title: String, arguments: String? = null) {
         finalizeCurrentText()
+        hideProcessingIndicator()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
         val baseName = title.substringAfterLast("-")
@@ -408,6 +411,21 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         appendHtml("<div class='status-row info'>ℹ ${escapeHtml(message)}</div>")
     }
 
+
+    /** Show a bouncing-dots indicator at the bottom of the chat while the agent is processing. */
+    fun showProcessingIndicator() {
+        executeJs("""(function(){
+            if(document.getElementById('processing-ind'))return;
+            var d=document.createElement('div');d.id='processing-ind';d.className='processing-indicator';
+            d.innerHTML='<div class="processing-dot"></div><div class="processing-dot"></div><div class="processing-dot"></div>';
+            document.getElementById('container').appendChild(d);scrollIfNeeded();
+        })()""")
+    }
+
+    /** Remove the bouncing-dots processing indicator. */
+    fun hideProcessingIndicator() {
+        executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+    }
     fun hasContent(): Boolean = entries.isNotEmpty()
 
     /** Adds a visual separator marking previous session content as stale */
@@ -553,6 +571,41 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         return sb.toString()
     }
 
+    /**
+     * Produce a compressed summary of the conversation for context injection.
+     * Omits thinking blocks, truncates long responses, and caps total size.
+     */
+    fun getCompressedSummary(maxChars: Int = 8000): String {
+        if (entries.isEmpty()) return ""
+        val sb = StringBuilder()
+        sb.appendLine("[Previous conversation summary]")
+        for (e in entries) when (e) {
+            is EntryData.Prompt -> sb.appendLine("User: ${e.text}")
+            is EntryData.Text -> {
+                val raw = e.raw.toString().trim()
+                if (raw.isNotEmpty()) {
+                    val truncated = if (raw.length > 600) raw.take(600) + "...[truncated]" else raw
+                    sb.appendLine("Agent: $truncated")
+                }
+            }
+            is EntryData.ToolCall -> {
+                val baseName = e.title.substringAfterLast("-")
+                val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
+                val name = info?.displayName ?: e.title
+                sb.appendLine("Tool: $name")
+            }
+            is EntryData.ContextFiles -> sb.appendLine("Context: ${e.files.joinToString(", ") { it.first }}")
+            is EntryData.SessionSeparator -> sb.appendLine("--- ${e.timestamp} ---")
+            is EntryData.Thinking -> {}
+            is EntryData.Status -> {}
+        }
+        val result = sb.toString()
+        if (result.length <= maxChars) return result
+        return "[Previous conversation summary - trimmed to recent]\n..." +
+            result.substring(result.length - maxChars + 60)
+            result.substring(result.length - maxChars + 60)
+    }
+
     /** Returns the conversation as a self-contained HTML document */
     fun getConversationHtml(): String {
         val font = UIUtil.getLabelFont()
@@ -660,6 +713,7 @@ ul,ol{margin:4px 0;padding-left:22px}
     fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x") {
         finalizeCurrentText()
         collapseThinking()
+        hideProcessingIndicator()
         val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
         executeJs("finalizeTurn($statsJson)")
         trimMessages()
@@ -865,6 +919,14 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 /* --- Placeholder --- */
 .placeholder{color:${rgb(THINK_COLOR)};padding:20px 12px;text-align:center;white-space:pre-wrap;
     font-size:0.95em}
+
+/* --- Processing indicator (bouncing dots) --- */
+.processing-indicator{display:flex;align-items:center;gap:4px;padding:10px 16px;margin:4px 0}
+.processing-dot{width:6px;height:6px;border-radius:50%;background:${rgb(AGENT_COLOR)};opacity:0.4;
+    animation:bounce 1.4s ease-in-out infinite}
+.processing-dot:nth-child(2){animation-delay:0.2s}
+.processing-dot:nth-child(3){animation-delay:0.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(1);opacity:0.4}40%{transform:scale(1.3);opacity:1}}
 
 /* --- Markdown content --- */
 h2,h3,h4,h5{margin:8px 0 4px 0}

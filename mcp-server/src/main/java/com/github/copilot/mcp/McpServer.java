@@ -197,8 +197,18 @@ public class McpServer {
 
             5. For MULTIPLE SEQUENTIAL EDITS: \
             When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
-            Check the auto-highlights in each write response — fix errors before continuing. \
+            Check the auto-highlights in each write response ? fix errors before continuing. \
             After all edits complete, call format_code and optimize_imports ONCE.
+
+            AUTO_FORMAT IMPORTANT NOTES: \
+            a) auto_format runs SYNCHRONOUSLY ? the write response reflects the formatted state. \
+            b) auto_format includes optimize_imports which REMOVES imports it considers unused. \
+               If you add imports in one edit and the code using them in a later edit, \
+               set auto_format=false on the import edit or add imports and code in the SAME edit. \
+            c) auto_format may reindent code. The write response includes context lines showing the \
+               post-format state so you can verify structure is correct. \
+            d) If auto_format damages the file (e.g., shifts braces, removes needed imports), \
+               use the 'undo' tool to revert. Each write+format creates 2 undo steps.
 
             6. BEFORE EDITING UNFAMILIAR FILES: If a file has inconsistent formatting or you get old_str match failures, \
             call format_code on the file first, then re-read it. This normalizes line endings, whitespace, and indentation. \
@@ -225,9 +235,23 @@ public class McpServer {
             Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
             Only use run_command for tests as a last resort if run_tests fails.
 
-            10. GrazieInspection (grammar) does NOT support apply_quickfix — use intellij_write_file instead.
+            10. GrazieInspection (grammar) does NOT support apply_quickfix ? use intellij_write_file instead.
 
-            11. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
+            11. GIT OPERATIONS: \
+            ALWAYS use the built-in git tools (git_status, git_diff, git_log, git_blame, git_commit, \
+            git_stage, git_unstage, git_branch, git_stash, git_show). \
+            NEVER use 'run_command' for git operations (e.g., 'git checkout', 'git reset', 'git pull'). \
+            Shell git commands bypass IntelliJ's VCS layer and cause editor buffer desync ? \
+            the editor will show stale content that doesn't match the files on disk. \
+            IntelliJ git tools properly sync editor buffers, undo history, and VFS state. \
+            If you need a git operation not covered by the built-in tools, ask the user to perform it manually.
+
+            12. UNDO: \
+            Use the 'undo' tool to revert bad edits. Each write registers as an undo step, \
+            and auto_format registers a separate step. So a write with auto_format=true creates 2 undo steps. \
+            Undo is the fastest way to recover from a bad edit ? faster than re-reading and re-editing.
+
+            13. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
             a) Check auto-highlights in write response — after EACH edit. Instant. Catches most errors. \
             b) get_compilation_errors() — after editing multiple files. Fast scan of open files for ERROR-level only. \
             c) build_project — ONLY before committing. Full incremental compilation. Only one build runs at a time. \
@@ -566,7 +590,7 @@ public class McpServer {
             ),
             List.of("url")));
 
-        tools.add(buildTool("run_command", "Run a shell command in the project directory. Output is paginated (default 8000 chars). For running tests use run_tests; for code search use search_symbols instead.",
+        tools.add(buildTool("run_command", "Run a shell command in the project directory. Output is paginated (default 8000 chars). For running tests use run_tests; for code search use search_symbols instead. NEVER use for git commands (use git_status, git_diff, git_commit etc. instead ? shell git causes buffer desync).",
             Map.of(
                 "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'cat file.txt')"),
                 "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),
@@ -700,6 +724,13 @@ public class McpServer {
         tools.add(buildTool("delete_file", "Delete File",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path to the file to delete (absolute or project-relative)")
+            ),
+            List.of("path")));
+
+        tools.add(buildTool("undo", "Undo last edit action(s) on a file. Reverts writes, edits, and auto-format operations using IntelliJ's undo stack",
+            Map.of(
+                "path", Map.of("type", "string", "description", "Path to the file to undo changes on"),
+                "count", Map.of("type", "integer", "description", "Number of undo steps (default: 1). Each write + auto-format counts as 2 steps")
             ),
             List.of("path")));
 

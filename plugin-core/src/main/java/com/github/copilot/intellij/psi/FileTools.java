@@ -3,9 +3,12 @@ package com.github.copilot.intellij.psi;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.command.undo.UndoManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -31,6 +34,27 @@ class FileTools extends AbstractToolHandler {
     private static final String PARAM_CONTENT = "content";
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
 
+    /**
+     * Extract context lines around an edit region for the response.
+     * Returns ~5 lines before and after the edited region so the agent
+     * can see what the file looks like post-edit/format.
+     */
+    private static String contextLines(Document doc, int editStartOffset, int editEndOffset) {
+        int totalLines = doc.getLineCount();
+        if (totalLines == 0) return "";
+        int startLine = doc.getLineNumber(Math.min(editStartOffset, doc.getTextLength() - 1));
+        int endLine = doc.getLineNumber(Math.min(editEndOffset, doc.getTextLength() - 1));
+        int ctxStart = Math.max(0, startLine - 3);
+        int ctxEnd = Math.min(totalLines - 1, endLine + 3);
+        StringBuilder sb = new StringBuilder("\n\nContext after edit (lines ").append(ctxStart + 1).append("-").append(ctxEnd + 1).append("):\n");
+        for (int i = ctxStart; i <= ctxEnd; i++) {
+            int s = doc.getLineStartOffset(i);
+            int e = doc.getLineEndOffset(i);
+            sb.append(i + 1).append(": ").append(doc.getText(new com.intellij.openapi.util.TextRange(s, e))).append("\n");
+        }
+        return sb.toString();
+    }
+
     FileTools(Project project) {
         super(project);
         register("read_file", this::readFile);
@@ -39,6 +63,7 @@ class FileTools extends AbstractToolHandler {
         register("intellij_write_file", this::writeFile);
         register("create_file", this::createFile);
         register("delete_file", this::deleteFile);
+        register("undo", this::undo);
     }
 
     private String readFile(JsonObject args) {
@@ -212,7 +237,9 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         if (autoFormat) autoFormatAfterWrite(pathStr);
-        resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX);
+        int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
+        resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
+            + contextLines(doc, finalIdx, ctxEnd));
     }
 
     /**
@@ -266,8 +293,10 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         if (autoFormat) autoFormatAfterWrite(pathStr);
+        int ctxEnd = Math.min(fStart + fNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
-            + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX);
+            + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX
+            + contextLines(doc, fStart, ctxEnd));
     }
 
     /**
@@ -325,28 +354,28 @@ class FileTools extends AbstractToolHandler {
 
     /**
      * Auto-format and optimize imports on a file after a write operation.
-     * Runs asynchronously on EDT — does not block the caller.
+     * Runs synchronously on the current EDT thread so the response reflects
+     * the final formatted state and subsequent edits see consistent content.
      */
     private void autoFormatAfterWrite(String pathStr) {
-        EdtUtil.invokeLater(() -> {
-            try {
-                VirtualFile vf = resolveVirtualFile(pathStr);
-                if (vf == null) return;
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                if (psiFile == null) return;
+        try {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) return;
+            PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+            if (psiFile == null) return;
 
-                ApplicationManager.getApplication().runWriteAction(() ->
-                    com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
-                        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                        new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
-                        new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
-                    }, "Auto-Format After Write", null)
-                );
-                LOG.info("Auto-formatted after write: " + pathStr);
-            } catch (Exception e) {
-                LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
-            }
-        });
+            ApplicationManager.getApplication().runWriteAction(() ->
+                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                    com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                    new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                    new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
+                    com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                }, "Auto-Format After Write", null)
+            );
+            LOG.info("Auto-formatted after write: " + pathStr);
+        } catch (Exception e) {
+            LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
+        }
     }
 
     private String createFile(JsonObject args) throws Exception {
@@ -439,11 +468,67 @@ class FileTools extends AbstractToolHandler {
                         "Delete File: " + vf.getName(),
                         null
                     );
-                    resultFuture.complete("✓ Deleted file: " + pathStr);
+                    resultFuture.complete("✅ Deleted file: " + pathStr);
                 } catch (Exception e) {
                     resultFuture.complete("Error deleting file: " + e.getMessage());
                 }
             })
         );
+    }
+
+    /**
+     * Undo the last editor action on a file. Uses IntelliJ's built-in UndoManager
+     * which tracks all commands registered via CommandProcessor.
+     */
+    private String undo(JsonObject args) throws Exception {
+        if (!args.has("path")) return ToolUtils.ERROR_PATH_REQUIRED;
+        String pathStr = args.get("path").getAsString();
+        int count = args.has("count") ? args.get("count").getAsInt() : 1;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        EdtUtil.invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
+                    return;
+                }
+                // Find the text editor for this file to get the correct undo context
+                var editors = FileEditorManager.getInstance(project).getEditors(vf);
+                com.intellij.openapi.fileEditor.FileEditor fileEditor = null;
+                for (var ed : editors) {
+                    if (ed instanceof TextEditor) {
+                        fileEditor = ed;
+                        break;
+                    }
+                }
+                if (fileEditor == null && editors.length > 0) {
+                    fileEditor = editors[0];
+                }
+
+                UndoManager undoManager = UndoManager.getInstance(project);
+                StringBuilder actions = new StringBuilder();
+                int undone = 0;
+                for (int i = 0; i < count; i++) {
+                    if (!undoManager.isUndoAvailable(fileEditor)) break;
+                    String actionName = undoManager.getUndoActionNameAndDescription(fileEditor).first;
+                    undoManager.undo(fileEditor);
+                    undone++;
+                    if (!actions.isEmpty()) actions.append(", ");
+                    actions.append(actionName != null && !actionName.isEmpty() ? actionName : "unknown");
+                }
+                if (undone == 0) {
+                    resultFuture.complete("Nothing to undo for " + pathStr);
+                } else {
+                    FileDocumentManager.getInstance().saveAllDocuments();
+                    resultFuture.complete("Undid " + undone + " action(s) on " + pathStr + ": " + actions);
+                }
+            } catch (Exception e) {
+                resultFuture.complete("Undo failed: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
     }
 }
