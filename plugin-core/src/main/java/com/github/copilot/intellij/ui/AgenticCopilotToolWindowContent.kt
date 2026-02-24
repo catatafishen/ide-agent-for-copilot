@@ -2372,7 +2372,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             preferredSize = Dimension(JBUI.scale(120), h)
             minimumSize = preferredSize
             maximumSize = Dimension(JBUI.scale(120), h)
-            border = JBUI.Borders.empty(0, JBUI.scale(2))
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(JBColor.border(), 1, true),
+                JBUI.Borders.empty(1, JBUI.scale(2))
+            )
         }
 
         override fun paintComponent(g: Graphics) {
@@ -2491,13 +2494,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 JBUI.scale(4), JBUI.scale(4)
             )
 
-            // Restore clip before drawing border
+            // Restore clip
             g2.clip = oldClip
-
-            // Border — match toolbar action button border
-            g2.color = JBColor.border()
-            g2.stroke = BasicStroke(1f)
-            g2.draw(clipShape)
         }
     }
 }

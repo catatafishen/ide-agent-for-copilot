@@ -237,7 +237,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val ctxChips = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
-                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>📎 ${
+                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>? ${
                     escapeHtml(
                         name
                     )
@@ -249,6 +249,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 escapeHtml(text)
             }</div></div>"
         appendHtml(html)
+        // Force scroll to bottom when user sends a new prompt
+        executeJs("autoScroll=true;setTimeout(function(){window.scrollTo(0,document.body.scrollHeight)},50)")
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(">>> $text\n") } }
     }
 
@@ -418,7 +420,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             """(function(){
             if(document.getElementById('processing-ind'))return;
             var d=document.createElement('div');d.id='processing-ind';d.className='processing-indicator';
-            d.innerHTML='<div class="processing-dot"></div><div class="processing-dot"></div><div class="processing-dot"></div>';
+            d.innerHTML='<div class="processing-bar"><div class="processing-bar-inner"></div></div>';
             document.getElementById('container').appendChild(d);scrollIfNeeded();
         })()"""
         )
@@ -939,13 +941,12 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 .placeholder{color:${rgb(THINK_COLOR)};padding:20px 12px;text-align:center;white-space:pre-wrap;
     font-size:0.95em}
 
-/* --- Processing indicator (bouncing dots) --- */
-.processing-indicator{display:flex;align-items:center;gap:4px;padding:10px 16px;margin:4px 0}
-.processing-dot{width:6px;height:6px;border-radius:50%;background:${rgb(AGENT_COLOR)};opacity:0.4;
-    animation:bounce 1.4s ease-in-out infinite}
-.processing-dot:nth-child(2){animation-delay:0.2s}
-.processing-dot:nth-child(3){animation-delay:0.4s}
-@keyframes bounce{0%,80%,100%{transform:scale(1);opacity:0.4}40%{transform:scale(1.3);opacity:1}}
+/* --- Processing indicator (indeterminate progress bar) --- */
+.processing-indicator{padding:8px 16px;margin:4px 0}
+.processing-bar{height:2px;border-radius:1px;background:${rgba(fg, 0.08)};overflow:hidden;position:relative}
+.processing-bar-inner{position:absolute;top:0;left:0;height:100%;width:30%;border-radius:1px;
+    background:${rgb(AGENT_COLOR)};animation:indeterminate 1.5s ease-in-out infinite}
+@keyframes indeterminate{0%{left:-30%;width:30%}50%{left:50%;width:40%}100%{left:100%;width:30%}}
 
 /* --- Markdown content --- */
 h2,h3,h4,h5{margin:8px 0 4px 0}
