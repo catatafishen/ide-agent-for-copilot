@@ -744,11 +744,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
+        controlsToolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY)
 
-        // Toolbar component on the left
-        row.add(controlsToolbar.component, BorderLayout.WEST)
+        // Horizontal layout: toolbar (fixed width) + usage (fills remaining)
+        val hBox = JBPanel<JBPanel<*>>().apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
+            isOpaque = false
+            add(controlsToolbar.component)
+        }
 
-        // Usage panel (graph + labels) inline to the right of the toolbar
+        // Usage panel (graph + labels) after toolbar actions
         val usageRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), JBUI.scale(2))).apply {
             isOpaque = false
             usageGraphPanel = UsageGraphPanel()
@@ -776,7 +781,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         usageLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         costLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
 
-        row.add(usageRow, BorderLayout.CENTER)
+        hBox.add(usageRow)
+        row.add(hBox, BorderLayout.CENTER)
 
         // Track toolbar visibility — when toolbar is hidden via right-click menu, hide usage too
         controlsToolbar.component.addHierarchyListener {

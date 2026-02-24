@@ -48,8 +48,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
         private val TOOL_DISPLAY_INFO = mapOf(
             // Code Navigation
-            "search_symbols" to ToolInfo("Search Symbols", "Search for classes, methods, and fields across the project"),
-            "get_file_outline" to ToolInfo("File Outline", "Get the structure outline of a file (classes, methods, fields)"),
+            "search_symbols" to ToolInfo(
+                "Search Symbols",
+                "Search for classes, methods, and fields across the project"
+            ),
+            "get_file_outline" to ToolInfo(
+                "File Outline",
+                "Get the structure outline of a file (classes, methods, fields)"
+            ),
             "find_references" to ToolInfo("Find References", "Find all usages of a symbol across the project"),
             "list_project_files" to ToolInfo("List Project Files", "List files and directories in the project tree"),
             // File Operations
@@ -63,7 +69,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "get_problems" to ToolInfo("Get Problems", "Get current problems/warnings from the Problems panel"),
             "get_highlights" to ToolInfo("Get Highlights", "Get cached editor highlights for open files"),
             "run_inspections" to ToolInfo("Run Inspections", "Run the full IntelliJ inspection engine on the project"),
-            "get_compilation_errors" to ToolInfo("Compilation Errors", "Fast compilation error check using cached daemon results"),
+            "get_compilation_errors" to ToolInfo(
+                "Compilation Errors",
+                "Fast compilation error check using cached daemon results"
+            ),
             "apply_quickfix" to ToolInfo("Apply Quick Fix", "Apply an IntelliJ quick-fix to resolve an issue"),
             "suppress_inspection" to ToolInfo("Suppress Inspection", "Suppress an inspection warning"),
             "optimize_imports" to ToolInfo("Optimize Imports", "Remove unused imports and organize remaining ones"),
@@ -228,10 +237,17 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val ctxChips = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
-                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>📎 ${escapeHtml(name)}</a>"
+                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>📎 ${
+                    escapeHtml(
+                        name
+                    )
+                }</a>"
             }
         } else ""
-        val html = "<div class='prompt-row'><div class='meta'><span class='ts'>$ts</span>$ctxChips</div><div class='prompt-bubble' onclick='toggleMeta(this)'>${escapeHtml(text)}</div></div>"
+        val html =
+            "<div class='prompt-row'><div class='meta'><span class='ts'>$ts</span>$ctxChips</div><div class='prompt-bubble' onclick='toggleMeta(this)'>${
+                escapeHtml(text)
+            }</div></div>"
         appendHtml(html)
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(">>> $text\n") } }
     }
@@ -240,7 +256,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun setPromptStats(modelId: String, multiplier: String) {
         val shortModel = escapeJs(modelId.substringAfterLast("/").take(30))
         val mult = escapeJs(multiplier)
-        executeJs("""
+        executeJs(
+            """
             (function(){
               var prs=document.querySelectorAll('.prompt-row');
               var pr=prs.length?prs[prs.length-1]:null;
@@ -254,7 +271,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
               sc.setAttribute('data-tip','$shortModel');
               pm.appendChild(sc);
             })()
-        """.trimIndent())
+        """.trimIndent()
+        )
     }
 
     /** Adds a collapsible context files section showing attached file names/paths. */
@@ -329,7 +347,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             contentParts.append("<div class='tool-desc'>${escapeHtml(info.description)}</div>")
         }
         if (!arguments.isNullOrBlank()) {
-            contentParts.append("<div class='tool-params-label'>Parameters:</div><pre class='tool-params'><code>${escapeHtml(arguments)}</code></pre>")
+            contentParts.append(
+                "<div class='tool-params-label'>Parameters:</div><pre class='tool-params'><code>${
+                    escapeHtml(
+                        arguments
+                    )
+                }</code></pre>"
+            )
         }
         contentParts.append("<div class='tool-result' id='result-$did'><span class='tool-result-pending'>Running...</span></div>")
 
@@ -358,14 +382,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 """(function(){var el=document.getElementById('tool-$did');if(!el)return;
                 var icon=el.querySelector('.collapse-icon');icon.innerHTML='✓';icon.style.color='$doneColor';
                 el.querySelector('.collapse-label').style.color='$doneColor';
-                var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');})()"""
+                var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');
+                collapseToolToChip('tool-$did');})()"""
             )
 
             "failed" -> executeJs(
                 """(function(){var el=document.getElementById('tool-$did');if(!el)return;
                 var icon=el.querySelector('.collapse-icon');icon.innerHTML='✖';icon.style.color='red';
                 el.querySelector('.collapse-label').style.color='red';
-                var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');})()"""
+                var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');
+                collapseToolToChip('tool-$did');})()"""
             )
         }
     }
@@ -388,18 +414,23 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun addSessionSeparator(timestamp: String) {
         finalizeCurrentText()
         entries.add(EntryData.SessionSeparator(timestamp))
-        val html = "<div class='session-sep'><span class='session-sep-line'></span><span class='session-sep-label'>New session · ${escapeHtml(timestamp)}</span><span class='session-sep-line'></span></div>"
+        val html =
+            "<div class='session-sep'><span class='session-sep-line'></span><span class='session-sep-label'>New session · ${
+                escapeHtml(timestamp)
+            }</span><span class='session-sep-line'></span></div>"
         appendHtml(html)
     }
 
     fun showPlaceholder(text: String) {
-        entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter = 0; contextCounter = 0
+        entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
+            0; contextCounter = 0
         executeJs("document.getElementById('container').innerHTML='<div class=\"placeholder\">${escapeJs(escapeHtml(text))}</div>'")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
 
     fun clear() {
-        entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter = 0; contextCounter = 0
+        entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
+            0; contextCounter = 0
         executeJs("document.getElementById('container').innerHTML=''")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
     }
@@ -410,13 +441,45 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         for (e in entries) {
             val obj = com.google.gson.JsonObject()
             when (e) {
-                is EntryData.Prompt -> { obj.addProperty("type", "prompt"); obj.addProperty("text", e.text) }
-                is EntryData.Text -> { obj.addProperty("type", "text"); obj.addProperty("raw", e.raw.toString()) }
-                is EntryData.Thinking -> { obj.addProperty("type", "thinking"); obj.addProperty("raw", e.raw.toString()) }
-                is EntryData.ToolCall -> { obj.addProperty("type", "tool"); obj.addProperty("title", e.title); obj.addProperty("args", e.arguments ?: "") }
-                is EntryData.ContextFiles -> { obj.addProperty("type", "context"); val fa = com.google.gson.JsonArray(); e.files.forEach { f -> val fo = com.google.gson.JsonObject(); fo.addProperty("name", f.first); fo.addProperty("path", f.second); fa.add(fo) }; obj.add("files", fa) }
-                is EntryData.Status -> { obj.addProperty("type", "status"); obj.addProperty("icon", e.icon); obj.addProperty("message", e.message) }
-                is EntryData.SessionSeparator -> { obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp) }
+                is EntryData.Prompt -> {
+                    obj.addProperty("type", "prompt"); obj.addProperty("text", e.text)
+                }
+
+                is EntryData.Text -> {
+                    obj.addProperty("type", "text"); obj.addProperty("raw", e.raw.toString())
+                }
+
+                is EntryData.Thinking -> {
+                    obj.addProperty("type", "thinking"); obj.addProperty("raw", e.raw.toString())
+                }
+
+                is EntryData.ToolCall -> {
+                    obj.addProperty("type", "tool"); obj.addProperty("title", e.title); obj.addProperty(
+                        "args",
+                        e.arguments ?: ""
+                    )
+                }
+
+                is EntryData.ContextFiles -> {
+                    obj.addProperty("type", "context");
+                    val fa = com.google.gson.JsonArray(); e.files.forEach { f ->
+                        val fo = com.google.gson.JsonObject(); fo.addProperty("name", f.first); fo.addProperty(
+                        "path",
+                        f.second
+                    ); fa.add(fo)
+                    }; obj.add("files", fa)
+                }
+
+                is EntryData.Status -> {
+                    obj.addProperty("type", "status"); obj.addProperty("icon", e.icon); obj.addProperty(
+                        "message",
+                        e.message
+                    )
+                }
+
+                is EntryData.SessionSeparator -> {
+                    obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp)
+                }
             }
             arr.add(obj)
         }
@@ -431,29 +494,39 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val obj = elem.asJsonObject
                 when (obj["type"]?.asString) {
                     "prompt" -> addPromptEntry(obj["text"]?.asString ?: "")
-                    "text" -> { appendText(obj["raw"]?.asString ?: ""); finalizeCurrentText() }
-                    "thinking" -> { appendThinkingText(obj["raw"]?.asString ?: ""); collapseThinking() }
+                    "text" -> {
+                        appendText(obj["raw"]?.asString ?: ""); finalizeCurrentText()
+                    }
+
+                    "thinking" -> {
+                        appendThinkingText(obj["raw"]?.asString ?: ""); collapseThinking()
+                    }
+
                     "tool" -> addToolCallEntry(
                         "restored-${entryCounter}", obj["title"]?.asString ?: "",
                         obj["args"]?.asString?.ifEmpty { null }
                     )
+
                     "context" -> {
                         val files = obj["files"]?.asJsonArray?.map {
                             val f = it.asJsonObject; Pair(f["name"]?.asString ?: "", f["path"]?.asString ?: "")
                         } ?: emptyList()
                         addContextFilesEntry(files)
                     }
+
                     "status" -> {
                         val icon = obj["icon"]?.asString ?: ""
                         val msg = obj["message"]?.asString ?: ""
                         if (icon == "✖") addErrorEntry(msg) else addInfoEntry(msg)
                     }
+
                     "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
                 }
             }
             // Collapse all restored entries into chips
             executeJs("finalizeTurn({})")
-        } catch (_: Exception) { /* best-effort restore */ }
+        } catch (_: Exception) { /* best-effort restore */
+        }
     }
 
     fun getConversationText(): String {
@@ -472,6 +545,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 sb.appendLine("⚒ $name")
                 if (e.arguments != null) sb.appendLine("  params: ${e.arguments}")
             }
+
             is EntryData.ContextFiles -> sb.appendLine("📎 ${e.files.size} context file(s): ${e.files.joinToString(", ") { it.first }}")
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
             is EntryData.SessionSeparator -> sb.appendLine("--- Previous session — ${e.timestamp} ---")
@@ -494,10 +568,30 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;color:${rgb(fg)};line-height:1.45;max-width:900px;margin:0 auto;padding:16px}
 .prompt{text-align:right;margin:10px 0 4px 0}
-.prompt-b{display:inline-block;background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
-.response{background:${rgba(AGENT_COLOR, 0.06)};border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
-.thinking{background:${rgba(THINK_COLOR, 0.06)};border-radius:8px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
-.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${rgba(TOOL_COLOR, 0.3)};border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
+.prompt-b{display:inline-block;background:${
+                rgba(
+                    USER_COLOR,
+                    0.12
+                )
+            };border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
+.response{background:${
+                rgba(
+                    AGENT_COLOR,
+                    0.06
+                )
+            };border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
+.thinking{background:${
+                rgba(
+                    THINK_COLOR,
+                    0.06
+                )
+            };border-radius:8px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
+.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${
+                rgba(
+                    TOOL_COLOR,
+                    0.3
+                )
+            };border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
 .context{font-size:0.88em;color:${rgb(USER_COLOR)};margin:2px 0}
 .context summary{cursor:pointer;padding:4px 0}
 .context .ctx-file{padding:2px 0;padding-left:8px}
@@ -530,9 +624,16 @@ ul,ol{margin:4px 0;padding-left:22px}
                 val displayName = info?.displayName ?: e.title
                 sb.append("<details class='tool'><summary>⚒ ${escapeHtml(displayName)}</summary>")
                 if (info?.description != null) sb.append("<div style='font-style:italic;margin:4px 0'>${escapeHtml(info.description)}</div>")
-                if (e.arguments != null) sb.append("<div style='margin:4px 0'><b>Parameters:</b><pre><code>${escapeHtml(e.arguments)}</code></pre></div>")
+                if (e.arguments != null) sb.append(
+                    "<div style='margin:4px 0'><b>Parameters:</b><pre><code>${
+                        escapeHtml(
+                            e.arguments
+                        )
+                    }</code></pre></div>"
+                )
                 sb.append("</details>\n")
             }
+
             is EntryData.ContextFiles -> {
                 val label = "${e.files.size} context file${if (e.files.size != 1) "s" else ""} attached"
                 sb.append("<details class='context'><summary>📎 $label</summary>")
@@ -543,8 +644,13 @@ ul,ol{margin:4px 0;padding-left:22px}
             is EntryData.Status -> sb.append(
                 "<div class='status ${if (e.icon == "✖") "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
             )
+
             is EntryData.SessionSeparator -> sb.append(
-                "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session — ${escapeHtml(e.timestamp)}</div>\n"
+                "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session — ${
+                    escapeHtml(
+                        e.timestamp
+                    )
+                }</div>\n"
             )
         }
         sb.append("</body></html>")
@@ -561,14 +667,16 @@ ul,ol{margin:4px 0;padding-left:22px}
 
     private fun trimMessages() {
         // Keep at most 100 top-level rows to prevent performance degradation
-        executeJs("""(function(){
+        executeJs(
+            """(function(){
             var c=document.getElementById('container');if(!c)return;
             var rows=c.querySelectorAll('.prompt-row,.agent-row,.thinking-section,.tool-section,.context-section,.status-row');
             var limit=100;
             if(rows.length>limit){
                 for(var i=0;i<rows.length-limit;i++){rows[i].remove();}
             }
-        })()""")
+        })()"""
+        )
     }
 
     override fun dispose() { /* children auto-disposed via Disposer */
@@ -719,7 +827,17 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 .turn-chip{display:inline-flex;align-items:center;gap:3px;background:${rgba(THINK_COLOR, 0.08)};
     border-radius:10px;padding:2px 8px;font-size:0.78em;color:${rgb(THINK_COLOR)}}
 .turn-chip:hover{background:${rgba(THINK_COLOR, 0.16)}}
-.turn-chip.tool{color:${rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))};background:${rgba(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)), 0.08)}}
+.turn-chip.tool{color:${rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))};background:${
+            rgba(
+                JBColor(
+                    Color(
+                        0x59,
+                        0x8C,
+                        0x4D
+                    ), Color(0x6A, 0x9F, 0x59)
+                ), 0.08
+            )
+        }}
 .turn-chip.tool.failed{color:rgb(220,80,80);background:rgba(220,80,80,0.08)}
 .turn-chip.tool:hover{background:${rgba(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)), 0.16)}}
 .turn-chip.tool.failed:hover{background:rgba(220,80,80,0.16)}
@@ -872,6 +990,55 @@ function finalizeTurn(stats){
       existing.removeAttribute('id');
     }
   }
+  scrollIfNeeded();
+}
+function collapseToolToChip(elId){
+  var el=document.getElementById(elId);
+  if(!el||el.dataset.chipOwned)return;
+  var targetMeta=null;
+  var sib=el.nextElementSibling;
+  while(sib){
+    if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
+    sib=sib.nextElementSibling;
+  }
+  if(!targetMeta){
+    var lastBubbles=document.querySelectorAll('.agent-bubble');
+    var lb=lastBubbles.length>0?lastBubbles[lastBubbles.length-1]:null;
+    var lr=lb?lb.parentElement:null;
+    targetMeta=lr?lr.querySelector('.meta'):null;
+  }
+  if(!targetMeta)return;
+  var lbl=el.querySelector('.collapse-label');
+  var icon=el.querySelector('.collapse-icon');
+  var failed=icon&&icon.style.color==='red';
+  var chip=document.createElement('span');
+  chip.className='turn-chip tool'+(failed?' failed':'');
+  chip.textContent=(lbl?lbl.textContent:'Tool');
+  el.classList.add('turn-hidden');
+  el.dataset.chipOwned='1';
+  chip.dataset.chipFor=elId;
+  chip.style.cursor='pointer';
+  function closeSection(){
+    el.classList.add('turn-hidden','collapsed');
+    el.classList.remove('chip-expanded');
+    chip.style.opacity='1';
+    var btn=el.querySelector('.chip-close');if(btn)btn.remove();
+  }
+  chip.onclick=function(ev){
+    ev.stopPropagation();
+    if(el.classList.contains('turn-hidden')){
+      el.classList.remove('turn-hidden','collapsed');
+      el.classList.add('chip-expanded');
+      chip.style.opacity='0.5';
+      var cc=el.querySelector('.collapse-content');
+      if(cc&&!cc.querySelector('.chip-close')){
+        var btn=document.createElement('span');btn.className='chip-close';btn.textContent='\u2715';
+        btn.onclick=function(e){e.stopPropagation();closeSection()};
+        cc.insertBefore(btn,cc.firstChild);
+      }
+    } else { closeSection(); }
+  };
+  targetMeta.appendChild(chip);
   scrollIfNeeded();
 }
 document.addEventListener('click',function(e){
