@@ -82,6 +82,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Usage display toggle and graph
     private enum class UsageDisplayMode { MONTHLY, SESSION }
+
     private var usageDisplayMode = UsageDisplayMode.MONTHLY
     private var billingCycleStartUsed = -1
     private lateinit var usageGraphPanel: UsageGraphPanel
@@ -321,6 +322,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     updateCostLabel(lastBillingRemaining, lastBillingOveragePermitted)
                 }
             }
+
             UsageDisplayMode.SESSION -> {
                 val sessionUsed = lastBillingUsed - billingCycleStartUsed.coerceAtLeast(0)
                 usageLabel.text = "$sessionUsed premium requests this session"
@@ -368,8 +370,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val projected = (rate * totalDays).toInt()
         val pct = if (entitlement > 0) (used * 100) / entitlement else 0
         return "<html>Day $currentDay of $totalDays<br>" +
-                "$used used ($pct% of $entitlement)<br>" +
-                "Projected: ~$projected by end of cycle</html>"
+            "$used used ($pct% of $entitlement)<br>" +
+            "Projected: ~$projected by end of cycle</html>"
     }
 
     private fun updateCostLabel(remaining: Int, overagePermitted: Boolean) {
@@ -706,37 +708,43 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
 
-        // Wrapper: toolbar on top, usage row below — both hide together
-        val wrapper = JBPanel<JBPanel<*>>().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        // Toolbar component on the left
+        row.add(controlsToolbar.component, BorderLayout.WEST)
+
+        // Usage panel (graph + labels) inline to the right of the toolbar
+        val usageRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), JBUI.scale(2))).apply {
             isOpaque = false
-            add(controlsToolbar.component)
-            // Usage row below toolbar: [graph] [label] [cost]
-            val usageRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0)).apply {
-                isOpaque = false
-                border = JBUI.Borders.emptyLeft(4)
-                usageGraphPanel = UsageGraphPanel()
-                add(usageGraphPanel)
-                usageLabel = JBLabel("")
-                usageLabel.font = JBUI.Fonts.smallFont()
-                costLabel = JBLabel("")
-                costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-                add(usageLabel)
-                add(costLabel)
-                cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-                addMouseListener(object : java.awt.event.MouseAdapter() {
-                    override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                        toggleUsageDisplayMode()
-                    }
-                })
-            }
-            add(usageRow)
-            // Track toolbar visibility — when toolbar is hidden via right-click menu, hide usage too
-            controlsToolbar.component.addHierarchyListener {
-                usageRow.isVisible = controlsToolbar.component.isVisible
+            usageGraphPanel = UsageGraphPanel()
+            add(usageGraphPanel)
+            usageLabel = JBLabel("")
+            usageLabel.font = JBUI.Fonts.smallFont()
+            costLabel = JBLabel("")
+            costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
+            add(usageLabel)
+            add(costLabel)
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        }
+        // Single click handler on the usage row; forward clicks from children too
+        val toggleListener = object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                toggleUsageDisplayMode()
             }
         }
-        row.add(wrapper, BorderLayout.CENTER)
+        usageRow.addMouseListener(toggleListener)
+        usageGraphPanel.addMouseListener(toggleListener)
+        usageLabel.addMouseListener(toggleListener)
+        costLabel.addMouseListener(toggleListener)
+        // Set hand cursor on children so the whole row feels clickable
+        usageGraphPanel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        usageLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        costLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+
+        row.add(usageRow, BorderLayout.CENTER)
+
+        // Track toolbar visibility — when toolbar is hidden via right-click menu, hide usage too
+        controlsToolbar.component.addHierarchyListener {
+            usageRow.isVisible = controlsToolbar.component.isVisible
+        }
 
         return row
     }
@@ -2302,15 +2310,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     /**
      * Tiny sparkline panel showing cumulative usage over the billing cycle,
      * a linear projection to end-of-month, and a horizontal entitlement bar.
+     * Shows red fill for usage above the entitlement threshold.
      */
     private class UsageGraphPanel : JPanel() {
         var graphData: UsageGraphData? = null
 
         init {
             isOpaque = false
-            preferredSize = Dimension(JBUI.scale(120), JBUI.scale(28))
+            preferredSize = Dimension(JBUI.scale(120), JBUI.scale(24))
             minimumSize = preferredSize
-            maximumSize = Dimension(JBUI.scale(120), JBUI.scale(28))
+            maximumSize = Dimension(JBUI.scale(120), JBUI.scale(24))
         }
 
         override fun paintComponent(g: Graphics) {
@@ -2326,16 +2335,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val h = height - 2 * pad
             if (w <= 0 || h <= 0) return
 
+            // Background
+            g2.color = JBColor(Color(0, 0, 0, 0x0A), Color(255, 255, 255, 0x0A))
+            g2.fillRoundRect(pad, pad, w, h, JBUI.scale(4), JBUI.scale(4))
+
             val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
             val projected = (rate * data.totalDays).toInt()
             val maxY = maxOf(data.entitlement, projected, data.usedSoFar) * 1.15f
+            val overQuota = data.usedSoFar > data.entitlement
 
             fun dx(day: Float) = pad + (day / data.totalDays * w)
             fun dy(v: Float) = pad + h - (v / maxY * h)
 
-            // Entitlement line (dashed red)
+            // Entitlement line (dashed)
             val entY = dy(data.entitlement.toFloat())
-            g2.color = JBColor(Color(0xE0, 0x40, 0x40, 0x50), Color(0xE0, 0x60, 0x60, 0x50))
+            g2.color = if (overQuota)
+                JBColor(Color(0xE0, 0x40, 0x40, 0x70), Color(0xE0, 0x60, 0x60, 0x70))
+            else
+                JBColor(Color(0x80, 0x80, 0x80, 0x40), Color(0xA0, 0xA0, 0xA0, 0x40))
             g2.stroke = BasicStroke(
                 1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
                 floatArrayOf(3f, 3f), 0f
@@ -2346,20 +2363,48 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val curX = dx(data.currentDay.toFloat())
             val curY = dy(data.usedSoFar.toFloat())
 
-            // Filled area for actual usage
-            val areaPath = Path2D.Float().apply {
-                moveTo(pad.toFloat(), baseY)
-                lineTo(curX, curY)
-                lineTo(curX, baseY)
-                closePath()
-            }
-            g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x40), Color(0x6A, 0xAB, 0x73, 0x40))
-            g2.fill(areaPath)
+            if (overQuota) {
+                // Below-quota area (green)
+                val quotaY = dy(data.entitlement.toFloat())
+                val belowPath = Path2D.Float().apply {
+                    moveTo(pad.toFloat(), baseY)
+                    lineTo(curX, quotaY)
+                    lineTo(curX, baseY)
+                    closePath()
+                }
+                g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x30), Color(0x6A, 0xAB, 0x73, 0x30))
+                g2.fill(belowPath)
 
-            // Actual usage line
-            g2.color = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
-            g2.stroke = BasicStroke(1.5f)
-            g2.drawLine(pad, baseY.toInt(), curX.toInt(), curY.toInt())
+                // Over-quota area (red)
+                val overPath = Path2D.Float().apply {
+                    moveTo(pad.toFloat(), quotaY)
+                    lineTo(curX, curY)
+                    lineTo(curX, quotaY)
+                    closePath()
+                }
+                g2.color = JBColor(Color(0xE0, 0x40, 0x40, 0x40), Color(0xE0, 0x60, 0x60, 0x40))
+                g2.fill(overPath)
+
+                // Usage line (red)
+                g2.color = JBColor(Color(0xE0, 0x40, 0x40), Color(0xE0, 0x60, 0x60))
+                g2.stroke = BasicStroke(1.5f)
+                g2.drawLine(pad, baseY.toInt(), curX.toInt(), curY.toInt())
+            } else {
+                // Normal: green filled area
+                val areaPath = Path2D.Float().apply {
+                    moveTo(pad.toFloat(), baseY)
+                    lineTo(curX, curY)
+                    lineTo(curX, baseY)
+                    closePath()
+                }
+                g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x40), Color(0x6A, 0xAB, 0x73, 0x40))
+                g2.fill(areaPath)
+
+                // Usage line (green)
+                g2.color = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
+                g2.stroke = BasicStroke(1.5f)
+                g2.drawLine(pad, baseY.toInt(), curX.toInt(), curY.toInt())
+            }
 
             // Projection line (dashed gray)
             if (data.currentDay < data.totalDays) {
@@ -2374,16 +2419,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
 
             // Current day dot
-            g2.color = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
+            val dotColor = if (overQuota)
+                JBColor(Color(0xE0, 0x40, 0x40), Color(0xE0, 0x60, 0x60))
+            else
+                JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
+            g2.color = dotColor
             g2.fillOval(
                 curX.toInt() - JBUI.scale(2), curY.toInt() - JBUI.scale(2),
                 JBUI.scale(4), JBUI.scale(4)
             )
 
-            // Tiny border
+            // Border
             g2.color = JBColor(Color(0, 0, 0, 0x18), Color(255, 255, 255, 0x18))
             g2.stroke = BasicStroke(0.5f)
-            g2.drawRoundRect(pad, pad, w, h, JBUI.scale(3), JBUI.scale(3))
+            g2.drawRoundRect(pad, pad, w, h, JBUI.scale(4), JBUI.scale(4))
         }
     }
 }
