@@ -320,7 +320,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun appendText(text: String) {
         collapseThinking()
-        hideProcessingIndicator()
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
             entryCounter++
@@ -337,7 +336,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun addToolCallEntry(id: String, title: String, arguments: String? = null) {
         finalizeCurrentText()
-        hideProcessingIndicator()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
         val baseName = title.substringAfterLast("-")
@@ -727,7 +725,9 @@ ul,ol{margin:4px 0;padding-left:22px}
     fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x") {
         finalizeCurrentText()
         collapseThinking()
-        hideProcessingIndicator()
+        // Force-remove indicator immediately (response is done)
+        processingShownAt = 0
+        executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
         val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
         executeJs("finalizeTurn($statsJson)")
         trimMessages()
@@ -772,7 +772,12 @@ ul,ol{margin:4px 0;padding-left:22px}
 
     private fun appendHtml(html: String) {
         val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
-        executeJs("(function(){document.getElementById('container').insertAdjacentHTML('beforeend',b64('$encoded'));scrollIfNeeded();})()")
+        executeJs(
+            """(function(){var c=document.getElementById('container');
+            var ind=document.getElementById('processing-ind');if(ind)ind.remove();
+            c.insertAdjacentHTML('beforeend',b64('$encoded'));
+            if(ind)c.appendChild(ind);scrollIfNeeded();})()"""
+        )
     }
 
     private fun executeJs(js: String) {

@@ -7,16 +7,26 @@ plugins {
 
 idea {
     module {
-        excludeDirs.addAll(listOf(
-            file(".sandbox-config"),
-            file(".intellijPlatform"),
-        ))
+        excludeDirs.addAll(
+            listOf(
+                file(".sandbox-config"),
+                file(".intellijPlatform"),
+            )
+        )
     }
+}
+
+val baseVersion = "0.2.0"
+val gitHash: String = try {
+    providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
+        .standardOutput.asText.get().trim()
+} catch (_: Exception) {
+    "unknown"
 }
 
 allprojects {
     group = "com.github.copilot.intellij"
-    version = "0.1.0-SNAPSHOT"
+    version = if (providers.gradleProperty("release").isPresent) baseVersion else "$baseVersion-$gitHash"
 
     repositories {
         mavenCentral()

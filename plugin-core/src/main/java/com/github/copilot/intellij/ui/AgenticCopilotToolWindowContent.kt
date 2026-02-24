@@ -69,8 +69,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var sessionInfoLabel: JBLabel
 
     // Usage display components (updated after each prompt)
-    private lateinit var usageLabel: JBLabel
-    private lateinit var costLabel: JBLabel
+    private val usageLabel: JBLabel = JBLabel("")
+    private val costLabel: JBLabel = JBLabel("")
     private lateinit var consolePanel: ChatConsolePanel
 
     // Per-turn premium request tracking
@@ -748,9 +748,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
 
-        // Right toolbar: usage label + graph (always right-aligned)
+        // Right toolbar: usage graph (always right-aligned)
         val rightGroup = DefaultActionGroup()
-        rightGroup.add(UsageLabelAction())
         rightGroup.add(UsageGraphAction())
 
         val usageToolbar = ActionManager.getInstance().createActionToolbar(
@@ -763,45 +762,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         row.add(usageToolbar.component, BorderLayout.EAST)
 
         return row
-    }
-
-    /** Toolbar action showing the usage label + cost as a clickable custom component */
-    private inner class UsageLabelAction : AnAction("Usage"), CustomComponentAction {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) {
-            toggleUsageDisplayMode()
-        }
-
-        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
-            val panel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
-                isOpaque = false
-                border = BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(
-                        JBColor(Color(0, 0, 0, 0x20), Color(255, 255, 255, 0x20)), 1, true
-                    ),
-                    JBUI.Borders.empty(1, 4)
-                )
-                usageLabel = JBLabel("")
-                usageLabel.font = JBUI.Fonts.smallFont()
-                costLabel = JBLabel("")
-                costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-                add(usageLabel)
-                add(costLabel)
-                cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-                toolTipText = "Click to toggle monthly/session usage"
-            }
-            val clickListener = object : java.awt.event.MouseAdapter() {
-                override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                    toggleUsageDisplayMode()
-                }
-            }
-            panel.addMouseListener(clickListener)
-            usageLabel.addMouseListener(clickListener)
-            costLabel.addMouseListener(clickListener)
-            usageLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            costLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            return panel
-        }
     }
 
     /** Toolbar action showing the usage sparkline graph as a clickable custom component */
@@ -1268,7 +1228,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (status == "completed") {
                     setResponseStatus(MSG_THINKING)
                     consolePanel.updateToolCall(toolCallId, "completed", result)
-                    consolePanel.showProcessingIndicator()
                 } else if (status == "failed") {
                     val error = update["error"]?.asString
                         ?: result
@@ -2424,14 +2383,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val g2 = (g as Graphics2D).also {
                 it.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             }
-            val pad = JBUI.scale(2)
+            val pad = JBUI.scale(3)
             val w = width - 2 * pad
             val h = height - 2 * pad
             if (w <= 0 || h <= 0) return
 
-            // Background
-            g2.color = JBColor(Color(0, 0, 0, 0x0A), Color(255, 255, 255, 0x0A))
-            g2.fillRoundRect(pad, pad, w, h, JBUI.scale(6), JBUI.scale(6))
+            val arc = JBUI.scale(6)
+            val clipShape = java.awt.geom.RoundRectangle2D.Float(
+                pad.toFloat(), pad.toFloat(), w.toFloat(), h.toFloat(), arc.toFloat(), arc.toFloat()
+            )
+
+            // Background — match toolbar action button style
+            g2.color = JBColor(Color(0, 0, 0, 0x0D), Color(255, 255, 255, 0x0D))
+            g2.fill(clipShape)
+
+            // Clip all content to the rounded rect
+            val oldClip = g2.clip
+            g2.clip(clipShape)
 
             val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
             val projected = (rate * data.totalDays).toInt()
@@ -2523,11 +2491,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 JBUI.scale(4), JBUI.scale(4)
             )
 
-            // Border – match ComboBox / dropdown control border
-            g2.color = com.intellij.util.ui.JBUI.CurrentTheme.ActionButton.hoverBorder()
-                ?: JBColor.border()
+            // Restore clip before drawing border
+            g2.clip = oldClip
+
+            // Border — match toolbar action button border
+            g2.color = JBColor.border()
             g2.stroke = BasicStroke(1f)
-            g2.drawRoundRect(pad, pad, w, h, JBUI.scale(6), JBUI.scale(6))
+            g2.draw(clipShape)
         }
     }
 }
