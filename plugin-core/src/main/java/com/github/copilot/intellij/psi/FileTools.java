@@ -32,6 +32,9 @@ class FileTools extends AbstractToolHandler {
     private static final Logger LOG = Logger.getInstance(FileTools.class);
 
     private static final String PARAM_CONTENT = "content";
+    private static final String PARAM_START_LINE = "start_line";
+    private static final String PARAM_END_LINE = "end_line";
+    private static final String PARAM_NEW_STR = "new_str";
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
 
     /**
@@ -70,8 +73,8 @@ class FileTools extends AbstractToolHandler {
         if (!args.has("path") || args.get("path").isJsonNull())
             return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
-        int startLine = args.has("start_line") ? args.get("start_line").getAsInt() : -1;
-        int endLine = args.has("end_line") ? args.get("end_line").getAsInt() : -1;
+        int startLine = args.has(PARAM_START_LINE) ? args.get(PARAM_START_LINE).getAsInt() : -1;
+        int endLine = args.has(PARAM_END_LINE) ? args.get(PARAM_END_LINE).getAsInt() : -1;
 
         return ReadAction.compute(() -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
@@ -125,10 +128,10 @@ class FileTools extends AbstractToolHandler {
                 if (args.has(PARAM_CONTENT)) {
                     writeFileFullContent(vf, pathStr, args.get(PARAM_CONTENT).getAsString(),
                         autoFormat, resultFuture);
-                } else if (args.has("old_str") && args.has("new_str")) {
+                } else if (args.has("old_str") && args.has(PARAM_NEW_STR)) {
                     writeFilePartialEdit(vf, pathStr, args.get("old_str").getAsString(),
-                        args.get("new_str").getAsString(), autoFormat, resultFuture);
-                } else if (args.has("start_line") && args.has("new_str")) {
+                        args.get(PARAM_NEW_STR).getAsString(), autoFormat, resultFuture);
+                } else if (args.has(PARAM_START_LINE) && args.has(PARAM_NEW_STR)) {
                     writeFileLineRange(vf, pathStr, args, autoFormat, resultFuture);
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write), " +
@@ -259,9 +262,9 @@ class FileTools extends AbstractToolHandler {
             resultFuture.complete("Cannot open document: " + pathStr);
             return;
         }
-        int startLine = args.get("start_line").getAsInt();
-        int endLine = args.has("end_line") ? args.get("end_line").getAsInt() : startLine;
-        String newStr = args.get("new_str").getAsString().replace("\r\n", "\n").replace("\r", "\n");
+        int startLine = args.get(PARAM_START_LINE).getAsInt();
+        int endLine = args.has(PARAM_END_LINE) ? args.get(PARAM_END_LINE).getAsInt() : startLine;
+        String newStr = args.get(PARAM_NEW_STR).getAsString().replace("\r\n", "\n").replace("\r", "\n");
 
         int lineCount = doc.getLineCount();
         if (startLine < 1 || startLine > lineCount) {

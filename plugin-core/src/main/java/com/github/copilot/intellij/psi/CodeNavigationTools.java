@@ -35,6 +35,8 @@ class CodeNavigationTools extends AbstractToolHandler {
     private static final String PARAM_SYMBOL = "symbol";
     private static final String PARAM_FILE_PATTERN = "file_pattern";
     private static final String FORMAT_LOCATION = "%s:%d [%s] %s";
+    private static final String FORMAT_LINE_REF = "%s:%d: %s";
+    private static final String PARAM_QUERY = "query";
 
     CodeNavigationTools(Project project) {
         super(project);
@@ -305,7 +307,7 @@ class CodeNavigationTools extends AbstractToolHandler {
     // ---- search_symbols ----
 
     String searchSymbols(JsonObject args) {
-        String query = args.has("query") ? args.get("query").getAsString() : "";
+        String query = args.has(PARAM_QUERY) ? args.get(PARAM_QUERY).getAsString() : "";
         String typeFilter = args.has("type") ? args.get("type").getAsString() : "";
 
         return ReadAction.compute(() -> {
@@ -458,7 +460,7 @@ class CodeNavigationTools extends AbstractToolHandler {
                         ? relativize(basePath, file.getVirtualFile().getPath())
                         : file.getVirtualFile().getPath();
                     String lineText = ToolUtils.getLineText(doc, line - 1);
-                    results.add(String.format("%s:%d: %s", relPath, line, lineText));
+                    results.add(String.format(FORMAT_LINE_REF, relPath, line, lineText));
                 }
             }
         }
@@ -481,7 +483,7 @@ class CodeNavigationTools extends AbstractToolHandler {
                         ? relativize(basePath, file.getVirtualFile().getPath())
                         : file.getVirtualFile().getPath();
                     String lineText = ToolUtils.getLineText(doc, line - 1);
-                    String entry = String.format("%s:%d: %s", relPath, line, lineText);
+                    String entry = String.format(FORMAT_LINE_REF, relPath, line, lineText);
                     if (!results.contains(entry)) results.add(entry);
                 }
                 return results.size() < 100;
@@ -518,9 +520,9 @@ class CodeNavigationTools extends AbstractToolHandler {
      * (not disk). This replaces the need for external grep/ripgrep tools.
      */
     String searchText(JsonObject args) {
-        if (!args.has("query") || args.get("query").isJsonNull())
+        if (!args.has(PARAM_QUERY) || args.get(PARAM_QUERY).isJsonNull())
             return "Error: 'query' parameter is required";
-        String query = args.get("query").getAsString();
+        String query = args.get(PARAM_QUERY).getAsString();
         String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
         boolean isRegex = args.has("regex") && args.get("regex").getAsBoolean();
         boolean caseSensitive = !args.has("case_sensitive") || args.get("case_sensitive").getAsBoolean();
@@ -557,7 +559,7 @@ class CodeNavigationTools extends AbstractToolHandler {
                 while (matcher.find() && results.size() < maxResults) {
                     int line = doc.getLineNumber(matcher.start()) + 1;
                     String lineText = ToolUtils.getLineText(doc, line - 1);
-                    results.add(String.format("%s:%d: %s", relPath, line, lineText));
+                    results.add(String.format(FORMAT_LINE_REF, relPath, line, lineText));
                 }
                 return results.size() < maxResults;
             });
