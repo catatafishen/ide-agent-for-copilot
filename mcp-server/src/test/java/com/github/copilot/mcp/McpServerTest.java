@@ -31,49 +31,49 @@ class McpServerTest {
         Files.createDirectories(srcDir);
 
         Files.writeString(srcDir.resolve("UserService.java"),
-            """
-                package com.example;
+                """
+                        package com.example;
 
-                public class UserService {
-                    private final UserRepository userRepo;
+                        public class UserService {
+                            private final UserRepository userRepo;
 
-                    public UserService(UserRepository userRepo) {
-                        this.userRepo = userRepo;
-                    }
+                            public UserService(UserRepository userRepo) {
+                                this.userRepo = userRepo;
+                            }
 
-                    public User findById(long id) {
-                        return userRepo.findById(id);
-                    }
+                            public User findById(long id) {
+                                return userRepo.findById(id);
+                            }
 
-                    public void deleteUser(long id) {
-                        userRepo.delete(id);
-                    }
-                }
-                """);
+                            public void deleteUser(long id) {
+                                userRepo.delete(id);
+                            }
+                        }
+                        """);
 
         Files.writeString(srcDir.resolve("UserRepository.java"),
-            """
-                package com.example;
+                """
+                        package com.example;
 
-                public interface UserRepository {
-                    User findById(long id);
-                    void delete(long id);
-                    void save(User user);
-                }
-                """);
+                        public interface UserRepository {
+                            User findById(long id);
+                            void delete(long id);
+                            void save(User user);
+                        }
+                        """);
 
         Files.writeString(srcDir.resolve("User.java"),
-            """
-                package com.example;
+                """
+                        package com.example;
 
-                public class User {
-                    private long id;
-                    private String name;
+                        public class User {
+                            private long id;
+                            private String name;
 
-                    public long getId() { return id; }
-                    public String getName() { return name; }
-                }
-                """);
+                            public long getId() { return id; }
+                            public String getName() { return name; }
+                        }
+                        """);
 
         // Set project root for tests
         try {
@@ -104,7 +104,7 @@ class McpServerTest {
 
         assertNotNull(response);
         JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
-        assertEquals(56, tools.size(), "Should have 56 tools (code nav + file I/O + testing + quality + run configs + git + infra + terminal + docs + highlights + compilation_errors + inspections + dictionary + suppress + qodana + sonarqube + indexing + editor + refactoring + build + scratch files)");
+        assertEquals(58, tools.size(), "Should have 58 tools (code nav + file I/O + testing + quality + run configs + git + infra + terminal + docs + highlights + compilation_errors + inspections + dictionary + suppress + qodana + sonarqube + indexing + editor + refactoring + build + scratch files + show_diff + http_request)");
 
         // Verify tool names
         var toolNames = new ArrayList<String>();
@@ -258,7 +258,7 @@ class McpServerTest {
         JsonObject args = new JsonObject();
         args.addProperty("path", "../../../etc/passwd");
         assertThrows(IOException.class, () -> McpServer.getFileOutline(args),
-            "Should throw IOException for path traversal");
+                "Should throw IOException for path traversal");
     }
 
     @Test
@@ -266,7 +266,7 @@ class McpServerTest {
         JsonObject args = new JsonObject();
         args.addProperty("path", "/etc/passwd");
         assertThrows(IOException.class, () -> McpServer.getFileOutline(args),
-            "Should throw IOException for absolute paths outside project");
+                "Should throw IOException for absolute paths outside project");
     }
 
     private static JsonObject buildRequest(String method, JsonObject params) {
@@ -345,9 +345,9 @@ class McpServerTest {
         // Description should mention hierarchy directions
         String desc = tool.get("description").getAsString();
         assertTrue(desc.contains("superclass") || desc.contains("supertypes"),
-            "Description should mention supertypes/superclasses");
+                "Description should mention supertypes/superclasses");
         assertTrue(desc.contains("subclass") || desc.contains("subtypes") || desc.contains("implementations"),
-            "Description should mention subtypes/implementations");
+                "Description should mention subtypes/implementations");
     }
 
     @Test
