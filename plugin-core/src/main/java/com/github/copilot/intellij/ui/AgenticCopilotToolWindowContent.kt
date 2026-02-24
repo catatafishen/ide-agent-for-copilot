@@ -695,7 +695,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
-            consolePanel.showProcessingIndicator()
 
             // Add session separator before new prompt if old content exists and no active session
             if (currentSessionId == null && consolePanel.hasContent()) {
@@ -1100,7 +1099,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun handleStopRequest(promptThread: Thread?) {
-        consolePanel.hideProcessingIndicator()
         val sessionId = currentSessionId
         if (sessionId != null) {
             try {
@@ -1372,7 +1370,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun handlePromptError(e: Exception) {
-        consolePanel.hideProcessingIndicator()
         val msg = if (e is InterruptedException || e.cause is InterruptedException) {
             "Request cancelled"
         } else {
