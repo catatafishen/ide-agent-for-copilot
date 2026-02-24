@@ -775,6 +775,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
             val panel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
                 isOpaque = false
+                border = BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(
+                        JBColor(Color(0, 0, 0, 0x20), Color(255, 255, 255, 0x20)), 1, true
+                    ),
+                    JBUI.Borders.empty(1, 4)
+                )
                 usageLabel = JBLabel("")
                 usageLabel.font = JBUI.Fonts.smallFont()
                 costLabel = JBLabel("")
@@ -1734,6 +1740,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createDebugTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.border = JBUI.Borders.empty(5)
+
+        // Build info header
+        val buildInfoLabel = JBLabel("Build: ${com.github.copilot.intellij.BuildInfo.getSummary()}")
+        buildInfoLabel.font = JBUI.Fonts.smallFont()
+        buildInfoLabel.border = JBUI.Borders.empty(0, 0, 5, 0)
+        panel.add(buildInfoLabel, BorderLayout.NORTH)
 
         val debugModel = DefaultListModel<CopilotAcpClient.DebugEvent>()
         val list = JBList(debugModel)

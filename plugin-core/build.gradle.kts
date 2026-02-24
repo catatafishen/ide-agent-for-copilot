@@ -19,7 +19,6 @@ dependencies {
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
         bundledPlugin("org.jetbrains.plugins.terminal")
-        instrumentationTools()
     }
 
     // Kotlin stdlib for UI layer
@@ -124,6 +123,12 @@ tasks.named<Zip>("buildPlugin") {
     }
 }
 
+sourceSets {
+    main {
+        resources.srcDir(layout.buildDirectory.dir("generated/buildinfo"))
+    }
+}
+
 intellijPlatform {
     pluginConfiguration {
         id = "com.github.copilot.intellij"
@@ -152,6 +157,28 @@ intellijPlatform {
 }
 
 tasks {
+    // Generate build info properties file
+    val generateBuildInfo by registering {
+        val outputDir = layout.buildDirectory.dir("generated/buildinfo")
+        outputs.dir(outputDir)
+        doLast {
+            val propsFile = outputDir.get().file("build-info.properties").asFile
+            propsFile.parentFile.mkdirs()
+            val gitHash = try {
+                providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
+                    .standardOutput.asText.get().trim()
+            } catch (_: Exception) {
+                "unknown"
+            }
+            val timestamp = System.currentTimeMillis().toString()
+            propsFile.writeText("build.timestamp=$timestamp\nbuild.git.hash=$gitHash\nbuild.version=${project.version}\n")
+        }
+    }
+
+    named("processResources") {
+        dependsOn(generateBuildInfo)
+    }
+
     withType<Jar> {
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     }
