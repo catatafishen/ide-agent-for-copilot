@@ -598,11 +598,10 @@ class CodeQualityTools extends AbstractToolHandler {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
 
-        // Try getProblemElements first (has file associations via RefEntity)
-        // Runtime type may differ from declared SynchronizedBidiMultiMap (e.g. anonymous wrapper classes)
-        Object problemElements = presentation.getProblemElements();
-        if (problemElements instanceof com.intellij.util.containers.MultiMap<?, ?> mm && !mm.isEmpty()) {
-            return collectFromProblemElements(mm, toolId, inspCtx, allProblems);
+        // getProblemElements returns SynchronizedBidiMultiMap<RefEntity, CommonProblemDescriptor>
+        var problemElements = presentation.getProblemElements();
+        if (!problemElements.isEmpty()) {
+            return collectFromProblemElements(problemElements, toolId, inspCtx, allProblems);
         }
 
         // Try getProblemDescriptors() for tools that don't use RefEntity
@@ -620,16 +619,13 @@ class CodeQualityTools extends AbstractToolHandler {
         return new int[]{skippedNoDescription, skippedNoFile};
     }
 
-    @SuppressWarnings("unchecked")
     private int[] collectFromProblemElements(
-        com.intellij.util.containers.MultiMap<?, ?> problemElements,
+        com.intellij.codeInspection.ui.util.SynchronizedBidiMultiMap<com.intellij.codeInspection.reference.RefEntity, com.intellij.codeInspection.CommonProblemDescriptor> problemElements,
         String toolId, InspectionContext inspCtx, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
-        var elements = (com.intellij.util.containers.MultiMap<com.intellij.codeInspection.reference.RefEntity,
-            com.intellij.codeInspection.CommonProblemDescriptor>) problemElements;
-        for (var refEntity : elements.keySet()) {
-            var descriptors = elements.get(refEntity);
+        for (var refEntity : problemElements.keys()) {
+            var descriptors = problemElements.get(refEntity);
             if (descriptors == null) continue;
             for (var descriptor : descriptors) {
                 int result = processInspectionDescriptor(descriptor, refEntity, toolId, inspCtx, allProblems);

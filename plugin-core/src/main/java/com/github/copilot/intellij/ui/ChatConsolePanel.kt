@@ -1353,14 +1353,14 @@ document.addEventListener('mouseover',function(e){
     private fun markdownToHtml(text: String): String {
         val lines = text.lines()
         val sb = StringBuilder()
-        var i = 0;
-        var inCode = false;
-        var inTable = false;
-        var firstTR = true;
+        var i = 0
+        var inCode = false
+        var inTable = false
+        var firstTR = true
         var inList = false
 
         while (i < lines.size) {
-            val line = lines[i];
+            val line = lines[i]
             val t = line.trim()
 
             if (t.startsWith("```")) {

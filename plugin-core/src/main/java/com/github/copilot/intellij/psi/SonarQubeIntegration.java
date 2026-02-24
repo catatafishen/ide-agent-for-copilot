@@ -3,7 +3,6 @@ package com.github.copilot.intellij.psi;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginId;
@@ -130,19 +129,9 @@ final class SonarQubeIntegration {
                 var dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
                     .add(CommonDataKeys.PROJECT, project)
                     .build();
-                var presentation = action.getTemplatePresentation().clone();
-                var event = AnActionEvent.createEvent(
-                    dataContext, presentation, "Copilot Bridge",
-                    com.intellij.openapi.actionSystem.ActionUiKind.NONE, null);
 
-                action.update(event);
-                if (event.getPresentation().isEnabledAndVisible()) {
-                    action.actionPerformed(event);
-                    future.complete(true);
-                } else {
-                    LOG.warn("SonarLint action not enabled: " + actionId);
-                    future.complete(false);
-                }
+                com.intellij.openapi.actionSystem.ex.ActionUtil.invokeAction(action, dataContext, "Copilot Bridge", null, null);
+                future.complete(true);
             } catch (Exception e) {
                 LOG.warn("Failed to trigger SonarLint action: " + actionId, e);
                 future.complete(false);
@@ -395,7 +384,7 @@ final class SonarQubeIntegration {
     }
 
     private void collectHotspotsFromFindings(Object liveFindings, String basePath,
-                                              List<String> results, Set<String> seen) {
+                                             List<String> results, Set<String> seen) {
         try {
             Method getHotspotsMethod = liveFindings.getClass().getMethod("getSecurityHotspotsPerFile");
             Map<?, ?> hotspotsPerFile = (Map<?, ?>) getHotspotsMethod.invoke(liveFindings);
@@ -489,16 +478,16 @@ final class SonarQubeIntegration {
     }
 
     private String getFilePath(Object finding, String basePath) {
-        String path = getFilePathFromMethod(finding, "file", basePath);
+        String path = getFilePathFromMethod(finding, basePath);
         if (path != null) return path;
 
         path = getFilePathViaPsiFile(finding, basePath);
         return path != null ? path : UNKNOWN;
     }
 
-    private String getFilePathFromMethod(Object finding, String methodName, String basePath) {
+    private String getFilePathFromMethod(Object finding, String basePath) {
         try {
-            Method fileMethod = findMethod(finding, methodName);
+            Method fileMethod = findMethod(finding, "file");
             if (fileMethod != null) {
                 Object vf = fileMethod.invoke(finding);
                 if (vf instanceof VirtualFile virtualFile) {
@@ -506,7 +495,7 @@ final class SonarQubeIntegration {
                 }
             }
         } catch (Exception e) {
-            LOG.debug("Could not get file path via " + methodName);
+            LOG.debug("Could not get file path via file method");
         }
         return null;
     }

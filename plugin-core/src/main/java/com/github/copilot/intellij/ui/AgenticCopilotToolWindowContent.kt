@@ -306,7 +306,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         SwingUtilities.invokeLater {
             refreshUsageDisplay()
-            updateUsageGraph(used, entitlement, unlimited, resetDate, overagePermitted)
+            updateUsageGraph(used, entitlement, unlimited, resetDate)
             if (shouldAnimate) animateUsageChange()
         }
     }
@@ -348,8 +348,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         used: Int,
         entitlement: Int,
         unlimited: Boolean,
-        resetDate: String,
-        overagePermitted: Boolean
+        resetDate: String
     ) {
         if (!::usageGraphPanel.isInitialized) return
         if (unlimited || entitlement <= 0) {
@@ -367,7 +366,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             usageGraphPanel.graphData = UsageGraphData(currentDay, totalDays, used, entitlement)
             usageGraphPanel.toolTipText =
-                buildGraphTooltip(used, entitlement, currentDay, totalDays, resetLocalDate, overagePermitted)
+                buildGraphTooltip(used, entitlement, currentDay, totalDays, resetLocalDate)
             usageGraphPanel.repaint()
         } catch (_: Exception) {
             usageGraphPanel.graphData = null
@@ -381,7 +380,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         currentDay: Int,
         totalDays: Int,
         resetDate: LocalDate,
-        overagePermitted: Boolean
     ): String {
         val rate = if (currentDay > 0) used.toFloat() / currentDay else 0f
         val projected = (rate * totalDays).toInt()
