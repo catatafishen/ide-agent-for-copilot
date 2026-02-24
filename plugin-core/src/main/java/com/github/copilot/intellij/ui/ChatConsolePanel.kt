@@ -1382,8 +1382,8 @@ document.addEventListener('mouseover',function(e){
             when {
                 t.startsWith("```") -> handleCodeFence(sb, state)
                 state.inCode -> sb.append(escapeHtml(line)).append("\n")
-                processBlockElement(sb, state, line, t) -> {}
-                t.isEmpty() -> {}
+                processBlockElement(sb, state, t) -> { /* handled by helper */ }
+                t.isEmpty() -> { /* skip blank lines */ }
                 else -> sb.append("<p>").append(formatInline(line)).append("</p>")
             }
         }
@@ -1401,7 +1401,7 @@ document.addEventListener('mouseover',function(e){
         }
     }
 
-    private fun processBlockElement(sb: StringBuilder, state: MarkdownState, line: String, t: String): Boolean {
+    private fun processBlockElement(sb: StringBuilder, state: MarkdownState, t: String): Boolean {
         val hm = Regex("^(#{1,4})\\s+(.+)").find(t)
         if (hm != null) {
             closeListAndTable(sb, state)

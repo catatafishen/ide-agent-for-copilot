@@ -532,38 +532,39 @@ class FileTools extends AbstractToolHandler {
                 resultFuture.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
                 return;
             }
-            var editors = FileEditorManager.getInstance(project).getEditors(vf);
-            com.intellij.openapi.fileEditor.FileEditor fileEditor = null;
-            for (var ed : editors) {
-                if (ed instanceof TextEditor) {
-                    fileEditor = ed;
-                    break;
-                }
-            }
-            if (fileEditor == null && editors.length > 0) {
-                fileEditor = editors[0];
-            }
-
+            com.intellij.openapi.fileEditor.FileEditor fileEditor = findFileEditor(vf);
             UndoManager undoManager = UndoManager.getInstance(project);
-            StringBuilder actions = new StringBuilder();
-            int undone = 0;
-            for (int i = 0; i < count; i++) {
-                if (!undoManager.isUndoAvailable(fileEditor)) break;
-                String actionName = undoManager.getUndoActionNameAndDescription(fileEditor).first;
-                undoManager.undo(fileEditor);
-                undone++;
-                if (!actions.isEmpty()) actions.append(", ");
-                actions.append(actionName != null && !actionName.isEmpty() ? actionName : "unknown");
-            }
-            if (undone == 0) {
-                resultFuture.complete("Nothing to undo for " + pathStr);
-            } else {
-                FileDocumentManager.getInstance().saveAllDocuments();
-                resultFuture.complete("Undid " + undone + " action(s) on " + pathStr + ": " + actions);
-            }
+            String result = executeUndoSteps(undoManager, fileEditor, count, pathStr);
+            resultFuture.complete(result);
         } catch (Exception e) {
             resultFuture.complete("Undo failed: " + e.getMessage());
         }
+    }
+
+    private com.intellij.openapi.fileEditor.FileEditor findFileEditor(VirtualFile vf) {
+        var editors = FileEditorManager.getInstance(project).getEditors(vf);
+        for (var ed : editors) {
+            if (ed instanceof TextEditor) return ed;
+        }
+        return editors.length > 0 ? editors[0] : null;
+    }
+
+    private String executeUndoSteps(UndoManager undoManager, com.intellij.openapi.fileEditor.FileEditor fileEditor, int count, String pathStr) {
+        StringBuilder actions = new StringBuilder();
+        int undone = 0;
+        for (int i = 0; i < count; i++) {
+            if (!undoManager.isUndoAvailable(fileEditor)) break;
+            String actionName = undoManager.getUndoActionNameAndDescription(fileEditor).first;
+            undoManager.undo(fileEditor);
+            undone++;
+            if (!actions.isEmpty()) actions.append(", ");
+            actions.append(actionName != null && !actionName.isEmpty() ? actionName : "unknown");
+        }
+        if (undone == 0) {
+            return "Nothing to undo for " + pathStr;
+        }
+        FileDocumentManager.getInstance().saveAllDocuments();
+        return "Undid " + undone + " action(s) on " + pathStr + ": " + actions;
     }
 
     private String undo(JsonObject args) throws Exception {

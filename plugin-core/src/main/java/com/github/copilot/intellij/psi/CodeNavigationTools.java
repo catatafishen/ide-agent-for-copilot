@@ -551,28 +551,34 @@ class CodeNavigationTools extends AbstractToolHandler {
         boolean caseSensitive = !args.has("case_sensitive") || args.get("case_sensitive").getAsBoolean();
         int maxResults = args.has("max_results") ? args.get("max_results").getAsInt() : 100;
 
-        return ReadAction.compute(() -> {
-            String basePath = project.getBasePath();
-            if (basePath == null) return ERROR_NO_PROJECT_PATH;
+        return ReadAction.compute(() -> performSearch(query, filePattern, isRegex, caseSensitive, maxResults));
+    }
 
-            java.util.regex.Pattern pattern;
-            try {
-                int flags = isRegex ? 0 : java.util.regex.Pattern.LITERAL;
-                if (!caseSensitive) flags |= java.util.regex.Pattern.CASE_INSENSITIVE;
-                pattern = java.util.regex.Pattern.compile(query, flags);
-            } catch (java.util.regex.PatternSyntaxException e) {
-                return "Error: invalid regex: " + e.getMessage();
-            }
+    private String performSearch(String query, String filePattern, boolean isRegex, boolean caseSensitive, int maxResults) {
+        String basePath = project.getBasePath();
+        if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
-            List<String> results = new ArrayList<>();
-            ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
-            fileIndex.iterateContent(vf -> {
-                searchFileForPattern(vf, filePattern, pattern, basePath, results, maxResults);
-                return results.size() < maxResults;
-            });
+        java.util.regex.Pattern pattern = compileSearchPattern(query, isRegex, caseSensitive);
+        if (pattern == null) return "Error: invalid regex: " + query;
 
-            if (results.isEmpty()) return "No matches found for '" + query + "'";
-            return results.size() + " matches:\n" + String.join("\n", results);
+        List<String> results = new ArrayList<>();
+        ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
+        fileIndex.iterateContent(vf -> {
+            searchFileForPattern(vf, filePattern, pattern, basePath, results, maxResults);
+            return results.size() < maxResults;
         });
+
+        if (results.isEmpty()) return "No matches found for '" + query + "'";
+        return results.size() + " matches:\n" + String.join("\n", results);
+    }
+
+    private java.util.regex.Pattern compileSearchPattern(String query, boolean isRegex, boolean caseSensitive) {
+        try {
+            int flags = isRegex ? 0 : java.util.regex.Pattern.LITERAL;
+            if (!caseSensitive) flags |= java.util.regex.Pattern.CASE_INSENSITIVE;
+            return java.util.regex.Pattern.compile(query, flags);
+        } catch (java.util.regex.PatternSyntaxException e) {
+            return null;
+        }
     }
 }
