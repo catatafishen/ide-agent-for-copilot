@@ -722,7 +722,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun setSendingState(sending: Boolean) {
         isSending = sending
         SwingUtilities.invokeLater {
-            controlsToolbar.updateActionsImmediately()
+            controlsToolbar.updateActionsAsync()
             if (::processingTimerPanel.isInitialized) {
                 if (sending) processingTimerPanel.start() else processingTimerPanel.stop()
             }
