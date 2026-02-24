@@ -619,7 +619,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.document.addDocumentListener(object : javax.swing.event.DocumentListener {
             override fun insertUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
             override fun removeUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
-            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) { /* Not used for plain text documents */ }
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) { /* Not used for plain text documents */
+            }
+
             private fun adjustRows() {
                 val newRows = promptTextArea.lineCount.coerceIn(2, 6)
                 if (promptTextArea.rows != newRows) {
@@ -783,7 +785,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     /** Toolbar action showing a native processing timer while the agent works */
     private inner class ProcessingIndicatorAction : AnAction("Processing"), CustomComponentAction {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) { /* No action needed — UI-only toolbar widget */ }
+        override fun actionPerformed(e: AnActionEvent) { /* No action needed — UI-only toolbar widget */
+        }
 
         override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
             processingTimerPanel = ProcessingTimerPanel()
@@ -1097,19 +1100,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Edit actions
         val cutAction = javax.swing.JMenuItem("Cut").apply {
-            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            accelerator =
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener { textArea.cut() }
         }
         val copyAction = javax.swing.JMenuItem("Copy").apply {
-            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            accelerator =
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener { textArea.copy() }
         }
         val pasteAction = javax.swing.JMenuItem("Paste").apply {
-            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            accelerator =
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener { textArea.paste() }
         }
         val selectAllAction = javax.swing.JMenuItem("Select All").apply {
-            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_A, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            accelerator =
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_A, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener { textArea.selectAll() }
         }
 
@@ -1163,13 +1170,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 popup.components.filterIsInstance<javax.swing.JMenuItem>()
                     .find { it.text == "Clear Attachments" }?.isEnabled = contextListModel.size() > 0
             }
-            override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) { /* No action needed */ }
-            override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) { /* No action needed */ }
+
+            override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) { /* No action needed */
+            }
+
+            override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) { /* No action needed */
+            }
         })
     }
 
     private fun setupPromptDragDrop(textArea: JBTextArea) {
-        textArea.dropTarget = java.awt.dnd.DropTarget(textArea, java.awt.dnd.DnDConstants.ACTION_COPY,
+        textArea.dropTarget = java.awt.dnd.DropTarget(
+            textArea, java.awt.dnd.DnDConstants.ACTION_COPY,
             object : java.awt.dnd.DropTargetAdapter() {
                 override fun drop(dtde: java.awt.dnd.DropTargetDropEvent) {
                     try {
@@ -1189,11 +1201,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                     contextListModel[it].path == vf.path
                                 }
                                 if (!exists) {
-                                    contextListModel.addElement(ContextItem(
-                                        path = vf.path, name = vf.name,
-                                        startLine = 1, endLine = doc.lineCount,
-                                        fileType = vf.fileType, isSelection = false
-                                    ))
+                                    contextListModel.addElement(
+                                        ContextItem(
+                                            path = vf.path, name = vf.name,
+                                            startLine = 1, endLine = doc.lineCount,
+                                            fileType = vf.fileType, isSelection = false
+                                        )
+                                    )
                                 }
                             }
                             dtde.dropComplete(true)
@@ -1375,8 +1389,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         val mimeType = getMimeTypeForFileType(file.fileType.name.lowercase())
-        val LOG = com.intellij.openapi.diagnostic.Logger.getInstance("ContextSnippet")
-        LOG.info(
+        val contextLog = com.intellij.openapi.diagnostic.Logger.getInstance("ContextSnippet")
+        contextLog.info(
             "Context ref: uri=$uri, isSelection=${item.isSelection}, lines=${item.startLine}-${item.endLine}, textLength=${text.length}, textPreview=${
                 text.take(
                     100
@@ -1561,309 +1575,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun createContextTab(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(10)
-
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 10, 5))
-
-        val addFileButton = JButton("Add Current File")
-        addFileButton.toolTipText = "Add the currently open file to context"
-        addFileButton.addActionListener { handleAddCurrentFile(panel) }
-        toolbar.add(addFileButton)
-
-        val addSelectionButton = JButton("Add Selection")
-        addSelectionButton.toolTipText = "Add the current text selection to context"
-        addSelectionButton.addActionListener { handleAddSelection(panel) }
-        toolbar.add(addSelectionButton)
-
-        val clearButton = JButton("Clear All")
-        clearButton.addActionListener {
-            if (contextListModel.size() > 0) {
-                val result = JOptionPane.showConfirmDialog(
-                    panel,
-                    "Remove all ${contextListModel.size()} context items?",
-                    "Clear Context",
-                    JOptionPane.YES_NO_OPTION
-                )
-                if (result == JOptionPane.YES_OPTION) {
-                    contextListModel.clear()
-                }
-            }
-        }
-        toolbar.add(clearButton)
-
-        panel.add(toolbar, BorderLayout.NORTH)
-
-        val contextList = com.intellij.ui.components.JBList(contextListModel)
-        contextList.cellRenderer = createContextCellRenderer()
-
-        val scrollPane = JBScrollPane(contextList)
-        panel.add(scrollPane, BorderLayout.CENTER)
-
-        // Bottom info panel
-        val infoPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        infoPanel.border = JBUI.Borders.empty(5)
-        val infoLabel = JBLabel("Attachments are sent with the next prompt and auto-cleared")
-        infoLabel.foreground = JBColor.GRAY
-        infoPanel.add(infoLabel, BorderLayout.WEST)
-
-        val countLabel = JBLabel("0 items")
-        countLabel.foreground = JBColor.GRAY
-        infoPanel.add(countLabel, BorderLayout.EAST)
-
-        // Update count when list changes
-        contextListModel.addListDataListener(object : javax.swing.event.ListDataListener {
-            override fun intervalAdded(e: javax.swing.event.ListDataEvent?) = updateCount()
-            override fun intervalRemoved(e: javax.swing.event.ListDataEvent?) = updateCount()
-            override fun contentsChanged(e: javax.swing.event.ListDataEvent?) = updateCount()
-
-            private fun updateCount() {
-                countLabel.text = "${contextListModel.size()} items"
-            }
-        })
-
-        panel.add(infoPanel, BorderLayout.SOUTH)
-
-        return panel
-    }
-
-    private fun handleAddCurrentFile(panel: JBPanel<JBPanel<*>>) {
-        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-        val currentFile = fileEditorManager.selectedFiles.firstOrNull()
-
-        if (currentFile == null) {
-            JOptionPane.showMessageDialog(
-                panel,
-                "No file is currently open in the editor",
-                "No File",
-                JOptionPane.WARNING_MESSAGE
-            )
-            return
-        }
-
-        val path = currentFile.path
-        val lineCount = try {
-            fileEditorManager.selectedTextEditor?.document?.lineCount ?: 0
-        } catch (_: Exception) {
-            0
-        }
-
-        val exists = (0 until contextListModel.size()).any { contextListModel[it].path == path }
-        if (exists) {
-            JOptionPane.showMessageDialog(
-                panel,
-                "File already in context: ${currentFile.name}",
-                "Duplicate File",
-                JOptionPane.INFORMATION_MESSAGE
-            )
-            return
-        }
-
-        contextListModel.addElement(
-            ContextItem(
-                path = path, name = currentFile.name, startLine = 1, endLine = lineCount,
-                fileType = currentFile.fileType, isSelection = false
-            )
-        )
-    }
-
-    private fun handleAddSelection(panel: JBPanel<JBPanel<*>>) {
-        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-        val editor = fileEditorManager.selectedTextEditor
-        val currentFile = fileEditorManager.selectedFiles.firstOrNull()
-
-        if (editor == null || currentFile == null) {
-            JOptionPane.showMessageDialog(
-                panel,
-                "No editor is currently open",
-                "No Editor",
-                JOptionPane.WARNING_MESSAGE
-            )
-            return
-        }
-
-        val selectionModel = editor.selectionModel
-        if (!selectionModel.hasSelection()) {
-            JOptionPane.showMessageDialog(
-                panel,
-                "No text is selected. Select some code first.",
-                "No Selection",
-                JOptionPane.WARNING_MESSAGE
-            )
-            return
-        }
-
-        val document = editor.document
-        val startLine = document.getLineNumber(selectionModel.selectionStart) + 1
-        val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
-
-        contextListModel.addElement(
-            ContextItem(
-                path = currentFile.path, name = "${currentFile.name}:$startLine-$endLine",
-                startLine = startLine, endLine = endLine,
-                fileType = currentFile.fileType, isSelection = true
-            )
-        )
-    }
-
-    private fun createContextCellRenderer(): DefaultListCellRenderer {
-        return object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?, value: Any?, index: Int,
-                isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                val item = value as? ContextItem
-                val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
-                if (item != null) {
-                    label.icon = item.fileType?.icon ?: com.intellij.icons.AllIcons.FileTypes.Text
-                    label.text = if (item.isSelection) {
-                        "${item.name} (${item.endLine - item.startLine + 1} lines)"
-                    } else {
-                        "${item.name} (${item.endLine} lines)"
-                    }
-                    label.toolTipText = item.path
-                    label.border = JBUI.Borders.empty(5)
-                }
-                return label
-            }
-        }
-    }
-
-    private fun createSessionTab(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(10)
-
-        // Session info header
-        sessionInfoLabel = JBLabel("No active session")
-        sessionInfoLabel.font = JBUI.Fonts.smallFont()
-        sessionInfoLabel.foreground = JBColor.GRAY
-        sessionInfoLabel.border = JBUI.Borders.emptyBottom(5)
-        panel.add(sessionInfoLabel, BorderLayout.NORTH)
-
-        // Create split pane: tree on left, details on right
-        val splitPane = OnePixelSplitter(false, 0.4f)
-
-        // Left: Session content tree
-        val treePanel = JBPanel<JBPanel<*>>(BorderLayout())
-        treePanel.border = JBUI.Borders.empty(5)
-
-        planRoot = javax.swing.tree.DefaultMutableTreeNode("Session")
-        planTreeModel = javax.swing.tree.DefaultTreeModel(planRoot)
-        val tree = com.intellij.ui.treeStructure.Tree(planTreeModel)
-        tree.isRootVisible = false
-        tree.showsRootHandles = true
-
-        tree.cellRenderer = createSessionTreeRenderer()
-
-        // Double-click or Enter opens file in editor
-        fun openSelectedFile() {
-            val node = tree.lastSelectedPathComponent as? FileTreeNode ?: return
-            com.github.copilot.intellij.psi.EdtUtil.invokeLater {
-                val vFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(
-                    node.filePath.replace("\\", "/")
-                )
-                if (vFile != null) {
-                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vFile, true)
-                }
-            }
-        }
-        tree.addMouseListener(object : java.awt.event.MouseAdapter() {
-            override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                if (e.clickCount == 2) openSelectedFile()
-            }
-        })
-        tree.addKeyListener(object : java.awt.event.KeyAdapter() {
-            override fun keyPressed(e: java.awt.event.KeyEvent) {
-                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) openSelectedFile()
-            }
-        })
-
-        // Empty state label shown when tree has no items
-        val emptyLabel = JBLabel("No session files yet")
-        emptyLabel.foreground = JBColor.GRAY
-        emptyLabel.horizontalAlignment = SwingConstants.CENTER
-
-        val treeScrollPane = JBScrollPane(tree)
-        val treeCardPanel = JBPanel<JBPanel<*>>(CardLayout())
-        treeCardPanel.add(emptyLabel, "empty")
-        treeCardPanel.add(treeScrollPane, "tree")
-        treePanel.add(treeCardPanel, BorderLayout.CENTER)
-
-        // Show empty/tree based on content
-        fun updateTreeVisibility() {
-            val cl = treeCardPanel.layout as CardLayout
-            cl.show(treeCardPanel, if (planRoot.childCount > 0) "tree" else "empty")
-        }
-        planTreeModel.addTreeModelListener(object : javax.swing.event.TreeModelListener {
-            override fun treeNodesChanged(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
-            override fun treeNodesInserted(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
-            override fun treeNodesRemoved(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
-            override fun treeStructureChanged(e: javax.swing.event.TreeModelEvent?) = updateTreeVisibility()
-        })
-        updateTreeVisibility()
-
-        splitPane.firstComponent = treePanel
-
-        // Right: Details panel
-        val detailsPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        detailsPanel.border = JBUI.Borders.empty(5)
-
-        planDetailsArea = JBTextArea()
-        planDetailsArea.isEditable = false
-        planDetailsArea.lineWrap = true
-        planDetailsArea.wrapStyleWord = true
-        planDetailsArea.text = "Select a file to preview its content.\nDouble-click or Enter to open in editor."
-
-        val detailsScrollPane = JBScrollPane(planDetailsArea)
-        detailsPanel.add(detailsScrollPane, BorderLayout.CENTER)
-
-        tree.addTreeSelectionListener { event -> handleSessionTreeSelection(event) }
-
-        splitPane.secondComponent = detailsPanel
-
-        panel.add(splitPane, BorderLayout.CENTER)
-
-        return panel
-    }
-
-    private fun createSessionTreeRenderer(): javax.swing.tree.DefaultTreeCellRenderer {
-        return object : javax.swing.tree.DefaultTreeCellRenderer() {
-            override fun getTreeCellRendererComponent(
-                tree: JTree?, value: Any?, sel: Boolean, expanded: Boolean,
-                leaf: Boolean, row: Int, hasFocus: Boolean
-            ): Component {
-                val label = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
-                val node = value as? javax.swing.tree.DefaultMutableTreeNode
-                val text = node?.userObject?.toString() ?: ""
-                when {
-                    text.contains("[completed]") -> icon = com.intellij.icons.AllIcons.Actions.Commit
-                    text.contains("[in_progress]") -> icon = com.intellij.icons.AllIcons.Actions.Execute
-                    text.contains("[pending]") -> icon = com.intellij.icons.AllIcons.Actions.Pause
-                    text.contains("[failed]") -> icon = com.intellij.icons.AllIcons.General.Error
-                }
-                return label
-            }
-        }
-    }
-
-    private fun handleSessionTreeSelection(event: javax.swing.event.TreeSelectionEvent) {
-        val node = event.path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode
-        if (node is FileTreeNode) {
-            val fileLines = node.fileContent.lines()
-            val preview = if (fileLines.size > 200) {
-                fileLines.take(200)
-                    .joinToString("\n") + "\n\n--- Truncated (${fileLines.size} lines total, showing first 200) ---"
-            } else {
-                node.fileContent
-            }
-            planDetailsArea.text = "${node.fileName}\n${"=".repeat(40)}\n\n$preview"
-            planDetailsArea.caretPosition = 0
-        } else {
-            val text = node?.userObject?.toString() ?: ""
-            planDetailsArea.text = text.ifEmpty { "Select an item to see details." }
-        }
-    }
 
     private fun createTimelineTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
