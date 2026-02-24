@@ -2,6 +2,7 @@ package com.github.copilot.intellij.psi;
 
 import com.google.gson.JsonObject;
 import com.intellij.execution.RunManager;
+import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
@@ -55,6 +56,7 @@ class ProjectTools extends AbstractToolHandler {
             sb.append("Path: ").append(basePath).append("\n");
             sb.append("Agent Workspace: ").append(basePath).append("/.agent-work/ (for temp/working files)\n");
 
+            appendIdeAndOsInfo(sb);
             appendSdkInfo(sb);
             appendModulesInfo(sb);
             appendBuildSystemInfo(sb, basePath);
@@ -62,6 +64,21 @@ class ProjectTools extends AbstractToolHandler {
 
             return sb.toString().trim();
         });
+    }
+
+    private static void appendIdeAndOsInfo(StringBuilder sb) {
+        try {
+            ApplicationInfo appInfo = ApplicationInfo.getInstance();
+            sb.append("IDE: ").append(appInfo.getFullApplicationName()).append("\n");
+            sb.append("IDE Build: ").append(appInfo.getBuild().asString()).append("\n");
+        } catch (Exception e) {
+            sb.append("IDE: unavailable\n");
+        }
+        sb.append("OS: ").append(System.getProperty(OS_NAME_PROPERTY))
+            .append(" ").append(System.getProperty("os.version"))
+            .append(" (").append(System.getProperty("os.arch")).append(")\n");
+        sb.append("Java: ").append(System.getProperty("java.version"))
+            .append(" (").append(System.getProperty("java.vendor")).append(")\n");
     }
 
     private void appendSdkInfo(StringBuilder sb) {
