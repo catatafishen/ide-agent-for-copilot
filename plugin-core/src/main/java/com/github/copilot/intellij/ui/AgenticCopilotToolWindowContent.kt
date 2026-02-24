@@ -2372,10 +2372,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             preferredSize = Dimension(JBUI.scale(120), h)
             minimumSize = preferredSize
             maximumSize = Dimension(JBUI.scale(120), h)
-            border = BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(JBColor.border(), 1, true),
-                JBUI.Borders.empty(1, JBUI.scale(2))
-            )
+            border = JBUI.Borders.empty(1, JBUI.scale(2))
         }
 
         override fun paintComponent(g: Graphics) {
@@ -2392,13 +2389,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             if (w <= 0 || h <= 0) return
 
             val arc = JBUI.scale(6)
+
+            // Border — light gray, matching ComboBoxAction style
+            val borderShape = java.awt.geom.RoundRectangle2D.Float(
+                0.5f, 0.5f, (width - 1).toFloat(), (height - 1).toFloat(), arc.toFloat(), arc.toFloat()
+            )
+            g2.color = JBColor.border()
+            g2.stroke = BasicStroke(1f)
+            g2.draw(borderShape)
+
             val clipShape = java.awt.geom.RoundRectangle2D.Float(
                 pad.toFloat(), pad.toFloat(), w.toFloat(), h.toFloat(), arc.toFloat(), arc.toFloat()
             )
-
-            // Background — match toolbar action button style
-            g2.color = JBColor(Color(0, 0, 0, 0x0D), Color(255, 255, 255, 0x0D))
-            g2.fill(clipShape)
 
             // Clip all content to the rounded rect
             val oldClip = g2.clip
