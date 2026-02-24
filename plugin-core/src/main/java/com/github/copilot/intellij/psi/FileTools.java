@@ -155,8 +155,8 @@ class FileTools extends AbstractToolHandler {
                     project, () -> doc.setText(newContent), "Write File", null)
             );
             FileDocumentManager.getInstance().saveDocument(doc);
-            if (autoFormat) autoFormatAfterWrite(pathStr);
             String syntaxWarning = checkSyntaxErrors(pathStr);
+            if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr);
             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX + syntaxWarning);
         } else {
             ApplicationManager.getApplication().runWriteAction(() -> {
@@ -237,8 +237,8 @@ class FileTools extends AbstractToolHandler {
                 "Edit File", null)
         );
         FileDocumentManager.getInstance().saveDocument(doc);
-        if (autoFormat) autoFormatAfterWrite(pathStr);
         String syntaxWarning = checkSyntaxErrors(pathStr);
+        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr);
         int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
             + contextLines(doc, finalIdx, ctxEnd) + syntaxWarning);
@@ -294,8 +294,8 @@ class FileTools extends AbstractToolHandler {
                 "Edit File (line range)", null)
         );
         FileDocumentManager.getInstance().saveDocument(doc);
-        if (autoFormat) autoFormatAfterWrite(pathStr);
         String syntaxWarning = checkSyntaxErrors(pathStr);
+        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr);
         int ctxEnd = Math.min(fStart + fNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
             + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX
