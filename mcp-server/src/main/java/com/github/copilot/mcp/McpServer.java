@@ -174,6 +174,7 @@ public class McpServer {
             - search_symbols: Find class/method/function definitions by name
             - find_references: Find all usages of a symbol at specific location
             - get_file_outline: Get structure/symbols in a file
+            - get_class_outline: Get constructors/methods/fields of any class by FQN (works on library JARs and JDK)
 
             COMMANDS:
             - run_command: One-shot commands (gradle build, git status). Output in Run panel.
@@ -224,7 +225,7 @@ public class McpServer {
             Example: get_highlights("PsiBridgeService.java") returns all problems in that file.
 
             8. NEVER use grep/glob for IntelliJ project files or scratch files. \
-            ALWAYS use IntelliJ tools: search_symbols, find_references, search_text, get_file_outline, list_project_files, intellij_read_file. \
+            ALWAYS use IntelliJ tools: search_symbols, find_references, search_text, get_file_outline, get_class_outline, list_project_files, intellij_read_file. \
             Use search_text for text/regex pattern matching across files (replaces grep). \
             grep/glob will FAIL on scratch files (they're stored outside the project). \
             After creating a scratch file, save its path and use intellij_read_file to access it.
@@ -314,6 +315,13 @@ public class McpServer {
         tools.add(buildTool("get_file_outline", "Get File Outline",
             Map.of("path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to outline")),
             List.of("path")));
+
+        tools.add(buildTool("get_class_outline", "Get Class Outline: shows constructors, methods, fields, and inner classes of any class by fully qualified name. Works on project classes, library classes (JARs), and JDK classes. Use this instead of go_to_declaration when you need to discover a class's API.",
+            Map.of(
+                "class_name", Map.of("type", "string", "description", "Fully qualified class name (e.g. 'java.util.ArrayList', 'com.intellij.openapi.project.Project')"),
+                "include_inherited", Map.of("type", "boolean", "description", "If true, include inherited methods and fields from superclasses. Default: false (own members only)")
+            ),
+            List.of("class_name")));
 
         tools.add(buildTool("find_references", "Find References",
             Map.of(
