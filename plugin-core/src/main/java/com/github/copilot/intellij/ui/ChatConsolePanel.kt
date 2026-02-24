@@ -389,7 +389,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;color:${rgb(fg)};line-height:1.45;max-width:900px;margin:0 auto;padding:16px}
 .prompt{text-align:right;margin:10px 0 4px 0}
-.prompt-b{display:inline-block;background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;padding:8px 16px;font-weight:bold;max-width:85%;text-align:left}
+.prompt-b{display:inline-block;background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
 .response{background:${rgba(AGENT_COLOR, 0.06)};border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
 .thinking{background:${rgba(THINK_COLOR, 0.06)};border-radius:8px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
 .tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${rgba(TOOL_COLOR, 0.3)};border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
@@ -515,7 +515,7 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 /* --- User prompt bubble (right-aligned) --- */
 .prompt-row{display:flex;justify-content:flex-end;margin:10px 0 4px 0}
 .prompt-bubble{background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;
-    padding:8px 16px;max-width:85%;font-weight:600;white-space:pre-wrap;font-size:0.92em}
+    padding:6px 14px;max-width:85%;font-weight:normal;white-space:pre-wrap;font-size:0.88em}
 
 /* --- Agent response bubble (left-aligned) --- */
 .agent-row{margin:4px 0}
@@ -560,8 +560,8 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 /* --- Tool detail content --- */
 .tool-desc{color:${rgb(THINK_COLOR)};font-style:italic;margin-bottom:4px}
 .tool-params-label,.tool-result-label{color:${rgb(THINK_COLOR)};font-size:0.85em;margin:6px 0 2px 0;font-weight:600}
-.tool-params{margin:2px 0 6px 0;padding:6px 8px;font-size:0.9em;max-height:200px;overflow-y:auto}
-.tool-output{margin:2px 0;padding:6px 8px;font-size:0.9em;max-height:300px;overflow-y:auto}
+.tool-params{margin:2px 0 6px 0;padding:6px 8px;font-size:0.9em}
+.tool-output{margin:2px 0;padding:6px 8px;font-size:0.9em}
 .tool-result-pending{color:${rgb(THINK_COLOR)};font-style:italic}
 
 /* --- Status entries --- */

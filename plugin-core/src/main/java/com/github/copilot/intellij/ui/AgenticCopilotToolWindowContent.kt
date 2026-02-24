@@ -80,11 +80,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         tabbedPane.tabComponentInsets = JBUI.emptyInsets()
 
         tabbedPane.addTab("Prompt", createPromptTab())
-        tabbedPane.addTab("Context", createContextTab())
         tabbedPane.addTab("Session", createSessionTab())
         tabbedPane.addTab("Timeline", createTimelineTab())
         tabbedPane.addTab("Debug", createDebugTab())
-        tabbedPane.addTab("Settings", createSettingsTab())
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER)
     }
@@ -580,6 +578,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         actionGroup.add(ModeSelectorAction())
         actionGroup.addSeparator()
         actionGroup.add(CopyConversationAction())
+        actionGroup.add(SettingsAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", actionGroup, true
@@ -674,6 +673,29 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 .createActionPopupMenu(ActionPlaces.TOOLWINDOW_CONTENT, group)
             val comp = e.inputEvent?.component ?: return
             popup.component.show(comp, 0, comp.height)
+        }
+    }
+
+    private inner class SettingsAction : AnAction(
+        "Settings", "Open plugin settings", com.intellij.icons.AllIcons.General.Settings
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun actionPerformed(e: AnActionEvent) {
+            val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
+                init {
+                    title = "Agentic Copilot Settings"
+                    init()
+                }
+
+                override fun createCenterPanel(): JComponent {
+                    val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+                    wrapper.preferredSize = JBUI.size(450, 400)
+                    wrapper.add(createSettingsTab(), BorderLayout.CENTER)
+                    return wrapper
+                }
+            }
+            dialog.show()
         }
     }
 
