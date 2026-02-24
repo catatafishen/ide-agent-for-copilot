@@ -411,8 +411,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         appendHtml("<div class='status-row info'>ℹ ${escapeHtml(message)}</div>")
     }
 
+    private var processingShownAt = 0L
+
     /** Show a bouncing-dots indicator at the bottom of the chat while the agent is processing. */
     fun showProcessingIndicator() {
+        processingShownAt = System.currentTimeMillis()
         executeJs(
             """(function(){
             if(document.getElementById('processing-ind'))return;
@@ -423,9 +426,17 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
     }
 
-    /** Remove the bouncing-dots processing indicator. */
+    /** Remove the bouncing-dots processing indicator, ensuring minimum 500ms visibility. */
     fun hideProcessingIndicator() {
-        executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+        val elapsed = System.currentTimeMillis() - processingShownAt
+        val minDisplay = 500L
+        if (elapsed < minDisplay && processingShownAt > 0) {
+            javax.swing.Timer((minDisplay - elapsed).toInt()) {
+                executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+            }.apply { isRepeats = false; start() }
+        } else {
+            executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+        }
     }
 
     fun hasContent(): Boolean = entries.isNotEmpty()
