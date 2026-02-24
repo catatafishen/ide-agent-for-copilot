@@ -5,6 +5,7 @@ import com.github.copilot.intellij.services.CopilotService
 import com.github.copilot.intellij.services.CopilotSettings
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
+import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -726,7 +727,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createControlsRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // ActionToolbar with send/stop, model, mode
+        // ActionToolbar with send/stop, model, mode, usage
         val actionGroup = DefaultActionGroup()
         actionGroup.add(SendStopAction())
         actionGroup.addSeparator()
@@ -738,58 +739,87 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         actionGroup.add(ModeSelectorAction())
         actionGroup.addSeparator()
         actionGroup.add(CopyConversationAction())
+        // Right-aligned usage components via Separator.create() + right-aligned group
+        actionGroup.add(RightAlignedToolbarSpacer())
+        actionGroup.add(UsageLabelAction())
+        actionGroup.add(UsageGraphAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", actionGroup, true
         )
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
-        controlsToolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY)
 
-        // Horizontal layout: toolbar (fixed width) + usage (fills remaining)
-        val hBox = JBPanel<JBPanel<*>>().apply {
-            layout = BoxLayout(this, BoxLayout.X_AXIS)
-            isOpaque = false
-            add(controlsToolbar.component)
-        }
-
-        // Usage panel (graph + labels) after toolbar actions
-        val usageRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), JBUI.scale(2))).apply {
-            isOpaque = false
-            usageGraphPanel = UsageGraphPanel()
-            add(usageGraphPanel)
-            usageLabel = JBLabel("")
-            usageLabel.font = JBUI.Fonts.smallFont()
-            costLabel = JBLabel("")
-            costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-            add(usageLabel)
-            add(costLabel)
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        }
-        // Single click handler on the usage row; forward clicks from children too
-        val toggleListener = object : java.awt.event.MouseAdapter() {
-            override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                toggleUsageDisplayMode()
-            }
-        }
-        usageRow.addMouseListener(toggleListener)
-        usageGraphPanel.addMouseListener(toggleListener)
-        usageLabel.addMouseListener(toggleListener)
-        costLabel.addMouseListener(toggleListener)
-        // Set hand cursor on children so the whole row feels clickable
-        usageGraphPanel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        usageLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        costLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-
-        hBox.add(usageRow)
-        row.add(hBox, BorderLayout.CENTER)
-
-        // Track toolbar visibility — when toolbar is hidden via right-click menu, hide usage too
-        controlsToolbar.component.addHierarchyListener {
-            usageRow.isVisible = controlsToolbar.component.isVisible
-        }
+        row.add(controlsToolbar.component, BorderLayout.CENTER)
 
         return row
+    }
+
+    /** Invisible spacer that pushes subsequent actions to the right */
+    private class RightAlignedToolbarSpacer : AnAction(), CustomComponentAction {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+        override fun actionPerformed(e: AnActionEvent) {}
+        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
+            return JBPanel<JBPanel<*>>(BorderLayout()).apply {
+                isOpaque = false
+                // Expand to fill available space, pushing items after it to the right
+                preferredSize = Dimension(0, 0)
+                minimumSize = Dimension(0, 0)
+                maximumSize = Dimension(Int.MAX_VALUE, 0)
+            }
+        }
+    }
+
+    /** Toolbar action showing the usage label + cost as a clickable custom component */
+    private inner class UsageLabelAction : AnAction("Usage"), CustomComponentAction {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun actionPerformed(e: AnActionEvent) {
+            toggleUsageDisplayMode()
+        }
+
+        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
+            val panel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
+                isOpaque = false
+                usageLabel = JBLabel("")
+                usageLabel.font = JBUI.Fonts.smallFont()
+                costLabel = JBLabel("")
+                costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
+                add(usageLabel)
+                add(costLabel)
+                cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                toolTipText = "Click to toggle monthly/session usage"
+            }
+            val clickListener = object : java.awt.event.MouseAdapter() {
+                override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                    toggleUsageDisplayMode()
+                }
+            }
+            panel.addMouseListener(clickListener)
+            usageLabel.addMouseListener(clickListener)
+            costLabel.addMouseListener(clickListener)
+            usageLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            costLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            return panel
+        }
+    }
+
+    /** Toolbar action showing the usage sparkline graph as a clickable custom component */
+    private inner class UsageGraphAction : AnAction("Usage Graph"), CustomComponentAction {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun actionPerformed(e: AnActionEvent) {
+            toggleUsageDisplayMode()
+        }
+
+        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
+            usageGraphPanel = UsageGraphPanel()
+            usageGraphPanel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            usageGraphPanel.addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                    toggleUsageDisplayMode()
+                }
+            })
+            return usageGraphPanel
+        }
     }
 
     // Send/Stop toggle action for the toolbar
