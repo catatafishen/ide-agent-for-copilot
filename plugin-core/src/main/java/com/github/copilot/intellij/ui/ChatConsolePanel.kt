@@ -130,6 +130,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** Sanitize an ID string for safe use as a DOM element id */
         private fun domId(raw: String): String = raw.replace(Regex("[^a-zA-Z0-9_-]"), "_")
 
+        /** Format current time as HH:mm for timestamps */
+        private fun timestamp(): String {
+            val cal = Calendar.getInstance()
+            return "%02d:%02d".format(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+        }
+
         private fun rgb(c: Color) = "rgb(${c.red},${c.green},${c.blue})"
         private fun rgba(c: Color, a: Double) = "rgba(${c.red},${c.green},${c.blue},$a)"
     }
@@ -198,7 +204,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         collapseThinking()
         entries.add(EntryData.Prompt(text))
-        val html = "<div class='prompt-row'><div class='prompt-bubble'>${escapeHtml(text)}</div></div>"
+        val ts = timestamp()
+        val html = "<div class='prompt-row'><div class='prompt-bubble' onclick='toggleTs(this)'>${escapeHtml(text)}<span class='ts'>$ts</span></div></div>"
         appendHtml(html)
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(">>> $text\n") } }
     }
@@ -265,8 +272,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
             entryCounter++
+            val ts = timestamp()
             val html =
-                "<div class='agent-row'><div class='agent-bubble' id='text-$entryCounter'><pre class='streaming'></pre></div></div>"
+                "<div class='agent-row'><div class='agent-bubble' id='text-$entryCounter' onclick='toggleTs(this)'><pre class='streaming'></pre><span class='ts'>$ts</span></div></div>"
             appendHtml(html)
         }
         currentTextData!!.raw.append(text)
@@ -279,7 +287,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
-        val info = TOOL_DISPLAY_INFO[title]
+        val baseName = title.substringAfterLast("-")
+        val info = TOOL_DISPLAY_INFO[title] ?: TOOL_DISPLAY_INFO[baseName]
         val displayName = info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
         val safeDisplayName = escapeHtml(displayName)
 
@@ -363,7 +372,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             is EntryData.Thinking -> sb.appendLine("[thinking] ${e.raw}")
             is EntryData.ToolCall -> {
-                val info = TOOL_DISPLAY_INFO[e.title]
+                val baseName = e.title.substringAfterLast("-")
+                val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
                 val name = info?.displayName ?: e.title
                 sb.appendLine("⚒ $name")
                 if (e.arguments != null) sb.appendLine("  params: ${e.arguments}")
@@ -420,7 +430,8 @@ ul,ol{margin:4px 0;padding-left:22px}
             )
 
             is EntryData.ToolCall -> {
-                val info = TOOL_DISPLAY_INFO[e.title]
+                val baseName = e.title.substringAfterLast("-")
+                val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
                 val displayName = info?.displayName ?: e.title
                 sb.append("<details class='tool'><summary>⚒ ${escapeHtml(displayName)}</summary>")
                 if (info?.description != null) sb.append("<div style='font-style:italic;margin:4px 0'>${escapeHtml(info.description)}</div>")
@@ -564,6 +575,10 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 .tool-output{margin:2px 0;padding:6px 8px;font-size:0.9em}
 .tool-result-pending{color:${rgb(THINK_COLOR)};font-style:italic}
 
+/* --- Timestamps (hidden by default, shown on click) --- */
+.ts{display:none;font-size:0.75em;color:${rgb(THINK_COLOR)};margin-top:4px}
+.ts.show{display:block}
+
 /* --- Status entries --- */
 .status-row{padding:4px 12px;margin:2px 0;font-size:0.88em;border-radius:6px}
 .status-row.error{color:red;background:rgba(255,0,0,0.05)}
@@ -608,6 +623,7 @@ function toggleThinking(id){
   el.classList.toggle('collapsed');
   el.querySelector('.caret').textContent=el.classList.contains('collapsed')?'\u25B8':'\u25BE';
 }
+function toggleTs(el){var ts=el.querySelector('.ts');if(ts)ts.classList.toggle('show')}
 document.addEventListener('click',function(e){
   var el=e.target;
   while(el&&el.tagName!=='A')el=el.parentElement;

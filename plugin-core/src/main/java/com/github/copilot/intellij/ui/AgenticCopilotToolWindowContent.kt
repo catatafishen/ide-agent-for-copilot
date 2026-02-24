@@ -66,8 +66,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var usageLabel: JBLabel
     private lateinit var costLabel: JBLabel
     private lateinit var consolePanel: ChatConsolePanel
-    private lateinit var responseSpinner: AsyncProcessIcon
-    private lateinit var responseStatus: JBLabel
 
     init {
         setupUI()
@@ -578,7 +576,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         actionGroup.add(ModeSelectorAction())
         actionGroup.addSeparator()
         actionGroup.add(CopyConversationAction())
-        actionGroup.add(SettingsAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", actionGroup, true
@@ -586,20 +583,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
         row.add(controlsToolbar.component, BorderLayout.WEST)
-
-        // Status panel (spinner + label)
-        val statusPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0))
-        statusPanel.isOpaque = false
-        statusPanel.add(loadingSpinner)
-        responseSpinner = AsyncProcessIcon("response-loading")
-        responseSpinner.preferredSize = JBUI.size(16, 16)
-        responseSpinner.isVisible = false
-        statusPanel.add(responseSpinner)
-        responseStatus = JBLabel("")
-        responseStatus.font = JBUI.Fonts.smallFont()
-        responseStatus.foreground = JBColor.GRAY
-        statusPanel.add(responseStatus)
-        row.add(statusPanel, BorderLayout.CENTER)
 
         return row
     }
@@ -673,29 +656,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 .createActionPopupMenu(ActionPlaces.TOOLWINDOW_CONTENT, group)
             val comp = e.inputEvent?.component ?: return
             popup.component.show(comp, 0, comp.height)
-        }
-    }
-
-    private inner class SettingsAction : AnAction(
-        "Settings", "Open plugin settings", com.intellij.icons.AllIcons.General.Settings
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-        override fun actionPerformed(e: AnActionEvent) {
-            val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
-                init {
-                    title = "Agentic Copilot Settings"
-                    init()
-                }
-
-                override fun createCenterPanel(): JComponent {
-                    val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                    wrapper.preferredSize = JBUI.size(450, 400)
-                    wrapper.add(createSettingsTab(), BorderLayout.CENTER)
-                    return wrapper
-                }
-            }
-            dialog.show()
         }
     }
 
@@ -777,10 +737,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun setResponseStatus(text: String, loading: Boolean = true) {
-        SwingUtilities.invokeLater {
-            responseStatus.text = text
-            responseSpinner.isVisible = loading
-        }
+        // Status indicator removed from UI — kept as no-op to avoid call-site churn
     }
 
     private fun setupPromptKeyBindings(promptTextArea: JBTextArea) {
@@ -1704,6 +1661,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     fun getComponent(): JComponent = mainPanel
+
+    fun openSettings() {
+        val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
+            init {
+                title = "Agentic Copilot Settings"
+                init()
+            }
+
+            override fun createCenterPanel(): JComponent {
+                val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+                wrapper.preferredSize = JBUI.size(450, 400)
+                wrapper.add(createSettingsTab(), BorderLayout.CENTER)
+                return wrapper
+            }
+        }
+        dialog.show()
+    }
 
     fun resetSession() {
         currentSessionId = null
