@@ -454,7 +454,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         entries.add(EntryData.SessionSeparator(timestamp))
         val html =
-            "<div class='session-sep'><span class='session-sep-line'></span><span class='session-sep-label'>New session · ${
+            "<div class='session-sep'><span class='session-sep-line'></span><span class='session-sep-label'>New session \uD83D\uDCC5 ${
                 escapeHtml(timestamp)
             }</span><span class='session-sep-line'></span></div>"
         appendHtml(html)

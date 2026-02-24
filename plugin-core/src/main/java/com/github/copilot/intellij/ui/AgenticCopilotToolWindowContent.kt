@@ -619,6 +619,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         setupPromptKeyBindings(promptTextArea)
         setupPromptPlaceholder(promptTextArea)
+        setupPromptContextMenu(promptTextArea)
+        setupPromptDragDrop(promptTextArea)
 
         // Auto-resize rows (2-6)
         promptTextArea.document.addDocumentListener(object : javax.swing.event.DocumentListener {
@@ -1050,7 +1052,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun setResponseStatus(text: String, loading: Boolean = true) {
-        // Status indicator removed from UI — kept as no-op to avoid call-site churn
+        // Status indicator removed from UI \u2192 kept as no-op to avoid call-site churn
     }
 
     private fun setupPromptKeyBindings(promptTextArea: JBTextArea) {
@@ -1094,6 +1096,121 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         })
         promptTextArea.text = PROMPT_PLACEHOLDER
         promptTextArea.foreground = JBColor.GRAY
+    }
+
+    private fun setupPromptContextMenu(textArea: JBTextArea) {
+        val popup = javax.swing.JPopupMenu()
+
+        // Edit actions
+        val cutAction = javax.swing.JMenuItem("Cut").apply {
+            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            addActionListener { textArea.cut() }
+        }
+        val copyAction = javax.swing.JMenuItem("Copy").apply {
+            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            addActionListener { textArea.copy() }
+        }
+        val pasteAction = javax.swing.JMenuItem("Paste").apply {
+            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            addActionListener { textArea.paste() }
+        }
+        val selectAllAction = javax.swing.JMenuItem("Select All").apply {
+            accelerator = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_A, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+            addActionListener { textArea.selectAll() }
+        }
+
+        popup.add(cutAction)
+        popup.add(copyAction)
+        popup.add(pasteAction)
+        popup.add(selectAllAction)
+        popup.addSeparator()
+
+        // Attach actions
+        popup.add(javax.swing.JMenuItem("Attach Current File").apply {
+            icon = com.intellij.icons.AllIcons.Actions.AddFile
+            addActionListener { handleAddCurrentFile(mainPanel) }
+        })
+        popup.add(javax.swing.JMenuItem("Attach Editor Selection").apply {
+            icon = com.intellij.icons.AllIcons.Actions.AddMulticaret
+            addActionListener { handleAddSelection(mainPanel) }
+        })
+
+        // Context management
+        popup.add(javax.swing.JMenuItem("Clear Attachments").apply {
+            icon = com.intellij.icons.AllIcons.Actions.GC
+            addActionListener { contextListModel.clear() }
+            isEnabled = contextListModel.size() > 0
+        })
+        popup.addSeparator()
+
+        // Conversation actions
+        popup.add(javax.swing.JMenuItem("New Conversation").apply {
+            icon = com.intellij.icons.AllIcons.General.Add
+            addActionListener {
+                currentSessionId = null
+                consolePanel.addSessionSeparator(
+                    java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                )
+                updateSessionInfo()
+            }
+        })
+
+        textArea.componentPopupMenu = popup
+
+        // Update enabled states dynamically before showing
+        popup.addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
+            override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
+                val hasSelection = textArea.selectedText?.isNotEmpty() == true
+                val hasText = textArea.text.isNotBlank() && textArea.text != PROMPT_PLACEHOLDER
+                cutAction.isEnabled = hasSelection
+                copyAction.isEnabled = hasSelection
+                selectAllAction.isEnabled = hasText
+                // Re-check context items count
+                popup.components.filterIsInstance<javax.swing.JMenuItem>()
+                    .find { it.text == "Clear Attachments" }?.isEnabled = contextListModel.size() > 0
+            }
+            override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) {}
+            override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) {}
+        })
+    }
+
+    private fun setupPromptDragDrop(textArea: JBTextArea) {
+        textArea.dropTarget = java.awt.dnd.DropTarget(textArea, java.awt.dnd.DnDConstants.ACTION_COPY,
+            object : java.awt.dnd.DropTargetAdapter() {
+                override fun drop(dtde: java.awt.dnd.DropTargetDropEvent) {
+                    try {
+                        dtde.acceptDrop(java.awt.dnd.DnDConstants.ACTION_COPY)
+                        val transferable = dtde.transferable
+                        if (transferable.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.javaFileListFlavor)) {
+                            @Suppress("UNCHECKED_CAST")
+                            val files = transferable.getTransferData(
+                                java.awt.datatransfer.DataFlavor.javaFileListFlavor
+                            ) as List<java.io.File>
+                            for (file in files) {
+                                val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                                    .findFileByIoFile(file) ?: continue
+                                val doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
+                                    .getDocument(vf) ?: continue
+                                val exists = (0 until contextListModel.size()).any {
+                                    contextListModel[it].path == vf.path
+                                }
+                                if (!exists) {
+                                    contextListModel.addElement(ContextItem(
+                                        path = vf.path, name = vf.name,
+                                        startLine = 1, endLine = doc.lineCount,
+                                        fileType = vf.fileType, isSelection = false
+                                    ))
+                                }
+                            }
+                            dtde.dropComplete(true)
+                        } else {
+                            dtde.dropComplete(false)
+                        }
+                    } catch (_: Exception) {
+                        dtde.dropComplete(false)
+                    }
+                }
+            })
     }
 
     private fun handleStopRequest(promptThread: Thread?) {
