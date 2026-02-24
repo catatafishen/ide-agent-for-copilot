@@ -25,7 +25,7 @@ dependencies {
     // Kotlin stdlib for UI layer
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
-    // Force annotations version to match the platform (TYPE_USE support required)
+    // Force annotations version to match the platform (TYPE_USE support required for lambdas)
     implementation("org.jetbrains:annotations:26.0.2")
 
     // JSON processing (Gson)
@@ -39,6 +39,11 @@ dependencies {
     )  // Required by IntelliJ test framework
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:${providers.gradleProperty("junitVersion").get()}")
+}
+
+// Ensure annotations 26.x is used everywhere (needed for TYPE_USE @NotNull on functional interfaces)
+configurations.all {
+    resolutionStrategy.force("org.jetbrains:annotations:26.0.2")
 }
 
 // Copy MCP server JAR into plugin lib for bundling

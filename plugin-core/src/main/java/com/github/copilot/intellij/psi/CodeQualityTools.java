@@ -4,7 +4,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.codeInspection.ex.GlobalInspectionContextImpl;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -96,7 +95,7 @@ class CodeQualityTools extends AbstractToolHandler {
 
         EdtUtil.invokeLater(() -> {
             try {
-                ReadAction.run(() -> collectProblems(pathStr, resultFuture));
+                ApplicationManager.getApplication().runReadAction(() -> collectProblems(pathStr, resultFuture));
             } catch (Exception e) {
                 resultFuture.complete("Error getting problems: " + e.getMessage());
             }
@@ -182,7 +181,7 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private void getHighlightsCached(String pathStr, int limit, CompletableFuture<String> resultFuture) {
-        ReadAction.run(() -> {
+        ApplicationManager.getApplication().runReadAction(() -> {
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> allFiles = collectFilesForHighlightAnalysis(pathStr, fileIndex, resultFuture);
             if (resultFuture.isDone()) return;
@@ -299,7 +298,7 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private void collectCompilationErrors(String pathStr, CompletableFuture<String> resultFuture) {
-        ReadAction.run(() -> {
+        ApplicationManager.getApplication().runReadAction(() -> {
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> files = collectFilesForHighlightAnalysis(pathStr, fileIndex, resultFuture);
             if (resultFuture.isDone()) return;
@@ -470,8 +469,9 @@ class CodeQualityTools extends AbstractToolHandler {
 
         AppExecutorUtil.getAppScheduledExecutorService().schedule(() -> {
             try {
-                InspectionCollectionResult collected = ReadAction.compute(() ->
-                    collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
+                InspectionCollectionResult collected = ApplicationManager.getApplication().runReadAction(
+                    (com.intellij.openapi.util.Computable<InspectionCollectionResult>) () ->
+                        collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
 
                 if (collected.problems.isEmpty() && attempt < 2) {
                     LOG.info("Inspection collection attempt " + (attempt + 1) +
@@ -523,8 +523,9 @@ class CodeQualityTools extends AbstractToolHandler {
             return null;
         }
         if (scopeFile.isDirectory()) {
-            PsiDirectory psiDir = com.intellij.openapi.application.ReadAction.compute(() ->
-                PsiManager.getInstance(project).findDirectory(scopeFile)
+            PsiDirectory psiDir = ApplicationManager.getApplication().runReadAction(
+                (com.intellij.openapi.util.Computable<PsiDirectory>) () ->
+                    PsiManager.getInstance(project).findDirectory(scopeFile)
             );
             if (psiDir == null) {
                 resultFuture.complete("Error: Cannot resolve directory: " + scopePath);
@@ -533,9 +534,9 @@ class CodeQualityTools extends AbstractToolHandler {
             LOG.info("Analysis scope: directory " + scopePath);
             return new com.intellij.analysis.AnalysisScope(psiDir);
         }
-        PsiFile psiFile = com.intellij.openapi.application.ReadAction.compute(() ->
-            PsiManager.getInstance(project).findFile(scopeFile)
-        );
+        PsiFile psiFile = ApplicationManager.getApplication().runReadAction(
+            (com.intellij.openapi.util.Computable<PsiFile>) () ->
+                PsiManager.getInstance(project).findFile(scopeFile));
         if (psiFile == null) {
             resultFuture.complete(ERROR_PREFIX + ERROR_CANNOT_PARSE + scopePath);
             return null;
