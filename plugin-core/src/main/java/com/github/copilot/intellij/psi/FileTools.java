@@ -156,7 +156,8 @@ class FileTools extends AbstractToolHandler {
             );
             FileDocumentManager.getInstance().saveDocument(doc);
             if (autoFormat) autoFormatAfterWrite(pathStr);
-            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
+            String syntaxWarning = checkSyntaxErrors(pathStr);
+            resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX + syntaxWarning);
         } else {
             ApplicationManager.getApplication().runWriteAction(() -> {
                 try (var os = vf.getOutputStream(this)) {
@@ -237,9 +238,10 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         if (autoFormat) autoFormatAfterWrite(pathStr);
+        String syntaxWarning = checkSyntaxErrors(pathStr);
         int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
-            + contextLines(doc, finalIdx, ctxEnd));
+            + contextLines(doc, finalIdx, ctxEnd) + syntaxWarning);
     }
 
     /**
@@ -293,10 +295,11 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         if (autoFormat) autoFormatAfterWrite(pathStr);
+        String syntaxWarning = checkSyntaxErrors(pathStr);
         int ctxEnd = Math.min(fStart + fNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
             + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX
-            + contextLines(doc, fStart, ctxEnd));
+            + contextLines(doc, fStart, ctxEnd) + syntaxWarning);
     }
 
     /**
@@ -375,6 +378,46 @@ class FileTools extends AbstractToolHandler {
             LOG.info("Auto-formatted after write: " + pathStr);
         } catch (Exception e) {
             LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Check for syntax errors in a file after writing. Returns a warning string
+     * if errors are found, or empty string if the file is clean.
+     * Runs on EDT (caller must be on EDT).
+     */
+    private String checkSyntaxErrors(String pathStr) {
+        try {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) return "";
+            com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+            PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+            if (psiFile == null) return "";
+            Document doc = psiFile.getViewProvider().getDocument();
+
+            java.util.List<String> errors = new java.util.ArrayList<>();
+            collectPsiErrors(psiFile, doc, errors);
+
+            if (errors.isEmpty()) return "";
+            int count = Math.min(errors.size(), 5);
+            String summary = "\n\n\u26A0\uFE0F WARNING: " + errors.size() + " syntax error(s) after write:\n"
+                + String.join("\n", errors.subList(0, count));
+            if (errors.size() > count) summary += "\n  ... and " + (errors.size() - count) + " more";
+            return summary;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private void collectPsiErrors(com.intellij.psi.PsiElement element, Document doc,
+                                  java.util.List<String> errors) {
+        if (element instanceof com.intellij.psi.PsiErrorElement) {
+            var err = (com.intellij.psi.PsiErrorElement) element;
+            int line = doc != null ? doc.getLineNumber(err.getTextOffset()) + 1 : -1;
+            errors.add("  Line " + line + ": " + err.getErrorDescription());
+        }
+        for (com.intellij.psi.PsiElement child = element.getFirstChild(); child != null; child = child.getNextSibling()) {
+            collectPsiErrors(child, doc, errors);
         }
     }
 
