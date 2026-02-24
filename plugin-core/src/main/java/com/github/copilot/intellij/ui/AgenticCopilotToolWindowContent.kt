@@ -1415,81 +1415,91 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun handlePromptStreamingUpdate(update: com.google.gson.JsonObject, receivedContent: Boolean) {
         val updateType = update["sessionUpdate"]?.asString ?: ""
         when (updateType) {
-            "tool_call" -> {
-                val title = update["title"]?.asString ?: "tool"
-                val status = update["status"]?.asString ?: ""
-                val toolCallId = update["toolCallId"]?.asString ?: ""
-                turnToolCallCount++
-                val arguments = update["arguments"]?.let { args ->
-                    if (args.isJsonObject) {
-                        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-                        gson.toJson(args)
-                    } else if (args.isJsonPrimitive) args.asString
-                    else null
-                } ?: update["input"]?.let { inp ->
-                    if (inp.isJsonObject) {
-                        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-                        gson.toJson(inp)
-                    } else if (inp.isJsonPrimitive) inp.asString
-                    else null
-                }
-                setResponseStatus("Running: $title")
-                if (status != "completed" && toolCallId.isNotEmpty()) {
-                    toolCallTitles[toolCallId] = title
-                    consolePanel.addToolCallEntry(toolCallId, title, arguments)
-                }
-            }
-
-            "tool_call_update" -> {
-                val status = update["status"]?.asString ?: ""
-                val toolCallId = update["toolCallId"]?.asString ?: ""
-                val result = update["result"]?.asString
-                    ?: update["content"]?.let { c ->
-                        try {
-                            when {
-                                c.isJsonArray -> {
-                                    c.asJsonArray.mapNotNull { block ->
-                                        if (!block.isJsonObject) return@mapNotNull if (block.isJsonPrimitive) block.asString else block.toString()
-                                        val obj = block.asJsonObject
-                                        obj["content"]?.let { inner ->
-                                            if (inner.isJsonObject) inner.asJsonObject["text"]?.asString
-                                            else if (inner.isJsonPrimitive) inner.asString
-                                            else null
-                                        } ?: obj["text"]?.asString
-                                    }.joinToString("\n").ifEmpty { null }
-                                }
-
-                                c.isJsonObject -> c.asJsonObject["text"]?.asString
-                                c.isJsonPrimitive -> c.asString
-                                else -> null
-                            }
-                        } catch (_: Exception) {
-                            c.toString()
-                        }
-                    }
-                if (status == "completed") {
-                    setResponseStatus(MSG_THINKING)
-                    consolePanel.updateToolCall(toolCallId, "completed", result)
-                } else if (status == "failed") {
-                    val error = update["error"]?.asString
-                        ?: result
-                        ?: update.toString().take(500)
-                    consolePanel.updateToolCall(toolCallId, "failed", error)
-                }
-            }
-
-            "agent_thought_chunk" -> {
-                val content = update["content"]?.asJsonObject
-                val text = content?.get("text")?.asString
-                if (text != null) {
-                    consolePanel.appendThinkingText(text)
-                }
-                if (!receivedContent) {
-                    setResponseStatus(MSG_THINKING)
-                }
-            }
+            "tool_call" -> handleStreamingToolCall(update)
+            "tool_call_update" -> handleStreamingToolCallUpdate(update)
+            "agent_thought_chunk" -> handleStreamingAgentThought(update, receivedContent)
         }
         handleAcpUpdate(update)
+    }
+
+    private fun extractJsonElementText(element: com.google.gson.JsonElement): String? {
+        return when {
+            element.isJsonObject -> com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(element)
+            element.isJsonPrimitive -> element.asString
+            else -> null
+        }
+    }
+
+    private fun extractJsonArguments(update: com.google.gson.JsonObject): String? {
+        return update["arguments"]?.let { extractJsonElementText(it) }
+            ?: update["input"]?.let { extractJsonElementText(it) }
+    }
+
+    private fun handleStreamingToolCall(update: com.google.gson.JsonObject) {
+        val title = update["title"]?.asString ?: "tool"
+        val status = update["status"]?.asString ?: ""
+        val toolCallId = update["toolCallId"]?.asString ?: ""
+        turnToolCallCount++
+        val arguments = extractJsonArguments(update)
+        setResponseStatus("Running: $title")
+        if (status != "completed" && toolCallId.isNotEmpty()) {
+            toolCallTitles[toolCallId] = title
+            consolePanel.addToolCallEntry(toolCallId, title, arguments)
+        }
+    }
+
+    private fun handleStreamingToolCallUpdate(update: com.google.gson.JsonObject) {
+        val status = update["status"]?.asString ?: ""
+        val toolCallId = update["toolCallId"]?.asString ?: ""
+        val result = update["result"]?.asString
+            ?: update["content"]?.let { extractContentText(it) }
+        if (status == "completed") {
+            setResponseStatus(MSG_THINKING)
+            consolePanel.updateToolCall(toolCallId, "completed", result)
+        } else if (status == "failed") {
+            val error = update["error"]?.asString
+                ?: result
+                ?: update.toString().take(500)
+            consolePanel.updateToolCall(toolCallId, "failed", error)
+        }
+    }
+
+    private fun extractContentText(element: com.google.gson.JsonElement): String? {
+        return try {
+            when {
+                element.isJsonArray -> {
+                    element.asJsonArray.mapNotNull { block ->
+                        extractContentBlockText(block)
+                    }.joinToString("\n").ifEmpty { null }
+                }
+                element.isJsonObject -> element.asJsonObject["text"]?.asString
+                element.isJsonPrimitive -> element.asString
+                else -> null
+            }
+        } catch (_: Exception) {
+            element.toString()
+        }
+    }
+
+    private fun extractContentBlockText(block: com.google.gson.JsonElement): String? {
+        if (!block.isJsonObject) return if (block.isJsonPrimitive) block.asString else block.toString()
+        val obj = block.asJsonObject
+        return obj["content"]?.let { inner ->
+            if (inner.isJsonObject) inner.asJsonObject["text"]?.asString
+            else if (inner.isJsonPrimitive) inner.asString
+            else null
+        } ?: obj["text"]?.asString
+    }
+
+    private fun handleStreamingAgentThought(update: com.google.gson.JsonObject, receivedContent: Boolean) {
+        val content = update["content"]?.asJsonObject
+        val text = content?.get("text")?.asString
+        if (text != null) {
+            consolePanel.appendThinkingText(text)
+        }
+        if (!receivedContent) {
+            setResponseStatus(MSG_THINKING)
+        }
     }
 
     private fun handlePromptError(e: Exception) {

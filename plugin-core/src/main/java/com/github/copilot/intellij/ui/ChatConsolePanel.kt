@@ -1365,90 +1365,89 @@ document.addEventListener('mouseover',function(e){
 
 // --- Markdown to HTML ---
 
+    private data class MarkdownState(
+        var inCode: Boolean = false,
+        var inTable: Boolean = false,
+        var firstTR: Boolean = true,
+        var inList: Boolean = false
+    )
+
     private fun markdownToHtml(text: String): String {
         val lines = text.lines()
         val sb = StringBuilder()
-        var i = 0
-        var inCode = false
-        var inTable = false
-        var firstTR = true
-        var inList = false
+        val state = MarkdownState()
 
-        while (i < lines.size) {
-            val line = lines[i]
+        for (line in lines) {
             val t = line.trim()
-
-            if (t.startsWith("```")) {
-                if (inCode) {
-                    sb.append("</code></pre>"); inCode = false
-                } else {
-                    if (inList) {
-                        sb.append("</ul>"); inList = false
-                    }
-                    if (inTable) {
-                        sb.append(HTML_TABLE_CLOSE); inTable = false
-                    }
-                    sb.append("<pre><code>"); inCode = true
-                }
-                i++; continue
+            when {
+                t.startsWith("```") -> handleCodeFence(sb, state)
+                state.inCode -> sb.append(escapeHtml(line)).append("\n")
+                processBlockElement(sb, state, line, t) -> {}
+                t.isEmpty() -> {}
+                else -> sb.append("<p>").append(formatInline(line)).append("</p>")
             }
-            if (inCode) {
-                sb.append(escapeHtml(line)).append("\n"); i++; continue
-            }
-
-            val hm = Regex("^(#{1,4})\\s+(.+)").find(t)
-            if (hm != null) {
-                if (inList) {
-                    sb.append("</ul>"); inList = false
-                }
-                if (inTable) {
-                    sb.append(HTML_TABLE_CLOSE); inTable = false
-                }
-                val lv = hm.groupValues[1].length + 1
-                sb.append("<h$lv>").append(formatInline(hm.groupValues[2])).append("</h$lv>")
-                i++; continue
-            }
-
-            if (t.startsWith("|") && t.endsWith("|") && t.count { it == '|' } >= 3) {
-                if (inList) {
-                    sb.append("</ul>"); inList = false
-                }
-                if (t.replace(Regex("[|\\-: ]"), "").isEmpty()) {
-                    i++; continue
-                }
-                if (!inTable) {
-                    sb.append("<table>"); inTable = true; firstTR = true
-                }
-                val cells = t.split("|").drop(1).dropLast(1).map { it.trim() }
-                val tag = if (firstTR) "th" else "td"
-                sb.append("<tr>"); cells.forEach { sb.append("<$tag>").append(formatInline(it)).append("</$tag>") }
-                sb.append("</tr>"); firstTR = false; i++; continue
-            }
-            if (inTable) {
-                sb.append(HTML_TABLE_CLOSE); inTable = false
-            }
-
-            if (t.startsWith("- ") || t.startsWith("* ")) {
-                if (!inList) {
-                    sb.append("<ul>"); inList = true
-                }
-                sb.append("<li>").append(formatInline(t.removePrefix("- ").removePrefix("* "))).append("</li>")
-                i++; continue
-            }
-            if (inList) {
-                sb.append("</ul>"); inList = false
-            }
-
-            if (t.isEmpty()) {
-                i++; continue
-            }
-            sb.append("<p>").append(formatInline(line)).append("</p>"); i++
         }
 
-        if (inCode) sb.append("</code></pre>")
-        if (inTable) sb.append(HTML_TABLE_CLOSE)
-        if (inList) sb.append("</ul>")
+        closeAllBlocks(sb, state)
         return sb.toString()
+    }
+
+    private fun handleCodeFence(sb: StringBuilder, state: MarkdownState) {
+        if (state.inCode) {
+            sb.append("</code></pre>"); state.inCode = false
+        } else {
+            closeListAndTable(sb, state)
+            sb.append("<pre><code>"); state.inCode = true
+        }
+    }
+
+    private fun processBlockElement(sb: StringBuilder, state: MarkdownState, line: String, t: String): Boolean {
+        val hm = Regex("^(#{1,4})\\s+(.+)").find(t)
+        if (hm != null) {
+            closeListAndTable(sb, state)
+            val lv = hm.groupValues[1].length + 1
+            sb.append("<h$lv>").append(formatInline(hm.groupValues[2])).append("</h$lv>")
+            return true
+        }
+        if (handleTableRow(sb, state, t)) return true
+        if (handleListItem(sb, state, t)) return true
+        return false
+    }
+
+    private fun handleTableRow(sb: StringBuilder, state: MarkdownState, t: String): Boolean {
+        if (!(t.startsWith("|") && t.endsWith("|") && t.count { it == '|' } >= 3)) {
+            if (state.inTable) { sb.append(HTML_TABLE_CLOSE); state.inTable = false }
+            return false
+        }
+        if (state.inList) { sb.append("</ul>"); state.inList = false }
+        if (t.replace(Regex("[|\\-: ]"), "").isEmpty()) return true
+        if (!state.inTable) { sb.append("<table>"); state.inTable = true; state.firstTR = true }
+        val cells = t.split("|").drop(1).dropLast(1).map { it.trim() }
+        val tag = if (state.firstTR) "th" else "td"
+        sb.append("<tr>"); cells.forEach { sb.append("<$tag>").append(formatInline(it)).append("</$tag>") }
+        sb.append("</tr>"); state.firstTR = false
+        return true
+    }
+
+    private fun handleListItem(sb: StringBuilder, state: MarkdownState, t: String): Boolean {
+        if (!(t.startsWith("- ") || t.startsWith("* "))) {
+            if (state.inList) { sb.append("</ul>"); state.inList = false }
+            return false
+        }
+        if (!state.inList) { sb.append("<ul>"); state.inList = true }
+        sb.append("<li>").append(formatInline(t.removePrefix("- ").removePrefix("* "))).append("</li>")
+        return true
+    }
+
+    private fun closeListAndTable(sb: StringBuilder, state: MarkdownState) {
+        if (state.inList) { sb.append("</ul>"); state.inList = false }
+        if (state.inTable) { sb.append(HTML_TABLE_CLOSE); state.inTable = false }
+    }
+
+    private fun closeAllBlocks(sb: StringBuilder, state: MarkdownState) {
+        if (state.inCode) sb.append("</code></pre>")
+        if (state.inTable) sb.append(HTML_TABLE_CLOSE)
+        if (state.inList) sb.append("</ul>")
     }
 
     private fun formatInline(text: String): String {
