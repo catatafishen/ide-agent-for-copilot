@@ -768,7 +768,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private inner class UsageGraphAction : AnAction("Usage Graph"), CustomComponentAction {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {
-            toggleUsageDisplayMode()
+            showUsagePopup(usageGraphPanel)
         }
 
         override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
@@ -776,11 +776,66 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             usageGraphPanel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             usageGraphPanel.addMouseListener(object : java.awt.event.MouseAdapter() {
                 override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                    toggleUsageDisplayMode()
+                    showUsagePopup(usageGraphPanel)
                 }
             })
             return usageGraphPanel
         }
+    }
+
+    private fun showUsagePopup(owner: JComponent) {
+        val data = (if (::usageGraphPanel.isInitialized) usageGraphPanel.graphData else null) ?: return
+
+        val popupGraph = UsageGraphPanel()
+        popupGraph.graphData = data
+        val pw = JBUI.scale(320)
+        val ph = JBUI.scale(180)
+        popupGraph.preferredSize = Dimension(pw, ph)
+        popupGraph.minimumSize = popupGraph.preferredSize
+        popupGraph.maximumSize = popupGraph.preferredSize
+
+        val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
+        val projected = (rate * data.totalDays).toInt()
+        val overQuota = data.usedSoFar > data.entitlement
+
+        val infoHtml = buildString {
+            append("<html>")
+            append("Used: <b>${data.usedSoFar}</b> / ${data.entitlement}")
+            append(" &nbsp;\u00B7&nbsp; Day ${data.currentDay} of ${data.totalDays}")
+            append(" &nbsp;\u00B7&nbsp; Projected: ~$projected")
+            if (overQuota) {
+                val overage = data.usedSoFar - data.entitlement
+                append("<br><font color='#E04040'>Over quota by $overage requests</font>")
+            }
+            if (lastBillingResetDate.isNotEmpty()) {
+                try {
+                    val resetDate = LocalDate.parse(lastBillingResetDate, DateTimeFormatter.ISO_LOCAL_DATE)
+                    append("<br>Resets: ${resetDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}")
+                } catch (_: Exception) {
+                }
+            }
+            append("</html>")
+        }
+
+        val content = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            border = JBUI.Borders.empty(10)
+            add(JBLabel("Premium Request Usage").apply {
+                font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 1)
+                border = JBUI.Borders.emptyBottom(8)
+            }, BorderLayout.NORTH)
+            add(popupGraph, BorderLayout.CENTER)
+            add(JBLabel(infoHtml).apply {
+                border = JBUI.Borders.emptyTop(8)
+            }, BorderLayout.SOUTH)
+        }
+
+        com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
+            .createComponentPopupBuilder(content, null)
+            .setResizable(false)
+            .setMovable(true)
+            .setRequestFocus(false)
+            .createPopup()
+            .showUnderneathOf(owner)
     }
 
     // Send/Stop toggle action for the toolbar
@@ -2394,7 +2449,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val borderShape = java.awt.geom.RoundRectangle2D.Float(
                 0.5f, 0.5f, (width - 1).toFloat(), (height - 1).toFloat(), arc.toFloat(), arc.toFloat()
             )
-            g2.color = JBColor.border()
+            g2.color = UIManager.getColor("Component.borderColor") ?: JBColor(0xC4C4C4, 0x5E6060)
             g2.stroke = BasicStroke(1f)
             g2.draw(borderShape)
 
