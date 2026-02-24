@@ -57,6 +57,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var loadingSpinner: AsyncProcessIcon
     private var currentPromptThread: Thread? = null
     private var isSending = false
+    private lateinit var processingTimerPanel: ProcessingTimerPanel
     private lateinit var attachmentsPanel: JBPanel<JBPanel<*>>
 
     // Timeline events (populated from ACP session/update notifications)
@@ -723,6 +724,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         isSending = sending
         SwingUtilities.invokeLater {
             controlsToolbar.updateActionsImmediately()
+            if (::processingTimerPanel.isInitialized) {
+                if (sending) processingTimerPanel.start() else processingTimerPanel.stop()
+            }
         }
     }
 
@@ -748,8 +752,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
 
-        // Right toolbar: usage graph (always right-aligned)
+        // Right toolbar: processing indicator + usage graph (always right-aligned)
         val rightGroup = DefaultActionGroup()
+        rightGroup.add(ProcessingIndicatorAction())
         rightGroup.add(UsageGraphAction())
 
         val usageToolbar = ActionManager.getInstance().createActionToolbar(
@@ -780,6 +785,67 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             })
             return usageGraphPanel
+        }
+    }
+
+    /** Toolbar action showing a native processing timer while the agent works */
+    private inner class ProcessingIndicatorAction : AnAction("Processing"), CustomComponentAction {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun actionPerformed(e: AnActionEvent) {}
+
+        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
+            processingTimerPanel = ProcessingTimerPanel()
+            return processingTimerPanel
+        }
+    }
+
+    /**
+     * Native Swing panel that shows a small animated spinner + elapsed-time counter.
+     * Hidden when idle; visible and ticking once [start] is called.
+     */
+    private class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
+        private val spinner = AsyncProcessIcon("CopilotProcessing")
+        private val timerLabel = JBLabel("")
+        private var startedAt = 0L
+        private val ticker = javax.swing.Timer(1000) { updateLabel() }
+
+        init {
+            isOpaque = false
+            border = JBUI.Borders.emptyRight(6)
+            spinner.isVisible = false
+            timerLabel.foreground = JBColor.GRAY
+            timerLabel.font = JBUI.Fonts.smallFont()
+            timerLabel.isVisible = false
+            add(spinner)
+            add(timerLabel)
+            isVisible = false
+        }
+
+        fun start() {
+            startedAt = System.currentTimeMillis()
+            timerLabel.text = "0s"
+            spinner.isVisible = true
+            spinner.resume()
+            timerLabel.isVisible = true
+            isVisible = true
+            ticker.start()
+            revalidate()
+            repaint()
+        }
+
+        fun stop() {
+            ticker.stop()
+            spinner.suspend()
+            spinner.isVisible = false
+            timerLabel.isVisible = false
+            isVisible = false
+            revalidate()
+            repaint()
+        }
+
+        private fun updateLabel() {
+            val elapsed = (System.currentTimeMillis() - startedAt) / 1000
+            timerLabel.text = if (elapsed < 60) "${elapsed}s" else "${elapsed / 60}m ${elapsed % 60}s"
         }
     }
 
