@@ -107,6 +107,8 @@ class InfrastructureTools extends AbstractToolHandler {
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
         int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
+        int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
+        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
         String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
 
         GeneralCommandLine cmd;
@@ -126,11 +128,11 @@ class InfrastructureTools extends AbstractToolHandler {
         ProcessResult result = executeInRunPanel(cmd, tabTitle, timeoutSec);
 
         if (result.timedOut()) {
-            return "Command timed out after " + timeoutSec + " seconds.\n\n" + ToolUtils.truncateOutput(result.output());
+            return "Command timed out after " + timeoutSec + " seconds.\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
         }
 
         return (result.exitCode() == 0 ? "? Command succeeded" : "? Command failed (exit code " + result.exitCode() + ")")
-            + "\n\n" + ToolUtils.truncateOutput(result.output());
+            + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
     }
 
     private static String truncateForTitle(String command) {

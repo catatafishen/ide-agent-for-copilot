@@ -135,32 +135,40 @@ final class ToolUtils {
 
     /**
      * Normalize text for fuzzy matching: replace common Unicode variants with ASCII equivalents.
-     * This handles em-dashes, smart quotes, non-breaking spaces, etc. that LLMs often can't reproduce exactly.
+     * This handles em-dashes, smart quotes, non-breaking spaces, emoji, etc. that LLMs often can't reproduce exactly.
+     * Uses codepoint iteration to correctly handle surrogate pairs (e.g. 4-byte emoji).
      */
     static String normalizeForMatch(String s) {
         // First normalize line endings.
         s = s.replace("\r\n", "\n").replace('\r', '\n');
-        // Replace ALL non-ASCII chars with '?' - this matches what LLMs naturally do
-        // when they can't reproduce em-dashes, smart quotes, etc.
+        // Replace ALL non-ASCII codepoints with '?' for fuzzy matching.
         StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            sb.append(c > 127 ? '?' : c);
-        }
+        s.codePoints().forEach(cp -> {
+            if (cp > 127) {
+                sb.append('?');
+            } else {
+                sb.append((char) cp);
+            }
+        });
         return sb.toString();
     }
 
     /**
      * Finds the length in the original text that corresponds to a given length in the normalized text,
-     * starting from the given position. This accounts for multibyte chars that normalize to single chars.
+     * starting from the given position. This accounts for multibyte/surrogate-pair chars that normalize
+     * to a single '?' character.
      */
     static int findOriginalLength(String original, int startIdx, int normalizedLen) {
         int origPos = startIdx;
         int normCount = 0;
         while (normCount < normalizedLen && origPos < original.length()) {
             char c = original.charAt(origPos);
-            // CRLF counts as 1 normalized char
             if (c == '\r' && origPos + 1 < original.length() && original.charAt(origPos + 1) == '\n') {
+                // CRLF counts as 1 normalized char
+                origPos += 2;
+            } else if (Character.isHighSurrogate(c) && origPos + 1 < original.length()
+                && Character.isLowSurrogate(original.charAt(origPos + 1))) {
+                // Surrogate pair (e.g. emoji) counts as 1 normalized char
                 origPos += 2;
             } else {
                 origPos++;
@@ -171,7 +179,29 @@ final class ToolUtils {
     }
 
     static String truncateOutput(String output) {
-        if (output.length() <= 8000) return output;
-        return "...(truncated)\n" + output.substring(output.length() - 8000);
+        return truncateOutput(output, 8000, 0);
+    }
+
+    /**
+     * Truncates output with pagination support.
+     *
+     * @param output   full output text
+     * @param maxChars maximum characters to return per page
+     * @param offset   character offset to start from (0 = beginning)
+     * @return the page of output, with pagination hint if more data exists
+     */
+    static String truncateOutput(String output, int maxChars, int offset) {
+        if (output == null || output.isEmpty()) return output;
+        if (offset >= output.length()) return "(offset beyond end of output, total length: " + output.length() + ")";
+        String remaining = output.substring(offset);
+        if (remaining.length() <= maxChars) {
+            return offset > 0
+                ? remaining + "\n\n(showing chars " + offset + "-" + output.length() + " of " + output.length() + ")"
+                : remaining;
+        }
+        String page = remaining.substring(0, maxChars);
+        int shown = offset + maxChars;
+        return page + "\n\n...(truncated, showing chars " + offset + "-" + shown + " of " + output.length()
+            + ". Use offset=" + shown + " to see more)";
     }
 }

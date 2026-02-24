@@ -103,8 +103,11 @@ class FileTools extends AbstractToolHandler {
                 } else if (args.has("old_str") && args.has("new_str")) {
                     writeFilePartialEdit(vf, pathStr, args.get("old_str").getAsString(),
                         args.get("new_str").getAsString(), autoFormat, resultFuture);
+                } else if (args.has("start_line") && args.has("new_str")) {
+                    writeFileLineRange(vf, pathStr, args, autoFormat, resultFuture);
                 } else {
-                    resultFuture.complete("write_file requires either 'content' (full write) or 'old_str'+'new_str' (partial edit)");
+                    resultFuture.complete("write_file requires either 'content' (full write), " +
+                        "'old_str'+'new_str' (partial edit), or 'start_line'+'new_str' (line-range replace)");
                 }
             } catch (Exception e) {
                 resultFuture.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
@@ -208,6 +211,60 @@ class FileTools extends AbstractToolHandler {
         );
         if (autoFormat) autoFormatAfterWrite(pathStr);
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX);
+    }
+
+    /**
+     * Replaces a range of lines (start_line to end_line inclusive, 1-based) with new_str.
+     * If end_line is omitted, only start_line is replaced.
+     */
+    private void writeFileLineRange(VirtualFile vf, String pathStr, JsonObject args,
+                                    boolean autoFormat, CompletableFuture<String> resultFuture) {
+        if (vf == null) {
+            resultFuture.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
+            return;
+        }
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc == null) {
+            resultFuture.complete("Cannot open document: " + pathStr);
+            return;
+        }
+        int startLine = args.get("start_line").getAsInt();
+        int endLine = args.has("end_line") ? args.get("end_line").getAsInt() : startLine;
+        String newStr = args.get("new_str").getAsString().replace("\r\n", "\n").replace("\r", "\n");
+
+        int lineCount = doc.getLineCount();
+        if (startLine < 1 || startLine > lineCount) {
+            resultFuture.complete("start_line " + startLine + " out of range (file has " + lineCount + " lines)");
+            return;
+        }
+        if (endLine < startLine || endLine > lineCount) {
+            resultFuture.complete("end_line " + endLine + " out of range (file has " + lineCount + " lines, start_line=" + startLine + ")");
+            return;
+        }
+
+        int startOffset = doc.getLineStartOffset(startLine - 1);
+        int endOffset = doc.getLineEndOffset(endLine - 1);
+        // Include the trailing newline if present so the replacement is clean
+        if (endOffset < doc.getTextLength() && doc.getText().charAt(endOffset) == '\n') {
+            endOffset++;
+        }
+        // Ensure new_str ends with newline for clean line replacement
+        if (!newStr.isEmpty() && !newStr.endsWith("\n")) {
+            newStr += "\n";
+        }
+
+        final int fStart = startOffset;
+        final int fEnd = endOffset;
+        final String fNew = newStr;
+        int replacedLines = endLine - startLine + 1;
+        ApplicationManager.getApplication().runWriteAction(() ->
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                project, () -> doc.replaceString(fStart, fEnd, fNew),
+                "Edit File (line range)", null)
+        );
+        if (autoFormat) autoFormatAfterWrite(pathStr);
+        resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
+            + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX);
     }
 
     /**
