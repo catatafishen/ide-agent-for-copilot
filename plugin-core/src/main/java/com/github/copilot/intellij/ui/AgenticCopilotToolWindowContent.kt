@@ -303,7 +303,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         SwingUtilities.invokeLater {
             refreshUsageDisplay()
-            updateUsageGraph(used, entitlement, unlimited, resetDate)
+            updateUsageGraph(used, entitlement, unlimited, resetDate, overagePermitted)
             if (shouldAnimate) animateUsageChange()
         }
     }
@@ -313,20 +313,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         when (usageDisplayMode) {
             UsageDisplayMode.MONTHLY -> {
                 if (lastBillingUnlimited) {
-                    usageLabel.text = "Unlimited premium requests"
-                    usageLabel.toolTipText = "Resets $lastBillingResetDate  •  Click to show session usage"
+                    usageLabel.text = "Unlimited"
+                    usageLabel.toolTipText = "Click to show session usage"
                     costLabel.text = ""
                 } else {
-                    usageLabel.text = "$lastBillingUsed / $lastBillingEntitlement premium requests"
-                    usageLabel.toolTipText = "Resets $lastBillingResetDate  •  Click to show session usage"
+                    usageLabel.text = "$lastBillingUsed / $lastBillingEntitlement"
+                    usageLabel.toolTipText = "Premium requests this cycle \u2022 Click to show session usage"
                     updateCostLabel(lastBillingRemaining, lastBillingOveragePermitted)
                 }
             }
 
             UsageDisplayMode.SESSION -> {
                 val sessionUsed = lastBillingUsed - billingCycleStartUsed.coerceAtLeast(0)
-                usageLabel.text = "$sessionUsed premium requests this session"
-                usageLabel.toolTipText = "Since plugin session started  •  Click to show monthly usage"
+                usageLabel.text = "$sessionUsed session"
+                usageLabel.toolTipText = "Premium requests this session \u2022 Click to show monthly usage"
                 costLabel.text = ""
             }
         }
@@ -341,7 +341,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /** Updates the mini usage graph with current billing cycle data. */
-    private fun updateUsageGraph(used: Int, entitlement: Int, unlimited: Boolean, resetDate: String) {
+    private fun updateUsageGraph(
+        used: Int,
+        entitlement: Int,
+        unlimited: Boolean,
+        resetDate: String,
+        overagePermitted: Boolean
+    ) {
         if (!::usageGraphPanel.isInitialized) return
         if (unlimited || entitlement <= 0) {
             usageGraphPanel.graphData = null
@@ -357,7 +363,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val currentDay = ChronoUnit.DAYS.between(cycleStart, today).toInt().coerceIn(0, totalDays)
 
             usageGraphPanel.graphData = UsageGraphData(currentDay, totalDays, used, entitlement)
-            usageGraphPanel.toolTipText = buildGraphTooltip(used, entitlement, currentDay, totalDays)
+            usageGraphPanel.toolTipText =
+                buildGraphTooltip(used, entitlement, currentDay, totalDays, resetLocalDate, overagePermitted)
             usageGraphPanel.repaint()
         } catch (_: Exception) {
             usageGraphPanel.graphData = null
@@ -365,13 +372,43 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun buildGraphTooltip(used: Int, entitlement: Int, currentDay: Int, totalDays: Int): String {
+    private fun buildGraphTooltip(
+        used: Int,
+        entitlement: Int,
+        currentDay: Int,
+        totalDays: Int,
+        resetDate: LocalDate,
+        overagePermitted: Boolean
+    ): String {
         val rate = if (currentDay > 0) used.toFloat() / currentDay else 0f
         val projected = (rate * totalDays).toInt()
-        val pct = if (entitlement > 0) (used * 100) / entitlement else 0
-        return "<html>Day $currentDay of $totalDays<br>" +
-            "$used used ($pct% of $entitlement)<br>" +
-            "Projected: ~$projected by end of cycle</html>"
+        val overage = (used - entitlement).coerceAtLeast(0)
+        val projectedOverage = (projected - entitlement).coerceAtLeast(0)
+        val overageCostPerReq = 0.04
+        val resetFormatted = resetDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+
+        val sb = StringBuilder("<html>")
+        sb.append("Day $currentDay / $totalDays<br>")
+        sb.append("Usage: $used / $entitlement<br>")
+        if (overage > 0) {
+            val cost = overage * overageCostPerReq
+            sb.append("<font color='#E04040'>Overage: $overage reqs (\$${String.format("%.2f", cost)})</font><br>")
+        }
+        sb.append("Projected: ~$projected by cycle end<br>")
+        if (projectedOverage > 0) {
+            val projCost = projectedOverage * overageCostPerReq
+            sb.append(
+                "<font color='#E04040'>Projected overage: ~$projectedOverage (\$${
+                    String.format(
+                        "%.2f",
+                        projCost
+                    )
+                })</font><br>"
+            )
+        }
+        sb.append("Resets: $resetFormatted")
+        sb.append("</html>")
+        return sb.toString()
     }
 
     private fun updateCostLabel(remaining: Int, overagePermitted: Boolean) {
