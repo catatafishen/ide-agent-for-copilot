@@ -400,7 +400,7 @@ class FileTools extends AbstractToolHandler {
 
             if (errors.isEmpty()) return "";
             int count = Math.min(errors.size(), 5);
-            String summary = "\n\n�️ WARNING: " + errors.size() + " syntax error(s) after write:\n"
+            String summary = "\n\n\u26A0\uFE0F WARNING: " + errors.size() + " syntax error(s) after write:\n"
                 + String.join("\n", errors.subList(0, count));
             if (errors.size() > count) summary += "\n  ... and " + (errors.size() - count) + " more";
             return summary;

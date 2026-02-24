@@ -131,7 +131,7 @@ class InfrastructureTools extends AbstractToolHandler {
             return "Command timed out after " + timeoutSec + " seconds.\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
         }
 
-        return (result.exitCode() == 0 ? "✅ Command succeeded" : "❌ Command failed (exit code " + result.exitCode() + ")")
+        return (result.exitCode() == 0 ? "\u2705 Command succeeded" : "\u274C Command failed (exit code " + result.exitCode() + ")")
             + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
     }
 
