@@ -209,17 +209,20 @@ class CodeNavigationTools extends AbstractToolHandler {
         }
     }
 
+    private boolean shouldIncludeMethod(com.intellij.psi.PsiMethod method, com.intellij.psi.PsiClass psiClass, boolean includeInherited) {
+        if (method.isConstructor()) return false;
+        var containingClass = method.getContainingClass();
+        if (!includeInherited && containingClass != psiClass) return false;
+        return containingClass == null || !"java.lang.Object".equals(containingClass.getQualifiedName());
+    }
+
     private void appendMethods(com.intellij.psi.PsiClass psiClass, StringBuilder sb, boolean includeInherited) {
         var methods = includeInherited ? psiClass.getAllMethods() : psiClass.getMethods();
         if (methods.length > 0) {
             sb.append("Methods:\n");
             Set<String> seen = new HashSet<>();
             for (var method : methods) {
-                if (method.isConstructor()) continue;
-                // Skip Object methods unless explicitly inherited
-                var containingClass = method.getContainingClass();
-                if (!includeInherited && containingClass != psiClass) continue;
-                if (containingClass != null && "java.lang.Object".equals(containingClass.getQualifiedName())) continue;
+                if (!shouldIncludeMethod(method, psiClass, includeInherited)) continue;
                 String sig = formatMethodSignature(method);
                 if (seen.add(sig)) {
                     sb.append("  ").append(sig).append("\n");
@@ -515,6 +518,26 @@ class CodeNavigationTools extends AbstractToolHandler {
 
     // ---- search_text ----
 
+    private void searchFileForPattern(VirtualFile vf, String filePattern, java.util.regex.Pattern pattern,
+                                      String basePath, List<String> results, int maxResults) {
+        if (vf.isDirectory() || vf.getLength() > 1_000_000) return;
+        if (!filePattern.isEmpty() && ToolUtils.doesNotMatchGlob(vf.getName(), filePattern)) return;
+
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc == null) return;
+
+        String text = doc.getText();
+        String relPath = relativize(basePath, vf.getPath());
+        if (relPath == null) return;
+
+        java.util.regex.Matcher matcher = pattern.matcher(text);
+        while (matcher.find() && results.size() < maxResults) {
+            int line = doc.getLineNumber(matcher.start()) + 1;
+            String lineText = ToolUtils.getLineText(doc, line - 1);
+            results.add(String.format(FORMAT_LINE_REF, relPath, line, lineText));
+        }
+    }
+
     /**
      * Full-text regex/literal search across project files, reading from IntelliJ buffers
      * (not disk). This replaces the need for external grep/ripgrep tools.
@@ -544,23 +567,7 @@ class CodeNavigationTools extends AbstractToolHandler {
             List<String> results = new ArrayList<>();
             ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
             fileIndex.iterateContent(vf -> {
-                if (vf.isDirectory() || vf.getLength() > 1_000_000) return true;
-                if (!filePattern.isEmpty() && ToolUtils.doesNotMatchGlob(vf.getName(), filePattern))
-                    return true;
-
-                Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                if (doc == null) return true;
-
-                String text = doc.getText();
-                String relPath = relativize(basePath, vf.getPath());
-                if (relPath == null) return true;
-
-                java.util.regex.Matcher matcher = pattern.matcher(text);
-                while (matcher.find() && results.size() < maxResults) {
-                    int line = doc.getLineNumber(matcher.start()) + 1;
-                    String lineText = ToolUtils.getLineText(doc, line - 1);
-                    results.add(String.format(FORMAT_LINE_REF, relPath, line, lineText));
-                }
+                searchFileForPattern(vf, filePattern, pattern, basePath, results, maxResults);
                 return results.size() < maxResults;
             });
 

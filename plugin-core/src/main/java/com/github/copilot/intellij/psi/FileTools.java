@@ -525,55 +525,54 @@ class FileTools extends AbstractToolHandler {
      * Undo the last editor action on a file. Uses IntelliJ's built-in UndoManager
      * which tracks all commands registered via CommandProcessor.
      */
+    private void performUndo(String pathStr, int count, CompletableFuture<String> resultFuture) {
+        try {
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) {
+                resultFuture.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
+                return;
+            }
+            var editors = FileEditorManager.getInstance(project).getEditors(vf);
+            com.intellij.openapi.fileEditor.FileEditor fileEditor = null;
+            for (var ed : editors) {
+                if (ed instanceof TextEditor) {
+                    fileEditor = ed;
+                    break;
+                }
+            }
+            if (fileEditor == null && editors.length > 0) {
+                fileEditor = editors[0];
+            }
+
+            UndoManager undoManager = UndoManager.getInstance(project);
+            StringBuilder actions = new StringBuilder();
+            int undone = 0;
+            for (int i = 0; i < count; i++) {
+                if (!undoManager.isUndoAvailable(fileEditor)) break;
+                String actionName = undoManager.getUndoActionNameAndDescription(fileEditor).first;
+                undoManager.undo(fileEditor);
+                undone++;
+                if (!actions.isEmpty()) actions.append(", ");
+                actions.append(actionName != null && !actionName.isEmpty() ? actionName : "unknown");
+            }
+            if (undone == 0) {
+                resultFuture.complete("Nothing to undo for " + pathStr);
+            } else {
+                FileDocumentManager.getInstance().saveAllDocuments();
+                resultFuture.complete("Undid " + undone + " action(s) on " + pathStr + ": " + actions);
+            }
+        } catch (Exception e) {
+            resultFuture.complete("Undo failed: " + e.getMessage());
+        }
+    }
+
     private String undo(JsonObject args) throws Exception {
         if (!args.has("path")) return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
         int count = args.has("count") ? args.get("count").getAsInt() : 1;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
-
-        EdtUtil.invokeLater(() -> {
-            try {
-                VirtualFile vf = resolveVirtualFile(pathStr);
-                if (vf == null) {
-                    resultFuture.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
-                    return;
-                }
-                // Find the text editor for this file to get the correct undo context
-                var editors = FileEditorManager.getInstance(project).getEditors(vf);
-                com.intellij.openapi.fileEditor.FileEditor fileEditor = null;
-                for (var ed : editors) {
-                    if (ed instanceof TextEditor) {
-                        fileEditor = ed;
-                        break;
-                    }
-                }
-                if (fileEditor == null && editors.length > 0) {
-                    fileEditor = editors[0];
-                }
-
-                UndoManager undoManager = UndoManager.getInstance(project);
-                StringBuilder actions = new StringBuilder();
-                int undone = 0;
-                for (int i = 0; i < count; i++) {
-                    if (!undoManager.isUndoAvailable(fileEditor)) break;
-                    String actionName = undoManager.getUndoActionNameAndDescription(fileEditor).first;
-                    undoManager.undo(fileEditor);
-                    undone++;
-                    if (!actions.isEmpty()) actions.append(", ");
-                    actions.append(actionName != null && !actionName.isEmpty() ? actionName : "unknown");
-                }
-                if (undone == 0) {
-                    resultFuture.complete("Nothing to undo for " + pathStr);
-                } else {
-                    FileDocumentManager.getInstance().saveAllDocuments();
-                    resultFuture.complete("Undid " + undone + " action(s) on " + pathStr + ": " + actions);
-                }
-            } catch (Exception e) {
-                resultFuture.complete("Undo failed: " + e.getMessage());
-            }
-        });
-
+        EdtUtil.invokeLater(() -> performUndo(pathStr, count, resultFuture));
         return resultFuture.get(10, TimeUnit.SECONDS);
     }
 }
