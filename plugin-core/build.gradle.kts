@@ -15,6 +15,7 @@ dependencies {
     intellijPlatform {
         // Use the local IDE installation (configured via intellijPlatform.localPath in gradle.properties)
         local(providers.gradleProperty("intellijPlatform.localPath"))
+        instrumentationTools()
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
@@ -23,6 +24,9 @@ dependencies {
 
     // Kotlin stdlib for UI layer
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+
+    // Force annotations version to match the platform (TYPE_USE support required)
+    implementation("org.jetbrains:annotations:26.0.2")
 
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
