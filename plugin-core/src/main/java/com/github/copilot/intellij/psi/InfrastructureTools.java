@@ -131,8 +131,8 @@ class InfrastructureTools extends AbstractToolHandler {
             return "Command timed out after " + timeoutSec + " seconds.\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
         }
 
-        return (result.exitCode() == 0 ? "? Command succeeded" : "? Command failed (exit code " + result.exitCode() + ")")
-            + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
+        return (result.exitCode() == 0 ? "\u2705 Command succeeded" : "\u274C Command failed (exit code " + result.exitCode() + ")")
+                + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
     }
 
     private static String truncateForTitle(String command) {
@@ -171,14 +171,14 @@ class InfrastructureTools extends AbstractToolHandler {
         if (level != null) {
             final String lvl = level;
             filtered = filtered.stream()
-                .filter(l -> l.contains(lvl))
-                .toList();
+                    .filter(l -> l.contains(lvl))
+                    .toList();
         }
         if (filter != null) {
             final String f = filter;
             filtered = filtered.stream()
-                .filter(l -> l.contains(f))
-                .toList();
+                    .filter(l -> l.contains(f))
+                    .toList();
         }
 
         int start = Math.max(0, filtered.size() - lines);
@@ -191,7 +191,7 @@ class InfrastructureTools extends AbstractToolHandler {
         StringBuilder result = new StringBuilder();
         try {
             var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()
-                .getNotificationsOfType(com.intellij.notification.Notification.class, project);
+                    .getNotificationsOfType(com.intellij.notification.Notification.class, project);
             if (notifications.length == 0) {
                 return "No recent notifications.";
             }
@@ -290,7 +290,7 @@ class InfrastructureTools extends AbstractToolHandler {
 
         if (text.length() > maxChars) {
             result.append("...(truncated, showing last ").append(maxChars).append(" of ").append(text.length())
-                .append(" chars. Use max_chars parameter to read more.)\n");
+                    .append(" chars. Use max_chars parameter to read more.)\n");
             result.append(text.substring(text.length() - maxChars));
         } else {
             result.append(text);
