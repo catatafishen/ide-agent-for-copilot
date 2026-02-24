@@ -15,6 +15,10 @@ import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import java.awt.*
 import java.awt.datatransfer.StringSelection
+import java.awt.geom.Path2D
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import javax.swing.*
 
 /**
@@ -75,6 +79,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Animation state for usage indicator
     private var previousUsedCount = -1
     private var usageAnimationTimer: javax.swing.Timer? = null
+
+    // Usage display toggle and graph
+    private enum class UsageDisplayMode { MONTHLY, SESSION }
+    private var usageDisplayMode = UsageDisplayMode.MONTHLY
+    private var billingCycleStartUsed = -1
+    private lateinit var usageGraphPanel: UsageGraphPanel
+    private var lastBillingUsed = 0
+    private var lastBillingEntitlement = 0
+    private var lastBillingUnlimited = false
+    private var lastBillingRemaining = 0
+    private var lastBillingOveragePermitted = false
+    private var lastBillingResetDate = ""
 
     init {
         setupUI()
@@ -273,18 +289,87 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val shouldAnimate = previousUsedCount >= 0 && used > previousUsedCount
         previousUsedCount = used
 
+        // Track session start baseline
+        if (billingCycleStartUsed < 0) billingCycleStartUsed = used
+
+        // Store latest billing data for toggle
+        lastBillingUsed = used
+        lastBillingEntitlement = entitlement
+        lastBillingUnlimited = unlimited
+        lastBillingRemaining = remaining
+        lastBillingOveragePermitted = overagePermitted
+        lastBillingResetDate = resetDate
+
         SwingUtilities.invokeLater {
-            if (unlimited) {
-                usageLabel.text = "Unlimited premium requests"
-                usageLabel.toolTipText = "Resets $resetDate"
-                costLabel.text = ""
-            } else {
-                usageLabel.text = "$used / $entitlement premium requests"
-                usageLabel.toolTipText = "Resets $resetDate"
-                updateCostLabel(remaining, overagePermitted)
-            }
+            refreshUsageDisplay()
+            updateUsageGraph(used, entitlement, unlimited, resetDate)
             if (shouldAnimate) animateUsageChange()
         }
+    }
+
+    /** Refreshes usage label and cost label based on current display mode. */
+    private fun refreshUsageDisplay() {
+        when (usageDisplayMode) {
+            UsageDisplayMode.MONTHLY -> {
+                if (lastBillingUnlimited) {
+                    usageLabel.text = "Unlimited premium requests"
+                    usageLabel.toolTipText = "Resets $lastBillingResetDate  •  Click to show session usage"
+                    costLabel.text = ""
+                } else {
+                    usageLabel.text = "$lastBillingUsed / $lastBillingEntitlement premium requests"
+                    usageLabel.toolTipText = "Resets $lastBillingResetDate  •  Click to show session usage"
+                    updateCostLabel(lastBillingRemaining, lastBillingOveragePermitted)
+                }
+            }
+            UsageDisplayMode.SESSION -> {
+                val sessionUsed = lastBillingUsed - billingCycleStartUsed.coerceAtLeast(0)
+                usageLabel.text = "$sessionUsed premium requests this session"
+                usageLabel.toolTipText = "Since plugin session started  •  Click to show monthly usage"
+                costLabel.text = ""
+            }
+        }
+    }
+
+    private fun toggleUsageDisplayMode() {
+        usageDisplayMode = when (usageDisplayMode) {
+            UsageDisplayMode.MONTHLY -> UsageDisplayMode.SESSION
+            UsageDisplayMode.SESSION -> UsageDisplayMode.MONTHLY
+        }
+        refreshUsageDisplay()
+    }
+
+    /** Updates the mini usage graph with current billing cycle data. */
+    private fun updateUsageGraph(used: Int, entitlement: Int, unlimited: Boolean, resetDate: String) {
+        if (!::usageGraphPanel.isInitialized) return
+        if (unlimited || entitlement <= 0) {
+            usageGraphPanel.graphData = null
+            usageGraphPanel.repaint()
+            return
+        }
+
+        try {
+            val resetLocalDate = LocalDate.parse(resetDate, DateTimeFormatter.ISO_LOCAL_DATE)
+            val today = LocalDate.now()
+            val cycleStart = resetLocalDate.minusMonths(1)
+            val totalDays = ChronoUnit.DAYS.between(cycleStart, resetLocalDate).toInt().coerceAtLeast(1)
+            val currentDay = ChronoUnit.DAYS.between(cycleStart, today).toInt().coerceIn(0, totalDays)
+
+            usageGraphPanel.graphData = UsageGraphData(currentDay, totalDays, used, entitlement)
+            usageGraphPanel.toolTipText = buildGraphTooltip(used, entitlement, currentDay, totalDays)
+            usageGraphPanel.repaint()
+        } catch (_: Exception) {
+            usageGraphPanel.graphData = null
+            usageGraphPanel.repaint()
+        }
+    }
+
+    private fun buildGraphTooltip(used: Int, entitlement: Int, currentDay: Int, totalDays: Int): String {
+        val rate = if (currentDay > 0) used.toFloat() / currentDay else 0f
+        val projected = (rate * totalDays).toInt()
+        val pct = if (entitlement > 0) (used * 100) / entitlement else 0
+        return "<html>Day $currentDay of $totalDays<br>" +
+                "$used used ($pct% of $entitlement)<br>" +
+                "Projected: ~$projected by end of cycle</html>"
     }
 
     private fun updateCostLabel(remaining: Int, overagePermitted: Boolean) {
@@ -626,16 +711,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
             add(controlsToolbar.component)
-            // Usage row below toolbar
+            // Usage row below toolbar: [graph] [label] [cost]
             val usageRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0)).apply {
                 isOpaque = false
                 border = JBUI.Borders.emptyLeft(4)
+                usageGraphPanel = UsageGraphPanel()
+                add(usageGraphPanel)
                 usageLabel = JBLabel("")
                 usageLabel.font = JBUI.Fonts.smallFont()
                 costLabel = JBLabel("")
                 costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
                 add(usageLabel)
                 add(costLabel)
+                cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                addMouseListener(object : java.awt.event.MouseAdapter() {
+                    override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                        toggleUsageDisplayMode()
+                    }
+                })
             }
             add(usageRow)
             // Track toolbar visibility — when toolbar is hidden via right-click menu, hide usage too
@@ -1966,6 +2059,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     fun resetSession() {
         currentSessionId = null
+        billingCycleStartUsed = -1
         consolePanel.clear()
         consolePanel.showPlaceholder("New conversation started.")
         addTimelineEvent(EventType.SESSION_START, "New conversation started")
@@ -2195,4 +2289,101 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val filePath: String,
         val fileContent: String
     ) : javax.swing.tree.DefaultMutableTreeNode("📄 $fileName")
+
+    // --- Usage graph ---
+
+    private data class UsageGraphData(
+        val currentDay: Int,
+        val totalDays: Int,
+        val usedSoFar: Int,
+        val entitlement: Int
+    )
+
+    /**
+     * Tiny sparkline panel showing cumulative usage over the billing cycle,
+     * a linear projection to end-of-month, and a horizontal entitlement bar.
+     */
+    private class UsageGraphPanel : JPanel() {
+        var graphData: UsageGraphData? = null
+
+        init {
+            isOpaque = false
+            preferredSize = Dimension(JBUI.scale(120), JBUI.scale(28))
+            minimumSize = preferredSize
+            maximumSize = Dimension(JBUI.scale(120), JBUI.scale(28))
+        }
+
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+            val data = graphData ?: return
+            if (data.entitlement <= 0) return
+
+            val g2 = (g as Graphics2D).also {
+                it.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            }
+            val pad = JBUI.scale(2)
+            val w = width - 2 * pad
+            val h = height - 2 * pad
+            if (w <= 0 || h <= 0) return
+
+            val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
+            val projected = (rate * data.totalDays).toInt()
+            val maxY = maxOf(data.entitlement, projected, data.usedSoFar) * 1.15f
+
+            fun dx(day: Float) = pad + (day / data.totalDays * w)
+            fun dy(v: Float) = pad + h - (v / maxY * h)
+
+            // Entitlement line (dashed red)
+            val entY = dy(data.entitlement.toFloat())
+            g2.color = JBColor(Color(0xE0, 0x40, 0x40, 0x50), Color(0xE0, 0x60, 0x60, 0x50))
+            g2.stroke = BasicStroke(
+                1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
+                floatArrayOf(3f, 3f), 0f
+            )
+            g2.drawLine(pad, entY.toInt(), pad + w, entY.toInt())
+
+            val baseY = dy(0f)
+            val curX = dx(data.currentDay.toFloat())
+            val curY = dy(data.usedSoFar.toFloat())
+
+            // Filled area for actual usage
+            val areaPath = Path2D.Float().apply {
+                moveTo(pad.toFloat(), baseY)
+                lineTo(curX, curY)
+                lineTo(curX, baseY)
+                closePath()
+            }
+            g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x40), Color(0x6A, 0xAB, 0x73, 0x40))
+            g2.fill(areaPath)
+
+            // Actual usage line
+            g2.color = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
+            g2.stroke = BasicStroke(1.5f)
+            g2.drawLine(pad, baseY.toInt(), curX.toInt(), curY.toInt())
+
+            // Projection line (dashed gray)
+            if (data.currentDay < data.totalDays) {
+                val projX = dx(data.totalDays.toFloat())
+                val projY = dy(projected.toFloat())
+                g2.color = JBColor(Color(0x80, 0x80, 0x80, 0x80), Color(0xA0, 0xA0, 0xA0, 0x80))
+                g2.stroke = BasicStroke(
+                    1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
+                    floatArrayOf(3f, 3f), 0f
+                )
+                g2.drawLine(curX.toInt(), curY.toInt(), projX.toInt(), projY.toInt())
+            }
+
+            // Current day dot
+            g2.color = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
+            g2.fillOval(
+                curX.toInt() - JBUI.scale(2), curY.toInt() - JBUI.scale(2),
+                JBUI.scale(4), JBUI.scale(4)
+            )
+
+            // Tiny border
+            g2.color = JBColor(Color(0, 0, 0, 0x18), Color(255, 255, 255, 0x18))
+            g2.stroke = BasicStroke(0.5f)
+            g2.drawRoundRect(pad, pad, w, h, JBUI.scale(3), JBUI.scale(3))
+        }
+    }
 }
