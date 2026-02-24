@@ -42,6 +42,7 @@ class CodeNavigationTools extends AbstractToolHandler {
         register("get_file_outline", this::getFileOutline);
         register("find_references", this::findReferences);
         register("list_project_files", this::listProjectFiles);
+        register("search_text", this::searchText);
     }
 
     // ---- list_project_files ----
@@ -329,5 +330,61 @@ class CodeNavigationTools extends AbstractToolHandler {
             scope, name, UsageSearchContext.IN_CODE, true
         );
         return result[0];
+    }
+
+    // ---- search_text ----
+
+    /**
+     * Full-text regex/literal search across project files, reading from IntelliJ buffers
+     * (not disk). This replaces the need for external grep/ripgrep tools.
+     */
+    String searchText(JsonObject args) {
+        if (!args.has("query") || args.get("query").isJsonNull())
+            return "Error: 'query' parameter is required";
+        String query = args.get("query").getAsString();
+        String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
+        boolean isRegex = args.has("regex") && args.get("regex").getAsBoolean();
+        boolean caseSensitive = !args.has("case_sensitive") || args.get("case_sensitive").getAsBoolean();
+        int maxResults = args.has("max_results") ? args.get("max_results").getAsInt() : 100;
+
+        return ReadAction.compute(() -> {
+            String basePath = project.getBasePath();
+            if (basePath == null) return ERROR_NO_PROJECT_PATH;
+
+            java.util.regex.Pattern pattern;
+            try {
+                int flags = isRegex ? 0 : java.util.regex.Pattern.LITERAL;
+                if (!caseSensitive) flags |= java.util.regex.Pattern.CASE_INSENSITIVE;
+                pattern = java.util.regex.Pattern.compile(query, flags);
+            } catch (java.util.regex.PatternSyntaxException e) {
+                return "Error: invalid regex: " + e.getMessage();
+            }
+
+            List<String> results = new ArrayList<>();
+            ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
+            fileIndex.iterateContent(vf -> {
+                if (vf.isDirectory() || vf.getLength() > 1_000_000) return true;
+                if (!filePattern.isEmpty() && ToolUtils.doesNotMatchGlob(vf.getName(), filePattern))
+                    return true;
+
+                Document doc = FileDocumentManager.getInstance().getDocument(vf);
+                if (doc == null) return true;
+
+                String text = doc.getText();
+                String relPath = relativize(basePath, vf.getPath());
+                if (relPath == null) return true;
+
+                java.util.regex.Matcher matcher = pattern.matcher(text);
+                while (matcher.find() && results.size() < maxResults) {
+                    int line = doc.getLineNumber(matcher.start()) + 1;
+                    String lineText = ToolUtils.getLineText(doc, line - 1);
+                    results.add(String.format("%s:%d: %s", relPath, line, lineText));
+                }
+                return results.size() < maxResults;
+            });
+
+            if (results.isEmpty()) return "No matches found for '" + query + "'";
+            return results.size() + " matches:\n" + String.join("\n", results);
+        });
     }
 }

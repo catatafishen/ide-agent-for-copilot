@@ -129,6 +129,7 @@ class FileTools extends AbstractToolHandler {
                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                     project, () -> doc.setText(newContent), "Write File", null)
             );
+            FileDocumentManager.getInstance().saveDocument(doc);
             if (autoFormat) autoFormatAfterWrite(pathStr);
             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX);
         } else {
@@ -209,6 +210,7 @@ class FileTools extends AbstractToolHandler {
                 project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, normalizedNew),
                 "Edit File", null)
         );
+        FileDocumentManager.getInstance().saveDocument(doc);
         if (autoFormat) autoFormatAfterWrite(pathStr);
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX);
     }
@@ -262,6 +264,7 @@ class FileTools extends AbstractToolHandler {
                 project, () -> doc.replaceString(fStart, fEnd, fNew),
                 "Edit File (line range)", null)
         );
+        FileDocumentManager.getInstance().saveDocument(doc);
         if (autoFormat) autoFormatAfterWrite(pathStr);
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
             + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX);

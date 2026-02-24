@@ -214,7 +214,8 @@ public class McpServer {
             Example: get_highlights("PsiBridgeService.java") returns all problems in that file.
 
             8. NEVER use grep/glob for IntelliJ project files or scratch files. \
-            ALWAYS use IntelliJ tools: search_symbols, find_references, get_file_outline, list_project_files, intellij_read_file. \
+            ALWAYS use IntelliJ tools: search_symbols, find_references, search_text, get_file_outline, list_project_files, intellij_read_file. \
+            Use search_text for text/regex pattern matching across files (replaces grep). \
             grep/glob will FAIL on scratch files (they're stored outside the project). \
             After creating a scratch file, save its path and use intellij_read_file to access it.
 
@@ -303,6 +304,16 @@ public class McpServer {
                 "pattern", Map.of("type", "string", "description", "Optional glob pattern (e.g., '*.java')", "default", "")
             ),
             List.of()));
+
+        tools.add(buildTool("search_text", "Search text or regex patterns across project files. Reads from IntelliJ editor buffers (always up-to-date, even for unsaved changes). Use instead of grep/ripgrep.",
+            Map.of(
+                "query", Map.of("type", "string", "description", "Text or regex pattern to search for"),
+                "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.kt', '*.java')", "default", ""),
+                "regex", Map.of("type", "boolean", "description", "If true, treat query as regex. Default: false (literal match)"),
+                "case_sensitive", Map.of("type", "boolean", "description", "Case-sensitive search. Default: true"),
+                "max_results", Map.of("type", "integer", "description", "Maximum results to return (default: 100)")
+            ),
+            List.of("query")));
 
         tools.add(buildTool("list_tests", "List Tests",
             Map.of(
