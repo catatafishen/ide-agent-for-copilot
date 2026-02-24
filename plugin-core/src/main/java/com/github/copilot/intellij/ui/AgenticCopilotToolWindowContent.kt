@@ -51,6 +51,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var loadingSpinner: AsyncProcessIcon
     private var currentPromptThread: Thread? = null
     private var isSending = false
+    private lateinit var attachmentsPanel: JBPanel<JBPanel<*>>
 
     // Timeline events (populated from ACP session/update notifications)
     private val timelineModel = DefaultListModel<TimelineEvent>()
@@ -64,7 +65,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Usage display components (updated after each prompt)
     private lateinit var usageLabel: JBLabel
     private lateinit var costLabel: JBLabel
-    private lateinit var responseTextArea: JBTextArea
+    private lateinit var consolePanel: ChatConsolePanel
     private lateinit var responseSpinner: AsyncProcessIcon
     private lateinit var responseStatus: JBLabel
 
@@ -454,6 +455,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
         row.minimumSize = JBUI.size(100, 40)
 
+        // Attachments chip panel (shown above input when files attached)
+        attachmentsPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 4, 2))
+        attachmentsPanel.isOpaque = false
+        attachmentsPanel.isVisible = false
+        attachmentsPanel.border = JBUI.Borders.emptyBottom(2)
+
         promptTextArea = JBTextArea()
         promptTextArea.lineWrap = true
         promptTextArea.wrapStyleWord = true
@@ -477,11 +484,53 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         })
 
+        val inputWrapper = JBPanel<JBPanel<*>>(BorderLayout())
+        inputWrapper.add(attachmentsPanel, BorderLayout.NORTH)
         val scrollPane = JBScrollPane(promptTextArea)
         scrollPane.border = JBUI.Borders.customLine(JBColor.border(), 1)
-        row.add(scrollPane, BorderLayout.CENTER)
+        inputWrapper.add(scrollPane, BorderLayout.CENTER)
+        row.add(inputWrapper, BorderLayout.CENTER)
+
+        // Refresh attachment chips when list changes
+        contextListModel.addListDataListener(object : javax.swing.event.ListDataListener {
+            override fun intervalAdded(e: javax.swing.event.ListDataEvent?) = refreshAttachmentChips()
+            override fun intervalRemoved(e: javax.swing.event.ListDataEvent?) = refreshAttachmentChips()
+            override fun contentsChanged(e: javax.swing.event.ListDataEvent?) = refreshAttachmentChips()
+        })
 
         return row
+    }
+
+    private fun refreshAttachmentChips() {
+        SwingUtilities.invokeLater {
+            attachmentsPanel.removeAll()
+            for (i in 0 until contextListModel.size()) {
+                val item = contextListModel.getElementAt(i)
+                val chip = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 2, 0))
+                chip.isOpaque = true
+                chip.background = JBColor(Color(0xE8, 0xEE, 0xF7), Color(0x35, 0x3B, 0x48))
+                chip.border = JBUI.Borders.empty(1, 6, 1, 2)
+                val icon = if (item.isSelection) "✂" else "📄"
+                val label = JBLabel("$icon ${item.name}")
+                label.font = JBUI.Fonts.smallFont()
+                chip.add(label)
+                val removeBtn = JBLabel("✕")
+                removeBtn.font = JBUI.Fonts.smallFont()
+                removeBtn.foreground = JBColor.GRAY
+                removeBtn.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+                removeBtn.addMouseListener(object : java.awt.event.MouseAdapter() {
+                    override fun mouseClicked(e: java.awt.event.MouseEvent?) {
+                        val idx = (0 until contextListModel.size()).firstOrNull { contextListModel[it] === item }
+                        if (idx != null) contextListModel.remove(idx)
+                    }
+                })
+                chip.add(removeBtn)
+                attachmentsPanel.add(chip)
+            }
+            attachmentsPanel.isVisible = contextListModel.size() > 0
+            attachmentsPanel.revalidate()
+            attachmentsPanel.repaint()
+        }
     }
 
     private fun onSendStopClicked() {
@@ -496,9 +545,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             setResponseStatus(MSG_THINKING)
 
             if (currentSessionId == null) {
-                responseTextArea.text = ""
+                consolePanel.clear()
             }
-            appendResponse("\n>>> $prompt\n\n")
+            consolePanel.addPromptEntry(prompt)
             promptTextArea.text = ""
 
             ApplicationManager.getApplication().executeOnPooledThread {
@@ -523,9 +572,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val actionGroup = DefaultActionGroup()
         actionGroup.add(SendStopAction())
         actionGroup.addSeparator()
+        actionGroup.add(AttachFileAction())
+        actionGroup.add(AttachSelectionAction())
+        actionGroup.addSeparator()
         actionGroup.add(ModelSelectorAction())
         actionGroup.addSeparator()
         actionGroup.add(ModeSelectorAction())
+        actionGroup.addSeparator()
+        actionGroup.add(CopyConversationAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", actionGroup, true
@@ -574,6 +628,55 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    // Attach current file to the next prompt
+    private inner class AttachFileAction : AnAction(
+        "Attach File", "Attach current file to prompt", com.intellij.icons.AllIcons.Actions.AddFile
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun actionPerformed(e: AnActionEvent) { handleAddCurrentFile(mainPanel) }
+    }
+
+    // Attach current selection to the next prompt
+    private inner class AttachSelectionAction : AnAction(
+        "Attach Selection", "Attach selected text to prompt", com.intellij.icons.AllIcons.Actions.AddMulticaret
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun actionPerformed(e: AnActionEvent) { handleAddSelection(mainPanel) }
+    }
+
+    // Copy conversation to clipboard (popup with Text / HTML options)
+    private inner class CopyConversationAction : AnAction(
+        "Copy", "Copy conversation to clipboard", com.intellij.icons.AllIcons.Actions.Copy
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun actionPerformed(e: AnActionEvent) {
+            val group = DefaultActionGroup()
+            group.add(object : AnAction("Copy as Text") {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val text = consolePanel.getConversationText()
+                    if (text.isNotBlank()) {
+                        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                    }
+                }
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            })
+            group.add(object : AnAction("Copy as HTML") {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val html = consolePanel.getConversationHtml()
+                    if (html.isNotBlank()) {
+                        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(html), null)
+                    }
+                }
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            })
+            val popup = ActionManager.getInstance()
+                .createActionPopupMenu(ActionPlaces.TOOLWINDOW_CONTENT, group)
+            val comp = e.inputEvent?.component ?: return
+            popup.component.show(comp, 0, comp.height)
+        }
+    }
+
     // ComboBoxAction for model selection — matches Run panel dropdown style
     private inner class ModelSelectorAction : ComboBoxAction() {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -603,7 +706,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     // ComboBoxAction for mode selection — matches Run panel dropdown style
-    private inner class ModeSelectorAction : ComboBoxAction() {
+    private class ModeSelectorAction : ComboBoxAction() {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
         override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
@@ -639,32 +742,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return row
     }
 
-    private fun createResponsePanel(): JBPanel<JBPanel<*>> {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-
-        responseTextArea = JBTextArea()
-        responseTextArea.isEditable = false
-        responseTextArea.lineWrap = true
-        responseTextArea.wrapStyleWord = true
-        responseTextArea.text = "Start a conversation with Copilot...\n\nFirst run will auto-start the Copilot process."
-        responseTextArea.foreground = JBColor.GRAY
-
-        val responseScrollPane = JBScrollPane(responseTextArea)
-        responseScrollPane.border = null
-        panel.add(responseScrollPane, BorderLayout.CENTER)
-
-        return panel
+    private fun createResponsePanel(): JComponent {
+        consolePanel = ChatConsolePanel(project)
+        // Register for proper JCEF browser disposal
+        com.intellij.openapi.util.Disposer.register(project, consolePanel)
+        consolePanel.showPlaceholder("Start a conversation with Copilot...\n\nFirst run will auto-start the Copilot process.")
+        return consolePanel
     }
 
     private fun appendResponse(text: String) {
-        SwingUtilities.invokeLater {
-            // Clear placeholder styling on first real content
-            if (responseTextArea.foreground == JBColor.GRAY) {
-                responseTextArea.foreground = UIManager.getColor("TextArea.foreground")
-            }
-            responseTextArea.append(text)
-            responseTextArea.caretPosition = responseTextArea.document.length
-        }
+        consolePanel.appendText(text)
     }
 
     private fun setResponseStatus(text: String, loading: Boolean = true) {
@@ -727,7 +814,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         promptThread?.interrupt()
-        appendResponse("\n\u2717 Stopped by user\n")
+        consolePanel.addErrorEntry("Stopped by user")
         setResponseStatus("Stopped", loading = false)
         addTimelineEvent(EventType.ERROR, "Prompt cancelled by user")
     }
@@ -755,8 +842,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             val references = buildContextReferences()
             if (references.isNotEmpty()) {
-                appendResponse("\u2139 ${references.size} context file(s) attached\n\n")
+                val contextFiles = (0 until contextListModel.size()).map { i ->
+                    val item = contextListModel.getElementAt(i)
+                    Pair(item.name, item.path)
+                }
+                consolePanel.addContextFilesEntry(contextFiles)
             }
+
+            // Auto-clear attachments after building references
+            SwingUtilities.invokeLater { contextListModel.clear() }
 
             var receivedContent = false
 
@@ -773,7 +867,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 { update -> handlePromptStreamingUpdate(update, receivedContent) }
             )
 
-            appendResponse("\n")
+            consolePanel.finishResponse()
             setResponseStatus("Done", loading = false)
             addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
             loadBillingData()
@@ -838,23 +932,68 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             "tool_call" -> {
                 val title = update["title"]?.asString ?: "tool"
                 val status = update["status"]?.asString ?: ""
+                val toolCallId = update["toolCallId"]?.asString ?: ""
+                val arguments = update["arguments"]?.let { args ->
+                    if (args.isJsonObject) {
+                        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+                        gson.toJson(args)
+                    } else if (args.isJsonPrimitive) args.asString
+                    else null
+                } ?: update["input"]?.let { inp ->
+                    if (inp.isJsonObject) {
+                        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+                        gson.toJson(inp)
+                    } else if (inp.isJsonPrimitive) inp.asString
+                    else null
+                }
                 setResponseStatus("Running: $title")
-                if (status != "completed") {
-                    appendResponse("\u2692 $title\n")
+                if (status != "completed" && toolCallId.isNotEmpty()) {
+                    consolePanel.addToolCallEntry(toolCallId, title, arguments)
                 }
             }
 
             "tool_call_update" -> {
                 val status = update["status"]?.asString ?: ""
+                val toolCallId = update["toolCallId"]?.asString ?: ""
+                val result = update["result"]?.asString
+                    ?: update["content"]?.let { c ->
+                        try {
+                            when {
+                                c.isJsonArray -> {
+                                    c.asJsonArray.mapNotNull { block ->
+                                        if (!block.isJsonObject) return@mapNotNull if (block.isJsonPrimitive) block.asString else block.toString()
+                                        val obj = block.asJsonObject
+                                        obj["content"]?.let { inner ->
+                                            if (inner.isJsonObject) inner.asJsonObject["text"]?.asString
+                                            else if (inner.isJsonPrimitive) inner.asString
+                                            else null
+                                        } ?: obj["text"]?.asString
+                                    }.joinToString("\n").ifEmpty { null }
+                                }
+                                c.isJsonObject -> c.asJsonObject["text"]?.asString
+                                c.isJsonPrimitive -> c.asString
+                                else -> null
+                            }
+                        } catch (_: Exception) {
+                            c.toString()
+                        }
+                    }
                 if (status == "completed") {
                     setResponseStatus(MSG_THINKING)
+                    consolePanel.updateToolCall(toolCallId, "completed", result)
                 } else if (status == "failed") {
-                    val toolId = update["toolCallId"]?.asString ?: ""
-                    appendResponse("\u2716 Tool failed: $toolId\n")
+                    val error = update["error"]?.asString ?: result
+                    consolePanel.updateToolCall(toolCallId, "failed", error)
+                    consolePanel.addErrorEntry("Tool failed: $toolCallId")
                 }
             }
 
             "agent_thought_chunk" -> {
+                val content = update["content"]?.asJsonObject
+                val text = content?.get("text")?.asString
+                if (text != null) {
+                    consolePanel.appendThinkingText(text)
+                }
                 if (!receivedContent) {
                     setResponseStatus(MSG_THINKING)
                 }
@@ -869,7 +1008,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         } else {
             e.message ?: MSG_UNKNOWN_ERROR
         }
-        appendResponse("\n\u274c Error: $msg\n")
+        consolePanel.addErrorEntry("Error: $msg")
         setResponseStatus("Error", loading = false)
         addTimelineEvent(EventType.ERROR, "Error: ${msg.take(80)}")
 
@@ -925,7 +1064,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Bottom info panel
         val infoPanel = JBPanel<JBPanel<*>>(BorderLayout())
         infoPanel.border = JBUI.Borders.empty(5)
-        val infoLabel = JBLabel("Context items will be sent with each prompt")
+        val infoLabel = JBLabel("Attachments are sent with the next prompt and auto-cleared")
         infoLabel.foreground = JBColor.GRAY
         infoPanel.add(infoLabel, BorderLayout.WEST)
 
@@ -1546,9 +1685,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     fun resetSession() {
         currentSessionId = null
-        responseTextArea.text = ""
-        responseTextArea.foreground = JBColor.GRAY
-        appendResponse("New conversation started.\n")
+        consolePanel.clear()
+        consolePanel.showPlaceholder("New conversation started.")
         addTimelineEvent(EventType.SESSION_START, "New conversation started")
         updateSessionInfo()
         SwingUtilities.invokeLater {
