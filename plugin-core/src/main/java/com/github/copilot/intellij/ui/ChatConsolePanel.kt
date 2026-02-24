@@ -282,7 +282,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     fun appendThinkingText(text: String) {
-        hideProcessingIndicator()
+        // Don't hide processing indicator here — thinking is collapsed and not visually obvious
         if (currentThinkingData == null) {
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
             thinkingCounter++
