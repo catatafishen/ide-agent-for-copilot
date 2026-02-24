@@ -36,6 +36,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         const val MSG_THINKING = "Thinking..."
         const val MSG_UNKNOWN_ERROR = "Unknown error"
         const val PROMPT_PLACEHOLDER = "Ask Copilot... (Shift+Enter for new line)"
+        const val AGENT_WORK_DIR = ".agent-work"
     }
 
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -335,14 +336,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun toggleUsageDisplayMode() {
-        usageDisplayMode = when (usageDisplayMode) {
-            UsageDisplayMode.MONTHLY -> UsageDisplayMode.SESSION
-            UsageDisplayMode.SESSION -> UsageDisplayMode.MONTHLY
-        }
-        refreshUsageDisplay()
-    }
-
     /** Updates the mini usage graph with current billing cycle data. */
     private fun updateUsageGraph(
         used: Int,
@@ -626,7 +619,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.document.addDocumentListener(object : javax.swing.event.DocumentListener {
             override fun insertUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
             override fun removeUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
-            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) {}
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) { /* Not used for plain text documents */ }
             private fun adjustRows() {
                 val newRows = promptTextArea.lineCount.coerceIn(2, 6)
                 if (promptTextArea.rows != newRows) {
@@ -790,7 +783,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     /** Toolbar action showing a native processing timer while the agent works */
     private inner class ProcessingIndicatorAction : AnAction("Processing"), CustomComponentAction {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) {}
+        override fun actionPerformed(e: AnActionEvent) { /* No action needed — UI-only toolbar widget */ }
 
         override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
             processingTimerPanel = ProcessingTimerPanel()
@@ -876,7 +869,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 try {
                     val resetDate = LocalDate.parse(lastBillingResetDate, DateTimeFormatter.ISO_LOCAL_DATE)
                     append("<br>Resets: ${resetDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}")
-                } catch (_: Exception) {
+                } catch (_: Exception) { /* Date parse failed — skip reset date display */
                 }
             }
             append("</html>")
@@ -1051,6 +1044,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         consolePanel.appendText(text)
     }
 
+    @Suppress("unused")
     private fun setResponseStatus(text: String, loading: Boolean = true) {
         // Status indicator removed from UI \u2192 kept as no-op to avoid call-site churn
     }
@@ -1169,8 +1163,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 popup.components.filterIsInstance<javax.swing.JMenuItem>()
                     .find { it.text == "Clear Attachments" }?.isEnabled = contextListModel.size() > 0
             }
-            override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) {}
-            override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) {}
+            override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) { /* No action needed */ }
+            override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) { /* No action needed */ }
         })
     }
 
@@ -1514,7 +1508,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun saveTurnStatistics(prompt: String, toolCalls: Int, modelId: String) {
         com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val statsDir = java.io.File(project.basePath ?: return@executeOnPooledThread, ".agent-work")
+                val statsDir = java.io.File(project.basePath ?: return@executeOnPooledThread, AGENT_WORK_DIR)
                 statsDir.mkdirs()
                 val statsFile = java.io.File(statsDir, "usage-stats.jsonl")
                 val entry = com.google.gson.JsonObject().apply {
@@ -1531,7 +1525,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun conversationFile(): java.io.File {
-        val dir = java.io.File(project.basePath ?: "", ".agent-work")
+        val dir = java.io.File(project.basePath ?: "", AGENT_WORK_DIR)
         dir.mkdirs()
         return java.io.File(dir, "conversation.json")
     }
@@ -2134,7 +2128,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     fun openSessionFiles() {
-        val agentWorkDir = java.io.File(project.basePath ?: return, ".agent-work")
+        val agentWorkDir = java.io.File(project.basePath ?: return, AGENT_WORK_DIR)
         if (!agentWorkDir.exists()) {
             agentWorkDir.mkdirs()
         }
@@ -2359,7 +2353,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Clear saved conversation
         try {
             conversationFile().delete()
-        } catch (_: Exception) {
+        } catch (_: Exception) { /* Best-effort cleanup — ignore deletion failures */
         }
         SwingUtilities.invokeLater {
             if (::planRoot.isInitialized) {

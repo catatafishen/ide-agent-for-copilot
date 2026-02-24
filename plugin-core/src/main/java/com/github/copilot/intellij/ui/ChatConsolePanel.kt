@@ -39,6 +39,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private val TOOL_COLOR = JBColor(Color(0xFF, 0xA7, 0x26), Color(0xFF, 0xB7, 0x4D))
         private val THINK_COLOR = JBColor(Color(0x99, 0x99, 0x99), Color(0x88, 0x88, 0x88))
 
+        private const val ICON_ERROR = "\u274C"
+        private const val JS_REMOVE_PROCESSING = "(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()"
+        private const val HTML_TABLE_CLOSE = "</table>"
+
         private val FILE_PATH_REGEX = Regex(
             """(?<![:\w])(?:/[\w.\-]+(?:/[\w.\-]+)*\.\w+|(?:\.\.?/)?[\w.\-]+(?:/[\w.\-]+)+\.\w+)(?::\d+(?::\d+)?)?"""
         )
@@ -409,8 +413,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
     fun addErrorEntry(message: String) {
         finalizeCurrentText()
-        entries.add(EntryData.Status("\u274C", message))
-        appendHtml("<div class='status-row error'>\u274C ${escapeHtml(message)}</div>")
+        entries.add(EntryData.Status(ICON_ERROR, message))
+        appendHtml("<div class='status-row error'>$ICON_ERROR ${escapeHtml(message)}</div>")
     }
 
     fun addInfoEntry(message: String) {
@@ -440,10 +444,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val minDisplay = 500L
         if (elapsed < minDisplay && processingShownAt > 0) {
             javax.swing.Timer((minDisplay - elapsed).toInt()) {
-                executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+                executeJs(JS_REMOVE_PROCESSING)
             }.apply { isRepeats = false; start() }
         } else {
-            executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+            executeJs(JS_REMOVE_PROCESSING)
         }
     }
 
@@ -624,7 +628,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "status" -> {
                 val icon = obj["icon"]?.asString ?: ""
                 val msg = obj["message"]?.asString ?: ""
-                if (icon == "\u274C") addErrorEntry(msg) else addInfoEntry(msg)
+                if (icon == ICON_ERROR) addErrorEntry(msg) else addInfoEntry(msg)
             }
             "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
         }
@@ -738,8 +742,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 "status" -> {
                     val icon = obj["icon"]?.asString ?: ""
                     val msg = obj["message"]?.asString ?: ""
-                    if (icon == "\u274C") {
-                        sb.append("<div class='status-row error'>\u274C ${escapeHtml(msg)}</div>")
+                    if (icon == ICON_ERROR) {
+                        sb.append("<div class='status-row error'>$ICON_ERROR ${escapeHtml(msg)}</div>")
                     } else {
                         sb.append("<div class='status-row info'>\u2139\uFE0F ${escapeHtml(msg)}</div>")
                     }
@@ -905,7 +909,7 @@ ul,ol{margin:4px 0;padding-left:22px}
             }
 
             is EntryData.Status -> sb.append(
-                "<div class='status ${if (e.icon == "\u274C") "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
+                "<div class='status ${if (e.icon == ICON_ERROR) "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
             )
 
             is EntryData.SessionSeparator -> sb.append(
@@ -925,7 +929,7 @@ ul,ol{margin:4px 0;padding-left:22px}
         collapseThinking()
         // Force-remove indicator immediately (response is done)
         processingShownAt = 0
-        executeJs("(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()")
+        executeJs(JS_REMOVE_PROCESSING)
         val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
         executeJs("finalizeTurn($statsJson)")
         trimMessages()
@@ -1369,7 +1373,7 @@ document.addEventListener('mouseover',function(e){
                         sb.append("</ul>"); inList = false
                     }
                     if (inTable) {
-                        sb.append("</table>"); inTable = false
+                        sb.append(HTML_TABLE_CLOSE); inTable = false
                     }
                     sb.append("<pre><code>"); inCode = true
                 }
@@ -1385,7 +1389,7 @@ document.addEventListener('mouseover',function(e){
                     sb.append("</ul>"); inList = false
                 }
                 if (inTable) {
-                    sb.append("</table>"); inTable = false
+                    sb.append(HTML_TABLE_CLOSE); inTable = false
                 }
                 val lv = hm.groupValues[1].length + 1
                 sb.append("<h$lv>").append(formatInline(hm.groupValues[2])).append("</h$lv>")
@@ -1408,7 +1412,7 @@ document.addEventListener('mouseover',function(e){
                 sb.append("</tr>"); firstTR = false; i++; continue
             }
             if (inTable) {
-                sb.append("</table>"); inTable = false
+                sb.append(HTML_TABLE_CLOSE); inTable = false
             }
 
             if (t.startsWith("- ") || t.startsWith("* ")) {
@@ -1429,7 +1433,7 @@ document.addEventListener('mouseover',function(e){
         }
 
         if (inCode) sb.append("</code></pre>")
-        if (inTable) sb.append("</table>")
+        if (inTable) sb.append(HTML_TABLE_CLOSE)
         if (inList) sb.append("</ul>")
         return sb.toString()
     }
