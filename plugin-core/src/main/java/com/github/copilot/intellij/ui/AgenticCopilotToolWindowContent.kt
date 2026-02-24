@@ -2504,7 +2504,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val g2 = (g as Graphics2D).also {
                 it.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             }
-            val pad = JBUI.scale(3)
+            val pad = 1
             val w = width - 2 * pad
             val h = height - 2 * pad
             if (w <= 0 || h <= 0) return
