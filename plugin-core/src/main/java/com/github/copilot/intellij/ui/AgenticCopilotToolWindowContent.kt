@@ -2552,10 +2552,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val curY = dy(data.usedSoFar.toFloat())
 
             if (overQuota) {
-                // Below-quota area (green)
                 val quotaY = dy(data.entitlement.toFloat())
+                // Intersection of usage line with entitlement line
+                val t = (quotaY - baseY) / (curY - baseY)
+                val intersectX = pad + t * (curX - pad)
+
+                // Below-quota area (green quadrilateral)
                 val belowPath = Path2D.Float().apply {
                     moveTo(pad.toFloat(), baseY)
+                    lineTo(intersectX, quotaY)
                     lineTo(curX, quotaY)
                     lineTo(curX, baseY)
                     closePath()
@@ -2563,9 +2568,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x30), Color(0x6A, 0xAB, 0x73, 0x30))
                 g2.fill(belowPath)
 
-                // Over-quota area (red)
+                // Over-quota area (red triangle)
                 val overPath = Path2D.Float().apply {
-                    moveTo(pad.toFloat(), quotaY)
+                    moveTo(intersectX, quotaY)
                     lineTo(curX, curY)
                     lineTo(curX, quotaY)
                     closePath()
