@@ -117,6 +117,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "run_configuration" to ToolInfo("Run Configuration", "Execute a run/debug configuration"),
             "create_run_configuration" to ToolInfo("Create Run Config", "Create a new run/debug configuration"),
             "edit_run_configuration" to ToolInfo("Edit Run Config", "Modify an existing run/debug configuration"),
+            // Display / Presentation
+            "show_file" to ToolInfo("Show File", "Display a file to the user"),
         )
 
         private fun escapeHtml(text: String): String = text
@@ -148,6 +150,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         class ToolCall(val title: String, val arguments: String? = null) : EntryData()
         class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
         class Status(val icon: String, val message: String) : EntryData()
+        class SessionSeparator(val timestamp: String) : EntryData()
     }
 
     private val entries = mutableListOf<EntryData>()
@@ -162,6 +165,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private val openFileQuery: JBCefJSQuery?
     private var browserReady = false
     private val pendingJs = mutableListOf<String>()
+    private var cursorBridgeJs = ""
 
     // Swing fallback
     private val fallbackArea: JBTextArea?
@@ -173,6 +177,22 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             openFileQuery.addHandler { handleFileLink(it); null }
             Disposer.register(this, openFileQuery)
             Disposer.register(this, browser)
+
+            // Cursor bridge: JS notifies Swing of cursor changes
+            val cursorQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            cursorQuery.addHandler { cursorType ->
+                SwingUtilities.invokeLater {
+                    browser.component.cursor = when (cursorType) {
+                        "pointer" -> java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+                        "text" -> java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.TEXT_CURSOR)
+                        else -> java.awt.Cursor.getDefaultCursor()
+                    }
+                }
+                null
+            }
+            Disposer.register(this, cursorQuery)
+            cursorBridgeJs = cursorQuery.inject("c")
+
             add(browser.component, BorderLayout.CENTER)
 
             browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
@@ -200,35 +220,47 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     // --- Public API ---
 
-    fun addPromptEntry(text: String) {
+    fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>? = null) {
         finalizeCurrentText()
         collapseThinking()
         entries.add(EntryData.Prompt(text))
         val ts = timestamp()
-        val html = "<div class='prompt-row'><div class='prompt-bubble' onclick='toggleTs(this)'>${escapeHtml(text)}<span class='ts'>$ts</span></div></div>"
+        val ctxChips = if (!contextFiles.isNullOrEmpty()) {
+            contextFiles.joinToString("") { (name, path, line) ->
+                val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
+                "<a class='prompt-ctx-chip' href='$href' title='${escapeHtml(path)}${if (line > 0) ":$line" else ""}'>📎 ${escapeHtml(name)}</a>"
+            }
+        } else ""
+        val html = "<div class='prompt-row'><div class='meta'><span class='ts'>$ts</span>$ctxChips</div><div class='prompt-bubble' onclick='toggleMeta(this)'>${escapeHtml(text)}</div></div>"
         appendHtml(html)
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(">>> $text\n") } }
     }
 
+    /** Show model/multiplier on the prompt bubble immediately when sending */
+    fun setPromptStats(modelId: String, multiplier: String) {
+        val shortModel = escapeJs(modelId.substringAfterLast("/").take(30))
+        val mult = escapeJs(multiplier)
+        executeJs("""
+            (function(){
+              var prs=document.querySelectorAll('.prompt-row');
+              var pr=prs.length?prs[prs.length-1]:null;
+              if(!pr)return;
+              var pm=pr.querySelector('.meta');
+              if(!pm)return;
+              pm.classList.add('show');
+              var sc=document.createElement('span');
+              sc.className='turn-chip stats';sc.id='turn-stats';
+              sc.textContent='$mult';
+              sc.setAttribute('data-tip','$shortModel');
+              pm.appendChild(sc);
+            })()
+        """.trimIndent())
+    }
+
     /** Adds a collapsible context files section showing attached file names/paths. */
     fun addContextFilesEntry(files: List<Pair<String, String>>) {
-        finalizeCurrentText()
         entries.add(EntryData.ContextFiles(files))
-        contextCounter++
-        val id = "ctx-$contextCounter"
-        val label = "${files.size} context file${if (files.size != 1) "s" else ""} attached"
-        val listHtml = files.joinToString("") { (name, path) ->
-            val href = "openfile://$path"
-            "<div class='ctx-file'><a href='$href'><code>${escapeHtml(name)}</code></a></div>"
-        }
-        val html = """<div class='collapse-section context-section collapsed' id='$id'>
-            <div class='collapse-header' onclick='toggleTool("$id")'>
-                <span class='collapse-icon'>📎</span>
-                <span class='collapse-label'>$label</span>
-                <span class='caret'>▸</span>
-            </div>
-            <div class='collapse-content'>$listHtml</div></div>"""
-        appendHtml(html)
+        // Context files are now shown as chips in the prompt bubble via addPromptEntry
     }
 
     fun appendThinkingText(text: String) {
@@ -274,7 +306,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             entryCounter++
             val ts = timestamp()
             val html =
-                "<div class='agent-row'><div class='agent-bubble' id='text-$entryCounter' onclick='toggleTs(this)'><pre class='streaming'></pre><span class='ts'>$ts</span></div></div>"
+                "<div class='agent-row'><div class='meta' id='meta-$entryCounter'><span class='ts'>$ts</span></div><div class='agent-bubble' id='text-$entryCounter' onclick='toggleMeta(this)'><pre class='streaming'></pre></div></div>"
             appendHtml(html)
         }
         currentTextData!!.raw.append(text)
@@ -350,6 +382,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         appendHtml("<div class='status-row info'>ℹ ${escapeHtml(message)}</div>")
     }
 
+    fun hasContent(): Boolean = entries.isNotEmpty()
+
+    /** Adds a visual separator marking previous session content as stale */
+    fun addSessionSeparator(timestamp: String) {
+        finalizeCurrentText()
+        entries.add(EntryData.SessionSeparator(timestamp))
+        val html = "<div class='session-sep'><span class='session-sep-line'></span><span class='session-sep-label'>New session · ${escapeHtml(timestamp)}</span><span class='session-sep-line'></span></div>"
+        appendHtml(html)
+    }
+
     fun showPlaceholder(text: String) {
         entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter = 0; contextCounter = 0
         executeJs("document.getElementById('container').innerHTML='<div class=\"placeholder\">${escapeJs(escapeHtml(text))}</div>'")
@@ -360,6 +402,58 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter = 0; contextCounter = 0
         executeJs("document.getElementById('container').innerHTML=''")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
+    }
+
+    /** Serialize conversation entries to JSON for persistence */
+    fun serializeEntries(): String {
+        val arr = com.google.gson.JsonArray()
+        for (e in entries) {
+            val obj = com.google.gson.JsonObject()
+            when (e) {
+                is EntryData.Prompt -> { obj.addProperty("type", "prompt"); obj.addProperty("text", e.text) }
+                is EntryData.Text -> { obj.addProperty("type", "text"); obj.addProperty("raw", e.raw.toString()) }
+                is EntryData.Thinking -> { obj.addProperty("type", "thinking"); obj.addProperty("raw", e.raw.toString()) }
+                is EntryData.ToolCall -> { obj.addProperty("type", "tool"); obj.addProperty("title", e.title); obj.addProperty("args", e.arguments ?: "") }
+                is EntryData.ContextFiles -> { obj.addProperty("type", "context"); val fa = com.google.gson.JsonArray(); e.files.forEach { f -> val fo = com.google.gson.JsonObject(); fo.addProperty("name", f.first); fo.addProperty("path", f.second); fa.add(fo) }; obj.add("files", fa) }
+                is EntryData.Status -> { obj.addProperty("type", "status"); obj.addProperty("icon", e.icon); obj.addProperty("message", e.message) }
+                is EntryData.SessionSeparator -> { obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp) }
+            }
+            arr.add(obj)
+        }
+        return arr.toString()
+    }
+
+    /** Restore conversation entries from JSON and rebuild the chat view */
+    fun restoreEntries(json: String) {
+        try {
+            val arr = com.google.gson.JsonParser.parseString(json).asJsonArray
+            for (elem in arr) {
+                val obj = elem.asJsonObject
+                when (obj["type"]?.asString) {
+                    "prompt" -> addPromptEntry(obj["text"]?.asString ?: "")
+                    "text" -> { appendText(obj["raw"]?.asString ?: ""); finalizeCurrentText() }
+                    "thinking" -> { appendThinkingText(obj["raw"]?.asString ?: ""); collapseThinking() }
+                    "tool" -> addToolCallEntry(
+                        "restored-${entryCounter}", obj["title"]?.asString ?: "",
+                        obj["args"]?.asString?.ifEmpty { null }
+                    )
+                    "context" -> {
+                        val files = obj["files"]?.asJsonArray?.map {
+                            val f = it.asJsonObject; Pair(f["name"]?.asString ?: "", f["path"]?.asString ?: "")
+                        } ?: emptyList()
+                        addContextFilesEntry(files)
+                    }
+                    "status" -> {
+                        val icon = obj["icon"]?.asString ?: ""
+                        val msg = obj["message"]?.asString ?: ""
+                        if (icon == "✖") addErrorEntry(msg) else addInfoEntry(msg)
+                    }
+                    "separator" -> addSessionSeparator(obj["timestamp"]?.asString ?: "")
+                }
+            }
+            // Collapse all restored entries into chips
+            executeJs("finalizeTurn({})")
+        } catch (_: Exception) { /* best-effort restore */ }
     }
 
     fun getConversationText(): String {
@@ -380,6 +474,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
             is EntryData.ContextFiles -> sb.appendLine("📎 ${e.files.size} context file(s): ${e.files.joinToString(", ") { it.first }}")
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
+            is EntryData.SessionSeparator -> sb.appendLine("--- Previous session — ${e.timestamp} ---")
         }
         return sb.toString()
     }
@@ -448,14 +543,32 @@ ul,ol{margin:4px 0;padding-left:22px}
             is EntryData.Status -> sb.append(
                 "<div class='status ${if (e.icon == "✖") "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
             )
+            is EntryData.SessionSeparator -> sb.append(
+                "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session — ${escapeHtml(e.timestamp)}</div>\n"
+            )
         }
         sb.append("</body></html>")
         return sb.toString()
     }
 
-    fun finishResponse() {
+    fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x") {
         finalizeCurrentText()
         collapseThinking()
+        val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
+        executeJs("finalizeTurn($statsJson)")
+        trimMessages()
+    }
+
+    private fun trimMessages() {
+        // Keep at most 100 top-level rows to prevent performance degradation
+        executeJs("""(function(){
+            var c=document.getElementById('container');if(!c)return;
+            var rows=c.querySelectorAll('.prompt-row,.agent-row,.thinking-section,.tool-section,.context-section,.status-row');
+            var limit=100;
+            if(rows.length>limit){
+                for(var i=0;i<rows.length-limit;i++){rows[i].remove();}
+            }
+        })()""")
     }
 
     override fun dispose() { /* children auto-disposed via Disposer */
@@ -523,15 +636,26 @@ ul,ol{margin:4px 0;padding-left:22px}
 body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;
      color:${rgb(fg)};background:${rgb(bg)};padding:8px;line-height:1.45}
 
+/* --- Scrollbar (IntelliJ-style thin track) --- */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:${rgba(THINK_COLOR, 0.35)};border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:${rgba(THINK_COLOR, 0.55)}}
+
 /* --- User prompt bubble (right-aligned) --- */
-.prompt-row{display:flex;justify-content:flex-end;margin:10px 0 4px 0}
+.prompt-row{display:flex;flex-direction:column;align-items:flex-end;margin:10px 0 4px 0}
 .prompt-bubble{background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;
     padding:6px 14px;max-width:85%;font-weight:normal;white-space:pre-wrap;font-size:0.88em}
+.prompt-bubble:hover{background:${rgba(USER_COLOR, 0.18)}}
+.prompt-ctx-chip{display:inline-flex;align-items:center;gap:2px;background:${rgba(USER_COLOR, 0.15)};
+    border-radius:10px;padding:1px 8px;font-size:0.82em;color:${rgb(USER_COLOR)};text-decoration:none;white-space:nowrap}
+.prompt-ctx-chip:hover{text-decoration:none;background:${rgba(USER_COLOR, 0.25)}}
 
 /* --- Agent response bubble (left-aligned) --- */
 .agent-row{margin:4px 0}
 .agent-bubble{background:${rgba(AGENT_COLOR, 0.06)};border-radius:4px 16px 16px 16px;
     padding:8px 16px;max-width:95%}
+.agent-bubble:hover{background:${rgba(AGENT_COLOR, 0.10)}}
 .agent-bubble .streaming{white-space:pre-wrap;margin:0;background:none;padding:0;
     font-family:inherit;font-size:inherit}
 
@@ -565,6 +689,16 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 .context-section .collapse-header{background:${rgba(USER_COLOR, 0.06)};color:${rgb(USER_COLOR)}}
 .context-section .collapse-content{padding:4px 12px 4px 30px;white-space:normal}
 .ctx-file{padding:2px 0}
+
+/* --- Chip-expanded style (section opened from turn chip) --- */
+.chip-expanded .collapse-header{display:none}
+.chip-expanded .collapse-content{display:block;border-left:2px solid ${rgba(THINK_COLOR, 0.25)};
+    margin:2px 0;padding:4px 10px;font-size:0.82em;position:relative}
+.chip-expanded.tool-section .collapse-content{border-left-color:${rgba(TOOL_COLOR, 0.4)}}
+.chip-expanded.thinking-section .collapse-content{border-left-color:${rgba(THINK_COLOR, 0.4)}}
+.chip-close{position:absolute;top:2px;right:4px;cursor:pointer !important;font-size:0.8em;
+    color:${rgb(THINK_COLOR)};opacity:0.6;padding:2px 4px;border-radius:4px}
+.chip-close:hover{opacity:1;background:${rgba(THINK_COLOR, 0.1)}}
 .ctx-file a{color:${rgb(linkColor)};text-decoration:none}
 .ctx-file a:hover{text-decoration:underline}
 
@@ -576,13 +710,39 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 .tool-result-pending{color:${rgb(THINK_COLOR)};font-style:italic}
 
 /* --- Timestamps (hidden by default, shown on click) --- */
-.ts{display:none;font-size:0.75em;color:${rgb(THINK_COLOR)};margin-top:4px}
-.ts.show{display:block}
+.meta{display:none;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:2px;width:100%}
+.meta.show{display:flex}
+.prompt-row .meta{justify-content:flex-end}
+.ts{font-size:0.75em;color:${rgb(THINK_COLOR)}}
+
+/* --- Turn chips (embedded in agent bubble meta) --- */
+.turn-chip{display:inline-flex;align-items:center;gap:3px;background:${rgba(THINK_COLOR, 0.08)};
+    border-radius:10px;padding:2px 8px;font-size:0.78em;color:${rgb(THINK_COLOR)}}
+.turn-chip:hover{background:${rgba(THINK_COLOR, 0.16)}}
+.turn-chip.tool{color:${rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))};background:${rgba(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)), 0.08)}}
+.turn-chip.tool.failed{color:rgb(220,80,80);background:rgba(220,80,80,0.08)}
+.turn-chip.tool:hover{background:${rgba(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)), 0.16)}}
+.turn-chip.tool.failed:hover{background:rgba(220,80,80,0.16)}
+.turn-chip.ctx:hover{background:${rgba(USER_COLOR, 0.16)}}
+.turn-chip.err:hover{background:rgba(255,0,0,0.12)}
+.turn-chip.ctx{color:${rgb(USER_COLOR)};background:${rgba(USER_COLOR, 0.08)}}
+.turn-chip.err{color:red;background:rgba(255,0,0,0.06)}
+.turn-chip.stats{color:${rgb(AGENT_COLOR)};background:${rgba(AGENT_COLOR, 0.08)};cursor:default;position:relative}
+.turn-chip.stats:hover{background:${rgba(AGENT_COLOR, 0.16)}}
+.turn-chip.stats:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);right:0;
+    background:rgb(50,50,54);color:${rgb(THINK_COLOR)};padding:3px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;z-index:10;
+    pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+.turn-hidden{display:none}
 
 /* --- Status entries --- */
 .status-row{padding:4px 12px;margin:2px 0;font-size:0.88em;border-radius:6px}
 .status-row.error{color:red;background:rgba(255,0,0,0.05)}
 .status-row.info{color:${rgb(THINK_COLOR)};background:${rgba(THINK_COLOR, 0.04)}}
+
+/* --- Session separator --- */
+.session-sep{display:flex;align-items:center;gap:10px;margin:16px 0;opacity:0.6}
+.session-sep-line{flex:1;height:1px;background:${rgba(THINK_COLOR, 0.3)}}
+.session-sep-label{font-size:0.78em;color:${rgb(THINK_COLOR)};white-space:nowrap}
 
 /* --- Placeholder --- */
 .placeholder{color:${rgb(THINK_COLOR)};padding:20px 12px;text-align:center;white-space:pre-wrap;
@@ -615,21 +775,118 @@ function scrollIfNeeded(){if(autoScroll)window.scrollTo(0,document.body.scrollHe
 function b64(s){var r=atob(s),b=new Uint8Array(r.length);for(var i=0;i<r.length;i++)b[i]=r.charCodeAt(i);return new TextDecoder().decode(b)}
 function toggleTool(id){
   var el=document.getElementById(id);if(!el)return;
+  if(el.dataset.chipOwned&&!el.classList.contains('collapsed')){
+    el.classList.add('turn-hidden','collapsed');
+    el.classList.remove('chip-expanded');
+    var btn=el.querySelector('.chip-close');if(btn)btn.remove();
+    var chip=document.querySelector('[data-chip-for="'+id+'"]');
+    if(chip)chip.style.opacity='1';
+    return;
+  }
   el.classList.toggle('collapsed');
   el.querySelector('.caret').textContent=el.classList.contains('collapsed')?'\u25B8':'\u25BE';
 }
 function toggleThinking(id){
   var el=document.getElementById(id);if(!el)return;
+  if(el.dataset.chipOwned&&!el.classList.contains('collapsed')){
+    el.classList.add('turn-hidden','collapsed');
+    el.classList.remove('chip-expanded');
+    var btn=el.querySelector('.chip-close');if(btn)btn.remove();
+    var chip=document.querySelector('[data-chip-for="'+id+'"]');
+    if(chip)chip.style.opacity='1';
+    return;
+  }
   el.classList.toggle('collapsed');
   el.querySelector('.caret').textContent=el.classList.contains('collapsed')?'\u25B8':'\u25BE';
 }
-function toggleTs(el){var ts=el.querySelector('.ts');if(ts)ts.classList.toggle('show')}
+function toggleMeta(el){
+  var row=el.parentElement;
+  var m=row?row.querySelector('.meta'):null;
+  if(m)m.classList.toggle('show');
+}
+function finalizeTurn(stats){
+  var items=document.querySelectorAll('.thinking-section:not(.turn-hidden),.tool-section:not(.turn-hidden),.context-section:not(.turn-hidden),.status-row:not(.turn-hidden)');
+  // Find the last agent-row for the stats chip
+  var lastBubbles=document.querySelectorAll('.agent-bubble');
+  var lastBubble=lastBubbles.length>0?lastBubbles[lastBubbles.length-1]:null;
+  var lastRow=lastBubble?lastBubble.parentElement:null;
+  var lastMeta=lastRow?lastRow.querySelector('.meta'):null;
+  items.forEach(function(el){
+    var targetMeta=null;
+    var sib=el.nextElementSibling;
+    while(sib){
+      if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
+      sib=sib.nextElementSibling;
+    }
+    if(!targetMeta)targetMeta=lastMeta;
+    if(!targetMeta)return;
+    var chip=document.createElement('span');
+    var elId=el.id||'';
+    if(el.classList.contains('thinking-section')){
+      chip.className='turn-chip';chip.textContent='💭 Thought';
+    } else if(el.classList.contains('tool-section')){
+      var lbl=el.querySelector('.collapse-label');
+      var icon=el.querySelector('.collapse-icon');
+      var failed=icon&&icon.style.color==='red';
+      chip.className='turn-chip tool'+(failed?' failed':'');
+      chip.textContent=(lbl?lbl.textContent:'Tool');
+    } else if(el.classList.contains('context-section')){
+      chip.className='turn-chip ctx';chip.textContent='📎 Context';
+    } else if(el.classList.contains('status-row')&&el.classList.contains('error')){
+      chip.className='turn-chip err';chip.textContent='✖ '+el.textContent.trim().substring(0,60);
+    } else return;
+    el.classList.add('turn-hidden');
+    el.dataset.chipOwned='1';
+    chip.dataset.chipFor=elId;
+    chip.style.cursor='pointer';
+    function closeSection(){
+      el.classList.add('turn-hidden','collapsed');
+      el.classList.remove('chip-expanded');
+      chip.style.opacity='1';
+      var btn=el.querySelector('.chip-close');if(btn)btn.remove();
+    }
+    chip.onclick=function(ev){
+      ev.stopPropagation();
+      if(el.classList.contains('turn-hidden')){
+        el.classList.remove('turn-hidden','collapsed');
+        el.classList.add('chip-expanded');
+        chip.style.opacity='0.5';
+        var cc=el.querySelector('.collapse-content');
+        if(cc&&!cc.querySelector('.chip-close')){
+          var btn=document.createElement('span');btn.className='chip-close';btn.textContent='✕';
+          btn.onclick=function(e){e.stopPropagation();closeSection()};
+          cc.insertBefore(btn,cc.firstChild);
+        }
+      } else { closeSection(); }
+    };
+    targetMeta.appendChild(chip);
+  });
+  // Update stats chip on the prompt bubble with final tool count
+  if(stats&&stats.mult){
+    var existing=document.getElementById('turn-stats');
+    if(existing){
+      var label=stats.mult;
+      existing.textContent=label;
+      var short=stats.model.split('/').pop().substring(0,30);
+      existing.setAttribute('data-tip',short+' · '+stats.tools+' tool'+(stats.tools!=1?'s':''));
+      existing.removeAttribute('id');
+    }
+  }
+  scrollIfNeeded();
+}
 document.addEventListener('click',function(e){
   var el=e.target;
   while(el&&el.tagName!=='A')el=el.parentElement;
   if(el&&el.getAttribute('href')&&el.getAttribute('href').indexOf('openfile://')===0){
     e.preventDefault();$fileHandler
   }
+});
+var _lastCursor='';
+document.addEventListener('mouseover',function(e){
+  var el=e.target;var c='default';
+  if(el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip'))c='pointer';
+  else if(el.closest('p,pre,code,li,td,th,.collapse-content,.streaming'))c='text';
+  if(c!==_lastCursor){_lastCursor=c;$cursorBridgeJs}
 });
 </script></body></html>"""
     }

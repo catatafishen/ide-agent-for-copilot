@@ -1,5 +1,12 @@
-<!-- Placeholder icon -->
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <rect width="16" height="16" fill="#6E40AA" rx="2"/>
-  <text x="8" y="12" font-family="Arial" font-size="10" fill="white" text-anchor="middle" font-weight="bold">C</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13">
+  <!-- Bridge arch -->
+  <path d="M1.5 10 Q6.5 2 11.5 10" fill="none" stroke="#6E9FFF" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Bridge deck -->
+  <line x1="1" y1="10" x2="12" y2="10" stroke="#6E9FFF" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- Left pillar -->
+  <line x1="3.5" y1="6.5" x2="3.5" y2="10" stroke="#6E9FFF" stroke-width="1" stroke-linecap="round"/>
+  <!-- Right pillar -->
+  <line x1="9.5" y1="6.5" x2="9.5" y2="10" stroke="#6E9FFF" stroke-width="1" stroke-linecap="round"/>
+  <!-- Center dot (AI spark) -->
+  <circle cx="6.5" cy="4" r="1.2" fill="#8BD46E"/>
 </svg>

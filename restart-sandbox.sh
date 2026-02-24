@@ -16,7 +16,7 @@ echo "=== Sandbox Restart Script ==="
 echo "Stopping existing sandbox processes..."
 # Find sandbox IDE processes (look for gradle runIde and the actual IDE process)
 GRADLE_PIDS=$(pgrep -f "gradlew.*runIde" || true)
-IDE_PIDS=$(pgrep -f "idea-IC-253" || true)
+IDE_PIDS=$(pgrep -f "idea-sandbox" || true)
 
 for PID in $GRADLE_PIDS $IDE_PIDS; do
     if [ -n "$PID" ]; then
@@ -31,7 +31,7 @@ if [ -n "$GRADLE_PIDS" ] || [ -n "$IDE_PIDS" ]; then
 fi
 
 # Check if any still running
-REMAINING=$(pgrep -f "gradlew.*runIde|idea-IC-253" | wc -l)
+REMAINING=$(pgrep -f "gradlew.*runIde|idea-sandbox" | wc -l)
 if [ "$REMAINING" -gt 0 ]; then
     echo "WARNING: Some sandbox processes still running. Use kill -9 manually if needed."
 fi

@@ -1,8 +1,8 @@
 <idea-plugin>
   <id>com.github.copilot.intellij</id>
-  <name>Agentic Copilot</name>
+  <name>Copilot Bridge</name>
   <vendor email="support@example.com" url="https://github.com/yourusername/intellij-copilot-plugin">
-    Agentic Copilot Contributors
+    Copilot Bridge Contributors
   </vendor>
 
   <description><![CDATA[
@@ -53,7 +53,7 @@
   <!-- Extension points and implementations -->
   <extensions defaultExtensionNs="com.intellij">
     <!-- Tool Window -->
-    <toolWindow id="AgenticCopilot"
+    <toolWindow id="Copilot Bridge"
                 secondary="false"
                 anchor="right"
                 icon="/icons/copilot.svg"

@@ -5,7 +5,7 @@ import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 
 /**
- * Application-level service for managing the Agentic Copilot plugin.
+ * Application-level service for managing the Copilot Bridge plugin.
  * Singleton that lives for the entire IDE session.
  */
 @Service(Service.Level.APP)
@@ -13,11 +13,11 @@ public final class AgenticCopilotService implements Disposable {
     private static final Logger LOG = Logger.getInstance(AgenticCopilotService.class);
 
     public AgenticCopilotService() {
-        LOG.info("Agentic Copilot Service initialized");
+        LOG.info("Copilot Bridge Service initialized");
     }
 
     @Override
     public void dispose() {
-        LOG.info("Agentic Copilot Service disposed");
+        LOG.info("Copilot Bridge Service disposed");
     }
 }

@@ -132,7 +132,7 @@ final class SonarQubeIntegration {
                     .build();
                 var presentation = action.getTemplatePresentation().clone();
                 var event = AnActionEvent.createEvent(
-                    dataContext, presentation, "AgenticCopilot",
+                    dataContext, presentation, "Copilot Bridge",
                     com.intellij.openapi.actionSystem.ActionUiKind.NONE, null);
 
                 action.update(event);

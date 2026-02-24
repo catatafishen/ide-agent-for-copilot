@@ -18,13 +18,14 @@ import java.awt.datatransfer.StringSelection
 import javax.swing.*
 
 /**
- * Main content for the Agentic Copilot tool window.
+ * Main content for the Copilot Bridge tool window.
  * Uses Kotlin UI DSL for cleaner, more maintainable UI code.
  */
 class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // UI String Constants
     private companion object {
+        private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(AgenticCopilotToolWindowContent::class.java)
         const val MSG_LOADING = "Loading..."
         const val MSG_THINKING = "Thinking..."
         const val MSG_UNKNOWN_ERROR = "Unknown error"
@@ -32,7 +33,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
-    private val tabbedPane = JBTabbedPane()
 
     // Shared context list across tabs
     private val contextListModel = DefaultListModel<ContextItem>()
@@ -67,22 +67,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var costLabel: JBLabel
     private lateinit var consolePanel: ChatConsolePanel
 
+    // Per-turn premium request tracking
+    private var turnToolCallCount = 0
+    private var turnModelId = ""
+
     init {
         setupUI()
+        restoreConversation()
     }
 
     private fun setupUI() {
-        // Create tabs — remove default content insets for tight layout
-        tabbedPane.putClientProperty("JTabbedPane.tabAreaInsets", JBUI.emptyInsets())
-        tabbedPane.putClientProperty("JTabbedPane.contentBorderInsets", JBUI.emptyInsets())
-        tabbedPane.tabComponentInsets = JBUI.emptyInsets()
-
-        tabbedPane.addTab("Prompt", createPromptTab())
-        tabbedPane.addTab("Session", createSessionTab())
-        tabbedPane.addTab("Timeline", createTimelineTab())
-        tabbedPane.addTab("Debug", createDebugTab())
-
-        mainPanel.add(tabbedPane, BorderLayout.CENTER)
+        mainPanel.add(createPromptTab(), BorderLayout.CENTER)
     }
 
     /** Record an event in the Timeline tab. Thread-safe. */
@@ -110,6 +105,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Track tool calls for Session tab file correlation
     private val toolCallFiles = mutableMapOf<String, String>() // toolCallId -> file path
+    private val toolCallTitles = mutableMapOf<String, String>() // toolCallId -> display title
 
     /** Handle ACP session/update notifications — routes to timeline and session tab. */
     private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
@@ -164,6 +160,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (file.exists() && file.length() < 100_000) {
                     val content = file.readText()
                     SwingUtilities.invokeLater {
+                        if (!::planRoot.isInitialized) return@invokeLater
                         val fileNode = FileTreeNode(file.name, filePath, content)
                         planRoot.add(fileNode)
                         planTreeModel.reload()
@@ -434,15 +431,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         footer.layout = BoxLayout(footer, BoxLayout.Y_AXIS)
         footer.border = JBUI.Borders.empty(0, 0, 2, 0)
 
-        // Row 1: Send/stop + Model + Mode + status (ActionToolbar)
+        // Single row: controls + usage (wraps on narrow windows)
         val controlsRow = createControlsRow()
         controlsRow.alignmentX = Component.LEFT_ALIGNMENT
         footer.add(controlsRow)
-
-        // Row 2: Usage (right-aligned)
-        val usageRow = createUsageRow()
-        usageRow.alignmentX = Component.LEFT_ALIGNMENT
-        footer.add(usageRow)
 
         return footer
     }
@@ -540,10 +532,19 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
 
-            if (currentSessionId == null) {
-                consolePanel.clear()
+            // Add session separator before new prompt if old content exists and no active session
+            if (currentSessionId == null && consolePanel.hasContent()) {
+                val ts = java.text.SimpleDateFormat("MMM d, yyyy h:mm a").format(java.util.Date())
+                consolePanel.addSessionSeparator(ts)
             }
-            consolePanel.addPromptEntry(prompt)
+
+            val ctxFiles = if (contextListModel.size() > 0) {
+                (0 until contextListModel.size()).map { i ->
+                    val item = contextListModel.getElementAt(i)
+                    Triple(item.name, item.path, if (item.isSelection) item.startLine else 0)
+                }
+            } else null
+            consolePanel.addPromptEntry(prompt, ctxFiles)
             promptTextArea.text = ""
 
             ApplicationManager.getApplication().executeOnPooledThread {
@@ -564,7 +565,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createControlsRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // ActionToolbar with send/stop, model, and mode selectors
+        // ActionToolbar with send/stop, model, mode
         val actionGroup = DefaultActionGroup()
         actionGroup.add(SendStopAction())
         actionGroup.addSeparator()
@@ -582,7 +583,30 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
         controlsToolbar.targetComponent = row
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
-        row.add(controlsToolbar.component, BorderLayout.WEST)
+
+        // Wrapper: toolbar on top, usage row below — both hide together
+        val wrapper = JBPanel<JBPanel<*>>().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+            add(controlsToolbar.component)
+            // Usage row below toolbar
+            val usageRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0)).apply {
+                isOpaque = false
+                border = JBUI.Borders.emptyLeft(4)
+                usageLabel = JBLabel("")
+                usageLabel.font = JBUI.Fonts.smallFont()
+                costLabel = JBLabel("")
+                costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
+                add(usageLabel)
+                add(costLabel)
+            }
+            add(usageRow)
+            // Track toolbar visibility — when toolbar is hidden via right-click menu, hide usage too
+            controlsToolbar.component.addHierarchyListener {
+                usageRow.isVisible = controlsToolbar.component.isVisible
+            }
+        }
+        row.add(wrapper, BorderLayout.CENTER)
 
         return row
     }
@@ -671,6 +695,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     override fun actionPerformed(e: AnActionEvent) {
                         selectedModelIndex = index
                         CopilotSettings.setSelectedModel(model.id)
+                        LOG.info("Model selected: ${model.id} (index=$index)")
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 })
@@ -713,22 +738,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun createUsageRow(): JBPanel<JBPanel<*>> {
-        val row = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), 0))
-        usageLabel = JBLabel("")
-        usageLabel.font = JBUI.Fonts.smallFont()
-        row.add(usageLabel)
-        costLabel = JBLabel("")
-        costLabel.font = JBUI.Fonts.smallFont().deriveFont(Font.BOLD)
-        row.add(costLabel)
-        return row
-    }
-
     private fun createResponsePanel(): JComponent {
         consolePanel = ChatConsolePanel(project)
         // Register for proper JCEF browser disposal
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
-        consolePanel.showPlaceholder("Start a conversation with Copilot...\n\nFirst run will auto-start the Copilot process.")
+        // Placeholder only shown if no conversation is restored (set after restore check)
         return consolePanel
     }
 
@@ -819,7 +833,19 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (selectedModelIndex >= 0 && selectedModelIndex < loadedModels.size) loadedModels[selectedModelIndex] else null
             val modelId = selectedModelObj?.id ?: ""
 
+            // Reset per-turn tracking
+            turnToolCallCount = 0
+            turnModelId = modelId
+
+            // Show model + multiplier on the prompt bubble immediately
+            SwingUtilities.invokeLater {
+                consolePanel.setPromptStats(modelId, getModelMultiplier(modelId))
+            }
+
             val references = buildContextReferences()
+            // Inline selection snippets into the prompt so the agent can't ignore them
+            val snippetSuffix = buildSnippetSuffix()
+            val effectivePrompt = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
             if (references.isNotEmpty()) {
                 val contextFiles = (0 until contextListModel.size()).map { i ->
                     val item = contextListModel.getElementAt(i)
@@ -834,7 +860,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             var receivedContent = false
 
             client.sendPrompt(
-                sessionId, prompt, modelId,
+                sessionId, effectivePrompt, modelId,
                 references.ifEmpty { null },
                 { chunk ->
                     if (!receivedContent) {
@@ -846,9 +872,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 { update -> handlePromptStreamingUpdate(update, receivedContent) }
             )
 
-            consolePanel.finishResponse()
+            consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
             setResponseStatus("Done", loading = false)
             addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
+            saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
+            saveConversation()
             loadBillingData()
 
         } catch (e: Exception) {
@@ -872,6 +900,31 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return references
     }
 
+    /** Build inline snippet text for selections so the agent sees the code in the prompt itself */
+    private fun buildSnippetSuffix(): String {
+        val parts = mutableListOf<String>()
+        for (i in 0 until contextListModel.size()) {
+            val item = contextListModel.getElementAt(i)
+            if (!item.isSelection || item.startLine <= 0) continue
+            try {
+                val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
+                    ?: continue
+                val doc = com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
+                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+                } ?: continue
+                val snippet = com.intellij.openapi.application.ReadAction.compute<String, Throwable> {
+                    val s = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
+                    val e = doc.getLineEndOffset((item.endLine - 1).coerceIn(0, doc.lineCount - 1))
+                    doc.getText(com.intellij.openapi.util.TextRange(s, e))
+                }
+                val fileName = item.path.substringAfterLast("/")
+                val ext = fileName.substringAfterLast(".", "")
+                parts.add("Selected lines ${item.startLine}-${item.endLine} of `$fileName`:\n```$ext\n$snippet\n```")
+            } catch (_: Exception) { /* skip */ }
+        }
+        return parts.joinToString("\n\n")
+    }
+
     private fun buildSingleReference(item: ContextItem): CopilotAcpClient.ResourceReference? {
         val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
             ?: return null
@@ -880,16 +933,29 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
             } ?: return null
 
-        val text = if (item.isSelection && item.startLine > 0) {
-            val startOffset = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
-            val endOffset = doc.getLineEndOffset((item.endLine - 1).coerceIn(0, doc.lineCount - 1))
-            doc.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
-        } else {
-            doc.text
+        val text = com.intellij.openapi.application.ReadAction.compute<String, Throwable> {
+            if (item.isSelection && item.startLine > 0) {
+                val startOffset = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
+                val endOffset = doc.getLineEndOffset((item.endLine - 1).coerceIn(0, doc.lineCount - 1))
+                val snippet = doc.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
+                // Prepend line range header so the agent knows this is a snippet
+                val fileName = item.path.substringAfterLast("/")
+                "// Selected lines ${item.startLine}-${item.endLine} of $fileName\n$snippet"
+            } else {
+                doc.text
+            }
         }
 
-        val uri = "file://${item.path.replace("\\", "/")}"
+        val uri = buildString {
+            append("file://")
+            append(item.path.replace("\\", "/"))
+            if (item.isSelection && item.startLine > 0) {
+                append("#L${item.startLine}-L${item.endLine}")
+            }
+        }
         val mimeType = getMimeTypeForFileType(file.fileType.name.lowercase())
+        val LOG = com.intellij.openapi.diagnostic.Logger.getInstance("ContextSnippet")
+        LOG.info("Context ref: uri=$uri, isSelection=${item.isSelection}, lines=${item.startLine}-${item.endLine}, textLength=${text.length}, textPreview=${text.take(100)}")
         return CopilotAcpClient.ResourceReference(uri, mimeType, text)
     }
 
@@ -912,6 +978,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val title = update["title"]?.asString ?: "tool"
                 val status = update["status"]?.asString ?: ""
                 val toolCallId = update["toolCallId"]?.asString ?: ""
+                turnToolCallCount++
                 val arguments = update["arguments"]?.let { args ->
                     if (args.isJsonObject) {
                         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
@@ -927,6 +994,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
                 setResponseStatus("Running: $title")
                 if (status != "completed" && toolCallId.isNotEmpty()) {
+                    toolCallTitles[toolCallId] = title
                     consolePanel.addToolCallEntry(toolCallId, title, arguments)
                 }
             }
@@ -961,9 +1029,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     setResponseStatus(MSG_THINKING)
                     consolePanel.updateToolCall(toolCallId, "completed", result)
                 } else if (status == "failed") {
-                    val error = update["error"]?.asString ?: result
+                    val error = update["error"]?.asString
+                        ?: result
+                        ?: update.toString().take(500)
                     consolePanel.updateToolCall(toolCallId, "failed", error)
-                    consolePanel.addErrorEntry("Tool failed: $toolCallId")
                 }
             }
 
@@ -998,6 +1067,66 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             updateSessionInfo()
         }
         e.printStackTrace()
+    }
+
+    private fun getModelMultiplier(modelId: String): String {
+        return try {
+            CopilotService.getInstance(project).getClient().getModelMultiplier(modelId)
+        } catch (_: Exception) { "1x" }
+    }
+
+    private fun saveTurnStatistics(prompt: String, toolCalls: Int, modelId: String) {
+        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val statsDir = java.io.File(project.basePath ?: return@executeOnPooledThread, ".agent-work")
+                statsDir.mkdirs()
+                val statsFile = java.io.File(statsDir, "usage-stats.jsonl")
+                val entry = com.google.gson.JsonObject().apply {
+                    addProperty("timestamp", java.time.Instant.now().toString())
+                    addProperty("prompt", prompt.take(200))
+                    addProperty("model", modelId)
+                    addProperty("multiplier", getModelMultiplier(modelId))
+                    addProperty("toolCalls", toolCalls)
+                }
+                statsFile.appendText(entry.toString() + "\n")
+            } catch (_: Exception) { /* best-effort */ }
+        }
+    }
+
+    private fun conversationFile(): java.io.File {
+        val dir = java.io.File(project.basePath ?: "", ".agent-work")
+        dir.mkdirs()
+        return java.io.File(dir, "conversation.json")
+    }
+
+    private fun saveConversation() {
+        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                conversationFile().writeText(consolePanel.serializeEntries())
+            } catch (_: Exception) { /* best-effort */ }
+        }
+    }
+
+    private fun restoreConversation() {
+        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val file = conversationFile()
+                if (!file.exists() || file.length() < 10) {
+                    SwingUtilities.invokeLater {
+                        consolePanel.showPlaceholder("Start a conversation with Copilot...")
+                    }
+                    return@executeOnPooledThread
+                }
+                val json = file.readText()
+                SwingUtilities.invokeLater {
+                    consolePanel.restoreEntries(json)
+                }
+            } catch (_: Exception) {
+                SwingUtilities.invokeLater {
+                    consolePanel.showPlaceholder("Start a conversation with Copilot...")
+                }
+            }
+        }
     }
 
     private fun createContextTab(): JComponent {
@@ -1496,6 +1625,80 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    private fun createLogViewerTab(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
+        panel.border = JBUI.Borders.empty(5)
+
+        val logArea = JBTextArea()
+        logArea.isEditable = false
+        logArea.font = java.awt.Font("JetBrains Mono", java.awt.Font.PLAIN, 11)
+
+        // Load plugin-related logs from idea.log
+        val logFile = java.io.File(
+            com.intellij.openapi.application.PathManager.getLogPath(), "idea.log"
+        )
+        val pluginPrefixes = listOf(
+            "com.github.copilot", "CopilotAcp", "CopilotService",
+            "PsiBridge", "McpServer", "ContextSnippet", "Copilot Bridge"
+        )
+        val loadLogs = {
+            com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+                val lines = try {
+                    if (logFile.exists()) {
+                        logFile.useLines { seq ->
+                            seq.filter { line -> pluginPrefixes.any { p -> line.contains(p) } }
+                                .toList()
+                                .takeLast(500)
+                        }
+                    } else emptyList()
+                } catch (_: Exception) { emptyList() }
+                SwingUtilities.invokeLater {
+                    logArea.text = if (lines.isEmpty()) "No plugin logs found."
+                    else lines.joinToString("\n")
+                    logArea.caretPosition = logArea.text.length
+                }
+            }
+        }
+        loadLogs()
+
+        val toolbar = JPanel(FlowLayout(FlowLayout.LEFT))
+        val refreshBtn = JButton("Refresh")
+        refreshBtn.addActionListener { loadLogs() }
+        val copyBtn = JButton("Copy All")
+        copyBtn.addActionListener {
+            Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                StringSelection(logArea.text), null
+            )
+        }
+        val openLogBtn = JButton("Open Full Log")
+        openLogBtn.addActionListener {
+            val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                .refreshAndFindFileByIoFile(logFile)
+            if (vf != null) {
+                com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
+            }
+        }
+        toolbar.add(refreshBtn)
+        toolbar.add(copyBtn)
+        toolbar.add(openLogBtn)
+
+        panel.add(JBScrollPane(logArea), BorderLayout.CENTER)
+        panel.add(toolbar, BorderLayout.SOUTH)
+        return panel
+    }
+
+    fun openSessionFiles() {
+        val agentWorkDir = java.io.File(project.basePath ?: return, ".agent-work")
+        if (!agentWorkDir.exists()) {
+            agentWorkDir.mkdirs()
+        }
+        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+            .refreshAndFindFileByIoFile(agentWorkDir)
+        if (vf != null) {
+            com.intellij.ide.projectView.ProjectView.getInstance(project).select(null, vf, true)
+        }
+    }
+
     private fun createSettingsTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(GridBagLayout())
         panel.border = JBUI.Borders.empty(10)
@@ -1665,7 +1868,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     fun openSettings() {
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
-                title = "Agentic Copilot Settings"
+                title = "Copilot Bridge Settings"
                 init()
             }
 
@@ -1679,12 +1882,35 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         dialog.show()
     }
 
+    fun openDebug() {
+        val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
+            init {
+                title = "Copilot Bridge Debug"
+                init()
+            }
+
+            override fun createCenterPanel(): JComponent {
+                val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+                wrapper.preferredSize = JBUI.size(700, 550)
+                val tabs = com.intellij.ui.components.JBTabbedPane()
+                tabs.addTab("Events", createDebugTab())
+                tabs.addTab("Timeline", createTimelineTab())
+                tabs.addTab("Plugin Logs", createLogViewerTab())
+                wrapper.add(tabs, BorderLayout.CENTER)
+                return wrapper
+            }
+        }
+        dialog.show()
+    }
+
     fun resetSession() {
         currentSessionId = null
         consolePanel.clear()
         consolePanel.showPlaceholder("New conversation started.")
         addTimelineEvent(EventType.SESSION_START, "New conversation started")
         updateSessionInfo()
+        // Clear saved conversation
+        try { conversationFile().delete() } catch (_: Exception) {}
         SwingUtilities.invokeLater {
             if (::planRoot.isInitialized) {
                 planRoot.removeAllChildren()
@@ -1720,9 +1946,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun restoreModelSelection(models: List<CopilotAcpClient.Model>) {
         val savedModel = CopilotSettings.getSelectedModel()
+        LOG.info("Restoring model selection: saved='$savedModel', available=${models.map { it.id }}")
         if (savedModel != null) {
             val idx = models.indexOfFirst { it.id == savedModel }
-            if (idx >= 0) { selectedModelIndex = idx; return }
+            if (idx >= 0) { selectedModelIndex = idx; LOG.info("Restored model index=$idx"); return }
+            LOG.info("Saved model '$savedModel' not found in available models")
         }
         if (models.isNotEmpty()) selectedModelIndex = 0
     }

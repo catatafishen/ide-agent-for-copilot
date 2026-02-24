@@ -748,7 +748,7 @@ public class McpServer {
                 resultText = bridgeResult;
             } else {
                 resultText = "ERROR: IntelliJ PSI bridge is unavailable. " +
-                    "The tool '" + toolName + "' requires IntelliJ to be running with the Agentic Copilot plugin active. " +
+                    "The tool '" + toolName + "' requires IntelliJ to be running with the Copilot Bridge plugin active. " +
                     "Please check that IntelliJ is open and the plugin is enabled.";
                 LOG.warning(() -> String.format("MCP: PSI bridge unavailable for tool '%s'", toolName));
             }

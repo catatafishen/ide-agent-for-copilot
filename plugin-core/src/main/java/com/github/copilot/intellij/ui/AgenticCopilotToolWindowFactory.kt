@@ -24,9 +24,19 @@ class AgenticCopilotToolWindowFactory : ToolWindowFactory, DumbAware {
                     content.resetSession()
                 }
             },
+            object : AnAction("Session Files", "Open agent work directory", AllIcons.Actions.MenuOpen) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    content.openSessionFiles()
+                }
+            },
             object : AnAction("Settings", "Open plugin settings", AllIcons.General.Settings) {
                 override fun actionPerformed(e: AnActionEvent) {
                     content.openSettings()
+                }
+            },
+            object : AnAction("Debug", "Open debug log", AllIcons.Actions.StartDebugger) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    content.openDebug()
                 }
             }
         ))

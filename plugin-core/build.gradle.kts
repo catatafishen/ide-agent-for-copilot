@@ -127,7 +127,7 @@ tasks.named<Zip>("buildPlugin") {
 intellijPlatform {
     pluginConfiguration {
         id = "com.github.copilot.intellij"
-        name = "Agentic Copilot"
+        name = "Copilot Bridge"
         version = project.version.toString()
         description = """
             Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities
