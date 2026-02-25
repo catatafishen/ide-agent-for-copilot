@@ -467,14 +467,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     fun showPlaceholder(text: String) {
-        entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
+        entries.clear(); deferredRestoreJson.clear()
+        currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
             0; contextCounter = 0
         executeJs("document.getElementById('container').innerHTML='<div class=\"placeholder\">${escapeJs(escapeHtml(text))}</div>'")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
 
     fun clear() {
-        entries.clear(); currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
+        entries.clear(); deferredRestoreJson.clear()
+        currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
             0; contextCounter = 0
         executeJs("document.getElementById('container').innerHTML=''")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
@@ -531,11 +533,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         return arr.toString()
     }
 
-    /** Restore conversation entries from JSON and rebuild the chat view */
-    fun restoreEntries(json: String) {
+    /** Restore conversation entries from JSON and rebuild the chat view */    fun restoreEntries(json: String) {
         try {
             val arr = com.google.gson.JsonParser.parseString(json).asJsonArray
-            val initialVisible = 10
+            // Show enough entries to include several complete prompt/response turns
+            val initialVisible = 60
             // Find split point at a prompt boundary to keep complete turns visible
             var splitAt = maxOf(0, arr.size() - initialVisible)
             while (splitAt > 0 && arr[splitAt].asJsonObject["type"]?.asString != "prompt") {
@@ -551,16 +553,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 deferredRestoreJson.add(arr[i])
                 addEntryDataOnly(arr[i].asJsonObject)
             }
-            // Phase 2: Show "load more" banner
-            val bannerHtml = "<div id='load-more-sentinel' class='load-more-banner'>" +
-                "<span class='load-more-text'>\u25B2 Load earlier messages (${deferredRestoreJson.size} more)</span></div>"
+            // Phase 2: Show clickable "load more" banner
+            val bannerHtml = "<div id='load-more-sentinel' class='load-more-banner' onclick='loadMore()' style='cursor:pointer'>" +
+                "<span class='load-more-text'>\u25B2 Load earlier messages (${deferredRestoreJson.size} more) \u2014 click or scroll up</span></div>"
             appendHtml(bannerHtml)
             // Phase 3: Render recent entries using existing methods
             for (i in splitAt until arr.size()) {
                 renderRestoredEntry(arr[i].asJsonObject)
             }
             executeJs("finalizeTurn({})")
-            // Phase 4: Set up IntersectionObserver for auto-loading
+            // Phase 4: Set up IntersectionObserver + click handler for loading
             executeJs(
                 """(function(){
                 var sentinel=document.getElementById('load-more-sentinel');
@@ -646,7 +648,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun loadMoreEntries() {
         if (deferredRestoreJson.isEmpty()) return
-        val batchSize = 10
+        val batchSize = 30
         var start = maxOf(0, deferredRestoreJson.size - batchSize)
         // Align to a prompt boundary for complete turns
         while (start > 0 && deferredRestoreJson[start].asJsonObject["type"]?.asString != "prompt") {
