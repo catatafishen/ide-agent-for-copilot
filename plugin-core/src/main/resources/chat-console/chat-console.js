@@ -23,10 +23,10 @@ function b64(s) {
     return new TextDecoder().decode(b);
 }
 
-let _loadingMore = false;
+window._loadingMore = false;
 function loadMore() {
-    if (_loadingMore) return;
-    _loadingMore = true;
+    if (window._loadingMore) return;
+    window._loadingMore = true;
     const s = document.getElementById('load-more-sentinel');
     if (s) { const t = s.querySelector('.load-more-text'); if (t) t.textContent = 'Loading...'; }
     window._bridge.loadMore();
