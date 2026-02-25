@@ -1253,7 +1253,7 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
 
 /* --- Turn chips (embedded in agent bubble meta) --- */
 .turn-chip{display:inline-flex;align-items:center;gap:3px;background:${rgba(THINK_COLOR, 0.08)};
-    border-radius:10px;padding:2px 8px;font-size:0.78em;color:${rgb(THINK_COLOR)}}
+    border-radius:10px;padding:2px 8px;font-size:0.78em;color:${rgb(THINK_COLOR)};max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .turn-chip:hover{background:${rgba(THINK_COLOR, 0.16)}}
 .turn-chip.tool{color:${rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))};background:${
             rgba(
@@ -1392,7 +1392,9 @@ function finalizeTurn(stats){
       var icon=el.querySelector('.collapse-icon');
       var failed=icon&&icon.style.color==='red';
       chip.className='turn-chip tool'+(failed?' failed':'');
-      chip.textContent=(lbl?lbl.textContent:'Tool');
+      var fullText=(lbl?lbl.textContent:'Tool');
+      chip.textContent=fullText;
+      if(fullText.length>40)chip.title=fullText;
     } else if(el.classList.contains('context-section')){
       chip.className='turn-chip ctx';chip.textContent='\uD83D\uDCCE Context';
     } else if(el.classList.contains('status-row')&&el.classList.contains('error')){
@@ -1455,7 +1457,9 @@ function _doCollapseToolToChip(el,elId,targetMeta){
   var failed=icon&&icon.style.color==='red';
   var chip=document.createElement('span');
   chip.className='turn-chip tool'+(failed?' failed':'');
-  chip.textContent=(lbl?lbl.textContent:'Tool');
+  var fullText=(lbl?lbl.textContent:'Tool');
+  chip.textContent=fullText;
+  if(fullText.length>40)chip.title=fullText;
   el.classList.add('turn-hidden');
   el.dataset.chipOwned='1';
   chip.dataset.chipFor=elId;
