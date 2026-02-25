@@ -48,7 +48,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             get() = getThemeColor("EditorTabs.selectedForeground", Color(0xAE, 0xA0, 0xDC), Color(0xB4, 0xA0, 0xDC))
 
         private val THINK_COLOR: Color
-            get() = getThemeColor("Label.disabledForeground", Color(0x80, 0x80, 0x80), Color(0xA0, 0xA0, 0xA0))
+            get() = getThemeColor("Label.disabledForeground", Color(0x80, 0x80, 0x80), Color(0xB0, 0xB0, 0xB0))
 
         private const val ICON_ERROR = "\u274C"
         private const val JS_REMOVE_PROCESSING =
@@ -1013,7 +1013,7 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
                     THINK_COLOR,
                     0.06
                 )
-            };border-radius:8px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
+            };border-radius:4px 16px 16px 16px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
 .tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${
                 rgba(
                     TOOL_COLOR,
