@@ -343,6 +343,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val html =
                 "<div class='agent-row'><div class='meta' id='meta-$entryCounter'><span class='ts'>$ts</span></div><div class='agent-bubble' id='text-$entryCounter' onclick='toggleMeta(this)'><pre class='streaming'></pre></div></div>"
             appendHtml(html)
+            executeJs("collapsePendingTools()")
         }
         currentTextData!!.raw.append(text)
         val id = "text-$entryCounter"
@@ -532,6 +533,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
         return arr.toString()
     }
+
     /** Restore conversation entries from JSON and rebuild the chat view */
     fun restoreEntries(json: String) {
         try {
@@ -549,8 +551,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 addEntryDataOnly(arr[i].asJsonObject)
             }
             // Phase 2: Show clickable "load more" banner
-            val bannerHtml = "<div id='load-more-sentinel' class='load-more-banner' onclick='loadMore()' style='cursor:pointer'>" +
-                "<span class='load-more-text'>\u25B2 Load earlier messages (${deferredRestoreJson.size} more) \u2014 click or scroll up</span></div>"
+            val bannerHtml =
+                "<div id='load-more-sentinel' class='load-more-banner' onclick='loadMore()' style='cursor:pointer'>" +
+                    "<span class='load-more-text'>\u25B2 Load earlier messages (${deferredRestoreJson.size} more) \u2014 click or scroll up</span></div>"
             appendHtml(bannerHtml)
             // Phase 3: Render recent entries
             for (i in splitAt until arr.size()) {
@@ -1323,13 +1326,10 @@ function collapseToolToChip(elId){
     if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
     sib=sib.nextElementSibling;
   }
-  if(!targetMeta){
-    var lastBubbles=document.querySelectorAll('.agent-bubble');
-    var lb=lastBubbles.length>0?lastBubbles[lastBubbles.length-1]:null;
-    var lr=lb?lb.parentElement:null;
-    targetMeta=lr?lr.querySelector('.meta'):null;
-  }
-  if(!targetMeta)return;
+  if(!targetMeta){el.dataset.pendingCollapse='1';return;}
+  _doCollapseToolToChip(el,elId,targetMeta);
+}
+function _doCollapseToolToChip(el,elId,targetMeta){
   var lbl=el.querySelector('.collapse-label');
   var icon=el.querySelector('.collapse-icon');
   var failed=icon&&icon.style.color==='red';
@@ -1362,6 +1362,20 @@ function collapseToolToChip(elId){
   };
   targetMeta.appendChild(chip);
   scrollIfNeeded();
+}
+function collapsePendingTools(){
+  var pending=document.querySelectorAll('.tool-section[data-pending-collapse]');
+  pending.forEach(function(el){
+    var targetMeta=null;
+    var sib=el.nextElementSibling;
+    while(sib){
+      if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
+      sib=sib.nextElementSibling;
+    }
+    if(!targetMeta)return;
+    delete el.dataset.pendingCollapse;
+    _doCollapseToolToChip(el,el.id,targetMeta);
+  });
 }
 document.addEventListener('click',function(e){
   var el=e.target;
@@ -1399,8 +1413,12 @@ document.addEventListener('mouseover',function(e){
             when {
                 t.startsWith("```") -> handleCodeFence(sb, state)
                 state.inCode -> sb.append(escapeHtml(line)).append("\n")
-                processBlockElement(sb, state, t) -> { /* handled by helper */ }
-                t.isEmpty() -> { /* skip blank lines */ }
+                processBlockElement(sb, state, t) -> { /* handled by helper */
+                }
+
+                t.isEmpty() -> { /* skip blank lines */
+                }
+
                 else -> sb.append("<p>").append(formatInline(line)).append("</p>")
             }
         }
@@ -1433,12 +1451,18 @@ document.addEventListener('mouseover',function(e){
 
     private fun handleTableRow(sb: StringBuilder, state: MarkdownState, t: String): Boolean {
         if (!(t.startsWith("|") && t.endsWith("|") && t.count { it == '|' } >= 3)) {
-            if (state.inTable) { sb.append(HTML_TABLE_CLOSE); state.inTable = false }
+            if (state.inTable) {
+                sb.append(HTML_TABLE_CLOSE); state.inTable = false
+            }
             return false
         }
-        if (state.inList) { sb.append("</ul>"); state.inList = false }
+        if (state.inList) {
+            sb.append("</ul>"); state.inList = false
+        }
         if (t.replace(Regex("[|\\-: ]"), "").isEmpty()) return true
-        if (!state.inTable) { sb.append("<table>"); state.inTable = true; state.firstTR = true }
+        if (!state.inTable) {
+            sb.append("<table>"); state.inTable = true; state.firstTR = true
+        }
         val cells = t.split("|").drop(1).dropLast(1).map { it.trim() }
         val tag = if (state.firstTR) "th" else "td"
         sb.append("<tr>"); cells.forEach { sb.append("<$tag>").append(formatInline(it)).append("</$tag>") }
@@ -1448,17 +1472,25 @@ document.addEventListener('mouseover',function(e){
 
     private fun handleListItem(sb: StringBuilder, state: MarkdownState, t: String): Boolean {
         if (!(t.startsWith("- ") || t.startsWith("* "))) {
-            if (state.inList) { sb.append("</ul>"); state.inList = false }
+            if (state.inList) {
+                sb.append("</ul>"); state.inList = false
+            }
             return false
         }
-        if (!state.inList) { sb.append("<ul>"); state.inList = true }
+        if (!state.inList) {
+            sb.append("<ul>"); state.inList = true
+        }
         sb.append("<li>").append(formatInline(t.removePrefix("- ").removePrefix("* "))).append("</li>")
         return true
     }
 
     private fun closeListAndTable(sb: StringBuilder, state: MarkdownState) {
-        if (state.inList) { sb.append("</ul>"); state.inList = false }
-        if (state.inTable) { sb.append(HTML_TABLE_CLOSE); state.inTable = false }
+        if (state.inList) {
+            sb.append("</ul>"); state.inList = false
+        }
+        if (state.inTable) {
+            sb.append(HTML_TABLE_CLOSE); state.inTable = false
+        }
     }
 
     private fun closeAllBlocks(sb: StringBuilder, state: MarkdownState) {
