@@ -745,6 +745,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(TestBeforeEndToggleAction())
         leftGroup.add(CommitBeforeEndToggleAction())
         leftGroup.addSeparator()
+        leftGroup.add(HelpAction())
+        leftGroup.addSeparator()
         leftGroup.add(OpenInstructionsAction())
         leftGroup.add(OpenTodoAction())
 
@@ -1032,7 +1034,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
-        "Follow Agent", "Open files in editor as the agent reads/writes them",
+        "Follow Agent", "When enabled, auto-opens files in the editor as the agent reads or writes them",
         com.intellij.icons.AllIcons.Actions.Preview
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1047,7 +1049,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FormatAfterEditToggleAction : ToggleAction(
-        "Format", "Auto-format code after agent edits",
+        "Format", "When enabled, auto-formats code after the agent edits files",
         com.intellij.icons.AllIcons.Actions.ReformatCode
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1062,7 +1064,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class BuildBeforeEndToggleAction : ToggleAction(
-        "Build", "Build project before ending turn",
+        "Build", "When enabled, agent builds the project before completing its turn",
         com.intellij.icons.AllIcons.Actions.Compile
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1077,8 +1079,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class TestBeforeEndToggleAction : ToggleAction(
-        "Test", "Run tests before ending turn",
-        com.intellij.icons.AllIcons.RunConfigurations.TestState.Run
+        "Test", "When enabled, agent runs tests before completing its turn",
+        com.intellij.icons.AllIcons.Nodes.Test
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
@@ -1092,7 +1094,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class CommitBeforeEndToggleAction : ToggleAction(
-        "Commit", "Auto-commit changes before ending turn",
+        "Commit", "When enabled, agent auto-commits changes before completing its turn",
         com.intellij.icons.AllIcons.Actions.Commit
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1103,6 +1105,81 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             CopilotSettings.setCommitBeforeEnd(state)
+        }
+    }
+
+    private inner class HelpAction : AnAction(
+        "Help", "Show help for all toolbar features and plugin behavior",
+        com.intellij.icons.AllIcons.Actions.Help
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun actionPerformed(e: AnActionEvent) {
+            val html = """
+                <html><body style="font-family: sans-serif; padding: 10px; width: 480px;">
+                <h2>Agentic Copilot Plugin Help</h2>
+
+                <h3>Prompt Input</h3>
+                <p>Type your prompt in the text area at the bottom and press <b>Enter</b> (or click the Send button) to send it.
+                Use <b>Shift+Enter</b> for a new line. The agent will process your request and display its work in the chat panel.</p>
+
+                <h3>Model Selector</h3>
+                <p>Choose which AI model the agent uses. Premium models consume more requests per turn
+                (shown as a multiplier, e.g. &quot;50&times;&quot;).</p>
+
+                <h3>Mode Selector</h3>
+                <p>Switch between <b>Agent</b> mode (autonomous tool use) and <b>Chat</b> mode (conversation only, no tool calls).</p>
+
+                <h3>Copy Conversation</h3>
+                <p>Copies the full conversation history to the clipboard as formatted text.</p>
+
+                <h3>Toolbar Toggles</h3>
+                <p>These toggles control how the agent and plugin behave. They do <b>not</b> trigger actions when clicked &mdash;
+                they set preferences for future agent turns.</p>
+                <ul>
+                  <li><b>Follow Agent</b> &mdash; When enabled, the editor automatically opens files as the agent reads or writes them.</li>
+                  <li><b>Format</b> &mdash; When enabled, code is automatically formatted after the agent edits files.</li>
+                  <li><b>Build</b> &mdash; When enabled, the agent builds the project before completing its turn to verify no compile errors.</li>
+                  <li><b>Test</b> &mdash; When enabled, the agent runs tests before completing its turn to verify correctness.</li>
+                  <li><b>Commit</b> &mdash; When enabled, the agent auto-commits its changes before completing its turn.</li>
+                </ul>
+
+                <h3>Instructions &amp; TODO</h3>
+                <p><b>Open Instructions</b> opens <code>copilot-instructions.md</code> &mdash; a file where you define persistent
+                instructions the agent follows every turn.<br/>
+                <b>Open TODO</b> opens <code>TODO.md</code> &mdash; a task list the agent can read and update.</p>
+
+                <h3>Processing Indicator &amp; Usage</h3>
+                <p>The right side of the toolbar shows a timer while the agent is processing, along with the number of
+                premium requests consumed. The usage bar shows your current session usage against your plan limit.</p>
+
+                <h3>Chat Panel</h3>
+                <p>Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as
+                collapsible chips &mdash; click to expand and see tool arguments/results. Long chip labels are truncated
+                with the full text shown on hover.</p>
+
+                <h3>Settings</h3>
+                <p>Open via <b>File &rarr; Settings &rarr; Agentic Copilot</b> to configure inactivity timeout and max tool calls per turn.</p>
+                </body></html>
+            """.trimIndent()
+
+            val editorPane = javax.swing.JEditorPane("text/html", html).apply {
+                isEditable = false
+                border = javax.swing.BorderFactory.createEmptyBorder(8, 8, 8, 8)
+            }
+            val scrollPane = javax.swing.JScrollPane(editorPane).apply {
+                preferredSize = java.awt.Dimension(540, 520)
+            }
+            // scroll to top
+            javax.swing.SwingUtilities.invokeLater { editorPane.caretPosition = 0 }
+
+            com.intellij.openapi.ui.DialogBuilder(project).apply {
+                setTitle("Agentic Copilot — Help")
+                setCenterPanel(scrollPane)
+                removeAllActions()
+                addOkAction()
+                show()
+            }
         }
     }
 
