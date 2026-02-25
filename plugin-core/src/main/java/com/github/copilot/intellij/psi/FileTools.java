@@ -1,5 +1,6 @@
 package com.github.copilot.intellij.psi;
 
+import com.github.copilot.intellij.services.CopilotSettings;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
@@ -76,7 +77,7 @@ class FileTools extends AbstractToolHandler {
         int startLine = args.has(PARAM_START_LINE) ? args.get(PARAM_START_LINE).getAsInt() : -1;
         int endLine = args.has(PARAM_END_LINE) ? args.get(PARAM_END_LINE).getAsInt() : -1;
 
-        return ReadAction.compute(() -> {
+        String result = ReadAction.compute(() -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
             if (vf == null) return ToolUtils.ERROR_FILE_NOT_FOUND + pathStr;
 
@@ -88,6 +89,9 @@ class FileTools extends AbstractToolHandler {
             }
             return content;
         });
+
+        followFileIfEnabled(pathStr, startLine > 0 ? startLine : -1);
+        return result;
     }
 
     private String readFileContent(VirtualFile vf) {
@@ -111,6 +115,29 @@ class FileTools extends AbstractToolHandler {
             sb.append(i + 1).append(": ").append(lines[i]).append("\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * Opens the file in the editor if "Follow Agent Files" is enabled.
+     */
+    private void followFileIfEnabled(String pathStr, int line) {
+        if (!CopilotSettings.getFollowAgentFiles()) return;
+
+        EdtUtil.invokeLater(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) return;
+
+                if (line > 0) {
+                    new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, line - 1, 0)
+                        .navigate(false);
+                } else {
+                    FileEditorManager.getInstance(project).openFile(vf, false);
+                }
+            } catch (Exception e) {
+                LOG.debug("Follow agent file failed: " + pathStr, e);
+            }
+        });
     }
 
     private String writeFile(JsonObject args) throws Exception {
@@ -142,7 +169,11 @@ class FileTools extends AbstractToolHandler {
             }
         });
 
-        return resultFuture.get(15, TimeUnit.SECONDS);
+        String result = resultFuture.get(15, TimeUnit.SECONDS);
+
+        int line = args.has(PARAM_START_LINE) ? args.get(PARAM_START_LINE).getAsInt() : -1;
+        followFileIfEnabled(pathStr, line);
+        return result;
     }
 
     private void writeFileFullContent(VirtualFile vf, String pathStr, String newContent,

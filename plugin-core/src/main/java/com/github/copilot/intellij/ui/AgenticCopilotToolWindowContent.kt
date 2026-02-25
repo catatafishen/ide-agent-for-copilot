@@ -739,6 +739,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(ModeSelectorAction())
         leftGroup.addSeparator()
         leftGroup.add(CopyConversationAction())
+        leftGroup.addSeparator()
+        leftGroup.add(FollowAgentFilesToggleAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -1023,7 +1025,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    // ComboBoxAction for model selection — matches Run panel dropdown style
+    private inner class FollowAgentFilesToggleAction : ToggleAction(
+        "Follow Agent", "Open files in editor as the agent reads/writes them",
+        com.intellij.icons.AllIcons.Actions.Preview
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean {
+            return com.github.copilot.intellij.services.CopilotSettings.getFollowAgentFiles()
+        }
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            com.github.copilot.intellij.services.CopilotSettings.setFollowAgentFiles(state)
+        }
+    }
+
+    // ComboBoxAction for model selection ? matches Run panel dropdown style
     private inner class ModelSelectorAction : ComboBoxAction() {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 

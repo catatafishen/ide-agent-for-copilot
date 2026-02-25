@@ -15,13 +15,16 @@ public final class CopilotSettings {
     private static final String KEY_USAGE_RESET_MONTH = "copilot.usageResetMonth";
     private static final String KEY_PROMPT_TIMEOUT = "copilot.promptTimeout";
     private static final String KEY_MAX_TOOL_CALLS = "copilot.maxToolCallsPerTurn";
+    private static final String KEY_FOLLOW_AGENT_FILES = "copilot.followAgentFiles";
     private static final int DEFAULT_PROMPT_TIMEOUT = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS = 0;
 
     private CopilotSettings() {
     }
 
-    /** Inactivity timeout in seconds (no activity = stop agent). */
+    /**
+     * Inactivity timeout in seconds (no activity = stop agent).
+     */
     public static int getPromptTimeout() {
         return PropertiesComponent.getInstance().getInt(KEY_PROMPT_TIMEOUT, DEFAULT_PROMPT_TIMEOUT);
     }
@@ -30,7 +33,9 @@ public final class CopilotSettings {
         PropertiesComponent.getInstance().setValue(KEY_PROMPT_TIMEOUT, seconds, DEFAULT_PROMPT_TIMEOUT);
     }
 
-    /** Max tool calls per turn (0 = unlimited). */
+    /**
+     * Max tool calls per turn (0 = unlimited).
+     */
     public static int getMaxToolCallsPerTurn() {
         return PropertiesComponent.getInstance().getInt(KEY_MAX_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS);
     }
@@ -88,5 +93,16 @@ public final class CopilotSettings {
 
     public static void setUsageResetMonth(@NotNull String month) {
         PropertiesComponent.getInstance().setValue(KEY_USAGE_RESET_MONTH, month);
+    }
+
+    /**
+     * Whether to open files in the editor when the agent reads/writes them.
+     */
+    public static boolean getFollowAgentFiles() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_FOLLOW_AGENT_FILES, false);
+    }
+
+    public static void setFollowAgentFiles(boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_FOLLOW_AGENT_FILES, enabled, false);
     }
 }
