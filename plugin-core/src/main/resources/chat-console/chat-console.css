@@ -24,7 +24,7 @@
     --agent-a08: rgba(150, 200, 150, 0.08);
     --agent-a10: rgba(150, 200, 150, 0.10);
     --agent-a16: rgba(150, 200, 150, 0.16);
-    --think: rgb(128, 128, 128);
+    --think: rgb(160, 160, 160);
     --think-a04: rgba(128, 128, 128, 0.04);
     --think-a06: rgba(128, 128, 128, 0.06);
     --think-a08: rgba(128, 128, 128, 0.08);
@@ -39,9 +39,7 @@
     --tool-a08: rgba(180, 160, 220, 0.08);
     --tool-a40: rgba(180, 160, 220, 0.40);
     --spin-bg: rgb(60, 60, 60);
-    --done: rgb(100, 180, 100);
-    --done-a08: rgba(100, 180, 100, 0.08);
-    --done-a16: rgba(100, 180, 100, 0.16);
+    --tool-a16: rgba(180, 160, 220, 0.16);
     --code-bg: rgb(30, 30, 30);
     --tbl-border: rgb(60, 60, 60);
     --th-bg: rgb(50, 50, 50);
@@ -180,9 +178,9 @@ body {
     max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .turn-chip:hover { background: var(--think-a16) }
-.turn-chip.tool { color: var(--done); background: var(--done-a08) }
+.turn-chip.tool { color: var(--tool); background: var(--tool-a08) }
 .turn-chip.tool.failed { color: rgb(220, 80, 80); background: rgba(220, 80, 80, 0.08) }
-.turn-chip.tool:hover { background: var(--done-a16) }
+.turn-chip.tool:hover { background: var(--tool-a16) }
 .turn-chip.tool[data-tip] { position: relative }
 .turn-chip.tool[data-tip]:hover::after {
     content: attr(data-tip);

@@ -48,7 +48,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             get() = getThemeColor("EditorTabs.selectedForeground", Color(0xAE, 0xA0, 0xDC), Color(0xB4, 0xA0, 0xDC))
 
         private val THINK_COLOR: Color
-            get() = getThemeColor("Label.disabledForeground", Color(0x99, 0x99, 0x99), Color(0x88, 0x88, 0x88))
+            get() = getThemeColor("Label.disabledForeground", Color(0x80, 0x80, 0x80), Color(0xA0, 0xA0, 0xA0))
 
         private const val ICON_ERROR = "\u274C"
         private const val JS_REMOVE_PROCESSING =
@@ -519,7 +519,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun updateToolCall(id: String, status: String, details: String? = null) {
         val did = domId(id)
-        val doneColor = rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))
         val resultContent = if (!details.isNullOrBlank()) {
             "<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${escapeHtml(details)}</code></pre>"
         } else {
@@ -529,8 +528,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         when (status) {
             "completed" -> executeJs(
                 """(function(){var el=document.getElementById('tool-$did');if(!el)return;
-                var icon=el.querySelector('.collapse-icon');icon.innerHTML='✓';icon.style.color='$doneColor';
-                el.querySelector('.collapse-label').style.color='$doneColor';
+                var icon=el.querySelector('.collapse-icon');icon.innerHTML='✓';
                 var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');
                 collapseToolToChip('tool-$did');})()"""
             )
@@ -833,7 +831,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun renderBatchHtml(batch: List<com.google.gson.JsonElement>): String {
         val sb = StringBuilder()
-        val doneColor = rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))
         for (elem in batch) {
             val obj = elem.asJsonObject
             when (obj["type"]?.asString) {
@@ -886,7 +883,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     sb.append("<div class='collapse-section tool-section collapsed' id='$id'>")
                     sb.append(
                         "<div class='collapse-header' onclick='toggleTool(\"$id\")'>" +
-                            "<span class='collapse-icon' style='color:$doneColor'>\u2705</span>" +
+                            "<span class='collapse-icon'>✓</span>" +
                             "<span class='collapse-label'>${escapeHtml(displayName)}</span>" +
                             "<span class='caret'>\u25B8</span></div>"
                     )
@@ -1183,8 +1180,6 @@ ul,ol{margin:4px 0;padding-left:22px}
             ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
         val spinBg = UIManager.getColor("Panel.background")
             ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
-        val doneColor = UIManager.getColor("VersionControl.GitGreen")
-            ?: JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59))
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
 
@@ -1222,11 +1217,9 @@ ul,ol{margin:4px 0;padding-left:22px}
             --think-a55: ${rgba(THINK_COLOR, 0.55)};
             --tool: ${rgb(TOOL_COLOR)};
             --tool-a08: ${rgba(TOOL_COLOR, 0.08)};
+            --tool-a16: ${rgba(TOOL_COLOR, 0.16)};
             --tool-a40: ${rgba(TOOL_COLOR, 0.40)};
             --spin-bg: ${rgb(spinBg)};
-            --done: ${rgb(doneColor)};
-            --done-a08: ${rgba(doneColor, 0.08)};
-            --done-a16: ${rgba(doneColor, 0.16)};
             --code-bg: ${rgb(codeBg)};
             --tbl-border: ${rgb(tblBorder)};
             --th-bg: ${rgb(thBg)};
