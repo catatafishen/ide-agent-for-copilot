@@ -1429,15 +1429,42 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val group = DefaultActionGroup()
             loadedModels.forEachIndexed { index, model ->
                 val cost = model.usage ?: "1x"
+                // TODO: Once Copilot CLI supports session/set_config_option for model
+                //  switching (https://github.com/github/copilot-cli/issues/1485),
+                //  replace the restart workaround with a mid-session config change.
                 group.add(object : AnAction("${model.name}  ($cost)") {
                     override fun actionPerformed(e: AnActionEvent) {
+                        if (index == selectedModelIndex) return
+
+                        val message = javax.swing.JEditorPane("text/html",
+                            "<html><body style='width:320px'>" +
+                                "Switching to <b>${model.name}</b> will reset the current session.<br><br>" +
+                                "This is required because the Copilot CLI does not yet support " +
+                                "mid-session model changes via the ACP protocol.<br><br>" +
+                                "<a href='https://github.com/github/copilot-cli/issues/1485'>" +
+                                "github/copilot-cli#1485</a></body></html>"
+                        ).apply {
+                            isEditable = false
+                            isOpaque = false
+                            addHyperlinkListener { evt ->
+                                if (evt.eventType == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
+                                    com.intellij.ide.BrowserUtil.browse(evt.url)
+                                }
+                            }
+                        }
+
+                        val result = javax.swing.JOptionPane.showConfirmDialog(
+                            null, message, "Change Model",
+                            javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                            javax.swing.JOptionPane.INFORMATION_MESSAGE
+                        )
+                        if (result != javax.swing.JOptionPane.OK_OPTION) return
+
                         selectedModelIndex = index
                         CopilotSettings.setSelectedModel(model.id)
                         LOG.info("Model selected: ${model.id} (index=$index), restarting CLI")
-                        // Clear session so a new one is created on next prompt
                         currentSessionId = null
-                        // Restart CLI process with --model flag (runs on background thread)
-                        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+                        ApplicationManager.getApplication().executeOnPooledThread {
                             try {
                                 CopilotService.getInstance(project).restartWithModel(model.id)
                             } catch (ex: Exception) {

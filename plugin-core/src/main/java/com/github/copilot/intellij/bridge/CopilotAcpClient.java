@@ -239,7 +239,9 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
 
-        // Set the model from saved settings (--model is the only working mechanism)
+        // Set the model from saved settings (--model is the only working mechanism).
+        // TODO: Replace with session/set_config_option once Copilot CLI implements it.
+        //  See https://github.com/github/copilot-cli/issues/1485
         String savedModel = CopilotSettings.getSelectedModel();
         if (savedModel != null && !savedModel.isEmpty()) {
             cmd.add("--model");

@@ -93,6 +93,9 @@ public final class CopilotService implements Disposable {
     /**
      * Restart the CLI process so it picks up the new model from CopilotSettings.
      * The --model flag is read at process startup by buildAcpCommand().
+     * <p>
+     * TODO: Replace with session/set_config_option once Copilot CLI supports it.
+     *  See <a href="https://github.com/github/copilot-cli/issues/1485">#1485</a>
      */
     public synchronized void restartWithModel(@NotNull String modelId) {
         LOG.info("Restarting Copilot ACP client with model: " + modelId);
