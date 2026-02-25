@@ -56,6 +56,7 @@
       <w>noop</w>
       <w>nosonar</w>
       <w>oneline</w>
+      <w>openfile</w>
       <w>psi</w>
       <w>pwsh</w>
       <w>qname</w>

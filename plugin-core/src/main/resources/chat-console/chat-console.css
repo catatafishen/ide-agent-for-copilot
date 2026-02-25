@@ -1,6 +1,52 @@
 /* Chat Console Panel Styles
  * Theme colors are injected via CSS custom properties on :root from Kotlin.
+ * Selectors target dynamically-generated HTML from ChatConsolePanel.kt.
  */
+
+/* Default values — overridden at runtime by Kotlin-injected :root */
+:root {
+    --font-family: system-ui, sans-serif;
+    --font-size: 12pt;
+    --code-font-size: 11pt;
+    --fg: rgb(187, 187, 187);
+    --fg-a08: rgba(187, 187, 187, 0.08);
+    --bg: rgb(43, 43, 43);
+    --user: rgb(86, 156, 214);
+    --user-a06: rgba(86, 156, 214, 0.06);
+    --user-a08: rgba(86, 156, 214, 0.08);
+    --user-a12: rgba(86, 156, 214, 0.12);
+    --user-a15: rgba(86, 156, 214, 0.15);
+    --user-a16: rgba(86, 156, 214, 0.16);
+    --user-a18: rgba(86, 156, 214, 0.18);
+    --user-a25: rgba(86, 156, 214, 0.25);
+    --agent: rgb(150, 200, 150);
+    --agent-a06: rgba(150, 200, 150, 0.06);
+    --agent-a08: rgba(150, 200, 150, 0.08);
+    --agent-a10: rgba(150, 200, 150, 0.10);
+    --agent-a16: rgba(150, 200, 150, 0.16);
+    --think: rgb(128, 128, 128);
+    --think-a04: rgba(128, 128, 128, 0.04);
+    --think-a06: rgba(128, 128, 128, 0.06);
+    --think-a08: rgba(128, 128, 128, 0.08);
+    --think-a10: rgba(128, 128, 128, 0.10);
+    --think-a16: rgba(128, 128, 128, 0.16);
+    --think-a25: rgba(128, 128, 128, 0.25);
+    --think-a30: rgba(128, 128, 128, 0.30);
+    --think-a35: rgba(128, 128, 128, 0.35);
+    --think-a40: rgba(128, 128, 128, 0.40);
+    --think-a55: rgba(128, 128, 128, 0.55);
+    --tool: rgb(180, 160, 220);
+    --tool-a08: rgba(180, 160, 220, 0.08);
+    --tool-a40: rgba(180, 160, 220, 0.40);
+    --spin-bg: rgb(60, 60, 60);
+    --done: rgb(100, 180, 100);
+    --done-a08: rgba(100, 180, 100, 0.08);
+    --done-a16: rgba(100, 180, 100, 0.16);
+    --code-bg: rgb(30, 30, 30);
+    --tbl-border: rgb(60, 60, 60);
+    --th-bg: rgb(50, 50, 50);
+    --link: rgb(86, 156, 214);
+}
 
 * { box-sizing: border-box; margin: 0; padding: 0 }
 
