@@ -7,7 +7,6 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.project.Project
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
@@ -605,12 +604,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         attachmentsPanel.isVisible = false
         attachmentsPanel.border = JBUI.Borders.emptyBottom(2)
 
-        // Use MARKDOWN file type which supports spell checking
-        val markdownType = com.intellij.openapi.fileTypes.FileTypeRegistry.getInstance()
-            .getFileTypeByExtension("md")
-        promptTextArea = EditorTextField("", project, markdownType)
+        // Use PLAIN_TEXT for clean appearance
+        promptTextArea = EditorTextField("", project, com.intellij.openapi.fileTypes.FileTypes.PLAIN_TEXT)
         promptTextArea.setOneLineMode(false)
-        promptTextArea.border = JBUI.Borders.empty(4)
+        promptTextArea.border = null
 
         // Delay setup until editor is initialized
         SwingUtilities.invokeLater {
@@ -630,7 +627,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val inputWrapper = JBPanel<JBPanel<*>>(BorderLayout())
         inputWrapper.add(attachmentsPanel, BorderLayout.NORTH)
         val scrollPane = JBScrollPane(promptTextArea)
-        scrollPane.border = JBUI.Borders.customLine(JBColor.border(), 1)
+        scrollPane.border = null
         inputWrapper.add(scrollPane, BorderLayout.CENTER)
         row.add(inputWrapper, BorderLayout.CENTER)
 
@@ -1530,13 +1527,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun setupPromptContextMenu(textArea: EditorTextField) {
         val popup = javax.swing.JPopupMenu()
-        val editor = textArea.editor ?: return
 
         // Edit actions
         val cutAction = javax.swing.JMenuItem("Cut").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener {
+                val editor = textArea.editor ?: return@addActionListener
                 val selectionModel = editor.selectionModel
                 if (selectionModel.hasSelection()) {
                     val start = selectionModel.selectionStart
@@ -1554,6 +1551,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener {
+                val editor = textArea.editor ?: return@addActionListener
                 val selectionModel = editor.selectionModel
                 if (selectionModel.hasSelection()) {
                     val start = selectionModel.selectionStart
@@ -1570,6 +1568,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener {
+                val editor = textArea.editor ?: return@addActionListener
                 val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
                 val pastedText = clipboard.getContents(null)
                     .getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
