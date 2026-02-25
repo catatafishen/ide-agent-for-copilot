@@ -10,7 +10,7 @@ import com.intellij.psi.PsiElement;
  * Shared utility methods and constants extracted from PsiBridgeService
  * for use by individual tool handler classes.
  */
-final class ToolUtils {
+public final class ToolUtils {
 
     // Error message constants
     static final String ERROR_PREFIX = "Error: ";
@@ -203,5 +203,75 @@ final class ToolUtils {
         int shown = offset + maxChars;
         return page + "\n\n...(truncated, showing chars " + offset + "-" + shown + " of " + output.length()
             + ". Use offset=" + shown + " to see more)";
+    }
+
+    /**
+     * Detect if a shell command is an abuse pattern that should use a dedicated IntelliJ tool.
+     * Shared between the ACP permission flow (CopilotAcpClient) and the MCP tool execution
+     * flow (InfrastructureTools) to ensure consistent blocking regardless of call path.
+     *
+     * @param command the shell command string (will be lowercased and trimmed)
+     * @return the abuse type ("git", "sed", "grep", "find", "test") or null if allowed
+     */
+    public static String detectCommandAbuseType(String command) {
+        String cmd = command.toLowerCase().trim();
+
+        // Block git — causes IntelliJ editor buffer desync
+        if (cmd.startsWith("git ") || cmd.equals("git") ||
+            cmd.contains("&& git ") || cmd.contains("; git ") || cmd.contains("| git ")) {
+            return "git";
+        }
+
+        // Block sed — should use intellij_write_file for proper undo/redo and live buffer access
+        if (cmd.startsWith("sed ") || cmd.contains("| sed") ||
+            cmd.contains("&& sed") || cmd.contains("; sed")) {
+            return "sed";
+        }
+
+        // Block grep/rg — should use search_text or search_symbols for live buffer search
+        if (cmd.startsWith("grep ") || cmd.startsWith("rg ") ||
+            cmd.contains("| grep") || cmd.contains("&& grep") || cmd.contains("; grep") ||
+            cmd.contains("| rg ") || cmd.contains("&& rg ") || cmd.contains("; rg ")) {
+            return "grep";
+        }
+
+        // Block find — should use list_project_files
+        if (cmd.matches("find \\S+.*-name.*") || cmd.matches("find \\S+.*-type.*") ||
+            cmd.startsWith("find .") || cmd.startsWith("find /")) {
+            return "find";
+        }
+
+        // Block test commands — should use run_tests
+        if (cmd.matches(".*(gradlew|gradle|mvn|npm|yarn|pnpm|pytest|jest|mocha|go) test.*") ||
+            cmd.matches(".*\\./gradlew.*test.*") ||
+            cmd.matches(".*python.*-m.*pytest.*") ||
+            cmd.matches(".*cargo test.*")) {
+            return "test";
+        }
+
+        return null;
+    }
+
+    /** Map abuse type to a human-readable error message for MCP tool responses. */
+    public static String getCommandAbuseMessage(String abuseType) {
+        return switch (abuseType) {
+            case "git" ->
+                "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
+                    + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
+                    + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
+            case "sed" ->
+                "Error: sed is not allowed via run_command (bypasses IntelliJ editor buffers). "
+                    + "Use intellij_write_file with old_str/new_str for file editing instead.";
+            case "grep" ->
+                "Error: grep/rg commands are not allowed via run_command (searches stale disk files). "
+                    + "Use search_text or search_symbols to search live editor buffers instead.";
+            case "find" ->
+                "Error: find commands are not allowed via run_command. "
+                    + "Use list_project_files to find files instead.";
+            case "test" ->
+                "Error: test commands are not allowed via run_command. "
+                    + "Use run_tests to run tests with proper IntelliJ integration instead.";
+            default -> "Error: this command is not allowed via run_command. Use dedicated IntelliJ tools instead.";
+        };
     }
 }

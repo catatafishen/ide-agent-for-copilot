@@ -1181,39 +1181,7 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private String detectAbusePattern(String command) {
-        // Check for test patterns
-        if (command.matches(".*(gradlew|gradle|mvn|npm|yarn|pnpm|pytest|jest|mocha|go) test.*") ||
-            command.matches(".*\\./gradlew.*test.*") ||
-            command.matches(".*python.*-m.*pytest.*") ||
-            command.matches(".*cargo test.*")) {
-            return "test";
-        }
-
-        // Check for sed usage - text manipulation that should use proper file editing tools
-        if (command.startsWith("sed ") || command.contains("| sed") ||
-            command.contains("&& sed") || command.contains("; sed")) {
-            return "sed";
-        }
-
-        // Check for grep usage
-        if (command.startsWith("grep ") || command.contains("| grep") ||
-            command.contains("&& grep") || command.contains("; grep")) {
-            return "grep";
-        }
-
-        // Check for find usage (file search)
-        if (command.matches("find \\S+.*-name.*") || command.matches("find \\S+.*-type.*") ||
-            command.startsWith("find .") || command.startsWith("find /")) {
-            return "find";
-        }
-
-        // Block ALL git operations — they desync IntelliJ editor buffers
-        if (command.startsWith("git ") || command.contains("&& git ") ||
-            command.contains("; git ") || command.contains("| git ")) {
-            return "git";
-        }
-
-        return null;
+        return com.github.copilot.intellij.psi.ToolUtils.detectCommandAbuseType(command);
     }
 
     /**
