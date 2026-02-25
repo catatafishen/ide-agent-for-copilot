@@ -252,25 +252,22 @@ public final class ToolUtils {
         return null;
     }
 
-    /** Map abuse type to a human-readable error message for MCP tool responses. */
+    /**
+     * Map abuse type to a human-readable error message for MCP tool responses.
+     */
     public static String getCommandAbuseMessage(String abuseType) {
         return switch (abuseType) {
-            case "git" ->
-                "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
-                    + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
-                    + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
-            case "sed" ->
-                "Error: sed is not allowed via run_command (bypasses IntelliJ editor buffers). "
-                    + "Use intellij_write_file with old_str/new_str for file editing instead.";
-            case "grep" ->
-                "Error: grep/rg commands are not allowed via run_command (searches stale disk files). "
-                    + "Use search_text or search_symbols to search live editor buffers instead.";
-            case "find" ->
-                "Error: find commands are not allowed via run_command. "
-                    + "Use list_project_files to find files instead.";
-            case "test" ->
-                "Error: test commands are not allowed via run_command. "
-                    + "Use run_tests to run tests with proper IntelliJ integration instead.";
+            case "git" -> "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
+                + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
+                + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
+            case "sed" -> "Error: sed is not allowed via run_command (bypasses IntelliJ editor buffers). "
+                + "Use intellij_write_file with old_str/new_str for file editing instead.";
+            case "grep" -> "Error: grep/rg commands are not allowed via run_command (searches stale disk files). "
+                + "Use search_text or search_symbols to search live editor buffers instead.";
+            case "find" -> "Error: find commands are not allowed via run_command. "
+                + "Use list_project_files to find files instead.";
+            case "test" -> "Error: test commands are not allowed via run_command. "
+                + "Use run_tests to run tests with proper IntelliJ integration instead.";
             default -> "Error: this command is not allowed via run_command. Use dedicated IntelliJ tools instead.";
         };
     }

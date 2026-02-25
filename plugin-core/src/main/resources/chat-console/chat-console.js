@@ -24,20 +24,26 @@ function b64(s) {
 }
 
 window._loadingMore = false;
+
 function loadMore() {
     if (window._loadingMore) return;
     window._loadingMore = true;
     const s = document.getElementById('load-more-sentinel');
-    if (s) { const t = s.querySelector('.load-more-text'); if (t) t.textContent = 'Loading...'; }
+    if (s) {
+        const t = s.querySelector('.load-more-text');
+        if (t) t.textContent = 'Loading...';
+    }
     window._bridge.loadMore();
 }
 
 function _toggleSection(id) {
-    const el = document.getElementById(id); if (!el) return;
+    const el = document.getElementById(id);
+    if (!el) return;
     if (el.dataset.chipOwned && !el.classList.contains('collapsed')) {
         el.classList.add('turn-hidden', 'collapsed');
         el.classList.remove('chip-expanded');
-        const btn = el.querySelector('.chip-close'); if (btn) btn.remove();
+        const btn = el.querySelector('.chip-close');
+        if (btn) btn.remove();
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
         if (chip) chip.style.opacity = '1';
         return;
@@ -46,8 +52,13 @@ function _toggleSection(id) {
     el.querySelector('.caret').textContent = el.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
 }
 
-function toggleTool(id) { _toggleSection(id); }
-function toggleThinking(id) { _toggleSection(id); }
+function toggleTool(id) {
+    _toggleSection(id);
+}
+
+function toggleThinking(id) {
+    _toggleSection(id);
+}
 
 function toggleMeta(el) {
     const row = el.parentElement;
@@ -70,7 +81,10 @@ function finalizeTurn(stats) {
         let targetMeta = null;
         let sib = el.nextElementSibling;
         while (sib) {
-            if (sib.classList.contains('agent-row')) { targetMeta = sib.querySelector('.meta'); break; }
+            if (sib.classList.contains('agent-row')) {
+                targetMeta = sib.querySelector('.meta');
+                break;
+            }
             sib = sib.nextElementSibling;
         }
         if (!targetMeta) targetMeta = lastMeta;
@@ -78,7 +92,8 @@ function finalizeTurn(stats) {
         const chip = document.createElement('span');
         const elId = el.id || '';
         if (el.classList.contains('thinking-section')) {
-            chip.className = 'turn-chip'; chip.textContent = '\uD83D\uDCAD Thought';
+            chip.className = 'turn-chip';
+            chip.textContent = '\uD83D\uDCAD Thought';
         } else if (el.classList.contains('tool-section')) {
             const lbl = el.querySelector('.collapse-label');
             const icon = el.querySelector('.collapse-icon');
@@ -91,9 +106,11 @@ function finalizeTurn(stats) {
             chip.textContent = '\uD83D\uDCCE ' + n + ' file' + (n !== 1 ? 's' : '');
         } else if (el.classList.contains('status-row')) {
             if (el.classList.contains('error')) {
-                chip.className = 'turn-chip err'; chip.textContent = '\u274C Error';
+                chip.className = 'turn-chip err';
+                chip.textContent = '\u274C Error';
             } else {
-                chip.className = 'turn-chip'; chip.textContent = '\u2139\uFE0F Info';
+                chip.className = 'turn-chip';
+                chip.textContent = '\u2139\uFE0F Info';
             }
         }
         chip.style.cursor = 'pointer';
@@ -106,13 +123,16 @@ function finalizeTurn(stats) {
                 chip.style.opacity = '0.5';
                 const cc = el.querySelector('.collapse-content');
                 if (cc && !cc.querySelector('.chip-close')) {
-                    const btn = document.createElement('span'); btn.className = 'chip-close'; btn.textContent = '\u2715';
+                    const btn = document.createElement('span');
+                    btn.className = 'chip-close';
+                    btn.textContent = '\u2715';
                     btn.onclick = function (e) {
                         e.stopPropagation();
                         el.classList.add('turn-hidden', 'collapsed');
                         el.classList.remove('chip-expanded');
                         chip.style.opacity = '1';
-                        const b2 = el.querySelector('.chip-close'); if (b2) b2.remove();
+                        const b2 = el.querySelector('.chip-close');
+                        if (b2) b2.remove();
                     };
                     cc.insertBefore(btn, cc.firstChild);
                 }
@@ -120,7 +140,8 @@ function finalizeTurn(stats) {
                 el.classList.add('turn-hidden', 'collapsed');
                 el.classList.remove('chip-expanded');
                 chip.style.opacity = '1';
-                const btn2 = el.querySelector('.chip-close'); if (btn2) btn2.remove();
+                const btn2 = el.querySelector('.chip-close');
+                if (btn2) btn2.remove();
             }
         };
         el.classList.add('turn-hidden');
@@ -145,10 +166,16 @@ function collapseToolToChip(elId) {
     let targetMeta = null;
     let sib = el.nextElementSibling;
     while (sib) {
-        if (sib.classList.contains('agent-row')) { targetMeta = sib.querySelector('.meta'); break; }
+        if (sib.classList.contains('agent-row')) {
+            targetMeta = sib.querySelector('.meta');
+            break;
+        }
         sib = sib.nextElementSibling;
     }
-    if (!targetMeta) { el.dataset.pendingCollapse = '1'; return; }
+    if (!targetMeta) {
+        el.dataset.pendingCollapse = '1';
+        return;
+    }
     _doCollapseToolToChip(el, elId, targetMeta);
 }
 
@@ -165,12 +192,15 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     el.dataset.chipOwned = '1';
     chip.dataset.chipFor = elId;
     chip.style.cursor = 'pointer';
+
     function closeSection() {
         el.classList.add('turn-hidden', 'collapsed');
         el.classList.remove('chip-expanded');
         chip.style.opacity = '1';
-        const btn = el.querySelector('.chip-close'); if (btn) btn.remove();
+        const btn = el.querySelector('.chip-close');
+        if (btn) btn.remove();
     }
+
     chip.onclick = function (ev) {
         ev.stopPropagation();
         if (el.classList.contains('turn-hidden')) {
@@ -179,11 +209,18 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
             chip.style.opacity = '0.5';
             const cc = el.querySelector('.collapse-content');
             if (cc && !cc.querySelector('.chip-close')) {
-                const btn = document.createElement('span'); btn.className = 'chip-close'; btn.textContent = '\u2715';
-                btn.onclick = function (e) { e.stopPropagation(); closeSection(); };
+                const btn = document.createElement('span');
+                btn.className = 'chip-close';
+                btn.textContent = '\u2715';
+                btn.onclick = function (e) {
+                    e.stopPropagation();
+                    closeSection();
+                };
                 cc.insertBefore(btn, cc.firstChild);
             }
-        } else { closeSection(); }
+        } else {
+            closeSection();
+        }
     };
     targetMeta.appendChild(chip);
     scrollIfNeeded();
@@ -195,7 +232,10 @@ function collapsePendingTools() {
         let targetMeta = null;
         let sib = el.nextElementSibling;
         while (sib) {
-            if (sib.classList.contains('agent-row')) { targetMeta = sib.querySelector('.meta'); break; }
+            if (sib.classList.contains('agent-row')) {
+                targetMeta = sib.querySelector('.meta');
+                break;
+            }
             sib = sib.nextElementSibling;
         }
         if (!targetMeta) return;
@@ -216,8 +256,12 @@ document.addEventListener('click', function (e) {
 
 let _lastCursor = '';
 document.addEventListener('mouseover', function (e) {
-    const el = e.target; let c = 'default';
+    const el = e.target;
+    let c = 'default';
     if (el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip')) c = 'pointer';
     else if (el.closest('p,pre,code,li,td,th,.collapse-content,.streaming')) c = 'text';
-    if (c !== _lastCursor) { _lastCursor = c; window._bridge.setCursor(c); }
+    if (c !== _lastCursor) {
+        _lastCursor = c;
+        window._bridge.setCursor(c);
+    }
 });
