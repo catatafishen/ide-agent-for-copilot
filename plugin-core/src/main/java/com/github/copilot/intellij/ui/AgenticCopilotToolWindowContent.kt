@@ -818,7 +818,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         private var startedAt = 0L
         private var toolCallCount = 0
         private var requestsUsed = 0
-        private val ticker = javax.swing.Timer(1000) { updateLabel() }
+        private val ticker = javax.swing.Timer(1000) { refreshDisplay() }
 
         // Session-wide accumulators
         private var sessionTotalTimeMs = 0L
@@ -885,7 +885,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             sessionTotalToolCalls += toolCallCount
             sessionTotalRequests += requestsUsed
             sessionTurnCount++
-            updateLabel()
+            refreshDisplay()
             spinner.suspend()
             spinner.isVisible = false
             doneIcon.isVisible = true
@@ -902,35 +902,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         fun incrementToolCalls() {
             toolCallCount++
-            SwingUtilities.invokeLater {
-                if (displayMode == modeTurn) {
-                    toolsLabel.text = "\u2022 $toolCallCount tools"
-                    toolsLabel.isVisible = true
-                }
-                revalidate(); repaint()
-            }
+            refreshDisplay()
         }
 
         fun setRequestsUsed(count: Int) {
             requestsUsed = count
-            SwingUtilities.invokeLater {
-                if (count > 0 && displayMode == modeTurn) {
-                    requestsLabel.text = "\u2022 $count req"
-                    requestsLabel.isVisible = true
-                    revalidate(); repaint()
-                }
-            }
+            refreshDisplay()
         }
 
         fun incrementRequests(multiplier: Int = 1) {
             requestsUsed += multiplier
-            SwingUtilities.invokeLater {
-                if (displayMode == modeTurn) {
-                    requestsLabel.text = "\u2022 $requestsUsed req"
-                    requestsLabel.isVisible = true
-                    revalidate(); repaint()
-                }
-            }
+            refreshDisplay()
         }
 
         private fun refreshDisplay() {
@@ -945,9 +927,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         requestsLabel.isVisible = requestsUsed > 0
                         if (!isRunning) doneIcon.text = "\u2705"
                     }
+
                     modeSession -> {
                         toolTipText = "Click to show turn stats"
-                        val totalMs = sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
+                        val totalMs =
+                            sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
                         val totalSec = totalMs / 1000
                         timerLabel.text = if (totalSec < 60) "${totalSec}s" else "${totalSec / 60}m ${totalSec % 60}s"
                         val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
