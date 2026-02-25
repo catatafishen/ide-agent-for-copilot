@@ -609,10 +609,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.setOneLineMode(false)
         promptTextArea.border = JBUI.Borders.empty(4)
 
-        setupPromptKeyBindings(promptTextArea)
-        setupPromptPlaceholder(promptTextArea)
-        setupPromptContextMenu(promptTextArea)
-        setupPromptDragDrop(promptTextArea)
+        // Delay setup until editor is initialized
+        SwingUtilities.invokeLater {
+            setupPromptKeyBindings(promptTextArea)
+            setupPromptPlaceholder(promptTextArea)
+            setupPromptContextMenu(promptTextArea)
+            setupPromptDragDrop(promptTextArea)
+        }
 
         // Auto-revalidate on document changes
         promptTextArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
@@ -1565,7 +1568,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
             addActionListener {
                 val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                val pastedText = clipboard.getContents(null).getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
+                val pastedText = clipboard.getContents(null)
+                    .getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
                 if (pastedText != null) {
                     val offset = editor.caretModel.offset
                     editor.document.insertString(offset, pastedText)
