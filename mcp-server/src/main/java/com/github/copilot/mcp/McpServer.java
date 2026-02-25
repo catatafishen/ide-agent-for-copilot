@@ -81,8 +81,13 @@ public class McpServer {
     @SuppressWarnings("java:S106") // System.out is intentional — MCP protocol requires stdout
     private static void sendMcpResponse(JsonObject response) {
         String json = GSON.toJson(response);
-        System.out.println(json);
-        System.out.flush();
+        try {
+            System.out.write(json.getBytes(StandardCharsets.UTF_8));
+            System.out.write('\n');
+            System.out.flush();
+        } catch (java.io.IOException e) {
+            LOG.log(Level.SEVERE, "Failed to write MCP response", e);
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -90,7 +95,7 @@ public class McpServer {
             projectRoot = args[0];
         }
 
-        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         String line;
         while ((line = reader.readLine()) != null) {
             line = line.trim();
