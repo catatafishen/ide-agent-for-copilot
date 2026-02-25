@@ -155,8 +155,9 @@ Built-in Copilot file operations are **denied** so all writes go through Intelli
 7. Auto-format runs (optimize imports + reformat code)
 ```
 
-**Denied permission kinds**: `edit`, `create`  
-**Auto-approved**: `other` (MCP tools), `read`, `execute`
+**Denied permission kinds**: `edit`, `create`, `read`, `execute`, `runInTerminal`  
+**Auto-approved**: `other` (MCP tools)  
+**Intercepted via notifications**: `view`, `grep`, `glob` (read-only built-in tools that bypass permission)
 
 ### MCP Tool Bridge
 

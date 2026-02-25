@@ -1,6 +1,7 @@
 # Project Development Guidelines — IntelliJ Copilot Plugin
 
-> This file provides project-specific conventions. Tool usage rules and workflow instructions are provided by the MCP server at initialization.
+> This file provides project-specific conventions. Tool usage rules and workflow instructions are provided by the MCP
+> server at initialization.
 >
 > **Project Spec**: See `PROJECT-SPEC.md` for full architecture details.
 
@@ -18,12 +19,14 @@
 ## 2) IntelliJ Platform Rules
 
 ### Threading
+
 - ✅ **Always** wrap PSI access in `ReadAction.compute()` or `ReadAction.run()`
 - ✅ **Always** wrap file writes in `WriteAction.compute()` or `WriteAction.run()`
 - ❌ **Never** nest read/write actions
 - ✅ Use `invokeLater()` for UI operations
 
 ### Null Checks
+
 - ✅ **Keep defensive null checks** even if marked `@NotNull` (runtime != compile-time)
 - ✅ Suppress with `@SuppressWarnings({"ConstantValue", "DataFlowIssue"})` if IntelliJ complains
 
@@ -32,6 +35,7 @@
 ## 3) Code Quality Standards
 
 ### Priority Order
+
 1. **Compilation errors** (must fix immediately)
 2. **Warnings** (fix all when asked to "clean up")
 3. **Style issues** (fix if easy)
@@ -40,21 +44,25 @@
 ### Tool-Specific Quirks
 
 **GrazieInspection (Grammar)**:
+
 - ❌ Does NOT support `apply_quickfix`
 - ✅ Must manually edit with `intellij_write_file`
 - If 50+ grammar issues, ask user first
 
 **SonarLint**:
+
 - Shows in `get_highlights` only (not `run_inspections`)
 - Open file in editor first: `open_in_editor` → `get_highlights(path)`
 
 **Cognitive Complexity**:
+
 - When writing NEW code: check `get_highlights` after each method
 - If "Cognitive Complexity" warning: refactor IMMEDIATELY by extracting methods
 
 ### Commit Strategy
 
 **Group RELATED changes as logical units** — may span multiple files:
+
 - ✅ "Fix unused parameters across 3 test files" (related problem)
 - ✅ "Refactor authentication flow" (4 files, one feature)
 - ❌ "Fix random issues in 5 unrelated files" (separate commits)
@@ -67,6 +75,7 @@
 ## 4) Common Pitfalls
 
 ### ❌ Split related refactoring across commits
+
 ```
 Commit 1: Class A (broken build)
 Commit 2: Class B (still broken)
@@ -74,6 +83,7 @@ Commit 3: Class C (finally works)
 ```
 
 ### ✅ Keep related changes atomic
+
 ```
 Commit 1: All 3 classes → "refactor: extract common interface"
 Build passes, logical change is complete
@@ -82,11 +92,13 @@ Build passes, logical change is complete
 ---
 
 ### ❌ Mix unrelated fixes in one commit
+
 ```
 One commit: grammar + null checks + unused params
 ```
 
 ### ✅ Separate commits per problem type
+
 ```
 Commit 1: "fix: unused parameters in test mocks"
 Commit 2: "fix: add null safety checks"
@@ -101,12 +113,14 @@ Commit 2: "fix: add null safety checks"
 **When asked to fix inspection issues:**
 
 ✅ **DO**:
+
 - **Investigate thoroughly** — understand WHY the issue is flagged
 - **Fix the underlying problem** — refactor code to eliminate the issue
 - **Test your fix** — ensure it doesn't break functionality
 - **Question false positives** — if genuinely wrong, document why and get confirmation
 
 ❌ **DON'T**:
+
 - **Suppress warnings** without investigation
 - **Add `@SuppressWarnings` as first resort**
 - **Disable inspection rules** to make count go down
@@ -115,22 +129,27 @@ Commit 2: "fix: add null safety checks"
 ### Common Issues & Proper Fixes
 
 **Duplicate string literals**:
+
 - ✅ Extract to private static final constants
 - ❌ Don't suppress — it's real technical debt
 
 **Cognitive complexity**:
+
 - ✅ Extract methods, simplify conditions, reduce nesting
 - ❌ Don't suppress — refactor the complex logic
 
 **Empty catch blocks**:
+
 - ✅ Log the exception or add comment explaining why it's safe to ignore
 - ❌ Don't suppress — either handle it or document why it's intentional
 
 **InterruptedException**:
+
 - ✅ Always call `Thread.currentThread().interrupt()` after catching
 - ❌ Don't suppress — this is critical for thread safety
 
 **Unused parameters/methods**:
+
 - ✅ Remove if truly unused; keep if required by interface/override
 - ✅ Add `@SuppressWarnings("unused")` ONLY if kept for API compatibility
 - ❌ Don't suppress private methods that can be deleted
@@ -138,13 +157,16 @@ Commit 2: "fix: add null safety checks"
 ### When Suppression IS Appropriate
 
 Only suppress when:
+
 1. **Required by framework** (override signature, interface implementation)
 2. **Public API** that must be kept for backward compatibility
 3. **Defensive code** that IntelliJ marks as "always true/false" but protects against edge cases
 4. **Known false positive** that has been investigated and documented
 
 Example of appropriate suppression:
+
 ```java
+
 @Override
 @SuppressWarnings("unused") // Required by SomeInterface contract
 public void methodUsedByFramework(Object param) {
@@ -165,7 +187,8 @@ public void methodUsedByFramework(Object param) {
 
 ## 6) Deploying to Main IDE
 
-The sandbox IDE (`runIde`) picks up code changes automatically. The **main IDE does not** — you must manually rebuild and deploy after each change.
+The sandbox IDE (`runIde`) picks up code changes automatically. The **main IDE does not** — you must manually rebuild
+and deploy after each change.
 
 **After every code change, run these 3 commands:**
 
@@ -185,7 +208,8 @@ unzip -q "$(ls -t plugin-core/build/distributions/*.zip | head -1)" -d ~/.local/
 Then tell the user to **restart the main IDE**.
 
 > **Key points:**
-> - Install path: `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (Toolbox-managed layout)
+> - Install path: `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (Toolbox-managed
+    layout)
 > - **Must** `rm -rf` the old folder first — otherwise stale JARs remain
 > - `-x buildSearchableOptions` is required — that task tries to launch an IDE which conflicts with the running one
 > - Zip filename includes a commit hash (e.g. `plugin-core-0.2.0-2bb9797.zip`), so always use `ls -t ... | head -1`
@@ -207,24 +231,27 @@ Then tell the user to **restart the main IDE**.
 
 ### Always prefer IntelliJ MCP tools over generic CLI tools
 
-The MCP server provides IntelliJ-integrated tools that read from editor buffers (always up-to-date, even unsaved changes). **Always use these instead of generic alternatives:**
+The MCP server provides IntelliJ-integrated tools that read from editor buffers (always up-to-date, even unsaved
+changes). **Always use these instead of generic alternatives:**
 
-| ❌ Don't use        | ✅ Use instead                              |
-|---------------------|---------------------------------------------|
-| `view` (file)       | `intellij_read_file`                        |
-| `grep` / `ripgrep`  | `search_text` or `search_symbols`           |
-| `glob`              | `list_project_files`                        |
-| `create` (file)     | `create_file`                               |
-| `edit` (file)       | `intellij_write_file`                       |
-| `bash: git ...`     | `git_status`, `git_diff`, `git_commit` etc. |
+| ❌ Don't use        | ✅ Use instead                               |
+|--------------------|---------------------------------------------|
+| `view` (file)      | `intellij_read_file`                        |
+| `grep` / `ripgrep` | `search_text` or `search_symbols`           |
+| `glob`             | `list_project_files`                        |
+| `create` (file)    | `create_file`                               |
+| `edit` (file)      | `intellij_write_file`                       |
+| `bash: git ...`    | `git_status`, `git_diff`, `git_commit` etc. |
 
 ### Why this matters
+
 - Editor buffers may have unsaved changes that disk-based tools miss
 - IntelliJ tools respect project structure and excludes (build/, .gradle/)
 - Symbol search uses IDE indexes — faster and more accurate than text grep
 - Git tools sync with IntelliJ's VCS, avoiding buffer desync
 
 ### Exceptions
+
 - Use `bash` for build commands (`gradlew`), process management, or system operations
 - Use `bash` for commands that don't have an IntelliJ tool equivalent
 

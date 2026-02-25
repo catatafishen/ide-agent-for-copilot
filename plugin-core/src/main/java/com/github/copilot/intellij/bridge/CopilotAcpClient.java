@@ -657,6 +657,13 @@ public class CopilotAcpClient implements Closeable {
         // Track activity for inactivity timeout
         lastActivityTimestamp = System.currentTimeMillis();
 
+        // Intercept built-in read-only tool calls (view, grep, glob) that bypass request_permission.
+        // We can't block them (they auto-execute), but we send corrective guidance so the agent
+        // switches to IntelliJ MCP tools for subsequent calls in the same turn.
+        if ("tool_call".equals(updateType)) {
+            interceptBuiltInToolCall(update);
+        }
+
         if ("agent_message_chunk".equals(updateType) && onChunk != null) {
             JsonObject content = update.has(CONTENT) ? update.getAsJsonObject(CONTENT) : null;
             if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
@@ -667,6 +674,42 @@ public class CopilotAcpClient implements Closeable {
         // Forward all updates to onUpdate listener (plan events, tool calls, etc.)
         if (onUpdate != null) {
             onUpdate.accept(update);
+        }
+    }
+
+    /**
+     * Built-in read-only tools (view, grep, glob) bypass request_permission entirely —
+     * they auto-execute without asking. We can't block them, but we CAN detect them via
+     * tool_call notifications and send corrective guidance so the agent uses IntelliJ tools
+     * for subsequent calls in the same turn.
+     */
+    private void interceptBuiltInToolCall(JsonObject update) {
+        String title = update.has("title") ? update.get("title").getAsString() : "";
+
+        String guidance = switch (title.toLowerCase()) {
+            case "view", "read", "read file", "view file" ->
+                "⚠ You used the built-in '" + title + "' tool which reads from disk (may be stale). " +
+                    "Use 'intellij-code-tools-intellij_read_file' instead — it reads live editor buffers.";
+            case "grep", "search", "ripgrep" ->
+                "⚠ You used the built-in '" + title + "' tool which reads from disk. " +
+                    "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
+                    "For symbol search, use 'intellij-code-tools-search_symbols'.";
+            case "glob", "find files", "list files" ->
+                "⚠ You used the built-in '" + title + "' tool. " +
+                    "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
+            case "create", "create file" ->
+                "⚠ You used the built-in '" + title + "' tool. " +
+                    "Use 'intellij-code-tools-create_file' instead — it integrates with IntelliJ's project index.";
+            case "edit", "edit file" ->
+                "⚠ You used the built-in '" + title + "' tool which writes to disk, bypassing the editor. " +
+                    "Use 'intellij-code-tools-intellij_write_file' instead — it writes to live editor buffers.";
+            default -> null;
+        };
+
+        if (guidance != null) {
+            LOG.info("interceptBuiltInToolCall: detected built-in tool '" + title +
+                "', sending corrective guidance");
+            sendPromptMessage(guidance);
         }
     }
 
