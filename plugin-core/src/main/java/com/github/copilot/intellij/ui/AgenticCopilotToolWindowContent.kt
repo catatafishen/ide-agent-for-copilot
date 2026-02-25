@@ -630,6 +630,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             // Use EditorEx built-in placeholder (visual-only, doesn't set actual text)
             editor.setPlaceholder(PROMPT_PLACEHOLDER)
             editor.setShowPlaceholderWhenFocused(true)
+            editor.settings.isUseSoftWraps = true
             editor.contentComponent.border = JBUI.Borders.empty(4, 6)
         }
 
@@ -1436,7 +1437,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     override fun actionPerformed(e: AnActionEvent) {
                         if (index == selectedModelIndex) return
 
-                        val message = javax.swing.JEditorPane("text/html",
+                        val message = javax.swing.JEditorPane(
+                            "text/html",
                             "<html><body style='width:320px'>" +
                                 "Switching to <b>${model.name}</b> will reset the current session.<br><br>" +
                                 "This is required because the Copilot CLI does not yet support " +
