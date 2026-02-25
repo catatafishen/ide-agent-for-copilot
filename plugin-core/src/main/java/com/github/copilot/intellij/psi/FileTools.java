@@ -272,7 +272,7 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
-        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr);
+        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr, false);
         int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
             + contextLines(doc, finalIdx, ctxEnd) + syntaxWarning);
@@ -329,7 +329,7 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
-        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr);
+        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr, false);
         int ctxEnd = Math.min(fStart + fNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
             + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX
@@ -395,6 +395,10 @@ class FileTools extends AbstractToolHandler {
      * the final formatted state and subsequent edits see consistent content.
      */
     private void autoFormatAfterWrite(String pathStr) {
+        autoFormatAfterWrite(pathStr, true);
+    }
+
+    private void autoFormatAfterWrite(String pathStr, boolean optimizeImports) {
         try {
             VirtualFile vf = resolveVirtualFile(pathStr);
             if (vf == null) return;
@@ -404,12 +408,14 @@ class FileTools extends AbstractToolHandler {
             ApplicationManager.getApplication().runWriteAction(() ->
                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                     com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                    new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                    if (optimizeImports) {
+                        new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                    }
                     new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
                     com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
                 }, "Auto-Format After Write", null)
             );
-            LOG.info("Auto-formatted after write: " + pathStr);
+            LOG.info("Auto-formatted after write: " + pathStr + (optimizeImports ? " (with import optimization)" : ""));
         } catch (Exception e) {
             LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
         }
