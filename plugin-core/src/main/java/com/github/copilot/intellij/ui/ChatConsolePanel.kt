@@ -193,6 +193,41 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             // Agent Meta
             "update_todo" to ToolInfo("Update TODO", "Update the agent's task checklist"),
             "report_intent" to ToolInfo("Intent", "Report current task intent"),
+            "task" to ToolInfo("Sub-Agent Task", "Launch a specialized sub-agent for a task"),
+            // Built-in CLI tools (Copilot agent)
+            "view" to ToolInfo("View", "View file or directory contents"),
+            "edit" to ToolInfo("Edit", "Make string replacements in a file"),
+            "create" to ToolInfo("Create", "Create a new file"),
+            "grep" to ToolInfo("Grep", "Search file contents with ripgrep"),
+            "glob" to ToolInfo("Glob", "Find files by name pattern"),
+            "bash" to ToolInfo("Bash", "Run a shell command"),
+            "read_bash" to ToolInfo("Read Bash", "Read output from an async shell command"),
+            "write_bash" to ToolInfo("Write Bash", "Send input to an async shell command"),
+            "stop_bash" to ToolInfo("Stop Bash", "Stop a running shell command"),
+            "list_bash" to ToolInfo("List Bash", "List active shell sessions"),
+            "web_search" to ToolInfo("Web Search", "AI-powered web search with citations"),
+            "web_fetch" to ToolInfo("Fetch URL", "Fetch a web page and return its content"),
+            // GitHub MCP tools
+            "actions_get" to ToolInfo("GitHub Actions", "Get details about a GitHub Actions resource"),
+            "actions_list" to ToolInfo("GitHub Actions", "List GitHub Actions workflows, runs, or jobs"),
+            "get_commit" to ToolInfo("Get Commit", "Get details for a GitHub commit"),
+            "get_file_contents" to ToolInfo("Get File", "Get file contents from a GitHub repository"),
+            "get_job_logs" to ToolInfo("Job Logs", "Get logs for GitHub Actions workflow jobs"),
+            "issue_read" to ToolInfo("Read Issue", "Get information about a GitHub issue"),
+            "list_branches" to ToolInfo("List Branches", "List branches in a GitHub repository"),
+            "list_commits" to ToolInfo("List Commits", "List commits in a GitHub repository"),
+            "list_issues" to ToolInfo("List Issues", "List issues in a GitHub repository"),
+            "list_pull_requests" to ToolInfo("List PRs", "List pull requests in a GitHub repository"),
+            "pull_request_read" to ToolInfo("Read PR", "Get information about a GitHub pull request"),
+            "search_code" to ToolInfo("Search Code", "Search code across GitHub repositories"),
+            "search_issues" to ToolInfo("Search Issues", "Search for GitHub issues"),
+            "search_pull_requests" to ToolInfo("Search PRs", "Search for GitHub pull requests"),
+            "search_repositories" to ToolInfo("Search Repos", "Search for GitHub repositories"),
+            "search_users" to ToolInfo("Search Users", "Search for GitHub users"),
+            // IntelliJ extras
+            "get_class_outline" to ToolInfo("Class Outline", "Show constructors, methods, and fields of a class"),
+            "search_text" to ToolInfo("Search Text", "Search text or regex patterns across project files"),
+            "undo" to ToolInfo("Undo", "Undo last edit action on a file"),
         )
 
         private fun escapeHtml(text: String): String = text
