@@ -741,6 +741,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(CopyConversationAction())
         leftGroup.addSeparator()
         leftGroup.add(FollowAgentFilesToggleAction())
+        leftGroup.addSeparator()
+        leftGroup.add(OpenInstructionsAction())
+        leftGroup.add(OpenTodoAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -1038,6 +1041,40 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             com.github.copilot.intellij.services.CopilotSettings.setFollowAgentFiles(state)
         }
+    }
+
+    /** Open a project-root file in the editor if it exists */
+    private fun openProjectFile(fileName: String) {
+        val base = project.basePath ?: return
+        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+            .findFileByPath("$base/$fileName") ?: return
+        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
+    }
+
+    private inner class OpenInstructionsAction : AnAction(
+        "Instructions", "Open copilot-instructions.md",
+        com.intellij.icons.AllIcons.Actions.IntentionBulb
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+        override fun update(e: AnActionEvent) {
+            val base = project.basePath
+            e.presentation.isEnabled = base != null && java.io.File(base, "copilot-instructions.md").exists()
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = openProjectFile("copilot-instructions.md")
+    }
+
+    private inner class OpenTodoAction : AnAction(
+        "TODO", "Open TODO.md",
+        com.intellij.icons.AllIcons.General.TodoDefault
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+        override fun update(e: AnActionEvent) {
+            val base = project.basePath
+            e.presentation.isEnabled = base != null && java.io.File(base, "TODO.md").exists()
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = openProjectFile("TODO.md")
     }
 
     // ComboBoxAction for model selection ? matches Run panel dropdown style

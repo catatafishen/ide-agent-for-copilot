@@ -54,6 +54,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** JSON key to use as subtitle in the chip label for specific tools */
         private val TOOL_SUBTITLE_KEY = mapOf(
             "run_command" to "title",
+            "report_intent" to "intent",
+        )
+
+        /** Tools whose arguments contain markdown content to write to a file and link */
+        private val TOOL_CONTENT_KEY = mapOf(
+            "update_todo" to "todos",
         )
 
         private val TOOL_DISPLAY_INFO = mapOf(
@@ -138,6 +144,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "edit_run_configuration" to ToolInfo("Edit Run Config", "Modify an existing run/debug configuration"),
             // Display / Presentation
             "show_file" to ToolInfo("Show File", "Display a file to the user"),
+            // Agent Meta
+            "update_todo" to ToolInfo("Update TODO", "Update the agent's task checklist"),
+            "report_intent" to ToolInfo("Intent", "Report current task intent"),
         )
 
         private fun escapeHtml(text: String): String = text
@@ -368,7 +377,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             try {
                 val json = com.google.gson.JsonParser.parseString(arguments).asJsonObject
                 json[subtitleKey]?.asString?.let { displayName = "$displayName: $it" }
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+            }
         }
         val safeDisplayName = escapeHtml(displayName)
 
@@ -376,7 +386,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (info?.description != null) {
             contentParts.append("<div class='tool-desc'>${escapeHtml(info.description)}</div>")
         }
-        if (!arguments.isNullOrBlank()) {
+        val contentKey = TOOL_CONTENT_KEY[title] ?: TOOL_CONTENT_KEY[baseName]
+        if (contentKey != null && !arguments.isNullOrBlank()) {
+            // Tool with markdown content (e.g. update_todo) — write to file and show link
+            val filePath = writeToolContentFile(title, contentKey, arguments)
+            if (filePath != null) {
+                contentParts.append(
+                    "<div class='tool-params-label'><a href='openfile://$filePath'>📋 Open in editor</a></div>"
+                )
+            }
+        } else if (!arguments.isNullOrBlank()) {
             contentParts.append(
                 "<div class='tool-params-label'>Parameters:</div><pre class='tool-params'><code>${
                     escapeHtml(
@@ -1541,6 +1560,28 @@ document.addEventListener('mouseover',function(e){
             else m.value
         }
         return html
+    }
+
+// --- Tool content file ---
+
+    /** Write markdown content from a tool's arguments to a file, return the absolute path or null. */
+    private fun writeToolContentFile(toolName: String, contentKey: String, arguments: String): String? {
+        return try {
+            val json = com.google.gson.JsonParser.parseString(arguments).asJsonObject
+            val content = json[contentKey]?.asString ?: return null
+            val base = project.basePath ?: return null
+            val dir = File(base, ".agent-work")
+            if (!dir.exists()) dir.mkdirs()
+            val fileName = when (toolName) {
+                "update_todo" -> "agent-todo.md"
+                else -> "$toolName.md"
+            }
+            val file = File(dir, fileName)
+            file.writeText(content)
+            file.absolutePath
+        } catch (_: Exception) {
+            null
+        }
     }
 
 // --- File resolution ---
