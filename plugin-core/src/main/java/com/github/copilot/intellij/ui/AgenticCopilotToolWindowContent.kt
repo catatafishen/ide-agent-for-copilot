@@ -921,7 +921,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         fun incrementRequests(multiplier: Int = 1) {
-            requestsUsed += multiplier
+            SwingUtilities.invokeLater {
+                requestsUsed += multiplier
+            }
             refreshDisplay()
         }
 
