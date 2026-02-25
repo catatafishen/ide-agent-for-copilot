@@ -833,7 +833,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         fun start() {
             startedAt = System.currentTimeMillis()
             toolCallCount = 0
-            requestsUsed = 0
+            requestsUsed = 1
             timerLabel.text = "0s"
             toolsLabel.text = ""
             requestsLabel.text = ""
