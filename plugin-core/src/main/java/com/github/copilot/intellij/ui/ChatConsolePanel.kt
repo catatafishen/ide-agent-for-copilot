@@ -1,5 +1,7 @@
 package com.github.copilot.intellij.ui
 
+import com.intellij.ide.ui.LafManager
+import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -338,6 +340,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             browser.loadHTML(buildInitialPage())
             fallbackArea = null
+
+            // Listen for IDE theme changes and update CSS variables
+            val connection = ApplicationManager.getApplication().messageBus.connect(this)
+            connection.subscribe(LafManagerListener.TOPIC, object : LafManagerListener {
+                override fun lookAndFeelChanged(source: LafManager) {
+                    updateThemeColors()
+                }
+            })
         } else {
             browser = null; openFileQuery = null
             fallbackArea = JBTextArea().apply {
@@ -1189,7 +1199,7 @@ ul,ol{margin:4px 0;padding-left:22px}
         javaClass.getResourceAsStream(path)?.bufferedReader()?.readText()
             ?: error("Missing resource: $path")
 
-    private fun buildInitialPage(): String {
+    private fun buildCssVars(): String {
         val font = UIUtil.getLabelFont()
         val fg = UIUtil.getLabelForeground()
         val bg = UIUtil.getPanelBackground()
@@ -1203,9 +1213,7 @@ ul,ol{margin:4px 0;padding-left:22px}
             ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
-
-        // CSS custom properties for theme colors
-        val cssVars = """
+        return """
             --font-family: '${font.family}';
             --font-size: ${font.size - 2}pt;
             --code-font-size: ${font.size - 3}pt;
@@ -1246,6 +1254,16 @@ ul,ol{margin:4px 0;padding-left:22px}
             --th-bg: ${rgb(thBg)};
             --link: ${rgb(linkColor)};
         """.trimIndent()
+    }
+
+    /** Re-inject CSS custom properties when the IDE theme changes */
+    private fun updateThemeColors() {
+        val vars = buildCssVars().replace("'", "\\'").replace("\n", " ")
+        executeJs("document.documentElement.style.cssText='$vars'")
+    }
+
+    private fun buildInitialPage(): String {
+        val cssVars = buildCssVars()
 
         // JS bridge: wire JCEF query callbacks to window._bridge methods
         val fileHandler = openFileQuery!!.inject("href")
