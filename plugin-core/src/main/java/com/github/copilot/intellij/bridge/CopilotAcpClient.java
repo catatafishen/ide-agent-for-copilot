@@ -59,6 +59,7 @@ public class CopilotAcpClient implements Closeable {
     private static final String CONTENT = "content";
     private static final String UNKNOWN = "unknown";
     private static final String RUN_COMMAND_ABUSE_PREFIX = "run_command_abuse:";
+    private static final String VIEW_ABUSE_PREFIX = "view_abuse:";
     private static final String USER_HOME = "user.home";
 
     /**
@@ -1068,6 +1069,25 @@ public class CopilotAcpClient implements Closeable {
             return;
         }
 
+        // Check if view/read tool is targeting a project file (should use intellij_read_file)
+        String viewAbuse = detectViewAbuse(toolCall);
+        if (viewAbuse != null) {
+            String rejectOptionId = findRejectOption(reqParams);
+            LOG.info("ACP request_permission: DENYING view abuse on project file");
+
+            Map<String, Object> retryParams = buildRetryParams(VIEW_ABUSE_PREFIX + viewAbuse);
+            String retryMessage = (String) retryParams.get(MESSAGE);
+            fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
+            sendPromptMessage(retryMessage);
+
+            fireDebugEvent("PERMISSION_DENIED", "view abuse: " + viewAbuse,
+                toolCall.toString());
+            builtInActionDeniedDuringTurn = true;
+            lastDeniedKind = VIEW_ABUSE_PREFIX + viewAbuse;
+            sendPermissionResponse(reqId, rejectOptionId);
+            return;
+        }
+
         if (DENIED_PERMISSION_KINDS.contains(permKind)) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
@@ -1157,6 +1177,42 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
+     * Detect if the view/read tool is being used on a file inside the project directory.
+     * IntelliJ's intellij_read_file should be used instead — it reads from live editor buffers.
+     * Returns "project_file" if detected, null otherwise.
+     */
+    private String detectViewAbuse(JsonObject toolCall) {
+        if (toolCall == null) return null;
+
+        String toolTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
+        String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
+
+        if (!isViewOrReadTool(toolTitle, toolName)) return null;
+
+        String path = extractPathParam(toolCall);
+        if (path.isEmpty()) return null;
+
+        return isInsideProject(path) ? "project_file" : null;
+    }
+
+    private boolean isViewOrReadTool(String title, String name) {
+        return "view".equals(title) || "view".equals(name) ||
+            "read".equals(title) || "read".equals(name);
+    }
+
+    private String extractPathParam(JsonObject toolCall) {
+        if (!toolCall.has("parameters")) return "";
+        JsonObject params = toolCall.getAsJsonObject("parameters");
+        return params.has("path") ? params.get("path").getAsString() : "";
+    }
+
+    private boolean isInsideProject(String path) {
+        if (projectBasePath == null || projectBasePath.isEmpty()) return false;
+        String normalizedBase = projectBasePath.endsWith("/") ? projectBasePath : projectBasePath + "/";
+        return path.startsWith(normalizedBase) || path.equals(projectBasePath);
+    }
+
+    /**
      * Build guidance message for denied actions.
      * Returns a map with "message" key containing the instruction text.
      */
@@ -1167,18 +1223,23 @@ public class CopilotAcpClient implements Closeable {
         if (deniedKind.startsWith(RUN_COMMAND_ABUSE_PREFIX)) {
             String abuseType = deniedKind.substring(RUN_COMMAND_ABUSE_PREFIX.length());
             instruction = switch (abuseType) {
-                case "test" -> "❌ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
+                case "test" -> "⚠ Don't use run_command for tests. Use 'intellij-code-tools-run_tests' instead. " +
                     "Provides structured results, coverage, and failure details.";
-                case "sed" -> "❌ Don't use sed. Use 'intellij-code-tools-intellij_write_file' instead. " +
+                case "sed" -> "⚠ Don't use sed. Use 'intellij-code-tools-intellij_write_file' instead. " +
                     "It provides proper file editing with undo/redo and live editor buffer access.";
-                case "grep" -> "❌ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
+                case "grep" -> "⚠ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
                     "'intellij-code-tools-find_references' instead. They search live editor buffers.";
-                case "find" -> "❌ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
-                case "git" -> "❌ Don't use git commands via run_command — it desyncs IntelliJ editor buffers. " +
+                case "find" -> "⚠ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
+                case "git" -> "⚠ Don't use git commands via run_command — it desyncs IntelliJ editor buffers. " +
                     "Use dedicated git tools: git_status, git_diff, git_log, git_commit, git_stage, " +
                     "git_unstage, git_branch, git_stash, git_show, git_blame.";
-                default -> "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+                default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
+        } else if (deniedKind.startsWith(VIEW_ABUSE_PREFIX)) {
+            // Guidance for view/read tool abuse on project files
+            instruction = "⚠ Don't use the 'view' tool for project files — it reads from disk and may be stale. " +
+                "Use 'intellij-code-tools-intellij_read_file' instead. It reads from IntelliJ's live editor buffer, " +
+                "which always has the latest content (including unsaved changes from intellij_write_file edits).";
         } else {
             // Generic message for other denials
             instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
