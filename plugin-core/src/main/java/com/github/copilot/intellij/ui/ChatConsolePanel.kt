@@ -53,8 +53,54 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
         /** JSON key to use as subtitle in the chip label for specific tools */
         private val TOOL_SUBTITLE_KEY = mapOf(
+            // File operations
+            "read_file" to "path",
+            "intellij_read_file" to "path",
+            "write_file" to "path",
+            "intellij_write_file" to "path",
+            "create_file" to "path",
+            "delete_file" to "path",
+            "open_in_editor" to "file",
+            "show_diff" to "file",
+            "get_file_outline" to "path",
+            "format_code" to "path",
+            "optimize_imports" to "path",
+            // Code navigation
+            "search_symbols" to "query",
+            "find_references" to "symbol",
+            "go_to_declaration" to "symbol",
+            "get_type_hierarchy" to "symbol",
+            "get_documentation" to "symbol",
+            "search_text" to "query",
+            // Tests
+            "run_tests" to "target",
+            // Git
+            "git_blame" to "path",
+            "git_commit" to "message",
+            "git_branch" to "name",
+            // Code quality
+            "run_inspections" to "scope",
+            "apply_quickfix" to "inspection_id",
+            "add_to_dictionary" to "word",
+            // Run configs
+            "run_configuration" to "name",
+            "create_run_configuration" to "name",
+            "edit_run_configuration" to "name",
+            // Shell & infrastructure
             "run_command" to "title",
+            "http_request" to "url",
+            // Agent meta
             "report_intent" to "intent",
+            "task" to "description",
+            // Built-in CLI tools
+            "view" to "path",
+            "edit" to "path",
+            "create" to "path",
+            "grep" to "pattern",
+            "glob" to "pattern",
+            "bash" to "description",
+            "web_search" to "query",
+            "web_fetch" to "url",
         )
 
         /** Tools whose arguments contain markdown content to write to a file and link */
@@ -376,7 +422,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (subtitleKey != null && !arguments.isNullOrBlank()) {
             try {
                 val json = com.google.gson.JsonParser.parseString(arguments).asJsonObject
-                json[subtitleKey]?.asString?.let { displayName = "$displayName: $it" }
+                json[subtitleKey]?.asString?.let { raw ->
+                    val short = when {
+                        raw.contains('/') -> raw.substringAfterLast('/')
+                        raw.length > 40 -> raw.take(37) + "\u2026"
+                        else -> raw
+                    }
+                    displayName = "$displayName: $short"
+                }
             } catch (_: Exception) {
             }
         }
