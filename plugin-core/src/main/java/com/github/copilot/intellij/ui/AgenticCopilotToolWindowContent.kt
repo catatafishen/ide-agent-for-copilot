@@ -78,6 +78,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Per-turn premium request tracking
     private var turnToolCallCount = 0
     private var turnModelId = ""
+    private var turnBillingBefore = 0
 
     // Animation state for usage indicator
     private var previousUsedCount = -1
@@ -309,6 +310,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             refreshUsageDisplay()
             updateUsageGraph(used, entitlement, unlimited, resetDate)
             if (shouldAnimate) animateUsageChange()
+            // Update per-turn request counter on the processing timer
+            val turnRequests = used - turnBillingBefore
+            if (turnRequests > 0 && ::processingTimerPanel.isInitialized) {
+                processingTimerPanel.setRequestsUsed(turnRequests)
+            }
         }
     }
 
@@ -795,47 +801,84 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
-     * Native Swing panel that shows a small animated spinner + elapsed-time counter.
-     * Hidden when idle; visible and ticking once [start] is called.
+     * Native Swing panel that shows a small animated spinner + elapsed-time counter
+     * plus tool call count and requests used. Hidden when idle; visible once [start] is called.
+     * On [stop], spinner changes to checkmark and stats remain visible until next [start].
      */
     private class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
         private val spinner = AsyncProcessIcon("CopilotProcessing")
+        private val doneIcon = JBLabel("\u2705")
         private val timerLabel = JBLabel("")
+        private val toolsLabel = JBLabel("")
+        private val requestsLabel = JBLabel("")
         private var startedAt = 0L
+        private var toolCallCount = 0
+        private var requestsUsed = 0
         private val ticker = javax.swing.Timer(1000) { updateLabel() }
 
         init {
             isOpaque = false
             border = JBUI.Borders.emptyRight(6)
+            val smallGray = JBUI.Fonts.smallFont()
             spinner.isVisible = false
-            timerLabel.foreground = JBColor.GRAY
-            timerLabel.font = JBUI.Fonts.smallFont()
-            timerLabel.isVisible = false
+            doneIcon.isVisible = false
+            doneIcon.font = smallGray
+            timerLabel.foreground = JBColor.GRAY; timerLabel.font = smallGray; timerLabel.isVisible = false
+            toolsLabel.foreground = JBColor.GRAY; toolsLabel.font = smallGray; toolsLabel.isVisible = false
+            requestsLabel.foreground = JBColor.GRAY; requestsLabel.font = smallGray; requestsLabel.isVisible = false
             add(spinner)
+            add(doneIcon)
             add(timerLabel)
+            add(toolsLabel)
+            add(requestsLabel)
             isVisible = false
         }
 
         fun start() {
             startedAt = System.currentTimeMillis()
+            toolCallCount = 0
+            requestsUsed = 0
             timerLabel.text = "0s"
+            toolsLabel.text = ""
+            requestsLabel.text = ""
             spinner.isVisible = true
             spinner.resume()
+            doneIcon.isVisible = false
             timerLabel.isVisible = true
+            toolsLabel.isVisible = false
+            requestsLabel.isVisible = false
             isVisible = true
             ticker.start()
-            revalidate()
-            repaint()
+            revalidate(); repaint()
         }
 
         fun stop() {
             ticker.stop()
+            updateLabel()
             spinner.suspend()
             spinner.isVisible = false
-            timerLabel.isVisible = false
-            isVisible = false
-            revalidate()
-            repaint()
+            doneIcon.isVisible = true
+            revalidate(); repaint()
+        }
+
+        fun incrementToolCalls() {
+            toolCallCount++
+            SwingUtilities.invokeLater {
+                toolsLabel.text = "\u2022 ${toolCallCount} tools"
+                toolsLabel.isVisible = true
+                revalidate(); repaint()
+            }
+        }
+
+        fun setRequestsUsed(count: Int) {
+            requestsUsed = count
+            SwingUtilities.invokeLater {
+                if (count > 0) {
+                    requestsLabel.text = "\u2022 ${count} req"
+                    requestsLabel.isVisible = true
+                    revalidate(); repaint()
+                }
+            }
         }
 
         private fun updateLabel() {
@@ -1260,6 +1303,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             // Reset per-turn tracking
             turnToolCallCount = 0
             turnModelId = modelId
+            turnBillingBefore = lastBillingUsed
 
             // Show model + multiplier on the prompt bubble immediately
             SwingUtilities.invokeLater {
@@ -1440,6 +1484,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val status = update["status"]?.asString ?: ""
         val toolCallId = update["toolCallId"]?.asString ?: ""
         turnToolCallCount++
+        if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
         val arguments = extractJsonArguments(update)
         setResponseStatus("Running: $title")
         if (status != "completed" && toolCallId.isNotEmpty()) {
