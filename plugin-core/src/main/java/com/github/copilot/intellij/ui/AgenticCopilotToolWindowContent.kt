@@ -726,7 +726,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createControlsRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // Left toolbar: send/stop, attach, model, mode, export chat
+        // Left toolbar — grouped logically:
+        // [Send] | [Attach File, Attach Selection] | [Model, Mode] | [Follow, Format, Build, Test, Commit] | [Instructions, TODO] | [Export, Help]
         val leftGroup = DefaultActionGroup()
         leftGroup.add(SendStopAction())
         leftGroup.addSeparator()
@@ -734,10 +735,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(AttachSelectionAction())
         leftGroup.addSeparator()
         leftGroup.add(ModelSelectorAction())
-        leftGroup.addSeparator()
         leftGroup.add(ModeSelectorAction())
-        leftGroup.addSeparator()
-        leftGroup.add(CopyConversationAction())
         leftGroup.addSeparator()
         leftGroup.add(FollowAgentFilesToggleAction())
         leftGroup.add(FormatAfterEditToggleAction())
@@ -745,10 +743,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(TestBeforeEndToggleAction())
         leftGroup.add(CommitBeforeEndToggleAction())
         leftGroup.addSeparator()
-        leftGroup.add(HelpAction())
-        leftGroup.addSeparator()
         leftGroup.add(OpenInstructionsAction())
         leftGroup.add(OpenTodoAction())
+        leftGroup.addSeparator()
+        leftGroup.add(CopyConversationAction())
+        leftGroup.add(HelpAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -1108,6 +1107,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    private fun iconToImgTag(icon: javax.swing.Icon): String {
+        val img = java.awt.image.BufferedImage(icon.iconWidth, icon.iconHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        val g = img.createGraphics()
+        icon.paintIcon(null, g, 0, 0)
+        g.dispose()
+        val baos = java.io.ByteArrayOutputStream()
+        javax.imageio.ImageIO.write(img, "png", baos)
+        val base64 = java.util.Base64.getEncoder().encodeToString(baos.toByteArray())
+        return "<img src='data:image/png;base64,$base64' width='${icon.iconWidth}' height='${icon.iconHeight}' style='vertical-align: middle; margin-right: 4px;'/>"
+    }
+
     private inner class HelpAction : AnAction(
         "Help", "Show help for all toolbar features and plugin behavior",
         com.intellij.icons.AllIcons.Actions.Help
@@ -1115,51 +1125,68 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
         override fun actionPerformed(e: AnActionEvent) {
+            val sendIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Execute)
+            val stopIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Suspend)
+            val attachFileIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.AddFile)
+            val attachSelIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.AddMulticaret)
+            val followIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Preview)
+            val formatIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.ReformatCode)
+            val buildIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Compile)
+            val testIcon = iconToImgTag(com.intellij.icons.AllIcons.Nodes.Test)
+            val commitIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Commit)
+            val instrIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.IntentionBulb)
+            val todoIcon = iconToImgTag(com.intellij.icons.AllIcons.General.TodoDefault)
+            val exportIcon = iconToImgTag(com.intellij.icons.AllIcons.ToolbarDecorator.Export)
+            val helpIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Help)
+            val settingsIcon = iconToImgTag(com.intellij.icons.AllIcons.General.Settings)
+            val restartIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Restart)
+
             val html = """
-                <html><body style="font-family: sans-serif; padding: 10px; width: 480px;">
-                <h2>Agentic Copilot Plugin Help</h2>
+                <html><body style="font-family: sans-serif; padding: 10px; width: 500px;">
+                <h2>Agentic Copilot &mdash; Toolbar Guide</h2>
+                <p>Each button in the toolbar, from left to right:</p>
 
-                <h3>Prompt Input</h3>
-                <p>Type your prompt in the text area at the bottom and press <b>Enter</b> (or click the Send button) to send it.
-                Use <b>Shift+Enter</b> for a new line. The agent will process your request and display its work in the chat panel.</p>
+                <table cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <tr><td>$sendIcon</td><td><b>Send</b></td><td>Send your prompt to the agent. Shortcut: <b>Enter</b>. Use <b>Shift+Enter</b> for a new line.</td></tr>
+                <tr><td>$stopIcon</td><td><b>Stop</b></td><td>While the agent is working, this replaces Send. Stops the current agent turn.</td></tr>
+                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <h3>Model Selector</h3>
-                <p>Choose which AI model the agent uses. Premium models consume more requests per turn
-                (shown as a multiplier, e.g. &quot;50&times;&quot;).</p>
+                <tr><td>$attachFileIcon</td><td><b>Attach File</b></td><td>Attach the currently open editor file to your prompt as context.</td></tr>
+                <tr><td>$attachSelIcon</td><td><b>Attach Selection</b></td><td>Attach the current text selection from the editor to your prompt.</td></tr>
+                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <h3>Mode Selector</h3>
-                <p>Switch between <b>Agent</b> mode (autonomous tool use) and <b>Chat</b> mode (conversation only, no tool calls).</p>
+                <tr><td></td><td><b>Model</b></td><td>Choose the AI model. Premium models show a cost multiplier (e.g. &quot;50&times;&quot;).</td></tr>
+                <tr><td></td><td><b>Mode</b></td><td><b>Agent</b> = autonomous tool use. <b>Plan</b> = conversation only, no tool calls.</td></tr>
+                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <h3>Copy Conversation</h3>
-                <p>Copies the full conversation history to the clipboard as formatted text.</p>
+                <tr><td>$followIcon</td><td><b>Follow Agent</b></td><td>Toggle: auto-open files in the editor as the agent reads or writes them.</td></tr>
+                <tr><td>$formatIcon</td><td><b>Format</b></td><td>Toggle: auto-format code after the agent edits files.</td></tr>
+                <tr><td>$buildIcon</td><td><b>Build</b></td><td>Toggle: agent builds the project before completing its turn.</td></tr>
+                <tr><td>$testIcon</td><td><b>Test</b></td><td>Toggle: agent runs tests before completing its turn.</td></tr>
+                <tr><td>$commitIcon</td><td><b>Commit</b></td><td>Toggle: agent auto-commits changes before completing its turn.</td></tr>
+                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <h3>Toolbar Toggles</h3>
-                <p>These toggles control how the agent and plugin behave. They do <b>not</b> trigger actions when clicked &mdash;
-                they set preferences for future agent turns.</p>
-                <ul>
-                  <li><b>Follow Agent</b> &mdash; When enabled, the editor automatically opens files as the agent reads or writes them.</li>
-                  <li><b>Format</b> &mdash; When enabled, code is automatically formatted after the agent edits files.</li>
-                  <li><b>Build</b> &mdash; When enabled, the agent builds the project before completing its turn to verify no compile errors.</li>
-                  <li><b>Test</b> &mdash; When enabled, the agent runs tests before completing its turn to verify correctness.</li>
-                  <li><b>Commit</b> &mdash; When enabled, the agent auto-commits its changes before completing its turn.</li>
-                </ul>
+                <tr><td>$instrIcon</td><td><b>Instructions</b></td><td>Open <code>copilot-instructions.md</code> &mdash; persistent instructions the agent follows every turn.</td></tr>
+                <tr><td>$todoIcon</td><td><b>TODO</b></td><td>Open <code>TODO.md</code> &mdash; a task list the agent can read and update.</td></tr>
+                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <h3>Instructions &amp; TODO</h3>
-                <p><b>Open Instructions</b> opens <code>copilot-instructions.md</code> &mdash; a file where you define persistent
-                instructions the agent follows every turn.<br/>
-                <b>Open TODO</b> opens <code>TODO.md</code> &mdash; a task list the agent can read and update.</p>
+                <tr><td>$exportIcon</td><td><b>Export Chat</b></td><td>Copy the full conversation to clipboard (as text or HTML).</td></tr>
+                <tr><td>$helpIcon</td><td><b>Help</b></td><td>This dialog.</td></tr>
+                </table>
 
-                <h3>Processing Indicator &amp; Usage</h3>
-                <p>The right side of the toolbar shows a timer while the agent is processing, along with the number of
-                premium requests consumed. The usage bar shows your current session usage against your plan limit.</p>
+                <h3>Right Side</h3>
+                <p>A <b>processing timer</b> appears while the agent is working. Next to it, a <b>usage graph</b>
+                shows premium requests consumed &mdash; click it for details.</p>
+
+                <h3>Title Bar</h3>
+                <table cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <tr><td>$restartIcon</td><td><b>New Chat</b></td><td>Start a fresh conversation (top-right of the tool window).</td></tr>
+                <tr><td>$settingsIcon</td><td><b>Settings</b></td><td>Configure inactivity timeout and max tool calls per turn.</td></tr>
+                </table>
 
                 <h3>Chat Panel</h3>
                 <p>Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as
-                collapsible chips &mdash; click to expand and see tool arguments/results. Long chip labels are truncated
-                with the full text shown on hover.</p>
-
-                <h3>Settings</h3>
-                <p>Open via <b>File &rarr; Settings &rarr; Agentic Copilot</b> to configure inactivity timeout and max tool calls per turn.</p>
+                collapsible chips &mdash; click to expand and see arguments/results.</p>
                 </body></html>
             """.trimIndent()
 
@@ -1168,13 +1195,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 border = javax.swing.BorderFactory.createEmptyBorder(8, 8, 8, 8)
             }
             val scrollPane = javax.swing.JScrollPane(editorPane).apply {
-                preferredSize = java.awt.Dimension(540, 520)
+                preferredSize = java.awt.Dimension(600, 560)
             }
-            // scroll to top
             javax.swing.SwingUtilities.invokeLater { editorPane.caretPosition = 0 }
 
             com.intellij.openapi.ui.DialogBuilder(project).apply {
-                setTitle("Agentic Copilot — Help")
+                setTitle("Agentic Copilot \u2014 Help")
                 setCenterPanel(scrollPane)
                 removeAllActions()
                 addOkAction()

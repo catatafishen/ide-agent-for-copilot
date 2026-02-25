@@ -796,7 +796,9 @@ public class McpServer {
         props.add("env", envProp);
     }
 
-    /** Add 'items' schema to an array property (required by JSON Schema). */
+    /**
+     * Add 'items' schema to an array property (required by JSON Schema).
+     */
     private static void addArrayItems(JsonObject tool, String propertyName) {
         JsonObject prop = tool.getAsJsonObject("inputSchema")
             .getAsJsonObject("properties").getAsJsonObject(propertyName);
