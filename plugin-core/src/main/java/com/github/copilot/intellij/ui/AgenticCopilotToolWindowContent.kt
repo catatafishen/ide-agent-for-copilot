@@ -807,8 +807,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
      * Native Swing panel that shows a small animated spinner + elapsed-time counter
      * plus tool call count and requests used. Hidden when idle; visible once [start] is called.
      * On [stop], spinner changes to checkmark and stats remain visible until next [start].
+     * Click to toggle between per-turn and session-wide stats.
      */
-    private class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
+    private inner class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
         private val spinner = AsyncProcessIcon("CopilotProcessing")
         private val doneIcon = JBLabel("\u2705")
         private val timerLabel = JBLabel("")
@@ -818,6 +819,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         private var toolCallCount = 0
         private var requestsUsed = 0
         private val ticker = javax.swing.Timer(1000) { updateLabel() }
+
+        // Session-wide accumulators
+        private var sessionTotalTimeMs = 0L
+        private var sessionTotalToolCalls = 0
+        private var sessionTotalRequests = 0
+        private var sessionTurnCount = 0
+        private var isRunning = false
+
+        private val modeTurn = 0
+        private val modeSession = 1
+        private var displayMode = modeTurn
 
         init {
             isOpaque = false
@@ -835,12 +847,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             add(toolsLabel)
             add(requestsLabel)
             isVisible = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            toolTipText = "Click to toggle turn/session stats"
+            addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                    displayMode = if (displayMode == modeTurn) modeSession else modeTurn
+                    refreshDisplay()
+                }
+            })
         }
 
         fun start() {
             startedAt = System.currentTimeMillis()
             toolCallCount = 0
             requestsUsed = 0
+            isRunning = true
+            displayMode = modeTurn
             timerLabel.text = "0s"
             toolsLabel.text = ""
             requestsLabel.text = ""
@@ -857,6 +879,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         fun stop() {
             ticker.stop()
+            isRunning = false
+            // Accumulate into session totals
+            sessionTotalTimeMs += System.currentTimeMillis() - startedAt
+            sessionTotalToolCalls += toolCallCount
+            sessionTotalRequests += requestsUsed
+            sessionTurnCount++
             updateLabel()
             spinner.suspend()
             spinner.isVisible = false
@@ -864,11 +892,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             revalidate(); repaint()
         }
 
+        fun resetSession() {
+            sessionTotalTimeMs = 0L
+            sessionTotalToolCalls = 0
+            sessionTotalRequests = 0
+            sessionTurnCount = 0
+            displayMode = modeTurn
+        }
+
         fun incrementToolCalls() {
             toolCallCount++
             SwingUtilities.invokeLater {
-                toolsLabel.text = "\u2022 ${toolCallCount} tools"
-                toolsLabel.isVisible = true
+                if (displayMode == modeTurn) {
+                    toolsLabel.text = "\u2022 $toolCallCount tools"
+                    toolsLabel.isVisible = true
+                }
                 revalidate(); repaint()
             }
         }
@@ -876,8 +914,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         fun setRequestsUsed(count: Int) {
             requestsUsed = count
             SwingUtilities.invokeLater {
-                if (count > 0) {
-                    requestsLabel.text = "\u2022 ${count} req"
+                if (count > 0 && displayMode == modeTurn) {
+                    requestsLabel.text = "\u2022 $count req"
                     requestsLabel.isVisible = true
                     revalidate(); repaint()
                 }
@@ -887,8 +925,49 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         fun incrementRequests(multiplier: Int = 1) {
             requestsUsed += multiplier
             SwingUtilities.invokeLater {
-                requestsLabel.text = "\u2022 ${requestsUsed} req"
-                requestsLabel.isVisible = true
+                if (displayMode == modeTurn) {
+                    requestsLabel.text = "\u2022 $requestsUsed req"
+                    requestsLabel.isVisible = true
+                    revalidate(); repaint()
+                }
+            }
+        }
+
+        private fun refreshDisplay() {
+            SwingUtilities.invokeLater {
+                when (displayMode) {
+                    modeTurn -> {
+                        toolTipText = "Click to show session stats"
+                        updateLabel()
+                        toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
+                        toolsLabel.isVisible = toolCallCount > 0
+                        requestsLabel.text = if (requestsUsed > 0) "\u2022 $requestsUsed req" else ""
+                        requestsLabel.isVisible = requestsUsed > 0
+                        if (!isRunning) doneIcon.text = "\u2705"
+                    }
+                    modeSession -> {
+                        toolTipText = "Click to show turn stats"
+                        val totalMs = sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
+                        val totalSec = totalMs / 1000
+                        timerLabel.text = if (totalSec < 60) "${totalSec}s" else "${totalSec / 60}m ${totalSec % 60}s"
+                        val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
+                        toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
+                        toolsLabel.isVisible = totalTools > 0
+                        // Prefer billing API diff if available
+                        val billingReqs = if (billingCycleStartUsed >= 0 && lastBillingUsed > billingCycleStartUsed)
+                            lastBillingUsed - billingCycleStartUsed else -1
+                        val totalReqs = sessionTotalRequests + if (isRunning) requestsUsed else 0
+                        if (billingReqs > 0) {
+                            requestsLabel.text = "\u2022 $billingReqs req"
+                        } else if (totalReqs > 0) {
+                            requestsLabel.text = "\u2022 ~$totalReqs req"
+                        } else {
+                            requestsLabel.text = ""
+                        }
+                        requestsLabel.isVisible = requestsLabel.text.isNotEmpty()
+                        doneIcon.text = "\u2211"
+                    }
+                }
                 revalidate(); repaint()
             }
         }
@@ -2422,6 +2501,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     fun resetSession() {
         currentSessionId = null
         billingCycleStartUsed = -1
+        if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
         consolePanel.clear()
         consolePanel.showPlaceholder("New conversation started.")
         addTimelineEvent(EventType.SESSION_START, "New conversation started")
