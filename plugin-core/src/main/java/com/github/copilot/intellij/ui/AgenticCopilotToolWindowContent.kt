@@ -605,8 +605,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         attachmentsPanel.isVisible = false
         attachmentsPanel.border = JBUI.Borders.emptyBottom(2)
 
-        // Use PLAIN_TEXT for clean appearance
-        promptTextArea = EditorTextField("", project, com.intellij.openapi.fileTypes.FileTypes.PLAIN_TEXT)
+        // Use EditorTextFieldProvider for PsiFile-backed document (enables spell checking)
+        val editorCustomizations = mutableListOf<com.intellij.ui.EditorCustomization>()
+        try {
+            val spellCheck = com.intellij.openapi.editor.SpellCheckingEditorCustomizationProvider
+                .getInstance().getEnabledCustomization()
+            if (spellCheck != null) editorCustomizations.add(spellCheck)
+        } catch (_: Exception) {
+            // Spellchecker plugin not available
+        }
+        promptTextArea = com.intellij.ui.EditorTextFieldProvider.getInstance()
+            .getEditorField(com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE, project, editorCustomizations)
         promptTextArea.setOneLineMode(false)
         promptTextArea.border = null
 
