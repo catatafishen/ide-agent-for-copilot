@@ -740,6 +740,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(CopyConversationAction())
         leftGroup.addSeparator()
         leftGroup.add(FollowAgentFilesToggleAction())
+        leftGroup.add(FormatAfterEditToggleAction())
+        leftGroup.add(BuildBeforeEndToggleAction())
+        leftGroup.add(TestBeforeEndToggleAction())
+        leftGroup.add(CommitBeforeEndToggleAction())
         leftGroup.addSeparator()
         leftGroup.add(OpenInstructionsAction())
         leftGroup.add(OpenTodoAction())
@@ -1039,6 +1043,66 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             com.github.copilot.intellij.services.CopilotSettings.setFollowAgentFiles(state)
+        }
+    }
+
+    private inner class FormatAfterEditToggleAction : ToggleAction(
+        "Format", "Auto-format code after agent edits",
+        com.intellij.icons.AllIcons.Actions.ReformatCode
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean {
+            return CopilotSettings.getFormatAfterEdit()
+        }
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            CopilotSettings.setFormatAfterEdit(state)
+        }
+    }
+
+    private inner class BuildBeforeEndToggleAction : ToggleAction(
+        "Build", "Build project before ending turn",
+        com.intellij.icons.AllIcons.Actions.Compile
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean {
+            return CopilotSettings.getBuildBeforeEnd()
+        }
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            CopilotSettings.setBuildBeforeEnd(state)
+        }
+    }
+
+    private inner class TestBeforeEndToggleAction : ToggleAction(
+        "Test", "Run tests before ending turn",
+        com.intellij.icons.AllIcons.RunConfigurations.TestState.Run
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean {
+            return CopilotSettings.getTestBeforeEnd()
+        }
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            CopilotSettings.setTestBeforeEnd(state)
+        }
+    }
+
+    private inner class CommitBeforeEndToggleAction : ToggleAction(
+        "Commit", "Auto-commit changes before ending turn",
+        com.intellij.icons.AllIcons.Actions.Commit
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean {
+            return CopilotSettings.getCommitBeforeEnd()
+        }
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            CopilotSettings.setCommitBeforeEnd(state)
         }
     }
 
@@ -2086,67 +2150,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         toolCallSpinner.toolTipText = "Limit tool calls per turn to control credit usage (0 = unlimited)"
         panel.add(toolCallSpinner, gbc)
 
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        val followFilesCheckbox = JCheckBox("Open files in editor when agent reads/writes them")
-        followFilesCheckbox.isSelected = CopilotSettings.getFollowAgentFiles()
-        followFilesCheckbox.toolTipText = "Automatically navigate to files the agent touches"
-        panel.add(followFilesCheckbox, gbc)
-
-        // --- Code formatting section ---
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(20, 5, 5, 5)
-        val formatLabel = JBLabel("<html><b>Code formatting</b></html>")
-        panel.add(formatLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(5)
-
-        val formatAfterEdit = JCheckBox("Format code after agent edits")
-        formatAfterEdit.isSelected = true
-        panel.add(formatAfterEdit, gbc)
-
-        gbc.gridy++
-        val optimizeImports = JCheckBox("Optimize imports after edits")
-        optimizeImports.isSelected = true
-        panel.add(optimizeImports, gbc)
-
-        // --- Tool permissions section (placeholder) ---
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(20, 5, 5, 5)
-        val permissionsLabel =
-            JBLabel("<html><b>Tool permissions</b> <span style='color:gray;font-weight:normal'>(coming soon)</span></html>")
-        panel.add(permissionsLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(5)
-
-        val toolPermissions = listOf(
-            "File Operations" to "Allow agent to read and write files",
-            "Code Execution" to "Allow agent to run commands",
-            "Git Operations" to "Allow agent to commit and push",
-            "Network Access" to "Allow agent to make HTTP requests"
-        )
-
-        toolPermissions.forEach { (tool, description) ->
-            gbc.gridx = 0
-            val checkbox = JCheckBox(tool)
-            checkbox.isSelected = true
-            checkbox.isEnabled = false
-            checkbox.toolTipText = "$description (not yet configurable)"
-            panel.add(checkbox, gbc)
-            gbc.gridy++
-        }
-
         // Add filler to push everything to top
+        gbc.gridx = 0
         gbc.gridy++
+        gbc.gridwidth = 2
         gbc.weighty = 1.0
         gbc.fill = GridBagConstraints.BOTH
         panel.add(JBPanel<JBPanel<*>>(), gbc)
@@ -2154,7 +2161,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val saveCallback: () -> Unit = {
             CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
             CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
-            CopilotSettings.setFollowAgentFiles(followFilesCheckbox.isSelected)
         }
 
         return Pair(panel, saveCallback)

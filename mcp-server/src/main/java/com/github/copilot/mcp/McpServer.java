@@ -545,20 +545,24 @@ public class McpServer {
             ),
             List.of("message")));
 
-        tools.add(buildTool("git_stage", "Git Stage",
+        var gitStage = buildTool("git_stage", "Git Stage",
             Map.of(
                 "path", Map.of("type", "string", "description", "Single file path to stage"),
                 "paths", Map.of("type", "array", "description", "Multiple file paths to stage"),
                 "all", Map.of("type", "boolean", "description", "If true, stage all changes (including untracked files)")
             ),
-            List.of()));
+            List.of());
+        addArrayItems(gitStage, "paths");
+        tools.add(gitStage);
 
-        tools.add(buildTool("git_unstage", "Git Unstage",
+        var gitUnstage = buildTool("git_unstage", "Git Unstage",
             Map.of(
                 "path", Map.of("type", "string", "description", "Single file path to unstage"),
                 "paths", Map.of("type", "array", "description", "Multiple file paths to unstage")
             ),
-            List.of()));
+            List.of());
+        addArrayItems(gitUnstage, "paths");
+        tools.add(gitUnstage);
 
         tools.add(buildTool("git_branch", "Git Branch",
             Map.of(
@@ -785,6 +789,15 @@ public class McpServer {
         additionalProps.addProperty("type", "string");
         envProp.add("additionalProperties", additionalProps);
         props.add("env", envProp);
+    }
+
+    /** Add 'items' schema to an array property (required by JSON Schema). */
+    private static void addArrayItems(JsonObject tool, String propertyName) {
+        JsonObject prop = tool.getAsJsonObject("inputSchema")
+            .getAsJsonObject("properties").getAsJsonObject(propertyName);
+        JsonObject items = new JsonObject();
+        items.addProperty("type", "string");
+        prop.add("items", items);
     }
 
     private static JsonObject handleToolsCall(JsonObject params) {

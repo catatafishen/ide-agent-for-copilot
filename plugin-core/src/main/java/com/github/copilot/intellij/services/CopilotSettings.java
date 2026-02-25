@@ -16,6 +16,10 @@ public final class CopilotSettings {
     private static final String KEY_PROMPT_TIMEOUT = "copilot.promptTimeout";
     private static final String KEY_MAX_TOOL_CALLS = "copilot.maxToolCallsPerTurn";
     private static final String KEY_FOLLOW_AGENT_FILES = "copilot.followAgentFiles";
+    private static final String KEY_FORMAT_AFTER_EDIT = "copilot.formatAfterEdit";
+    private static final String KEY_BUILD_BEFORE_END = "copilot.buildBeforeEnd";
+    private static final String KEY_TEST_BEFORE_END = "copilot.testBeforeEnd";
+    private static final String KEY_COMMIT_BEFORE_END = "copilot.commitBeforeEnd";
     private static final int DEFAULT_PROMPT_TIMEOUT = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS = 0;
 
@@ -104,5 +108,37 @@ public final class CopilotSettings {
 
     public static void setFollowAgentFiles(boolean enabled) {
         PropertiesComponent.getInstance().setValue(KEY_FOLLOW_AGENT_FILES, enabled, false);
+    }
+
+    public static boolean getFormatAfterEdit() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_FORMAT_AFTER_EDIT, true);
+    }
+
+    public static void setFormatAfterEdit(boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_FORMAT_AFTER_EDIT, enabled, true);
+    }
+
+    public static boolean getBuildBeforeEnd() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_BUILD_BEFORE_END, false);
+    }
+
+    public static void setBuildBeforeEnd(boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_BUILD_BEFORE_END, enabled, false);
+    }
+
+    public static boolean getTestBeforeEnd() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_TEST_BEFORE_END, false);
+    }
+
+    public static void setTestBeforeEnd(boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_TEST_BEFORE_END, enabled, false);
+    }
+
+    public static boolean getCommitBeforeEnd() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_COMMIT_BEFORE_END, false);
+    }
+
+    public static void setCommitBeforeEnd(boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_COMMIT_BEFORE_END, enabled, false);
     }
 }
