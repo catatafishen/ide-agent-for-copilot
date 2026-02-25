@@ -51,6 +51,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** Human-readable name and short description for each tool */
         private data class ToolInfo(val displayName: String, val description: String)
 
+        /** JSON key to use as subtitle in the chip label for specific tools */
+        private val TOOL_SUBTITLE_KEY = mapOf(
+            "run_command" to "title",
+        )
+
         private val TOOL_DISPLAY_INFO = mapOf(
             // Code Navigation
             "search_symbols" to ToolInfo(
@@ -357,7 +362,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val did = domId(id)
         val baseName = title.substringAfterLast("-")
         val info = TOOL_DISPLAY_INFO[title] ?: TOOL_DISPLAY_INFO[baseName]
-        val displayName = info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
+        var displayName = info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
+        val subtitleKey = TOOL_SUBTITLE_KEY[title] ?: TOOL_SUBTITLE_KEY[baseName]
+        if (subtitleKey != null && !arguments.isNullOrBlank()) {
+            try {
+                val json = com.google.gson.JsonParser.parseString(arguments).asJsonObject
+                json[subtitleKey]?.asString?.let { displayName = "$displayName: $it" }
+            } catch (_: Exception) { }
+        }
         val safeDisplayName = escapeHtml(displayName)
 
         val contentParts = StringBuilder()
