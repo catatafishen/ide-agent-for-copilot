@@ -1222,8 +1222,8 @@ ul,ol{margin:4px 0;padding-left:22px}
             "LOAD_MORE_BRIDGE" to loadMoreBridgeJs,
         )
 
-        val css = loadResource("/chat-console/chat-console.css")
-        val js = loadResource("/chat-console/chat-console.js")
+        val css = loadResource("/chat-console/chat-console.css.template")
+        val js = loadResource("/chat-console/chat-console.js.template")
         val styledCss = vars.entries.fold(css) { s, (k, v) -> s.replace("{{$k}}", v) }
         val styledJs = vars.entries.fold(js) { s, (k, v) -> s.replace("{{$k}}", v) }
 
