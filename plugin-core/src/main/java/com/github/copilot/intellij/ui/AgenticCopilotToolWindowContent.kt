@@ -1107,8 +1107,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun iconToImgTag(@Suppress("UNUSED_PARAMETER") icon: javax.swing.Icon): String = ""
-
     private inner class HelpAction : AnAction(
         "Help", "Show help for all toolbar features and plugin behavior",
         com.intellij.icons.AllIcons.Actions.Help
@@ -1116,70 +1114,135 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
         override fun actionPerformed(e: AnActionEvent) {
-            val html = """
-                <html><body style="font-family: sans-serif; padding: 10px; width: 500px;">
-                <h2>Agentic Copilot &mdash; Toolbar Guide</h2>
-                <p>Each button in the toolbar, from left to right:</p>
+            data class HelpRow(val icon: javax.swing.Icon, val name: String, val description: String)
 
-                <table cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <tr><td>&#x25B6;</td><td><b>Send</b></td><td>Send your prompt to the agent. Shortcut: <b>Enter</b>. Use <b>Shift+Enter</b> for a new line.</td></tr>
-                <tr><td>&#x23F9;</td><td><b>Stop</b></td><td>While the agent is working, this replaces Send. Stops the current agent turn.</td></tr>
-                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
+            val toolbarItems = listOf(
+                HelpRow(com.intellij.icons.AllIcons.Actions.Execute, "Send", "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."),
+                HelpRow(com.intellij.icons.AllIcons.Actions.Suspend, "Stop", "While the agent is working, this replaces Send. Stops the current agent turn."),
+                null,
+                HelpRow(com.intellij.icons.AllIcons.Actions.AddFile, "Attach File", "Attach the currently open editor file to your prompt as context."),
+                HelpRow(com.intellij.icons.AllIcons.Actions.AddMulticaret, "Attach Selection", "Attach the current text selection from the editor to your prompt."),
+                null,
+                HelpRow(com.intellij.icons.AllIcons.Actions.Lightning, "Model", "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."),
+                HelpRow(com.intellij.icons.AllIcons.General.Settings, "Mode", "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."),
+                null,
+                HelpRow(com.intellij.icons.AllIcons.Actions.Preview, "Follow Agent", "Toggle: auto-open files in the editor as the agent reads or writes them."),
+                HelpRow(com.intellij.icons.AllIcons.Actions.ReformatCode, "Format", "Toggle: instruct the agent to auto-format code after editing files."),
+                HelpRow(com.intellij.icons.AllIcons.Actions.Compile, "Build", "Toggle: instruct the agent to build the project before completing its turn."),
+                HelpRow(com.intellij.icons.AllIcons.Nodes.Test, "Test", "Toggle: instruct the agent to run tests before completing its turn."),
+                HelpRow(com.intellij.icons.AllIcons.Actions.Commit, "Commit", "Toggle: instruct the agent to auto-commit changes before completing its turn."),
+                null,
+                HelpRow(com.intellij.icons.AllIcons.Actions.IntentionBulb, "Instructions", "Open copilot-instructions.md — persistent instructions the agent follows every turn."),
+                HelpRow(com.intellij.icons.AllIcons.General.TodoDefault, "TODO", "Open TODO.md — a task list the agent can read and update."),
+                null,
+                HelpRow(com.intellij.icons.AllIcons.ToolbarDecorator.Export, "Export Chat", "Copy the full conversation to clipboard (as text or HTML)."),
+                HelpRow(com.intellij.icons.AllIcons.Actions.Help, "Help", "This dialog."),
+            )
 
-                <tr><td>&#x1F4CE;</td><td><b>Attach File</b></td><td>Attach the currently open editor file to your prompt as context.</td></tr>
-                <tr><td>&#x2702;</td><td><b>Attach Selection</b></td><td>Attach the current text selection from the editor to your prompt.</td></tr>
-                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
+            val titleBarItems = listOf(
+                HelpRow(com.intellij.icons.AllIcons.Actions.Restart, "New Chat", "Start a fresh conversation (top-right of the tool window)."),
+                HelpRow(com.intellij.icons.AllIcons.General.Settings, "Settings", "Configure inactivity timeout and max tool calls per turn."),
+            )
 
-                <tr><td>&#x1F916;</td><td><b>Model</b></td><td>Choose the AI model. Premium models show a cost multiplier (e.g. &quot;50&times;&quot;).</td></tr>
-                <tr><td>&#x2699;</td><td><b>Mode</b></td><td><b>Agent</b> = autonomous tool use. <b>Plan</b> = conversation only, no tool calls.</td></tr>
-                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
+            val content = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+                border = JBUI.Borders.empty(12)
 
-                <tr><td>&#x1F441;</td><td><b>Follow Agent</b></td><td>Toggle: auto-open files in the editor as the agent reads or writes them.</td></tr>
-                <tr><td>&#x270F;</td><td><b>Format</b></td><td>Toggle: instruct the agent to auto-format code after editing files.</td></tr>
-                <tr><td>&#x1F528;</td><td><b>Build</b></td><td>Toggle: instruct the agent to build the project before completing its turn.</td></tr>
-                <tr><td>&#x2705;</td><td><b>Test</b></td><td>Toggle: instruct the agent to run tests before completing its turn.</td></tr>
-                <tr><td>&#x1F4BE;</td><td><b>Commit</b></td><td>Toggle: instruct the agent to auto-commit changes before completing its turn.</td></tr>
-                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
+                val mainPanel = JBPanel<JBPanel<*>>().apply {
+                    layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
 
-                <tr><td>&#x1F4A1;</td><td><b>Instructions</b></td><td>Open <code>copilot-instructions.md</code> &mdash; persistent instructions the agent follows every turn.</td></tr>
-                <tr><td>&#x2611;</td><td><b>TODO</b></td><td>Open <code>TODO.md</code> &mdash; a task list the agent can read and update.</td></tr>
-                <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
+                    // Title
+                    add(JBLabel("Agentic Copilot — Toolbar Guide").apply {
+                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 4)
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(4)
+                    })
+                    add(JBLabel("Each button in the toolbar, from left to right:").apply {
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(8)
+                    })
 
-                <tr><td>&#x1F4CB;</td><td><b>Export Chat</b></td><td>Copy the full conversation to clipboard (as text or HTML).</td></tr>
-                <tr><td>&#x2753;</td><td><b>Help</b></td><td>This dialog.</td></tr>
-                </table>
+                    // Toolbar items
+                    for (item in toolbarItems) {
+                        if (item == null) {
+                            add(javax.swing.JSeparator(javax.swing.SwingConstants.HORIZONTAL).apply {
+                                alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                                maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(8))
+                            })
+                        } else {
+                            add(createHelpRow(item.icon, item.name, item.description))
+                        }
+                    }
 
-                <h3>Right Side</h3>
-                <p>A <b>processing timer</b> appears while the agent is working. Next to it, a <b>usage graph</b>
-                shows premium requests consumed &mdash; click it for details.</p>
+                    // Right side section
+                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
+                    add(JBLabel("Right Side").apply {
+                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(4)
+                    })
+                    add(JBLabel("A processing timer appears while the agent is working. Next to it, a usage graph shows premium requests consumed — click it for details.").apply {
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(8)
+                    })
 
-                <h3>Title Bar</h3>
-                <table cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <tr><td>&#x1F504;</td><td><b>New Chat</b></td><td>Start a fresh conversation (top-right of the tool window).</td></tr>
-                <tr><td>&#x2699;</td><td><b>Settings</b></td><td>Configure inactivity timeout and max tool calls per turn.</td></tr>
-                </table>
+                    // Title bar section
+                    add(JBLabel("Title Bar").apply {
+                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(4)
+                    })
+                    for (item in titleBarItems) {
+                        add(createHelpRow(item.icon, item.name, item.description))
+                    }
 
-                <h3>Chat Panel</h3>
-                <p>Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as
-                collapsible chips &mdash; click to expand and see arguments/results.</p>
-                </body></html>
-            """.trimIndent()
+                    // Chat panel section
+                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
+                    add(JBLabel("Chat Panel").apply {
+                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(4)
+                    })
+                    add(JBLabel("Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as collapsible chips — click to expand and see arguments/results.").apply {
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                    })
+                }
 
-            val editorPane = javax.swing.JEditorPane("text/html", html).apply {
-                isEditable = false
-                border = javax.swing.BorderFactory.createEmptyBorder(8, 8, 8, 8)
+                val scrollPane = com.intellij.ui.components.JBScrollPane(mainPanel).apply {
+                    preferredSize = java.awt.Dimension(JBUI.scale(580), JBUI.scale(520))
+                    border = null
+                }
+                add(scrollPane, BorderLayout.CENTER)
             }
-            val scrollPane = javax.swing.JScrollPane(editorPane).apply {
-                preferredSize = java.awt.Dimension(600, 560)
-            }
-            javax.swing.SwingUtilities.invokeLater { editorPane.caretPosition = 0 }
 
             com.intellij.openapi.ui.DialogBuilder(project).apply {
                 setTitle("Agentic Copilot \u2014 Help")
-                setCenterPanel(scrollPane)
+                setCenterPanel(content)
                 removeAllActions()
                 addOkAction()
                 show()
+            }
+        }
+
+        private fun createHelpRow(icon: javax.swing.Icon, name: String, description: String): JBPanel<JBPanel<*>> {
+            return JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(8), 0)).apply {
+                alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(32))
+                border = JBUI.Borders.empty(2, 0)
+
+                add(JBLabel(icon).apply {
+                    preferredSize = java.awt.Dimension(JBUI.scale(20), JBUI.scale(20))
+                    horizontalAlignment = javax.swing.SwingConstants.CENTER
+                }, BorderLayout.WEST)
+
+                add(JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(JBLabel(name).apply {
+                        font = font.deriveFont(Font.BOLD)
+                        preferredSize = java.awt.Dimension(JBUI.scale(100), preferredSize.height)
+                        minimumSize = preferredSize
+                    }, BorderLayout.WEST)
+                    add(JBLabel(description), BorderLayout.CENTER)
+                }, BorderLayout.CENTER)
             }
         }
     }
