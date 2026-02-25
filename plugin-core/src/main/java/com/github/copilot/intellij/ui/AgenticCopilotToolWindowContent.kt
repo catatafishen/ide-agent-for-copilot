@@ -1108,7 +1108,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun iconToImgTag(icon: javax.swing.Icon): String {
-        val img = java.awt.image.BufferedImage(icon.iconWidth, icon.iconHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        val img =
+            java.awt.image.BufferedImage(icon.iconWidth, icon.iconHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
         val g = img.createGraphics()
         icon.paintIcon(null, g, 0, 0)
         g.dispose()
