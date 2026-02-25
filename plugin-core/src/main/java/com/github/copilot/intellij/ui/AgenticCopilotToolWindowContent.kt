@@ -727,7 +727,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createControlsRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // Left toolbar: send/stop, attach, model, mode, copy
+        // Left toolbar: send/stop, attach, model, mode, export chat
         val leftGroup = DefaultActionGroup()
         leftGroup.add(SendStopAction())
         leftGroup.addSeparator()
@@ -993,9 +993,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    // Copy conversation to clipboard (popup with Text / HTML options)
+    // Export conversation to clipboard (popup with Text / HTML options)
     private inner class CopyConversationAction : AnAction(
-        "Copy", "Copy conversation to clipboard", com.intellij.icons.AllIcons.Actions.Copy
+        "Export Chat", "Export conversation to clipboard", com.intellij.icons.AllIcons.ToolbarDecorator.Export
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
