@@ -818,6 +818,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     window.scrollTo(0,scrollY+(document.body.scrollHeight-scrollH));
                     finalizeTurn({});
                     window._loadingMore=false;
+                    var seps=c.querySelectorAll('.session-sep');
+                    for(var j=0;j<seps.length;j++){
+                        var n=seps[j].nextElementSibling;var ok=false;
+                        while(n&&!n.classList.contains('session-sep')){
+                            if(n.classList.contains('prompt-row')||n.classList.contains('agent-row')||
+                               n.classList.contains('status-row')){ok=true;break;}
+                            n=n.nextElementSibling;
+                        }
+                        if(!ok)seps[j].remove();
+                    }
                     ${
                         if (remaining == 0) "if(sentinel)sentinel.remove();"
                         else "var t=sentinel?sentinel.querySelector('.load-more-text'):null;" +
@@ -1097,7 +1107,8 @@ ul,ol{margin:4px 0;padding-left:22px}
     }
 
     private fun trimMessages() {
-        // Keep at most 100 top-level rows to prevent performance degradation
+        // Keep at most 100 top-level rows to prevent performance degradation,
+        // then remove any session separators that no longer have content after them
         executeJs(
             """(function(){
             var c=document.getElementById('container');if(!c)return;
@@ -1105,6 +1116,16 @@ ul,ol{margin:4px 0;padding-left:22px}
             var limit=100;
             if(rows.length>limit){
                 for(var i=0;i<rows.length-limit;i++){rows[i].remove();}
+            }
+            var seps=c.querySelectorAll('.session-sep');
+            for(var j=0;j<seps.length;j++){
+                var n=seps[j].nextElementSibling;var ok=false;
+                while(n&&!n.classList.contains('session-sep')){
+                    if(n.classList.contains('prompt-row')||n.classList.contains('agent-row')||
+                       n.classList.contains('status-row')){ok=true;break;}
+                    n=n.nextElementSibling;
+                }
+                if(!ok)seps[j].remove();
             }
         })()"""
         )
