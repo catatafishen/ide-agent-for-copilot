@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.project.Project
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
@@ -14,7 +15,6 @@ import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.*
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
-import com.intellij.openapi.fileTypes.FileTypes
 import java.awt.*
 import java.awt.datatransfer.StringSelection
 import java.awt.geom.Path2D
@@ -1476,24 +1476,27 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun setupPromptKeyBindings(promptTextArea: EditorTextField) {
+        val editor = promptTextArea.editor ?: return
+        val contentComponent = editor.contentComponent
+
         val enterKey = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
         val shiftEnterKey = KeyStroke.getKeyStroke(
             java.awt.event.KeyEvent.VK_ENTER,
             java.awt.event.InputEvent.SHIFT_DOWN_MASK
         )
-        val component = promptTextArea.editor?.contentComponent ?: promptTextArea
-        component.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
-        component.actionMap.put("sendPrompt", object : AbstractAction() {
+
+        contentComponent.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
+        contentComponent.actionMap.put("sendPrompt", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
                 if (promptTextArea.text.isNotBlank() && promptTextArea.text != PROMPT_PLACEHOLDER && !isSending) {
                     onSendStopClicked()
                 }
             }
         })
-        component.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
-        component.actionMap.put("insertNewline", object : AbstractAction() {
+        contentComponent.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
+        contentComponent.actionMap.put("insertNewline", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                promptTextArea.editor?.document?.insertString(promptTextArea.editor!!.caretModel.offset, "\n")
+                editor.document.insertString(editor.caretModel.offset, "\n")
             }
         })
     }
@@ -1521,22 +1524,53 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun setupPromptContextMenu(textArea: EditorTextField) {
         val popup = javax.swing.JPopupMenu()
+        val editor = textArea.editor ?: return
 
         // Edit actions
         val cutAction = javax.swing.JMenuItem("Cut").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.editor?.contentComponent?.let { (it as? javax.swing.text.JTextComponent)?.cut() } }
+            addActionListener {
+                val selectionModel = editor.selectionModel
+                if (selectionModel.hasSelection()) {
+                    val start = selectionModel.selectionStart
+                    val end = selectionModel.selectionEnd
+                    val selectedText = editor.document.getText(com.intellij.openapi.util.TextRange(start, end))
+                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                        java.awt.datatransfer.StringSelection(selectedText),
+                        null
+                    )
+                    editor.document.deleteString(start, end)
+                }
+            }
         }
         val copyAction = javax.swing.JMenuItem("Copy").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.editor?.contentComponent?.let { (it as? javax.swing.text.JTextComponent)?.copy() } }
+            addActionListener {
+                val selectionModel = editor.selectionModel
+                if (selectionModel.hasSelection()) {
+                    val start = selectionModel.selectionStart
+                    val end = selectionModel.selectionEnd
+                    val selectedText = editor.document.getText(com.intellij.openapi.util.TextRange(start, end))
+                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                        java.awt.datatransfer.StringSelection(selectedText),
+                        null
+                    )
+                }
+            }
         }
         val pasteAction = javax.swing.JMenuItem("Paste").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.editor?.contentComponent?.let { (it as? javax.swing.text.JTextComponent)?.paste() } }
+            addActionListener {
+                val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                val pastedText = clipboard.getContents(null).getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
+                if (pastedText != null) {
+                    val offset = editor.caretModel.offset
+                    editor.document.insertString(offset, pastedText)
+                }
+            }
         }
         val selectAllAction = javax.swing.JMenuItem("Select All").apply {
             accelerator =
