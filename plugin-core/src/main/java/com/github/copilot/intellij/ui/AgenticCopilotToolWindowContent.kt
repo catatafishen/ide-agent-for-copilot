@@ -8,11 +8,13 @@ import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.*
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
+import com.intellij.openapi.fileTypes.FileTypes
 import java.awt.*
 import java.awt.datatransfer.StringSelection
 import java.awt.geom.Path2D
@@ -53,7 +55,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private var selectedModelIndex = -1
     private var modelsStatusText: String? = MSG_LOADING
     private lateinit var controlsToolbar: ActionToolbar
-    private lateinit var promptTextArea: JBTextArea
+    private lateinit var promptTextArea: EditorTextField
     private lateinit var loadingSpinner: AsyncProcessIcon
     private var currentPromptThread: Thread? = null
     private var isSending = false
@@ -603,10 +605,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         attachmentsPanel.isVisible = false
         attachmentsPanel.border = JBUI.Borders.emptyBottom(2)
 
-        promptTextArea = JBTextArea()
-        promptTextArea.lineWrap = true
-        promptTextArea.wrapStyleWord = true
-        promptTextArea.rows = 2
+        promptTextArea = EditorTextField("", project, FileTypes.PLAIN_TEXT)
+        promptTextArea.setOneLineMode(false)
         promptTextArea.border = JBUI.Borders.empty(4)
 
         setupPromptKeyBindings(promptTextArea)
@@ -614,19 +614,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         setupPromptContextMenu(promptTextArea)
         setupPromptDragDrop(promptTextArea)
 
-        // Auto-resize rows (2-6)
-        promptTextArea.document.addDocumentListener(object : javax.swing.event.DocumentListener {
-            override fun insertUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
-            override fun removeUpdate(e: javax.swing.event.DocumentEvent?) = adjustRows()
-            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) { /* Not used for plain text documents */
-            }
-
-            private fun adjustRows() {
-                val newRows = promptTextArea.lineCount.coerceIn(2, 6)
-                if (promptTextArea.rows != newRows) {
-                    promptTextArea.rows = newRows
-                    SwingUtilities.invokeLater { promptTextArea.revalidate() }
-                }
+        // Auto-revalidate on document changes
+        promptTextArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
+                SwingUtilities.invokeLater { promptTextArea.revalidate() }
             }
         })
 
@@ -1484,29 +1475,30 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Status indicator removed from UI \u2192 kept as no-op to avoid call-site churn
     }
 
-    private fun setupPromptKeyBindings(promptTextArea: JBTextArea) {
+    private fun setupPromptKeyBindings(promptTextArea: EditorTextField) {
         val enterKey = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
         val shiftEnterKey = KeyStroke.getKeyStroke(
             java.awt.event.KeyEvent.VK_ENTER,
             java.awt.event.InputEvent.SHIFT_DOWN_MASK
         )
-        promptTextArea.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
-        promptTextArea.actionMap.put("sendPrompt", object : AbstractAction() {
+        val component = promptTextArea.editor?.contentComponent ?: promptTextArea
+        component.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
+        component.actionMap.put("sendPrompt", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
                 if (promptTextArea.text.isNotBlank() && promptTextArea.text != PROMPT_PLACEHOLDER && !isSending) {
                     onSendStopClicked()
                 }
             }
         })
-        promptTextArea.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
-        promptTextArea.actionMap.put("insertNewline", object : AbstractAction() {
+        component.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
+        component.actionMap.put("insertNewline", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                promptTextArea.insert("\n", promptTextArea.caretPosition)
+                promptTextArea.editor?.document?.insertString(promptTextArea.editor!!.caretModel.offset, "\n")
             }
         })
     }
 
-    private fun setupPromptPlaceholder(promptTextArea: JBTextArea) {
+    private fun setupPromptPlaceholder(promptTextArea: EditorTextField) {
         promptTextArea.addFocusListener(object : java.awt.event.FocusListener {
             private val placeholder = PROMPT_PLACEHOLDER
             override fun focusGained(e: java.awt.event.FocusEvent) {
@@ -1527,24 +1519,24 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.foreground = JBColor.GRAY
     }
 
-    private fun setupPromptContextMenu(textArea: JBTextArea) {
+    private fun setupPromptContextMenu(textArea: EditorTextField) {
         val popup = javax.swing.JPopupMenu()
 
         // Edit actions
         val cutAction = javax.swing.JMenuItem("Cut").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.cut() }
+            addActionListener { textArea.editor?.contentComponent?.let { (it as? javax.swing.text.JTextComponent)?.cut() } }
         }
         val copyAction = javax.swing.JMenuItem("Copy").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.copy() }
+            addActionListener { textArea.editor?.contentComponent?.let { (it as? javax.swing.text.JTextComponent)?.copy() } }
         }
         val pasteAction = javax.swing.JMenuItem("Paste").apply {
             accelerator =
                 KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.paste() }
+            addActionListener { textArea.editor?.contentComponent?.let { (it as? javax.swing.text.JTextComponent)?.paste() } }
         }
         val selectAllAction = javax.swing.JMenuItem("Select All").apply {
             accelerator =
@@ -1593,7 +1585,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Update enabled states dynamically before showing
         popup.addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
             override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
-                val hasSelection = textArea.selectedText?.isNotEmpty() == true
+                val hasSelection = textArea.editor?.selectionModel?.hasSelection() == true
                 val hasText = textArea.text.isNotBlank() && textArea.text != PROMPT_PLACEHOLDER
                 cutAction.isEnabled = hasSelection
                 copyAction.isEnabled = hasSelection
@@ -1611,7 +1603,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         })
     }
 
-    private fun setupPromptDragDrop(textArea: JBTextArea) {
+    private fun setupPromptDragDrop(textArea: EditorTextField) {
         textArea.dropTarget = java.awt.dnd.DropTarget(
             textArea, java.awt.dnd.DnDConstants.ACTION_COPY,
             object : java.awt.dnd.DropTargetAdapter() {
