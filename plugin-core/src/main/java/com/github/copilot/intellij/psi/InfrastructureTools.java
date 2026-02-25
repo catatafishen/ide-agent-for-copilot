@@ -103,6 +103,13 @@ class InfrastructureTools extends AbstractToolHandler {
 
     private String runCommand(JsonObject args) throws Exception {
         String command = args.get("command").getAsString();
+        // Block git commands — they bypass IntelliJ's VFS and cause buffer desync
+        String trimmed = command.trim();
+        if (trimmed.equals("git") || trimmed.startsWith("git ")) {
+            return "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
+                    + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
+                    + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
+        }
         String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
