@@ -34,9 +34,11 @@ final class GitToolHandler {
     private static final String STATUS_PARAM = "status";
 
     private final Project project;
+    private final FileTools fileTools;
 
-    GitToolHandler(Project project) {
+    GitToolHandler(Project project, FileTools fileTools) {
         this.project = project;
+        this.fileTools = fileTools;
     }
 
     private String runGit(String... args) throws Exception {
@@ -147,6 +149,9 @@ final class GitToolHandler {
     String gitCommit(JsonObject args) throws Exception {
         if (!args.has(PARAM_MESSAGE)) return "Error: 'message' parameter is required";
 
+        // Flush pending auto-format so formatting is included in the commit
+        fileTools.flushPendingAutoFormat();
+
         // Save all documents before committing to ensure disk matches editor state
         EdtUtil.invokeAndWait(() ->
             ApplicationManager.getApplication().runWriteAction(() ->
@@ -169,6 +174,9 @@ final class GitToolHandler {
     }
 
     String gitStage(JsonObject args) throws Exception {
+        // Flush pending auto-format so staged files include formatting
+        fileTools.flushPendingAutoFormat();
+
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("add");
 

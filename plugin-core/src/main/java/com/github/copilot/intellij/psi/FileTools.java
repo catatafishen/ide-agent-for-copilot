@@ -411,8 +411,8 @@ class FileTools extends AbstractToolHandler {
 
     /**
      * Auto-format and optimize imports on all files modified during the agent turn.
-     * Deferred to turn end so that imports added across multiple edits are not
-     * prematurely removed, and all formatting happens in one clean pass.
+     * Called before git stage/commit to ensure formatting is included, and also
+     * at turn end as a safety net. Runs synchronously on the EDT.
      */
     void flushPendingAutoFormat() {
         if (pendingAutoFormat.isEmpty()) return;
@@ -420,7 +420,7 @@ class FileTools extends AbstractToolHandler {
         java.util.List<String> paths = new java.util.ArrayList<>(pendingAutoFormat);
         pendingAutoFormat.clear();
 
-        EdtUtil.invokeLater(() -> {
+        EdtUtil.invokeAndWait(() -> {
             for (String pathStr : paths) {
                 try {
                     VirtualFile vf = resolveVirtualFile(pathStr);
@@ -441,6 +441,9 @@ class FileTools extends AbstractToolHandler {
                     LOG.warn("Deferred auto-format failed for " + pathStr + ": " + e.getMessage());
                 }
             }
+            // Save all documents to disk so git sees the formatted content
+            ApplicationManager.getApplication().runWriteAction(() ->
+                FileDocumentManager.getInstance().saveAllDocuments());
         });
     }
 

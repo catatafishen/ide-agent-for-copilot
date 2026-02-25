@@ -51,12 +51,12 @@ public final class PsiBridgeService implements Disposable {
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
-        GitToolHandler gitToolHandler = new GitToolHandler(project);
+        this.fileTools = new FileTools(project);
+        GitToolHandler gitToolHandler = new GitToolHandler(project, fileTools);
 
         // Initialize handler groups
         RefactoringTools refactoringTools = new RefactoringTools(project);
         this.runConfigService = new RunConfigurationService(project, refactoringTools::resolveClass);
-        this.fileTools = new FileTools(project);
 
         // Register all tools from handler groups
         for (AbstractToolHandler handler : List.of(
