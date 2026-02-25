@@ -1572,9 +1572,10 @@ document.addEventListener('mouseover',function(e){
             val base = project.basePath ?: return null
             val dir = File(base, ".agent-work")
             if (!dir.exists()) dir.mkdirs()
-            val fileName = when (toolName) {
+            val baseName = toolName.substringAfterLast("-")
+            val fileName = when (baseName) {
                 "update_todo" -> "agent-todo.md"
-                else -> "$toolName.md"
+                else -> "$baseName.md"
             }
             val file = File(dir, fileName)
             file.writeText(content)

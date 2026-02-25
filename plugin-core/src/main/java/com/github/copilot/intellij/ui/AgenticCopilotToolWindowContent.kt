@@ -1540,6 +1540,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun extractJsonArguments(update: com.google.gson.JsonObject): String? {
         return update["arguments"]?.let { extractJsonElementText(it) }
             ?: update["input"]?.let { extractJsonElementText(it) }
+            ?: update["rawInput"]?.let { extractJsonElementText(it) }
     }
 
     private fun handleStreamingToolCall(update: com.google.gson.JsonObject) {

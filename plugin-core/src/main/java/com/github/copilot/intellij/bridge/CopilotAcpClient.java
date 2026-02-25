@@ -690,16 +690,13 @@ public class CopilotAcpClient implements Closeable {
             case "view", "read", "read file", "view file" ->
                 "⚠ You used the built-in '" + title + "' tool which reads from disk (may be stale). " +
                     "Use 'intellij-code-tools-intellij_read_file' instead — it reads live editor buffers.";
-            case "grep", "search", "ripgrep" ->
-                "⚠ You used the built-in '" + title + "' tool which reads from disk. " +
-                    "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
-                    "For symbol search, use 'intellij-code-tools-search_symbols'.";
-            case "glob", "find files", "list files" ->
-                "⚠ You used the built-in '" + title + "' tool. " +
-                    "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
-            case "create", "create file" ->
-                "⚠ You used the built-in '" + title + "' tool. " +
-                    "Use 'intellij-code-tools-create_file' instead — it integrates with IntelliJ's project index.";
+            case "grep", "search", "ripgrep" -> "⚠ You used the built-in '" + title + "' tool which reads from disk. " +
+                "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
+                "For symbol search, use 'intellij-code-tools-search_symbols'.";
+            case "glob", "find files", "list files" -> "⚠ You used the built-in '" + title + "' tool. " +
+                "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
+            case "create", "create file" -> "⚠ You used the built-in '" + title + "' tool. " +
+                "Use 'intellij-code-tools-create_file' instead — it integrates with IntelliJ's project index.";
             case "edit", "edit file" ->
                 "⚠ You used the built-in '" + title + "' tool which writes to disk, bypassing the editor. " +
                     "Use 'intellij-code-tools-intellij_write_file' instead — it writes to live editor buffers.";

@@ -79,10 +79,13 @@ unzip -q "$(ls -t plugin-core/build/distributions/*.zip | head -1)" -d ~/.local/
 Then **restart the main IDE**.
 
 > **Key points:**
-> - The plugin install path is `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (Toolbox-managed layout)
+> - The plugin install path is `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (
+    Toolbox-managed layout)
 > - You **must** `rm -rf` the old folder first, then unzip — otherwise stale JARs remain
-> - `-x buildSearchableOptions` is required because that task tries to launch an IDE instance which conflicts with the running one
-> - The zip filename includes a commit hash (e.g. `plugin-core-0.2.0-2bb9797.zip`), so always use `ls -t ... | head -1` to get the latest
+> - `-x buildSearchableOptions` is required because that task tries to launch an IDE instance which conflicts with the
+    running one
+> - The zip filename includes a commit hash (e.g. `plugin-core-0.2.0-2bb9797.zip`), so always use `ls -t ... | head -1`
+    to get the latest
 
 ### Sandbox IDE (Development)
 
