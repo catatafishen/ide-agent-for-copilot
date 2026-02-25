@@ -630,6 +630,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             // Use EditorEx built-in placeholder (visual-only, doesn't set actual text)
             editor.setPlaceholder(PROMPT_PLACEHOLDER)
             editor.setShowPlaceholderWhenFocused(true)
+            editor.contentComponent.border = JBUI.Borders.empty(4, 6)
         }
 
         // Auto-revalidate on document changes
