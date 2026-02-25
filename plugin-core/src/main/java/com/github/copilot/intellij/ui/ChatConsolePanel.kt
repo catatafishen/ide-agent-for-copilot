@@ -45,7 +45,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             get() = getThemeColor("VersionControl.GitGreen", Color(0x43, 0xA0, 0x47), Color(0x66, 0xBB, 0x6A))
 
         private val TOOL_COLOR: Color
-            get() = getThemeColor("Label.infoForeground", Color(0xFF, 0xA7, 0x26), Color(0xFF, 0xB7, 0x4D))
+            get() = getThemeColor("EditorTabs.selectedForeground", Color(0xAE, 0xA0, 0xDC), Color(0xB4, 0xA0, 0xDC))
 
         private val THINK_COLOR: Color
             get() = getThemeColor("Label.disabledForeground", Color(0x99, 0x99, 0x99), Color(0x88, 0x88, 0x88))
@@ -1171,22 +1171,22 @@ ul,ol{margin:4px 0;padding-left:22px}
         javaClass.getResourceAsStream(path)?.bufferedReader()?.readText()
             ?: error("Missing resource: $path")
 
-     private fun buildInitialPage(): String {
-         val font = UIUtil.getLabelFont()
-         val fg = UIUtil.getLabelForeground()
-         val bg = UIUtil.getPanelBackground()
-         val codeBg = UIManager.getColor("Editor.backgroundColor")
-             ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
-         val tblBorder = UIManager.getColor("TableCell.borderColor")
-             ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
-         val thBg = UIManager.getColor("TableHeader.background")
-             ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
-         val spinBg = UIManager.getColor("Panel.background")
-             ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
-         val doneColor = UIManager.getColor("VersionControl.GitGreen")
-             ?: JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59))
-         val linkColor = UIManager.getColor("Component.linkColor")
-             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
+    private fun buildInitialPage(): String {
+        val font = UIUtil.getLabelFont()
+        val fg = UIUtil.getLabelForeground()
+        val bg = UIUtil.getPanelBackground()
+        val codeBg = UIManager.getColor("Editor.backgroundColor")
+            ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
+        val tblBorder = UIManager.getColor("TableCell.borderColor")
+            ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
+        val thBg = UIManager.getColor("TableHeader.background")
+            ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
+        val spinBg = UIManager.getColor("Panel.background")
+            ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
+        val doneColor = UIManager.getColor("VersionControl.GitGreen")
+            ?: JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59))
+        val linkColor = UIManager.getColor("Component.linkColor")
+            ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
 
         // CSS custom properties for theme colors
         val cssVars = """
