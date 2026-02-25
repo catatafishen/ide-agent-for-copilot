@@ -1268,6 +1268,10 @@ body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2
         }}
 .turn-chip.tool.failed{color:rgb(220,80,80);background:rgba(220,80,80,0.08)}
 .turn-chip.tool:hover{background:${rgba(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)), 0.16)}}
+.turn-chip.tool[data-tip]{position:relative}
+.turn-chip.tool[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);left:0;
+    background:rgb(50,50,54);color:${rgb(THINK_COLOR)};padding:3px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;z-index:10;
+    pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
 .turn-chip.tool.failed:hover{background:rgba(220,80,80,0.16)}
 .turn-chip.ctx:hover{background:${rgba(USER_COLOR, 0.16)}}
 .turn-chip.err:hover{background:rgba(255,0,0,0.12)}
@@ -1458,9 +1462,9 @@ function _doCollapseToolToChip(el,elId,targetMeta){
   var chip=document.createElement('span');
   chip.className='turn-chip tool'+(failed?' failed':'');
   var fullText=(lbl?lbl.textContent:'Tool');
-  var displayText=fullText.length>30?fullText.substring(0,27)+'\u2026':fullText;
+  var displayText=fullText.length>50?fullText.substring(0,47)+'\u2026':fullText;
   chip.textContent=displayText;
-  if(fullText.length>30)chip.title=fullText;
+  if(fullText.length>50)chip.setAttribute('data-tip',fullText);
   el.classList.add('turn-hidden');
   el.dataset.chipOwned='1';
   chip.dataset.chipFor=elId;

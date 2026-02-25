@@ -1033,7 +1033,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
-        "Follow Agent", "Instruct the agent to auto-open files in the editor as it reads or writes them",
+        "Auto-open files as agent works", "Instruct the agent to auto-open files in the editor as it reads or writes them",
         com.intellij.icons.AllIcons.Actions.Preview
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1048,7 +1048,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FormatAfterEditToggleAction : ToggleAction(
-        "Format", "Instruct the agent to auto-format code after editing files",
+        "Agent: auto-format after edits", "Instruct the agent to auto-format code after editing files",
         com.intellij.icons.AllIcons.Actions.ReformatCode
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1063,7 +1063,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class BuildBeforeEndToggleAction : ToggleAction(
-        "Build", "Instruct the agent to build the project before completing its turn",
+        "Agent: build before completing", "Instruct the agent to build the project before completing its turn",
         com.intellij.icons.AllIcons.Actions.Compile
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1078,7 +1078,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class TestBeforeEndToggleAction : ToggleAction(
-        "Test", "Instruct the agent to run tests before completing its turn",
+        "Agent: run tests before completing", "Instruct the agent to run tests before completing its turn",
         com.intellij.icons.AllIcons.Nodes.Test
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1093,7 +1093,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class CommitBeforeEndToggleAction : ToggleAction(
-        "Commit", "Instruct the agent to auto-commit changes before completing its turn",
+        "Agent: auto-commit before completing", "Instruct the agent to auto-commit changes before completing its turn",
         com.intellij.icons.AllIcons.Actions.Commit
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1117,31 +1117,95 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             data class HelpRow(val icon: javax.swing.Icon, val name: String, val description: String)
 
             val toolbarItems = listOf(
-                HelpRow(com.intellij.icons.AllIcons.Actions.Execute, "Send", "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."),
-                HelpRow(com.intellij.icons.AllIcons.Actions.Suspend, "Stop", "While the agent is working, this replaces Send. Stops the current agent turn."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Execute,
+                    "Send",
+                    "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Suspend,
+                    "Stop",
+                    "While the agent is working, this replaces Send. Stops the current agent turn."
+                ),
                 null,
-                HelpRow(com.intellij.icons.AllIcons.Actions.AddFile, "Attach File", "Attach the currently open editor file to your prompt as context."),
-                HelpRow(com.intellij.icons.AllIcons.Actions.AddMulticaret, "Attach Selection", "Attach the current text selection from the editor to your prompt."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.AddFile,
+                    "Attach File",
+                    "Attach the currently open editor file to your prompt as context."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.AddMulticaret,
+                    "Attach Selection",
+                    "Attach the current text selection from the editor to your prompt."
+                ),
                 null,
-                HelpRow(com.intellij.icons.AllIcons.Actions.Lightning, "Model", "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."),
-                HelpRow(com.intellij.icons.AllIcons.General.Settings, "Mode", "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Lightning,
+                    "Model",
+                    "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.General.Settings,
+                    "Mode",
+                    "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."
+                ),
                 null,
-                HelpRow(com.intellij.icons.AllIcons.Actions.Preview, "Follow Agent", "Toggle: auto-open files in the editor as the agent reads or writes them."),
-                HelpRow(com.intellij.icons.AllIcons.Actions.ReformatCode, "Format", "Toggle: instruct the agent to auto-format code after editing files."),
-                HelpRow(com.intellij.icons.AllIcons.Actions.Compile, "Build", "Toggle: instruct the agent to build the project before completing its turn."),
-                HelpRow(com.intellij.icons.AllIcons.Nodes.Test, "Test", "Toggle: instruct the agent to run tests before completing its turn."),
-                HelpRow(com.intellij.icons.AllIcons.Actions.Commit, "Commit", "Toggle: instruct the agent to auto-commit changes before completing its turn."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Preview,
+                    "Follow Agent",
+                    "Toggle: auto-open files in the editor as the agent reads or writes them."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.ReformatCode,
+                    "Format",
+                    "Toggle: instruct the agent to auto-format code after editing files."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Compile,
+                    "Build",
+                    "Toggle: instruct the agent to build the project before completing its turn."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Nodes.Test,
+                    "Test",
+                    "Toggle: instruct the agent to run tests before completing its turn."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Commit,
+                    "Commit",
+                    "Toggle: instruct the agent to auto-commit changes before completing its turn."
+                ),
                 null,
-                HelpRow(com.intellij.icons.AllIcons.Actions.IntentionBulb, "Instructions", "Open copilot-instructions.md — persistent instructions the agent follows every turn."),
-                HelpRow(com.intellij.icons.AllIcons.General.TodoDefault, "TODO", "Open TODO.md — a task list the agent can read and update."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.IntentionBulb,
+                    "Instructions",
+                    "Open copilot-instructions.md — persistent instructions the agent follows every turn."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.General.TodoDefault,
+                    "TODO",
+                    "Open TODO.md — a task list the agent can read and update."
+                ),
                 null,
-                HelpRow(com.intellij.icons.AllIcons.ToolbarDecorator.Export, "Export Chat", "Copy the full conversation to clipboard (as text or HTML)."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.ToolbarDecorator.Export,
+                    "Export Chat",
+                    "Copy the full conversation to clipboard (as text or HTML)."
+                ),
                 HelpRow(com.intellij.icons.AllIcons.Actions.Help, "Help", "This dialog."),
             )
 
             val titleBarItems = listOf(
-                HelpRow(com.intellij.icons.AllIcons.Actions.Restart, "New Chat", "Start a fresh conversation (top-right of the tool window)."),
-                HelpRow(com.intellij.icons.AllIcons.General.Settings, "Settings", "Configure inactivity timeout and max tool calls per turn."),
+                HelpRow(
+                    com.intellij.icons.AllIcons.Actions.Restart,
+                    "New Chat",
+                    "Start a fresh conversation (top-right of the tool window)."
+                ),
+                HelpRow(
+                    com.intellij.icons.AllIcons.General.Settings,
+                    "Settings",
+                    "Configure inactivity timeout and max tool calls per turn."
+                ),
             )
 
             val content = JBPanel<JBPanel<*>>(BorderLayout()).apply {
