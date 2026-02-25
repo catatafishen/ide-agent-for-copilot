@@ -59,7 +59,7 @@ public class CopilotAcpClient implements Closeable {
     private static final String CONTENT = "content";
     private static final String UNKNOWN = "unknown";
     private static final String RUN_COMMAND_ABUSE_PREFIX = "run_command_abuse:";
-    private static final String VIEW_ABUSE_PREFIX = "view_abuse:";
+    private static final String CLI_TOOL_ABUSE_PREFIX = "cli_tool_abuse:";
     private static final String USER_HOME = "user.home";
 
     /**
@@ -1069,21 +1069,21 @@ public class CopilotAcpClient implements Closeable {
             return;
         }
 
-        // Check if view/read tool is targeting a project file (should use intellij_read_file)
-        String viewAbuse = detectViewAbuse(toolCall);
-        if (viewAbuse != null) {
+        // Check if a CLI tool is targeting project files (should use IntelliJ MCP tools instead)
+        String cliToolAbuse = detectCliToolAbuse(toolCall);
+        if (cliToolAbuse != null) {
             String rejectOptionId = findRejectOption(reqParams);
-            LOG.info("ACP request_permission: DENYING view abuse on project file");
+            LOG.info("ACP request_permission: DENYING CLI tool abuse: " + cliToolAbuse);
 
-            Map<String, Object> retryParams = buildRetryParams(VIEW_ABUSE_PREFIX + viewAbuse);
+            Map<String, Object> retryParams = buildRetryParams(CLI_TOOL_ABUSE_PREFIX + cliToolAbuse);
             String retryMessage = (String) retryParams.get(MESSAGE);
             fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
             sendPromptMessage(retryMessage);
 
-            fireDebugEvent("PERMISSION_DENIED", "view abuse: " + viewAbuse,
+            fireDebugEvent("PERMISSION_DENIED", "CLI tool abuse: " + cliToolAbuse,
                 toolCall.toString());
             builtInActionDeniedDuringTurn = true;
-            lastDeniedKind = VIEW_ABUSE_PREFIX + viewAbuse;
+            lastDeniedKind = CLI_TOOL_ABUSE_PREFIX + cliToolAbuse;
             sendPermissionResponse(reqId, rejectOptionId);
             return;
         }
@@ -1177,27 +1177,43 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
-     * Detect if the view/read tool is being used on a file inside the project directory.
-     * IntelliJ's intellij_read_file should be used instead — it reads from live editor buffers.
-     * Returns "project_file" if detected, null otherwise.
+     * Detect if a CLI tool (view, grep, glob, edit, create) is targeting project files.
+     * These tools read/write from disk and may be stale. IntelliJ MCP tools operate on
+     * live editor buffers and should be used instead.
+     * Returns the tool type (e.g. "view", "grep") if abuse detected, null otherwise.
      */
-    private String detectViewAbuse(JsonObject toolCall) {
+    private String detectCliToolAbuse(JsonObject toolCall) {
         if (toolCall == null) return null;
 
         String toolTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
         String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
+        String tool = !toolTitle.isEmpty() ? toolTitle : toolName;
 
-        if (!isViewOrReadTool(toolTitle, toolName)) return null;
-
-        String path = extractPathParam(toolCall);
-        if (path.isEmpty()) return null;
-
-        return isInsideProject(path) ? "project_file" : null;
-    }
-
-    private boolean isViewOrReadTool(String title, String name) {
-        return "view".equals(title) || "view".equals(name) ||
-            "read".equals(title) || "read".equals(name);
+        return switch (tool) {
+            case "view", "read" -> {
+                String path = extractPathParam(toolCall);
+                yield !path.isEmpty() && isInsideProject(path) ? "view" : null;
+            }
+            case "edit" -> {
+                String path = extractPathParam(toolCall);
+                yield !path.isEmpty() && isInsideProject(path) ? "edit" : null;
+            }
+            case "create" -> {
+                String path = extractPathParam(toolCall);
+                yield !path.isEmpty() && isInsideProject(path) ? "create" : null;
+            }
+            case "grep" -> {
+                // grep defaults to cwd (project root) when path is omitted
+                String path = extractPathParam(toolCall);
+                yield (path.isEmpty() || isInsideProject(path)) ? "grep" : null;
+            }
+            case "glob" -> {
+                // glob defaults to cwd (project root) when path is omitted
+                String path = extractPathParam(toolCall);
+                yield (path.isEmpty() || isInsideProject(path)) ? "glob" : null;
+            }
+            default -> null;
+        };
     }
 
     private String extractPathParam(JsonObject toolCall) {
@@ -1235,14 +1251,24 @@ public class CopilotAcpClient implements Closeable {
                     "git_unstage, git_branch, git_stash, git_show, git_blame.";
                 default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
-        } else if (deniedKind.startsWith(VIEW_ABUSE_PREFIX)) {
-            // Guidance for view/read tool abuse on project files
-            instruction = "⚠ Don't use the 'view' tool for project files — it reads from disk and may be stale. " +
-                "Use 'intellij-code-tools-intellij_read_file' instead. It reads from IntelliJ's live editor buffer, " +
-                "which always has the latest content (including unsaved changes from intellij_write_file edits).";
+        } else if (deniedKind.startsWith(CLI_TOOL_ABUSE_PREFIX)) {
+            String toolType = deniedKind.substring(CLI_TOOL_ABUSE_PREFIX.length());
+            instruction = switch (toolType) {
+                case "view" -> "⚠ Don't use 'view' for project files — it reads from disk and may be stale. " +
+                    "Use 'intellij-code-tools-intellij_read_file' instead (reads live editor buffer).";
+                case "edit" -> "⚠ Don't use 'edit' for project files — it writes to disk, bypassing the editor. " +
+                    "Use 'intellij-code-tools-intellij_write_file' instead (writes to live editor buffer with undo).";
+                case "create" -> "⚠ Don't use 'create' for project files. " +
+                    "Use 'intellij-code-tools-create_file' instead (integrates with IntelliJ's project index).";
+                case "grep" -> "⚠ Don't use 'grep' for project files — it reads from disk and may be stale. " +
+                    "Use 'intellij-code-tools-search_text' instead (searches live editor buffers).";
+                case "glob" -> "⚠ Don't use 'glob' for project files. " +
+                    "Use 'intellij-code-tools-list_project_files' instead (uses IntelliJ's project index).";
+                default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+            };
         } else {
             // Generic message for other denials
-            instruction = "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+            instruction = "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
         }
 
         return Map.of(MESSAGE, instruction);
