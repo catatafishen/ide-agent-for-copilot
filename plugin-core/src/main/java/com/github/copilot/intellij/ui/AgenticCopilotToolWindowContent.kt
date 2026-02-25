@@ -1033,7 +1033,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
-        "Auto-open files as agent works", "Instruct the agent to auto-open files in the editor as it reads or writes them",
+        "Auto-open files as agent works",
+        "Instruct the agent to auto-open files in the editor as it reads or writes them",
         com.intellij.icons.AllIcons.Actions.Preview
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT

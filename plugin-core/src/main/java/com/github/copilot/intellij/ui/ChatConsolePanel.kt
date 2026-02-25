@@ -1155,6 +1155,11 @@ ul,ol{margin:4px 0;padding-left:22px}
 
 // --- Initial HTML page ---
 
+    /** Load a classpath resource as a UTF-8 string */
+    private fun loadResource(path: String): String =
+        javaClass.getResourceAsStream(path)?.bufferedReader()?.readText()
+            ?: error("Missing resource: $path")
+
     private fun buildInitialPage(): String {
         val font = UIUtil.getLabelFont()
         val fg = UIUtil.getLabelForeground()
@@ -1165,362 +1170,67 @@ ul,ol{margin:4px 0;padding-left:22px}
         val spinBg = JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
+        val doneColor = JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59))
         val fileHandler = openFileQuery!!.inject("el.getAttribute('href')")
 
-        return """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;
-     color:${rgb(fg)};background:${rgb(bg)};padding:8px;line-height:1.45}
+        // Build substitution map for {{PLACEHOLDER}} tokens in CSS/JS resources
+        val vars = mapOf(
+            "FONT_FAMILY" to font.family,
+            "FONT_SIZE" to (font.size - 2).toString(),
+            "CODE_FONT_SIZE" to (font.size - 3).toString(),
+            "FG" to rgb(fg),
+            "FG_A08" to rgba(fg, 0.08),
+            "BG" to rgb(bg),
+            "USER" to rgb(USER_COLOR),
+            "USER_A06" to rgba(USER_COLOR, 0.06),
+            "USER_A08" to rgba(USER_COLOR, 0.08),
+            "USER_A12" to rgba(USER_COLOR, 0.12),
+            "USER_A15" to rgba(USER_COLOR, 0.15),
+            "USER_A16" to rgba(USER_COLOR, 0.16),
+            "USER_A18" to rgba(USER_COLOR, 0.18),
+            "USER_A25" to rgba(USER_COLOR, 0.25),
+            "AGENT" to rgb(AGENT_COLOR),
+            "AGENT_A06" to rgba(AGENT_COLOR, 0.06),
+            "AGENT_A08" to rgba(AGENT_COLOR, 0.08),
+            "AGENT_A10" to rgba(AGENT_COLOR, 0.10),
+            "AGENT_A16" to rgba(AGENT_COLOR, 0.16),
+            "THINK" to rgb(THINK_COLOR),
+            "THINK_A04" to rgba(THINK_COLOR, 0.04),
+            "THINK_A06" to rgba(THINK_COLOR, 0.06),
+            "THINK_A08" to rgba(THINK_COLOR, 0.08),
+            "THINK_A10" to rgba(THINK_COLOR, 0.10),
+            "THINK_A16" to rgba(THINK_COLOR, 0.16),
+            "THINK_A25" to rgba(THINK_COLOR, 0.25),
+            "THINK_A30" to rgba(THINK_COLOR, 0.30),
+            "THINK_A35" to rgba(THINK_COLOR, 0.35),
+            "THINK_A40" to rgba(THINK_COLOR, 0.40),
+            "THINK_A55" to rgba(THINK_COLOR, 0.55),
+            "TOOL" to rgb(TOOL_COLOR),
+            "TOOL_A08" to rgba(TOOL_COLOR, 0.08),
+            "TOOL_A40" to rgba(TOOL_COLOR, 0.40),
+            "SPIN_BG" to rgb(spinBg),
+            "DONE" to rgb(doneColor),
+            "DONE_A08" to rgba(doneColor, 0.08),
+            "DONE_A16" to rgba(doneColor, 0.16),
+            "CODE_BG" to rgb(codeBg),
+            "TBL_BORDER" to rgb(tblBorder),
+            "TH_BG" to rgb(thBg),
+            "LINK" to rgb(linkColor),
+            // JS bridge placeholders
+            "FILE_HANDLER" to fileHandler,
+            "CURSOR_BRIDGE" to cursorBridgeJs,
+            "LOAD_MORE_BRIDGE" to loadMoreBridgeJs,
+        )
 
-/* --- Scrollbar (IntelliJ-style thin track) --- */
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:${rgba(THINK_COLOR, 0.35)};border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:${rgba(THINK_COLOR, 0.55)}}
+        val css = loadResource("/chat-console/chat-console.css")
+        val js = loadResource("/chat-console/chat-console.js")
+        val styledCss = vars.entries.fold(css) { s, (k, v) -> s.replace("{{$k}}", v) }
+        val styledJs = vars.entries.fold(js) { s, (k, v) -> s.replace("{{$k}}", v) }
 
-/* --- User prompt bubble (right-aligned) --- */
-.prompt-row{display:flex;flex-direction:column;align-items:flex-end;margin:10px 0 4px 0}
-.prompt-bubble{background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;
-    padding:6px 14px;max-width:85%;font-weight:normal;white-space:pre-wrap;font-size:0.88em}
-.prompt-bubble:hover{background:${rgba(USER_COLOR, 0.18)}}
-.prompt-ctx-chip{display:inline-flex;align-items:center;gap:2px;background:${rgba(USER_COLOR, 0.15)};
-    border-radius:10px;padding:1px 8px;font-size:0.82em;color:${rgb(USER_COLOR)};text-decoration:none;white-space:nowrap}
-.prompt-ctx-chip:hover{text-decoration:none;background:${rgba(USER_COLOR, 0.25)}}
-
-/* --- Agent response bubble (left-aligned) --- */
-.agent-row{margin:4px 0}
-.agent-bubble{background:${rgba(AGENT_COLOR, 0.06)};border-radius:4px 16px 16px 16px;
-    padding:8px 16px;max-width:95%}
-.agent-bubble:hover{background:${rgba(AGENT_COLOR, 0.10)}}
-.agent-bubble .streaming{white-space:pre-wrap;margin:0;background:none;padding:0;
-    font-family:inherit;font-size:inherit}
-
-/* --- Collapsible section (shared by thinking + tool calls) --- */
-.collapse-section{margin:4px 0}
-.collapse-header{cursor:pointer;display:flex;align-items:center;gap:6px;
-    border-radius:8px;padding:5px 12px;font-size:0.88em;user-select:none;
-    transition:background .15s}
-.collapse-header:hover{filter:brightness(1.15)}
-.collapse-content{white-space:pre-wrap;font-size:0.85em;padding:6px 12px 6px 30px;line-height:1.4}
-.collapse-section.collapsed .collapse-content{display:none}
-.collapse-icon{font-size:1em}
-.collapse-label{flex:1}
-.caret{font-size:0.8em;width:10px;text-align:center;color:${rgb(THINK_COLOR)}}
-
-/* --- Thinking --- */
-.thinking-section .collapse-header{background:${rgba(THINK_COLOR, 0.06)};color:${rgb(THINK_COLOR)}}
-.thinking-section .collapse-content{color:${rgb(THINK_COLOR)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-.thinking-pulse{animation:pulse 1.5s ease-in-out infinite}
-
-/* --- Tool calls --- */
-.tool-section .collapse-header{background:${rgba(TOOL_COLOR, 0.08)};color:${rgb(TOOL_COLOR)}}
-.tool-section .collapse-content{color:${rgb(THINK_COLOR)};white-space:normal}
-.tool-spinner{display:inline-block;width:10px;height:10px;border:2px solid ${rgb(spinBg)};
-    border-top-color:${rgb(TOOL_COLOR)};border-radius:50%;
-    animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* --- Context files --- */
-.context-section .collapse-header{background:${rgba(USER_COLOR, 0.06)};color:${rgb(USER_COLOR)}}
-.context-section .collapse-content{padding:4px 12px 4px 30px;white-space:normal}
-.ctx-file{padding:2px 0}
-
-/* --- Chip-expanded style (section opened from turn chip) --- */
-.chip-expanded .collapse-header{display:none}
-.chip-expanded .collapse-content{display:block;border-left:2px solid ${rgba(THINK_COLOR, 0.25)};
-    margin:2px 0;padding:4px 10px;font-size:0.82em;position:relative}
-.chip-expanded.tool-section .collapse-content{border-left-color:${rgba(TOOL_COLOR, 0.4)}}
-.chip-expanded.thinking-section .collapse-content{border-left-color:${rgba(THINK_COLOR, 0.4)}}
-.chip-close{position:absolute;top:2px;right:4px;cursor:pointer !important;font-size:0.8em;
-    color:${rgb(THINK_COLOR)};opacity:0.6;padding:2px 4px;border-radius:4px}
-.chip-close:hover{opacity:1;background:${rgba(THINK_COLOR, 0.1)}}
-.ctx-file a{color:${rgb(linkColor)};text-decoration:none}
-.ctx-file a:hover{text-decoration:underline}
-
-/* --- Tool detail content --- */
-.tool-desc{color:${rgb(THINK_COLOR)};font-style:italic;margin-bottom:4px}
-.tool-params-label,.tool-result-label{color:${rgb(THINK_COLOR)};font-size:0.85em;margin:6px 0 2px 0;font-weight:600}
-.tool-params{margin:2px 0 6px 0;padding:6px 8px;font-size:0.9em}
-.tool-output{margin:2px 0;padding:6px 8px;font-size:0.9em}
-.tool-result-pending{color:${rgb(THINK_COLOR)};font-style:italic}
-
-/* --- Timestamps (hidden by default, shown on click) --- */
-.meta{display:none;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:2px;width:100%}
-.meta.show{display:flex}
-.prompt-row .meta{justify-content:flex-end}
-.ts{font-size:0.75em;color:${rgb(THINK_COLOR)}}
-
-/* --- Turn chips (embedded in agent bubble meta) --- */
-.turn-chip{display:inline-flex;align-items:center;gap:3px;background:${rgba(THINK_COLOR, 0.08)};
-    border-radius:10px;padding:2px 8px;font-size:0.78em;color:${rgb(THINK_COLOR)};max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.turn-chip:hover{background:${rgba(THINK_COLOR, 0.16)}}
-.turn-chip.tool{color:${rgb(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)))};background:${
-            rgba(
-                JBColor(
-                    Color(
-                        0x59,
-                        0x8C,
-                        0x4D
-                    ), Color(0x6A, 0x9F, 0x59)
-                ), 0.08
-            )
-        }}
-.turn-chip.tool.failed{color:rgb(220,80,80);background:rgba(220,80,80,0.08)}
-.turn-chip.tool:hover{background:${rgba(JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59)), 0.16)}}
-.turn-chip.tool[data-tip]{position:relative}
-.turn-chip.tool[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);left:0;
-    background:rgb(50,50,54);color:${rgb(THINK_COLOR)};padding:3px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;z-index:10;
-    pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
-.turn-chip.tool.failed:hover{background:rgba(220,80,80,0.16)}
-.turn-chip.ctx:hover{background:${rgba(USER_COLOR, 0.16)}}
-.turn-chip.err:hover{background:rgba(255,0,0,0.12)}
-.turn-chip.ctx{color:${rgb(USER_COLOR)};background:${rgba(USER_COLOR, 0.08)}}
-.turn-chip.err{color:red;background:rgba(255,0,0,0.06)}
-.turn-chip.stats{color:${rgb(AGENT_COLOR)};background:${rgba(AGENT_COLOR, 0.08)};cursor:default;position:relative}
-.turn-chip.stats:hover{background:${rgba(AGENT_COLOR, 0.16)}}
-.turn-chip.stats:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);right:0;
-    background:rgb(50,50,54);color:${rgb(THINK_COLOR)};padding:3px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;z-index:10;
-    pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
-.turn-hidden{display:none}
-
-/* --- Status entries --- */
-.status-row{padding:4px 12px;margin:2px 0;font-size:0.88em;border-radius:6px}
-.status-row.error{color:red;background:rgba(255,0,0,0.05)}
-.status-row.info{color:${rgb(THINK_COLOR)};background:${rgba(THINK_COLOR, 0.04)}}
-
-/* --- Session separator --- */
-.session-sep{display:flex;align-items:center;gap:10px;margin:16px 0;opacity:0.6}
-.session-sep-line{flex:1;height:1px;background:${rgba(THINK_COLOR, 0.3)}}
-.session-sep-label{font-size:0.78em;color:${rgb(THINK_COLOR)};white-space:nowrap}
-
-/* --- Placeholder --- */
-.placeholder{color:${rgb(THINK_COLOR)};padding:20px 12px;text-align:center;white-space:pre-wrap;
-    font-size:0.95em}
-
-/* --- Processing indicator (indeterminate progress bar) --- */
-.processing-indicator{padding:8px 16px;margin:4px 0}
-.processing-bar{height:2px;border-radius:1px;background:${rgba(fg, 0.08)};overflow:hidden;position:relative}
-.processing-bar-inner{position:absolute;top:0;left:0;height:100%;width:30%;border-radius:1px;
-    background:${rgb(AGENT_COLOR)};animation:indeterminate 1.5s ease-in-out infinite}
-@keyframes indeterminate{0%{left:-30%;width:30%}50%{left:50%;width:40%}100%{left:100%;width:30%}}
-
-/* --- Load more banner (lazy loading) --- */
-.load-more-banner{text-align:center;padding:10px;cursor:pointer;opacity:0.6;transition:opacity .2s}
-.load-more-banner:hover{opacity:1}
-.load-more-text{font-size:0.82em;color:${rgb(THINK_COLOR)}}
-
-/* --- Markdown content --- */
-h2,h3,h4,h5{margin:8px 0 4px 0}
-p{margin:3px 0}
-a{color:${rgb(linkColor)};text-decoration:none;cursor:pointer}
-a:hover{text-decoration:underline}
-code{background:${rgb(codeBg)};padding:2px 5px;border-radius:4px;
-     font-family:'JetBrains Mono',monospace;font-size:${font.size - 3}pt}
-pre{background:${rgb(codeBg)};padding:10px;border-radius:6px;margin:6px 0;overflow-x:auto}
-pre code{background:none;padding:0;border-radius:0;display:block}
-table{border-collapse:collapse;margin:6px 0}
-th,td{border:1px solid ${rgb(tblBorder)};padding:4px 10px;text-align:left}
-th{background:${rgb(thBg)};font-weight:600}
-tr:nth-child(even) td{background:${rgb(codeBg)}}
-ul,ol{margin:4px 0;padding-left:22px}
-li{margin:2px 0}
-b,strong{font-weight:600}
-</style></head><body>
+        return """<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>$styledCss</style></head><body>
 <div id="container"></div>
-<script>
-var autoScroll=true;
-window.addEventListener('scroll',function(){
-  autoScroll=(window.innerHeight+window.scrollY>=document.body.scrollHeight-20);
-});
-function scrollIfNeeded(){if(autoScroll)window.scrollTo(0,document.body.scrollHeight)}
-function b64(s){var r=atob(s),b=new Uint8Array(r.length);for(var i=0;i<r.length;i++)b[i]=r.charCodeAt(i);return new TextDecoder().decode(b)}
-var _loadingMore=false;
-function loadMore(){if(_loadingMore)return;_loadingMore=true;
-  var s=document.getElementById('load-more-sentinel');
-  if(s){var t=s.querySelector('.load-more-text');if(t)t.textContent='Loading...';}
-  $loadMoreBridgeJs}
-function toggleTool(id){
-  var el=document.getElementById(id);if(!el)return;
-  if(el.dataset.chipOwned&&!el.classList.contains('collapsed')){
-    el.classList.add('turn-hidden','collapsed');
-    el.classList.remove('chip-expanded');
-    var btn=el.querySelector('.chip-close');if(btn)btn.remove();
-    var chip=document.querySelector('[data-chip-for="'+id+'"]');
-    if(chip)chip.style.opacity='1';
-    return;
-  }
-  el.classList.toggle('collapsed');
-  el.querySelector('.caret').textContent=el.classList.contains('collapsed')?'\u25B8':'\u25BE';
-}
-function toggleThinking(id){
-  var el=document.getElementById(id);if(!el)return;
-  if(el.dataset.chipOwned&&!el.classList.contains('collapsed')){
-    el.classList.add('turn-hidden','collapsed');
-    el.classList.remove('chip-expanded');
-    var btn=el.querySelector('.chip-close');if(btn)btn.remove();
-    var chip=document.querySelector('[data-chip-for="'+id+'"]');
-    if(chip)chip.style.opacity='1';
-    return;
-  }
-  el.classList.toggle('collapsed');
-  el.querySelector('.caret').textContent=el.classList.contains('collapsed')?'\u25B8':'\u25BE';
-}
-function toggleMeta(el){
-  var row=el.parentElement;
-  var m=row?row.querySelector('.meta'):null;
-  if(m)m.classList.toggle('show');
-}
-function finalizeTurn(stats){
-  var items=document.querySelectorAll('.thinking-section:not(.turn-hidden),.tool-section:not(.turn-hidden),.context-section:not(.turn-hidden),.status-row:not(.turn-hidden)');
-  // Find the last agent-row for the stats chip
-  var lastBubbles=document.querySelectorAll('.agent-bubble');
-  var lastBubble=lastBubbles.length>0?lastBubbles[lastBubbles.length-1]:null;
-  var lastRow=lastBubble?lastBubble.parentElement:null;
-  var lastMeta=lastRow?lastRow.querySelector('.meta'):null;
-  items.forEach(function(el){
-    var targetMeta=null;
-    var sib=el.nextElementSibling;
-    while(sib){
-      if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
-      sib=sib.nextElementSibling;
-    }
-    if(!targetMeta)targetMeta=lastMeta;
-    if(!targetMeta)return;
-    var chip=document.createElement('span');
-    var elId=el.id||'';
-    if(el.classList.contains('thinking-section')){
-      chip.className='turn-chip';chip.textContent='\uD83D\uDCAD Thought';
-    } else if(el.classList.contains('tool-section')){
-      var lbl=el.querySelector('.collapse-label');
-      var icon=el.querySelector('.collapse-icon');
-      var failed=icon&&icon.style.color==='red';
-      chip.className='turn-chip tool'+(failed?' failed':'');
-      var fullText=(lbl?lbl.textContent:'Tool');
-      chip.textContent=fullText;
-      if(fullText.length>40)chip.title=fullText;
-    } else if(el.classList.contains('context-section')){
-      chip.className='turn-chip ctx';chip.textContent='\uD83D\uDCCE Context';
-    } else if(el.classList.contains('status-row')&&el.classList.contains('error')){
-      chip.className='turn-chip err';chip.textContent='\u2716 '+el.textContent.trim().substring(0,60);
-    } else return;
-    el.classList.add('turn-hidden');
-    el.dataset.chipOwned='1';
-    chip.dataset.chipFor=elId;
-    chip.style.cursor='pointer';
-    function closeSection(){
-      el.classList.add('turn-hidden','collapsed');
-      el.classList.remove('chip-expanded');
-      chip.style.opacity='1';
-      var btn=el.querySelector('.chip-close');if(btn)btn.remove();
-    }
-    chip.onclick=function(ev){
-      ev.stopPropagation();
-      if(el.classList.contains('turn-hidden')){
-        el.classList.remove('turn-hidden','collapsed');
-        el.classList.add('chip-expanded');
-        chip.style.opacity='0.5';
-        var cc=el.querySelector('.collapse-content');
-        if(cc&&!cc.querySelector('.chip-close')){
-          var btn=document.createElement('span');btn.className='chip-close';btn.textContent='✕';
-          btn.onclick=function(e){e.stopPropagation();closeSection()};
-          cc.insertBefore(btn,cc.firstChild);
-        }
-      } else { closeSection(); }
-    };
-    targetMeta.appendChild(chip);
-  });
-  // Update stats chip on the prompt bubble with final tool count
-  if(stats&&stats.mult){
-    var existing=document.getElementById('turn-stats');
-    if(existing){
-      var label=stats.mult;
-      existing.textContent=label;
-      var short=stats.model.split('/').pop().substring(0,30);
-      existing.setAttribute('data-tip',short+' · '+stats.tools+' tool'+(stats.tools!=1?'s':''));
-      existing.removeAttribute('id');
-    }
-  }
-  scrollIfNeeded();
-}
-function collapseToolToChip(elId){
-  var el=document.getElementById(elId);
-  if(!el||el.dataset.chipOwned)return;
-  var targetMeta=null;
-  var sib=el.nextElementSibling;
-  while(sib){
-    if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
-    sib=sib.nextElementSibling;
-  }
-  if(!targetMeta){el.dataset.pendingCollapse='1';return;}
-  _doCollapseToolToChip(el,elId,targetMeta);
-}
-function _doCollapseToolToChip(el,elId,targetMeta){
-  var lbl=el.querySelector('.collapse-label');
-  var icon=el.querySelector('.collapse-icon');
-  var failed=icon&&icon.style.color==='red';
-  var chip=document.createElement('span');
-  chip.className='turn-chip tool'+(failed?' failed':'');
-  var fullText=(lbl?lbl.textContent:'Tool');
-  var displayText=fullText.length>50?fullText.substring(0,47)+'\u2026':fullText;
-  chip.textContent=displayText;
-  if(fullText.length>50)chip.setAttribute('data-tip',fullText);
-  el.classList.add('turn-hidden');
-  el.dataset.chipOwned='1';
-  chip.dataset.chipFor=elId;
-  chip.style.cursor='pointer';
-  function closeSection(){
-    el.classList.add('turn-hidden','collapsed');
-    el.classList.remove('chip-expanded');
-    chip.style.opacity='1';
-    var btn=el.querySelector('.chip-close');if(btn)btn.remove();
-  }
-  chip.onclick=function(ev){
-    ev.stopPropagation();
-    if(el.classList.contains('turn-hidden')){
-      el.classList.remove('turn-hidden','collapsed');
-      el.classList.add('chip-expanded');
-      chip.style.opacity='0.5';
-      var cc=el.querySelector('.collapse-content');
-      if(cc&&!cc.querySelector('.chip-close')){
-        var btn=document.createElement('span');btn.className='chip-close';btn.textContent='\u2715';
-        btn.onclick=function(e){e.stopPropagation();closeSection()};
-        cc.insertBefore(btn,cc.firstChild);
-      }
-    } else { closeSection(); }
-  };
-  targetMeta.appendChild(chip);
-  scrollIfNeeded();
-}
-function collapsePendingTools(){
-  var pending=document.querySelectorAll('.tool-section[data-pending-collapse]');
-  pending.forEach(function(el){
-    var targetMeta=null;
-    var sib=el.nextElementSibling;
-    while(sib){
-      if(sib.classList.contains('agent-row')){targetMeta=sib.querySelector('.meta');break;}
-      sib=sib.nextElementSibling;
-    }
-    if(!targetMeta)return;
-    delete el.dataset.pendingCollapse;
-    _doCollapseToolToChip(el,el.id,targetMeta);
-  });
-}
-document.addEventListener('click',function(e){
-  var el=e.target;
-  while(el&&el.tagName!=='A')el=el.parentElement;
-  if(el&&el.getAttribute('href')&&el.getAttribute('href').indexOf('openfile://')===0){
-    e.preventDefault();$fileHandler
-  }
-});
-var _lastCursor='';
-document.addEventListener('mouseover',function(e){
-  var el=e.target;var c='default';
-  if(el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip'))c='pointer';
-  else if(el.closest('p,pre,code,li,td,th,.collapse-content,.streaming'))c='text';
-  if(c!==_lastCursor){_lastCursor=c;$cursorBridgeJs}
-});
-</script></body></html>"""
+<script>$styledJs</script></body></html>"""
     }
 
 // --- Markdown to HTML ---
