@@ -203,4 +203,31 @@ Then tell the user to **restart the main IDE**.
 
 ---
 
+## 8) Tool Preferences
+
+### Always prefer IntelliJ MCP tools over generic CLI tools
+
+The MCP server provides IntelliJ-integrated tools that read from editor buffers (always up-to-date, even unsaved changes). **Always use these instead of generic alternatives:**
+
+| ❌ Don't use        | ✅ Use instead                              |
+|---------------------|---------------------------------------------|
+| `view` (file)       | `intellij_read_file`                        |
+| `grep` / `ripgrep`  | `search_text` or `search_symbols`           |
+| `glob`              | `list_project_files`                        |
+| `create` (file)     | `create_file`                               |
+| `edit` (file)       | `intellij_write_file`                       |
+| `bash: git ...`     | `git_status`, `git_diff`, `git_commit` etc. |
+
+### Why this matters
+- Editor buffers may have unsaved changes that disk-based tools miss
+- IntelliJ tools respect project structure and excludes (build/, .gradle/)
+- Symbol search uses IDE indexes — faster and more accurate than text grep
+- Git tools sync with IntelliJ's VCS, avoiding buffer desync
+
+### Exceptions
+- Use `bash` for build commands (`gradlew`), process management, or system operations
+- Use `bash` for commands that don't have an IntelliJ tool equivalent
+
+---
+
 *Tool usage rules and workflows are provided by the MCP server. See `PROJECT-SPEC.md` for architecture.*
