@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.project.Project
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
@@ -609,12 +610,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         promptTextArea.setOneLineMode(false)
         promptTextArea.border = null
 
-        // Delay setup until editor is initialized
-        SwingUtilities.invokeLater {
-            setupPromptKeyBindings(promptTextArea)
-            setupPromptPlaceholder(promptTextArea)
-            setupPromptContextMenu(promptTextArea)
-            setupPromptDragDrop(promptTextArea)
+        // Drag-drop works on the EditorTextField wrapper (no editor needed)
+        setupPromptDragDrop(promptTextArea)
+        // Key bindings and context menu need the editor's content component.
+        // addSettingsProvider runs when the editor is actually created,
+        // unlike invokeLater which may fire before the editor exists.
+        promptTextArea.addSettingsProvider { editor ->
+            setupPromptKeyBindings(promptTextArea, editor)
+            setupPromptContextMenu(promptTextArea, editor)
+            // Use EditorEx built-in placeholder (visual-only, doesn't set actual text)
+            editor.setPlaceholder(PROMPT_PLACEHOLDER)
+            editor.setShowPlaceholderWhenFocused(true)
         }
 
         // Auto-revalidate on document changes
@@ -679,7 +685,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             setSendingState(false)
         } else {
             val prompt = promptTextArea.text.trim()
-            if (prompt.isEmpty() || prompt == PROMPT_PLACEHOLDER) return
+            if (prompt.isEmpty()) return
 
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
@@ -1478,8 +1484,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Status indicator removed from UI \u2192 kept as no-op to avoid call-site churn
     }
 
-    private fun setupPromptKeyBindings(promptTextArea: EditorTextField) {
-        val editor = promptTextArea.editor ?: return
+    private fun setupPromptKeyBindings(promptTextArea: EditorTextField, editor: EditorEx) {
         val contentComponent = editor.contentComponent
 
         val enterKey = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
@@ -1491,7 +1496,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         contentComponent.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
         contentComponent.actionMap.put("sendPrompt", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                if (promptTextArea.text.isNotBlank() && promptTextArea.text != PROMPT_PLACEHOLDER && !isSending) {
+                if (promptTextArea.text.isNotBlank() && !isSending) {
                     onSendStopClicked()
                 }
             }
@@ -1504,28 +1509,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         })
     }
 
-    private fun setupPromptPlaceholder(promptTextArea: EditorTextField) {
-        promptTextArea.addFocusListener(object : java.awt.event.FocusListener {
-            private val placeholder = PROMPT_PLACEHOLDER
-            override fun focusGained(e: java.awt.event.FocusEvent) {
-                if (promptTextArea.text == placeholder) {
-                    promptTextArea.text = ""
-                    promptTextArea.foreground = UIManager.getColor("TextArea.foreground")
-                }
-            }
 
-            override fun focusLost(e: java.awt.event.FocusEvent) {
-                if (promptTextArea.text.isBlank()) {
-                    promptTextArea.text = placeholder
-                    promptTextArea.foreground = JBColor.GRAY
-                }
-            }
-        })
-        promptTextArea.text = PROMPT_PLACEHOLDER
-        promptTextArea.foreground = JBColor.GRAY
-    }
-
-    private fun setupPromptContextMenu(textArea: EditorTextField) {
+    private fun setupPromptContextMenu(textArea: EditorTextField, editor: EditorEx) {
         val popup = javax.swing.JPopupMenu()
 
         // Edit actions
@@ -1620,13 +1605,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         })
 
-        textArea.componentPopupMenu = popup
+        // Install on the editor's content component (not the wrapper)
+        // so it overrides the default editor popup
+        editor.contentComponent.componentPopupMenu = popup
 
         // Update enabled states dynamically before showing
         popup.addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
             override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
-                val hasSelection = textArea.editor?.selectionModel?.hasSelection() == true
-                val hasText = textArea.text.isNotBlank() && textArea.text != PROMPT_PLACEHOLDER
+                val hasSelection = editor.selectionModel.hasSelection()
+                val hasText = textArea.text.isNotBlank()
                 cutAction.isEnabled = hasSelection
                 copyAction.isEnabled = hasSelection
                 selectAllAction.isEnabled = hasText
