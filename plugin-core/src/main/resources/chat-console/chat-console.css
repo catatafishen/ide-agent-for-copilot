@@ -1,14 +1,14 @@
 /* Chat Console Panel Styles
- * Dynamic values use {{PLACEHOLDER}} syntax, substituted at runtime from IDE theme colors.
+ * Theme colors are injected via CSS custom properties on :root from Kotlin.
  */
 
 * { box-sizing: border-box; margin: 0; padding: 0 }
 
 body {
-    font-family: '{{FONT_FAMILY}}', system-ui, sans-serif;
-    font-size: {{FONT_SIZE}}pt;
-    color: {{FG}};
-    background: {{BG}};
+    font-family: var(--font-family), system-ui, sans-serif;
+    font-size: var(--font-size);
+    color: var(--fg);
+    background: var(--bg);
     padding: 8px;
     line-height: 1.45;
 }
@@ -16,13 +16,13 @@ body {
 /* --- Scrollbar (IntelliJ-style thin track) --- */
 ::-webkit-scrollbar { width: 6px; height: 6px }
 ::-webkit-scrollbar-track { background: transparent }
-::-webkit-scrollbar-thumb { background: {{THINK_A35}}; border-radius: 3px }
-::-webkit-scrollbar-thumb:hover { background: {{THINK_A55}} }
+::-webkit-scrollbar-thumb { background: var(--think-a35); border-radius: 3px }
+::-webkit-scrollbar-thumb:hover { background: var(--think-a55) }
 
 /* --- User prompt bubble (right-aligned) --- */
 .prompt-row { display: flex; flex-direction: column; align-items: flex-end; margin: 10px 0 4px 0 }
 .prompt-bubble {
-    background: {{USER_A12}};
+    background: var(--user-a12);
     border-radius: 16px 16px 4px 16px;
     padding: 6px 14px;
     max-width: 85%;
@@ -30,24 +30,24 @@ body {
     white-space: pre-wrap;
     font-size: 0.88em;
 }
-.prompt-bubble:hover { background: {{USER_A18}} }
+.prompt-bubble:hover { background: var(--user-a18) }
 .prompt-ctx-chip {
     display: inline-flex; align-items: center; gap: 2px;
-    background: {{USER_A15}};
+    background: var(--user-a15);
     border-radius: 10px; padding: 1px 8px; font-size: 0.82em;
-    color: {{USER}}; text-decoration: none; white-space: nowrap;
+    color: var(--user); text-decoration: none; white-space: nowrap;
 }
-.prompt-ctx-chip:hover { text-decoration: none; background: {{USER_A25}} }
+.prompt-ctx-chip:hover { text-decoration: none; background: var(--user-a25) }
 
 /* --- Agent response bubble (left-aligned) --- */
 .agent-row { margin: 4px 0 }
 .agent-bubble {
-    background: {{AGENT_A06}};
+    background: var(--agent-a06);
     border-radius: 4px 16px 16px 16px;
     padding: 8px 16px;
     max-width: 95%;
 }
-.agent-bubble:hover { background: {{AGENT_A10}} }
+.agent-bubble:hover { background: var(--agent-a10) }
 .agent-bubble .streaming {
     white-space: pre-wrap; margin: 0; background: none; padding: 0;
     font-family: inherit; font-size: inherit;
@@ -68,28 +68,28 @@ body {
 .collapse-section.collapsed .collapse-content { display: none }
 .collapse-icon { font-size: 1em }
 .collapse-label { flex: 1 }
-.caret { font-size: 0.8em; width: 10px; text-align: center; color: {{THINK}} }
+.caret { font-size: 0.8em; width: 10px; text-align: center; color: var(--think) }
 
 /* --- Thinking --- */
-.thinking-section .collapse-header { background: {{THINK_A06}}; color: {{THINK}} }
-.thinking-section .collapse-content { color: {{THINK}} }
+.thinking-section .collapse-header { background: var(--think-a06); color: var(--think) }
+.thinking-section .collapse-content { color: var(--think) }
 @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.4 } }
 .thinking-pulse { animation: pulse 1.5s ease-in-out infinite }
 
 /* --- Tool calls --- */
-.tool-section .collapse-header { background: {{TOOL_A08}}; color: {{TOOL}} }
-.tool-section .collapse-content { color: {{THINK}}; white-space: normal }
+.tool-section .collapse-header { background: var(--tool-a08); color: var(--tool) }
+.tool-section .collapse-content { color: var(--think); white-space: normal }
 .tool-spinner {
     display: inline-block; width: 10px; height: 10px;
-    border: 2px solid {{SPIN_BG}};
-    border-top-color: {{TOOL}};
+    border: 2px solid var(--spin-bg);
+    border-top-color: var(--tool);
     border-radius: 50%;
     animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg) } }
 
 /* --- Context files --- */
-.context-section .collapse-header { background: {{USER_A06}}; color: {{USER}} }
+.context-section .collapse-header { background: var(--user-a06); color: var(--user) }
 .context-section .collapse-content { padding: 4px 12px 4px 30px; white-space: normal }
 .ctx-file { padding: 2px 0 }
 
@@ -97,69 +97,69 @@ body {
 .chip-expanded .collapse-header { display: none }
 .chip-expanded .collapse-content {
     display: block;
-    border-left: 2px solid {{THINK_A25}};
+    border-left: 2px solid var(--think-a25);
     margin: 2px 0; padding: 4px 10px; font-size: 0.82em; position: relative;
 }
-.chip-expanded.tool-section .collapse-content { border-left-color: {{TOOL_A40}} }
-.chip-expanded.thinking-section .collapse-content { border-left-color: {{THINK_A40}} }
+.chip-expanded.tool-section .collapse-content { border-left-color: var(--tool-a40) }
+.chip-expanded.thinking-section .collapse-content { border-left-color: var(--think-a40) }
 .chip-close {
     position: absolute; top: 2px; right: 4px; cursor: pointer !important;
-    font-size: 0.8em; color: {{THINK}}; opacity: 0.6; padding: 2px 4px; border-radius: 4px;
+    font-size: 0.8em; color: var(--think); opacity: 0.6; padding: 2px 4px; border-radius: 4px;
 }
-.chip-close:hover { opacity: 1; background: {{THINK_A10}} }
-.ctx-file a { color: {{LINK}}; text-decoration: none }
+.chip-close:hover { opacity: 1; background: var(--think-a10) }
+.ctx-file a { color: var(--link); text-decoration: none }
 .ctx-file a:hover { text-decoration: underline }
 
 /* --- Tool detail content --- */
-.tool-desc { color: {{THINK}}; font-style: italic; margin-bottom: 4px }
+.tool-desc { color: var(--think); font-style: italic; margin-bottom: 4px }
 .tool-params-label, .tool-result-label {
-    color: {{THINK}}; font-size: 0.85em; margin: 6px 0 2px 0; font-weight: 600;
+    color: var(--think); font-size: 0.85em; margin: 6px 0 2px 0; font-weight: 600;
 }
 .tool-params { margin: 2px 0 6px 0; padding: 6px 8px; font-size: 0.9em }
 .tool-output { margin: 2px 0; padding: 6px 8px; font-size: 0.9em }
-.tool-result-pending { color: {{THINK}}; font-style: italic }
+.tool-result-pending { color: var(--think); font-style: italic }
 
 /* --- Timestamps (hidden by default, shown on click) --- */
 .meta { display: none; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 2px; width: 100% }
 .meta.show { display: flex }
 .prompt-row .meta { justify-content: flex-end }
-.ts { font-size: 0.75em; color: {{THINK}} }
+.ts { font-size: 0.75em; color: var(--think) }
 
 /* --- Turn chips (embedded in agent bubble meta) --- */
 .turn-chip {
     display: inline-flex; align-items: center; gap: 3px;
-    background: {{THINK_A08}};
+    background: var(--think-a08);
     border-radius: 10px; padding: 2px 8px; font-size: 0.78em;
-    color: {{THINK}};
+    color: var(--think);
     max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.turn-chip:hover { background: {{THINK_A16}} }
-.turn-chip.tool { color: {{DONE}}; background: {{DONE_A08}} }
+.turn-chip:hover { background: var(--think-a16) }
+.turn-chip.tool { color: var(--done); background: var(--done-a08) }
 .turn-chip.tool.failed { color: rgb(220, 80, 80); background: rgba(220, 80, 80, 0.08) }
-.turn-chip.tool:hover { background: {{DONE_A16}} }
+.turn-chip.tool:hover { background: var(--done-a16) }
 .turn-chip.tool[data-tip] { position: relative }
 .turn-chip.tool[data-tip]:hover::after {
     content: attr(data-tip);
     position: absolute; bottom: calc(100% + 4px); left: 0;
-    background: rgb(50, 50, 54); color: {{THINK}};
+    background: rgb(50, 50, 54); color: var(--think);
     padding: 3px 8px; border-radius: 4px; font-size: 0.85em;
     white-space: nowrap; z-index: 10;
     pointer-events: none; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 .turn-chip.tool.failed:hover { background: rgba(220, 80, 80, 0.16) }
-.turn-chip.ctx:hover { background: {{USER_A16}} }
+.turn-chip.ctx:hover { background: var(--user-a16) }
 .turn-chip.err:hover { background: rgba(255, 0, 0, 0.12) }
-.turn-chip.ctx { color: {{USER}}; background: {{USER_A08}} }
+.turn-chip.ctx { color: var(--user); background: var(--user-a08) }
 .turn-chip.err { color: red; background: rgba(255, 0, 0, 0.06) }
 .turn-chip.stats {
-    color: {{AGENT}}; background: {{AGENT_A08}};
+    color: var(--agent); background: var(--agent-a08);
     cursor: default; position: relative;
 }
-.turn-chip.stats:hover { background: {{AGENT_A16}} }
+.turn-chip.stats:hover { background: var(--agent-a16) }
 .turn-chip.stats:hover::after {
     content: attr(data-tip);
     position: absolute; bottom: calc(100% + 4px); right: 0;
-    background: rgb(50, 50, 54); color: {{THINK}};
+    background: rgb(50, 50, 54); color: var(--think);
     padding: 3px 8px; border-radius: 4px; font-size: 0.85em;
     white-space: nowrap; z-index: 10;
     pointer-events: none; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -169,16 +169,16 @@ body {
 /* --- Status entries --- */
 .status-row { padding: 4px 12px; margin: 2px 0; font-size: 0.88em; border-radius: 6px }
 .status-row.error { color: red; background: rgba(255, 0, 0, 0.05) }
-.status-row.info { color: {{THINK}}; background: {{THINK_A04}} }
+.status-row.info { color: var(--think); background: var(--think-a04) }
 
 /* --- Session separator --- */
 .session-sep { display: flex; align-items: center; gap: 10px; margin: 16px 0; opacity: 0.6 }
-.session-sep-line { flex: 1; height: 1px; background: {{THINK_A30}} }
-.session-sep-label { font-size: 0.78em; color: {{THINK}}; white-space: nowrap }
+.session-sep-line { flex: 1; height: 1px; background: var(--think-a30) }
+.session-sep-label { font-size: 0.78em; color: var(--think); white-space: nowrap }
 
 /* --- Placeholder --- */
 .placeholder {
-    color: {{THINK}}; padding: 20px 12px; text-align: center;
+    color: var(--think); padding: 20px 12px; text-align: center;
     white-space: pre-wrap; font-size: 0.95em;
 }
 
@@ -186,11 +186,11 @@ body {
 .processing-indicator { padding: 8px 16px; margin: 4px 0 }
 .processing-bar {
     height: 2px; border-radius: 1px;
-    background: {{FG_A08}}; overflow: hidden; position: relative;
+    background: var(--fg-a08); overflow: hidden; position: relative;
 }
 .processing-bar-inner {
     position: absolute; top: 0; left: 0; height: 100%; width: 30%; border-radius: 1px;
-    background: {{AGENT}}; animation: indeterminate 1.5s ease-in-out infinite;
+    background: var(--agent); animation: indeterminate 1.5s ease-in-out infinite;
 }
 @keyframes indeterminate {
     0% { left: -30%; width: 30% }
@@ -201,23 +201,23 @@ body {
 /* --- Load more banner (lazy loading) --- */
 .load-more-banner { text-align: center; padding: 10px; cursor: pointer; opacity: 0.6; transition: opacity .2s }
 .load-more-banner:hover { opacity: 1 }
-.load-more-text { font-size: 0.82em; color: {{THINK}} }
+.load-more-text { font-size: 0.82em; color: var(--think) }
 
 /* --- Markdown content --- */
 h2, h3, h4, h5 { margin: 8px 0 4px 0 }
 p { margin: 3px 0 }
-a { color: {{LINK}}; text-decoration: none; cursor: pointer }
+a { color: var(--link); text-decoration: none; cursor: pointer }
 a:hover { text-decoration: underline }
 code {
-    background: {{CODE_BG}}; padding: 2px 5px; border-radius: 4px;
-    font-family: 'JetBrains Mono', monospace; font-size: {{CODE_FONT_SIZE}}pt;
+    background: var(--code-bg); padding: 2px 5px; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: var(--code-font-size);
 }
-pre { background: {{CODE_BG}}; padding: 10px; border-radius: 6px; margin: 6px 0; overflow-x: auto }
+pre { background: var(--code-bg); padding: 10px; border-radius: 6px; margin: 6px 0; overflow-x: auto }
 pre code { background: none; padding: 0; border-radius: 0; display: block }
 table { border-collapse: collapse; margin: 6px 0 }
-th, td { border: 1px solid {{TBL_BORDER}}; padding: 4px 10px; text-align: left }
-th { background: {{TH_BG}}; font-weight: 600 }
-tr:nth-child(even) td { background: {{CODE_BG}} }
+th, td { border: 1px solid var(--tbl-border); padding: 4px 10px; text-align: left }
+th { background: var(--th-bg); font-weight: 600 }
+tr:nth-child(even) td { background: var(--code-bg) }
 ul, ol { margin: 4px 0; padding-left: 22px }
 li { margin: 2px 0 }
 b, strong { font-weight: 600 }

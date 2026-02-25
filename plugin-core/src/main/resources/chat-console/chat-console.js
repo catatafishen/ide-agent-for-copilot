@@ -1,7 +1,10 @@
 /**
  * Chat Console Panel JavaScript
- * Dynamic values use {{PLACEHOLDER}} syntax, substituted at runtime from Kotlin.
- * Placeholders: {{FILE_HANDLER}}, {{CURSOR_BRIDGE}}, {{LOAD_MORE_BRIDGE}}
+ *
+ * Bridge functions are wired up by Kotlin via window._bridge before this script loads:
+ *   window._bridge.openFile(href)  - open a file link
+ *   window._bridge.setCursor(type) - set cursor type
+ *   window._bridge.loadMore()      - load earlier messages
  */
 
 var autoScroll = true;
@@ -25,7 +28,7 @@ function loadMore() {
     _loadingMore = true;
     var s = document.getElementById('load-more-sentinel');
     if (s) { var t = s.querySelector('.load-more-text'); if (t) t.textContent = 'Loading...'; }
-    {{LOAD_MORE_BRIDGE}}
+    window._bridge.loadMore();
 }
 
 function toggleTool(id) {
@@ -219,7 +222,8 @@ document.addEventListener('click', function (e) {
     var el = e.target;
     while (el && el.tagName !== 'A') el = el.parentElement;
     if (el && el.getAttribute('href') && el.getAttribute('href').indexOf('openfile://') === 0) {
-        e.preventDefault(); {{FILE_HANDLER}}
+        e.preventDefault();
+        window._bridge.openFile(el.getAttribute('href'));
     }
 });
 
@@ -228,5 +232,5 @@ document.addEventListener('mouseover', function (e) {
     var el = e.target; var c = 'default';
     if (el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip')) c = 'pointer';
     else if (el.closest('p,pre,code,li,td,th,.collapse-content,.streaming')) c = 'text';
-    if (c !== _lastCursor) { _lastCursor = c; {{CURSOR_BRIDGE}} }
+    if (c !== _lastCursor) { _lastCursor = c; window._bridge.setCursor(c); }
 });

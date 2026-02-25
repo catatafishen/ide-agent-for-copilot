@@ -1171,66 +1171,71 @@ ul,ol{margin:4px 0;padding-left:22px}
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
         val doneColor = JBColor(Color(0x59, 0x8C, 0x4D), Color(0x6A, 0x9F, 0x59))
-        val fileHandler = openFileQuery!!.inject("el.getAttribute('href')")
 
-        // Build substitution map for {{PLACEHOLDER}} tokens in CSS/JS resources
-        val vars = mapOf(
-            "FONT_FAMILY" to font.family,
-            "FONT_SIZE" to (font.size - 2).toString(),
-            "CODE_FONT_SIZE" to (font.size - 3).toString(),
-            "FG" to rgb(fg),
-            "FG_A08" to rgba(fg, 0.08),
-            "BG" to rgb(bg),
-            "USER" to rgb(USER_COLOR),
-            "USER_A06" to rgba(USER_COLOR, 0.06),
-            "USER_A08" to rgba(USER_COLOR, 0.08),
-            "USER_A12" to rgba(USER_COLOR, 0.12),
-            "USER_A15" to rgba(USER_COLOR, 0.15),
-            "USER_A16" to rgba(USER_COLOR, 0.16),
-            "USER_A18" to rgba(USER_COLOR, 0.18),
-            "USER_A25" to rgba(USER_COLOR, 0.25),
-            "AGENT" to rgb(AGENT_COLOR),
-            "AGENT_A06" to rgba(AGENT_COLOR, 0.06),
-            "AGENT_A08" to rgba(AGENT_COLOR, 0.08),
-            "AGENT_A10" to rgba(AGENT_COLOR, 0.10),
-            "AGENT_A16" to rgba(AGENT_COLOR, 0.16),
-            "THINK" to rgb(THINK_COLOR),
-            "THINK_A04" to rgba(THINK_COLOR, 0.04),
-            "THINK_A06" to rgba(THINK_COLOR, 0.06),
-            "THINK_A08" to rgba(THINK_COLOR, 0.08),
-            "THINK_A10" to rgba(THINK_COLOR, 0.10),
-            "THINK_A16" to rgba(THINK_COLOR, 0.16),
-            "THINK_A25" to rgba(THINK_COLOR, 0.25),
-            "THINK_A30" to rgba(THINK_COLOR, 0.30),
-            "THINK_A35" to rgba(THINK_COLOR, 0.35),
-            "THINK_A40" to rgba(THINK_COLOR, 0.40),
-            "THINK_A55" to rgba(THINK_COLOR, 0.55),
-            "TOOL" to rgb(TOOL_COLOR),
-            "TOOL_A08" to rgba(TOOL_COLOR, 0.08),
-            "TOOL_A40" to rgba(TOOL_COLOR, 0.40),
-            "SPIN_BG" to rgb(spinBg),
-            "DONE" to rgb(doneColor),
-            "DONE_A08" to rgba(doneColor, 0.08),
-            "DONE_A16" to rgba(doneColor, 0.16),
-            "CODE_BG" to rgb(codeBg),
-            "TBL_BORDER" to rgb(tblBorder),
-            "TH_BG" to rgb(thBg),
-            "LINK" to rgb(linkColor),
-            // JS bridge placeholders
-            "FILE_HANDLER" to fileHandler,
-            "CURSOR_BRIDGE" to cursorBridgeJs,
-            "LOAD_MORE_BRIDGE" to loadMoreBridgeJs,
-        )
+        // CSS custom properties for theme colors
+        val cssVars = """
+            --font-family: '${font.family}';
+            --font-size: ${font.size - 2}pt;
+            --code-font-size: ${font.size - 3}pt;
+            --fg: ${rgb(fg)};
+            --fg-a08: ${rgba(fg, 0.08)};
+            --bg: ${rgb(bg)};
+            --user: ${rgb(USER_COLOR)};
+            --user-a06: ${rgba(USER_COLOR, 0.06)};
+            --user-a08: ${rgba(USER_COLOR, 0.08)};
+            --user-a12: ${rgba(USER_COLOR, 0.12)};
+            --user-a15: ${rgba(USER_COLOR, 0.15)};
+            --user-a16: ${rgba(USER_COLOR, 0.16)};
+            --user-a18: ${rgba(USER_COLOR, 0.18)};
+            --user-a25: ${rgba(USER_COLOR, 0.25)};
+            --agent: ${rgb(AGENT_COLOR)};
+            --agent-a06: ${rgba(AGENT_COLOR, 0.06)};
+            --agent-a08: ${rgba(AGENT_COLOR, 0.08)};
+            --agent-a10: ${rgba(AGENT_COLOR, 0.10)};
+            --agent-a16: ${rgba(AGENT_COLOR, 0.16)};
+            --think: ${rgb(THINK_COLOR)};
+            --think-a04: ${rgba(THINK_COLOR, 0.04)};
+            --think-a06: ${rgba(THINK_COLOR, 0.06)};
+            --think-a08: ${rgba(THINK_COLOR, 0.08)};
+            --think-a10: ${rgba(THINK_COLOR, 0.10)};
+            --think-a16: ${rgba(THINK_COLOR, 0.16)};
+            --think-a25: ${rgba(THINK_COLOR, 0.25)};
+            --think-a30: ${rgba(THINK_COLOR, 0.30)};
+            --think-a35: ${rgba(THINK_COLOR, 0.35)};
+            --think-a40: ${rgba(THINK_COLOR, 0.40)};
+            --think-a55: ${rgba(THINK_COLOR, 0.55)};
+            --tool: ${rgb(TOOL_COLOR)};
+            --tool-a08: ${rgba(TOOL_COLOR, 0.08)};
+            --tool-a40: ${rgba(TOOL_COLOR, 0.40)};
+            --spin-bg: ${rgb(spinBg)};
+            --done: ${rgb(doneColor)};
+            --done-a08: ${rgba(doneColor, 0.08)};
+            --done-a16: ${rgba(doneColor, 0.16)};
+            --code-bg: ${rgb(codeBg)};
+            --tbl-border: ${rgb(tblBorder)};
+            --th-bg: ${rgb(thBg)};
+            --link: ${rgb(linkColor)};
+        """.trimIndent()
 
-        val css = loadResource("/chat-console/chat-console.css.template")
-        val js = loadResource("/chat-console/chat-console.js.template")
-        val styledCss = vars.entries.fold(css) { s, (k, v) -> s.replace("{{$k}}", v) }
-        val styledJs = vars.entries.fold(js) { s, (k, v) -> s.replace("{{$k}}", v) }
+        // JS bridge: wire JCEF query callbacks to window._bridge methods
+        val fileHandler = openFileQuery!!.inject("href")
+        val bridgeJs = """
+            window._bridge = {
+                openFile: function(href) { $fileHandler },
+                setCursor: function(c) { $cursorBridgeJs },
+                loadMore: function() { $loadMoreBridgeJs }
+            };
+        """.trimIndent()
+
+        val css = loadResource("/chat-console/chat-console.css")
+        val js = loadResource("/chat-console/chat-console.js")
 
         return """<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>$styledCss</style></head><body>
+<style>:root { $cssVars }</style>
+<style>$css</style></head><body>
 <div id="container"></div>
-<script>$styledJs</script></body></html>"""
+<script>$bridgeJs</script>
+<script>$js</script></body></html>"""
     }
 
 // --- Markdown to HTML ---
