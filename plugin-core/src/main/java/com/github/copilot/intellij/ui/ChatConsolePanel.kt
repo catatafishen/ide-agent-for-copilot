@@ -532,19 +532,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
         return arr.toString()
     }
-
-    /** Restore conversation entries from JSON and rebuild the chat view */    fun restoreEntries(json: String) {
+    /** Restore conversation entries from JSON and rebuild the chat view */
+    fun restoreEntries(json: String) {
         try {
             val arr = com.google.gson.JsonParser.parseString(json).asJsonArray
-            // Show enough entries to include several complete prompt/response turns
-            val initialVisible = 60
-            // Find split point at a prompt boundary to keep complete turns visible
-            var splitAt = maxOf(0, arr.size() - initialVisible)
-            while (splitAt > 0 && arr[splitAt].asJsonObject["type"]?.asString != "prompt") {
-                splitAt--
-            }
+            // Find split point: show last N complete prompt/response turns
+            val turnsToShow = 5
+            val splitAt = findSplitAtNthPromptFromEnd(arr, turnsToShow)
             if (splitAt <= 0) {
-                // Small conversation or no good split point — render everything
                 restoreAndRenderEntries(arr)
                 return
             }
@@ -557,7 +552,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val bannerHtml = "<div id='load-more-sentinel' class='load-more-banner' onclick='loadMore()' style='cursor:pointer'>" +
                 "<span class='load-more-text'>\u25B2 Load earlier messages (${deferredRestoreJson.size} more) \u2014 click or scroll up</span></div>"
             appendHtml(bannerHtml)
-            // Phase 3: Render recent entries using existing methods
+            // Phase 3: Render recent entries
             for (i in splitAt until arr.size()) {
                 renderRestoredEntry(arr[i].asJsonObject)
             }
@@ -575,6 +570,29 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             )
         } catch (_: Exception) { /* best-effort restore */
         }
+    }
+
+    /** Walk backwards from the end to find the Nth prompt entry, then return its index as the split point. */
+    private fun findSplitAtNthPromptFromEnd(arr: com.google.gson.JsonArray, n: Int): Int {
+        var promptCount = 0
+        for (i in arr.size() - 1 downTo 0) {
+            if (arr[i].asJsonObject["type"]?.asString == "prompt") {
+                promptCount++
+                if (promptCount >= n) return i
+            }
+        }
+        return 0
+    }
+
+    private fun findSplitAtNthPromptFromEnd(list: List<com.google.gson.JsonElement>, n: Int): Int {
+        var promptCount = 0
+        for (i in list.size - 1 downTo 0) {
+            if (list[i].asJsonObject["type"]?.asString == "prompt") {
+                promptCount++
+                if (promptCount >= n) return i
+            }
+        }
+        return 0
     }
 
     private fun addEntryDataOnly(obj: com.google.gson.JsonObject) {
@@ -648,12 +666,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun loadMoreEntries() {
         if (deferredRestoreJson.isEmpty()) return
-        val batchSize = 30
-        var start = maxOf(0, deferredRestoreJson.size - batchSize)
-        // Align to a prompt boundary for complete turns
-        while (start > 0 && deferredRestoreJson[start].asJsonObject["type"]?.asString != "prompt") {
-            start--
-        }
+        // Load 3 complete prompt/response turns at a time
+        val turnsToLoad = 3
+        val start = findSplitAtNthPromptFromEnd(deferredRestoreJson, turnsToLoad)
         val batch = deferredRestoreJson.subList(start, deferredRestoreJson.size).toList()
         deferredRestoreJson.subList(start, deferredRestoreJson.size).clear()
         val remaining = deferredRestoreJson.size
