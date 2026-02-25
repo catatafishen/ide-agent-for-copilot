@@ -45,6 +45,7 @@ public final class PsiBridgeService implements Disposable {
     private final Project project;
     private final RunConfigurationService runConfigService;
     private final Map<String, ToolHandler> toolRegistry = new LinkedHashMap<>();
+    private final FileTools fileTools;
     private HttpServer httpServer;
     private int port;
 
@@ -55,11 +56,12 @@ public final class PsiBridgeService implements Disposable {
         // Initialize handler groups
         RefactoringTools refactoringTools = new RefactoringTools(project);
         this.runConfigService = new RunConfigurationService(project, refactoringTools::resolveClass);
+        this.fileTools = new FileTools(project);
 
         // Register all tools from handler groups
         for (AbstractToolHandler handler : List.of(
             new CodeNavigationTools(project),
-            new FileTools(project),
+            fileTools,
             new CodeQualityTools(project),
             refactoringTools,
             new TestTools(project, refactoringTools),
@@ -87,6 +89,13 @@ public final class PsiBridgeService implements Disposable {
     @SuppressWarnings("unused") // Public API - may be used by external integrations
     public int getPort() {
         return port;
+    }
+
+    /**
+     * Runs deferred OptimizeImportsProcessor on files modified by partial edits.
+     */
+    public void optimizePendingImports() {
+        fileTools.flushPendingImportOptimization();
     }
 
     public synchronized void start() {

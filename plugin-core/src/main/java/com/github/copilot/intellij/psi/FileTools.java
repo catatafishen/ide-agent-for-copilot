@@ -38,6 +38,10 @@ class FileTools extends AbstractToolHandler {
     private static final String PARAM_NEW_STR = "new_str";
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
 
+    // Files modified by partial edits that need import optimization at turn end
+    private final java.util.Set<String> pendingImportOptimization =
+        java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
+
     /**
      * Extract context lines around an edit region for the response.
      * Returns ~5 lines before and after the edited region so the agent
@@ -272,7 +276,10 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
-        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr, false);
+        if (autoFormat && syntaxWarning.isEmpty()) {
+            autoFormatAfterWrite(pathStr, false);
+            pendingImportOptimization.add(pathStr);
+        }
         int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
             + contextLines(doc, finalIdx, ctxEnd) + syntaxWarning);
@@ -329,7 +336,10 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
-        if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr, false);
+        if (autoFormat && syntaxWarning.isEmpty()) {
+            autoFormatAfterWrite(pathStr, false);
+            pendingImportOptimization.add(pathStr);
+        }
         int ctxEnd = Math.min(fStart + fNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
             + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX
@@ -419,6 +429,40 @@ class FileTools extends AbstractToolHandler {
         } catch (Exception e) {
             LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Runs OptimizeImportsProcessor on all files that were modified by partial edits
+     * since the last flush. Called at the end of an agent turn so that imports added
+     * across multiple edits are not prematurely removed.
+     */
+    void flushPendingImportOptimization() {
+        if (pendingImportOptimization.isEmpty()) return;
+
+        java.util.List<String> paths = new java.util.ArrayList<>(pendingImportOptimization);
+        pendingImportOptimization.clear();
+
+        EdtUtil.invokeLater(() -> {
+            for (String pathStr : paths) {
+                try {
+                    VirtualFile vf = resolveVirtualFile(pathStr);
+                    if (vf == null) continue;
+                    PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                    if (psiFile == null) continue;
+
+                    ApplicationManager.getApplication().runWriteAction(() ->
+                        com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                            com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                            new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                            com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                        }, "Optimize Imports (deferred)", null)
+                    );
+                    LOG.info("Deferred import optimization: " + pathStr);
+                } catch (Exception e) {
+                    LOG.warn("Deferred import optimization failed for " + pathStr + ": " + e.getMessage());
+                }
+            }
+        });
     }
 
     /**

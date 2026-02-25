@@ -1372,6 +1372,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             )
 
+            // Optimize imports on all files modified by partial edits during this turn
+            com.github.copilot.intellij.psi.PsiBridgeService.getInstance(project).optimizePendingImports()
+
             consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
             setResponseStatus("Done", loading = false)
             addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
