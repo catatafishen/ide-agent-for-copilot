@@ -103,13 +103,9 @@ class InfrastructureTools extends AbstractToolHandler {
 
     private String runCommand(JsonObject args) throws Exception {
         String command = args.get("command").getAsString();
-        // Block git commands — they bypass IntelliJ's VFS and cause buffer desync
-        String trimmed = command.trim();
-        if (trimmed.equals("git") || trimmed.startsWith("git ")) {
-            return "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
-                    + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
-                    + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
-        }
+        // Mirror the abuse detection from CopilotAcpClient — MCP tools bypass ACP permissions
+        String abuseError = detectCommandAbuse(command);
+        if (abuseError != null) return abuseError;
         String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
@@ -139,7 +135,7 @@ class InfrastructureTools extends AbstractToolHandler {
         }
 
         return (result.exitCode() == 0 ? "\u2705 Command succeeded" : "\u274C Command failed (exit code " + result.exitCode() + ")")
-                + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
+            + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
     }
 
     private static String truncateForTitle(String command) {
@@ -178,14 +174,14 @@ class InfrastructureTools extends AbstractToolHandler {
         if (level != null) {
             final String lvl = level;
             filtered = filtered.stream()
-                    .filter(l -> l.contains(lvl))
-                    .toList();
+                .filter(l -> l.contains(lvl))
+                .toList();
         }
         if (filter != null) {
             final String f = filter;
             filtered = filtered.stream()
-                    .filter(l -> l.contains(f))
-                    .toList();
+                .filter(l -> l.contains(f))
+                .toList();
         }
 
         int start = Math.max(0, filtered.size() - lines);
@@ -198,7 +194,7 @@ class InfrastructureTools extends AbstractToolHandler {
         StringBuilder result = new StringBuilder();
         try {
             var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()
-                    .getNotificationsOfType(com.intellij.notification.Notification.class, project);
+                .getNotificationsOfType(com.intellij.notification.Notification.class, project);
             if (notifications.length == 0) {
                 return "No recent notifications.";
             }
@@ -297,7 +293,7 @@ class InfrastructureTools extends AbstractToolHandler {
 
         if (text.length() > maxChars) {
             result.append("...(truncated, showing last ").append(maxChars).append(" of ").append(text.length())
-                    .append(" chars. Use max_chars parameter to read more.)\n");
+                .append(" chars. Use max_chars parameter to read more.)\n");
             result.append(text.substring(text.length() - maxChars));
         } else {
             result.append(text);
@@ -442,5 +438,56 @@ class InfrastructureTools extends AbstractToolHandler {
             // SDK access errors are non-fatal
         }
         return System.getenv(JAVA_HOME_ENV);
+    }
+
+    /**
+     * Detect run_command abuse — mirrors CopilotAcpClient.detectAbusePattern() for
+     * MCP tool calls that bypass the ACP permission system.
+     * Returns an error message if abuse detected, null otherwise.
+     */
+    @SuppressWarnings("java:S1192") // duplicated string literals are fine for readability here
+    private static String detectCommandAbuse(String command) {
+        String cmd = command.toLowerCase().trim();
+
+        // Block git — causes IntelliJ editor buffer desync
+        if (cmd.startsWith("git ") || cmd.equals("git") ||
+                cmd.contains("&& git ") || cmd.contains("; git ") || cmd.contains("| git ")) {
+            return "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
+                    + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
+                    + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
+        }
+
+        // Block sed — should use intellij_write_file for proper undo/redo and live buffer access
+        if (cmd.startsWith("sed ") || cmd.contains("| sed ") ||
+                cmd.contains("&& sed ") || cmd.contains("; sed ")) {
+            return "Error: sed is not allowed via run_command (bypasses IntelliJ editor buffers). "
+                    + "Use intellij_write_file with old_str/new_str for file editing instead.";
+        }
+
+        // Block grep — should use search_text or search_symbols for live buffer search
+        if (cmd.startsWith("grep ") || cmd.startsWith("rg ") ||
+                cmd.contains("| grep ") || cmd.contains("&& grep ") || cmd.contains("; grep ") ||
+                cmd.contains("| rg ") || cmd.contains("&& rg ") || cmd.contains("; rg ")) {
+            return "Error: grep/rg commands are not allowed via run_command (searches stale disk files). "
+                    + "Use search_text or search_symbols to search live editor buffers instead.";
+        }
+
+        // Block find — should use list_project_files
+        if (cmd.matches("find \\S+.*-name.*") || cmd.matches("find \\S+.*-type.*") ||
+                cmd.startsWith("find .") || cmd.startsWith("find /")) {
+            return "Error: find commands are not allowed via run_command. "
+                    + "Use list_project_files to find files instead.";
+        }
+
+        // Block test commands — should use run_tests
+        if (cmd.matches(".*(gradlew|gradle|mvn|npm|yarn|pnpm|pytest|jest|mocha|go) test.*") ||
+                cmd.matches(".*\\./gradlew.*test.*") ||
+                cmd.matches(".*python.*-m.*pytest.*") ||
+                cmd.matches(".*cargo test.*")) {
+            return "Error: test commands are not allowed via run_command. "
+                    + "Use run_tests to run tests with proper IntelliJ integration instead.";
+        }
+
+        return null;
     }
 }
