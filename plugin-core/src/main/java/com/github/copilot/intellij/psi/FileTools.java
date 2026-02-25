@@ -38,8 +38,8 @@ class FileTools extends AbstractToolHandler {
     private static final String PARAM_NEW_STR = "new_str";
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
 
-    // Files modified by partial edits that need import optimization at turn end
-    private final java.util.Set<String> pendingImportOptimization =
+    // Files modified during the current agent turn that need formatting at turn end
+    private final java.util.Set<String> pendingAutoFormat =
         java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
 
     /**
@@ -194,7 +194,7 @@ class FileTools extends AbstractToolHandler {
             );
             FileDocumentManager.getInstance().saveDocument(doc);
             String syntaxWarning = checkSyntaxErrors(pathStr);
-            if (autoFormat && syntaxWarning.isEmpty()) autoFormatAfterWrite(pathStr);
+            if (autoFormat && syntaxWarning.isEmpty()) pendingAutoFormat.add(pathStr);
             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX + syntaxWarning);
         } else {
             ApplicationManager.getApplication().runWriteAction(() -> {
@@ -276,10 +276,7 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
-        if (autoFormat && syntaxWarning.isEmpty()) {
-            autoFormatAfterWrite(pathStr, false);
-            pendingImportOptimization.add(pathStr);
-        }
+        if (autoFormat && syntaxWarning.isEmpty()) pendingAutoFormat.add(pathStr);
         int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
             + contextLines(doc, finalIdx, ctxEnd) + syntaxWarning);
@@ -336,10 +333,7 @@ class FileTools extends AbstractToolHandler {
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
-        if (autoFormat && syntaxWarning.isEmpty()) {
-            autoFormatAfterWrite(pathStr, false);
-            pendingImportOptimization.add(pathStr);
-        }
+        if (autoFormat && syntaxWarning.isEmpty()) pendingAutoFormat.add(pathStr);
         int ctxEnd = Math.min(fStart + fNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced lines " + startLine + "-" + endLine
             + " (" + replacedLines + " lines) with " + fNew.length() + FORMAT_CHARS_SUFFIX
@@ -400,47 +394,15 @@ class FileTools extends AbstractToolHandler {
     }
 
     /**
-     * Auto-format and optimize imports on a file after a write operation.
-     * Runs synchronously on the current EDT thread so the response reflects
-     * the final formatted state and subsequent edits see consistent content.
+     * Auto-format and optimize imports on all files modified during the agent turn.
+     * Deferred to turn end so that imports added across multiple edits are not
+     * prematurely removed, and all formatting happens in one clean pass.
      */
-    private void autoFormatAfterWrite(String pathStr) {
-        autoFormatAfterWrite(pathStr, true);
-    }
+    void flushPendingAutoFormat() {
+        if (pendingAutoFormat.isEmpty()) return;
 
-    private void autoFormatAfterWrite(String pathStr, boolean optimizeImports) {
-        try {
-            VirtualFile vf = resolveVirtualFile(pathStr);
-            if (vf == null) return;
-            PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-            if (psiFile == null) return;
-
-            ApplicationManager.getApplication().runWriteAction(() ->
-                com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
-                    com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                    if (optimizeImports) {
-                        new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
-                    }
-                    new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
-                    com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                }, "Auto-Format After Write", null)
-            );
-            LOG.info("Auto-formatted after write: " + pathStr + (optimizeImports ? " (with import optimization)" : ""));
-        } catch (Exception e) {
-            LOG.warn("Auto-format failed for " + pathStr + ": " + e.getMessage());
-        }
-    }
-
-    /**
-     * Runs OptimizeImportsProcessor on all files that were modified by partial edits
-     * since the last flush. Called at the end of an agent turn so that imports added
-     * across multiple edits are not prematurely removed.
-     */
-    void flushPendingImportOptimization() {
-        if (pendingImportOptimization.isEmpty()) return;
-
-        java.util.List<String> paths = new java.util.ArrayList<>(pendingImportOptimization);
-        pendingImportOptimization.clear();
+        java.util.List<String> paths = new java.util.ArrayList<>(pendingAutoFormat);
+        pendingAutoFormat.clear();
 
         EdtUtil.invokeLater(() -> {
             for (String pathStr : paths) {
@@ -454,12 +416,13 @@ class FileTools extends AbstractToolHandler {
                         com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                             com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
                             new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                            new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
                             com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
-                        }, "Optimize Imports (deferred)", null)
+                        }, "Auto-Format (Deferred)", null)
                     );
-                    LOG.info("Deferred import optimization: " + pathStr);
+                    LOG.info("Deferred auto-format: " + pathStr);
                 } catch (Exception e) {
-                    LOG.warn("Deferred import optimization failed for " + pathStr + ": " + e.getMessage());
+                    LOG.warn("Deferred auto-format failed for " + pathStr + ": " + e.getMessage());
                 }
             }
         });

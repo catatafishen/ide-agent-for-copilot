@@ -92,10 +92,10 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Runs deferred OptimizeImportsProcessor on files modified by partial edits.
+     * Runs deferred auto-format and import optimization on all files modified during the turn.
      */
-    public void optimizePendingImports() {
-        fileTools.flushPendingImportOptimization();
+    public void flushPendingAutoFormat() {
+        fileTools.flushPendingAutoFormat();
     }
 
     public synchronized void start() {

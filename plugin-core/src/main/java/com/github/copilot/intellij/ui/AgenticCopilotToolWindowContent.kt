@@ -1372,8 +1372,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             )
 
-            // Optimize imports on all files modified by partial edits during this turn
-            com.github.copilot.intellij.psi.PsiBridgeService.getInstance(project).optimizePendingImports()
+            // Auto-format and optimize imports on all files modified during this turn
+            com.github.copilot.intellij.psi.PsiBridgeService.getInstance(project).flushPendingAutoFormat()
 
             consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
             setResponseStatus("Done", loading = false)
