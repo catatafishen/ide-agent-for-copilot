@@ -8,7 +8,6 @@ import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.*
@@ -2048,7 +2047,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun createSettingsTab(): JComponent {
+    /**
+     * Creates the settings panel and returns it along with a save callback.
+     */
+    private fun createSettingsTab(): Pair<JComponent, () -> Unit> {
         val panel = JBPanel<JBPanel<*>>(GridBagLayout())
         panel.border = JBUI.Borders.empty(10)
 
@@ -2059,113 +2061,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.insets = JBUI.insets(5)
         gbc.fill = GridBagConstraints.HORIZONTAL
 
-        // Model settings section
-        val modelLabel = JBLabel("<html><b>Model settings</b></html>")
-        gbc.gridwidth = 2
-        panel.add(modelLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 1
-        panel.add(JBLabel("Default model:"), gbc)
-
-        gbc.gridx = 1
-        val settingsModelPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
-        val defaultModelCombo = ComboBox(arrayOf(MSG_LOADING))
-        defaultModelCombo.preferredSize = JBUI.size(250, 30)
-        defaultModelCombo.isEnabled = false
-        settingsModelPanel.add(defaultModelCombo)
-        val settingsSpinner = AsyncProcessIcon("loading-settings-models")
-        settingsSpinner.preferredSize = JBUI.size(16, 16)
-        settingsModelPanel.add(settingsSpinner)
-        panel.add(settingsModelPanel, gbc)
-
-        // Auth row for settings tab
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        val settingsAuthPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
-        settingsAuthPanel.isVisible = false
-        val settingsModelError = JBLabel()
-        val settingsLoginButton = JButton("Login")
-        val settingsRetryButton = JButton("Retry")
-        createAuthButtons(settingsModelError, settingsLoginButton, settingsRetryButton, settingsAuthPanel)
-        panel.add(settingsAuthPanel, gbc)
-
-        // Reusable settings model loading function
-        fun loadSettingsModels() {
-            loadSettingsModelsAsync(
-                settingsSpinner,
-                defaultModelCombo,
-                settingsModelError,
-                settingsLoginButton,
-                settingsRetryButton,
-                settingsAuthPanel
-            )
-        }
-
-        settingsRetryButton.addActionListener { loadSettingsModels() }
-        loadSettingsModels()
-
-        // Tool permissions section
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(20, 5, 5, 5)
-        val permissionsLabel = JBLabel("<html><b>Tool permissions</b></html>")
-        panel.add(permissionsLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 1
-        gbc.insets = JBUI.insets(5)
-
-        val toolPermissions = listOf(
-            "File Operations" to "Allow agent to read and write files",
-            "Code Execution" to "Allow agent to run commands",
-            "Git Operations" to "Allow agent to commit and push",
-            "Network Access" to "Allow agent to make HTTP requests"
-        )
-
-        toolPermissions.forEach { (tool, description) ->
-            gbc.gridx = 0
-            val checkbox = JCheckBox(tool)
-            checkbox.isSelected = tool == "File Operations" // Default: only file ops allowed
-            checkbox.toolTipText = description
-            panel.add(checkbox, gbc)
-
-            gbc.gridy++
-        }
-
-        // Format settings section
-        gbc.gridx = 0
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(20, 5, 5, 5)
-        val formatLabel = JBLabel("<html><b>Code formatting</b></html>")
-        panel.add(formatLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 1
-        gbc.insets = JBUI.insets(5)
-
-        val formatAfterEdit = JCheckBox("Format code after agent edits")
-        formatAfterEdit.isSelected = true
-        panel.add(formatAfterEdit, gbc)
-
-        gbc.gridy++
-        val optimizeImports = JCheckBox("Optimize imports after edits")
-        optimizeImports.isSelected = true
-        panel.add(optimizeImports, gbc)
-
-        // Agent behavior section
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.insets = JBUI.insets(20, 5, 5, 5)
+        // --- Agent behavior section ---
         val agentLabel = JBLabel("<html><b>Agent behavior</b></html>")
+        gbc.gridwidth = 2
         panel.add(agentLabel, gbc)
 
         gbc.gridy++
         gbc.gridwidth = 1
-        gbc.insets = JBUI.insets(5)
         panel.add(JBLabel("Inactivity timeout (seconds):"), gbc)
 
         gbc.gridx = 1
@@ -2183,25 +2085,64 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         toolCallSpinner.toolTipText = "Limit tool calls per turn to control credit usage (0 = unlimited)"
         panel.add(toolCallSpinner, gbc)
 
-        // Save button
-        gbc.gridy++
         gbc.gridx = 0
+        gbc.gridy++
+        gbc.gridwidth = 2
+        val followFilesCheckbox = JCheckBox("Open files in editor when agent reads/writes them")
+        followFilesCheckbox.isSelected = CopilotSettings.getFollowAgentFiles()
+        followFilesCheckbox.toolTipText = "Automatically navigate to files the agent touches"
+        panel.add(followFilesCheckbox, gbc)
+
+        // --- Code formatting section ---
+        gbc.gridx = 0
+        gbc.gridy++
         gbc.gridwidth = 2
         gbc.insets = JBUI.insets(20, 5, 5, 5)
-        gbc.anchor = GridBagConstraints.CENTER
+        val formatLabel = JBLabel("<html><b>Code formatting</b></html>")
+        panel.add(formatLabel, gbc)
 
-        val saveButton = JButton("Save Settings")
-        saveButton.addActionListener {
-            CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
-            CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
-            JOptionPane.showMessageDialog(
-                panel,
-                "Settings saved!",
-                "Success",
-                JOptionPane.INFORMATION_MESSAGE
-            )
+        gbc.gridy++
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(5)
+
+        val formatAfterEdit = JCheckBox("Format code after agent edits")
+        formatAfterEdit.isSelected = true
+        panel.add(formatAfterEdit, gbc)
+
+        gbc.gridy++
+        val optimizeImports = JCheckBox("Optimize imports after edits")
+        optimizeImports.isSelected = true
+        panel.add(optimizeImports, gbc)
+
+        // --- Tool permissions section (placeholder) ---
+        gbc.gridx = 0
+        gbc.gridy++
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(20, 5, 5, 5)
+        val permissionsLabel =
+            JBLabel("<html><b>Tool permissions</b> <span style='color:gray;font-weight:normal'>(coming soon)</span></html>")
+        panel.add(permissionsLabel, gbc)
+
+        gbc.gridy++
+        gbc.gridwidth = 2
+        gbc.insets = JBUI.insets(5)
+
+        val toolPermissions = listOf(
+            "File Operations" to "Allow agent to read and write files",
+            "Code Execution" to "Allow agent to run commands",
+            "Git Operations" to "Allow agent to commit and push",
+            "Network Access" to "Allow agent to make HTTP requests"
+        )
+
+        toolPermissions.forEach { (tool, description) ->
+            gbc.gridx = 0
+            val checkbox = JCheckBox(tool)
+            checkbox.isSelected = true
+            checkbox.isEnabled = false
+            checkbox.toolTipText = "$description (not yet configurable)"
+            panel.add(checkbox, gbc)
+            gbc.gridy++
         }
-        panel.add(saveButton, gbc)
 
         // Add filler to push everything to top
         gbc.gridy++
@@ -2209,23 +2150,36 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         gbc.fill = GridBagConstraints.BOTH
         panel.add(JBPanel<JBPanel<*>>(), gbc)
 
-        return panel
+        val saveCallback: () -> Unit = {
+            CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
+            CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
+            CopilotSettings.setFollowAgentFiles(followFilesCheckbox.isSelected)
+        }
+
+        return Pair(panel, saveCallback)
     }
 
     fun getComponent(): JComponent = mainPanel
 
     fun openSettings() {
+        val (settingsPanel, saveCallback) = createSettingsTab()
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
                 title = "Copilot Bridge Settings"
+                setOKButtonText("Apply")
                 init()
             }
 
             override fun createCenterPanel(): JComponent {
                 val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
                 wrapper.preferredSize = JBUI.size(450, 400)
-                wrapper.add(createSettingsTab(), BorderLayout.CENTER)
+                wrapper.add(settingsPanel, BorderLayout.CENTER)
                 return wrapper
+            }
+
+            override fun doOKAction() {
+                saveCallback()
+                super.doOKAction()
             }
         }
         dialog.show()
@@ -2383,55 +2337,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             null
         } catch (e: Exception) {
             e
-        }
-    }
-
-    // Settings tab model loading (uses JComboBox)
-    private fun loadSettingsModelsAsync(
-        spinner: AsyncProcessIcon,
-        comboBox: JComboBox<String>,
-        errorLabel: JBLabel,
-        loginButton: JButton,
-        retryButton: JButton,
-        authPanel: JPanel
-    ) {
-        SwingUtilities.invokeLater {
-            spinner.isVisible = true
-            authPanel.isVisible = false
-            comboBox.removeAllItems()
-            comboBox.addItem(MSG_LOADING)
-            comboBox.isEnabled = false
-        }
-        ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                val models = CopilotService.getInstance(project).getClient().listModels().toList()
-                SwingUtilities.invokeLater {
-                    spinner.isVisible = false
-                    comboBox.removeAllItems()
-                    models.forEach { comboBox.addItem("${it.name}  (${it.usage ?: "1x"})") }
-                    val savedModel = CopilotSettings.getSelectedModel()
-                    val idx = if (savedModel != null) models.indexOfFirst { it.id == savedModel } else 0
-                    if (idx >= 0) comboBox.selectedIndex = idx
-                    comboBox.isEnabled = true
-                    comboBox.addActionListener {
-                        val selIdx = comboBox.selectedIndex
-                        if (selIdx >= 0 && selIdx < models.size) CopilotSettings.setSelectedModel(models[selIdx].id)
-                    }
-                    authPanel.isVisible = false
-                }
-            } catch (e: Exception) {
-                val errorMsg = e.message ?: MSG_UNKNOWN_ERROR
-                SwingUtilities.invokeLater {
-                    spinner.isVisible = false
-                    comboBox.removeAllItems()
-                    comboBox.addItem("Unavailable")
-                    comboBox.isEnabled = false
-                    errorLabel.text = "⚠️ $errorMsg"
-                    loginButton.isVisible = isAuthenticationError(errorMsg)
-                    retryButton.isVisible = !isAuthenticationError(errorMsg)
-                    authPanel.isVisible = true
-                }
-            }
         }
     }
 

@@ -18,7 +18,8 @@ class AgenticCopilotToolWindowFactory : ToolWindowFactory, DumbAware {
         )
         toolWindow.contentManager.addContent(toolWindowContent)
 
-        toolWindow.setTitleActions(listOf(
+        toolWindow.setTitleActions(
+            listOf(
             object : AnAction("New Chat", "Start a fresh conversation", AllIcons.Actions.Restart) {
                 override fun actionPerformed(e: AnActionEvent) {
                     content.resetSession()
