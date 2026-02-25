@@ -58,6 +58,32 @@ Expand-Archive "plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip" 
 Start-Process "C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3\bin\idea64.exe"
 ```
 
+### Deploy to Main IDE After Code Changes
+
+The sandbox IDE (`runIde`) picks up changes automatically, but the **main IDE does not**.
+After every code change, run these 3 commands to rebuild and deploy:
+
+```bash
+cd /home/catatafish/IdeaProjects/intellij-copilot-plugin
+
+# 1. Build the plugin zip (-x buildSearchableOptions avoids launching a conflicting IDE instance)
+./gradlew :plugin-core:buildPlugin -x buildSearchableOptions --quiet
+
+# 2. Remove the old installed plugin (stale JARs cause issues otherwise)
+rm -rf ~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core
+
+# 3. Extract the new one (zip filename includes commit hash, so always use latest)
+unzip -q "$(ls -t plugin-core/build/distributions/*.zip | head -1)" -d ~/.local/share/JetBrains/IntelliJIdea2025.3/
+```
+
+Then **restart the main IDE**.
+
+> **Key points:**
+> - The plugin install path is `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (Toolbox-managed layout)
+> - You **must** `rm -rf` the old folder first, then unzip — otherwise stale JARs remain
+> - `-x buildSearchableOptions` is required because that task tries to launch an IDE instance which conflicts with the running one
+> - The zip filename includes a commit hash (e.g. `plugin-core-0.2.0-2bb9797.zip`), so always use `ls -t ... | head -1` to get the latest
+
 ### Sandbox IDE (Development)
 
 Run the plugin in a sandboxed IntelliJ instance (separate config/data, doesn't touch your main IDE):

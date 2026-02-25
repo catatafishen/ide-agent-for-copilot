@@ -163,7 +163,36 @@ public void methodUsedByFramework(Object param) {
 
 ---
 
-## 6) Implementation Decisions (Feb 2026)
+## 6) Deploying to Main IDE
+
+The sandbox IDE (`runIde`) picks up code changes automatically. The **main IDE does not** — you must manually rebuild and deploy after each change.
+
+**After every code change, run these 3 commands:**
+
+```bash
+cd /home/catatafish/IdeaProjects/intellij-copilot-plugin
+
+# 1. Build the plugin zip
+./gradlew :plugin-core:buildPlugin -x buildSearchableOptions --quiet
+
+# 2. Remove the old installed plugin
+rm -rf ~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core
+
+# 3. Extract the new one (use latest zip)
+unzip -q "$(ls -t plugin-core/build/distributions/*.zip | head -1)" -d ~/.local/share/JetBrains/IntelliJIdea2025.3/
+```
+
+Then tell the user to **restart the main IDE**.
+
+> **Key points:**
+> - Install path: `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (Toolbox-managed layout)
+> - **Must** `rm -rf` the old folder first — otherwise stale JARs remain
+> - `-x buildSearchableOptions` is required — that task tries to launch an IDE which conflicts with the running one
+> - Zip filename includes a commit hash (e.g. `plugin-core-0.2.0-2bb9797.zip`), so always use `ls -t ... | head -1`
+
+---
+
+## 7) Implementation Decisions (Feb 2026)
 
 - **Build**: Gradle 8.x with IntelliJ Platform Plugin 2.x
 - **Protocol**: ACP (via Copilot CLI), MCP (stdio server)
