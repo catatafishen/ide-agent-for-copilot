@@ -239,6 +239,14 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
 
+        // Set the model from saved settings (--model is the only working mechanism)
+        String savedModel = CopilotSettings.getSelectedModel();
+        if (savedModel != null && !savedModel.isEmpty()) {
+            cmd.add("--model");
+            cmd.add(savedModel);
+            LOG.info("Copilot CLI model set to: " + savedModel);
+        }
+
         // NOTE: --available-tools and --excluded-tools CLI flags don't work in --acp mode.
         // Tool filtering must be done via session params (see createSession method).
         // These flags are left here for documentation but have no effect.
@@ -346,8 +354,7 @@ public class CopilotAcpClient implements Closeable {
         // Tool filtering doesn't work properly in ACP mode (CLI bug #556),
         // so we handle it via permission denial (see handlePermissionRequest).
 
-        LOG.warn("=== DEBUG: session/new params: " + params);
-        LOG.info("Session created (MCP servers configured via --additional-mcp-config)");
+        LOG.info("Creating session (MCP servers configured via --additional-mcp-config)");
 
         JsonObject result = sendRequest("session/new", params);
 
@@ -731,9 +738,8 @@ public class CopilotAcpClient implements Closeable {
         promptArray.add(promptContent);
         params.add("prompt", promptArray);
 
-        if (model != null) {
-            params.addProperty("model", model);
-        }
+        // Note: model parameter is NOT sent in session/prompt params because the
+        // Copilot CLI ignores it. Model is set via --model CLI flag at process startup.
 
         return params;
     }

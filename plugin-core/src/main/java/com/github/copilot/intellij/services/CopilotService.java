@@ -90,6 +90,16 @@ public final class CopilotService implements Disposable {
         }
     }
 
+    /**
+     * Restart the CLI process so it picks up the new model from CopilotSettings.
+     * The --model flag is read at process startup by buildAcpCommand().
+     */
+    public synchronized void restartWithModel(@NotNull String modelId) {
+        LOG.info("Restarting Copilot ACP client with model: " + modelId);
+        stop();
+        start();
+    }
+
     @Override
     public void dispose() {
         LOG.info("Copilot ACP Service disposed");

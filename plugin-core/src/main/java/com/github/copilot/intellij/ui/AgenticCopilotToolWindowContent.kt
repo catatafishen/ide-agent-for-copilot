@@ -1433,7 +1433,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     override fun actionPerformed(e: AnActionEvent) {
                         selectedModelIndex = index
                         CopilotSettings.setSelectedModel(model.id)
-                        LOG.info("Model selected: ${model.id} (index=$index)")
+                        LOG.info("Model selected: ${model.id} (index=$index), restarting CLI")
+                        // Clear session so a new one is created on next prompt
+                        currentSessionId = null
+                        // Restart CLI process with --model flag (runs on background thread)
+                        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+                            try {
+                                CopilotService.getInstance(project).restartWithModel(model.id)
+                            } catch (ex: Exception) {
+                                LOG.warn("Failed to restart CLI with model ${model.id}", ex)
+                            }
+                        }
                     }
 
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
