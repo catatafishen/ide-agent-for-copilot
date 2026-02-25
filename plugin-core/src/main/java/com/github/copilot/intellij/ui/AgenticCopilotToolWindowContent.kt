@@ -879,8 +879,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
 
-        fun incrementRequests() {
-            requestsUsed++
+        fun incrementRequests(multiplier: Int = 1) {
+            requestsUsed += multiplier
             SwingUtilities.invokeLater {
                 requestsLabel.text = "\u2022 ${requestsUsed} req"
                 requestsLabel.isVisible = true
@@ -1404,7 +1404,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 { update -> handlePromptStreamingUpdate(update, receivedContent) },
                 {
                     // Called each time a session/prompt RPC request is sent (including retries)
-                    if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementRequests()
+                    val mult = getModelMultiplier(modelId).removeSuffix("x").toIntOrNull() ?: 1
+                    if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementRequests(mult)
                 }
             )
 
