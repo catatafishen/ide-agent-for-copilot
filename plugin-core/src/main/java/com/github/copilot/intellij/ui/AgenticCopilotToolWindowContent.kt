@@ -75,10 +75,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private val costLabel: JBLabel = JBLabel("")
     private lateinit var consolePanel: ChatConsolePanel
 
-    // Per-turn premium request tracking
+    // Per-turn tracking
     private var turnToolCallCount = 0
     private var turnModelId = ""
-    private var turnBillingBefore = 0
 
     // Animation state for usage indicator
     private var previousUsedCount = -1
@@ -310,11 +309,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             refreshUsageDisplay()
             updateUsageGraph(used, entitlement, unlimited, resetDate)
             if (shouldAnimate) animateUsageChange()
-            // Update per-turn request counter on the processing timer
-            val turnRequests = used - turnBillingBefore
-            if (turnRequests > 0 && ::processingTimerPanel.isInitialized) {
-                processingTimerPanel.setRequestsUsed(turnRequests)
-            }
         }
     }
 
@@ -881,6 +875,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
 
+        fun incrementRequests() {
+            requestsUsed++
+            SwingUtilities.invokeLater {
+                requestsLabel.text = "\u2022 ${requestsUsed} req"
+                requestsLabel.isVisible = true
+                revalidate(); repaint()
+            }
+        }
+
         private fun updateLabel() {
             val elapsed = (System.currentTimeMillis() - startedAt) / 1000
             timerLabel.text = if (elapsed < 60) "${elapsed}s" else "${elapsed / 60}m ${elapsed % 60}s"
@@ -1303,7 +1306,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             // Reset per-turn tracking
             turnToolCallCount = 0
             turnModelId = modelId
-            turnBillingBefore = lastBillingUsed
 
             // Show model + multiplier on the prompt bubble immediately
             SwingUtilities.invokeLater {
@@ -1346,7 +1348,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     }
                     appendResponse(chunk)
                 },
-                { update -> handlePromptStreamingUpdate(update, receivedContent) }
+                { update -> handlePromptStreamingUpdate(update, receivedContent) },
+                {
+                    // Called each time a session/prompt RPC request is sent (including retries)
+                    if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementRequests()
+                }
             )
 
             consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
@@ -1517,6 +1523,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         extractContentBlockText(block)
                     }.joinToString("\n").ifEmpty { null }
                 }
+
                 element.isJsonObject -> element.asJsonObject["text"]?.asString
                 element.isJsonPrimitive -> element.asString
                 else -> null

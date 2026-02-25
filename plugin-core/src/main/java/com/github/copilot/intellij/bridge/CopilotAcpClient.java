@@ -436,6 +436,22 @@ public class CopilotAcpClient implements Closeable {
                              @Nullable Consumer<String> onChunk,
                              @Nullable Consumer<JsonObject> onUpdate)
         throws CopilotException {
+        return sendPrompt(sessionId, prompt, model, references, onChunk, onUpdate, null);
+    }
+
+    /**
+     * Send a prompt with full control over ACP session/update notifications.
+     *
+     * @param onChunk   receives text chunks for streaming display
+     * @param onUpdate  receives raw update JSON objects for plan events, tool calls, etc.
+     * @param onRequest called each time a session/prompt RPC request is sent (including retries)
+     */
+    public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
+                             @Nullable String model, @Nullable List<ResourceReference> references,
+                             @Nullable Consumer<String> onChunk,
+                             @Nullable Consumer<JsonObject> onUpdate,
+                             @Nullable Runnable onRequest)
+        throws CopilotException {
         ensureStarted();
 
         int refCount = references != null ? references.size() : 0;
@@ -457,6 +473,8 @@ public class CopilotAcpClient implements Closeable {
                 builtInActionDeniedDuringTurn = false;
                 lastActivityTimestamp = System.currentTimeMillis();
                 toolCallsInTurn.set(0);
+
+                if (onRequest != null) onRequest.run();
 
                 LOG.info("sendPrompt: sending session/prompt request" + (retryCount > 0 ? " (retry #" + retryCount + ")" : ""));
                 JsonObject result = sendPromptRequest(params);
