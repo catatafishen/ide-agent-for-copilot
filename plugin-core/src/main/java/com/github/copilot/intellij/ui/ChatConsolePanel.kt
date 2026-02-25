@@ -1431,11 +1431,13 @@ ul,ol{margin:4px 0;padding-left:22px}
     }
 
     private fun findProjectFileByName(name: String): String? = try {
-        ReadAction.compute<String?, Throwable> {
+        var result: String? = null
+        ReadAction.run<Throwable> {
             val files: Collection<com.intellij.openapi.vfs.VirtualFile> =
                 FilenameIndex.getVirtualFilesByName(name, GlobalSearchScope.projectScope(project))
-            if (files.size == 1) files.first().path else null
+            if (files.size == 1) result = files.first().path
         }
+        result
     } catch (_: Exception) {
         null
     }

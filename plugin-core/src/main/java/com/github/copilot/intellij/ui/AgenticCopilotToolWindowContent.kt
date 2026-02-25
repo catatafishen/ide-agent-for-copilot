@@ -1861,14 +1861,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             try {
                 val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
                     ?: continue
-                val doc =
-                    com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
-                        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
-                    } ?: continue
-                val snippet = com.intellij.openapi.application.ReadAction.compute<String, Throwable> {
-                    val s = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
-                    val e = doc.getLineEndOffset((item.endLine - 1).coerceIn(0, doc.lineCount - 1))
-                    doc.getText(com.intellij.openapi.util.TextRange(s, e))
+                var doc: com.intellij.openapi.editor.Document? = null
+                com.intellij.openapi.application.ReadAction.run<Throwable> {
+                    doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+                }
+                val document = doc ?: continue
+                var snippet = ""
+                com.intellij.openapi.application.ReadAction.run<Throwable> {
+                    val s = document.getLineStartOffset((item.startLine - 1).coerceIn(0, document.lineCount - 1))
+                    val e = document.getLineEndOffset((item.endLine - 1).coerceIn(0, document.lineCount - 1))
+                    snippet = document.getText(com.intellij.openapi.util.TextRange(s, e))
                 }
                 val fileName = item.path.substringAfterLast("/")
                 val ext = fileName.substringAfterLast(".", "")
@@ -1882,21 +1884,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun buildSingleReference(item: ContextItem): CopilotAcpClient.ResourceReference? {
         val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
             ?: return null
-        val doc =
-            com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
-                com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
-            } ?: return null
+        var doc: com.intellij.openapi.editor.Document? = null
+        com.intellij.openapi.application.ReadAction.run<Throwable> {
+            doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
+        }
+        val document = doc ?: return null
 
-        val text = com.intellij.openapi.application.ReadAction.compute<String, Throwable> {
+        var text = ""
+        com.intellij.openapi.application.ReadAction.run<Throwable> {
             if (item.isSelection && item.startLine > 0) {
-                val startOffset = doc.getLineStartOffset((item.startLine - 1).coerceIn(0, doc.lineCount - 1))
-                val endOffset = doc.getLineEndOffset((item.endLine - 1).coerceIn(0, doc.lineCount - 1))
-                val snippet = doc.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
-                // Prepend line range header so the agent knows this is a snippet
+                val startOffset = document.getLineStartOffset((item.startLine - 1).coerceIn(0, document.lineCount - 1))
+                val endOffset = document.getLineEndOffset((item.endLine - 1).coerceIn(0, document.lineCount - 1))
+                val snippet = document.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
                 val fileName = item.path.substringAfterLast("/")
-                "// Selected lines ${item.startLine}-${item.endLine} of $fileName\n$snippet"
+                text = "// Selected lines ${item.startLine}-${item.endLine} of $fileName\n$snippet"
             } else {
-                doc.text
+                text = document.text
             }
         }
 

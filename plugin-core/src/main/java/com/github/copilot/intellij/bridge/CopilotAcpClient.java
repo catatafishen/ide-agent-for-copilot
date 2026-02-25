@@ -6,10 +6,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.extensions.PluginId;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -1420,27 +1417,13 @@ public class CopilotAcpClient implements Closeable {
     @Nullable
     private String findMcpServerJar() {
         try {
-            // The JAR is bundled in the plugin's lib directory alongside plugin-core
-            PluginId pluginId = PluginId.getId("com.github.copilot.intellij");
-            IdeaPluginDescriptor[] plugins = PluginManagerCore.getPlugins();
-            String pluginPath = plugins.length > 0 ?
-                java.util.Arrays.stream(plugins)
-                    .filter(p -> pluginId.equals(p.getPluginId()))
-                    .findFirst()
-                    .map(p -> p.getPluginPath().resolve("lib").resolve("mcp-server.jar").toString())
-                    .orElse(null) : null;
-            if (pluginPath != null && new File(pluginPath).exists()) {
-                LOG.info("Found MCP server JAR: " + pluginPath);
-                return pluginPath;
-            }
-
-            // Fallback: check relative to this class's JAR
+            // Find the MCP JAR relative to this class's JAR in the plugin's lib directory
             java.net.URL url = getClass().getProtectionDomain().getCodeSource().getLocation();
             if (url != null) {
                 File jarDir = new File(url.toURI()).getParentFile();
                 File mcpJar = new File(jarDir, "mcp-server.jar");
                 if (mcpJar.exists()) {
-                    LOG.info("Found MCP server JAR (fallback): " + mcpJar.getAbsolutePath());
+                    LOG.info("Found MCP server JAR: " + mcpJar.getAbsolutePath());
                     return mcpJar.getAbsolutePath();
                 }
             }
