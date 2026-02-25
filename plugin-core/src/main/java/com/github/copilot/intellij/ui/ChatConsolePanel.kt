@@ -417,7 +417,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val did = domId(id)
         val baseName = title.substringAfterLast("-")
         val info = TOOL_DISPLAY_INFO[title] ?: TOOL_DISPLAY_INFO[baseName]
-        var displayName = info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
+        var displayName = info?.displayName ?: baseName.replace("_", " ")
+            .split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
         val subtitleKey = TOOL_SUBTITLE_KEY[title] ?: TOOL_SUBTITLE_KEY[baseName]
         if (subtitleKey != null && !arguments.isNullOrBlank()) {
             try {
