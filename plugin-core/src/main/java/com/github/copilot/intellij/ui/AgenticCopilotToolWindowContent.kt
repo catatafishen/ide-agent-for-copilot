@@ -1033,7 +1033,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
-        "Follow Agent", "When enabled, auto-opens files in the editor as the agent reads or writes them",
+        "Follow Agent", "Instruct the agent to auto-open files in the editor as it reads or writes them",
         com.intellij.icons.AllIcons.Actions.Preview
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1048,7 +1048,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FormatAfterEditToggleAction : ToggleAction(
-        "Format", "When enabled, auto-formats code after the agent edits files",
+        "Format", "Instruct the agent to auto-format code after editing files",
         com.intellij.icons.AllIcons.Actions.ReformatCode
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1063,7 +1063,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class BuildBeforeEndToggleAction : ToggleAction(
-        "Build", "When enabled, agent builds the project before completing its turn",
+        "Build", "Instruct the agent to build the project before completing its turn",
         com.intellij.icons.AllIcons.Actions.Compile
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1078,7 +1078,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class TestBeforeEndToggleAction : ToggleAction(
-        "Test", "When enabled, agent runs tests before completing its turn",
+        "Test", "Instruct the agent to run tests before completing its turn",
         com.intellij.icons.AllIcons.Nodes.Test
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1093,7 +1093,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class CommitBeforeEndToggleAction : ToggleAction(
-        "Commit", "When enabled, agent auto-commits changes before completing its turn",
+        "Commit", "Instruct the agent to auto-commit changes before completing its turn",
         com.intellij.icons.AllIcons.Actions.Commit
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1107,17 +1107,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun iconToImgTag(icon: javax.swing.Icon): String {
-        val img =
-            java.awt.image.BufferedImage(icon.iconWidth, icon.iconHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
-        icon.paintIcon(null, g, 0, 0)
-        g.dispose()
-        val baos = java.io.ByteArrayOutputStream()
-        javax.imageio.ImageIO.write(img, "png", baos)
-        val base64 = java.util.Base64.getEncoder().encodeToString(baos.toByteArray())
-        return "<img src='data:image/png;base64,$base64' width='${icon.iconWidth}' height='${icon.iconHeight}' style='vertical-align: middle; margin-right: 4px;'/>"
-    }
+    private fun iconToImgTag(@Suppress("UNUSED_PARAMETER") icon: javax.swing.Icon): String = ""
 
     private inner class HelpAction : AnAction(
         "Help", "Show help for all toolbar features and plugin behavior",
@@ -1126,53 +1116,37 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
         override fun actionPerformed(e: AnActionEvent) {
-            val sendIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Execute)
-            val stopIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Suspend)
-            val attachFileIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.AddFile)
-            val attachSelIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.AddMulticaret)
-            val followIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Preview)
-            val formatIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.ReformatCode)
-            val buildIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Compile)
-            val testIcon = iconToImgTag(com.intellij.icons.AllIcons.Nodes.Test)
-            val commitIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Commit)
-            val instrIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.IntentionBulb)
-            val todoIcon = iconToImgTag(com.intellij.icons.AllIcons.General.TodoDefault)
-            val exportIcon = iconToImgTag(com.intellij.icons.AllIcons.ToolbarDecorator.Export)
-            val helpIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Help)
-            val settingsIcon = iconToImgTag(com.intellij.icons.AllIcons.General.Settings)
-            val restartIcon = iconToImgTag(com.intellij.icons.AllIcons.Actions.Restart)
-
             val html = """
                 <html><body style="font-family: sans-serif; padding: 10px; width: 500px;">
                 <h2>Agentic Copilot &mdash; Toolbar Guide</h2>
                 <p>Each button in the toolbar, from left to right:</p>
 
                 <table cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <tr><td>$sendIcon</td><td><b>Send</b></td><td>Send your prompt to the agent. Shortcut: <b>Enter</b>. Use <b>Shift+Enter</b> for a new line.</td></tr>
-                <tr><td>$stopIcon</td><td><b>Stop</b></td><td>While the agent is working, this replaces Send. Stops the current agent turn.</td></tr>
+                <tr><td>&#x25B6;</td><td><b>Send</b></td><td>Send your prompt to the agent. Shortcut: <b>Enter</b>. Use <b>Shift+Enter</b> for a new line.</td></tr>
+                <tr><td>&#x23F9;</td><td><b>Stop</b></td><td>While the agent is working, this replaces Send. Stops the current agent turn.</td></tr>
                 <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <tr><td>$attachFileIcon</td><td><b>Attach File</b></td><td>Attach the currently open editor file to your prompt as context.</td></tr>
-                <tr><td>$attachSelIcon</td><td><b>Attach Selection</b></td><td>Attach the current text selection from the editor to your prompt.</td></tr>
+                <tr><td>&#x1F4CE;</td><td><b>Attach File</b></td><td>Attach the currently open editor file to your prompt as context.</td></tr>
+                <tr><td>&#x2702;</td><td><b>Attach Selection</b></td><td>Attach the current text selection from the editor to your prompt.</td></tr>
                 <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <tr><td></td><td><b>Model</b></td><td>Choose the AI model. Premium models show a cost multiplier (e.g. &quot;50&times;&quot;).</td></tr>
-                <tr><td></td><td><b>Mode</b></td><td><b>Agent</b> = autonomous tool use. <b>Plan</b> = conversation only, no tool calls.</td></tr>
+                <tr><td>&#x1F916;</td><td><b>Model</b></td><td>Choose the AI model. Premium models show a cost multiplier (e.g. &quot;50&times;&quot;).</td></tr>
+                <tr><td>&#x2699;</td><td><b>Mode</b></td><td><b>Agent</b> = autonomous tool use. <b>Plan</b> = conversation only, no tool calls.</td></tr>
                 <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <tr><td>$followIcon</td><td><b>Follow Agent</b></td><td>Toggle: auto-open files in the editor as the agent reads or writes them.</td></tr>
-                <tr><td>$formatIcon</td><td><b>Format</b></td><td>Toggle: auto-format code after the agent edits files.</td></tr>
-                <tr><td>$buildIcon</td><td><b>Build</b></td><td>Toggle: agent builds the project before completing its turn.</td></tr>
-                <tr><td>$testIcon</td><td><b>Test</b></td><td>Toggle: agent runs tests before completing its turn.</td></tr>
-                <tr><td>$commitIcon</td><td><b>Commit</b></td><td>Toggle: agent auto-commits changes before completing its turn.</td></tr>
+                <tr><td>&#x1F441;</td><td><b>Follow Agent</b></td><td>Toggle: auto-open files in the editor as the agent reads or writes them.</td></tr>
+                <tr><td>&#x270F;</td><td><b>Format</b></td><td>Toggle: instruct the agent to auto-format code after editing files.</td></tr>
+                <tr><td>&#x1F528;</td><td><b>Build</b></td><td>Toggle: instruct the agent to build the project before completing its turn.</td></tr>
+                <tr><td>&#x2705;</td><td><b>Test</b></td><td>Toggle: instruct the agent to run tests before completing its turn.</td></tr>
+                <tr><td>&#x1F4BE;</td><td><b>Commit</b></td><td>Toggle: instruct the agent to auto-commit changes before completing its turn.</td></tr>
                 <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <tr><td>$instrIcon</td><td><b>Instructions</b></td><td>Open <code>copilot-instructions.md</code> &mdash; persistent instructions the agent follows every turn.</td></tr>
-                <tr><td>$todoIcon</td><td><b>TODO</b></td><td>Open <code>TODO.md</code> &mdash; a task list the agent can read and update.</td></tr>
+                <tr><td>&#x1F4A1;</td><td><b>Instructions</b></td><td>Open <code>copilot-instructions.md</code> &mdash; persistent instructions the agent follows every turn.</td></tr>
+                <tr><td>&#x2611;</td><td><b>TODO</b></td><td>Open <code>TODO.md</code> &mdash; a task list the agent can read and update.</td></tr>
                 <tr><td colspan="3" style="border-bottom: 1px solid #ccc;"></td></tr>
 
-                <tr><td>$exportIcon</td><td><b>Export Chat</b></td><td>Copy the full conversation to clipboard (as text or HTML).</td></tr>
-                <tr><td>$helpIcon</td><td><b>Help</b></td><td>This dialog.</td></tr>
+                <tr><td>&#x1F4CB;</td><td><b>Export Chat</b></td><td>Copy the full conversation to clipboard (as text or HTML).</td></tr>
+                <tr><td>&#x2753;</td><td><b>Help</b></td><td>This dialog.</td></tr>
                 </table>
 
                 <h3>Right Side</h3>
@@ -1181,8 +1155,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                 <h3>Title Bar</h3>
                 <table cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <tr><td>$restartIcon</td><td><b>New Chat</b></td><td>Start a fresh conversation (top-right of the tool window).</td></tr>
-                <tr><td>$settingsIcon</td><td><b>Settings</b></td><td>Configure inactivity timeout and max tool calls per turn.</td></tr>
+                <tr><td>&#x1F504;</td><td><b>New Chat</b></td><td>Start a fresh conversation (top-right of the tool window).</td></tr>
+                <tr><td>&#x2699;</td><td><b>Settings</b></td><td>Configure inactivity timeout and max tool calls per turn.</td></tr>
                 </table>
 
                 <h3>Chat Panel</h3>

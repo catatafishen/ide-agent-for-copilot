@@ -1458,8 +1458,9 @@ function _doCollapseToolToChip(el,elId,targetMeta){
   var chip=document.createElement('span');
   chip.className='turn-chip tool'+(failed?' failed':'');
   var fullText=(lbl?lbl.textContent:'Tool');
-  chip.textContent=fullText;
-  if(fullText.length>40)chip.title=fullText;
+  var displayText=fullText.length>30?fullText.substring(0,27)+'\u2026':fullText;
+  chip.textContent=displayText;
+  if(fullText.length>30)chip.title=fullText;
   el.classList.add('turn-hidden');
   el.dataset.chipOwned='1';
   chip.dataset.chipFor=elId;

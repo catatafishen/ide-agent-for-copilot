@@ -132,11 +132,27 @@ class FileTools extends AbstractToolHandler {
                 VirtualFile vf = resolveVirtualFile(pathStr);
                 if (vf == null) return;
 
+                FileEditorManager fem = FileEditorManager.getInstance(project);
                 if (line > 0) {
+                    // Always navigate to line, even if file is already open
                     new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, line - 1, 0)
                         .navigate(false);
+                    // Explicitly scroll the editor to the target line
+                    for (com.intellij.openapi.fileEditor.FileEditor fe : fem.getEditors(vf)) {
+                        if (fe instanceof TextEditor) {
+                            com.intellij.openapi.editor.Editor editor = ((TextEditor) fe).getEditor();
+                            int lineCount = editor.getDocument().getLineCount();
+                            if (line - 1 < lineCount) {
+                                int offset = editor.getDocument().getLineStartOffset(line - 1);
+                                editor.getCaretModel().moveToOffset(offset);
+                                editor.getScrollingModel().scrollToCaret(
+                                    com.intellij.openapi.editor.ScrollType.CENTER);
+                            }
+                            break;
+                        }
+                    }
                 } else {
-                    FileEditorManager.getInstance(project).openFile(vf, false);
+                    fem.openFile(vf, false);
                 }
             } catch (Exception e) {
                 LOG.debug("Follow agent file failed: " + pathStr, e);
