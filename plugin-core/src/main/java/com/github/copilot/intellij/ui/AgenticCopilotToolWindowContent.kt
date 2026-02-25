@@ -1487,28 +1487,37 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun setupPromptKeyBindings(promptTextArea: EditorTextField, editor: EditorEx) {
         val contentComponent = editor.contentComponent
 
-        val enterKey = KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)
-        val shiftEnterKey = KeyStroke.getKeyStroke(
-            java.awt.event.KeyEvent.VK_ENTER,
-            java.awt.event.InputEvent.SHIFT_DOWN_MASK
-        )
-
-        contentComponent.getInputMap(JComponent.WHEN_FOCUSED).put(enterKey, "sendPrompt")
-        contentComponent.actionMap.put("sendPrompt", object : AbstractAction() {
-            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+        // Use IntelliJ's action system (not Swing InputMap) so the shortcut takes priority
+        // over the editor's built-in Enter handler (ACTION_EDITOR_ENTER).
+        object : AnAction() {
+            override fun actionPerformed(e: AnActionEvent) {
                 if (promptTextArea.text.isNotBlank() && !isSending) {
                     onSendStopClicked()
                 }
             }
-        })
-        contentComponent.getInputMap(JComponent.WHEN_FOCUSED).put(shiftEnterKey, "insertNewline")
-        contentComponent.actionMap.put("insertNewline", object : AbstractAction() {
-            override fun actionPerformed(e: java.awt.event.ActionEvent) {
-                editor.document.insertString(editor.caretModel.offset, "\n")
-            }
-        })
-    }
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)),
+            contentComponent
+        )
 
+        object : AnAction() {
+            override fun actionPerformed(e: AnActionEvent) {
+                val offset = editor.caretModel.offset
+                com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+                    editor.document.insertString(offset, "\n")
+                }
+                editor.caretModel.moveToOffset(offset + 1)
+            }
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(
+                KeyStroke.getKeyStroke(
+                    java.awt.event.KeyEvent.VK_ENTER,
+                    java.awt.event.InputEvent.SHIFT_DOWN_MASK
+                )
+            ),
+            contentComponent
+        )
+    }
 
     private fun setupPromptContextMenu(textArea: EditorTextField, editor: EditorEx) {
         val popup = javax.swing.JPopupMenu()
