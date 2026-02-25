@@ -605,7 +605,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         attachmentsPanel.isVisible = false
         attachmentsPanel.border = JBUI.Borders.emptyBottom(2)
 
-        promptTextArea = EditorTextField("", project, FileTypes.PLAIN_TEXT)
+        // Use MARKDOWN file type which supports spell checking
+        val markdownType = com.intellij.openapi.fileTypes.FileTypeRegistry.getInstance()
+            .getFileTypeByExtension("md")
+        promptTextArea = EditorTextField("", project, markdownType)
         promptTextArea.setOneLineMode(false)
         promptTextArea.border = JBUI.Borders.empty(4)
 
