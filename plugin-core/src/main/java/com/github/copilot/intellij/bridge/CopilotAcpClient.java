@@ -1147,9 +1147,9 @@ public class CopilotAcpClient implements Closeable {
             return "find";
         }
 
-        // Check for git operations we have tools for
-        if (command.startsWith("git status") || command.startsWith("git diff") ||
-            command.startsWith("git log") || command.startsWith("git branch")) {
+        // Block ALL git operations — they desync IntelliJ editor buffers
+        if (command.startsWith("git ") || command.contains("&& git ") ||
+            command.contains("; git ") || command.contains("| git ")) {
             return "git";
         }
 
@@ -1174,8 +1174,9 @@ public class CopilotAcpClient implements Closeable {
                 case "grep" -> "❌ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
                     "'intellij-code-tools-find_references' instead. They search live editor buffers.";
                 case "find" -> "❌ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
-                case "git" -> "❌ Don't use git commands via run_command. Use dedicated git tools: " +
-                    "'intellij-code-tools-git_status', 'intellij-code-tools-git_diff', etc.";
+                case "git" -> "❌ Don't use git commands via run_command — it desyncs IntelliJ editor buffers. " +
+                    "Use dedicated git tools: git_status, git_diff, git_log, git_commit, git_stage, " +
+                    "git_unstage, git_branch, git_stash, git_show, git_blame.";
                 default -> "❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
         } else {
