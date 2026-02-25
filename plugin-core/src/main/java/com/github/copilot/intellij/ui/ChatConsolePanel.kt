@@ -1231,8 +1231,8 @@ ul,ol{margin:4px 0;padding-left:22px}
         val js = loadResource("/chat-console/chat-console.js")
 
         return """<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>:root { $cssVars }</style>
-<style>$css</style></head><body>
+<style>$css</style>
+<style>:root { $cssVars }</style></head><body>
 <div id="container"></div>
 <script>$bridgeJs</script>
 <script>$js</script></body></html>"""
