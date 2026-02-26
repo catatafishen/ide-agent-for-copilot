@@ -691,8 +691,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
             toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
             toolsLabel.isVisible = totalTools > 0
-            val billingReqs = if (billing.billingCycleStartUsed >= 0 && billing.lastBillingUsed > billing.billingCycleStartUsed)
-                billing.lastBillingUsed - billing.billingCycleStartUsed else -1
+            val billingReqs =
+                if (billing.billingCycleStartUsed >= 0 && billing.lastBillingUsed > billing.billingCycleStartUsed)
+                    billing.lastBillingUsed - billing.billingCycleStartUsed else -1
             val totalReqs = sessionTotalRequests + if (isRunning) requestsUsed else 0
             requestsLabel.text = when {
                 billingReqs > 0 -> "\u2022 $billingReqs req"
@@ -864,8 +865,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     // HelpAction extracted to HelpDialog.kt
-
-
 
     /** Open a project-root file in the editor if it exists */
     private fun openProjectFile(fileName: String) {
