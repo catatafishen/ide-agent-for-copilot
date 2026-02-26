@@ -970,42 +970,42 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         private fun refreshDisplay() {
             SwingUtilities.invokeLater {
                 when (displayMode) {
-                    modeTurn -> {
-                        toolTipText = "Click to show session stats"
-                        updateLabel()
-                        toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
-                        toolsLabel.isVisible = toolCallCount > 0
-                        requestsLabel.text = if (requestsUsed > 0) "\u2022 $requestsUsed req" else ""
-                        requestsLabel.isVisible = requestsUsed > 0
-                        if (!isRunning) doneIcon.text = "\u2705"
-                    }
-
-                    modeSession -> {
-                        toolTipText = "Click to show turn stats"
-                        val totalMs =
-                            sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
-                        val totalSec = totalMs / 1000
-                        timerLabel.text = if (totalSec < 60) "${totalSec}s" else "${totalSec / 60}m ${totalSec % 60}s"
-                        val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
-                        toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
-                        toolsLabel.isVisible = totalTools > 0
-                        // Prefer billing API diff if available
-                        val billingReqs = if (billingCycleStartUsed >= 0 && lastBillingUsed > billingCycleStartUsed)
-                            lastBillingUsed - billingCycleStartUsed else -1
-                        val totalReqs = sessionTotalRequests + if (isRunning) requestsUsed else 0
-                        if (billingReqs > 0) {
-                            requestsLabel.text = "\u2022 $billingReqs req"
-                        } else if (totalReqs > 0) {
-                            requestsLabel.text = "\u2022 ~$totalReqs req"
-                        } else {
-                            requestsLabel.text = ""
-                        }
-                        requestsLabel.isVisible = requestsLabel.text.isNotEmpty()
-                        doneIcon.text = "\u2211"
-                    }
+                    modeTurn -> refreshTurnMode()
+                    modeSession -> refreshSessionMode()
                 }
                 revalidate(); repaint()
             }
+        }
+
+        private fun refreshTurnMode() {
+            toolTipText = "Click to show session stats"
+            updateLabel()
+            toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
+            toolsLabel.isVisible = toolCallCount > 0
+            requestsLabel.text = if (requestsUsed > 0) "\u2022 $requestsUsed req" else ""
+            requestsLabel.isVisible = requestsUsed > 0
+            if (!isRunning) doneIcon.text = "\u2705"
+        }
+
+        private fun refreshSessionMode() {
+            toolTipText = "Click to show turn stats"
+            val totalMs =
+                sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
+            val totalSec = totalMs / 1000
+            timerLabel.text = if (totalSec < 60) "${totalSec}s" else "${totalSec / 60}m ${totalSec % 60}s"
+            val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
+            toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
+            toolsLabel.isVisible = totalTools > 0
+            val billingReqs = if (billingCycleStartUsed >= 0 && lastBillingUsed > billingCycleStartUsed)
+                lastBillingUsed - billingCycleStartUsed else -1
+            val totalReqs = sessionTotalRequests + if (isRunning) requestsUsed else 0
+            requestsLabel.text = when {
+                billingReqs > 0 -> "\u2022 $billingReqs req"
+                totalReqs > 0 -> "\u2022 ~$totalReqs req"
+                else -> ""
+            }
+            requestsLabel.isVisible = requestsLabel.text.isNotEmpty()
+            doneIcon.text = "\u2211"
         }
 
         private fun updateLabel() {
@@ -1223,6 +1223,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    private class HelpRow(val icon: javax.swing.Icon, val name: String, val description: String)
+    private class HelpToolInfo(val name: String, val description: String)
+    private class HelpToolCategory(val title: String, val tools: List<HelpToolInfo>)
+
     private inner class HelpAction : AnAction(
         "Help", "Show help for all toolbar features and plugin behavior",
         com.intellij.icons.AllIcons.Actions.Help
@@ -1230,300 +1234,206 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
         override fun actionPerformed(e: AnActionEvent) {
-            data class HelpRow(val icon: javax.swing.Icon, val name: String, val description: String)
+            val content = buildHelpDialogContent()
+            com.intellij.openapi.ui.DialogBuilder(project).apply {
+                setTitle("Copilot Bridge \u2014 Help")
+                setCenterPanel(content)
+                removeAllActions()
+                addOkAction()
+                show()
+            }
+        }
 
-            val toolbarItems = listOf(
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Execute,
-                    "Send",
-                    "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Suspend,
-                    "Stop",
-                    "While the agent is working, this replaces Send. Stops the current agent turn."
-                ),
-                null,
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.AddFile,
-                    "Attach File",
-                    "Attach the currently open editor file to your prompt as context."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.AddMulticaret,
-                    "Attach Selection",
-                    "Attach the current text selection from the editor to your prompt."
-                ),
-                null,
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Lightning,
-                    "Model",
-                    "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.General.Settings,
-                    "Mode",
-                    "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."
-                ),
-                null,
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Preview,
-                    "Follow Agent",
-                    "Toggle: auto-open files in the editor as the agent reads or writes them."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.ReformatCode,
-                    "Format",
-                    "Toggle: instruct the agent to auto-format code after editing files."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Compile,
-                    "Build",
-                    "Toggle: instruct the agent to build the project before completing its turn."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.Nodes.Test,
-                    "Test",
-                    "Toggle: instruct the agent to run tests before completing its turn."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Commit,
-                    "Commit",
-                    "Toggle: instruct the agent to auto-commit changes before completing its turn."
-                ),
-                null,
-                HelpRow(
-                    com.intellij.icons.AllIcons.Nodes.Folder,
-                    "Project Files",
-                    "Dropdown: open Instructions, TODO, Agent Definitions, or MCP Server Instructions."
-                ),
-                null,
-                HelpRow(
-                    com.intellij.icons.AllIcons.ToolbarDecorator.Export,
-                    "Export Chat",
-                    "Copy the full conversation to clipboard (as text or HTML)."
-                ),
-                HelpRow(com.intellij.icons.AllIcons.Actions.Help, "Help", "This dialog."),
-            )
+        private fun buildToolbarHelpItems(): List<HelpRow?> = listOf(
+            HelpRow(com.intellij.icons.AllIcons.Actions.Execute, "Send", "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."),
+            HelpRow(com.intellij.icons.AllIcons.Actions.Suspend, "Stop", "While the agent is working, this replaces Send. Stops the current agent turn."),
+            null,
+            HelpRow(com.intellij.icons.AllIcons.Actions.AddFile, "Attach File", "Attach the currently open editor file to your prompt as context."),
+            HelpRow(com.intellij.icons.AllIcons.Actions.AddMulticaret, "Attach Selection", "Attach the current text selection from the editor to your prompt."),
+            null,
+            HelpRow(com.intellij.icons.AllIcons.Actions.Lightning, "Model", "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."),
+            HelpRow(com.intellij.icons.AllIcons.General.Settings, "Mode", "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."),
+            null,
+            HelpRow(com.intellij.icons.AllIcons.Actions.Preview, "Follow Agent", "Toggle: auto-open files in the editor as the agent reads or writes them."),
+            HelpRow(com.intellij.icons.AllIcons.Actions.ReformatCode, "Format", "Toggle: instruct the agent to auto-format code after editing files."),
+            HelpRow(com.intellij.icons.AllIcons.Actions.Compile, "Build", "Toggle: instruct the agent to build the project before completing its turn."),
+            HelpRow(com.intellij.icons.AllIcons.Nodes.Test, "Test", "Toggle: instruct the agent to run tests before completing its turn."),
+            HelpRow(com.intellij.icons.AllIcons.Actions.Commit, "Commit", "Toggle: instruct the agent to auto-commit changes before completing its turn."),
+            null,
+            HelpRow(com.intellij.icons.AllIcons.Nodes.Folder, "Project Files", "Dropdown: open Instructions, TODO, Agent Definitions, or MCP Server Instructions."),
+            null,
+            HelpRow(com.intellij.icons.AllIcons.ToolbarDecorator.Export, "Export Chat", "Copy the full conversation to clipboard (as text or HTML)."),
+            HelpRow(com.intellij.icons.AllIcons.Actions.Help, "Help", "This dialog."),
+        )
 
-            val titleBarItems = listOf(
-                HelpRow(
-                    com.intellij.icons.AllIcons.Actions.Restart,
-                    "New Chat",
-                    "Start a fresh conversation (top-right of the tool window)."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.General.Settings,
-                    "Settings",
-                    "Configure inactivity timeout and max tool calls per turn."
-                ),
-            )
+        private fun buildTitleBarHelpItems(): List<HelpRow> = listOf(
+            HelpRow(com.intellij.icons.AllIcons.Actions.Restart, "New Chat", "Start a fresh conversation (top-right of the tool window)."),
+            HelpRow(com.intellij.icons.AllIcons.General.Settings, "Settings", "Configure inactivity timeout and max tool calls per turn."),
+        )
 
-            val content = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+        private fun buildToolCategories(): List<HelpToolCategory> = listOf(
+            HelpToolCategory("Code Intelligence", listOf(
+                HelpToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
+                HelpToolInfo("get_file_outline", "Get the structural outline of a file."),
+                HelpToolInfo("get_class_outline", "Show constructors, methods, fields of any class."),
+                HelpToolInfo("find_references", "Find all usages of a symbol across the project."),
+                HelpToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class."),
+                HelpToolInfo("go_to_declaration", "Navigate to where a symbol is declared."),
+                HelpToolInfo("get_documentation", "Get Javadoc/KDoc for a symbol."),
+                HelpToolInfo("search_text", "Search text or regex across project files.")
+            )),
+            HelpToolCategory("File Operations", listOf(
+                HelpToolInfo("intellij_read_file", "Read a file (optionally a line range)."),
+                HelpToolInfo("intellij_write_file", "Write or edit a file (full, partial, or line-range)."),
+                HelpToolInfo("create_file", "Create a new file with content."),
+                HelpToolInfo("delete_file", "Delete a file."),
+                HelpToolInfo("undo", "Undo the last edit on a file."),
+                HelpToolInfo("list_project_files", "List files in a directory with optional glob filter."),
+                HelpToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
+                HelpToolInfo("show_diff", "Show a diff between files or proposed content.")
+            )),
+            HelpToolCategory("Code Quality", listOf(
+                HelpToolInfo("get_problems", "Get problems/errors for open files."),
+                HelpToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
+                HelpToolInfo("get_compilation_errors", "Fast compilation error check using cached daemon results."),
+                HelpToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
+                HelpToolInfo("optimize_imports", "Optimize imports in a file."),
+                HelpToolInfo("format_code", "Format code in a file."),
+                HelpToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
+                HelpToolInfo("suppress_inspection", "Suppress an inspection finding."),
+                HelpToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
+                HelpToolInfo("run_qodana", "Run Qodana static analysis."),
+                HelpToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
+            )),
+            HelpToolCategory("Refactoring", listOf(
+                HelpToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
+            )),
+            HelpToolCategory("Build, Run & Test", listOf(
+                HelpToolInfo("build_project", "Trigger incremental project compilation."),
+                HelpToolInfo("list_tests", "List available tests."),
+                HelpToolInfo("run_tests", "Run tests by class, method, or pattern."),
+                HelpToolInfo("get_test_results", "Get results from the last test run."),
+                HelpToolInfo("get_coverage", "Get code coverage results."),
+                HelpToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
+                HelpToolInfo("list_run_configurations", "List available run configurations."),
+                HelpToolInfo("run_configuration", "Execute a run configuration by name."),
+                HelpToolInfo("create_run_configuration", "Create a new run configuration."),
+                HelpToolInfo("edit_run_configuration", "Edit an existing run configuration.")
+            )),
+            HelpToolCategory("Git", listOf(
+                HelpToolInfo("git_status", "Show working tree status."),
+                HelpToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
+                HelpToolInfo("git_log", "Show commit history."),
+                HelpToolInfo("git_blame", "Show line-by-line authorship."),
+                HelpToolInfo("git_commit", "Commit staged changes."),
+                HelpToolInfo("git_stage", "Stage files for commit."),
+                HelpToolInfo("git_unstage", "Unstage files."),
+                HelpToolInfo("git_branch", "List, create, switch, or delete branches."),
+                HelpToolInfo("git_stash", "Stash or restore working changes."),
+                HelpToolInfo("git_show", "Show commit details.")
+            )),
+            HelpToolCategory("Infrastructure", listOf(
+                HelpToolInfo("run_command", "Run a shell command in the project directory."),
+                HelpToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
+                HelpToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
+                HelpToolInfo("read_terminal_output", "Read output from a terminal tab."),
+                HelpToolInfo("read_ide_log", "Read recent IDE log entries."),
+                HelpToolInfo("read_run_output", "Read output from a Run panel tab."),
+                HelpToolInfo("get_notifications", "Get IDE notifications."),
+                HelpToolInfo("get_indexing_status", "Check if indexing is in progress."),
+                HelpToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
+                HelpToolInfo("list_scratch_files", "List existing scratch files.")
+            ))
+        )
+
+        private fun addHelpRows(panel: JBPanel<*>, items: List<HelpRow?>) {
+            for (item in items) {
+                if (item == null) {
+                    panel.add(javax.swing.JSeparator(javax.swing.SwingConstants.HORIZONTAL).apply {
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(8))
+                    })
+                } else {
+                    panel.add(createHelpRow(item.icon, item.name, item.description))
+                }
+            }
+        }
+
+        private fun addToolCategories(panel: JBPanel<*>, categories: List<HelpToolCategory>) {
+            for (category in categories) {
+                panel.add(JBLabel(category.title).apply {
+                    font = font.deriveFont(Font.BOLD)
+                    alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                    border = JBUI.Borders.empty(4, 0, 2, 0)
+                })
+                for (tool in category.tools) {
+                    panel.add(JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(24))
+                        isOpaque = false
+                        border = JBUI.Borders.empty(1, JBUI.scale(8), 1, 0)
+                        add(JBLabel(tool.name).apply {
+                            font = java.awt.Font("Monospaced", Font.PLAIN, JBUI.Fonts.label().size - 1)
+                            foreground = com.intellij.util.ui.JBUI.CurrentTheme.Link.Foreground.ENABLED
+                            preferredSize = java.awt.Dimension(JBUI.scale(170), preferredSize.height)
+                            minimumSize = preferredSize
+                        }, BorderLayout.WEST)
+                        add(JBLabel(tool.description).apply {
+                            font = font.deriveFont(font.size2D - 1)
+                        }, BorderLayout.CENTER)
+                    })
+                }
+            }
+        }
+
+        private fun addSectionHeader(panel: JBPanel<*>, title: String, large: Boolean = false) {
+            panel.add(JBLabel(title).apply {
+                font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + if (large) 4 else 2)
+                alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                border = JBUI.Borders.emptyBottom(4)
+            })
+        }
+
+        private fun buildHelpDialogContent(): JBPanel<JBPanel<*>> {
+            return JBPanel<JBPanel<*>>(BorderLayout()).apply {
                 border = JBUI.Borders.empty(12)
 
                 val mainPanel = JBPanel<JBPanel<*>>().apply {
                     layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
 
-                    // Title
-                    add(JBLabel("Agentic Copilot — Toolbar Guide").apply {
-                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 4)
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(4)
-                    })
+                    addSectionHeader(this, "Agentic Copilot \u2014 Toolbar Guide", large = true)
                     add(JBLabel("Each button in the toolbar, from left to right:").apply {
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
                         border = JBUI.Borders.emptyBottom(8)
                     })
+                    addHelpRows(this, buildToolbarHelpItems())
 
-                    // Toolbar items
-                    for (item in toolbarItems) {
-                        if (item == null) {
-                            add(javax.swing.JSeparator(javax.swing.SwingConstants.HORIZONTAL).apply {
-                                alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                                maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(8))
-                            })
-                        } else {
-                            add(createHelpRow(item.icon, item.name, item.description))
-                        }
-                    }
-
-                    // Right side section
                     add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
-                    add(JBLabel("Right Side").apply {
-                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(4)
-                    })
-                    add(JBLabel("A processing timer appears while the agent is working. Next to it, a usage graph shows premium requests consumed — click it for details.").apply {
+                    addSectionHeader(this, "Right Side")
+                    add(JBLabel("A processing timer appears while the agent is working. Next to it, a usage graph shows premium requests consumed \u2014 click it for details.").apply {
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
                         border = JBUI.Borders.emptyBottom(8)
                     })
 
-                    // Title bar section
-                    add(JBLabel("Title Bar").apply {
-                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(4)
-                    })
-                    for (item in titleBarItems) {
+                    addSectionHeader(this, "Title Bar")
+                    for (item in buildTitleBarHelpItems()) {
                         add(createHelpRow(item.icon, item.name, item.description))
                     }
 
-                    // Chat panel section
                     add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
-                    add(JBLabel("Chat Panel").apply {
-                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(4)
-                    })
-                    add(JBLabel("Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as collapsible chips — click to expand and see arguments/results.").apply {
+                    addSectionHeader(this, "Chat Panel")
+                    add(JBLabel("Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as collapsible chips \u2014 click to expand and see arguments/results.").apply {
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
                     })
 
-                    // Available Tools section
                     add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
-                    add(JBLabel("Available Tools").apply {
-                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(4)
-                    })
+                    addSectionHeader(this, "Available Tools")
                     add(JBLabel("The agent has access to these IDE tools via the MCP server:").apply {
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
                         border = JBUI.Borders.emptyBottom(8)
                     })
+                    addToolCategories(this, buildToolCategories())
 
-                    data class ToolInfo(val name: String, val description: String)
-                    data class ToolCategory(val title: String, val tools: List<ToolInfo>)
-
-                    val toolCategories = listOf(
-                        ToolCategory(
-                            "Code Intelligence", listOf(
-                                ToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
-                                ToolInfo("get_file_outline", "Get the structural outline of a file."),
-                                ToolInfo(
-                                    "get_class_outline",
-                                    "Show constructors, methods, fields of any class by fully qualified name."
-                                ),
-                                ToolInfo("find_references", "Find all references to a symbol across the project."),
-                                ToolInfo("go_to_declaration", "Navigate to a symbol's declaration."),
-                                ToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class or interface."),
-                                ToolInfo("get_documentation", "Retrieve Javadoc/KDoc for a symbol."),
-                                ToolInfo("download_sources", "Download library source JARs for navigation.")
-                            )
-                        ),
-                        ToolCategory(
-                            "Project & Files", listOf(
-                                ToolInfo("list_project_files", "List files in the project tree."),
-                                ToolInfo(
-                                    "search_text",
-                                    "Search text or regex across project files (reads editor buffers)."
-                                ),
-                                ToolInfo("intellij_read_file", "Read a file from the editor buffer."),
-                                ToolInfo(
-                                    "intellij_write_file",
-                                    "Write or edit a file (full write, partial edit, or line-range replace)."
-                                ),
-                                ToolInfo("create_file", "Create a new file with content."),
-                                ToolInfo("delete_file", "Delete a file."),
-                                ToolInfo("undo", "Undo last edit action(s) on a file."),
-                                ToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
-                                ToolInfo("show_diff", "Show a diff between files or proposed content.")
-                            )
-                        ),
-                        ToolCategory(
-                            "Code Quality", listOf(
-                                ToolInfo("get_problems", "Get problems/errors for open files."),
-                                ToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
-                                ToolInfo(
-                                    "get_compilation_errors",
-                                    "Fast compilation error check using cached daemon results."
-                                ),
-                                ToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
-                                ToolInfo("optimize_imports", "Optimize imports in a file."),
-                                ToolInfo("format_code", "Format code in a file."),
-                                ToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
-                                ToolInfo("suppress_inspection", "Suppress an inspection finding."),
-                                ToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
-                                ToolInfo("run_qodana", "Run Qodana static analysis."),
-                                ToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
-                            )
-                        ),
-                        ToolCategory(
-                            "Refactoring", listOf(
-                                ToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
-                            )
-                        ),
-                        ToolCategory(
-                            "Build, Run & Test", listOf(
-                                ToolInfo("build_project", "Trigger incremental project compilation."),
-                                ToolInfo("list_tests", "List available tests."),
-                                ToolInfo("run_tests", "Run tests by class, method, or pattern."),
-                                ToolInfo("get_test_results", "Get results from the last test run."),
-                                ToolInfo("get_coverage", "Get code coverage results."),
-                                ToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
-                                ToolInfo("list_run_configurations", "List available run configurations."),
-                                ToolInfo("run_configuration", "Execute a run configuration by name."),
-                                ToolInfo("create_run_configuration", "Create a new run configuration."),
-                                ToolInfo("edit_run_configuration", "Edit an existing run configuration.")
-                            )
-                        ),
-                        ToolCategory(
-                            "Git", listOf(
-                                ToolInfo("git_status", "Show working tree status."),
-                                ToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
-                                ToolInfo("git_log", "Show commit history."),
-                                ToolInfo("git_blame", "Show line-by-line authorship."),
-                                ToolInfo("git_commit", "Commit staged changes."),
-                                ToolInfo("git_stage", "Stage files for commit."),
-                                ToolInfo("git_unstage", "Unstage files."),
-                                ToolInfo("git_branch", "List, create, switch, or delete branches."),
-                                ToolInfo("git_stash", "Stash or restore working changes."),
-                                ToolInfo("git_show", "Show commit details.")
-                            )
-                        ),
-                        ToolCategory(
-                            "Infrastructure", listOf(
-                                ToolInfo("run_command", "Run a shell command in the project directory."),
-                                ToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
-                                ToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
-                                ToolInfo("read_terminal_output", "Read output from a terminal tab."),
-                                ToolInfo("read_ide_log", "Read recent IDE log entries."),
-                                ToolInfo("read_run_output", "Read output from a Run panel tab."),
-                                ToolInfo("get_notifications", "Get IDE notifications."),
-                                ToolInfo("get_indexing_status", "Check if indexing is in progress."),
-                                ToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
-                                ToolInfo("list_scratch_files", "List existing scratch files.")
-                            )
-                        )
-                    )
-
-                    for (category in toolCategories) {
-                        add(JBLabel(category.title).apply {
-                            font = font.deriveFont(Font.BOLD)
-                            alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                            border = JBUI.Borders.empty(4, 0, 2, 0)
-                        })
-                        for (tool in category.tools) {
-                            add(JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
-                                alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                                maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(24))
-                                isOpaque = false
-                                border = JBUI.Borders.empty(1, JBUI.scale(8), 1, 0)
-                                add(JBLabel(tool.name).apply {
-                                    font = java.awt.Font("Monospaced", Font.PLAIN, JBUI.Fonts.label().size - 1)
-                                    foreground = com.intellij.util.ui.JBUI.CurrentTheme.Link.Foreground.ENABLED
-                                    preferredSize = java.awt.Dimension(JBUI.scale(170), preferredSize.height)
-                                    minimumSize = preferredSize
-                                }, BorderLayout.WEST)
-                                add(JBLabel(tool.description).apply {
-                                    font = font.deriveFont(font.size2D - 1)
-                                }, BorderLayout.CENTER)
-                            })
-                        }
-                    }
-
-                    // Version info
                     add(javax.swing.Box.createVerticalStrut(JBUI.scale(16)))
                     val versionText = com.github.copilot.intellij.BuildInfo.getSummary()
                     add(JBLabel("Copilot Bridge $versionText").apply {
@@ -1538,14 +1448,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     border = null
                 }
                 add(scrollPane, BorderLayout.CENTER)
-            }
-
-            com.intellij.openapi.ui.DialogBuilder(project).apply {
-                setTitle("Copilot Bridge \u2014 Help")
-                setCenterPanel(content)
-                removeAllActions()
-                addOkAction()
-                show()
             }
         }
 
@@ -1959,26 +1861,68 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         addTimelineEvent(EventType.ERROR, "Prompt cancelled by user")
     }
 
+    private fun ensureSessionCreated(client: CopilotAcpClient): String {
+        if (currentSessionId == null) {
+            currentSessionId = client.createSession(project.basePath)
+            addTimelineEvent(EventType.SESSION_START, "Session created")
+            updateSessionInfo()
+            val savedModel = CopilotSettings.getSelectedModel()
+            if (!savedModel.isNullOrEmpty()) {
+                try {
+                    client.setModel(currentSessionId!!, savedModel)
+                } catch (ex: Exception) {
+                    LOG.warn("Failed to set model $savedModel on new session", ex)
+                }
+            }
+        }
+        return currentSessionId!!
+    }
+
+    private fun buildEffectivePrompt(prompt: String): String {
+        val snippetSuffix = buildSnippetSuffix()
+        var effective = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
+
+        if (CopilotSettings.getSessionMode() == "plan") {
+            effective = "[[PLAN]] $effective"
+        }
+
+        val toggleSuffix = buildToggleSuffix()
+        if (toggleSuffix.isNotEmpty()) {
+            effective = "$effective\n\n$toggleSuffix"
+        }
+
+        if (!conversationSummaryInjected) {
+            conversationSummaryInjected = true
+            val summary = consolePanel.getCompressedSummary()
+            if (summary.isNotEmpty()) {
+                effective = "$summary\n\n$effective"
+            }
+        }
+        return effective
+    }
+
+    private fun handlePromptCompletion(prompt: String) {
+        com.github.copilot.intellij.psi.PsiBridgeService.getInstance(project).flushPendingAutoFormat()
+        consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
+        notifyIfUnfocused(turnToolCallCount)
+        setResponseStatus("Done", loading = false)
+        addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
+        saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
+        saveConversation()
+        loadBillingData()
+
+        val lastResponse = consolePanel.getLastResponseText()
+        val quickReplies = detectQuickReplies(lastResponse)
+        if (quickReplies.isNotEmpty()) {
+            SwingUtilities.invokeLater { consolePanel.showQuickReplies(quickReplies) }
+        }
+    }
+
     private fun executePrompt(prompt: String) {
         try {
             val service = CopilotService.getInstance(project)
             val client = service.getClient()
-
-            if (currentSessionId == null) {
-                currentSessionId = client.createSession(project.basePath)
-                addTimelineEvent(EventType.SESSION_START, "Session created")
-                updateSessionInfo()
-                // Set model on newly created session if user has a non-default model selected
-                val savedModel = CopilotSettings.getSelectedModel()
-                if (!savedModel.isNullOrEmpty()) {
-                    try {
-                        client.setModel(currentSessionId!!, savedModel)
-                    } catch (ex: Exception) {
-                        LOG.warn("Failed to set model $savedModel on new session", ex)
-                    }
-                }
-            }
-            val sessionId = currentSessionId!!
+            val sessionId = ensureSessionCreated(client)
 
             addTimelineEvent(
                 EventType.MESSAGE_SENT,
@@ -1988,40 +1932,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val selectedModelObj =
                 if (selectedModelIndex >= 0 && selectedModelIndex < loadedModels.size) loadedModels[selectedModelIndex] else null
             val modelId = selectedModelObj?.id ?: ""
-
-            // Reset per-turn tracking
             turnToolCallCount = 0
             turnModelId = modelId
 
-            // Show model + multiplier on the prompt bubble immediately
             SwingUtilities.invokeLater {
                 consolePanel.setPromptStats(modelId, getModelMultiplier(modelId))
             }
 
             val references = buildContextReferences()
-            // Inline selection snippets into the prompt so the agent can't ignore them
-            val snippetSuffix = buildSnippetSuffix()
-            var effectivePrompt = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
+            val effectivePrompt = buildEffectivePrompt(prompt)
 
-            // Prepend [[PLAN]] prefix if plan mode is enabled
-            if (CopilotSettings.getSessionMode() == "plan") {
-                effectivePrompt = "[[PLAN]] $effectivePrompt"
-            }
-
-            // Inject toggle instructions for build/test/commit
-            val toggleSuffix = buildToggleSuffix()
-            if (toggleSuffix.isNotEmpty()) {
-                effectivePrompt = "$effectivePrompt\n\n$toggleSuffix"
-            }
-
-            // Inject compressed conversation history on first prompt of a new session
-            if (!conversationSummaryInjected) {
-                conversationSummaryInjected = true
-                val summary = consolePanel.getCompressedSummary()
-                if (summary.isNotEmpty()) {
-                    effectivePrompt = "$summary\n\n$effectivePrompt"
-                }
-            }
             if (references.isNotEmpty()) {
                 val contextFiles = (0 until contextListModel.size()).map { i ->
                     val item = contextListModel.getElementAt(i)
@@ -2029,12 +1949,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
                 consolePanel.addContextFilesEntry(contextFiles)
             }
-
-            // Auto-clear attachments after building references
             SwingUtilities.invokeLater { contextListModel.clear() }
 
             var receivedContent = false
-
             client.sendPrompt(
                 sessionId, effectivePrompt, modelId,
                 references.ifEmpty { null },
@@ -2047,30 +1964,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 },
                 { update -> handlePromptStreamingUpdate(update, receivedContent) },
                 {
-                    // Called each time a session/prompt RPC request is sent (including retries)
                     val mult = getModelMultiplier(modelId).removeSuffix("x").toIntOrNull() ?: 1
                     if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementRequests(mult)
                 }
             )
 
-            // Auto-format and optimize imports on all files modified during this turn
-            com.github.copilot.intellij.psi.PsiBridgeService.getInstance(project).flushPendingAutoFormat()
-
-            consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
-            notifyIfUnfocused(turnToolCallCount)
-            setResponseStatus("Done", loading = false)
-            addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
-            saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
-            saveConversation()
-            loadBillingData()
-
-            // Detect quick-reply options from the agent response
-            val lastResponse = consolePanel.getLastResponseText()
-            val quickReplies = detectQuickReplies(lastResponse)
-            if (quickReplies.isNotEmpty()) {
-                SwingUtilities.invokeLater { consolePanel.showQuickReplies(quickReplies) }
-            }
-
+            handlePromptCompletion(prompt)
         } catch (e: Exception) {
             handlePromptError(e)
         } finally {

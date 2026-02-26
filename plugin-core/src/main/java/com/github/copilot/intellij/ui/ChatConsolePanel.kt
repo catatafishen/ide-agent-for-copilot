@@ -999,120 +999,114 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
+    private fun renderBatchPrompt(obj: com.google.gson.JsonObject): String {
+        val text = obj["text"]?.asString ?: ""
+        return "<div class='prompt-row'><div class='meta'><span class='ts'></span></div>" +
+            "<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${escapeHtml(text)}</div></div>"
+    }
+
+    private fun renderBatchText(obj: com.google.gson.JsonObject): String {
+        val raw = obj["raw"]?.asString ?: ""
+        val html = markdownToHtml(raw)
+        deferredIdCounter++
+        return "<div class='agent-row'><div class='meta'><span class='ts'></span></div>" +
+            "<div class='agent-bubble' onclick='toggleMeta(this)'>$html</div></div>"
+    }
+
+    private fun renderBatchThinking(obj: com.google.gson.JsonObject): String {
+        deferredIdCounter++
+        val raw = obj["raw"]?.asString ?: ""
+        val id = "def-think-$deferredIdCounter"
+        return "<div class='collapse-section thinking-section collapsed' id='$id'>" +
+            "<div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleThinking(\"$id\")' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>" +
+            "<span class='collapse-icon'>\uD83D\uDCAD</span>" +
+            "<span class='collapse-label'>Thought process</span>" +
+            "<span class='caret'>\u25B8</span></div>" +
+            "<div class='collapse-content'>${escapeHtml(raw)}</div></div>"
+    }
+
+    private fun renderBatchTool(obj: com.google.gson.JsonObject): String {
+        deferredIdCounter++
+        val title = obj["title"]?.asString ?: ""
+        val args = obj["args"]?.asString?.ifEmpty { null }
+        val baseName = title.substringAfterLast("-")
+        val info = TOOL_DISPLAY_INFO[title] ?: TOOL_DISPLAY_INFO[baseName]
+        val displayName = info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
+        val id = "def-tool-$deferredIdCounter"
+        val contentParts = StringBuilder()
+        if (info?.description != null) {
+            contentParts.append("<div class='tool-desc'>${escapeHtml(info.description)}</div>")
+        }
+        if (!args.isNullOrBlank()) {
+            contentParts.append("<div class='tool-params-label'>Parameters:</div>")
+            contentParts.append("<pre class='tool-params'><code>${escapeHtml(args)}</code></pre>")
+        }
+        contentParts.append("\u2705 Completed")
+        return "<div class='collapse-section tool-section collapsed' id='$id'>" +
+            "<div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleTool(\"$id\")' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>" +
+            "<span class='collapse-icon'>✓</span>" +
+            "<span class='collapse-label'>${escapeHtml(displayName)}</span>" +
+            "<span class='caret'>\u25B8</span></div>" +
+            "<div class='collapse-content'>$contentParts</div></div>"
+    }
+
+    private fun renderBatchSubagent(obj: com.google.gson.JsonObject): String {
+        val agentType = obj["agentType"]?.asString ?: "general-purpose"
+        val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
+            "", agentType.replaceFirstChar { it.uppercase() } + " Agent", "subagent-general")
+        val safeName = escapeHtml(info.displayName)
+        val prompt = obj["prompt"]?.asString?.ifEmpty { null }
+        val result = obj["result"]?.asString?.ifEmpty { null }
+        val status = obj["status"]?.asString?.ifEmpty { null }
+        val badgeCls = if (status == "failed") "sa-badge-failed" else "sa-badge-done"
+        val badgeTxt = if (status == "failed") "Failed" else "Done"
+        val sb = StringBuilder("<div class='${info.cssClass}'>")
+        if (!prompt.isNullOrBlank()) {
+            sb.append("<div class='agent-row'><div class='agent-bubble'>")
+            sb.append("<span class='subagent-prefix'>@$safeName</span>")
+            sb.append("<span class='sa-badge $badgeCls'>$badgeTxt</span>")
+            sb.append(" ${escapeHtml(prompt)}")
+            sb.append("</div></div>")
+        }
+        sb.append("<div class='agent-row'><div class='subagent-bubble'>")
+        when {
+            !result.isNullOrBlank() -> sb.append(markdownToHtml(result))
+            status == "failed" -> sb.append("<span style='color:var(--error)'>\u2716 Failed</span>")
+            else -> sb.append("Completed")
+        }
+        sb.append("</div></div></div>")
+        return sb.toString()
+    }
+
+    private fun renderBatchStatus(obj: com.google.gson.JsonObject): String {
+        val icon = obj["icon"]?.asString ?: ""
+        val msg = obj["message"]?.asString ?: ""
+        return if (icon == ICON_ERROR) {
+            "<div class='status-row error'>$ICON_ERROR ${escapeHtml(msg)}</div>"
+        } else {
+            "<div class='status-row info'>\u2139\uFE0F ${escapeHtml(msg)}</div>"
+        }
+    }
+
+    private fun renderBatchSeparator(obj: com.google.gson.JsonObject): String {
+        val ts = obj["timestamp"]?.asString ?: ""
+        return "<div class='session-sep'><span class='session-sep-line'></span>" +
+            "<span class='session-sep-label'>New session \u00B7 ${escapeHtml(ts)}</span>" +
+            "<span class='session-sep-line'></span></div>"
+    }
+
     private fun renderBatchHtml(batch: List<com.google.gson.JsonElement>): String {
         val sb = StringBuilder()
         for (elem in batch) {
             val obj = elem.asJsonObject
             when (obj["type"]?.asString) {
-                "prompt" -> {
-                    val text = obj["text"]?.asString ?: ""
-                    sb.append("<div class='prompt-row'><div class='meta'><span class='ts'></span></div>")
-                    sb.append(
-                        "<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${
-                            escapeHtml(
-                                text
-                            )
-                        }</div></div>"
-                    )
-                }
-
-                "text" -> {
-                    val raw = obj["raw"]?.asString ?: ""
-                    val html = markdownToHtml(raw)
-                    deferredIdCounter++
-                    sb.append("<div class='agent-row'><div class='meta'><span class='ts'></span></div>")
-                    sb.append("<div class='agent-bubble' onclick='toggleMeta(this)'>$html</div></div>")
-                }
-
-                "thinking" -> {
-                    deferredIdCounter++
-                    val raw = obj["raw"]?.asString ?: ""
-                    val id = "def-think-$deferredIdCounter"
-                    sb.append("<div class='collapse-section thinking-section collapsed' id='$id'>")
-                    sb.append(
-                        "<div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleThinking(\"$id\")' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>" +
-                            "<span class='collapse-icon'>\uD83D\uDCAD</span>" +
-                            "<span class='collapse-label'>Thought process</span>" +
-                            "<span class='caret'>\u25B8</span></div>"
-                    )
-                    sb.append("<div class='collapse-content'>${escapeHtml(raw)}</div></div>")
-                }
-
-                "tool" -> {
-                    deferredIdCounter++
-                    val title = obj["title"]?.asString ?: ""
-                    val args = obj["args"]?.asString?.ifEmpty { null }
-                    val baseName = title.substringAfterLast("-")
-                    val info = TOOL_DISPLAY_INFO[title] ?: TOOL_DISPLAY_INFO[baseName]
-                    val displayName =
-                        info?.displayName ?: title.replace("_", " ").replaceFirstChar { it.uppercase() }
-                    val id = "def-tool-$deferredIdCounter"
-                    val contentParts = StringBuilder()
-                    if (info?.description != null) {
-                        contentParts.append("<div class='tool-desc'>${escapeHtml(info.description)}</div>")
-                    }
-                    if (!args.isNullOrBlank()) {
-                        contentParts.append("<div class='tool-params-label'>Parameters:</div>")
-                        contentParts.append("<pre class='tool-params'><code>${escapeHtml(args)}</code></pre>")
-                    }
-                    contentParts.append("\u2705 Completed")
-                    sb.append("<div class='collapse-section tool-section collapsed' id='$id'>")
-                    sb.append(
-                        "<div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleTool(\"$id\")' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>" +
-                            "<span class='collapse-icon'>✓</span>" +
-                            "<span class='collapse-label'>${escapeHtml(displayName)}</span>" +
-                            "<span class='caret'>\u25B8</span></div>"
-                    )
-                    sb.append("<div class='collapse-content'>$contentParts</div></div>")
-                }
-
-                "subagent" -> {
-                    val agentType = obj["agentType"]?.asString ?: "general-purpose"
-                    val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
-                        "", agentType.replaceFirstChar { it.uppercase() } + " Agent", "subagent-general")
-                    val safeName = escapeHtml(info.displayName)
-                    val prompt = obj["prompt"]?.asString?.ifEmpty { null }
-                    val result = obj["result"]?.asString?.ifEmpty { null }
-                    val status = obj["status"]?.asString?.ifEmpty { null }
-                    val badgeCls = if (status == "failed") "sa-badge-failed" else "sa-badge-done"
-                    val badgeTxt = if (status == "failed") "Failed" else "Done"
-                    sb.append("<div class='${info.cssClass}'>")
-                    if (!prompt.isNullOrBlank()) {
-                        sb.append("<div class='agent-row'><div class='agent-bubble'>")
-                        sb.append("<span class='subagent-prefix'>@$safeName</span>")
-                        sb.append("<span class='sa-badge $badgeCls'>$badgeTxt</span>")
-                        sb.append(" ${escapeHtml(prompt)}")
-                        sb.append("</div></div>")
-                    }
-                    sb.append("<div class='agent-row'><div class='subagent-bubble'>")
-                    if (!result.isNullOrBlank()) {
-                        sb.append(markdownToHtml(result))
-                    } else if (status == "completed") {
-                        sb.append("Completed")
-                    } else if (status == "failed") {
-                        sb.append("<span style='color:var(--error)'>\u2716 Failed</span>")
-                    } else {
-                        sb.append("Completed")
-                    }
-                    sb.append("</div></div></div>")
-                }
-
-                "status" -> {
-                    val icon = obj["icon"]?.asString ?: ""
-                    val msg = obj["message"]?.asString ?: ""
-                    if (icon == ICON_ERROR) {
-                        sb.append("<div class='status-row error'>$ICON_ERROR ${escapeHtml(msg)}</div>")
-                    } else {
-                        sb.append("<div class='status-row info'>\u2139\uFE0F ${escapeHtml(msg)}</div>")
-                    }
-                }
-
-                "separator" -> {
-                    val ts = obj["timestamp"]?.asString ?: ""
-                    sb.append("<div class='session-sep'><span class='session-sep-line'></span>")
-                    sb.append("<span class='session-sep-label'>New session \u00B7 ${escapeHtml(ts)}</span>")
-                    sb.append("<span class='session-sep-line'></span></div>")
-                }
+                "prompt" -> sb.append(renderBatchPrompt(obj))
+                "text" -> sb.append(renderBatchText(obj))
+                "thinking" -> sb.append(renderBatchThinking(obj))
+                "tool" -> sb.append(renderBatchTool(obj))
+                "subagent" -> sb.append(renderBatchSubagent(obj))
+                "status" -> sb.append(renderBatchStatus(obj))
+                "separator" -> sb.append(renderBatchSeparator(obj))
             }
         }
         return sb.toString()
@@ -1199,7 +1193,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     /** Returns the conversation as a self-contained HTML document */
-    fun getConversationHtml(): String {
+    private fun buildExportCss(): String {
         val font = UIUtil.getLabelFont()
         val fg = UIUtil.getLabelForeground()
         val codeBg = UIManager.getColor("Editor.backgroundColor")
@@ -1211,35 +1205,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
 
-        val sb = StringBuilder()
-        sb.append(
-            """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        return """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;color:${rgb(fg)};line-height:1.45;max-width:900px;margin:0 auto;padding:16px}
 .prompt{text-align:right;margin:10px 0 4px 0}
-.prompt-b{display:inline-block;background:${
-                rgba(
-                    USER_COLOR,
-                    0.12
-                )
-            };border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
-.response{background:${
-                rgba(
-                    AGENT_COLOR,
-                    0.06
-                )
-            };border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
-.thinking{background:${
-                rgba(
-                    THINK_COLOR,
-                    0.06
-                )
-            };border-radius:4px 16px 16px 16px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
-.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${
-                rgba(
-                    TOOL_COLOR,
-                    0.3
-                )
-            };border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
+.prompt-b{display:inline-block;background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
+.response{background:${rgba(AGENT_COLOR, 0.06)};border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
+.thinking{background:${rgba(THINK_COLOR, 0.06)};border-radius:4px 16px 16px 16px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
+.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${rgba(TOOL_COLOR, 0.3)};border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
 .context{font-size:0.88em;color:${rgb(USER_COLOR)};margin:2px 0}
 .context summary{cursor:pointer;padding:4px 0}
 .context .ctx-file{padding:2px 0;padding-left:8px}
@@ -1256,59 +1228,53 @@ a{color:${rgb(linkColor)}}
 ul,ol{margin:4px 0;padding-left:22px}
 </style></head><body>
 """
-        )
-        for (e in entries) when (e) {
-            is EntryData.Prompt -> sb.append("<div class='prompt'><span class='prompt-b'>${escapeHtml(e.text)}</span></div>\n")
-            is EntryData.Text -> sb.append("<div class='response'>").append(markdownToHtml(e.raw.toString()))
-                .append("</div>\n")
+    }
 
-            is EntryData.Thinking -> sb.append(
-                "<details class='thinking'><summary>💭 Thought process</summary><pre>${escapeHtml(e.raw.toString())}</pre></details>\n"
-            )
+    private fun renderExportEntry(e: EntryData): String = when (e) {
+        is EntryData.Prompt -> "<div class='prompt'><span class='prompt-b'>${escapeHtml(e.text)}</span></div>\n"
+        is EntryData.Text -> "<div class='response'>${markdownToHtml(e.raw.toString())}</div>\n"
+        is EntryData.Thinking -> "<details class='thinking'><summary>\uD83D\uDCAD Thought process</summary><pre>${escapeHtml(e.raw.toString())}</pre></details>\n"
+        is EntryData.ToolCall -> renderExportToolCall(e)
+        is EntryData.SubAgent -> renderExportSubAgent(e)
+        is EntryData.ContextFiles -> renderExportContextFiles(e)
+        is EntryData.Status -> "<div class='status ${if (e.icon == ICON_ERROR) "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
+        is EntryData.SessionSeparator -> "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${escapeHtml(e.timestamp)}</div>\n"
+    }
 
-            is EntryData.ToolCall -> {
-                val baseName = e.title.substringAfterLast("-")
-                val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
-                val displayName = info?.displayName ?: e.title
-                sb.append("<details class='tool'><summary>⚒ ${escapeHtml(displayName)}</summary>")
-                if (info?.description != null) sb.append("<div style='font-style:italic;margin:4px 0'>${escapeHtml(info.description)}</div>")
-                if (e.arguments != null) sb.append(
-                    "<div style='margin:4px 0'><b>Parameters:</b><pre><code>${
-                        escapeHtml(
-                            e.arguments
-                        )
-                    }</code></pre></div>"
-                )
-                sb.append("</details>\n")
-            }
+    private fun renderExportToolCall(e: EntryData.ToolCall): String {
+        val baseName = e.title.substringAfterLast("-")
+        val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
+        val displayName = info?.displayName ?: e.title
+        val sb = StringBuilder("<details class='tool'><summary>\u2692 ${escapeHtml(displayName)}</summary>")
+        if (info?.description != null) sb.append("<div style='font-style:italic;margin:4px 0'>${escapeHtml(info.description)}</div>")
+        if (e.arguments != null) sb.append("<div style='margin:4px 0'><b>Parameters:</b><pre><code>${escapeHtml(e.arguments)}</code></pre></div>")
+        sb.append("</details>\n")
+        return sb.toString()
+    }
 
-            is EntryData.SubAgent -> {
-                val info = SUB_AGENT_INFO[e.agentType]
-                val name = info?.displayName ?: e.agentType
-                if (e.prompt != null) sb.append("<div class='response'><b>@$name</b> ${escapeHtml(e.prompt)}</div>\n")
-                if (e.result != null) sb.append("<div class='response'>${markdownToHtml(e.result!!)}</div>\n")
-                else sb.append("<div class='response'><b>@$name</b> — ${escapeHtml(e.description)}</div>\n")
-            }
+    private fun renderExportSubAgent(e: EntryData.SubAgent): String {
+        val info = SUB_AGENT_INFO[e.agentType]
+        val name = info?.displayName ?: e.agentType
+        val sb = StringBuilder()
+        if (e.prompt != null) sb.append("<div class='response'><b>@$name</b> ${escapeHtml(e.prompt)}</div>\n")
+        if (e.result != null) sb.append("<div class='response'>${markdownToHtml(e.result!!)}</div>\n")
+        else sb.append("<div class='response'><b>@$name</b> \u2014 ${escapeHtml(e.description)}</div>\n")
+        return sb.toString()
+    }
 
-            is EntryData.ContextFiles -> {
-                val label = "${e.files.size} context file${if (e.files.size != 1) "s" else ""} attached"
-                sb.append("<details class='context'><summary>\uD83D\uDCCE $label</summary>")
-                e.files.forEach { (name, _) -> sb.append("<div class='ctx-file'><code>${escapeHtml(name)}</code></div>") }
-                sb.append("</details>\n")
-            }
+    private fun renderExportContextFiles(e: EntryData.ContextFiles): String {
+        val label = "${e.files.size} context file${if (e.files.size != 1) "s" else ""} attached"
+        val sb = StringBuilder("<details class='context'><summary>\uD83D\uDCCE $label</summary>")
+        e.files.forEach { (name, _) -> sb.append("<div class='ctx-file'><code>${escapeHtml(name)}</code></div>") }
+        sb.append("</details>\n")
+        return sb.toString()
+    }
 
-            is EntryData.Status -> sb.append(
-                "<div class='status ${if (e.icon == ICON_ERROR) "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
-            )
-
-            is EntryData.SessionSeparator -> sb.append(
-                "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${
-                    escapeHtml(
-                        e.timestamp
-                    )
-                }</div>\n"
-            )
-        }
+    /** Returns the conversation as a self-contained HTML document */
+    fun getConversationHtml(): String {
+        val sb = StringBuilder()
+        sb.append(buildExportCss())
+        for (e in entries) sb.append(renderExportEntry(e))
         sb.append("</body></html>")
         return sb.toString()
     }

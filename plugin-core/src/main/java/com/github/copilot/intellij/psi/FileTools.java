@@ -134,23 +134,9 @@ class FileTools extends AbstractToolHandler {
 
                 FileEditorManager fem = FileEditorManager.getInstance(project);
                 if (line > 0) {
-                    // Always navigate to line, even if file is already open
                     new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, line - 1, 0)
                         .navigate(false);
-                    // Explicitly scroll the editor to the target line
-                    for (com.intellij.openapi.fileEditor.FileEditor fe : fem.getEditors(vf)) {
-                        if (fe instanceof TextEditor) {
-                            com.intellij.openapi.editor.Editor editor = ((TextEditor) fe).getEditor();
-                            int lineCount = editor.getDocument().getLineCount();
-                            if (line - 1 < lineCount) {
-                                int offset = editor.getDocument().getLineStartOffset(line - 1);
-                                editor.getCaretModel().moveToOffset(offset);
-                                editor.getScrollingModel().scrollToCaret(
-                                    com.intellij.openapi.editor.ScrollType.CENTER);
-                            }
-                            break;
-                        }
-                    }
+                    scrollEditorToLine(fem, vf, line);
                 } else {
                     fem.openFile(vf, false);
                 }
@@ -158,6 +144,22 @@ class FileTools extends AbstractToolHandler {
                 LOG.debug("Follow agent file failed: " + pathStr, e);
             }
         });
+    }
+
+    private void scrollEditorToLine(FileEditorManager fem, VirtualFile vf, int line) {
+        for (com.intellij.openapi.fileEditor.FileEditor fe : fem.getEditors(vf)) {
+            if (fe instanceof TextEditor textEditor) {
+                com.intellij.openapi.editor.Editor editor = textEditor.getEditor();
+                int lineCount = editor.getDocument().getLineCount();
+                if (line - 1 < lineCount) {
+                    int offset = editor.getDocument().getLineStartOffset(line - 1);
+                    editor.getCaretModel().moveToOffset(offset);
+                    editor.getScrollingModel().scrollToCaret(
+                        com.intellij.openapi.editor.ScrollType.CENTER);
+                }
+                break;
+            }
+        }
     }
 
     private String writeFile(JsonObject args) throws Exception {

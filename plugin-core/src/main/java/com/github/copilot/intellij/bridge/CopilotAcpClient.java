@@ -222,31 +222,76 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
-     * Build the ProcessBuilder command with ACP flags and optional MCP server config.
+     * Resolve the node binary for NVM-managed copilot installations.
      */
-    private ProcessBuilder buildAcpCommand(String copilotPath) {
-        java.util.List<String> cmd = new java.util.ArrayList<>();
-
-        // If copilot is in an NVM directory, explicitly use the same node binary
-        // to avoid resolving to a different node version via /usr/bin/env node
+    private void addNodeAndCopilotCommand(java.util.List<String> cmd, String copilotPath) {
         if (copilotPath.contains("/.nvm/versions/node/")) {
             String nodeDir = copilotPath.substring(0, copilotPath.indexOf("/bin/copilot"));
             String nodePath = nodeDir + "/bin/node";
             if (new File(nodePath).exists()) {
                 cmd.add(nodePath);
-                cmd.add(copilotPath);
-            } else {
-                cmd.add(copilotPath);
             }
-        } else {
-            cmd.add(copilotPath);
         }
+        cmd.add(copilotPath);
+    }
+
+    /**
+     * Build MCP config JSON, write to temp file, and add --additional-mcp-config flag.
+     */
+    private void addMcpConfigFlags(java.util.List<String> cmd) {
+        String mcpJarPath = findMcpServerJar();
+        if (mcpJarPath == null) {
+            showNotification(MCP_SERVER_ERROR,
+                "MCP server JAR not found. IntelliJ code tools will be unavailable.\nCheck IDE log for details.",
+                com.intellij.notification.NotificationType.ERROR);
+            return;
+        }
+        String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
+        String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
+        if (!new File(javaPath).exists()) {
+            LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
+            showNotification(MCP_SERVER_ERROR,
+                "Java not found at: " + javaPath + "\nIntelliJ tools will be unavailable.",
+                com.intellij.notification.NotificationType.ERROR);
+            return;
+        }
+        try {
+            JsonObject mcpConfig = new JsonObject();
+            JsonObject servers = new JsonObject();
+            JsonObject codeTools = new JsonObject();
+            codeTools.addProperty(COMMAND, javaPath);
+            JsonArray args = new JsonArray();
+            args.add("-jar");
+            args.add(mcpJarPath);
+            args.add(System.getProperty(USER_HOME));
+            codeTools.add("args", args);
+            servers.add("intellij-code-tools", codeTools);
+            mcpConfig.add("mcpServers", servers);
+
+            File mcpConfigFile = File.createTempFile("copilot-mcp-", ".json");
+            mcpConfigFile.deleteOnExit();
+            try (java.io.FileWriter fw = new java.io.FileWriter(mcpConfigFile)) {
+                fw.write(gson.toJson(mcpConfig));
+            }
+            cmd.add("--additional-mcp-config");
+            cmd.add("@" + mcpConfigFile.getAbsolutePath());
+            LOG.info("MCP code-tools configured globally via " + mcpConfigFile.getAbsolutePath());
+        } catch (IOException e) {
+            LOG.warn("Failed to write MCP config file", e);
+            showNotification(MCP_SERVER_ERROR,
+                "Failed to write MCP config file: " + e.getMessage() + "\nIntelliJ tools will be unavailable.",
+                com.intellij.notification.NotificationType.ERROR);
+        }
+    }
+
+    private ProcessBuilder buildAcpCommand(String copilotPath) {
+        java.util.List<String> cmd = new java.util.ArrayList<>();
+
+        addNodeAndCopilotCommand(cmd, copilotPath);
 
         cmd.add("--acp");
         cmd.add("--stdio");
 
-        // Set the model from saved settings (--model sets the default for new sessions).
-        // The actual model is applied per-session via session/set_model after session/new.
         String savedModel = CopilotSettings.getSelectedModel();
         if (savedModel != null && !savedModel.isEmpty()) {
             cmd.add("--model");
@@ -255,13 +300,8 @@ public class CopilotAcpClient implements Closeable {
         }
 
         // NOTE: --deny-tool, --available-tools, --excluded-tools all DON'T work in --acp mode.
-        // All three are broken per CLI bug #556. Tested --deny-tool on Feb 26, 2026:
-        // - It did NOT block any tools (read-only tools auto-execute, write tools still need
-        //   our DENIED_PERMISSION_KINDS to catch them)
-        // - Its variadic arg parsing may consume subsequent CLI flags, breaking MCP registration
-        // Our workaround: DENIED_PERMISSION_KINDS + tool_call interception. See CLI-BUG-556-WORKAROUND.md
+        // All three are broken per CLI bug #556. See CLI-BUG-556-WORKAROUND.md
 
-        // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
             Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
             cmd.add("--config-dir");
@@ -269,52 +309,7 @@ public class CopilotAcpClient implements Closeable {
             LOG.info("Copilot CLI config-dir set to: " + agentWorkPath);
         }
 
-        // MCP servers must be configured globally via --additional-mcp-config CLI flag,
-        // then referenced by name in session/new params (see createSession method)
-        String mcpJarPath = findMcpServerJar();
-        if (mcpJarPath != null) {
-            String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
-            String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
-            if (new File(javaPath).exists()) {
-                try {
-                    JsonObject mcpConfig = new JsonObject();
-                    JsonObject servers = new JsonObject();
-                    JsonObject codeTools = new JsonObject();
-                    codeTools.addProperty(COMMAND, javaPath);
-                    JsonArray args = new JsonArray();
-                    args.add("-jar");
-                    args.add(mcpJarPath);
-                    args.add(System.getProperty(USER_HOME));
-                    codeTools.add("args", args);
-                    // env is optional - omit if empty
-                    servers.add("intellij-code-tools", codeTools);
-                    mcpConfig.add("mcpServers", servers);
-
-                    File mcpConfigFile = File.createTempFile("copilot-mcp-", ".json");
-                    mcpConfigFile.deleteOnExit();
-                    try (java.io.FileWriter fw = new java.io.FileWriter(mcpConfigFile)) {
-                        fw.write(gson.toJson(mcpConfig));
-                    }
-                    cmd.add("--additional-mcp-config");
-                    cmd.add("@" + mcpConfigFile.getAbsolutePath());
-                    LOG.info("MCP code-tools configured globally via " + mcpConfigFile.getAbsolutePath());
-                } catch (IOException e) {
-                    LOG.warn("Failed to write MCP config file", e);
-                    showNotification(MCP_SERVER_ERROR,
-                        "Failed to write MCP config file: " + e.getMessage() + "\nIntelliJ tools will be unavailable.",
-                        com.intellij.notification.NotificationType.ERROR);
-                }
-            } else {
-                LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
-                showNotification(MCP_SERVER_ERROR,
-                    "Java not found at: " + javaPath + "\nIntelliJ tools will be unavailable.",
-                    com.intellij.notification.NotificationType.ERROR);
-            }
-        } else {
-            showNotification(MCP_SERVER_ERROR,
-                "MCP server JAR not found. IntelliJ code tools will be unavailable.\nCheck IDE log for details.",
-                com.intellij.notification.NotificationType.ERROR);
-        }
+        addMcpConfigFlags(cmd);
 
         return new ProcessBuilder(cmd);
     }
@@ -734,9 +729,10 @@ public class CopilotAcpClient implements Closeable {
             case "view", "read", "read file", "view file" ->
                 BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk (may be stale). " +
                     "Use 'intellij-code-tools-intellij_read_file' instead — it reads live editor buffers.";
-            case "grep", "search", "ripgrep" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk. " +
-                "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
-                "For symbol search, use 'intellij-code-tools-search_symbols'.";
+            case "grep", "search", "ripgrep" ->
+                BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk. " +
+                    "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
+                    "For symbol search, use 'intellij-code-tools-search_symbols'.";
             case "glob", "find files", "list files" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
                 "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
             case CREATE_KIND, "create file" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
