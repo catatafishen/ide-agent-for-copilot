@@ -38,6 +38,7 @@ class InfrastructureTools extends AbstractToolHandler {
     private static final String JSON_TITLE = "title";
     private static final String JSON_TAB_NAME = "tab_name";
     private static final String OS_NAME_PROPERTY = "os.name";
+    private static final String PARAM_MAX_CHARS = "max_chars";
     private static final String JAVA_HOME_ENV = "JAVA_HOME";
     private static final String IDEA_LOG_FILENAME = "idea.log";
 
@@ -117,7 +118,7 @@ class InfrastructureTools extends AbstractToolHandler {
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
         int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
         int offset = args.has("offset") ? args.get("offset").getAsInt() : 0;
-        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
+        int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
         String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
 
         GeneralCommandLine cmd;
@@ -218,7 +219,7 @@ class InfrastructureTools extends AbstractToolHandler {
     }
 
     private String readRunOutput(JsonObject args) {
-        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
+        int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
         //noinspection RedundantCast — needed for Computable vs ThrowableComputable overload resolution

@@ -507,7 +507,7 @@ public class CopilotAcpClient implements Closeable {
             int retryCount = 0;
 
             while (true) {
-                JsonObject params = buildPromptParams(sessionId, currentPrompt, model, references);
+                JsonObject params = buildPromptParams(sessionId, currentPrompt, references);
 
                 // Reset turn tracking
                 builtInActionDeniedDuringTurn = false;
@@ -751,7 +751,7 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private JsonObject buildPromptParams(@NotNull String sessionId, @NotNull String prompt,
-                                         @Nullable String model, @Nullable List<ResourceReference> references) {
+                                         @Nullable List<ResourceReference> references) {
         JsonObject params = new JsonObject();
         params.addProperty(SESSION_ID, sessionId);
 

@@ -41,6 +41,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         const val AGENT_WORK_DIR = ".agent-work"
 
         /** Theme-aware error color — uses IDE's error foreground or a sensible red fallback. */
+        private const val OS_NAME_PROPERTY = "os.name"
         private val ERROR_COLOR: JBColor
             get() = UIManager.getColor("Label.errorForeground") as? JBColor
                 ?: JBColor(Color(0xC7, 0x22, 0x22), Color(0xE0, 0x60, 0x60))
@@ -474,7 +475,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun findGhCli(): String? {
         // Check PATH using platform-appropriate command
         try {
-            val cmd = if (System.getProperty("os.name").lowercase().contains("win")) "where" else "which"
+            val cmd = if (System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")) "where" else "which"
             val check = ProcessBuilder(cmd, "gh").start()
             if (check.waitFor() == 0) return "gh"
         } catch (_: Exception) {
@@ -482,7 +483,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         // Check known install locations
-        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
         val knownPaths = if (isWindows) {
             listOf(
                 "C:\\Program Files\\GitHub CLI\\gh.exe",
@@ -535,7 +536,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
-                    val terminalHint = if (System.getProperty("os.name").lowercase().contains("win"))
+                    val terminalHint = if (System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win"))
                         "Command Prompt or PowerShell" else "your terminal"
                     Messages.showErrorDialog(
                         project,
@@ -655,7 +656,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // unlike invokeLater which may fire before the editor exists.
         promptTextArea.addSettingsProvider { editor ->
             setupPromptKeyBindings(promptTextArea, editor)
-            setupPromptContextMenu(promptTextArea, editor)
+            setupPromptContextMenu(editor)
             // Use EditorEx built-in placeholder (visual-only, doesn't set actual text)
             editor.setPlaceholder(PROMPT_PLACEHOLDER)
             editor.setShowPlaceholderWhenFocused(true)
@@ -1098,7 +1099,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {
-            handleAddCurrentFile(mainPanel)
+                handleAddCurrentFile()
         }
     }
 
@@ -1108,7 +1109,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {
-            handleAddSelection(mainPanel)
+                handleAddSelection()
         }
     }
 
@@ -1245,105 +1246,179 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         private fun buildToolbarHelpItems(): List<HelpRow?> = listOf(
-            HelpRow(com.intellij.icons.AllIcons.Actions.Execute, "Send", "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."),
-            HelpRow(com.intellij.icons.AllIcons.Actions.Suspend, "Stop", "While the agent is working, this replaces Send. Stops the current agent turn."),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Execute,
+                "Send",
+                "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Suspend,
+                "Stop",
+                "While the agent is working, this replaces Send. Stops the current agent turn."
+            ),
             null,
-            HelpRow(com.intellij.icons.AllIcons.Actions.AddFile, "Attach File", "Attach the currently open editor file to your prompt as context."),
-            HelpRow(com.intellij.icons.AllIcons.Actions.AddMulticaret, "Attach Selection", "Attach the current text selection from the editor to your prompt."),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.AddFile,
+                "Attach File",
+                "Attach the currently open editor file to your prompt as context."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.AddMulticaret,
+                "Attach Selection",
+                "Attach the current text selection from the editor to your prompt."
+            ),
             null,
-            HelpRow(com.intellij.icons.AllIcons.Actions.Lightning, "Model", "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."),
-            HelpRow(com.intellij.icons.AllIcons.General.Settings, "Mode", "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Lightning,
+                "Model",
+                "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.General.Settings,
+                "Mode",
+                "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."
+            ),
             null,
-            HelpRow(com.intellij.icons.AllIcons.Actions.Preview, "Follow Agent", "Toggle: auto-open files in the editor as the agent reads or writes them."),
-            HelpRow(com.intellij.icons.AllIcons.Actions.ReformatCode, "Format", "Toggle: instruct the agent to auto-format code after editing files."),
-            HelpRow(com.intellij.icons.AllIcons.Actions.Compile, "Build", "Toggle: instruct the agent to build the project before completing its turn."),
-            HelpRow(com.intellij.icons.AllIcons.Nodes.Test, "Test", "Toggle: instruct the agent to run tests before completing its turn."),
-            HelpRow(com.intellij.icons.AllIcons.Actions.Commit, "Commit", "Toggle: instruct the agent to auto-commit changes before completing its turn."),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Preview,
+                "Follow Agent",
+                "Toggle: auto-open files in the editor as the agent reads or writes them."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.ReformatCode,
+                "Format",
+                "Toggle: instruct the agent to auto-format code after editing files."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Compile,
+                "Build",
+                "Toggle: instruct the agent to build the project before completing its turn."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.Nodes.Test,
+                "Test",
+                "Toggle: instruct the agent to run tests before completing its turn."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Commit,
+                "Commit",
+                "Toggle: instruct the agent to auto-commit changes before completing its turn."
+            ),
             null,
-            HelpRow(com.intellij.icons.AllIcons.Nodes.Folder, "Project Files", "Dropdown: open Instructions, TODO, Agent Definitions, or MCP Server Instructions."),
+            HelpRow(
+                com.intellij.icons.AllIcons.Nodes.Folder,
+                "Project Files",
+                "Dropdown: open Instructions, TODO, Agent Definitions, or MCP Server Instructions."
+            ),
             null,
-            HelpRow(com.intellij.icons.AllIcons.ToolbarDecorator.Export, "Export Chat", "Copy the full conversation to clipboard (as text or HTML)."),
+            HelpRow(
+                com.intellij.icons.AllIcons.ToolbarDecorator.Export,
+                "Export Chat",
+                "Copy the full conversation to clipboard (as text or HTML)."
+            ),
             HelpRow(com.intellij.icons.AllIcons.Actions.Help, "Help", "This dialog."),
         )
 
         private fun buildTitleBarHelpItems(): List<HelpRow> = listOf(
-            HelpRow(com.intellij.icons.AllIcons.Actions.Restart, "New Chat", "Start a fresh conversation (top-right of the tool window)."),
-            HelpRow(com.intellij.icons.AllIcons.General.Settings, "Settings", "Configure inactivity timeout and max tool calls per turn."),
+            HelpRow(
+                com.intellij.icons.AllIcons.Actions.Restart,
+                "New Chat",
+                "Start a fresh conversation (top-right of the tool window)."
+            ),
+            HelpRow(
+                com.intellij.icons.AllIcons.General.Settings,
+                "Settings",
+                "Configure inactivity timeout and max tool calls per turn."
+            ),
         )
 
         private fun buildToolCategories(): List<HelpToolCategory> = listOf(
-            HelpToolCategory("Code Intelligence", listOf(
-                HelpToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
-                HelpToolInfo("get_file_outline", "Get the structural outline of a file."),
-                HelpToolInfo("get_class_outline", "Show constructors, methods, fields of any class."),
-                HelpToolInfo("find_references", "Find all usages of a symbol across the project."),
-                HelpToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class."),
-                HelpToolInfo("go_to_declaration", "Navigate to where a symbol is declared."),
-                HelpToolInfo("get_documentation", "Get Javadoc/KDoc for a symbol."),
-                HelpToolInfo("search_text", "Search text or regex across project files.")
-            )),
-            HelpToolCategory("File Operations", listOf(
-                HelpToolInfo("intellij_read_file", "Read a file (optionally a line range)."),
-                HelpToolInfo("intellij_write_file", "Write or edit a file (full, partial, or line-range)."),
-                HelpToolInfo("create_file", "Create a new file with content."),
-                HelpToolInfo("delete_file", "Delete a file."),
-                HelpToolInfo("undo", "Undo the last edit on a file."),
-                HelpToolInfo("list_project_files", "List files in a directory with optional glob filter."),
-                HelpToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
-                HelpToolInfo("show_diff", "Show a diff between files or proposed content.")
-            )),
-            HelpToolCategory("Code Quality", listOf(
-                HelpToolInfo("get_problems", "Get problems/errors for open files."),
-                HelpToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
-                HelpToolInfo("get_compilation_errors", "Fast compilation error check using cached daemon results."),
-                HelpToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
-                HelpToolInfo("optimize_imports", "Optimize imports in a file."),
-                HelpToolInfo("format_code", "Format code in a file."),
-                HelpToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
-                HelpToolInfo("suppress_inspection", "Suppress an inspection finding."),
-                HelpToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
-                HelpToolInfo("run_qodana", "Run Qodana static analysis."),
-                HelpToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
-            )),
-            HelpToolCategory("Refactoring", listOf(
-                HelpToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
-            )),
-            HelpToolCategory("Build, Run & Test", listOf(
-                HelpToolInfo("build_project", "Trigger incremental project compilation."),
-                HelpToolInfo("list_tests", "List available tests."),
-                HelpToolInfo("run_tests", "Run tests by class, method, or pattern."),
-                HelpToolInfo("get_test_results", "Get results from the last test run."),
-                HelpToolInfo("get_coverage", "Get code coverage results."),
-                HelpToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
-                HelpToolInfo("list_run_configurations", "List available run configurations."),
-                HelpToolInfo("run_configuration", "Execute a run configuration by name."),
-                HelpToolInfo("create_run_configuration", "Create a new run configuration."),
-                HelpToolInfo("edit_run_configuration", "Edit an existing run configuration.")
-            )),
-            HelpToolCategory("Git", listOf(
-                HelpToolInfo("git_status", "Show working tree status."),
-                HelpToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
-                HelpToolInfo("git_log", "Show commit history."),
-                HelpToolInfo("git_blame", "Show line-by-line authorship."),
-                HelpToolInfo("git_commit", "Commit staged changes."),
-                HelpToolInfo("git_stage", "Stage files for commit."),
-                HelpToolInfo("git_unstage", "Unstage files."),
-                HelpToolInfo("git_branch", "List, create, switch, or delete branches."),
-                HelpToolInfo("git_stash", "Stash or restore working changes."),
-                HelpToolInfo("git_show", "Show commit details.")
-            )),
-            HelpToolCategory("Infrastructure", listOf(
-                HelpToolInfo("run_command", "Run a shell command in the project directory."),
-                HelpToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
-                HelpToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
-                HelpToolInfo("read_terminal_output", "Read output from a terminal tab."),
-                HelpToolInfo("read_ide_log", "Read recent IDE log entries."),
-                HelpToolInfo("read_run_output", "Read output from a Run panel tab."),
-                HelpToolInfo("get_notifications", "Get IDE notifications."),
-                HelpToolInfo("get_indexing_status", "Check if indexing is in progress."),
-                HelpToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
-                HelpToolInfo("list_scratch_files", "List existing scratch files.")
-            ))
+            HelpToolCategory(
+                "Code Intelligence", listOf(
+                    HelpToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
+                    HelpToolInfo("get_file_outline", "Get the structural outline of a file."),
+                    HelpToolInfo("get_class_outline", "Show constructors, methods, fields of any class."),
+                    HelpToolInfo("find_references", "Find all usages of a symbol across the project."),
+                    HelpToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class."),
+                    HelpToolInfo("go_to_declaration", "Navigate to where a symbol is declared."),
+                    HelpToolInfo("get_documentation", "Get Javadoc/KDoc for a symbol."),
+                    HelpToolInfo("search_text", "Search text or regex across project files.")
+                )
+            ),
+            HelpToolCategory(
+                "File Operations", listOf(
+                    HelpToolInfo("intellij_read_file", "Read a file (optionally a line range)."),
+                    HelpToolInfo("intellij_write_file", "Write or edit a file (full, partial, or line-range)."),
+                    HelpToolInfo("create_file", "Create a new file with content."),
+                    HelpToolInfo("delete_file", "Delete a file."),
+                    HelpToolInfo("undo", "Undo the last edit on a file."),
+                    HelpToolInfo("list_project_files", "List files in a directory with optional glob filter."),
+                    HelpToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
+                    HelpToolInfo("show_diff", "Show a diff between files or proposed content.")
+                )
+            ),
+            HelpToolCategory(
+                "Code Quality", listOf(
+                    HelpToolInfo("get_problems", "Get problems/errors for open files."),
+                    HelpToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
+                    HelpToolInfo("get_compilation_errors", "Fast compilation error check using cached daemon results."),
+                    HelpToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
+                    HelpToolInfo("optimize_imports", "Optimize imports in a file."),
+                    HelpToolInfo("format_code", "Format code in a file."),
+                    HelpToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
+                    HelpToolInfo("suppress_inspection", "Suppress an inspection finding."),
+                    HelpToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
+                    HelpToolInfo("run_qodana", "Run Qodana static analysis."),
+                    HelpToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
+                )
+            ),
+            HelpToolCategory(
+                "Refactoring", listOf(
+                    HelpToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
+                )
+            ),
+            HelpToolCategory(
+                "Build, Run & Test", listOf(
+                    HelpToolInfo("build_project", "Trigger incremental project compilation."),
+                    HelpToolInfo("list_tests", "List available tests."),
+                    HelpToolInfo("run_tests", "Run tests by class, method, or pattern."),
+                    HelpToolInfo("get_test_results", "Get results from the last test run."),
+                    HelpToolInfo("get_coverage", "Get code coverage results."),
+                    HelpToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
+                    HelpToolInfo("list_run_configurations", "List available run configurations."),
+                    HelpToolInfo("run_configuration", "Execute a run configuration by name."),
+                    HelpToolInfo("create_run_configuration", "Create a new run configuration."),
+                    HelpToolInfo("edit_run_configuration", "Edit an existing run configuration.")
+                )
+            ),
+            HelpToolCategory(
+                "Git", listOf(
+                    HelpToolInfo("git_status", "Show working tree status."),
+                    HelpToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
+                    HelpToolInfo("git_log", "Show commit history."),
+                    HelpToolInfo("git_blame", "Show line-by-line authorship."),
+                    HelpToolInfo("git_commit", "Commit staged changes."),
+                    HelpToolInfo("git_stage", "Stage files for commit."),
+                    HelpToolInfo("git_unstage", "Unstage files."),
+                    HelpToolInfo("git_branch", "List, create, switch, or delete branches."),
+                    HelpToolInfo("git_stash", "Stash or restore working changes."),
+                    HelpToolInfo("git_show", "Show commit details.")
+                )
+            ),
+            HelpToolCategory(
+                "Infrastructure", listOf(
+                    HelpToolInfo("run_command", "Run a shell command in the project directory."),
+                    HelpToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
+                    HelpToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
+                    HelpToolInfo("read_terminal_output", "Read output from a terminal tab."),
+                    HelpToolInfo("read_ide_log", "Read recent IDE log entries."),
+                    HelpToolInfo("read_run_output", "Read output from a Run panel tab."),
+                    HelpToolInfo("get_notifications", "Get IDE notifications."),
+                    HelpToolInfo("get_indexing_status", "Check if indexing is in progress."),
+                    HelpToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
+                    HelpToolInfo("list_scratch_files", "List existing scratch files.")
+                )
+            )
         )
 
         private fun addHelpRows(panel: JBPanel<*>, items: List<HelpRow?>) {
@@ -1579,7 +1654,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         e.presentation.isEnabled = false
                     }
 
-                    override fun actionPerformed(e: AnActionEvent) {}
+                    override fun actionPerformed(e: AnActionEvent) { /* no-op: placeholder for disabled menu item */
+                    }
                 })
             }
 
@@ -1756,7 +1832,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
     }
 
-    private fun setupPromptContextMenu(textArea: EditorTextField, editor: EditorEx) {
+    private fun setupPromptContextMenu(editor: EditorEx) {
         // Build a combined action group: native editor menu + our custom items
         val group = DefaultActionGroup().apply {
             // Include the standard editor popup menu (Cut, Copy, Paste, Select All, etc.)
@@ -1769,10 +1845,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             // Attach actions
             add(object : AnAction("Attach Current File", null, com.intellij.icons.AllIcons.Actions.AddFile) {
-                override fun actionPerformed(e: AnActionEvent) = handleAddCurrentFile(mainPanel)
+                override fun actionPerformed(e: AnActionEvent) = handleAddCurrentFile()
             })
             add(object : AnAction("Attach Editor Selection", null, com.intellij.icons.AllIcons.Actions.AddMulticaret) {
-                override fun actionPerformed(e: AnActionEvent) = handleAddSelection(mainPanel)
+                override fun actionPerformed(e: AnActionEvent) = handleAddSelection()
             })
             add(object : AnAction("Clear Attachments", null, com.intellij.icons.AllIcons.Actions.GC) {
                 override fun actionPerformed(e: AnActionEvent) {
@@ -2316,7 +2392,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun handleAddCurrentFile(panel: JBPanel<JBPanel<*>>) {
+    private fun handleAddCurrentFile() {
         val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
         val currentFile = fileEditorManager.selectedFiles.firstOrNull()
 
@@ -2346,7 +2422,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
     }
 
-    private fun handleAddSelection(panel: JBPanel<JBPanel<*>>) {
+    private fun handleAddSelection() {
         val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
         val editor = fileEditorManager.selectedTextEditor
         val currentFile = fileEditorManager.selectedFiles.firstOrNull()

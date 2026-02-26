@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13">
-  <path d="M1 10 Q6.5 1.5 12 10" fill="none" stroke="#AFB1B3" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="0.5" y1="10" x2="12.5" y2="10" stroke="#AFB1B3" stroke-width="1.3" stroke-linecap="round"/>
-  <line x1="4" y1="5.8" x2="4" y2="10" stroke="#AFB1B3" stroke-width="1" stroke-linecap="round"/>
-  <line x1="9" y1="5.8" x2="9" y2="10" stroke="#AFB1B3" stroke-width="1" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 1280 872">
+  <g transform="translate(0,872) scale(0.1,-0.1)" fill="#AFB1B3" stroke="none">
+    <path d="M326 8395 c-154 -80 -282 -147 -284 -150 -3 -3 334 -656 1336 -2585 l190 -365 4833 0 4833 0 763 1470 c419 809 762 1473 763 1476 0 3 -129 72 -286 154 -226 117 -288 145 -295 134 -5 -8 -309 -593 -676 -1301 l-668 -1288 -4435 0 -4435 1 -674 1299 c-370 715 -676 1300 -680 1300 -3 0 -132 -66 -285 -145z"/>
+    <path d="M1567 3423 c-3 -5 -217 -417 -477 -918 -260 -500 -603 -1161 -762 -1469 -227 -436 -288 -560 -277 -567 25 -15 556 -289 561 -289 3 0 309 585 679 1300 l674 1299 4435 1 4435 0 668 -1288 c367 -708 671 -1293 676 -1301 7 -11 69 17 295 134 157 82 286 151 286 154 -1 3 -344 668 -763 1476 l-763 1470 -4831 3 c-2658 1 -4834 -1 -4836 -5z"/>
+  </g>
 </svg>

@@ -40,8 +40,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             return UIManager.getColor(key) ?: JBColor(lightFallback, darkFallback)
         }
 
+        private const val LINK_COLOR_KEY = "Component.linkColor"
+
         private val USER_COLOR: Color
-            get() = getThemeColor("Component.linkColor", Color(0x29, 0x79, 0xFF), Color(0x5C, 0x9D, 0xFF))
+            get() = getThemeColor(LINK_COLOR_KEY, Color(0x29, 0x79, 0xFF), Color(0x5C, 0x9D, 0xFF))
 
         private val AGENT_COLOR: Color
             get() = getThemeColor("VersionControl.GitGreen", Color(0x43, 0xA0, 0x47), Color(0x66, 0xBB, 0x6A))
@@ -80,10 +82,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** Sub-agent type metadata for colored bubbles */
         private data class SubAgentInfo(val icon: String, val displayName: String, val cssClass: String)
 
+        private const val AGENT_TYPE_GENERAL = "general-purpose"
+        private const val SA_CSS_GENERAL = "subagent-general"
+
+        private const val AGENT_ROW_OPEN = "<div class='agent-row'><div class='agent-bubble'>"
+        private const val DIV_CLOSE_2 = "</div></div>"
+
         private val SUB_AGENT_INFO = mapOf(
             "explore" to SubAgentInfo("", "Explore Agent", "subagent-explore"),
             "task" to SubAgentInfo("", "Task Agent", "subagent-task"),
-            "general-purpose" to SubAgentInfo("", "General Agent", "subagent-general"),
+            AGENT_TYPE_GENERAL to SubAgentInfo("", "General Agent", SA_CSS_GENERAL),
             "code-review" to SubAgentInfo("", "Code Review Agent", "subagent-review"),
             "ui-reviewer" to SubAgentInfo("", "UI Review Agent", "subagent-ui"),
         )
@@ -543,7 +551,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     }
                     displayName = "$displayName: $short"
                 }
-            } catch (_: Exception) {
+            } catch (_: Exception) { // subtitle extraction is best-effort
             }
         }
         val safeDisplayName = escapeHtml(displayName)
@@ -625,23 +633,23 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         // Render prompt as a normal green agent bubble with @Agent prefix + status badge
         if (!prompt.isNullOrBlank()) {
             val safePrompt = escapeHtml(prompt)
-            sb.append("<div class='agent-row'><div class='agent-bubble'>")
+            sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
             sb.append("<span class='sa-badge sa-badge-working' id='badge-$did'>Working</span>")
             sb.append(" $safePrompt")
-            sb.append("</div></div>")
+            sb.append(DIV_CLOSE_2)
         } else {
-            sb.append("<div class='agent-row'><div class='agent-bubble'>")
+            sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
             sb.append("<span class='sa-badge sa-badge-working' id='badge-$did'>Working</span>")
             sb.append(" ${escapeHtml(description)}")
-            sb.append("</div></div>")
+            sb.append(DIV_CLOSE_2)
         }
 
         // Response bubble in agent-specific color (no @Agent prefix)
         sb.append("<div class='agent-row'><div class='subagent-bubble' id='result-$did'>")
         sb.append("<span class='subagent-pending'>Working...</span>")
-        sb.append("</div></div>")
+        sb.append(DIV_CLOSE_2)
 
         sb.append("</div>")
         appendHtml(sb.toString())
@@ -1002,7 +1010,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private fun renderBatchPrompt(obj: com.google.gson.JsonObject): String {
         val text = obj["text"]?.asString ?: ""
         return "<div class='prompt-row'><div class='meta'><span class='ts'></span></div>" +
-            "<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${escapeHtml(text)}</div></div>"
+            "<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${
+                escapeHtml(
+                    text
+                )
+            }</div></div>"
     }
 
     private fun renderBatchText(obj: com.google.gson.JsonObject): String {
@@ -1208,10 +1220,30 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         return """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;color:${rgb(fg)};line-height:1.45;max-width:900px;margin:0 auto;padding:16px}
 .prompt{text-align:right;margin:10px 0 4px 0}
-.prompt-b{display:inline-block;background:${rgba(USER_COLOR, 0.12)};border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
-.response{background:${rgba(AGENT_COLOR, 0.06)};border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
-.thinking{background:${rgba(THINK_COLOR, 0.06)};border-radius:4px 16px 16px 16px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
-.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${rgba(TOOL_COLOR, 0.3)};border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
+.prompt-b{display:inline-block;background:${
+            rgba(
+                USER_COLOR,
+                0.12
+            )
+        };border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
+.response{background:${
+            rgba(
+                AGENT_COLOR,
+                0.06
+            )
+        };border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
+.thinking{background:${
+            rgba(
+                THINK_COLOR,
+                0.06
+            )
+        };border-radius:4px 16px 16px 16px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
+.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${
+            rgba(
+                TOOL_COLOR,
+                0.3
+            )
+        };border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
 .context{font-size:0.88em;color:${rgb(USER_COLOR)};margin:2px 0}
 .context summary{cursor:pointer;padding:4px 0}
 .context .ctx-file{padding:2px 0;padding-left:8px}
@@ -1233,12 +1265,26 @@ ul,ol{margin:4px 0;padding-left:22px}
     private fun renderExportEntry(e: EntryData): String = when (e) {
         is EntryData.Prompt -> "<div class='prompt'><span class='prompt-b'>${escapeHtml(e.text)}</span></div>\n"
         is EntryData.Text -> "<div class='response'>${markdownToHtml(e.raw.toString())}</div>\n"
-        is EntryData.Thinking -> "<details class='thinking'><summary>\uD83D\uDCAD Thought process</summary><pre>${escapeHtml(e.raw.toString())}</pre></details>\n"
+        is EntryData.Thinking -> "<details class='thinking'><summary>\uD83D\uDCAD Thought process</summary><pre>${
+            escapeHtml(
+                e.raw.toString()
+            )
+        }</pre></details>\n"
+
         is EntryData.ToolCall -> renderExportToolCall(e)
         is EntryData.SubAgent -> renderExportSubAgent(e)
         is EntryData.ContextFiles -> renderExportContextFiles(e)
-        is EntryData.Status -> "<div class='status ${if (e.icon == ICON_ERROR) "error" else "info"}'>${e.icon} ${escapeHtml(e.message)}</div>\n"
-        is EntryData.SessionSeparator -> "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${escapeHtml(e.timestamp)}</div>\n"
+        is EntryData.Status -> "<div class='status ${if (e.icon == ICON_ERROR) "error" else "info"}'>${e.icon} ${
+            escapeHtml(
+                e.message
+            )
+        }</div>\n"
+
+        is EntryData.SessionSeparator -> "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${
+            escapeHtml(
+                e.timestamp
+            )
+        }</div>\n"
     }
 
     private fun renderExportToolCall(e: EntryData.ToolCall): String {
