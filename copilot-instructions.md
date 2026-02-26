@@ -234,17 +234,17 @@ Then tell the user to **restart the main IDE**.
 The MCP server provides IntelliJ-integrated tools that read from editor buffers (always up-to-date, even unsaved
 changes). **Always use these instead of generic alternatives:**
 
-| ❌ Don't use             | ✅ Use instead                               |
-|-------------------------|---------------------------------------------|
-| `view` (file)           | `intellij_read_file`                        |
-| `cat`/`head`/`tail`     | `intellij_read_file`                        |
-| `grep` / `ripgrep`      | `search_text` or `search_symbols`           |
-| `glob`                  | `list_project_files`                        |
-| `create` (file)         | `create_file`                               |
-| `edit` (file)           | `intellij_write_file`                       |
-| `sed`                   | `intellij_write_file`                       |
-| `bash`                  | `run_command` (flushes buffers first)       |
-| `bash: git ...`         | `git_status`, `git_diff`, `git_commit` etc. |
+| ❌ Don't use         | ✅ Use instead                               |
+|---------------------|---------------------------------------------|
+| `view` (file)       | `intellij_read_file`                        |
+| `cat`/`head`/`tail` | `intellij_read_file`                        |
+| `grep` / `ripgrep`  | `search_text` or `search_symbols`           |
+| `glob`              | `list_project_files`                        |
+| `create` (file)     | `create_file`                               |
+| `edit` (file)       | `intellij_write_file`                       |
+| `sed`               | `intellij_write_file`                       |
+| `bash`              | `run_command` (flushes buffers first)       |
+| `bash: git ...`     | `git_status`, `git_diff`, `git_commit` etc. |
 
 ### Why this matters
 
@@ -257,8 +257,28 @@ changes). **Always use these instead of generic alternatives:**
 
 ### Exceptions
 
-- Use `bash` for build commands (`gradlew`), process management, or system operations
-- Use `bash` for commands that don't have an IntelliJ tool equivalent
+- Use `run_command` for build commands (`gradlew`), process management, or system operations
+- Use `run_command` for commands that don't have an IntelliJ tool equivalent
+
+### ⚠ Known Limitation: Platform-Provided Tools Bypass Our Controls
+
+Copilot CLI injects built-in tools (`view`, `grep`, `glob`, `edit`, `create`, `bash`) that read/write
+directly from disk, bypassing IntelliJ editor buffers. **We cannot remove these tools** due to a
+[Copilot CLI bug](https://github.com/github/copilot-cli/issues/1485) — the `tools/remove` capability
+is not implemented.
+
+**What we do:**
+- Deny permission via ACP `request_permission` when the agent asks to use them
+- Send guidance messages redirecting to `intellij-code-tools-*` equivalents
+- Block `bash`, `cat`, `sed`, `grep`, `find` in `run_command` abuse detection
+
+**What we can't control:**
+- The Copilot platform may invoke these tools directly without a permission request
+- Instructions and denials are best-effort — the agent may still occasionally use disk-based tools
+- This can cause stale reads (editor has newer content) or write conflicts (disk write overwrites buffer)
+
+**Impact:** Occasional buffer desync. Mitigated by `saveAllDocuments()` in `run_command`, `run_in_terminal`,
+and all git operations, which flush buffers to disk before execution.
 
 ---
 
