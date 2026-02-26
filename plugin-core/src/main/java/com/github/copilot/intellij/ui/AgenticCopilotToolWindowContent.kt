@@ -705,7 +705,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         } else {
             val prompt = promptTextArea.text.trim()
             if (prompt.isEmpty()) return
-
+            consolePanel.disableQuickReplies()
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
 
@@ -1792,6 +1792,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun createResponsePanel(): JComponent {
         consolePanel = ChatConsolePanel(project)
+        consolePanel.onQuickReply = { text -> SwingUtilities.invokeLater { sendQuickReply(text) } }
         // Register for proper JCEF browser disposal
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
         // Placeholder only shown if no conversation is restored (set after restore check)
@@ -2038,6 +2039,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             saveConversation()
             loadBillingData()
 
+            // Detect quick-reply options from the agent response
+            val lastResponse = consolePanel.getLastResponseText()
+            val quickReplies = detectQuickReplies(lastResponse)
+            if (quickReplies.isNotEmpty()) {
+                SwingUtilities.invokeLater { consolePanel.showQuickReplies(quickReplies) }
+            }
+
         } catch (e: Exception) {
             handlePromptError(e)
         } finally {
@@ -2067,6 +2075,47 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         if (CopilotSettings.getCommitBeforeEnd()) steps.add("commit your changes (git_stage + git_commit)")
         if (steps.isEmpty()) return ""
         return "Before completing your turn, you MUST: ${steps.joinToString(", ")}."
+    }
+
+    /** Send a quick-reply as if the user typed it. Called from the JS bridge on EDT. */
+    private fun sendQuickReply(text: String) {
+        if (isSending) return
+        consolePanel.disableQuickReplies()
+        promptTextArea.text = text
+        onSendStopClicked()
+    }
+
+    /**
+     * Detect quick-reply options from the last agent response.
+     * Looks for yes/no confirmations and numbered/bulleted option lists.
+     */
+    private fun detectQuickReplies(responseText: String): List<String> {
+        val lastChunk = responseText.takeLast(500)
+
+        // Yes/No pattern: "Should I …?", "Would you like …?", "Do you want …?"
+        val yesNo = Regex(
+            """(?i)(should I |would you like |do you want |shall I |want me to |ready to |proceed\b|continue\b|go ahead).*\?""",
+            RegexOption.DOT_MATCHES_ALL
+        )
+        if (yesNo.containsMatchIn(lastChunk)) {
+            return listOf("Yes", "No")
+        }
+
+        // Numbered options: "1. Option A\n2. Option B\n3. Option C"
+        val numbered = Regex("""(?m)^\s*(\d+)[.)]\s+(.+)$""")
+        val matches = numbered.findAll(lastChunk).toList()
+        if (matches.size in 2..6) {
+            return matches.map { it.groupValues[2].trim().take(60) }
+        }
+
+        // Bulleted options: "- Option A\n- Option B"
+        val bulleted = Regex("""(?m)^\s*[-•*]\s+(.+)$""")
+        val bMatches = bulleted.findAll(lastChunk).toList()
+        if (bMatches.size in 2..6) {
+            return bMatches.map { it.groupValues[1].trim().take(60) }
+        }
+
+        return emptyList()
     }
 
     /** Build inline snippet text for selections so the agent sees the code in the prompt itself */

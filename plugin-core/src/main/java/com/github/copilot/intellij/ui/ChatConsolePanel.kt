@@ -309,6 +309,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var cursorBridgeJs = ""
     private var openUrlBridgeJs = ""
     private var loadMoreBridgeJs = ""
+    private var quickReplyBridgeJs = ""
+    var onQuickReply: ((String) -> Unit)? = null
     private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
     private var deferredIdCounter = 0
 
@@ -355,6 +357,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             loadMoreQueryBridge.addHandler { loadMoreEntries(); null }
             Disposer.register(this, loadMoreQueryBridge)
             loadMoreBridgeJs = loadMoreQueryBridge.inject("'load'")
+
+            // Quick-reply bridge: JS calls Kotlin when user clicks a quick-reply button
+            val quickReplyQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            quickReplyQuery.addHandler { text -> onQuickReply?.invoke(text); null }
+            Disposer.register(this, quickReplyQuery)
+            quickReplyBridgeJs = quickReplyQuery.inject("text")
 
             add(browser.component, BorderLayout.CENTER)
 
@@ -1281,6 +1289,21 @@ ul,ol{margin:4px 0;padding-left:22px}
         trimMessages()
     }
 
+    fun showQuickReplies(options: List<String>) {
+        if (options.isEmpty()) return
+        val json = options.joinToString(",") { "\"${escapeJs(it)}\"" }
+        executeJs("showQuickReplies([$json])")
+    }
+
+    fun disableQuickReplies() {
+        executeJs("disableQuickReplies()")
+    }
+
+    /** Returns the raw text of the most recent agent response entry. */
+    fun getLastResponseText(): String {
+        return entries.filterIsInstance<EntryData.Text>().lastOrNull()?.raw?.toString() ?: ""
+    }
+
     private fun trimMessages() {
         // Keep at most 100 top-level rows to prevent performance degradation,
         // then remove any session separators that no longer have content after them
@@ -1443,7 +1466,8 @@ ul,ol{margin:4px 0;padding-left:22px}
                 openFile: function(href) { $fileHandler },
                 openUrl: function(url) { $openUrlBridgeJs },
                 setCursor: function(c) { $cursorBridgeJs },
-                loadMore: function() { $loadMoreBridgeJs }
+                loadMore: function() { $loadMoreBridgeJs },
+                quickReply: function(text) { $quickReplyBridgeJs }
             };
         """.trimIndent()
 

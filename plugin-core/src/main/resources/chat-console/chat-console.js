@@ -338,10 +338,39 @@ let _lastCursor = '';
 document.addEventListener('mouseover', function (e) {
     const el = e.target;
     let c = 'default';
-    if (el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip')) c = 'pointer';
+    if (el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip,.quick-reply-btn')) c = 'pointer';
     else if (el.closest('p,pre,code,li,td,th,.collapse-content,.streaming')) c = 'text';
     if (c !== _lastCursor) {
         _lastCursor = c;
         window._bridge.setCursor(c);
     }
 });
+
+function showQuickReplies(options) {
+    disableQuickReplies();
+    var c = document.getElementById('container');
+    if (!c || !options || !options.length) return;
+    var div = document.createElement('div');
+    div.className = 'quick-replies';
+    div.id = 'active-quick-replies';
+    options.forEach(function (text) {
+        var btn = document.createElement('span');
+        btn.className = 'quick-reply-btn';
+        btn.textContent = text;
+        btn.onclick = function () {
+            if (div.classList.contains('disabled')) return;
+            div.classList.add('disabled');
+            window._bridge.quickReply(text);
+        };
+        div.appendChild(btn);
+    });
+    var ind = document.getElementById('processing-ind');
+    if (ind) c.insertBefore(div, ind);
+    else c.appendChild(div);
+    scrollIfNeeded();
+}
+
+function disableQuickReplies() {
+    var all = document.querySelectorAll('.quick-replies:not(.disabled)');
+    all.forEach(function (el) { el.classList.add('disabled'); });
+}
