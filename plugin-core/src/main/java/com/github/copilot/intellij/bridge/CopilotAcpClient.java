@@ -1451,22 +1451,21 @@ public class CopilotAcpClient implements Closeable {
      * Find the bundled MCP server JAR in the plugin's lib directory.
      * Returns null if not found (MCP tools will be unavailable).
      */
+    @SuppressWarnings("deprecation")
     @Nullable
     private String findMcpServerJar() {
         // Strategy 1: Use IntelliJ plugin API to find plugin directory
         try {
-            var pluginId = com.intellij.openapi.extensions.PluginId.findId("com.github.copilot.intellij");
-            if (pluginId != null) {
-                var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    File libDir = plugin.getPluginPath().resolve("lib").toFile();
-                    File mcpJar = new File(libDir, "mcp-server.jar");
-                    if (mcpJar.exists()) {
-                        LOG.info("Found MCP server JAR via plugin API: " + mcpJar.getAbsolutePath());
-                        return mcpJar.getAbsolutePath();
-                    }
-                    LOG.warn("MCP JAR not in plugin lib dir: " + libDir);
+            var pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.copilot.intellij");
+            var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+            if (plugin != null) {
+                File libDir = plugin.getPath().toPath().resolve("lib").toFile();
+                File mcpJar = new File(libDir, "mcp-server.jar");
+                if (mcpJar.exists()) {
+                    LOG.info("Found MCP server JAR via plugin API: " + mcpJar.getAbsolutePath());
+                    return mcpJar.getAbsolutePath();
                 }
+                LOG.warn("MCP JAR not in plugin lib dir: " + libDir);
             }
         } catch (Exception e) {
             LOG.warn("Plugin API lookup failed: " + e.getMessage());
