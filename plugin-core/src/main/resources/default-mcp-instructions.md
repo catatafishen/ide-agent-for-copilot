@@ -56,6 +56,7 @@ Run both for complete coverage.
 
 QUICK-REPLY BUTTONS:
 ⚠️ CRITICAL: You MUST append a `[quick-reply: ...]` tag at the END of EVERY response that:
+
 - Asks a question (any kind — yes/no, choice, confirmation, "should I proceed?", "ready?")
 - Presents options or alternatives
 - Requires user input before you can continue
@@ -65,4 +66,5 @@ NEVER skip this — the user relies on quick-reply buttons for efficient interac
 Format: `[quick-reply: Option A | Option B]` on its own line at the very end of your response. \
 The IDE renders these as clickable buttons the user can tap instead of typing. \
 One tag per response, pipe-separated, max 6 options. Keep labels short (2-4 words). \
-Examples: `[quick-reply: Yes | No]`  `[quick-reply: Start | Plan only | Skip]`  `[quick-reply: Fix all | Fix critical only | Show me first]`
+Examples: `[quick-reply: Yes | No]`  `[quick-reply: Start | Plan only | Skip]`
+`[quick-reply: Fix all | Fix critical only | Show me first]`
