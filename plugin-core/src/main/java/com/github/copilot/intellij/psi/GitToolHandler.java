@@ -70,7 +70,17 @@ final class GitToolHandler {
         return stdout;
     }
 
+    /**
+     * Flush all IntelliJ editor buffers to disk so git sees current content.
+     */
+    private void saveAllDocuments() {
+        EdtUtil.invokeAndWait(() ->
+            ApplicationManager.getApplication().runWriteAction(() ->
+                FileDocumentManager.getInstance().saveAllDocuments()));
+    }
+
     String gitStatus(JsonObject args) throws Exception {
+        saveAllDocuments();
         boolean verbose = args.has("verbose") && args.get("verbose").getAsBoolean();
         if (verbose) {
             return runGit(STATUS_PARAM);
@@ -79,6 +89,7 @@ final class GitToolHandler {
     }
 
     String gitDiff(JsonObject args) throws Exception {
+        saveAllDocuments();
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("diff");
 
@@ -147,15 +158,11 @@ final class GitToolHandler {
     }
 
     String gitCommit(JsonObject args) throws Exception {
-        if (!args.has(PARAM_MESSAGE)) return "Error: 'message' parameter is required";
-
-        // Flush pending auto-format so formatting is included in the commit
+        // Flush pending auto-format and save all documents before committing
         fileTools.flushPendingAutoFormat();
+        saveAllDocuments();
 
-        // Save all documents before committing to ensure disk matches editor state
-        EdtUtil.invokeAndWait(() ->
-            ApplicationManager.getApplication().runWriteAction(() ->
-                FileDocumentManager.getInstance().saveAllDocuments()));
+        if (!args.has(PARAM_MESSAGE)) return "Error: 'message' parameter is required";
 
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add(PARAM_COMMIT);
