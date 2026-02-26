@@ -404,11 +404,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             // Listen for IDE theme changes and update CSS variables
             val connection = ApplicationManager.getApplication().messageBus.connect(this)
-            connection.subscribe(LafManagerListener.TOPIC, object : LafManagerListener {
-                override fun lookAndFeelChanged(source: LafManager) {
-                    updateThemeColors()
-                }
-            })
+            connection.subscribe(LafManagerListener.TOPIC, LafManagerListener { updateThemeColors() })
         } else {
             browser = null; openFileQuery = null
             fallbackArea = JBTextArea().apply {
@@ -624,7 +620,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
             "",
             agentType.replaceFirstChar { it.uppercase() } + " Agent",
-            "subagent-general")
+            SA_CSS_GENERAL)
         val safeName = escapeHtml(info.displayName)
 
         val sb = StringBuilder()
@@ -885,7 +881,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             "subagent" -> entries.add(
                 EntryData.SubAgent(
-                    obj["agentType"]?.asString ?: "general-purpose",
+                    obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL,
                     obj["description"]?.asString ?: "",
                     obj["prompt"]?.asString?.ifEmpty { null },
                     obj["result"]?.asString?.ifEmpty { null },
@@ -930,7 +926,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val restoredId = "restored-${entryCounter}"
                 addSubAgentEntry(
                     restoredId,
-                    obj["agentType"]?.asString ?: "general-purpose",
+                    obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL,
                     obj["description"]?.asString ?: "Sub-agent task",
                     obj["prompt"]?.asString?.ifEmpty { null }
                 )
@@ -1063,9 +1059,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     private fun renderBatchSubagent(obj: com.google.gson.JsonObject): String {
-        val agentType = obj["agentType"]?.asString ?: "general-purpose"
+        val agentType = obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
-            "", agentType.replaceFirstChar { it.uppercase() } + " Agent", "subagent-general")
+            "", agentType.replaceFirstChar { it.uppercase() } + " Agent", SA_CSS_GENERAL)
         val safeName = escapeHtml(info.displayName)
         val prompt = obj["prompt"]?.asString?.ifEmpty { null }
         val result = obj["result"]?.asString?.ifEmpty { null }
@@ -1074,11 +1070,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val badgeTxt = if (status == "failed") "Failed" else "Done"
         val sb = StringBuilder("<div class='${info.cssClass}'>")
         if (!prompt.isNullOrBlank()) {
-            sb.append("<div class='agent-row'><div class='agent-bubble'>")
+            sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
             sb.append("<span class='sa-badge $badgeCls'>$badgeTxt</span>")
             sb.append(" ${escapeHtml(prompt)}")
-            sb.append("</div></div>")
+            sb.append(DIV_CLOSE_2)
         }
         sb.append("<div class='agent-row'><div class='subagent-bubble'>")
         when {
@@ -1214,7 +1210,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
         val thBg = UIManager.getColor("TableHeader.background")
             ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
-        val linkColor = UIManager.getColor("Component.linkColor")
+        val linkColor = UIManager.getColor(LINK_COLOR_KEY)
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
 
         return """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -1448,7 +1444,7 @@ ul,ol{margin:4px 0;padding-left:22px}
             ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
         val spinBg = UIManager.getColor("Panel.background")
             ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
-        val linkColor = UIManager.getColor("Component.linkColor")
+        val linkColor = UIManager.getColor(LINK_COLOR_KEY)
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
         val tooltipBg = UIManager.getColor("ToolTip.background")
             ?: JBColor(Color(0xF7, 0xF7, 0xF7), Color(0x3C, 0x3F, 0x41))

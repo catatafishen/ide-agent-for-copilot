@@ -23,17 +23,17 @@ function b64(s) {
     return new TextDecoder().decode(b);
 }
 
-window._loadingMore = false;
+globalThis._loadingMore = false;
 
 function loadMore() {
-    if (window._loadingMore) return;
-    window._loadingMore = true;
+    if (globalThis._loadingMore) return;
+    globalThis._loadingMore = true;
     const s = document.getElementById('load-more-sentinel');
     if (s) {
         const t = s.querySelector('.load-more-text');
         if (t) t.textContent = 'Loading...';
     }
-    window._bridge.loadMore();
+    globalThis._bridge.loadMore();
 }
 
 function _toggleSection(id) {
@@ -51,9 +51,9 @@ function _toggleSection(id) {
         return;
     }
     el.classList.toggle('collapsed');
-    var isOpen = !el.classList.contains('collapsed');
+    const isOpen = !el.classList.contains('collapsed');
     el.classList.toggle('open', isOpen);
-    var hdr = el.querySelector('.collapse-header');
+    const hdr = el.querySelector('.collapse-header');
     if (hdr) hdr.setAttribute('aria-expanded', String(isOpen));
     el.querySelector('.caret').textContent = el.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
 }
@@ -111,7 +111,7 @@ function finalizeTurn(stats) {
         } else if (el.classList.contains('tool-section')) {
             const lbl = el.querySelector('.collapse-label');
             const icon = el.querySelector('.collapse-icon');
-            const failed = icon && icon.style.color === 'red';
+            const failed = icon?.style.color === 'red';
             chip.className = 'turn-chip tool' + (failed ? ' failed' : '');
             chip.textContent = lbl ? lbl.textContent : 'Tool';
         } else if (el.classList.contains('context-section')) {
@@ -169,12 +169,12 @@ function finalizeTurn(stats) {
             el.classList.add('turn-hidden');
         });
     });
-    if (stats && stats.mult) {
+    if (stats?.mult) {
         const existing = document.getElementById('turn-stats');
         if (existing) {
             existing.textContent = stats.mult;
             const short = stats.model.split('/').pop().substring(0, 30);
-            existing.setAttribute('data-tip', short + ' \u00B7 ' + stats.tools + ' tool' + (stats.tools !== 1 ? 's' : ''));
+            existing.dataset.tip = short + ' \u00B7 ' + stats.tools + ' tool' + (stats.tools !== 1 ? 's' : '');
             existing.removeAttribute('id');
         }
     }
@@ -203,7 +203,7 @@ function collapseToolToChip(elId) {
 function _doCollapseToolToChip(el, elId, targetMeta) {
     const lbl = el.querySelector('.collapse-label');
     const icon = el.querySelector('.collapse-icon');
-    const failed = icon && icon.style.color === 'red';
+    const failed = icon?.style.color === 'red';
     const chip = document.createElement('span');
     // Detect sub-agent sections by their color class
     const saMatch = el.className.match(/subagent-\w+/);
@@ -214,7 +214,7 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     }
     const fullText = (lbl ? lbl.textContent : 'Tool');
     chip.textContent = fullText.length > 50 ? fullText.substring(0, 47) + '\u2026' : fullText;
-    if (fullText.length > 50) chip.setAttribute('data-tip', fullText);
+    if (fullText.length > 50) chip.dataset.tip = fullText;
     el.dataset.chipOwned = '1';
     chip.dataset.chipFor = elId;
     chip.style.cursor = 'pointer';
@@ -351,14 +351,14 @@ function collapsePendingTools() {
 document.addEventListener('click', function (e) {
     let el = e.target;
     while (el && el.tagName !== 'A') el = el.parentElement;
-    if (!el || !el.getAttribute('href')) return;
-    var href = el.getAttribute('href');
+    if (!el?.getAttribute('href')) return;
+    const href = el.getAttribute('href');
     if (href.indexOf('openfile://') === 0) {
         e.preventDefault();
-        window._bridge.openFile(href);
+        globalThis._bridge.openFile(href);
     } else if (href.indexOf('http://') === 0 || href.indexOf('https://') === 0) {
         e.preventDefault();
-        window._bridge.openUrl(href);
+        globalThis._bridge.openUrl(href);
     }
 });
 
@@ -370,53 +370,53 @@ document.addEventListener('mouseover', function (e) {
     else if (el.closest('p,pre,code,li,td,th,.collapse-content,.streaming')) c = 'text';
     if (c !== _lastCursor) {
         _lastCursor = c;
-        window._bridge.setCursor(c);
+        globalThis._bridge.setCursor(c);
     }
 });
 
 function showQuickReplies(options) {
     disableQuickReplies();
-    var c = document.getElementById('container');
-    if (!c || !options || !options.length) return;
-    var div = document.createElement('div');
+    const c = document.getElementById('container');
+    if (!c || !options?.length) return;
+    const div = document.createElement('div');
     div.className = 'quick-replies';
     div.id = 'active-quick-replies';
     options.forEach(function (text) {
-        var btn = document.createElement('span');
+        const btn = document.createElement('span');
         btn.className = 'quick-reply-btn';
         btn.textContent = text;
         btn.onclick = function () {
             if (div.classList.contains('disabled')) return;
             div.classList.add('disabled');
-            window._bridge.quickReply(text);
+            globalThis._bridge.quickReply(text);
         };
         div.appendChild(btn);
     });
-    var ind = document.getElementById('processing-ind');
-    if (ind) c.insertBefore(div, ind);
+    const ind = document.getElementById('processing-ind');
+    if (ind) ind.before(div);
     else c.appendChild(div);
     scrollIfNeeded();
 }
 
 function disableQuickReplies() {
-    var all = document.querySelectorAll('.quick-replies:not(.disabled)');
+    const all = document.querySelectorAll('.quick-replies:not(.disabled)');
     all.forEach(function (el) {
         el.classList.add('disabled');
     });
 }
 
 /* --- Code block copy buttons --- */
-var _copyObserver = new MutationObserver(function () {
+const _copyObserver = new MutationObserver(function () {
     document.querySelectorAll('pre:not([data-copy-btn])').forEach(function (pre) {
-        pre.setAttribute('data-copy-btn', '1');
-        var btn = document.createElement('button');
+        pre.dataset.copyBtn = '1';
+        const btn = document.createElement('button');
         btn.className = 'copy-btn';
         btn.textContent = 'Copy';
         btn.tabIndex = 0;
         btn.setAttribute('role', 'button');
         btn.onclick = function () {
-            var code = pre.querySelector('code');
-            var text = code ? code.textContent : pre.textContent;
+            const code = pre.querySelector('code');
+            const text = code ? code.textContent : pre.textContent;
             navigator.clipboard.writeText(text).then(function () {
                 btn.textContent = 'Copied!';
                 setTimeout(function () {

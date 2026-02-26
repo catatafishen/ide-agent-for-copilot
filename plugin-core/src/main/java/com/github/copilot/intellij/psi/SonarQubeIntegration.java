@@ -130,7 +130,8 @@ final class SonarQubeIntegration {
                     .add(CommonDataKeys.PROJECT, project)
                     .build();
 
-                com.intellij.openapi.actionSystem.ex.ActionUtil.invokeAction(action, dataContext, "Copilot Bridge", null, null);
+                var event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action, null, "Copilot Bridge", dataContext);
+                action.actionPerformed(event);
                 future.complete(true);
             } catch (Exception e) {
                 LOG.warn("Failed to trigger SonarLint action: " + actionId, e);
