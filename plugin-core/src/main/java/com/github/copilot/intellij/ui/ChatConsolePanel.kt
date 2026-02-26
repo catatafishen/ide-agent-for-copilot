@@ -496,6 +496,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun appendText(text: String) {
         collapseThinking()
+        // Skip empty/blank chunks before the bubble exists to avoid rendering an empty bubble
+        if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
             entryCounter++
