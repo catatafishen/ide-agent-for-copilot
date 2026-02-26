@@ -58,6 +58,15 @@ public class CopilotAcpClient implements Closeable {
     private static final String RUN_COMMAND_ABUSE_PREFIX = "run_command_abuse:";
     private static final String CLI_TOOL_ABUSE_PREFIX = "cli_tool_abuse:";
     private static final String USER_HOME = "user.home";
+    private static final String TITLE_KEY = "title";
+    private static final String PARAMETERS_KEY = "parameters";
+    private static final String CREATE_KIND = "create";
+    private static final String MCP_SERVER_ERROR = "MCP Server Error";
+    private static final String TOOL_DENIED_DEFAULT_MSG = "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+    private static final String BUILT_IN_TOOL_WARNING_PREFIX = "⚠ You used the built-in '";
+    private static final String PRE_REJECTION_GUIDANCE_EVENT = "PRE_REJECTION_GUIDANCE";
+    private static final String SENDING_GUIDANCE_DESC = "Sending guidance before rejection";
+    private static final String PERMISSION_DENIED_EVENT = "PERMISSION_DENIED";
 
     /**
      * Permission kinds that are denied, so the agent uses IntelliJ MCP tools instead.
@@ -73,7 +82,7 @@ public class CopilotAcpClient implements Closeable {
      */
     private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
         "edit",          // CLI built-in view tool - deny to force intellij_write_file
-        "create",        // CLI built-in create tool - deny to force intellij_write_file
+        CREATE_KIND,     // CLI built-in create tool - deny to force intellij_write_file
         "read",          // CLI built-in view tool - deny to force intellij_read_file
         "execute",       // Generic execute - doesn't exist, agent invents it
         "runInTerminal"  // Generic name - actual tool is run_in_terminal
@@ -291,18 +300,18 @@ public class CopilotAcpClient implements Closeable {
                     LOG.info("MCP code-tools configured globally via " + mcpConfigFile.getAbsolutePath());
                 } catch (IOException e) {
                     LOG.warn("Failed to write MCP config file", e);
-                    showNotification("MCP Server Error",
+                    showNotification(MCP_SERVER_ERROR,
                         "Failed to write MCP config file: " + e.getMessage() + "\nIntelliJ tools will be unavailable.",
                         com.intellij.notification.NotificationType.ERROR);
                 }
             } else {
                 LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
-                showNotification("MCP Server Error",
+                showNotification(MCP_SERVER_ERROR,
                     "Java not found at: " + javaPath + "\nIntelliJ tools will be unavailable.",
                     com.intellij.notification.NotificationType.ERROR);
             }
         } else {
-            showNotification("MCP Server Error",
+            showNotification(MCP_SERVER_ERROR,
                 "MCP server JAR not found. IntelliJ code tools will be unavailable.\nCheck IDE log for details.",
                 com.intellij.notification.NotificationType.ERROR);
         }
@@ -719,21 +728,21 @@ public class CopilotAcpClient implements Closeable {
      * for subsequent calls in the same turn.
      */
     private void interceptBuiltInToolCall(JsonObject update) {
-        String title = update.has("title") ? update.get("title").getAsString() : "";
+        String title = update.has(TITLE_KEY) ? update.get(TITLE_KEY).getAsString() : "";
 
         String guidance = switch (title.toLowerCase()) {
             case "view", "read", "read file", "view file" ->
-                "⚠ You used the built-in '" + title + "' tool which reads from disk (may be stale). " +
+                BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk (may be stale). " +
                     "Use 'intellij-code-tools-intellij_read_file' instead — it reads live editor buffers.";
-            case "grep", "search", "ripgrep" -> "⚠ You used the built-in '" + title + "' tool which reads from disk. " +
+            case "grep", "search", "ripgrep" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk. " +
                 "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
                 "For symbol search, use 'intellij-code-tools-search_symbols'.";
-            case "glob", "find files", "list files" -> "⚠ You used the built-in '" + title + "' tool. " +
+            case "glob", "find files", "list files" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
                 "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
-            case "create", "create file" -> "⚠ You used the built-in '" + title + "' tool. " +
+            case CREATE_KIND, "create file" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
                 "Use 'intellij-code-tools-create_file' instead — it integrates with IntelliJ's project index.";
             case "edit", "edit file" ->
-                "⚠ You used the built-in '" + title + "' tool which writes to disk, bypassing the editor. " +
+                BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which writes to disk, bypassing the editor. " +
                     "Use 'intellij-code-tools-intellij_write_file' instead — it writes to live editor buffers.";
             default -> null;
         };
@@ -1112,7 +1121,7 @@ public class CopilotAcpClient implements Closeable {
         if (reqParams != null && reqParams.has("toolCall")) {
             toolCall = reqParams.getAsJsonObject("toolCall");
             permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
-            permTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
+            permTitle = toolCall.has(TITLE_KEY) ? toolCall.get(TITLE_KEY).getAsString() : "";
         }
         LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
         String formattedPermission = formatPermissionDisplay(permKind, permTitle);
@@ -1132,10 +1141,10 @@ public class CopilotAcpClient implements Closeable {
             // Send guidance BEFORE rejecting so agent sees it while still in turn
             Map<String, Object> retryParams = buildRetryParams(RUN_COMMAND_ABUSE_PREFIX + commandAbuse);
             String retryMessage = (String) retryParams.get(MESSAGE);
-            fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
+            fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
             sendPromptMessage(retryMessage);
 
-            fireDebugEvent("PERMISSION_DENIED", "run_command abuse: " + commandAbuse,
+            fireDebugEvent(PERMISSION_DENIED_EVENT, "run_command abuse: " + commandAbuse,
                 toolCall.toString());
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = RUN_COMMAND_ABUSE_PREFIX + commandAbuse;
@@ -1151,10 +1160,10 @@ public class CopilotAcpClient implements Closeable {
 
             Map<String, Object> retryParams = buildRetryParams(CLI_TOOL_ABUSE_PREFIX + cliToolAbuse);
             String retryMessage = (String) retryParams.get(MESSAGE);
-            fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
+            fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
             sendPromptMessage(retryMessage);
 
-            fireDebugEvent("PERMISSION_DENIED", "CLI tool abuse: " + cliToolAbuse,
+            fireDebugEvent(PERMISSION_DENIED_EVENT, "CLI tool abuse: " + cliToolAbuse,
                 toolCall.toString());
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = CLI_TOOL_ABUSE_PREFIX + cliToolAbuse;
@@ -1169,10 +1178,10 @@ public class CopilotAcpClient implements Closeable {
             // Send guidance BEFORE rejecting so agent sees it while still in turn
             Map<String, Object> retryParams = buildRetryParams(permKind);
             String retryMessage = (String) retryParams.get(MESSAGE);
-            fireDebugEvent("PRE_REJECTION_GUIDANCE", "Sending guidance before rejection", retryMessage);
+            fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
             sendPromptMessage(retryMessage);
 
-            fireDebugEvent("PERMISSION_DENIED", "Built-in " + permKind + " denied",
+            fireDebugEvent(PERMISSION_DENIED_EVENT, "Built-in " + permKind + " denied",
                 "Will retry with intellij-code-tools- prefix");
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = permKind;
@@ -1208,8 +1217,8 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private String extractCommand(JsonObject toolCall) {
-        if (!toolCall.has("parameters")) return "";
-        JsonObject params = toolCall.getAsJsonObject("parameters");
+        if (!toolCall.has(PARAMETERS_KEY)) return "";
+        JsonObject params = toolCall.getAsJsonObject(PARAMETERS_KEY);
         if (!params.has(COMMAND)) return "";
         return params.get(COMMAND).getAsString().toLowerCase().trim();
     }
@@ -1227,7 +1236,7 @@ public class CopilotAcpClient implements Closeable {
     private String detectCliToolAbuse(JsonObject toolCall) {
         if (toolCall == null) return null;
 
-        String toolTitle = toolCall.has("title") ? toolCall.get("title").getAsString() : "";
+        String toolTitle = toolCall.has(TITLE_KEY) ? toolCall.get(TITLE_KEY).getAsString() : "";
         String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
         String tool = !toolTitle.isEmpty() ? toolTitle : toolName;
 
@@ -1240,9 +1249,9 @@ public class CopilotAcpClient implements Closeable {
                 String path = extractPathParam(toolCall);
                 yield !path.isEmpty() && isInsideProject(path) ? "edit" : null;
             }
-            case "create" -> {
+            case CREATE_KIND -> {
                 String path = extractPathParam(toolCall);
-                yield !path.isEmpty() && isInsideProject(path) ? "create" : null;
+                yield !path.isEmpty() && isInsideProject(path) ? CREATE_KIND : null;
             }
             case "grep" -> {
                 // grep defaults to cwd (project root) when path is omitted
@@ -1260,8 +1269,8 @@ public class CopilotAcpClient implements Closeable {
     }
 
     private String extractPathParam(JsonObject toolCall) {
-        if (!toolCall.has("parameters")) return "";
-        JsonObject params = toolCall.getAsJsonObject("parameters");
+        if (!toolCall.has(PARAMETERS_KEY)) return "";
+        JsonObject params = toolCall.getAsJsonObject(PARAMETERS_KEY);
         return params.has("path") ? params.get("path").getAsString() : "";
     }
 
@@ -1295,7 +1304,7 @@ public class CopilotAcpClient implements Closeable {
                 case "git" -> "⚠ Don't use git commands via run_command — it desyncs IntelliJ editor buffers. " +
                     "Use dedicated git tools: git_status, git_diff, git_log, git_commit, git_stage, " +
                     "git_unstage, git_branch, git_stash, git_show, git_blame.";
-                default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+                default -> TOOL_DENIED_DEFAULT_MSG;
             };
         } else if (deniedKind.startsWith(CLI_TOOL_ABUSE_PREFIX)) {
             String toolType = deniedKind.substring(CLI_TOOL_ABUSE_PREFIX.length());
@@ -1304,7 +1313,7 @@ public class CopilotAcpClient implements Closeable {
                     "Use 'intellij-code-tools-intellij_read_file' instead (reads live editor buffer).";
                 case "edit" -> "⚠ Don't use 'edit' for project files — it writes to disk, bypassing the editor. " +
                     "Use 'intellij-code-tools-intellij_write_file' instead (writes to live editor buffer with undo).";
-                case "create" -> "⚠ Don't use 'create' for project files. " +
+                case CREATE_KIND -> "⚠ Don't use 'create' for project files. " +
                     "Use 'intellij-code-tools-create_file' instead (integrates with IntelliJ's project index).";
                 case "grep" -> "⚠ Don't use 'grep' for project files — it reads from disk and may be stale. " +
                     "Use 'intellij-code-tools-search_text' instead (searches live editor buffers).";
@@ -1314,11 +1323,11 @@ public class CopilotAcpClient implements Closeable {
                     "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
                         "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
                         "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
-                default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+                default -> TOOL_DENIED_DEFAULT_MSG;
             };
         } else {
             // Generic message for other denials
-            instruction = "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
+            instruction = TOOL_DENIED_DEFAULT_MSG;
         }
 
         return Map.of(MESSAGE, instruction);
@@ -1451,7 +1460,7 @@ public class CopilotAcpClient implements Closeable {
      * Find the bundled MCP server JAR in the plugin's lib directory.
      * Returns null if not found (MCP tools will be unavailable).
      */
-    @SuppressWarnings("deprecation")
+    @SuppressWarnings("deprecation") // getPath() deprecated in PluginDescriptor
     @Nullable
     private String findMcpServerJar() {
         // Strategy 1: Use IntelliJ plugin API to find plugin directory
