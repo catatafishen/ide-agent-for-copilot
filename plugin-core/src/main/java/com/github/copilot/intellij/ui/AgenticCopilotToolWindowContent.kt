@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
@@ -38,6 +39,17 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         const val MSG_UNKNOWN_ERROR = "Unknown error"
         const val PROMPT_PLACEHOLDER = "Ask Copilot... (Shift+Enter for new line)"
         const val AGENT_WORK_DIR = ".agent-work"
+
+        /** Theme-aware error color — uses IDE's error foreground or a sensible red fallback. */
+        private val ERROR_COLOR: JBColor
+            get() = UIManager.getColor("Label.errorForeground") as? JBColor
+                ?: JBColor(Color(0xC7, 0x22, 0x22), Color(0xE0, 0x60, 0x60))
+
+        /** Returns the error color as an HTML hex string for use in HTML font tags. */
+        private fun errorHex(): String {
+            val c = ERROR_COLOR
+            return "#%02X%02X%02X".format(c.red, c.green, c.blue)
+        }
     }
 
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -387,13 +399,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         sb.append("Usage: $used / $entitlement<br>")
         if (overage > 0) {
             val cost = overage * overageCostPerReq
-            sb.append("<font color='#E04040'>Overage: $overage reqs (\$${String.format("%.2f", cost)})</font><br>")
+            sb.append("<font color='${errorHex()}'>Overage: $overage reqs (\$${String.format("%.2f", cost)})</font><br>")
         }
         sb.append("Projected: ~$projected by cycle end<br>")
         if (projectedOverage > 0) {
             val projCost = projectedOverage * overageCostPerReq
             sb.append(
-                "<font color='#E04040'>Projected overage: ~$projectedOverage (\$${
+                "<font color='${errorHex()}'>Projected overage: ~$projectedOverage (\$${
                     String.format(
                         "%.2f",
                         projCost
@@ -414,7 +426,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             } else {
                 "Quota exceeded - overages not permitted"
             }
-            costLabel.foreground = JBColor.RED
+            costLabel.foreground = ERROR_COLOR
         } else {
             costLabel.text = ""
         }
@@ -516,11 +528,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
-                    JOptionPane.showMessageDialog(
-                        mainPanel,
+                    Messages.showErrorDialog(
+                        project,
                         "Failed to start auth flow: ${e.message}\n\nPlease run 'copilot login' in your terminal.",
-                        "Error",
-                        JOptionPane.ERROR_MESSAGE
+                        "Error"
                     )
                 }
             }
@@ -827,7 +838,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
      * On [stop], spinner changes to checkmark and stats remain visible until next [start].
      * Click to toggle between per-turn and session-wide stats.
      */
-    private inner class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
+    private inner class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>() {
         private val spinner = AsyncProcessIcon("CopilotProcessing")
         private val doneIcon = JBLabel("\u2705")
         private val timerLabel = JBLabel("")
@@ -850,6 +861,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         private var displayMode = modeTurn
 
         init {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
             border = JBUI.Borders.emptyRight(6)
             val smallGray = JBUI.Fonts.smallFont()
@@ -859,10 +871,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             timerLabel.foreground = JBColor.GRAY; timerLabel.font = smallGray; timerLabel.isVisible = false
             toolsLabel.foreground = JBColor.GRAY; toolsLabel.font = smallGray; toolsLabel.isVisible = false
             requestsLabel.foreground = JBColor.GRAY; requestsLabel.font = smallGray; requestsLabel.isVisible = false
+            add(Box.createHorizontalGlue())
             add(spinner)
+            add(Box.createHorizontalStrut(4))
             add(doneIcon)
+            add(Box.createHorizontalStrut(4))
             add(timerLabel)
+            add(Box.createHorizontalStrut(4))
             add(toolsLabel)
+            add(Box.createHorizontalStrut(4))
             add(requestsLabel)
             isVisible = false
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -1004,7 +1021,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             append(" &nbsp;\u00B7&nbsp; Projected: ~$projected")
             if (overQuota) {
                 val overage = data.usedSoFar - data.entitlement
-                append("<br><font color='#E04040'>Over quota by $overage requests</font>")
+                append("<br><font color='${errorHex()}'>Over quota by $overage requests</font>")
             }
             if (lastBillingResetDate.isNotEmpty()) {
                 try {
@@ -1727,12 +1744,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                             }
                         }
 
-                        val result = javax.swing.JOptionPane.showConfirmDialog(
-                            null, message, "Change Model",
-                            javax.swing.JOptionPane.OK_CANCEL_OPTION,
-                            javax.swing.JOptionPane.INFORMATION_MESSAGE
+                        val result = Messages.showOkCancelDialog(
+                            project, message.text, "Change Model",
+                            "OK", "Cancel", Messages.getInformationIcon()
                         )
-                        if (result != javax.swing.JOptionPane.OK_OPTION) return
+                        if (result != Messages.OK) return
 
                         selectedModelIndex = index
                         CopilotSettings.setSelectedModel(model.id)
@@ -2397,12 +2413,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val currentFile = fileEditorManager.selectedFiles.firstOrNull()
 
         if (currentFile == null) {
-            javax.swing.JOptionPane.showMessageDialog(
-                panel,
-                "No file is currently open in the editor",
-                "No File",
-                javax.swing.JOptionPane.WARNING_MESSAGE
-            )
+            Messages.showWarningDialog(project, "No file is currently open in the editor", "No File")
             return
         }
 
@@ -2415,12 +2426,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         val exists = (0 until contextListModel.size()).any { contextListModel[it].path == path }
         if (exists) {
-            javax.swing.JOptionPane.showMessageDialog(
-                panel,
-                "File already in context: ${currentFile.name}",
-                "Duplicate File",
-                javax.swing.JOptionPane.INFORMATION_MESSAGE
-            )
+            Messages.showInfoMessage(project, "File already in context: ${currentFile.name}", "Duplicate File")
             return
         }
 
@@ -2438,23 +2444,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val currentFile = fileEditorManager.selectedFiles.firstOrNull()
 
         if (editor == null || currentFile == null) {
-            javax.swing.JOptionPane.showMessageDialog(
-                panel,
-                "No editor is currently open",
-                "No Editor",
-                javax.swing.JOptionPane.WARNING_MESSAGE
-            )
+            Messages.showWarningDialog(project, "No editor is currently open", "No Editor")
             return
         }
 
         val selectionModel = editor.selectionModel
         if (!selectionModel.hasSelection()) {
-            javax.swing.JOptionPane.showMessageDialog(
-                panel,
-                "No text is selected. Select some code first.",
-                "No Selection",
-                javax.swing.JOptionPane.WARNING_MESSAGE
-            )
+            Messages.showWarningDialog(project, "No text is selected. Select some code first.", "No Selection")
             return
         }
 
@@ -2573,7 +2569,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     text = value.toString()
                     foreground = when (value.type) {
                         "PERMISSION_APPROVED" -> JBColor.GREEN.darker()
-                        "PERMISSION_DENIED" -> JBColor.RED
+                        "PERMISSION_DENIED" -> ERROR_COLOR
                         "RETRY_PROMPT", "RETRY_RESPONSE" -> JBColor.ORANGE
                         else -> if (isSelected) list?.selectionForeground else list?.foreground
                     }
@@ -2605,8 +2601,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createDebugToolbar(
         debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>,
         list: JBList<CopilotAcpClient.DebugEvent>
-    ): JPanel {
-        val toolbar = JPanel(FlowLayout(FlowLayout.LEFT))
+    ): JBPanel<JBPanel<*>> {
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT))
         val clearBtn = JButton("Clear")
         clearBtn.addActionListener { debugModel.clear() }
 
@@ -2675,7 +2671,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         val logArea = JBTextArea()
         logArea.isEditable = false
-        logArea.font = java.awt.Font("JetBrains Mono", java.awt.Font.PLAIN, 11)
+        logArea.font = java.awt.Font("JetBrains Mono", java.awt.Font.PLAIN, JBUI.Fonts.label().size - 1)
 
         // Load plugin-related logs from idea.log
         val logFile = java.io.File(
@@ -2707,7 +2703,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
         loadLogs()
 
-        val toolbar = JPanel(FlowLayout(FlowLayout.LEFT))
+        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT))
         val refreshBtn = JButton("Refresh")
         refreshBtn.addActionListener { loadLogs() }
         val copyBtn = JButton("Copy All")
@@ -2987,7 +2983,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         retryButton: JButton,
         authPanel: JPanel
     ) {
-        errorLabel.foreground = JBColor.RED
+        errorLabel.foreground = ERROR_COLOR
         errorLabel.font = JBUI.Fonts.smallFont()
         authPanel.add(errorLabel)
 
@@ -3048,7 +3044,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
      * a linear projection to end-of-month, and a horizontal entitlement bar.
      * Shows red fill for usage above the entitlement threshold.
      */
-    private class UsageGraphPanel : JPanel() {
+    private class UsageGraphPanel : JBPanel<UsageGraphPanel>() {
         var graphData: UsageGraphData? = null
 
         init {

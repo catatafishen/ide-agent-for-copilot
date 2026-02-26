@@ -41,7 +41,9 @@ function _toggleSection(id) {
     if (!el) return;
     if (el.dataset.chipOwned && !el.classList.contains('collapsed')) {
         el.classList.add('turn-hidden', 'collapsed');
-        el.classList.remove('chip-expanded');
+        el.classList.remove('chip-expanded', 'open');
+        const hdr = el.querySelector('.collapse-header');
+        if (hdr) hdr.setAttribute('aria-expanded', 'false');
         const btn = el.querySelector('.chip-close');
         if (btn) btn.remove();
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
@@ -49,6 +51,10 @@ function _toggleSection(id) {
         return;
     }
     el.classList.toggle('collapsed');
+    var isOpen = !el.classList.contains('collapsed');
+    el.classList.toggle('open', isOpen);
+    var hdr = el.querySelector('.collapse-header');
+    if (hdr) hdr.setAttribute('aria-expanded', String(isOpen));
     el.querySelector('.caret').textContent = el.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
 }
 
@@ -398,3 +404,25 @@ function disableQuickReplies() {
         el.classList.add('disabled');
     });
 }
+
+/* --- Code block copy buttons --- */
+var _copyObserver = new MutationObserver(function () {
+    document.querySelectorAll('pre:not([data-copy-btn])').forEach(function (pre) {
+        pre.setAttribute('data-copy-btn', '1');
+        var btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = 'Copy';
+        btn.tabIndex = 0;
+        btn.setAttribute('role', 'button');
+        btn.onclick = function () {
+            var code = pre.querySelector('code');
+            var text = code ? code.textContent : pre.textContent;
+            navigator.clipboard.writeText(text).then(function () {
+                btn.textContent = 'Copied!';
+                setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+            });
+        };
+        pre.appendChild(btn);
+    });
+});
+_copyObserver.observe(document.body, { childList: true, subtree: true });

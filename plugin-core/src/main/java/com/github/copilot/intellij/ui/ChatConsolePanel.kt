@@ -52,6 +52,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private val THINK_COLOR: Color
             get() = getThemeColor("Label.disabledForeground", Color(0x80, 0x80, 0x80), Color(0xB0, 0xB0, 0xB0))
 
+        private val ERROR_COLOR: Color
+            get() = getThemeColor("Label.errorForeground", Color(0xC7, 0x22, 0x22), Color(0xE0, 0x60, 0x60))
+
+        // Sub-agent theme colors — use distinct hues that work in both light/dark
+        private val SA_EXPLORE_COLOR: Color get() = JBColor(Color(0x5B, 0xC0, 0xDE), Color(0x5B, 0xC0, 0xDE))
+        private val SA_TASK_COLOR: Color get() = JBColor(Color(0xF0, 0xAD, 0x4E), Color(0xF0, 0xAD, 0x4E))
+        private val SA_GENERAL_COLOR: Color get() = JBColor(Color(0x56, 0x9C, 0xD6), Color(0x56, 0x9C, 0xD6))
+        private val SA_REVIEW_COLOR: Color get() = JBColor(Color(0xDA, 0xA5, 0x20), Color(0xDA, 0xA5, 0x20))
+        private val SA_UI_COLOR: Color get() = JBColor(Color(0xD8, 0x70, 0x93), Color(0xD8, 0x70, 0x93))
+
         private const val ICON_ERROR = "\u274C"
         private const val JS_REMOVE_PROCESSING =
             "(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()"
@@ -418,7 +428,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
         } else ""
         val html =
-            "<div class='prompt-row'><div class='meta'><span class='ts'>$ts</span>$ctxChips</div><div class='prompt-bubble' onclick='toggleMeta(this)'>${
+            "<div class='prompt-row'><div class='meta'><span class='ts'>$ts</span>$ctxChips</div><div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${
                 escapeHtml(text)
             }</div></div>"
         appendHtml(html)
@@ -462,7 +472,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
             thinkingCounter++
             val html = """<div class='collapse-section thinking-section' id='think-$thinkingCounter'>
-                <div class='collapse-header' onclick='toggleThinking("think-$thinkingCounter")'>
+                <div class='collapse-header' tabindex='0' role='button' aria-expanded='true' onclick='toggleThinking("think-$thinkingCounter")' onkeydown='if(event.key==="Enter"||event.key===" ")this.click()'>
                     <span class='collapse-icon thinking-pulse'>💭</span>
                     <span class='collapse-label'>Thinking...</span>
                     <span class='caret'>▾</span>
@@ -563,7 +573,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         contentParts.append("<div class='tool-result' id='result-$did'><span class='tool-result-pending'>Running...</span></div>")
 
         val html = """<div class='collapse-section tool-section collapsed' id='tool-$did'>
-            <div class='collapse-header' onclick='toggleTool("tool-$did")'>
+            <div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleTool("tool-$did")' onkeydown='if(event.key==="Enter"||event.key===" ")this.click()'>
                 <span class='collapse-icon'><span class='tool-spinner'></span></span>
                 <span class='collapse-label'>$safeDisplayName</span>
                 <span class='caret'>▸</span>
@@ -987,7 +997,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 "prompt" -> {
                     val text = obj["text"]?.asString ?: ""
                     sb.append("<div class='prompt-row'><div class='meta'><span class='ts'></span></div>")
-                    sb.append("<div class='prompt-bubble' onclick='toggleMeta(this)'>${escapeHtml(text)}</div></div>")
+                    sb.append("<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${escapeHtml(text)}</div></div>")
                 }
 
                 "text" -> {
@@ -1004,7 +1014,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     val id = "def-think-$deferredIdCounter"
                     sb.append("<div class='collapse-section thinking-section collapsed' id='$id'>")
                     sb.append(
-                        "<div class='collapse-header' onclick='toggleThinking(\"$id\")'>" +
+                        "<div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleThinking(\"$id\")' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>" +
                             "<span class='collapse-icon'>\uD83D\uDCAD</span>" +
                             "<span class='collapse-label'>Thought process</span>" +
                             "<span class='caret'>\u25B8</span></div>"
@@ -1032,7 +1042,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     contentParts.append("\u2705 Completed")
                     sb.append("<div class='collapse-section tool-section collapsed' id='$id'>")
                     sb.append(
-                        "<div class='collapse-header' onclick='toggleTool(\"$id\")'>" +
+                        "<div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleTool(\"$id\")' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>" +
                             "<span class='collapse-icon'>✓</span>" +
                             "<span class='collapse-label'>${escapeHtml(displayName)}</span>" +
                             "<span class='caret'>\u25B8</span></div>"
@@ -1451,6 +1461,32 @@ ul,ol{margin:4px 0;padding-left:22px}
             --th-bg: ${rgb(thBg)};
             --link: ${rgb(linkColor)};
             --tooltip-bg: ${rgb(tooltipBg)};
+            --error: ${rgb(ERROR_COLOR)};
+            --error-a05: ${rgba(ERROR_COLOR, 0.05)};
+            --error-a06: ${rgba(ERROR_COLOR, 0.06)};
+            --error-a12: ${rgba(ERROR_COLOR, 0.12)};
+            --error-a16: ${rgba(ERROR_COLOR, 0.16)};
+            --shadow: ${rgba(THINK_COLOR, 0.25)};
+            --sa-explore: ${rgb(SA_EXPLORE_COLOR)};
+            --sa-explore-a06: ${rgba(SA_EXPLORE_COLOR, 0.06)};
+            --sa-explore-a10: ${rgba(SA_EXPLORE_COLOR, 0.10)};
+            --sa-explore-a15: ${rgba(SA_EXPLORE_COLOR, 0.15)};
+            --sa-task: ${rgb(SA_TASK_COLOR)};
+            --sa-task-a06: ${rgba(SA_TASK_COLOR, 0.06)};
+            --sa-task-a10: ${rgba(SA_TASK_COLOR, 0.10)};
+            --sa-task-a15: ${rgba(SA_TASK_COLOR, 0.15)};
+            --sa-general: ${rgb(SA_GENERAL_COLOR)};
+            --sa-general-a06: ${rgba(SA_GENERAL_COLOR, 0.06)};
+            --sa-general-a10: ${rgba(SA_GENERAL_COLOR, 0.10)};
+            --sa-general-a15: ${rgba(SA_GENERAL_COLOR, 0.15)};
+            --sa-review: ${rgb(SA_REVIEW_COLOR)};
+            --sa-review-a06: ${rgba(SA_REVIEW_COLOR, 0.06)};
+            --sa-review-a10: ${rgba(SA_REVIEW_COLOR, 0.10)};
+            --sa-review-a15: ${rgba(SA_REVIEW_COLOR, 0.15)};
+            --sa-ui: ${rgb(SA_UI_COLOR)};
+            --sa-ui-a06: ${rgba(SA_UI_COLOR, 0.06)};
+            --sa-ui-a10: ${rgba(SA_UI_COLOR, 0.10)};
+            --sa-ui-a15: ${rgba(SA_UI_COLOR, 0.15)};
         """.trimIndent()
     }
 

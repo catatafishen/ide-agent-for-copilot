@@ -45,6 +45,32 @@
     --th-bg: rgb(50, 50, 50);
     --link: rgb(86, 156, 214);
     --tooltip-bg: rgb(60, 63, 65);
+    --error: rgb(199, 34, 34);
+    --error-a05: rgba(199, 34, 34, 0.05);
+    --error-a06: rgba(199, 34, 34, 0.06);
+    --error-a12: rgba(199, 34, 34, 0.12);
+    --error-a16: rgba(199, 34, 34, 0.16);
+    --shadow: rgba(128, 128, 128, 0.25);
+    --sa-explore: rgb(91, 192, 222);
+    --sa-explore-a06: rgba(91, 192, 222, 0.06);
+    --sa-explore-a10: rgba(91, 192, 222, 0.10);
+    --sa-explore-a15: rgba(91, 192, 222, 0.15);
+    --sa-task: rgb(240, 173, 78);
+    --sa-task-a06: rgba(240, 173, 78, 0.06);
+    --sa-task-a10: rgba(240, 173, 78, 0.10);
+    --sa-task-a15: rgba(240, 173, 78, 0.15);
+    --sa-general: rgb(86, 156, 214);
+    --sa-general-a06: rgba(86, 156, 214, 0.06);
+    --sa-general-a10: rgba(86, 156, 214, 0.10);
+    --sa-general-a15: rgba(86, 156, 214, 0.15);
+    --sa-review: rgb(218, 165, 32);
+    --sa-review-a06: rgba(218, 165, 32, 0.06);
+    --sa-review-a10: rgba(218, 165, 32, 0.10);
+    --sa-review-a15: rgba(218, 165, 32, 0.15);
+    --sa-ui: rgb(216, 112, 147);
+    --sa-ui-a06: rgba(216, 112, 147, 0.06);
+    --sa-ui-a10: rgba(216, 112, 147, 0.10);
+    --sa-ui-a15: rgba(216, 112, 147, 0.15);
 }
 
 * {
@@ -130,7 +156,7 @@ body {
     background: var(--agent-a06);
     border-radius: 4px 16px 16px 16px;
     padding: 8px 16px;
-    max-width: 95%;
+    max-width: 90%;
 }
 
 .agent-bubble:hover {
@@ -164,6 +190,15 @@ body {
     font-size: 0.88em;
     user-select: none;
     transition: background .15s;
+}
+
+.collapse-header .caret {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.collapse-section.open .collapse-header .caret {
+    transform: rotate(90deg);
 }
 
 .collapse-header:hover {
@@ -263,49 +298,61 @@ body {
 }
 
 @keyframes chipIn {
-    from { opacity: 0; transform: scale(0.5) }
-    to { opacity: 1; transform: scale(1) }
+    from {
+        opacity: 0;
+        transform: scale(0.5)
+    }
+    to {
+        opacity: 1;
+        transform: scale(1)
+    }
 }
 
 @keyframes chipExpand {
-    from { opacity: 0; transform: translateY(-4px) }
-    to { opacity: 1; transform: translateY(0) }
+    from {
+        opacity: 0;
+        transform: translateY(-4px)
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0)
+    }
 }
 
 /* --- Sub-agent conversations --- */
 .subagent-explore {
-    --sa-color: rgb(91, 192, 222);
-    --sa-a06: rgba(91, 192, 222, 0.06);
-    --sa-a10: rgba(91, 192, 222, 0.10);
-    --sa-a15: rgba(91, 192, 222, 0.15);
+    --sa-color: var(--sa-explore);
+    --sa-a06: var(--sa-explore-a06);
+    --sa-a10: var(--sa-explore-a10);
+    --sa-a15: var(--sa-explore-a15);
 }
 
 .subagent-task {
-    --sa-color: rgb(240, 173, 78);
-    --sa-a06: rgba(240, 173, 78, 0.06);
-    --sa-a10: rgba(240, 173, 78, 0.10);
-    --sa-a15: rgba(240, 173, 78, 0.15);
+    --sa-color: var(--sa-task);
+    --sa-a06: var(--sa-task-a06);
+    --sa-a10: var(--sa-task-a10);
+    --sa-a15: var(--sa-task-a15);
 }
 
 .subagent-general {
-    --sa-color: rgb(86, 156, 214);
-    --sa-a06: rgba(86, 156, 214, 0.06);
-    --sa-a10: rgba(86, 156, 214, 0.10);
-    --sa-a15: rgba(86, 156, 214, 0.15);
+    --sa-color: var(--sa-general);
+    --sa-a06: var(--sa-general-a06);
+    --sa-a10: var(--sa-general-a10);
+    --sa-a15: var(--sa-general-a15);
 }
 
 .subagent-review {
-    --sa-color: rgb(218, 165, 32);
-    --sa-a06: rgba(218, 165, 32, 0.06);
-    --sa-a10: rgba(218, 165, 32, 0.10);
-    --sa-a15: rgba(218, 165, 32, 0.15);
+    --sa-color: var(--sa-review);
+    --sa-a06: var(--sa-review-a06);
+    --sa-a10: var(--sa-review-a10);
+    --sa-a15: var(--sa-review-a15);
 }
 
 .subagent-ui {
-    --sa-color: rgb(216, 112, 147);
-    --sa-a06: rgba(216, 112, 147, 0.06);
-    --sa-a10: rgba(216, 112, 147, 0.10);
-    --sa-a15: rgba(216, 112, 147, 0.15);
+    --sa-color: var(--sa-ui);
+    --sa-a06: var(--sa-ui-a06);
+    --sa-a10: var(--sa-ui-a10);
+    --sa-a15: var(--sa-ui-a15);
 }
 
 /* Sub-agent bubble (like agent-bubble but in agent-specific color) */
@@ -476,8 +523,8 @@ body {
 }
 
 .turn-chip.tool.failed {
-    color: rgb(220, 80, 80);
-    background: rgba(220, 80, 80, 0.08)
+    color: var(--error);
+    background: var(--error-a06)
 }
 
 .turn-chip.tool:hover {
@@ -501,11 +548,11 @@ body {
     white-space: nowrap;
     z-index: 10;
     pointer-events: none;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 6px var(--shadow);
 }
 
 .turn-chip.tool.failed:hover {
-    background: rgba(220, 80, 80, 0.16)
+    background: var(--error-a16)
 }
 
 .turn-chip.ctx:hover {
@@ -513,7 +560,7 @@ body {
 }
 
 .turn-chip.err:hover {
-    background: rgba(255, 0, 0, 0.12)
+    background: var(--error-a12)
 }
 
 .turn-chip.ctx {
@@ -522,8 +569,8 @@ body {
 }
 
 .turn-chip.err {
-    color: red;
-    background: rgba(255, 0, 0, 0.06)
+    color: var(--error);
+    background: var(--error-a06)
 }
 
 .turn-chip.stats {
@@ -550,7 +597,7 @@ body {
     white-space: nowrap;
     z-index: 10;
     pointer-events: none;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 6px var(--shadow);
 }
 
 .turn-hidden {
@@ -566,8 +613,8 @@ body {
 }
 
 .status-row.error {
-    color: red;
-    background: rgba(255, 0, 0, 0.05)
+    color: var(--error);
+    background: var(--error-a05)
 }
 
 .status-row.info {
@@ -769,4 +816,58 @@ b, strong {
     opacity: 0.4;
     cursor: default;
     pointer-events: none;
+}
+
+/* --- Prompt bubble tooltip --- */
+.prompt-bubble[title] {
+    cursor: pointer;
+}
+
+/* --- Code block copy button --- */
+pre {
+    position: relative;
+}
+
+pre .copy-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--fg-a08);
+    color: var(--fg);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75em;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    font-family: inherit;
+}
+
+pre:hover .copy-btn {
+    opacity: 0.7;
+}
+
+pre .copy-btn:hover {
+    opacity: 1;
+    background: var(--fg-a16);
+}
+
+/* --- Keyboard accessibility --- */
+.collapse-header:focus-visible,
+.turn-chip:focus-visible,
+.prompt-bubble:focus-visible,
+.quick-reply-btn:focus-visible,
+.copy-btn:focus-visible {
+    outline: 2px solid var(--agent);
+    outline-offset: 2px;
+}
+
+/* --- Reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }

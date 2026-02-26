@@ -55,7 +55,8 @@ If available, use run_sonarqube_analysis for additional findings (separate from 
 Run both for complete coverage.
 
 QUICK-REPLY BUTTONS:
-⚠️ ALWAYS append a quick-reply tag when your response asks the user ANY question — whether it's a choice, confirmation, or yes/no. \
+⚠️ ALWAYS append a quick-reply tag when your response asks the user ANY question — whether it's a choice, confirmation,
+or yes/no. \
 Format: `[quick-reply: Option A | Option B]` on its own line at the end. \
 The IDE renders these as clickable buttons. One tag per response, pipe-separated, max 6 options. \
 Examples: `[quick-reply: Yes | No]`  `[quick-reply: Fix params | Fix casts | Skip both]`
