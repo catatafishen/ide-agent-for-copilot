@@ -93,20 +93,36 @@ Added to `buildAcpCommand()` in `CopilotAcpClient.java`.
    invokes them directly?
 3. **Error messages** — Does the CLI provide useful guidance, or do we still need our custom retry messages?
 
-### Outcome
+### Test Results (Feb 26, 2026)
 
-**Status:** TESTING — Restart the plugin to apply. Observe IDE logs for `--deny-tool` behavior.
+**Status:** FAILED — `--deny-tool` does NOT work in ACP mode.
 
-If it works:
+Results from live testing:
 
-- Keep `--deny-tool` as primary defense
-- Keep `DENIED_PERMISSION_KINDS` as fallback (defense in depth)
-- Update copilot-instructions.md to remove "Known Limitation" if bypass is fixed
+| Tool | Has permission step? | Blocked by `--deny-tool`? | Blocked by our workaround? |
+|------|---------------------|--------------------------|---------------------------|
+| `bash` | ✅ Yes | ❌ No | ✅ Yes — `DENIED_PERMISSION_KINDS` |
+| `edit` | ✅ Yes | ❌ No | ✅ Yes — `DENIED_PERMISSION_KINDS` |
+| `create` | ✅ Yes | ❌ No | ✅ Yes — `DENIED_PERMISSION_KINDS` |
+| `view` | ❌ No — auto-executes | ❌ No | ❌ No — post-execution guidance only |
+| `grep` | ❌ No — auto-executes | ❌ No | ❌ No — post-execution guidance only |
+| `glob` | ❌ No — auto-executes | ❌ No | ❌ No — post-execution guidance only |
 
-If it doesn't work:
+**Key finding:** The CLI has two classes of built-in tools:
+1. **Write/Execute tools** (`bash`, `edit`, `create`) — require `request_permission` → our
+   `DENIED_PERMISSION_KINDS` catches them ✅
+2. **Read-only tools** (`view`, `grep`, `glob`) — auto-execute without permission → unblockable ❌
 
-- Remove `--deny-tool` flags from launch command
-- File a follow-up bug on the CLI for `--deny-tool` not working in ACP mode
+**Side effect:** `--deny-tool` uses variadic argument parsing. Adding it before `--config-dir`
+and `--additional-mcp-config` likely caused the CLI to consume those flags as tool names,
+breaking MCP server registration entirely (MCP tools disappeared from the agent's tool set).
+
+**Decision:**
+- **Removed** `--deny-tool` flags (no effect + breaks MCP registration)
+- **Kept** `DENIED_PERMISSION_KINDS` as primary defense for write/execute tools
+- **Kept** `tool_call` interception for read-only tool guidance
+- All three CLI filtering mechanisms (`--available-tools`, `--excluded-tools`, `--deny-tool`)
+  confirmed broken in ACP mode — this is all the same CLI bug #556
 
 ## When to Remove This Workaround
 

@@ -246,19 +246,12 @@ public class CopilotAcpClient implements Closeable {
             LOG.info("Copilot CLI model set to: " + savedModel);
         }
 
-        // NOTE: --available-tools and --excluded-tools don't work in --acp mode (bug #556).
-        // However, --deny-tool operates at the permission layer (auto-denies permission
-        // requests) rather than the tool filtering layer, so it may work in ACP mode.
-        // This is our primary defense; DENIED_PERMISSION_KINDS is the fallback.
-        // See docs/CLI-BUG-556-WORKAROUND.md for details.
-        cmd.add("--deny-tool");
-        cmd.add("view");
-        cmd.add("edit");
-        cmd.add("create");
-        cmd.add("grep");
-        cmd.add("glob");
-        cmd.add("bash");
-        LOG.info("Copilot CLI --deny-tool set for built-in tools: view, edit, create, grep, glob, bash");
+        // NOTE: --deny-tool, --available-tools, --excluded-tools all DON'T work in --acp mode.
+        // All three are broken per CLI bug #556. Tested --deny-tool on Feb 26, 2026:
+        // - It did NOT block any tools (read-only tools auto-execute, write tools still need
+        //   our DENIED_PERMISSION_KINDS to catch them)
+        // - Its variadic arg parsing may consume subsequent CLI flags, breaking MCP registration
+        // Our workaround: DENIED_PERMISSION_KINDS + tool_call interception. See CLI-BUG-556-WORKAROUND.md
 
         // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
