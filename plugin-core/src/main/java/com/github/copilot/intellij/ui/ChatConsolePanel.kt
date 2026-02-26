@@ -39,18 +39,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             return UIManager.getColor(key) ?: JBColor(lightFallback, darkFallback)
         }
 
-        private const val LINK_COLOR_KEY = "Component.linkColor"
+        internal const val LINK_COLOR_KEY = "Component.linkColor"
 
-        private val USER_COLOR: Color
+        internal val USER_COLOR: Color
             get() = getThemeColor(LINK_COLOR_KEY, Color(0x29, 0x79, 0xFF), Color(0x5C, 0x9D, 0xFF))
 
         private val AGENT_COLOR: Color
             get() = getThemeColor("VersionControl.GitGreen", Color(0x43, 0xA0, 0x47), Color(0x66, 0xBB, 0x6A))
 
-        private val TOOL_COLOR: Color
+        internal val TOOL_COLOR: Color
             get() = getThemeColor("EditorTabs.selectedForeground", Color(0xAE, 0xA0, 0xDC), Color(0xB4, 0xA0, 0xDC))
 
-        private val THINK_COLOR: Color
+        internal val THINK_COLOR: Color
             get() = getThemeColor("Label.disabledForeground", Color(0x80, 0x80, 0x80), Color(0xB0, 0xB0, 0xB0))
 
         private val ERROR_COLOR: Color
@@ -63,17 +63,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private val SA_REVIEW_COLOR: Color get() = JBColor(Color(0xDA, 0xA5, 0x20), Color(0xDA, 0xA5, 0x20))
         private val SA_UI_COLOR: Color get() = JBColor(Color(0xD8, 0x70, 0x93), Color(0xD8, 0x70, 0x93))
 
-        private const val ICON_ERROR = "\u274C"
+        internal const val ICON_ERROR = "\u274C"
         private const val JS_REMOVE_PROCESSING =
             "(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()"
+
         /** Matches `[quick-reply: Option A | Option B | ...]` tags on their own line. */
         val QUICK_REPLY_TAG_REGEX = Regex("""^\[quick-reply:\s*([^\]]+)]\s*$""", RegexOption.MULTILINE)
 
         /** Human-readable name and short description for each tool */
-        private data class ToolInfo(val displayName: String, val description: String)
+        internal data class ToolInfo(val displayName: String, val description: String)
 
         /** Sub-agent display name lookup (icon removed — color is per-instance now) */
-        private data class SubAgentInfo(val displayName: String)
+        internal data class SubAgentInfo(val displayName: String)
 
         private const val AGENT_TYPE_GENERAL = "general-purpose"
         private const val SA_COLOR_COUNT = 8
@@ -81,7 +82,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private const val AGENT_ROW_OPEN = "<div class='agent-row'><div class='agent-bubble'>"
         private const val DIV_CLOSE_2 = "</div></div>"
 
-        private val SUB_AGENT_INFO = mapOf(
+        internal val SUB_AGENT_INFO = mapOf(
             "explore" to SubAgentInfo("Explore Agent"),
             "task" to SubAgentInfo("Task Agent"),
             AGENT_TYPE_GENERAL to SubAgentInfo("General Agent"),
@@ -146,7 +147,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "update_todo" to "todos",
         )
 
-        private val TOOL_DISPLAY_INFO = mapOf(
+        internal val TOOL_DISPLAY_INFO = mapOf(
             // Code Navigation
             "search_symbols" to ToolInfo(
                 "Search Symbols",
@@ -290,7 +291,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     // --- Data model ---
-    private sealed class EntryData {
+    internal sealed class EntryData {
         class Prompt(val text: String) : EntryData()
         class Text(val raw: StringBuilder = StringBuilder()) : EntryData()
         class Thinking(val raw: StringBuilder = StringBuilder()) : EntryData()
@@ -1111,206 +1112,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         return sb.toString()
     }
 
-    fun getConversationText(): String {
-        val sb = StringBuilder()
-        for (e in entries) when (e) {
-            is EntryData.Prompt -> sb.appendLine(">>> ${e.text}")
-            is EntryData.Text -> {
-                sb.append(e.raw); sb.appendLine()
-            }
+    private val exporter: ConversationExporter get() = ConversationExporter(entries)
 
-            is EntryData.Thinking -> sb.appendLine("[thinking] ${e.raw}")
-            is EntryData.ToolCall -> {
-                val baseName = e.title.substringAfterLast("-")
-                val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
-                val name = info?.displayName ?: e.title
-                sb.appendLine("\uD83D\uDD27 $name")
-                if (e.arguments != null) sb.appendLine("  params: ${e.arguments}")
-            }
-
-            is EntryData.SubAgent -> {
-                val info = SUB_AGENT_INFO[e.agentType]
-                sb.appendLine("${info?.displayName ?: e.agentType}: ${e.description}")
-            }
-
-            is EntryData.ContextFiles -> sb.appendLine(
-                "\uD83D\uDCCE ${e.files.size} context file(s): ${
-                    e.files.joinToString(
-                        ", "
-                    ) { it.first }
-                }"
-            )
-
-            is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
-            is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${e.timestamp} ---")
-        }
-        return sb.toString()
-    }
+    fun getConversationText(): String = exporter.getConversationText()
 
     /**
      * Produce a compressed summary of the conversation for context injection.
      * Omits thinking blocks, truncates long responses, and caps total size.
      */
-    fun getCompressedSummary(maxChars: Int = 8000): String {
-        if (entries.isEmpty()) return ""
-        val sb = StringBuilder()
-        sb.appendLine("[Previous conversation summary]")
-        for (e in entries) when (e) {
-            is EntryData.Prompt -> sb.appendLine("User: ${e.text}")
-            is EntryData.Text -> {
-                val raw = e.raw.toString().trim()
-                if (raw.isNotEmpty()) {
-                    val truncated = if (raw.length > 600) raw.take(600) + "...[truncated]" else raw
-                    sb.appendLine("Agent: $truncated")
-                }
-            }
-
-            is EntryData.ToolCall -> {
-                val baseName = e.title.substringAfterLast("-")
-                val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
-                val name = info?.displayName ?: e.title
-                sb.appendLine("Tool: $name")
-            }
-
-            is EntryData.SubAgent -> {
-                val info = SUB_AGENT_INFO[e.agentType]
-                sb.appendLine("Tool: ${info?.displayName ?: e.agentType} — ${e.description}")
-            }
-
-            is EntryData.ContextFiles -> sb.appendLine("Context: ${e.files.joinToString(", ") { it.first }}")
-            is EntryData.SessionSeparator -> sb.appendLine("--- ${e.timestamp} ---")
-            is EntryData.Thinking -> { /* Thinking entries are rendered in HTML only */
-            }
-
-            is EntryData.Status -> { /* Status entries are rendered in HTML only */
-            }
-        }
-        val result = sb.toString()
-        if (result.length <= maxChars) return result
-        return "[Previous conversation summary - trimmed to recent]\n..." +
-            result.substring(result.length - maxChars + 60)
-    }
+    fun getCompressedSummary(maxChars: Int = 8000): String = exporter.getCompressedSummary(maxChars)
 
     /** Returns the conversation as a self-contained HTML document */
-    private fun buildExportCss(): String {
-        val font = UIUtil.getLabelFont()
-        val fg = UIUtil.getLabelForeground()
-        val codeBg = UIManager.getColor("Editor.backgroundColor")
-            ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
-        val tblBorder = UIManager.getColor("TableCell.borderColor")
-            ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
-        val thBg = UIManager.getColor("TableHeader.background")
-            ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
-        val linkColor = UIManager.getColor(LINK_COLOR_KEY)
-            ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
-
-        return """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-body{font-family:'${font.family}',system-ui,sans-serif;font-size:${font.size - 2}pt;color:${rgb(fg)};line-height:1.45;max-width:900px;margin:0 auto;padding:16px}
-.prompt{text-align:right;margin:10px 0 4px 0}
-.prompt-b{display:inline-block;background:${
-            rgba(
-                USER_COLOR,
-                0.12
-            )
-        };border-radius:16px 16px 4px 16px;padding:6px 14px;max-width:85%;text-align:left;font-size:0.92em}
-.response{background:${
-            rgba(
-                AGENT_COLOR,
-                0.06
-            )
-        };border-radius:4px 16px 16px 16px;padding:8px 16px;margin:4px 0;max-width:95%}
-.thinking{background:${
-            rgba(
-                THINK_COLOR,
-                0.06
-            )
-        };border-radius:4px 16px 16px 16px;padding:6px 12px;margin:4px 0;font-size:0.88em;color:${rgb(THINK_COLOR)}}
-.tool{display:inline-flex;align-items:center;gap:6px;background:${rgba(TOOL_COLOR, 0.1)};border:1px solid ${
-            rgba(
-                TOOL_COLOR,
-                0.3
-            )
-        };border-radius:20px;padding:3px 12px;margin:2px 0;font-size:0.88em;color:${rgb(TOOL_COLOR)}}
-.context{font-size:0.88em;color:${rgb(USER_COLOR)};margin:2px 0}
-.context summary{cursor:pointer;padding:4px 0}
-.context .ctx-file{padding:2px 0;padding-left:8px}
-.context .ctx-file a{color:${rgb(linkColor)};text-decoration:none}
-.status{padding:4px 8px;margin:2px 0;font-size:0.88em}
-.status.error{color:red} .status.info{color:${rgb(THINK_COLOR)}}
-code{background:${rgb(codeBg)};padding:2px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:${font.size - 3}pt}
-pre{background:${rgb(codeBg)};padding:10px;border-radius:6px;margin:6px 0;overflow-x:auto}
-pre code{background:none;padding:0;border-radius:0;display:block}
-table{border-collapse:collapse;margin:6px 0}
-th,td{border:1px solid ${rgb(tblBorder)};padding:4px 10px;text-align:left}
-th{background:${rgb(thBg)};font-weight:600}
-a{color:${rgb(linkColor)}}
-ul,ol{margin:4px 0;padding-left:22px}
-</style></head><body>
-"""
-    }
-
-    private fun renderExportEntry(e: EntryData): String = when (e) {
-        is EntryData.Prompt -> "<div class='prompt'><span class='prompt-b'>${escapeHtml(e.text)}</span></div>\n"
-        is EntryData.Text -> "<div class='response'>${markdownToHtml(e.raw.toString())}</div>\n"
-        is EntryData.Thinking -> "<details class='thinking'><summary>\uD83D\uDCAD Thought process</summary><pre>${
-            escapeHtml(
-                e.raw.toString()
-            )
-        }</pre></details>\n"
-
-        is EntryData.ToolCall -> renderExportToolCall(e)
-        is EntryData.SubAgent -> renderExportSubAgent(e)
-        is EntryData.ContextFiles -> renderExportContextFiles(e)
-        is EntryData.Status -> "<div class='status ${if (e.icon == ICON_ERROR) "error" else "info"}'>${e.icon} ${
-            escapeHtml(
-                e.message
-            )
-        }</div>\n"
-
-        is EntryData.SessionSeparator -> "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${
-            escapeHtml(
-                e.timestamp
-            )
-        }</div>\n"
-    }
-
-    private fun renderExportToolCall(e: EntryData.ToolCall): String {
-        val baseName = e.title.substringAfterLast("-")
-        val info = TOOL_DISPLAY_INFO[e.title] ?: TOOL_DISPLAY_INFO[baseName]
-        val displayName = info?.displayName ?: e.title
-        val sb = StringBuilder("<details class='tool'><summary>\u2692 ${escapeHtml(displayName)}</summary>")
-        if (info?.description != null) sb.append("<div style='font-style:italic;margin:4px 0'>${escapeHtml(info.description)}</div>")
-        if (e.arguments != null) sb.append("<div style='margin:4px 0'><b>Parameters:</b><pre><code>${escapeHtml(e.arguments)}</code></pre></div>")
-        sb.append("</details>\n")
-        return sb.toString()
-    }
-
-    private fun renderExportSubAgent(e: EntryData.SubAgent): String {
-        val info = SUB_AGENT_INFO[e.agentType]
-        val name = info?.displayName ?: e.agentType
-        val sb = StringBuilder()
-        if (e.prompt != null) sb.append("<div class='response'><b>@$name</b> ${escapeHtml(e.prompt)}</div>\n")
-        if (e.result != null) sb.append("<div class='response'>${markdownToHtml(e.result!!)}</div>\n")
-        else sb.append("<div class='response'><b>@$name</b> \u2014 ${escapeHtml(e.description)}</div>\n")
-        return sb.toString()
-    }
-
-    private fun renderExportContextFiles(e: EntryData.ContextFiles): String {
-        val label = "${e.files.size} context file${if (e.files.size != 1) "s" else ""} attached"
-        val sb = StringBuilder("<details class='context'><summary>\uD83D\uDCCE $label</summary>")
-        e.files.forEach { (name, _) -> sb.append("<div class='ctx-file'><code>${escapeHtml(name)}</code></div>") }
-        sb.append("</details>\n")
-        return sb.toString()
-    }
-
-    /** Returns the conversation as a self-contained HTML document */
-    fun getConversationHtml(): String {
-        val sb = StringBuilder()
-        sb.append(buildExportCss())
-        for (e in entries) sb.append(renderExportEntry(e))
-        sb.append("</body></html>")
-        return sb.toString()
-    }
+    fun getConversationHtml(): String = exporter.getConversationHtml()
 
     fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x") {
         finalizeCurrentText()
