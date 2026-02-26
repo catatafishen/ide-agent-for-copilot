@@ -61,8 +61,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             """(?<![:\w])(?:/[\w.\-]+(?:/[\w.\-]+)*\.\w+|(?:\.\.?/)?[\w.\-]+(?:/[\w.\-]+)+\.\w+)(?::\d+(?::\d+)?)?"""
         )
 
-        /** Matches `[quick-reply: Option A | Option B | ...]` tags in agent responses. */
-        val QUICK_REPLY_TAG_REGEX = Regex("""\[quick-reply:\s*([^\]]+)]""")
+        /** Matches `[quick-reply: Option A | Option B | ...]` tags on their own line. */
+        val QUICK_REPLY_TAG_REGEX = Regex("""^\[quick-reply:\s*([^\]]+)]\s*$""", RegexOption.MULTILINE)
 
         /** Human-readable name and short description for each tool */
         private data class ToolInfo(val displayName: String, val description: String)
