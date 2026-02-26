@@ -372,5 +372,7 @@ function showQuickReplies(options) {
 
 function disableQuickReplies() {
     var all = document.querySelectorAll('.quick-replies:not(.disabled)');
-    all.forEach(function (el) { el.classList.add('disabled'); });
+    all.forEach(function (el) {
+        el.classList.add('disabled');
+    });
 }

@@ -133,3 +133,11 @@ SONARQUBE FOR IDE:
 If available, use run_sonarqube_analysis to find additional issues from SonarQube/SonarLint. \
 SonarQube findings are SEPARATE from IntelliJ inspections — run both for complete coverage. \
 SonarQube rules use keys like 'java:S1135' (TODO comments), 'java:S1172' (unused params).
+
+QUICK-REPLY BUTTONS:
+When you ask the user to choose between options or confirm yes/no, append a tag at the end: \
+`[quick-reply: Option A | Option B | Option C]` \
+The IDE renders these as clickable buttons so the user doesn't have to type. Examples: \
+`[quick-reply: Yes | No]` \
+`[quick-reply: Fix unused params | Fix StringBuilder | Skip both]` \
+Rules: one tag per response, at the very end, pipe-separated options, max 6 options.

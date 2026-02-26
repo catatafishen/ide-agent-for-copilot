@@ -61,6 +61,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             """(?<![:\w])(?:/[\w.\-]+(?:/[\w.\-]+)*\.\w+|(?:\.\.?/)?[\w.\-]+(?:/[\w.\-]+)+\.\w+)(?::\d+(?::\d+)?)?"""
         )
 
+        /** Matches `[quick-reply: Option A | Option B | ...]` tags in agent responses. */
+        val QUICK_REPLY_TAG_REGEX = Regex("""\[quick-reply:\s*([^\]]+)]""")
+
         /** Human-readable name and short description for each tool */
         private data class ToolInfo(val displayName: String, val description: String)
 
@@ -1343,8 +1346,10 @@ ul,ol{margin:4px 0;padding-left:22px}
             executeJs("(function(){var e=document.getElementById('$id');if(e)e.parentElement.remove();})()")
             entries.remove(data); return
         }
+        // Strip [quick-reply: ...] tags from rendered output (buttons rendered separately)
+        val cleanText = rawText.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val html = markdownToHtml(rawText)
+            val html = markdownToHtml(cleanText)
             val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
             SwingUtilities.invokeLater {
                 executeJs("(function(){var e=document.getElementById('$id');if(e){e.innerHTML=b64('$encoded');e.classList.remove('streaming-bubble');scrollIfNeeded();}})()")

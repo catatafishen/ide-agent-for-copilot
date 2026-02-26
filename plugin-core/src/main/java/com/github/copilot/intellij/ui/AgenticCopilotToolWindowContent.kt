@@ -2086,36 +2086,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
-     * Detect quick-reply options from the last agent response.
-     * Looks for yes/no confirmations and numbered/bulleted option lists.
+     * Extract quick-reply options from `[quick-reply: A | B | C]` tags in the response.
      */
     private fun detectQuickReplies(responseText: String): List<String> {
-        val lastChunk = responseText.takeLast(500)
-
-        // Yes/No pattern: "Should I …?", "Would you like …?", "Do you want …?"
-        val yesNo = Regex(
-            """(?i)(should I |would you like |do you want |shall I |want me to |ready to |proceed\b|continue\b|go ahead).*\?""",
-            RegexOption.DOT_MATCHES_ALL
-        )
-        if (yesNo.containsMatchIn(lastChunk)) {
-            return listOf("Yes", "No")
-        }
-
-        // Numbered options: "1. Option A\n2. Option B\n3. Option C"
-        val numbered = Regex("""(?m)^\s*(\d+)[.)]\s+(.+)$""")
-        val matches = numbered.findAll(lastChunk).toList()
-        if (matches.size in 2..6) {
-            return matches.map { it.groupValues[2].trim().take(60) }
-        }
-
-        // Bulleted options: "- Option A\n- Option B"
-        val bulleted = Regex("""(?m)^\s*[-•*]\s+(.+)$""")
-        val bMatches = bulleted.findAll(lastChunk).toList()
-        if (bMatches.size in 2..6) {
-            return bMatches.map { it.groupValues[1].trim().take(60) }
-        }
-
-        return emptyList()
+        val match = ChatConsolePanel.QUICK_REPLY_TAG_REGEX.findAll(responseText).lastOrNull() ?: return emptyList()
+        return match.groupValues[1].split("|").map { it.trim() }.filter { it.isNotEmpty() }
     }
 
     /** Build inline snippet text for selections so the agent sees the code in the prompt itself */
