@@ -1099,7 +1099,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {
-                handleAddCurrentFile()
+            handleAddCurrentFile()
         }
     }
 
@@ -1109,7 +1109,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {
-                handleAddSelection()
+            handleAddSelection()
         }
     }
 

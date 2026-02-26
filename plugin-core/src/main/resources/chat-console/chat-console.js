@@ -19,7 +19,7 @@ function scrollIfNeeded() {
 function b64(s) {
     const r = atob(s);
     const b = new Uint8Array(r.length);
-    for (let i = 0; i < r.length; i++) b[i] = r.charCodeAt(i);
+    for (let i = 0; i < r.length; i++) b[i] = r.codePointAt(i);
     return new TextDecoder().decode(b);
 }
 
@@ -117,7 +117,7 @@ function finalizeTurn(stats) {
         } else if (el.classList.contains('context-section')) {
             chip.className = 'turn-chip ctx';
             const n = el.querySelectorAll('.ctx-file').length;
-            chip.textContent = '\uD83D\uDCCE ' + n + ' file' + (n !== 1 ? 's' : '');
+            chip.textContent = '\uD83D\uDCCE ' + n + ' file' + (n === 1 ? '' : 's');
         } else if (el.classList.contains('status-row')) {
             if (el.classList.contains('error')) {
                 chip.className = 'turn-chip err';
@@ -174,7 +174,7 @@ function finalizeTurn(stats) {
         if (existing) {
             existing.textContent = stats.mult;
             const short = stats.model.split('/').pop().substring(0, 30);
-            existing.dataset.tip = short + ' \u00B7 ' + stats.tools + ' tool' + (stats.tools !== 1 ? 's' : '');
+            existing.dataset.tip = short + ' \u00B7 ' + stats.tools + ' tool' + (stats.tools === 1 ? '' : 's');
             existing.removeAttribute('id');
         }
     }

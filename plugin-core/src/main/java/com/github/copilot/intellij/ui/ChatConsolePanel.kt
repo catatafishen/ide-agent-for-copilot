@@ -1,6 +1,5 @@
 package com.github.copilot.intellij.ui
 
-import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -547,7 +546,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     }
                     displayName = "$displayName: $short"
                 }
-            } catch (_: Exception) { // subtitle extraction is best-effort
+            } catch (_: Exception) {
+                // subtitle extraction is best-effort
             }
         }
         val safeDisplayName = escapeHtml(displayName)

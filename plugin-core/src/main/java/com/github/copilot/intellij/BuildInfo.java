@@ -12,7 +12,7 @@ public final class BuildInfo {
 
     static {
         try (InputStream is = BuildInfo.class.getClassLoader()
-                .getResourceAsStream("build-info.properties")) {
+            .getResourceAsStream("build-info.properties")) {
             if (is != null) PROPS.load(is);
         } catch (Exception ignored) { // properties file is optional at dev time
         }

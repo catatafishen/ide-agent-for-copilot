@@ -3,7 +3,6 @@ package com.github.copilot.intellij.psi;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.Project;
@@ -126,12 +125,8 @@ final class SonarQubeIntegration {
 
         EdtUtil.invokeLater(() -> {
             try {
-                var dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
-                    .add(CommonDataKeys.PROJECT, project)
-                    .build();
-
-                var event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action, null, "Copilot Bridge", dataContext);
-                action.actionPerformed(event);
+                var frame = com.intellij.openapi.wm.WindowManager.getInstance().getFrame(project);
+                ActionManager.getInstance().tryToExecute(action, null, frame, "Copilot Bridge", true);
                 future.complete(true);
             } catch (Exception e) {
                 LOG.warn("Failed to trigger SonarLint action: " + actionId, e);
