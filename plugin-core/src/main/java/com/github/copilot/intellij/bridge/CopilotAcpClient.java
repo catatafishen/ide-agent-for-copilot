@@ -292,10 +292,20 @@ public class CopilotAcpClient implements Closeable {
                     LOG.info("MCP code-tools configured globally via " + mcpConfigFile.getAbsolutePath());
                 } catch (IOException e) {
                     LOG.warn("Failed to write MCP config file", e);
+                    showNotification("MCP Server Error",
+                        "Failed to write MCP config file: " + e.getMessage() + "\nIntelliJ tools will be unavailable.",
+                        com.intellij.notification.NotificationType.ERROR);
                 }
             } else {
                 LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
+                showNotification("MCP Server Error",
+                    "Java not found at: " + javaPath + "\nIntelliJ tools will be unavailable.",
+                    com.intellij.notification.NotificationType.ERROR);
             }
+        } else {
+            showNotification("MCP Server Error",
+                "MCP server JAR not found. IntelliJ code tools will be unavailable.\nCheck IDE log for details.",
+                com.intellij.notification.NotificationType.ERROR);
         }
 
         return new ProcessBuilder(cmd);
