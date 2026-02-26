@@ -213,7 +213,7 @@ internal class BillingManager {
         val resetFormatted = resetDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
 
         val sb = StringBuilder("<html>")
-        sb.append("Day $currentDay / $totalDays<br>")
+        sb.append("Day ${currentDay + 1} / $totalDays<br>")
         sb.append("Usage: $used / $entitlement<br>")
         if (overage > 0) {
             val cost = overage * overageCostPerReq
@@ -338,7 +338,7 @@ internal class BillingManager {
         val infoHtml = buildString {
             append("<html>")
             append("Used: <b>${data.usedSoFar}</b> / ${data.entitlement}")
-            append(" &nbsp;\u00B7&nbsp; Day ${data.currentDay} of ${data.totalDays}")
+            append(" &nbsp;\u00B7&nbsp; Day ${data.currentDay + 1} of ${data.totalDays}")
             append(" &nbsp;\u00B7&nbsp; Projected: ~$projected")
             if (overQuota) {
                 val overage = data.usedSoFar - data.entitlement
