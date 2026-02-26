@@ -80,6 +80,7 @@ final class GitToolHandler {
     }
 
     String gitStatus(JsonObject args) throws Exception {
+        fileTools.flushPendingAutoFormat();
         saveAllDocuments();
         boolean verbose = args.has("verbose") && args.get("verbose").getAsBoolean();
         if (verbose) {
@@ -89,6 +90,7 @@ final class GitToolHandler {
     }
 
     String gitDiff(JsonObject args) throws Exception {
+        fileTools.flushPendingAutoFormat();
         saveAllDocuments();
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("diff");
@@ -181,8 +183,9 @@ final class GitToolHandler {
     }
 
     String gitStage(JsonObject args) throws Exception {
-        // Flush pending auto-format so staged files include formatting
+        // Flush pending auto-format and save all documents so staged files include formatting
         fileTools.flushPendingAutoFormat();
+        saveAllDocuments();
 
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("add");
