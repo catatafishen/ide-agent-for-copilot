@@ -148,7 +148,10 @@ body {
 
 /* --- Collapsible section (shared by thinking + tool calls) --- */
 .collapse-section {
-    margin: 4px 0
+    margin: 4px 0;
+    overflow: hidden;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    transform-origin: top center
 }
 
 .collapse-header {
@@ -176,6 +179,12 @@ body {
 
 .collapse-section.collapsed .collapse-content {
     display: none
+}
+
+.collapse-section.collapsing {
+    opacity: 0;
+    transform: scaleY(0.3);
+    pointer-events: none
 }
 
 .collapse-icon {
@@ -251,6 +260,16 @@ body {
     to {
         transform: rotate(360deg)
     }
+}
+
+@keyframes chipIn {
+    from { opacity: 0; transform: scale(0.5) }
+    to { opacity: 1; transform: scale(1) }
+}
+
+@keyframes chipExpand {
+    from { opacity: 0; transform: translateY(-4px) }
+    to { opacity: 1; transform: translateY(0) }
 }
 
 /* --- Sub-agent conversations --- */
@@ -339,6 +358,7 @@ body {
     padding: 4px 10px;
     font-size: 0.82em;
     position: relative;
+    animation: chipExpand 0.2s ease-out;
 }
 
 .chip-expanded.tool-section .collapse-content {
@@ -443,6 +463,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    animation: chipIn 0.25s ease-out;
 }
 
 .turn-chip:hover {

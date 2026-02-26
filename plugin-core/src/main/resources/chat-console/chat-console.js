@@ -66,6 +66,14 @@ function toggleMeta(el) {
     if (m) m.classList.toggle('show');
 }
 
+function animateCollapse(el, callback) {
+    el.classList.add('collapsing');
+    setTimeout(function() {
+        el.classList.remove('collapsing');
+        callback();
+    }, 250);
+}
+
 function finalizeTurn(stats) {
     const items = document.querySelectorAll(
         '.thinking-section:not(.turn-hidden),' +
@@ -128,26 +136,32 @@ function finalizeTurn(stats) {
                     btn.textContent = '\u2715';
                     btn.onclick = function (e) {
                         e.stopPropagation();
-                        el.classList.add('turn-hidden', 'collapsed');
-                        el.classList.remove('chip-expanded');
                         chip.style.opacity = '1';
                         const b2 = el.querySelector('.chip-close');
                         if (b2) b2.remove();
+                        animateCollapse(el, function() {
+                            el.classList.add('turn-hidden', 'collapsed');
+                            el.classList.remove('chip-expanded');
+                        });
                     };
                     cc.insertBefore(btn, cc.firstChild);
                 }
             } else {
-                el.classList.add('turn-hidden', 'collapsed');
-                el.classList.remove('chip-expanded');
                 chip.style.opacity = '1';
                 const btn2 = el.querySelector('.chip-close');
                 if (btn2) btn2.remove();
+                animateCollapse(el, function() {
+                    el.classList.add('turn-hidden', 'collapsed');
+                    el.classList.remove('chip-expanded');
+                });
             }
         };
-        el.classList.add('turn-hidden');
         el.dataset.chipOwned = '1';
         targetMeta.appendChild(chip);
         targetMeta.classList.add('show');
+        animateCollapse(el, function() {
+            el.classList.add('turn-hidden');
+        });
     });
     if (stats && stats.mult) {
         const existing = document.getElementById('turn-stats');
@@ -195,17 +209,18 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     const fullText = (lbl ? lbl.textContent : 'Tool');
     chip.textContent = fullText.length > 50 ? fullText.substring(0, 47) + '\u2026' : fullText;
     if (fullText.length > 50) chip.setAttribute('data-tip', fullText);
-    el.classList.add('turn-hidden');
     el.dataset.chipOwned = '1';
     chip.dataset.chipFor = elId;
     chip.style.cursor = 'pointer';
 
     function closeSection() {
-        el.classList.add('turn-hidden', 'collapsed');
-        el.classList.remove('chip-expanded');
         chip.style.opacity = '1';
         const btn = el.querySelector('.chip-close');
         if (btn) btn.remove();
+        animateCollapse(el, function() {
+            el.classList.add('turn-hidden', 'collapsed');
+            el.classList.remove('chip-expanded');
+        });
     }
 
     chip.onclick = function (ev) {
@@ -231,6 +246,9 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     };
     targetMeta.appendChild(chip);
     targetMeta.classList.add('show');
+    animateCollapse(el, function() {
+        el.classList.add('turn-hidden');
+    });
     scrollIfNeeded();
 }
 
@@ -257,17 +275,18 @@ function _doCollapseThinkingToChip(el, elId, targetMeta) {
     const chip = document.createElement('span');
     chip.className = 'turn-chip';
     chip.textContent = '\uD83D\uDCAD Thought';
-    el.classList.add('turn-hidden');
     el.dataset.chipOwned = '1';
     chip.dataset.chipFor = elId;
     chip.style.cursor = 'pointer';
 
     function closeSection() {
-        el.classList.add('turn-hidden', 'collapsed');
-        el.classList.remove('chip-expanded');
         chip.style.opacity = '1';
         const btn = el.querySelector('.chip-close');
         if (btn) btn.remove();
+        animateCollapse(el, function() {
+            el.classList.add('turn-hidden', 'collapsed');
+            el.classList.remove('chip-expanded');
+        });
     }
 
     chip.onclick = function (ev) {
@@ -293,6 +312,9 @@ function _doCollapseThinkingToChip(el, elId, targetMeta) {
     };
     targetMeta.appendChild(chip);
     targetMeta.classList.add('show');
+    animateCollapse(el, function() {
+        el.classList.add('turn-hidden');
+    });
     scrollIfNeeded();
 }
 
