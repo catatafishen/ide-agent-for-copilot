@@ -34,7 +34,7 @@
 plugin that embeds GitHub Copilot's full agent capabilities directly into the IDE via the **Agent
 Client Protocol (ACP)**. Unlike the official GitHub Copilot plugin — which focuses on inline code
 completions — this plugin provides a multi-turn conversational agent with deep IDE integration through
-**54+ MCP (Model Context Protocol) tools**.
+**60 MCP (Model Context Protocol) tools**.
 
 The plugin spawns the GitHub Copilot CLI (`copilot --acp --stdio`) as a subprocess and communicates
 via JSON-RPC 2.0. The agent can reason, plan, execute tool calls, and iterate — all while reading
@@ -169,6 +169,7 @@ distinctly from full-file attachments, allowing precise code targeting.
 ### How Context Reaches the Agent
 
 Each context item is converted to an ACP `ResourceReference` containing:
+
 - A `file://` URI with optional `#L{start}-L{end}` fragment for selections
 - The MIME type (mapped from file extension)
 - The actual file text (read from the live editor buffer, not disk)
@@ -246,6 +247,7 @@ live buffer content (including unsaved changes), not the on-disk version. Parame
 ### `intellij_write_file` / `write_file`
 
 The primary editing tool. Supports three modes:
+
 1. **Full content write** (`content` parameter) — replaces entire file
 2. **Partial string replace** (`old_str` + `new_str`) — finds and replaces exactly one occurrence
 3. **Line-range replace** (`start_line` + `new_str`, optional `end_line`)
@@ -325,6 +327,7 @@ Persists to `ProjectDictionaryState`.
 ### `refactor`
 
 Performs automated refactoring operations:
+
 - **rename** — renames a symbol and updates all references
 - **extract_method** — extracts a code block into a new method
 - **inline** — inlines a method/variable at all usage sites
@@ -467,7 +470,7 @@ Parameters: `library` (optional filter by library name).
 
 ### Run Configurations
 
-Three tools manage IntelliJ run configurations:
+Four tools manage IntelliJ run configurations:
 
 - **`list_run_configurations`** — Enumerates all run/debug configurations with their types and
   settings.
@@ -512,6 +515,7 @@ Reads output from the most recent build, test, or run execution in the Run panel
 - **`run_in_terminal`** — Executes a command in IntelliJ's built-in terminal (new or existing tab).
   Editor buffers are flushed before execution.
 - **`read_terminal_output`** — Captures the content of a terminal tab for agent processing.
+- **`list_terminals`** — Enumerates open terminal tabs in the IDE.
 
 ---
 
@@ -526,6 +530,7 @@ Opens a file in the editor and optionally navigates to a specific line. Uses
 ### `show_diff`
 
 Displays a diff viewer for comparing:
+
 - A file against proposed new content (agent changes)
 - Two files side-by-side
 - A file against its VCS version
@@ -548,15 +553,22 @@ Enumerates all scratch files created in the IDE.
 
 ### Tool Window
 
-The plugin registers a **dedicated tool window** (docked to the right panel by default) with a clean
-layout:
+The plugin registers a **dedicated tool window** (docked to the right panel by default) with a
+single-panel layout — no tabs:
 
-- **Title Bar Actions**: "New Chat" (restart icon) resets the conversation; "Settings" (gear icon)
-  opens the configuration dialog.
+- **Title Bar Actions**: "New Chat" (restart icon) resets the conversation.
 - **Chat Console** (top section): A JCEF (Chromium Embedded Framework) browser rendering the
   conversation as styled HTML. Falls back to a plain JBTextArea if CEF is unavailable.
 - **Prompt Area** (bottom section): An `EditorTextField` with placeholder text, multi-line support
-  (Shift+Enter for new lines, Enter to send), and an attachments panel showing context files.
+  (Shift+Enter for new lines, Enter to send), and an attachments panel showing context files as
+  removable chips.
+- **Toolbar** (between chat and prompt): Two toolbars containing all actions — Send/Stop,
+  Attach File, Attach Selection, Model Selector, Mode Selector (Agent/Plan), toggle settings
+  (Follow Agent Files, Format After Edit, Build/Test/Commit Before End), Copy Conversation, and
+  Help. A processing timer and usage graph display on the right side.
+
+Debug events, timeline, and plugin logs are accessible via **modal dialogs** (not tabs in the main
+view), opened from the context menu or keyboard shortcuts.
 
 ### Message Bubbles
 
@@ -573,13 +585,13 @@ layout:
 When an agent turn completes, intermediate sections automatically collapse into compact **chips** in
 a metadata row:
 
-| Chip | Represents |
-|------|-----------|
-| 💭 Thought | Agent reasoning (thinking blocks) |
-| 🔧 *tool_name* | Tool call with ✓/✖ status icon |
-| 📎 N files | Attached context files |
-| ❌ Error | Failed operations |
-| *Nx* | Model multiplier (with tooltip showing model name) |
+| Chip           | Represents                                         |
+|----------------|----------------------------------------------------|
+| 💭 Thought     | Agent reasoning (thinking blocks)                  |
+| 🔧 *tool_name* | Tool call with ✓/✖ status icon                     |
+| 📎 N files     | Attached context files                             |
+| ❌ Error        | Failed operations                                  |
+| *Nx*           | Model multiplier (with tooltip showing model name) |
 
 Clicking a chip expands the corresponding section inline; a close button (✕) re-collapses it.
 Sections animate with a smooth 250ms fade + scale transition.
@@ -595,15 +607,15 @@ proper `role="button"` attributes.
 
 The plugin dynamically extracts IDE theme colors and injects them as CSS custom properties:
 
-| Variable | Source | Purpose |
-|----------|--------|---------|
-| `--fg` | Label.foreground | Text color |
-| `--bg` | ToolWindow background | Chat background |
-| `--user` | Component.linkColor | User bubble accent |
-| `--agent` | VersionControl.GitGreen | Agent bubble accent |
-| `--tool` | EditorTabs.selectedForeground | Tool call accent |
-| `--think` | Label.disabledForeground | Thinking section color |
-| `--code-bg` | Editor.backgroundColor | Code block background |
+| Variable    | Source                        | Purpose                |
+|-------------|-------------------------------|------------------------|
+| `--fg`      | Label.foreground              | Text color             |
+| `--bg`      | ToolWindow background         | Chat background        |
+| `--user`    | Component.linkColor           | User bubble accent     |
+| `--agent`   | VersionControl.GitGreen       | Agent bubble accent    |
+| `--tool`    | EditorTabs.selectedForeground | Tool call accent       |
+| `--think`   | Label.disabledForeground      | Thinking section color |
+| `--code-bg` | Editor.backgroundColor        | Code block background  |
 
 When the IDE theme changes, a `LafManagerListener` re-injects all CSS variables instantly — no page
 reload needed.
@@ -644,18 +656,18 @@ rounded thumb that brightens on hover.
 
 ### Agent Behavior Settings
 
-| Setting | Default | Range | Description |
-|---------|---------|-------|-------------|
-| **Inactivity Timeout** | 300 seconds | 30–600s | Stops the agent if no activity (no streaming chunks or tool calls) for this duration. Prevents hung agents from consuming resources indefinitely. |
-| **Max Tool Calls Per Turn** | 0 (unlimited) | 0–500 | Limits tool invocations per turn. `0` means unlimited. Prevents runaway loops where the agent calls the same tool repeatedly. |
+| Setting                     | Default       | Range   | Description                                                                                                                                       |
+|-----------------------------|---------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Inactivity Timeout**      | 300 seconds   | 30–600s | Stops the agent if no activity (no streaming chunks or tool calls) for this duration. Prevents hung agents from consuming resources indefinitely. |
+| **Max Tool Calls Per Turn** | 0 (unlimited) | 0–500   | Limits tool invocations per turn. `0` means unlimited. Prevents runaway loops where the agent calls the same tool repeatedly.                     |
 
 ### Workflow Automation Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Format After Edit** | `true` | Automatically run optimize imports + reformat code after every file write. |
-| **Build Before End** | `false` | Instruct the agent to run `build_project` before completing a task. |
-| **Test Before End** | `false` | Instruct the agent to run `run_tests` before completing a task. |
+| Setting               | Default | Description                                                                    |
+|-----------------------|---------|--------------------------------------------------------------------------------|
+| **Format After Edit** | `true`  | Automatically run optimize imports + reformat code after every file write.     |
+| **Build Before End**  | `false` | Instruct the agent to run `build_project` before completing a task.            |
+| **Test Before End**   | `false` | Instruct the agent to run `run_tests` before completing a task.                |
 | **Commit Before End** | `false` | Instruct the agent to run `git_stage` + `git_commit` before completing a task. |
 
 When workflow settings are enabled, corresponding instructions are injected into the agent's prompt
@@ -663,16 +675,16 @@ When workflow settings are enabled, corresponding instructions are injected into
 
 ### Editor Integration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
+| Setting                | Default | Description                                                                 |
+|------------------------|---------|-----------------------------------------------------------------------------|
 | **Follow Agent Files** | `false` | Automatically open files in the editor when the agent reads or writes them. |
 
 ### Model & Session
 
-| Setting | Description |
-|---------|-------------|
+| Setting            | Description                                                                                          |
+|--------------------|------------------------------------------------------------------------------------------------------|
 | **Selected Model** | Persisted model choice (e.g., `claude-sonnet-4.6`). Applied to new sessions via `session/set_model`. |
-| **Session Mode** | `"agent"` (default) or `"plan"`. Plan mode prefixes prompts with `[[PLAN]]` for structured planning. |
+| **Session Mode**   | `"agent"` (default) or `"plan"`. Plan mode prefixes prompts with `[[PLAN]]` for structured planning. |
 
 ### Settings Persistence
 
@@ -690,13 +702,13 @@ with three tiers: **Deny**, **Ask**, and **Allow**.
 
 Five built-in Copilot CLI tool permissions are **always denied** at runtime:
 
-| Denied Tool | Reason | Redirect To |
-|-------------|--------|-------------|
-| `edit` | Reads stale disk files | `intellij_write_file` (live buffers + undo) |
-| `create` | Bypasses VFS indexing | `create_file` (VFS-integrated) |
-| `read` | Reads stale disk files | `intellij_read_file` (live buffers) |
-| `execute` | No output capture | `run_command` (paginated output) |
-| `runInTerminal` | No integration | `run_in_terminal` (IDE terminal) |
+| Denied Tool     | Reason                 | Redirect To                                 |
+|-----------------|------------------------|---------------------------------------------|
+| `edit`          | Reads stale disk files | `intellij_write_file` (live buffers + undo) |
+| `create`        | Bypasses VFS indexing  | `create_file` (VFS-integrated)              |
+| `read`          | Reads stale disk files | `intellij_read_file` (live buffers)         |
+| `execute`       | No output capture      | `run_command` (paginated output)            |
+| `runInTerminal` | No integration         | `run_in_terminal` (IDE terminal)            |
 
 **Why?** GitHub Copilot CLI has a known bug (#556) where tool filtering doesn't work in ACP mode.
 The plugin works around this by denying permissions at runtime and sending corrective guidance to
@@ -705,6 +717,7 @@ redirect the agent toward IntelliJ MCP tools.
 ### Denial & Auto-Retry Flow
 
 When a tool is denied:
+
 1. **Pre-rejection guidance** is sent to the agent explaining which MCP tool to use instead
 2. The denial is logged to the Debug tab
 3. If the turn ends with denials, the plugin **auto-retries** up to 3 times with accumulated
@@ -714,11 +727,11 @@ When a tool is denied:
 
 The plugin detects and blocks misuse patterns:
 
-| Pattern | Detection | Action |
-|---------|-----------|--------|
-| **run_command abuse** | Shell commands for tasks covered by dedicated tools | Deny + redirect |
-| **CLI tool abuse** | Agent targeting project files with CLI tools | Deny + redirect |
-| **Sub-agent git write** | Sub-agent (Task tool) attempting git writes | Deny (only parent agent may commit) |
+| Pattern                 | Detection                                           | Action                              |
+|-------------------------|-----------------------------------------------------|-------------------------------------|
+| **run_command abuse**   | Shell commands for tasks covered by dedicated tools | Deny + redirect                     |
+| **CLI tool abuse**      | Agent targeting project files with CLI tools        | Deny + redirect                     |
+| **Sub-agent git write** | Sub-agent (Task tool) attempting git writes         | Deny (only parent agent may commit) |
 
 ### Auto-Approval
 
@@ -782,38 +795,38 @@ current tool call fails — not the entire plugin. The PSI Bridge HTTP server li
 
 ### This Plugin vs. GitHub Copilot CLI (Terminal)
 
-| Aspect | This Plugin | CLI in Terminal |
-|--------|-------------|-----------------|
-| **File reads** | Live editor buffers (includes unsaved changes) | Disk files (may be stale) |
-| **File writes** | IntelliJ Document API (full undo/redo support) | Direct filesystem (no undo, triggers "file changed externally") |
-| **Code intelligence** | PSI-based symbol search, inspections, type hierarchy | Text-based grep/find |
-| **Test execution** | IDE test runner with coverage metrics | Shell-based (`./gradlew test`) |
-| **Git operations** | Integrated with VFS buffer flushing | Direct git commands |
-| **UI** | Native tool window with streaming, plans, timeline | Terminal JSON output |
-| **Context** | Structured file/selection references with MIME types | Manual paste |
-| **Formatting** | Auto-format + optimize imports after writes | None |
-| **Error recovery** | Auto-restart with exponential backoff | Manual restart |
-| **Permission control** | Granular per-tool permissions with abuse detection | None |
+| Aspect                 | This Plugin                                          | CLI in Terminal                                                 |
+|------------------------|------------------------------------------------------|-----------------------------------------------------------------|
+| **File reads**         | Live editor buffers (includes unsaved changes)       | Disk files (may be stale)                                       |
+| **File writes**        | IntelliJ Document API (full undo/redo support)       | Direct filesystem (no undo, triggers "file changed externally") |
+| **Code intelligence**  | PSI-based symbol search, inspections, type hierarchy | Text-based grep/find                                            |
+| **Test execution**     | IDE test runner with coverage metrics                | Shell-based (`./gradlew test`)                                  |
+| **Git operations**     | Integrated with VFS buffer flushing                  | Direct git commands                                             |
+| **UI**                 | Native tool window with streaming, plans, timeline   | Terminal JSON output                                            |
+| **Context**            | Structured file/selection references with MIME types | Manual paste                                                    |
+| **Formatting**         | Auto-format + optimize imports after writes          | None                                                            |
+| **Error recovery**     | Auto-restart with exponential backoff                | Manual restart                                                  |
+| **Permission control** | Granular per-tool permissions with abuse detection   | None                                                            |
 
 **When to use the CLI instead:** If you prefer working entirely in the terminal, need to use Copilot
 outside of IntelliJ, or want to avoid the plugin overhead.
 
 ### This Plugin vs. Official GitHub Copilot IntelliJ Plugin
 
-| Aspect | This Plugin | Official Plugin |
-|--------|-------------|-----------------|
-| **Primary function** | Multi-turn agentic conversation with 54+ tools | Inline code completions & chat |
-| **Agent reasoning** | Full agent loop — plan, execute, iterate | No agentic capabilities |
-| **Tool calling** | 54+ MCP tools (code navigation, testing, git, etc.) | No tool calling |
-| **File operations** | Document API with undo support | Inline suggestion acceptance |
-| **Multi-turn conversation** | Yes, with session persistence and plan mode | Limited chat (no persistence) |
-| **Sub-agents** | Specialized sub-agents (Explore, Task, Review) | None |
-| **Project awareness** | Full (build system, modules, run configs, SDKs) | Current file context |
-| **Inspections/refactoring** | Agent can run inspections and apply refactorings | None |
-| **Test execution** | Agent can run and analyze tests | None |
-| **Model selection** | All available models with cost multiplier display | Fixed model |
-| **Code completion** | Not supported (different use case) | Primary feature |
-| **Inline suggestions** | Not supported | Primary feature |
+| Aspect                      | This Plugin                                        | Official Plugin                |
+|-----------------------------|----------------------------------------------------|--------------------------------|
+| **Primary function**        | Multi-turn agentic conversation with 60 tools      | Inline code completions & chat |
+| **Agent reasoning**         | Full agent loop — plan, execute, iterate           | No agentic capabilities        |
+| **Tool calling**            | 60 MCP tools (code navigation, testing, git, etc.) | No tool calling                |
+| **File operations**         | Document API with undo support                     | Inline suggestion acceptance   |
+| **Multi-turn conversation** | Yes, with session persistence and plan mode        | Limited chat (no persistence)  |
+| **Sub-agents**              | Specialized sub-agents (Explore, Task, Review)     | None                           |
+| **Project awareness**       | Full (build system, modules, run configs, SDKs)    | Current file context           |
+| **Inspections/refactoring** | Agent can run inspections and apply refactorings   | None                           |
+| **Test execution**          | Agent can run and analyze tests                    | None                           |
+| **Model selection**         | All available models with cost multiplier display  | Fixed model                    |
+| **Code completion**         | Not supported (different use case)                 | Primary feature                |
+| **Inline suggestions**      | Not supported                                      | Primary feature                |
 
 **When to use the Official Plugin instead:** For inline code completions while typing, tab-to-accept
 suggestions, and lightweight code assistance that doesn't require multi-turn conversation. The two
@@ -823,7 +836,7 @@ plugins are complementary — you can use both simultaneously.
 
 1. **IDE-Native File Operations** — Writes through Document API with undo; reads from live buffers
 2. **PSI-Based Code Intelligence** — Semantic symbol search, not text grep
-3. **54+ Specialized MCP Tools** — Inspections, refactoring, testing, run configs, terminal
+3. **60 Specialized MCP Tools** — Inspections, refactoring, testing, run configs, terminal
 4. **Permission System** — Prevents agent from using stale filesystem tools
 5. **Sub-Agent Architecture** — Isolated sub-agents with restricted git access
 6. **Deferred Auto-Formatting** — Batch format at turn end, not per-write
@@ -838,7 +851,7 @@ plugins are complementary — you can use both simultaneously.
 
 Agentic GitHub Copilot for JetBrains transforms IntelliJ into a fully agentic development
 environment. It takes the reasoning power of GitHub Copilot's agent and gives it deep access to
-IntelliJ's code intelligence, testing, and project management APIs through 54+ MCP tools.
+IntelliJ's code intelligence, testing, and project management APIs through 60 MCP tools.
 
 The plugin handles the complexity of bridging two architectures — the Copilot CLI's ACP protocol
 and IntelliJ's PSI/VFS/Document APIs — while providing a polished UI with streaming responses,
@@ -848,6 +861,6 @@ For developers who want more than inline completions but need tighter IDE integr
 can provide, this plugin occupies a unique position: the agentic capabilities of the CLI with the
 code intelligence of the IDE.
 
-**Total capabilities:** 54+ MCP tools • 10+ configurable settings • 8-color sub-agent palette •
+**Total capabilities:** 60 MCP tools • 12 configurable settings • 8-color sub-agent palette •
 Multi-model support • Plan & Agent modes • Full undo/redo • Auto-format • Usage tracking •
 Auto-restart • Permission control • Conversation persistence

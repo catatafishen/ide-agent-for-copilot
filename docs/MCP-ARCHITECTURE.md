@@ -2,9 +2,11 @@
 
 ## Overview
 
-The **Model Context Protocol (MCP)** integration in this IntelliJ plugin provides a standardized way for AI agents (via GitHub Copilot) to interact with IntelliJ IDEA's code intelligence, project structure, and development tools.
+The **Model Context Protocol (MCP)** integration in this IntelliJ plugin provides a standardized way for AI agents (via
+GitHub Copilot) to interact with IntelliJ IDEA's code intelligence, project structure, and development tools.
 
-The MCP server acts as a bridge between the Copilot agent and IntelliJ's internal APIs, exposing 36+ tools through a JSON-RPC stdio interface.
+The MCP server acts as a bridge between the Copilot agent and IntelliJ's internal APIs, exposing 60 tools through a
+JSON-RPC stdio interface.
 
 ---
 
@@ -63,7 +65,7 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 │  │  Methods:                                                    │ │
 │  │    • initialize       - Server capabilities & protocol ver  │ │
 │  │    • initialized      - Handshake notification              │ │
-│  │    • tools/list       - List available tools (36+ tools)    │ │
+│  │    • tools/list       - List available tools (60 tools)     │ │
 │  │    • tools/call       - Execute a specific tool             │ │
 │  │    • ping             - Health check                        │ │
 │  └───────────────────────┬──────────────────────────────────────┘ │
@@ -90,17 +92,20 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 **Purpose:** Exposes IntelliJ's internal APIs via HTTP for consumption by the MCP server.
 
 **Key Files:**
+
 - `PsiBridgeService.java` - HTTP server that handles tool invocations
 - `PsiBridgeStartup.java` - Starts the bridge when project opens
 
 **Responsibilities:**
+
 - Starts HTTP server on dynamic port (localhost only)
-- Exposes 36+ tools as HTTP endpoints
+- Exposes 60 tools as HTTP endpoints
 - Translates HTTP requests into IntelliJ API calls
 - Returns results as JSON responses
 - Manages per-project instance lifecycle
 
-**Port Discovery:** The MCP server discovers the PSI Bridge port via an environment variable or config file set by the plugin when launching the Copilot CLI.
+**Port Discovery:** The MCP server discovers the PSI Bridge port via an environment variable or config file set by the
+plugin when launching the Copilot CLI.
 
 ---
 
@@ -111,6 +116,7 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 **Purpose:** Manages GitHub Copilot CLI lifecycle and ACP communication.
 
 **Responsibilities:**
+
 - Launches `copilot-agent` CLI with MCP configuration
 - Passes `mcpServers` parameter in ACP session creation
 - Configures MCP server JAR path, working directory, and transport
@@ -118,13 +124,15 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 - Handles Copilot authentication flow
 
 **MCP Configuration Example:**
+
 ```json
 {
   "mcpServers": {
     "intellij-code-tools": {
       "command": "java",
       "args": [
-        "-cp", "/path/to/mcp-server.jar",
+        "-cp",
+        "/path/to/mcp-server.jar",
         "com.github.copilot.mcp.McpServer",
         "/path/to/project/root"
       ],
@@ -165,6 +173,7 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 #### JSON-RPC Message Format
 
 **Request:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -181,6 +190,7 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 ```
 
 **Response:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -200,9 +210,10 @@ The MCP server acts as a bridge between the Copilot agent and IntelliJ's interna
 
 ## Tool Categories
 
-The MCP server exposes **36 tools** organized into 8 categories:
+The MCP server exposes **60 tools** organized into 11 categories:
 
 ### 1. Code Navigation (5 tools)
+
 - `search_symbols` - Find class/method/interface definitions via AST
 - `get_file_outline` - Get file structure with line numbers
 - `find_references` - Find all usages of a symbol
@@ -210,27 +221,32 @@ The MCP server exposes **36 tools** organized into 8 categories:
 - `list_tests` - Discover test classes and methods
 
 ### 2. Testing & Quality (3 tools)
+
 - `run_tests` - Execute tests via IntelliJ test runner
 - `get_test_results` - Get last test run results
 - `get_coverage` - Read JaCoCo/IntelliJ coverage data
 
 ### 3. Project Environment (3 tools)
+
 - `get_project_info` - Get JDK, modules, build system info
 - `list_run_configurations` - List IntelliJ run configs
 - `get_problems` - Get warnings/errors from IntelliJ inspections
 
 ### 4. Run Configurations (3 tools)
+
 - `run_configuration` - Execute existing run config
 - `create_run_configuration` - Create new run config
 - `edit_run_configuration` - Modify existing run config
 
 ### 5. Code Editing (4 tools)
+
 - `intellij_read_file` - Read file via IntelliJ buffer (supports unsaved changes)
 - `intellij_write_file` - Write file via Document API (undo support, VCS tracking)
 - `optimize_imports` - Organize imports per code style
 - `format_code` - Format code per code style
 
 ### 6. Git Operations (11 tools)
+
 - `git_status`, `git_diff`, `git_log`, `git_show` - Repository inspection
 - `git_commit`, `git_stage`, `git_unstage` - Staging and commits
 - `git_branch` - Branch management (list/create/switch/delete)
@@ -238,10 +254,12 @@ The MCP server exposes **36 tools** organized into 8 categories:
 - `git_blame` - Line-by-line authorship
 
 ### 7. Infrastructure (2 tools)
+
 - `http_request` - Make HTTP calls (for API testing)
 - `run_command` - Execute shell commands in project directory
 
 ### 8. Terminal & Logs (6 tools)
+
 - `run_in_terminal` - Execute commands in IntelliJ terminal tabs
 - `list_terminals` - List available shells and terminal tabs
 - `read_terminal_output` - Read terminal content
@@ -250,6 +268,7 @@ The MCP server exposes **36 tools** organized into 8 categories:
 - `get_notifications` - Get IDE notifications
 
 ### 9. Documentation (3 tools)
+
 - `get_documentation` - Get Javadoc for JDK/library symbols
 - `download_sources` - Check/download source JARs for dependencies
 - `create_scratch_file` - Create scratch files with syntax highlighting
@@ -308,6 +327,7 @@ The MCP server exposes **36 tools** organized into 8 categories:
 ### Project Root Discovery
 
 The MCP server receives the project root as the first CLI argument:
+
 ```bash
 java -cp mcp-server.jar com.github.copilot.mcp.McpServer /path/to/project
 ```
@@ -337,6 +357,7 @@ The MCP server needs to know which port the PSI Bridge is listening on. Options:
 ### MCP Server Errors
 
 **JSON-RPC Error Response:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -349,6 +370,7 @@ The MCP server needs to know which port the PSI Bridge is listening on. Options:
 ```
 
 **Error Codes:**
+
 - `-32600` - Invalid Request
 - `-32601` - Method Not Found
 - `-32602` - Invalid Params
@@ -357,11 +379,13 @@ The MCP server needs to know which port the PSI Bridge is listening on. Options:
 ### PSI Bridge Errors
 
 **HTTP Error Responses:**
+
 - `400 Bad Request` - Invalid tool arguments
 - `404 Not Found` - Unknown tool name
 - `500 Internal Server Error` - IntelliJ API failure
 
 **Example:**
+
 ```json
 {
   "error": "Tool not found: invalid_tool_name",
@@ -372,6 +396,7 @@ The MCP server needs to know which port the PSI Bridge is listening on. Options:
 ### Agent Handling
 
 When a tool call fails:
+
 1. Agent receives error in JSON-RPC response
 2. Agent may retry with corrected parameters
 3. Agent may ask user for clarification
@@ -432,11 +457,13 @@ These guidelines help the AI agent use IntelliJ's native capabilities effectivel
 ### Caching Strategies
 
 **PSI Bridge:**
+
 - Cache PSI parse trees (managed by IntelliJ)
 - Cache project file index queries (5-minute TTL)
 - Reuse HTTP connections (keep-alive)
 
 **MCP Server:**
+
 - Stateless design (no caching needed)
 - Fast JSON parsing with Gson
 - Minimal memory footprint (~50 MB)
@@ -444,11 +471,13 @@ These guidelines help the AI agent use IntelliJ's native capabilities effectivel
 ### Concurrency
 
 **PSI Bridge:**
+
 - Handles multiple simultaneous tool calls
 - Uses IntelliJ's read/write locks for PSI access
 - Background threads for long-running operations
 
 **MCP Server:**
+
 - Single-threaded (one request at a time)
 - Agent manages concurrency at higher level
 - Fast response times (<100ms for most tools)
@@ -462,25 +491,28 @@ These guidelines help the AI agent use IntelliJ's native capabilities effectivel
 **Location:** `mcp-server/src/test/java/com/github/copilot/mcp/McpServerTest.java`
 
 **Coverage:**
+
 - Protocol conformance (initialize, tools/list, tools/call)
 - Error handling (invalid JSON, unknown methods)
 - Tool argument validation
 - Mock PSI Bridge responses
 
 **Example:**
+
 ```java
+
 @Test
 void testToolsListReturnsAllTools() {
     JsonObject request = new JsonObject();
     request.addProperty("jsonrpc", "2.0");
     request.addProperty("id", 1);
     request.addProperty("method", "tools/list");
-    
+
     JsonObject response = McpServer.handleMessage(request);
-    
+
     assertEquals("2.0", response.get("jsonrpc").getAsString());
     JsonArray tools = response.getAsJsonObject("result")
-                              .getAsJsonArray("tools");
+            .getAsJsonArray("tools");
     assertTrue(tools.size() >= 36);
 }
 ```
@@ -490,6 +522,7 @@ void testToolsListReturnsAllTools() {
 **Location:** `integration-tests/`
 
 **Scenarios:**
+
 - Full plugin startup with MCP server launch
 - End-to-end tool invocations
 - Error recovery (MCP server crash, network timeout)
@@ -504,11 +537,13 @@ void testToolsListReturnsAllTools() {
 **Symptoms:** Agent fails to connect, no tools available
 
 **Diagnosis:**
+
 1. Check Copilot CLI logs: `copilot-agent --debug`
 2. Verify JAR path in MCP configuration
 3. Check Java version (requires Java 21+)
 
 **Solutions:**
+
 - Rebuild MCP server: `./gradlew :mcp-server:jar`
 - Verify `JAVA_HOME` points to Java 21+
 - Check project root path is correct
@@ -518,11 +553,13 @@ void testToolsListReturnsAllTools() {
 **Symptoms:** MCP tools return 500 errors
 
 **Diagnosis:**
+
 1. Check PSI Bridge port: `cat .psi-bridge-port`
 2. Verify HTTP server is running: `curl http://localhost:12345/health`
 3. Check IntelliJ logs: Help → Show Log in Files
 
 **Solutions:**
+
 - Restart plugin: Disable/Enable in Settings → Plugins
 - Check firewall (should allow localhost connections)
 - Verify no port conflicts (PSI Bridge uses dynamic port)
@@ -532,11 +569,13 @@ void testToolsListReturnsAllTools() {
 **Symptoms:** Agent waits indefinitely, no response
 
 **Diagnosis:**
+
 1. Check IntelliJ UI is not frozen (modal dialogs, indexing)
 2. Verify read actions are not blocked (PSI lock contention)
 3. Check MCP server logs: `stderr` from subprocess
 
 **Solutions:**
+
 - Wait for indexing to complete
 - Close modal dialogs in IntelliJ
 - Reduce concurrency (fewer simultaneous tool calls)

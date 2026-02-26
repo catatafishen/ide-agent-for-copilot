@@ -1,21 +1,27 @@
 # Development Guide
 
+> **⚠️ PARTIALLY OUTDATED**: This document contains references to a Go sidecar which has been removed. The plugin now
+> uses direct ACP integration with the Copilot CLI. See [QUICK-START.md](../QUICK-START.md) for current setup
+> instructions.
+
 ## Prerequisites
 
 ### Required Software
+
 - **JDK 21+** (Temurin recommended)
-  - Location: `C:\Users\developer\.jdks\temurin-21.0.6`
-  - Set `JAVA_HOME` environment variable
+    - Location: `C:\Users\developer\.jdks\temurin-21.0.6`
+    - Set `JAVA_HOME` environment variable
 - **Go 1.22+**
-  - Location: `C:\Go`
-  - Add `C:\Go\bin` to PATH
+    - Location: `C:\Go`
+    - Add `C:\Go\bin` to PATH
 - **Gradle 8.11**
-  - Location: `C:\Gradle\gradle-8.11`
-  - Add `C:\Gradle\gradle-8.11\bin` to PATH
+    - Location: `C:\Gradle\gradle-8.11`
+    - Add `C:\Gradle\gradle-8.11\bin` to PATH
 - **IntelliJ IDEA 2025.1+** (Community or Ultimate)
-  - Install Go plugin for sidecar development
+    - Install Go plugin for sidecar development
 
 ### Optional
+
 - **Git** (for version control)
 - **GitHub Copilot CLI** (for real SDK integration later)
 - **GitHub Copilot Subscription**
@@ -25,33 +31,37 @@
 ## Initial Setup
 
 ### 1. Clone and Open Project
+
 ```bash
 git clone <repository-url>
 cd intellij-copilot-plugin
 ```
 
 Open the project in IntelliJ IDEA:
+
 - File > Open > Select `intellij-copilot-plugin` directory
 - Wait for Gradle sync to complete (first time will download IntelliJ SDK ~400MB)
 
 ### 2. Configure IntelliJ for Plugin Development
+
 1. **Install Plugin DevKit** (if not already installed)
-   - File > Settings > Plugins
-   - Search for "Plugin DevKit"
-   - Install and restart
+    - File > Settings > Plugins
+    - Search for "Plugin DevKit"
+    - Install and restart
 
 2. **Enable Internal Mode** (optional, for debugging)
-   - Help > Edit Custom Properties
-   - Add: `idea.is.internal=true`
-   - Restart IDE
+    - Help > Edit Custom Properties
+    - Add: `idea.is.internal=true`
+    - Restart IDE
 
 3. **Configure Go Support**
-   - Right-click `copilot-bridge` directory
-   - Mark Directory as > Project Sources and Roots > Go Project Sources Root
-   - File > Settings > Languages & Frameworks > Go
-   - Set GOROOT to `C:\Go`
+    - Right-click `copilot-bridge` directory
+    - Mark Directory as > Project Sources and Roots > Go Project Sources Root
+    - File > Settings > Languages & Frameworks > Go
+    - Set GOROOT to `C:\Go`
 
 ### 3. Build the Go Sidecar
+
 ```bash
 cd copilot-bridge
 make build
@@ -60,6 +70,7 @@ make build
 This creates `copilot-bridge/bin/copilot-sidecar.exe`
 
 Verify it works:
+
 ```bash
 ./bin/copilot-sidecar.exe --help
 ./bin/copilot-sidecar.exe --port 8765
@@ -74,6 +85,7 @@ curl http://localhost:8765/health
 ### Building the Plugin
 
 #### Using Gradle Wrapper (recommended)
+
 ```bash
 # Full build
 ./gradlew build
@@ -89,6 +101,7 @@ curl http://localhost:8765/health
 ```
 
 #### Using IntelliJ Gradle Tool Window
+
 1. View > Tool Windows > Gradle
 2. Expand `intellij-copilot-plugin > Tasks`
 3. Double-click tasks like `build`, `test`, or `runIde`
@@ -100,12 +113,14 @@ curl http://localhost:8765/health
 ```
 
 This:
+
 1. Compiles the plugin
 2. Downloads IntelliJ IDEA (if needed)
 3. Launches a sandboxed IDE with plugin installed
 4. Sandbox data: `build/idea-sandbox/`
 
 To reset sandbox:
+
 ```bash
 rm -rf build/idea-sandbox
 ```
@@ -113,6 +128,7 @@ rm -rf build/idea-sandbox
 ### Hot Reload (Fast Iteration)
 
 While sandbox IDE is running:
+
 1. Make code changes
 2. In main IDE: Build > Build Project (Ctrl+F9)
 3. In sandbox IDE: Help > Actions > Reload All from Disk
@@ -191,6 +207,7 @@ public class NewTab extends JBPanel {
 ```
 
 Add to Tool Window:
+
 ```java
 // In AgenticCopilotToolWindow.java
 tabbedPane.addTab("New Tab", new NewTab());
@@ -224,6 +241,7 @@ public final class PreferenceService {
 ```
 
 Register in `plugin.xml`:
+
 ```xml
 <extensions defaultExtensionNs="com.intellij">
   <projectService 
@@ -252,6 +270,7 @@ public class InvokeAgentAction extends AnAction {
 ```
 
 Register in `plugin.xml`:
+
 ```xml
 <actions>
   <action id="AgenticCopilot.Invoke"
@@ -269,6 +288,7 @@ Register in `plugin.xml`:
 ## Testing
 
 ### Running Unit Tests
+
 ```bash
 # All tests
 ./gradlew test
@@ -287,6 +307,7 @@ Register in `plugin.xml`:
 ### Writing Tests
 
 **Unit Test Example**:
+
 ```java
 package com.github.copilot.intellij.bridge;
 
@@ -304,6 +325,7 @@ class SidecarClientTest {
 ```
 
 **Integration Test Example**:
+
 ```java
 package com.github.copilot.intellij;
 
@@ -339,6 +361,7 @@ class SidecarIntegrationTest {
 ## Debugging
 
 ### Debug Plugin in Sandbox IDE
+
 1. Add breakpoints in your code
 2. Run with debugger:
    ```bash
@@ -349,11 +372,12 @@ class SidecarIntegrationTest {
 5. Breakpoints will be hit in sandbox IDE
 
 ### Debug Go Sidecar
+
 1. In IntelliJ, create Run Configuration:
-   - Run > Edit Configurations > + > Go Build
-   - Package path: `github.com/yourusername/intellij-copilot-plugin/copilot-bridge/cmd/sidecar`
-   - Working directory: `copilot-bridge`
-   - Program arguments: `--port 8765 --debug`
+    - Run > Edit Configurations > + > Go Build
+    - Package path: `github.com/yourusername/intellij-copilot-plugin/copilot-bridge/cmd/sidecar`
+    - Working directory: `copilot-bridge`
+    - Program arguments: `--port 8765 --debug`
 2. Set breakpoints in Go code
 3. Click Debug button
 4. Test with curl or plugin
@@ -361,10 +385,12 @@ class SidecarIntegrationTest {
 ### View Logs
 
 **Plugin Logs**:
+
 - Help > Show Log in Explorer
 - Or: `build/idea-sandbox/system/log/idea.log`
 
 **Add Logging in Code**:
+
 ```java
 import com.intellij.openapi.diagnostic.Logger;
 
@@ -376,6 +402,7 @@ LOG.error("Error message", exception);
 ```
 
 **Sidecar Logs**:
+
 - Stdout/stderr when run manually
 - Or redirect to file:
   ```bash
@@ -387,7 +414,9 @@ LOG.error("Error message", exception);
 ## Common Issues
 
 ### Issue: Gradle sync fails with "Unresolved reference: intellijPlatform"
+
 **Solution**: Make sure IntelliJ Platform Gradle Plugin is applied correctly in `build.gradle.kts`:
+
 ```kotlin
 plugins {
     id("org.jetbrains.intellij.platform") version "2.1.0" apply false
@@ -395,7 +424,9 @@ plugins {
 ```
 
 ### Issue: Go module errors: "cannot find package"
+
 **Solution**:
+
 ```bash
 cd copilot-bridge
 go mod tidy
@@ -403,18 +434,24 @@ go mod download
 ```
 
 ### Issue: Sandbox IDE won't start
+
 **Solution**:
+
 1. Delete sandbox: `rm -rf build/idea-sandbox`
 2. Re-run: `./gradlew runIde`
 
 ### Issue: Changes not reflected in sandbox
+
 **Solution**:
+
 1. Stop sandbox IDE
 2. Clean build: `./gradlew clean build`
 3. Re-run: `./gradlew runIde`
 
 ### Issue: "JAVA_HOME is not set"
+
 **Solution**:
+
 ```powershell
 $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
 $env:Path += ";$env:JAVA_HOME\bin"
@@ -425,12 +462,14 @@ $env:Path += ";$env:JAVA_HOME\bin"
 ## Code Style
 
 ### Java
+
 - Follow IntelliJ IDEA's default Java code style
 - Use `@NotNull` and `@Nullable` annotations
 - Prefer immutability where possible
 - Document public APIs with Javadoc
 
 ### Go
+
 - Follow standard Go conventions (`gofmt`, `golint`)
 - Use `go fmt` before committing
 - Document exported functions and types

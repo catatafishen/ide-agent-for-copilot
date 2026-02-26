@@ -11,6 +11,7 @@
 ### 1. Locate the Plugin ZIP
 
 The plugin has been built and is located at:
+
 ```
 plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip
 ```
@@ -47,19 +48,19 @@ plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip
 After restart:
 
 1. Check if plugin is loaded:
-   - **Settings → Plugins → Installed**
-   - Look for **"Agentic Copilot"** in the list
-   - Status should be **✓ Enabled**
+    - **Settings → Plugins → Installed**
+    - Look for **"Agentic Copilot"** in the list
+    - Status should be **✓ Enabled**
 
 2. Check for tool window:
-   - Look for **"AgenticCopilot"** in the right sidebar
-   - Or go to **View → Tool Windows → AgenticCopilot**
+    - Look for **"AgenticCopilot"** in the right sidebar
+    - Or go to **View → Tool Windows → AgenticCopilot**
 
 3. Check IDE logs for errors:
-   - **Help → Show Log in Explorer**
-   - Open `idea.log`
-   - Search for "AgenticCopilot" or "Sidecar"
-   - Look for any ERROR or WARN messages
+    - **Help → Show Log in Explorer**
+    - Open `idea.log`
+    - Search for "AgenticCopilot" or "Sidecar"
+    - Look for any ERROR or WARN messages
 
 ---
 
@@ -73,16 +74,19 @@ make build
 ```
 
 **Expected output:**
+
 ```
 Built: bin\copilot-sidecar.exe (7.2 MB)
 ```
 
 **Verify it works:**
+
 ```powershell
 .\bin\copilot-sidecar.exe --port 8765
 ```
 
 You should see:
+
 ```
 SIDECAR_PORT=8765
 Sidecar server starting on :8765
@@ -97,25 +101,25 @@ Press Ctrl+C to stop.
 #### 5.1 Open Tool Window
 
 1. Click **AgenticCopilot** in the right sidebar
-2. Tool window should open with 5 tabs:
-   - **Prompt** (empty placeholder)
-   - **Context** (empty placeholder)
-   - **Plans** (empty placeholder)
-   - **Timeline** (empty placeholder)
-   - **Settings** (empty placeholder)
+2. Tool window should open with a single-panel chat interface:
+    - **Chat console** (conversation area)
+    - **Toolbar** (model selector, mode toggle, settings)
+    - **Prompt input** with file attachment support
 
-#### 5.2 Check Sidecar Auto-Start
+#### 5.2 Check ACP Connection
 
-When the tool window opens, the plugin should automatically start the sidecar.
+When the tool window opens and you send your first prompt, the plugin automatically starts the Copilot CLI.
 
 **Check IDE logs** (`Help → Show Log in Explorer → idea.log`):
+
 ```
-INFO - Starting sidecar process...
-INFO - Sidecar started on port XXXXX
-INFO - Health check passed
+INFO - Starting Copilot CLI process...
+INFO - ACP client initialized
+INFO - MCP tools registered
 ```
 
 If you see errors:
+
 - Verify sidecar binary exists: `copilot-bridge\bin\copilot-sidecar.exe`
 - Check binary path in logs
 - Verify port is not in use
@@ -133,6 +137,7 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 **Symptom:** No "AgenticCopilot" tool window visible
 
 **Solutions:**
+
 1. Check if plugin is enabled: **Settings → Plugins → Agentic Copilot** (should have checkmark)
 2. Restart IDE: **File → Invalidate Caches and Restart → Just Restart**
 3. Check logs for errors: `Help → Show Log in Explorer`
@@ -142,23 +147,25 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 **Symptom:** Error in IDE logs about sidecar process
 
 **Solutions:**
+
 1. **Binary not found:**
-   - Build the binary: `cd copilot-bridge && make build`
-   - Check path: `copilot-bridge\bin\copilot-sidecar.exe` exists
+    - Build the binary: `cd copilot-bridge && make build`
+    - Check path: `copilot-bridge\bin\copilot-sidecar.exe` exists
 
 2. **Port already in use:**
-   - Check for existing processes: `netstat -ano | findstr :8765`
-   - Kill the process or restart
+    - Check for existing processes: `netstat -ano | findstr :8765`
+    - Kill the process or restart
 
 3. **Permission denied:**
-   - Run IntelliJ as Administrator (temporary test)
-   - Check antivirus isn't blocking the binary
+    - Run IntelliJ as Administrator (temporary test)
+    - Check antivirus isn't blocking the binary
 
 ### Plugin Install Fails
 
 **Symptom:** Error during installation: "Plugin is invalid"
 
 **Solutions:**
+
 1. **Rebuild the plugin:**
    ```powershell
    $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
@@ -166,18 +173,19 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
    ```
 
 2. **Check ZIP is not corrupted:**
-   - File size should be ~1.9 MB
-   - Can extract with 7-Zip to verify contents
+    - File size should be ~1.9 MB
+    - Can extract with 7-Zip to verify contents
 
 3. **Check IDE version:**
-   - Plugin requires IntelliJ 2025.1 or later
-   - Check: **Help → About** → Build number should be 251.x or higher
+    - Plugin requires IntelliJ 2025.1 or later
+    - Check: **Help → About** → Build number should be 251.x or higher
 
 ### Tool Window Opens But Shows Errors
 
 **Symptom:** Tool window visible but UI is broken
 
 **Solutions:**
+
 1. Check for Java exceptions in logs
 2. Verify Kotlin runtime is available
 3. Check for classpath conflicts (look for "NoClassDefFoundError")
@@ -218,6 +226,7 @@ $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
 ### Faster Iteration
 
 For faster development cycles:
+
 1. Keep sidecar running separately: `.\copilot-bridge\bin\copilot-sidecar.exe --port 8765`
 2. Make plugin changes
 3. Rebuild and reinstall
@@ -232,37 +241,39 @@ The sidecar will stay running between IDE restarts.
 Once installation is successful:
 
 ### Phase 2 Tasks
+
 1. **Implement Prompt Tab:**
-   - Multi-line text editor with syntax highlighting
-   - Token counter
-   - Model selector dropdown
-   - "Run" button to send to sidecar
+    - Multi-line text editor with syntax highlighting
+    - Token counter
+    - Model selector dropdown
+    - "Run" button to send to sidecar
 
 2. **Implement Context Tab:**
-   - List view of context items
-   - "Add Selection" action in editor right-click menu
-   - Display file path + line range
+    - List view of context items
+    - "Add Selection" action in editor right-click menu
+    - Display file path + line range
 
 3. **Implement Plans Tab:**
-   - Tree view for hierarchical plans
-   - Status indicators (pending/running/complete/failed)
+    - Tree view for hierarchical plans
+    - Status indicators (pending/running/complete/failed)
 
 4. **Implement Timeline Tab:**
-   - Chronological event list
-   - Expandable event details
-   - Auto-scroll to bottom
+    - Chronological event list
+    - Expandable event details
+    - Auto-scroll to bottom
 
 5. **Implement Settings Tab:**
-   - Model dropdown (populated from sidecar)
-   - Tool permission matrix
-   - Formatting options
+    - Model dropdown (populated from sidecar)
+    - Tool permission matrix
+    - Formatting options
 
 ### Testing Checklist
+
 - [ ] Tool window opens without errors
-- [ ] Sidecar starts automatically
-- [ ] All 5 tabs are visible
+- [ ] ACP client connects on first prompt
+- [ ] Chat console and toolbar are visible
 - [ ] No errors in IDE logs
-- [ ] Can switch between tabs
+- [ ] Prompt input works
 - [ ] IDE remains responsive
 
 ---
@@ -274,9 +285,9 @@ If you encounter issues not covered here:
 1. **Check logs:** `Help → Show Log in Explorer → idea.log`
 2. **Check sidecar logs:** If sidecar runs separately, check console output
 3. **Verify versions:**
-   - IntelliJ IDEA: 2025.1+
-   - Java: 21
-   - Go: 1.22+
+    - IntelliJ IDEA: 2025.1+
+    - Java: 21
+    - Go: 1.22+
 4. **Rebuild from scratch:**
    ```powershell
    .\gradlew.bat clean

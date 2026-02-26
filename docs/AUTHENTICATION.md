@@ -1,12 +1,16 @@
 # Authentication & SDK Setup Guide
 
+> **⚠️ OUTDATED**: This document describes authentication for the removed Go sidecar. The plugin now authenticates
+> through GitHub Copilot CLI directly (`copilot auth`). No separate sidecar authentication is needed.
+
 **Last Updated**: 2026-02-12
 
 ---
 
 ## Overview
 
-The sidecar uses the GitHub Copilot CLI SDK to provide agentic capabilities. To use the sidecar in production mode, you need:
+The sidecar uses the GitHub Copilot CLI SDK to provide agentic capabilities. To use the sidecar in production mode, you
+need:
 
 1. GitHub Copilot CLI installed
 2. GitHub authentication configured
@@ -42,11 +46,13 @@ copilot-sidecar.exe
 ### 1. Install GitHub CLI
 
 **Windows** (using winget):
+
 ```powershell
 winget install GitHub.cli
 ```
 
 **Verify installation**:
+
 ```bash
 gh --version
 ```
@@ -58,6 +64,7 @@ gh auth login
 ```
 
 Follow the prompts to:
+
 - Select GitHub.com
 - Choose HTTPS or SSH
 - Authenticate via web browser
@@ -66,6 +73,7 @@ Follow the prompts to:
 ### 3. Enable GitHub Copilot
 
 Ensure Copilot is enabled for your GitHub account:
+
 - Individual subscription, or
 - Organization/Enterprise license
 
@@ -116,6 +124,7 @@ cd copilot-bridge
 ### Error: "Failed to initialize Copilot SDK"
 
 **Symptoms**:
+
 ```
 ❌ Failed to initialize Copilot SDK:
 
@@ -149,8 +158,8 @@ Please ensure:
    ```
 
 4. **Check Copilot access**:
-   - Go to https://github.com/settings/copilot
-   - Verify Copilot is enabled
+    - Go to https://github.com/settings/copilot
+    - Verify Copilot is enabled
 
 5. **Use mock mode for development**:
    ```bash
@@ -160,6 +169,7 @@ Please ensure:
 ### Error: "Copilot CLI not found"
 
 The SDK needs the Copilot CLI binary. It may be:
+
 - Not installed
 - Not in PATH
 - Different version than expected
@@ -171,6 +181,7 @@ The SDK needs the Copilot CLI binary. It may be:
 Your GitHub account may not have Copilot enabled.
 
 **Solution**:
+
 - Individual users: Subscribe at https://github.com/copilot
 - Organization users: Contact your admin
 
@@ -179,6 +190,7 @@ Your GitHub account may not have Copilot enabled.
 If SDK tests hang or timeout:
 
 **Solution**: Run tests with mock client (already configured):
+
 ```bash
 go test ./...  # Uses mock client automatically
 ```
@@ -289,7 +301,8 @@ SDK Client ──┬──> Real Mode: copilot.NewClient()
 
 ### Q: Why not use mock as fallback?
 
-**A**: Mocks should only be in tests. In production, if the SDK is unavailable, we should fail clearly rather than silently fall back to fake data.
+**A**: Mocks should only be in tests. In production, if the SDK is unavailable, we should fail clearly rather than
+silently fall back to fake data.
 
 ### Q: Can I use this without Copilot subscription?
 
@@ -306,6 +319,7 @@ SDK Client ──┬──> Real Mode: copilot.NewClient()
 ### Q: What data is sent to GitHub?
 
 **A**: When using real SDK:
+
 - Your code context (files you select)
 - Your prompts/questions
 - Session metadata
@@ -317,6 +331,7 @@ When using `--mock`: Nothing is sent (all local).
 ## Next Steps
 
 After authentication works:
+
 1. Test with real Copilot queries
 2. Add auth status checking endpoint
 3. Implement auth refresh on expiry
@@ -329,6 +344,7 @@ After authentication works:
 ### Issues
 
 If you encounter problems:
+
 1. Check this troubleshooting guide
 2. Run with `--debug` flag
 3. Check sidecar logs

@@ -4,7 +4,7 @@
 
 1. **JDK 21** — Install via your package manager or SDKMAN
 2. **GitHub Copilot CLI** — Must be installed and authenticated (`copilot auth`)
-3. **IntelliJ IDEA 2025.3+** — Ultimate or Community Edition
+3. **IntelliJ IDEA 2025.1+** — Ultimate or Community Edition (through 2025.3)
 
 ## Setup
 
@@ -84,7 +84,7 @@ restarting.
 
 ## What's Included
 
-- **38 MCP tools** — File I/O, PSI analysis, refactoring, git, testing, terminal, documentation
+- **60 MCP tools** — File I/O, PSI analysis, refactoring, git, testing, terminal, documentation
 - **ACP protocol** — Direct integration with GitHub Copilot CLI (no sidecar)
 - **Multi-turn chat** — Session-based conversations with context awareness
 - **Permission routing** — File edits routed through IntelliJ Document API with auto-format
