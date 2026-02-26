@@ -1365,79 +1365,105 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     data class ToolCategory(val title: String, val tools: List<ToolInfo>)
 
                     val toolCategories = listOf(
-                        ToolCategory("Code Intelligence", listOf(
-                            ToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
-                            ToolInfo("get_file_outline", "Get the structural outline of a file."),
-                            ToolInfo("get_class_outline", "Show constructors, methods, fields of any class by fully qualified name."),
-                            ToolInfo("find_references", "Find all references to a symbol across the project."),
-                            ToolInfo("go_to_declaration", "Navigate to a symbol's declaration."),
-                            ToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class or interface."),
-                            ToolInfo("get_documentation", "Retrieve Javadoc/KDoc for a symbol."),
-                            ToolInfo("download_sources", "Download library source JARs for navigation.")
-                        )),
-                        ToolCategory("Project & Files", listOf(
-                            ToolInfo("list_project_files", "List files in the project tree."),
-                            ToolInfo("search_text", "Search text or regex across project files (reads editor buffers)."),
-                            ToolInfo("intellij_read_file", "Read a file from the editor buffer."),
-                            ToolInfo("intellij_write_file", "Write or edit a file (full write, partial edit, or line-range replace)."),
-                            ToolInfo("create_file", "Create a new file with content."),
-                            ToolInfo("delete_file", "Delete a file."),
-                            ToolInfo("undo", "Undo last edit action(s) on a file."),
-                            ToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
-                            ToolInfo("show_diff", "Show a diff between files or proposed content.")
-                        )),
-                        ToolCategory("Code Quality", listOf(
-                            ToolInfo("get_problems", "Get problems/errors for open files."),
-                            ToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
-                            ToolInfo("get_compilation_errors", "Fast compilation error check using cached daemon results."),
-                            ToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
-                            ToolInfo("optimize_imports", "Optimize imports in a file."),
-                            ToolInfo("format_code", "Format code in a file."),
-                            ToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
-                            ToolInfo("suppress_inspection", "Suppress an inspection finding."),
-                            ToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
-                            ToolInfo("run_qodana", "Run Qodana static analysis."),
-                            ToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
-                        )),
-                        ToolCategory("Refactoring", listOf(
-                            ToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
-                        )),
-                        ToolCategory("Build, Run & Test", listOf(
-                            ToolInfo("build_project", "Trigger incremental project compilation."),
-                            ToolInfo("list_tests", "List available tests."),
-                            ToolInfo("run_tests", "Run tests by class, method, or pattern."),
-                            ToolInfo("get_test_results", "Get results from the last test run."),
-                            ToolInfo("get_coverage", "Get code coverage results."),
-                            ToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
-                            ToolInfo("list_run_configurations", "List available run configurations."),
-                            ToolInfo("run_configuration", "Execute a run configuration by name."),
-                            ToolInfo("create_run_configuration", "Create a new run configuration."),
-                            ToolInfo("edit_run_configuration", "Edit an existing run configuration.")
-                        )),
-                        ToolCategory("Git", listOf(
-                            ToolInfo("git_status", "Show working tree status."),
-                            ToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
-                            ToolInfo("git_log", "Show commit history."),
-                            ToolInfo("git_blame", "Show line-by-line authorship."),
-                            ToolInfo("git_commit", "Commit staged changes."),
-                            ToolInfo("git_stage", "Stage files for commit."),
-                            ToolInfo("git_unstage", "Unstage files."),
-                            ToolInfo("git_branch", "List, create, switch, or delete branches."),
-                            ToolInfo("git_stash", "Stash or restore working changes."),
-                            ToolInfo("git_show", "Show commit details.")
-                        )),
-                        ToolCategory("Infrastructure", listOf(
-                            ToolInfo("run_command", "Run a shell command in the project directory."),
-                            ToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
-                            ToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
-                            ToolInfo("read_terminal_output", "Read output from a terminal tab."),
-                            ToolInfo("read_ide_log", "Read recent IDE log entries."),
-                            ToolInfo("read_run_output", "Read output from a Run panel tab."),
-                            ToolInfo("get_notifications", "Get IDE notifications."),
-                            ToolInfo("get_indexing_status", "Check if indexing is in progress."),
-                            ToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
-                            ToolInfo("list_scratch_files", "List existing scratch files.")
-                        ))
+                        ToolCategory(
+                            "Code Intelligence", listOf(
+                                ToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
+                                ToolInfo("get_file_outline", "Get the structural outline of a file."),
+                                ToolInfo(
+                                    "get_class_outline",
+                                    "Show constructors, methods, fields of any class by fully qualified name."
+                                ),
+                                ToolInfo("find_references", "Find all references to a symbol across the project."),
+                                ToolInfo("go_to_declaration", "Navigate to a symbol's declaration."),
+                                ToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class or interface."),
+                                ToolInfo("get_documentation", "Retrieve Javadoc/KDoc for a symbol."),
+                                ToolInfo("download_sources", "Download library source JARs for navigation.")
+                            )
+                        ),
+                        ToolCategory(
+                            "Project & Files", listOf(
+                                ToolInfo("list_project_files", "List files in the project tree."),
+                                ToolInfo(
+                                    "search_text",
+                                    "Search text or regex across project files (reads editor buffers)."
+                                ),
+                                ToolInfo("intellij_read_file", "Read a file from the editor buffer."),
+                                ToolInfo(
+                                    "intellij_write_file",
+                                    "Write or edit a file (full write, partial edit, or line-range replace)."
+                                ),
+                                ToolInfo("create_file", "Create a new file with content."),
+                                ToolInfo("delete_file", "Delete a file."),
+                                ToolInfo("undo", "Undo last edit action(s) on a file."),
+                                ToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
+                                ToolInfo("show_diff", "Show a diff between files or proposed content.")
+                            )
+                        ),
+                        ToolCategory(
+                            "Code Quality", listOf(
+                                ToolInfo("get_problems", "Get problems/errors for open files."),
+                                ToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
+                                ToolInfo(
+                                    "get_compilation_errors",
+                                    "Fast compilation error check using cached daemon results."
+                                ),
+                                ToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
+                                ToolInfo("optimize_imports", "Optimize imports in a file."),
+                                ToolInfo("format_code", "Format code in a file."),
+                                ToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
+                                ToolInfo("suppress_inspection", "Suppress an inspection finding."),
+                                ToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
+                                ToolInfo("run_qodana", "Run Qodana static analysis."),
+                                ToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
+                            )
+                        ),
+                        ToolCategory(
+                            "Refactoring", listOf(
+                                ToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
+                            )
+                        ),
+                        ToolCategory(
+                            "Build, Run & Test", listOf(
+                                ToolInfo("build_project", "Trigger incremental project compilation."),
+                                ToolInfo("list_tests", "List available tests."),
+                                ToolInfo("run_tests", "Run tests by class, method, or pattern."),
+                                ToolInfo("get_test_results", "Get results from the last test run."),
+                                ToolInfo("get_coverage", "Get code coverage results."),
+                                ToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
+                                ToolInfo("list_run_configurations", "List available run configurations."),
+                                ToolInfo("run_configuration", "Execute a run configuration by name."),
+                                ToolInfo("create_run_configuration", "Create a new run configuration."),
+                                ToolInfo("edit_run_configuration", "Edit an existing run configuration.")
+                            )
+                        ),
+                        ToolCategory(
+                            "Git", listOf(
+                                ToolInfo("git_status", "Show working tree status."),
+                                ToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
+                                ToolInfo("git_log", "Show commit history."),
+                                ToolInfo("git_blame", "Show line-by-line authorship."),
+                                ToolInfo("git_commit", "Commit staged changes."),
+                                ToolInfo("git_stage", "Stage files for commit."),
+                                ToolInfo("git_unstage", "Unstage files."),
+                                ToolInfo("git_branch", "List, create, switch, or delete branches."),
+                                ToolInfo("git_stash", "Stash or restore working changes."),
+                                ToolInfo("git_show", "Show commit details.")
+                            )
+                        ),
+                        ToolCategory(
+                            "Infrastructure", listOf(
+                                ToolInfo("run_command", "Run a shell command in the project directory."),
+                                ToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
+                                ToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
+                                ToolInfo("read_terminal_output", "Read output from a terminal tab."),
+                                ToolInfo("read_ide_log", "Read recent IDE log entries."),
+                                ToolInfo("read_run_output", "Read output from a Run panel tab."),
+                                ToolInfo("get_notifications", "Get IDE notifications."),
+                                ToolInfo("get_indexing_status", "Check if indexing is in progress."),
+                                ToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
+                                ToolInfo("list_scratch_files", "List existing scratch files.")
+                            )
+                        )
                     )
 
                     for (category in toolCategories) {
@@ -1555,8 +1581,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             showPopup(component)
         }
 
-        override fun createCustomComponent(presentation: com.intellij.openapi.actionSystem.Presentation, place: String): javax.swing.JComponent {
-            val button = com.intellij.openapi.actionSystem.impl.ActionButtonWithText(this, presentation, place, com.intellij.openapi.actionSystem.ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE)
+        override fun createCustomComponent(
+            presentation: com.intellij.openapi.actionSystem.Presentation,
+            place: String
+        ): javax.swing.JComponent {
+            val button = com.intellij.openapi.actionSystem.impl.ActionButtonWithText(
+                this,
+                presentation,
+                place,
+                com.intellij.openapi.actionSystem.ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE
+            )
             return button
         }
 
@@ -1565,11 +1599,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val base = project.basePath
 
             // Instructions
-            group.add(object : AnAction("Instructions", "Open copilot-instructions.md", com.intellij.icons.AllIcons.Actions.IntentionBulb) {
+            group.add(object : AnAction(
+                "Instructions",
+                "Open copilot-instructions.md",
+                com.intellij.icons.AllIcons.Actions.IntentionBulb
+            ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 override fun update(e: AnActionEvent) {
                     e.presentation.isEnabled = base != null && java.io.File(base, "copilot-instructions.md").exists()
                 }
+
                 override fun actionPerformed(e: AnActionEvent) = openProjectFile("copilot-instructions.md")
             })
 
@@ -1579,6 +1618,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 override fun update(e: AnActionEvent) {
                     e.presentation.isEnabled = base != null && java.io.File(base, "TODO.md").exists()
                 }
+
                 override fun actionPerformed(e: AnActionEvent) = openProjectFile("TODO.md")
             })
 
@@ -1591,15 +1631,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             if (agentFiles.isNotEmpty()) {
                 for (agentFile in agentFiles) {
                     val name = agentFile.nameWithoutExtension
-                    group.add(object : AnAction(name, "Open ${agentFile.name}", com.intellij.icons.AllIcons.General.User) {
+                    group.add(object :
+                        AnAction(name, "Open ${agentFile.name}", com.intellij.icons.AllIcons.General.User) {
                         override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                        override fun actionPerformed(e: AnActionEvent) = openProjectFile(".github/agents/${agentFile.name}")
+                        override fun actionPerformed(e: AnActionEvent) =
+                            openProjectFile(".github/agents/${agentFile.name}")
                     })
                 }
             } else {
                 group.add(object : AnAction("No agents defined", null, null) {
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                    override fun update(e: AnActionEvent) { e.presentation.isEnabled = false }
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.isEnabled = false
+                    }
+
                     override fun actionPerformed(e: AnActionEvent) {}
                 })
             }
@@ -1607,7 +1652,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             group.addSeparator("MCP Server")
 
             // Startup Instructions (MCP server instructions)
-            group.add(object : AnAction("Startup Instructions", "Open .agent-work/startup-instructions.md", com.intellij.icons.AllIcons.Actions.IntentionBulbGrey) {
+            group.add(object : AnAction(
+                "Startup Instructions",
+                "Open .agent-work/startup-instructions.md",
+                com.intellij.icons.AllIcons.Actions.IntentionBulbGrey
+            ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 override fun actionPerformed(e: AnActionEvent) {
                     openOrCreateProjectFile(".agent-work/startup-instructions.md") {
@@ -1617,7 +1666,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             })
 
             // Restore default
-            group.add(object : AnAction("Restore Default Instructions", "Reset startup instructions to built-in default", com.intellij.icons.AllIcons.Actions.Rollback) {
+            group.add(object : AnAction(
+                "Restore Default Instructions",
+                "Reset startup instructions to built-in default",
+                com.intellij.icons.AllIcons.Actions.Rollback
+            ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 override fun actionPerformed(e: AnActionEvent) {
                     val filePath = ".agent-work/startup-instructions.md"
@@ -1929,6 +1982,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val snippetSuffix = buildSnippetSuffix()
             var effectivePrompt = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
 
+            // Inject toggle instructions for build/test/commit
+            val toggleSuffix = buildToggleSuffix()
+            if (toggleSuffix.isNotEmpty()) {
+                effectivePrompt = "$effectivePrompt\n\n$toggleSuffix"
+            }
+
             // Inject compressed conversation history on first prompt of a new session
             if (!conversationSummaryInjected) {
                 conversationSummaryInjected = true
@@ -1998,6 +2057,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         return references
+    }
+
+    /** Build a suffix telling the agent which completion-step toggles are enabled. */
+    private fun buildToggleSuffix(): String {
+        val steps = mutableListOf<String>()
+        if (CopilotSettings.getBuildBeforeEnd()) steps.add("build the project (build_project)")
+        if (CopilotSettings.getTestBeforeEnd()) steps.add("run tests (run_tests)")
+        if (CopilotSettings.getCommitBeforeEnd()) steps.add("commit your changes (git_stage + git_commit)")
+        if (steps.isEmpty()) return ""
+        return "Before completing your turn, you MUST: ${steps.joinToString(", ")}."
     }
 
     /** Build inline snippet text for selections so the agent sees the code in the prompt itself */
