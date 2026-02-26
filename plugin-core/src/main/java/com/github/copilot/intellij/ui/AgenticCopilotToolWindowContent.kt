@@ -2003,6 +2003,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val snippetSuffix = buildSnippetSuffix()
             var effectivePrompt = if (snippetSuffix.isNotEmpty()) "$prompt\n\n$snippetSuffix" else prompt
 
+            // Prepend [[PLAN]] prefix if plan mode is enabled
+            if (CopilotSettings.getSessionMode() == "plan") {
+                effectivePrompt = "[[PLAN]] $effectivePrompt"
+            }
+
             // Inject toggle instructions for build/test/commit
             val toggleSuffix = buildToggleSuffix()
             if (toggleSuffix.isNotEmpty()) {
