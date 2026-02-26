@@ -236,9 +236,8 @@ public class CopilotAcpClient implements Closeable {
         cmd.add("--acp");
         cmd.add("--stdio");
 
-        // Set the model from saved settings (--model is the only working mechanism).
-        // TODO: Replace with session/set_config_option once Copilot CLI implements it.
-        //  See https://github.com/github/copilot-cli/issues/1485
+        // Set the model from saved settings (--model sets the default for new sessions).
+        // The actual model is applied per-session via session/set_model after session/new.
         String savedModel = CopilotSettings.getSelectedModel();
         if (savedModel != null && !savedModel.isEmpty()) {
             cmd.add("--model");
@@ -403,6 +402,24 @@ public class CopilotAcpClient implements Closeable {
             model.setUsage(meta.has("copilotUsage") ? meta.get("copilotUsage").getAsString() : null);
         }
         return model;
+    }
+
+    /**
+     * Switch the model for an existing session via session/set_model.
+     * This is the proper ACP mechanism for model switching (the --model CLI flag
+     * only sets the default for new sessions but does not control actual model routing).
+     *
+     * @param sessionId The session to switch the model for.
+     * @param modelId   The model ID to switch to (e.g., "gpt-4.1", "claude-opus-4.6").
+     */
+    public void setModel(@NotNull String sessionId, @NotNull String modelId) throws CopilotException {
+        ensureStarted();
+        JsonObject params = new JsonObject();
+        params.addProperty(SESSION_ID, sessionId);
+        params.addProperty("modelId", modelId);
+        LOG.info("Setting model for session " + sessionId + " to " + modelId);
+        sendRequest("session/set_model", params);
+        LOG.info("Model set to " + modelId + " for session " + sessionId);
     }
 
     /**
@@ -749,8 +766,8 @@ public class CopilotAcpClient implements Closeable {
         promptArray.add(promptContent);
         params.add("prompt", promptArray);
 
-        // Note: model parameter is NOT sent in session/prompt params because the
-        // Copilot CLI ignores it. Model is set via --model CLI flag at process startup.
+        // Model is set per-session via session/set_model (see setModel method).
+        // The model parameter is not sent in session/prompt params.
 
         return params;
     }

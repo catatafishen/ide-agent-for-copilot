@@ -1726,7 +1726,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    // ComboBoxAction for model selection ? matches Run panel dropdown style
+    // ComboBoxAction for model selection — matches Run panel dropdown style
     private inner class ModelSelectorAction : ComboBoxAction() {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
@@ -1734,46 +1734,26 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val group = DefaultActionGroup()
             loadedModels.forEachIndexed { index, model ->
                 val cost = model.usage ?: "1x"
-                // TODO: Once Copilot CLI supports session/set_config_option for model
-                //  switching (https://github.com/github/copilot-cli/issues/1485),
-                //  replace the restart workaround with a mid-session config change.
                 group.add(object : AnAction("${model.name}  ($cost)") {
                     override fun actionPerformed(e: AnActionEvent) {
                         if (index == selectedModelIndex) return
 
-                        val message = javax.swing.JEditorPane(
-                            "text/html",
-                            "<html><body style='width:320px'>" +
-                                "Switching to <b>${model.name}</b> will reset the current session.<br><br>" +
-                                "This is required because the Copilot CLI does not yet support " +
-                                "mid-session model changes via the ACP protocol.<br><br>" +
-                                "<a href='https://github.com/github/copilot-cli/issues/1485'>" +
-                                "github/copilot-cli#1485</a></body></html>"
-                        ).apply {
-                            isEditable = false
-                            isOpaque = false
-                            addHyperlinkListener { evt ->
-                                if (evt.eventType == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
-                                    com.intellij.ide.BrowserUtil.browse(evt.url)
-                                }
-                            }
-                        }
-
-                        val result = Messages.showOkCancelDialog(
-                            project, message.text, "Change Model",
-                            "OK", "Cancel", Messages.getInformationIcon()
-                        )
-                        if (result != Messages.OK) return
-
                         selectedModelIndex = index
                         CopilotSettings.setSelectedModel(model.id)
-                        LOG.info("Model selected: ${model.id} (index=$index), restarting CLI")
-                        currentSessionId = null
+                        LOG.info("Model selected: ${model.id} (index=$index)")
                         ApplicationManager.getApplication().executeOnPooledThread {
                             try {
-                                CopilotService.getInstance(project).restartWithModel(model.id)
+                                val client = CopilotService.getInstance(project).getClient()
+                                val sessionId = currentSessionId
+                                if (sessionId != null) {
+                                    // Switch model on current session (no restart needed)
+                                    client.setModel(sessionId, model.id)
+                                    LOG.info("Model switched to ${model.id} on session $sessionId")
+                                } else {
+                                    LOG.info("No active session; model ${model.id} will be used on next session")
+                                }
                             } catch (ex: Exception) {
-                                LOG.warn("Failed to restart CLI with model ${model.id}", ex)
+                                LOG.warn("Failed to set model ${model.id} via session/set_model", ex)
                             }
                         }
                     }
@@ -1988,6 +1968,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 currentSessionId = client.createSession(project.basePath)
                 addTimelineEvent(EventType.SESSION_START, "Session created")
                 updateSessionInfo()
+                // Set model on newly created session if user has a non-default model selected
+                val savedModel = CopilotSettings.getSelectedModel()
+                if (!savedModel.isNullOrEmpty()) {
+                    try {
+                        client.setModel(currentSessionId!!, savedModel)
+                    } catch (ex: Exception) {
+                        LOG.warn("Failed to set model $savedModel on new session", ex)
+                    }
+                }
             }
             val sessionId = currentSessionId!!
 

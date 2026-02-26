@@ -49,6 +49,7 @@ public class MockAcpServer implements Closeable {
         registerHandler("initialize", this::handleInitialize);
         registerHandler("initialized", params -> null); // notification, no response
         registerHandler("session/new", this::handleNewSession);
+        registerHandler("session/set_model", this::handleSetModel);
     }
 
     /**
@@ -229,6 +230,12 @@ public class MockAcpServer implements Closeable {
         models.addProperty("currentModelId", "gpt-4.1");
         result.add("models", models);
 
+        return result;
+    }
+
+    private JsonObject handleSetModel(@SuppressWarnings("unused") JsonObject params) {
+        JsonObject result = new JsonObject();
+        result.addProperty("status", "ok");
         return result;
     }
 
