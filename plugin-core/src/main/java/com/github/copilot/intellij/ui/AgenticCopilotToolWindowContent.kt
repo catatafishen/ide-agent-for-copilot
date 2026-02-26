@@ -1349,6 +1349,122 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
                     })
 
+                    // Available Tools section
+                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
+                    add(JBLabel("Available Tools").apply {
+                        font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 2)
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(4)
+                    })
+                    add(JBLabel("The agent has access to these IDE tools via the MCP server:").apply {
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                        border = JBUI.Borders.emptyBottom(8)
+                    })
+
+                    data class ToolInfo(val name: String, val description: String)
+                    data class ToolCategory(val title: String, val tools: List<ToolInfo>)
+
+                    val toolCategories = listOf(
+                        ToolCategory("Code Intelligence", listOf(
+                            ToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
+                            ToolInfo("get_file_outline", "Get the structural outline of a file."),
+                            ToolInfo("get_class_outline", "Show constructors, methods, fields of any class by fully qualified name."),
+                            ToolInfo("find_references", "Find all references to a symbol across the project."),
+                            ToolInfo("go_to_declaration", "Navigate to a symbol's declaration."),
+                            ToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class or interface."),
+                            ToolInfo("get_documentation", "Retrieve Javadoc/KDoc for a symbol."),
+                            ToolInfo("download_sources", "Download library source JARs for navigation.")
+                        )),
+                        ToolCategory("Project & Files", listOf(
+                            ToolInfo("list_project_files", "List files in the project tree."),
+                            ToolInfo("search_text", "Search text or regex across project files (reads editor buffers)."),
+                            ToolInfo("intellij_read_file", "Read a file from the editor buffer."),
+                            ToolInfo("intellij_write_file", "Write or edit a file (full write, partial edit, or line-range replace)."),
+                            ToolInfo("create_file", "Create a new file with content."),
+                            ToolInfo("delete_file", "Delete a file."),
+                            ToolInfo("undo", "Undo last edit action(s) on a file."),
+                            ToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
+                            ToolInfo("show_diff", "Show a diff between files or proposed content.")
+                        )),
+                        ToolCategory("Code Quality", listOf(
+                            ToolInfo("get_problems", "Get problems/errors for open files."),
+                            ToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
+                            ToolInfo("get_compilation_errors", "Fast compilation error check using cached daemon results."),
+                            ToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
+                            ToolInfo("optimize_imports", "Optimize imports in a file."),
+                            ToolInfo("format_code", "Format code in a file."),
+                            ToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
+                            ToolInfo("suppress_inspection", "Suppress an inspection finding."),
+                            ToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
+                            ToolInfo("run_qodana", "Run Qodana static analysis."),
+                            ToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
+                        )),
+                        ToolCategory("Refactoring", listOf(
+                            ToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
+                        )),
+                        ToolCategory("Build, Run & Test", listOf(
+                            ToolInfo("build_project", "Trigger incremental project compilation."),
+                            ToolInfo("list_tests", "List available tests."),
+                            ToolInfo("run_tests", "Run tests by class, method, or pattern."),
+                            ToolInfo("get_test_results", "Get results from the last test run."),
+                            ToolInfo("get_coverage", "Get code coverage results."),
+                            ToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
+                            ToolInfo("list_run_configurations", "List available run configurations."),
+                            ToolInfo("run_configuration", "Execute a run configuration by name."),
+                            ToolInfo("create_run_configuration", "Create a new run configuration."),
+                            ToolInfo("edit_run_configuration", "Edit an existing run configuration.")
+                        )),
+                        ToolCategory("Git", listOf(
+                            ToolInfo("git_status", "Show working tree status."),
+                            ToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
+                            ToolInfo("git_log", "Show commit history."),
+                            ToolInfo("git_blame", "Show line-by-line authorship."),
+                            ToolInfo("git_commit", "Commit staged changes."),
+                            ToolInfo("git_stage", "Stage files for commit."),
+                            ToolInfo("git_unstage", "Unstage files."),
+                            ToolInfo("git_branch", "List, create, switch, or delete branches."),
+                            ToolInfo("git_stash", "Stash or restore working changes."),
+                            ToolInfo("git_show", "Show commit details.")
+                        )),
+                        ToolCategory("Infrastructure", listOf(
+                            ToolInfo("run_command", "Run a shell command in the project directory."),
+                            ToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
+                            ToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
+                            ToolInfo("read_terminal_output", "Read output from a terminal tab."),
+                            ToolInfo("read_ide_log", "Read recent IDE log entries."),
+                            ToolInfo("read_run_output", "Read output from a Run panel tab."),
+                            ToolInfo("get_notifications", "Get IDE notifications."),
+                            ToolInfo("get_indexing_status", "Check if indexing is in progress."),
+                            ToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
+                            ToolInfo("list_scratch_files", "List existing scratch files.")
+                        ))
+                    )
+
+                    for (category in toolCategories) {
+                        add(JBLabel(category.title).apply {
+                            font = font.deriveFont(Font.BOLD)
+                            alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                            border = JBUI.Borders.empty(4, 0, 2, 0)
+                        })
+                        for (tool in category.tools) {
+                            add(JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
+                                alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                                maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(24))
+                                isOpaque = false
+                                border = JBUI.Borders.empty(1, JBUI.scale(8), 1, 0)
+                                add(JBLabel(tool.name).apply {
+                                    font = java.awt.Font("Monospaced", Font.PLAIN, JBUI.Fonts.label().size - 1)
+                                    foreground = com.intellij.util.ui.JBUI.CurrentTheme.Link.Foreground.ENABLED
+                                    preferredSize = java.awt.Dimension(JBUI.scale(170), preferredSize.height)
+                                    minimumSize = preferredSize
+                                }, BorderLayout.WEST)
+                                add(JBLabel(tool.description).apply {
+                                    font = font.deriveFont(font.size2D - 1)
+                                }, BorderLayout.CENTER)
+                            })
+                        }
+                    }
+
                     // Version info
                     add(javax.swing.Box.createVerticalStrut(JBUI.scale(16)))
                     val versionText = com.github.copilot.intellij.BuildInfo.getSummary()
@@ -1360,7 +1476,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
 
                 val scrollPane = com.intellij.ui.components.JBScrollPane(mainPanel).apply {
-                    preferredSize = java.awt.Dimension(JBUI.scale(580), JBUI.scale(520))
+                    preferredSize = java.awt.Dimension(JBUI.scale(640), JBUI.scale(600))
                     border = null
                 }
                 add(scrollPane, BorderLayout.CENTER)
