@@ -1346,6 +1346,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     add(JBLabel("Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as collapsible chips — click to expand and see arguments/results.").apply {
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
                     })
+
+                    // Version info
+                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(16)))
+                    val versionText = try {
+                        val props = java.util.Properties()
+                        javaClass.getResourceAsStream("/build-info.properties")?.use { props.load(it) }
+                        "v${props.getProperty("build.version", "unknown")}"
+                    } catch (_: Exception) {
+                        "unknown"
+                    }
+                    add(JBLabel("Agentic Copilot $versionText").apply {
+                        foreground = com.intellij.util.ui.JBUI.CurrentTheme.Label.disabledForeground()
+                        font = font.deriveFont(font.size2D - 1)
+                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                    })
                 }
 
                 val scrollPane = com.intellij.ui.components.JBScrollPane(mainPanel).apply {

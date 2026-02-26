@@ -20,21 +20,16 @@ class AgenticCopilotToolWindowFactory : ToolWindowFactory, DumbAware {
 
         toolWindow.setTitleActions(
             listOf(
-            object : AnAction("New Chat", "Start a fresh conversation", AllIcons.Actions.Restart) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    content.resetSession()
+                object : AnAction("New Chat", "Start a fresh conversation", AllIcons.Actions.Restart) {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        content.resetSession()
+                    }
+                },
+                object : AnAction("Settings", "Open plugin settings", AllIcons.General.Settings) {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        content.openSettings()
+                    }
                 }
-            },
-            object : AnAction("Settings", "Open plugin settings", AllIcons.General.Settings) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    content.openSettings()
-                }
-            },
-            object : AnAction("Debug", "Open debug log", AllIcons.Actions.StartDebugger) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    content.openDebug()
-                }
-            }
-        ))
+            ))
     }
 }
