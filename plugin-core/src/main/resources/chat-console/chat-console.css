@@ -889,7 +889,7 @@ b, strong {
 }
 
 /* --- Code block copy button --- */
-pre .copy-btn {
+.copy-btn {
     position: absolute;
     top: var(--sp-2);
     right: var(--sp-2);
@@ -903,13 +903,17 @@ pre .copy-btn {
     opacity: 0;
     transition: opacity 0.15s;
     font-family: inherit;
+    margin-top: calc(-1 * (var(--sp-5) + 24px));
+    margin-right: 0;
+    margin-bottom: 0;
+    margin-left: auto;
 }
 
-pre:hover .copy-btn {
+pre:hover + .copy-btn {
     opacity: 0.7;
 }
 
-pre .copy-btn:hover {
+.copy-btn:hover {
     opacity: 1;
     background: var(--fg-a16);
 }

@@ -424,7 +424,9 @@ var _copyObserver = new MutationObserver(function () {
                 }, 1500);
             });
         };
-        pre.appendChild(btn);
+        // Insert button as a sibling after the pre element instead of as a child
+        // This prevents the button text from appearing in the code content during streaming
+        pre.parentElement.insertBefore(btn, pre.nextElementSibling);
     });
 });
 _copyObserver.observe(document.body, {childList: true, subtree: true});
