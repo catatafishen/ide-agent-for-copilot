@@ -302,7 +302,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val prompt: String? = null,
             var result: String? = null,
             var status: String? = null,
-            var colorIndex: Int = 0
+            var colorIndex: Int = 0,
+            val callId: String? = null
         ) : EntryData()
 
         class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
@@ -613,7 +614,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun addSubAgentEntry(id: String, agentType: String, description: String, prompt: String?) {
         finalizeCurrentText()
         val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
-        entries.add(EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex))
+        entries.add(EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id))
         val did = domId(id)
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
             agentType.replaceFirstChar { it.uppercase() } + " Agent")
@@ -648,7 +649,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun updateSubAgentResult(id: String, status: String, result: String?) {
         // Persist result in entry data so it survives serialization/restore
-        entries.filterIsInstance<EntryData.SubAgent>().lastOrNull()?.let {
+        // Match by callId to handle parallel sub-agents correctly
+        val entry = entries.filterIsInstance<EntryData.SubAgent>().find { it.callId == id }
+            ?: entries.filterIsInstance<EntryData.SubAgent>().lastOrNull()
+        entry?.let {
             it.result = result
             it.status = status
         }
@@ -923,10 +927,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     obj["description"]?.asString ?: "Sub-agent task",
                     obj["prompt"]?.asString?.ifEmpty { null }
                 )
-                val savedStatus = obj["status"]?.asString?.ifEmpty { null }
-                if (savedStatus != null) {
-                    updateSubAgentResult(restoredId, savedStatus, obj["result"]?.asString?.ifEmpty { null })
-                }
+                // Always update on restore — default to "completed" so we never show stale "Working..."
+                val savedStatus = obj["status"]?.asString?.ifEmpty { null } ?: "completed"
+                updateSubAgentResult(restoredId, savedStatus, obj["result"]?.asString?.ifEmpty { null })
             }
 
             "context" -> {

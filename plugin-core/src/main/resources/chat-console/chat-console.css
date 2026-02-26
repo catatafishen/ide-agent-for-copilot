@@ -350,11 +350,7 @@ body {
 }
 
 /* --- Sub-agent conversations (per-instance color via rotating palette) --- */
-/* Indent sub-agent replies by the bubble border-radius so they nest visually */
-.subagent-c0, .subagent-c1, .subagent-c2, .subagent-c3,
-.subagent-c4, .subagent-c5, .subagent-c6, .subagent-c7 {
-    margin-left: var(--r-lg);
-}
+/* (color variables only — no shared layout here; indentation is on .subagent-bubble) */
 
 .subagent-c0 {
     --sa-color: var(--sa-c0);
@@ -417,6 +413,7 @@ body {
     background: var(--sa-a06);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
     padding: var(--sp-4) var(--sp-8);
+    margin-left: var(--r-lg);
     max-width: 95%;
 }
 
