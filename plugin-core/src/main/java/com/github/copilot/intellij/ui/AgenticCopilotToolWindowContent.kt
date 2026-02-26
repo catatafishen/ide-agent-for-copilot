@@ -399,7 +399,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         sb.append("Usage: $used / $entitlement<br>")
         if (overage > 0) {
             val cost = overage * overageCostPerReq
-            sb.append("<font color='${errorHex()}'>Overage: $overage reqs (\$${String.format("%.2f", cost)})</font><br>")
+            sb.append(
+                "<font color='${errorHex()}'>Overage: $overage reqs (\$${
+                    String.format(
+                        "%.2f",
+                        cost
+                    )
+                })</font><br>"
+            )
         }
         sb.append("Projected: ~$projected by cycle end<br>")
         if (projectedOverage > 0) {
@@ -528,10 +535,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
+                    val terminalHint = if (System.getProperty("os.name").lowercase().contains("win"))
+                        "Command Prompt or PowerShell" else "your terminal"
                     Messages.showErrorDialog(
                         project,
-                        "Failed to start auth flow: ${e.message}\n\nPlease run 'copilot login' in your terminal.",
-                        "Error"
+                        "Could not start the authentication flow automatically.\n\n" +
+                            "To authenticate manually:\n" +
+                            "1. Open $terminalHint\n" +
+                            "2. Run: copilot auth login\n" +
+                            "3. Follow the browser prompts\n" +
+                            "4. Click 'Retry' in this plugin\n\n" +
+                            "Technical details: ${e.message}",
+                        "Authentication Setup"
                     )
                 }
             }
@@ -2920,12 +2935,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             spinner.isVisible = false
             modelsStatusText = "Unavailable"
             errorLabel.text = when {
-                isAuthError -> "⚠️ Not authenticated"
-                isTimeout -> "⚠️ Connection timed out"
+                isAuthError -> "⚠️ Not signed in — sign in to get started"
+                isTimeout -> "⚠️ Connection timed out — the Copilot CLI may still be starting"
                 else -> "⚠️ $errorMsg"
             }
             loginButton.isVisible = isAuthError
-            retryButton.isVisible = !isAuthError
+            retryButton.isVisible = true
             authPanel.isVisible = true
         }
     }
@@ -2987,14 +3002,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         errorLabel.font = JBUI.Fonts.smallFont()
         authPanel.add(errorLabel)
 
+        loginButton.text = "Sign In"
         loginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        loginButton.toolTipText = "Opens a terminal to authenticate with GitHub Copilot"
+        loginButton.toolTipText = "Opens GitHub authentication in a terminal or browser"
         loginButton.isVisible = false
         loginButton.addActionListener { startCopilotLogin() }
         authPanel.add(loginButton)
 
         retryButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        retryButton.toolTipText = "Retry loading models"
+        retryButton.toolTipText = "Try connecting to the Copilot CLI again"
         retryButton.isVisible = false
         authPanel.add(retryButton)
     }

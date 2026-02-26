@@ -622,11 +622,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val sb = StringBuilder()
         sb.append("<div class='${info.cssClass}'>")
 
-        // Render prompt as a normal green agent bubble with @Agent prefix
+        // Render prompt as a normal green agent bubble with @Agent prefix + status badge
         if (!prompt.isNullOrBlank()) {
             val safePrompt = escapeHtml(prompt)
             sb.append("<div class='agent-row'><div class='agent-bubble'>")
-            sb.append("<span class='subagent-prefix'>@$safeName</span> $safePrompt")
+            sb.append("<span class='subagent-prefix'>@$safeName</span>")
+            sb.append("<span class='sa-badge sa-badge-working' id='badge-$did'>Working</span>")
+            sb.append(" $safePrompt")
+            sb.append("</div></div>")
+        } else {
+            sb.append("<div class='agent-row'><div class='agent-bubble'>")
+            sb.append("<span class='subagent-prefix'>@$safeName</span>")
+            sb.append("<span class='sa-badge sa-badge-working' id='badge-$did'>Working</span>")
+            sb.append(" ${escapeHtml(description)}")
             sb.append("</div></div>")
         }
 
@@ -647,17 +655,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             it.status = status
         }
         val did = domId(id)
-        // Find the agent name from the existing prefix in the bubble
         val resultHtml = if (!result.isNullOrBlank()) {
             markdownToHtml(result)
         } else {
-            if (status == "completed") "Completed" else "<span style='color:red'>✖ Failed</span>"
+            if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
         }
         val encoded = Base64.getEncoder().encodeToString(resultHtml.toByteArray(Charsets.UTF_8))
-        // Replace the bubble content (no prefix in response bubble)
+        // Replace the bubble content and update status badge
+        val badgeClass = if (status == "completed") "sa-badge-done" else "sa-badge-failed"
+        val badgeText = if (status == "completed") "Done" else "Failed"
         executeJs(
-            """(function(){var r=document.getElementById('result-$did');if(!r)return;
-            r.innerHTML=b64('$encoded');scrollIfNeeded();})()"""
+            """(function(){var r=document.getElementById('result-$did');if(r){r.innerHTML=b64('$encoded');}
+            var b=document.getElementById('badge-$did');if(b){b.className='sa-badge $badgeClass';b.textContent='$badgeText';}
+            scrollIfNeeded();})()"""
         )
     }
 
@@ -997,7 +1007,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 "prompt" -> {
                     val text = obj["text"]?.asString ?: ""
                     sb.append("<div class='prompt-row'><div class='meta'><span class='ts'></span></div>")
-                    sb.append("<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${escapeHtml(text)}</div></div>")
+                    sb.append(
+                        "<div class='prompt-bubble' tabindex='0' role='button' title='Click to show timestamp' onclick='toggleMeta(this)' onkeydown='if(event.key===\"Enter\"||event.key===\" \")this.click()'>${
+                            escapeHtml(
+                                text
+                            )
+                        }</div></div>"
+                    )
                 }
 
                 "text" -> {
@@ -1058,10 +1074,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     val prompt = obj["prompt"]?.asString?.ifEmpty { null }
                     val result = obj["result"]?.asString?.ifEmpty { null }
                     val status = obj["status"]?.asString?.ifEmpty { null }
+                    val badgeCls = if (status == "failed") "sa-badge-failed" else "sa-badge-done"
+                    val badgeTxt = if (status == "failed") "Failed" else "Done"
                     sb.append("<div class='${info.cssClass}'>")
                     if (!prompt.isNullOrBlank()) {
                         sb.append("<div class='agent-row'><div class='agent-bubble'>")
-                        sb.append("<span class='subagent-prefix'>@$safeName</span> ${escapeHtml(prompt)}")
+                        sb.append("<span class='subagent-prefix'>@$safeName</span>")
+                        sb.append("<span class='sa-badge $badgeCls'>$badgeTxt</span>")
+                        sb.append(" ${escapeHtml(prompt)}")
                         sb.append("</div></div>")
                     }
                     sb.append("<div class='agent-row'><div class='subagent-bubble'>")
@@ -1070,7 +1090,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     } else if (status == "completed") {
                         sb.append("Completed")
                     } else if (status == "failed") {
-                        sb.append("<span style='color:red'>\u2716 Failed</span>")
+                        sb.append("<span style='color:var(--error)'>\u2716 Failed</span>")
                     } else {
                         sb.append("Completed")
                     }
@@ -1426,6 +1446,7 @@ ul,ol{margin:4px 0;padding-left:22px}
             --code-font-size: ${font.size - 3}pt;
             --fg: ${rgb(fg)};
             --fg-a08: ${rgba(fg, 0.08)};
+            --fg-a16: ${rgba(fg, 0.16)};
             --bg: ${rgb(bg)};
             --user: ${rgb(USER_COLOR)};
             --user-a06: ${rgba(USER_COLOR, 0.06)};

@@ -74,7 +74,7 @@ function toggleMeta(el) {
 
 function animateCollapse(el, callback) {
     el.classList.add('collapsing');
-    setTimeout(function() {
+    setTimeout(function () {
         el.classList.remove('collapsing');
         callback();
     }, 250);
@@ -145,7 +145,7 @@ function finalizeTurn(stats) {
                         chip.style.opacity = '1';
                         const b2 = el.querySelector('.chip-close');
                         if (b2) b2.remove();
-                        animateCollapse(el, function() {
+                        animateCollapse(el, function () {
                             el.classList.add('turn-hidden', 'collapsed');
                             el.classList.remove('chip-expanded');
                         });
@@ -156,7 +156,7 @@ function finalizeTurn(stats) {
                 chip.style.opacity = '1';
                 const btn2 = el.querySelector('.chip-close');
                 if (btn2) btn2.remove();
-                animateCollapse(el, function() {
+                animateCollapse(el, function () {
                     el.classList.add('turn-hidden', 'collapsed');
                     el.classList.remove('chip-expanded');
                 });
@@ -165,7 +165,7 @@ function finalizeTurn(stats) {
         el.dataset.chipOwned = '1';
         targetMeta.appendChild(chip);
         targetMeta.classList.add('show');
-        animateCollapse(el, function() {
+        animateCollapse(el, function () {
             el.classList.add('turn-hidden');
         });
     });
@@ -223,7 +223,7 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
         chip.style.opacity = '1';
         const btn = el.querySelector('.chip-close');
         if (btn) btn.remove();
-        animateCollapse(el, function() {
+        animateCollapse(el, function () {
             el.classList.add('turn-hidden', 'collapsed');
             el.classList.remove('chip-expanded');
         });
@@ -252,7 +252,7 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     };
     targetMeta.appendChild(chip);
     targetMeta.classList.add('show');
-    animateCollapse(el, function() {
+    animateCollapse(el, function () {
         el.classList.add('turn-hidden');
     });
     scrollIfNeeded();
@@ -289,7 +289,7 @@ function _doCollapseThinkingToChip(el, elId, targetMeta) {
         chip.style.opacity = '1';
         const btn = el.querySelector('.chip-close');
         if (btn) btn.remove();
-        animateCollapse(el, function() {
+        animateCollapse(el, function () {
             el.classList.add('turn-hidden', 'collapsed');
             el.classList.remove('chip-expanded');
         });
@@ -318,7 +318,7 @@ function _doCollapseThinkingToChip(el, elId, targetMeta) {
     };
     targetMeta.appendChild(chip);
     targetMeta.classList.add('show');
-    animateCollapse(el, function() {
+    animateCollapse(el, function () {
         el.classList.add('turn-hidden');
     });
     scrollIfNeeded();
@@ -419,10 +419,12 @@ var _copyObserver = new MutationObserver(function () {
             var text = code ? code.textContent : pre.textContent;
             navigator.clipboard.writeText(text).then(function () {
                 btn.textContent = 'Copied!';
-                setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+                setTimeout(function () {
+                    btn.textContent = 'Copy';
+                }, 1500);
             });
         };
         pre.appendChild(btn);
     });
 });
-_copyObserver.observe(document.body, { childList: true, subtree: true });
+_copyObserver.observe(document.body, {childList: true, subtree: true});

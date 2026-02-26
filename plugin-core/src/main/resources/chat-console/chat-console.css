@@ -5,11 +5,28 @@
 
 /* Default values — overridden at runtime by Kotlin-injected :root */
 :root {
+    /* Spacing scale (4px base grid) */
+    --sp-1: 2px;
+    --sp-2: 4px;
+    --sp-3: 6px;
+    --sp-4: 8px;
+    --sp-5: 10px;
+    --sp-6: 12px;
+    --sp-7: 14px;
+    --sp-8: 16px;
+    --sp-10: 20px;
+    /* Radii */
+    --r-sm: 4px;
+    --r-md: 8px;
+    --r-lg: 16px;
+    --r-pill: 10px;
+    /* Typography */
     --font-family: system-ui, sans-serif;
     --font-size: 12pt;
     --code-font-size: 11pt;
     --fg: rgb(187, 187, 187);
     --fg-a08: rgba(187, 187, 187, 0.08);
+    --fg-a16: rgba(187, 187, 187, 0.16);
     --bg: rgb(43, 43, 43);
     --user: rgb(86, 156, 214);
     --user-a06: rgba(86, 156, 214, 0.06);
@@ -84,7 +101,7 @@ body {
     font-size: var(--font-size);
     color: var(--fg);
     background: var(--bg);
-    padding: 8px;
+    padding: var(--sp-4);
     line-height: 1.45;
 }
 
@@ -112,13 +129,13 @@ body {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    margin: 10px 0 4px 0
+    margin: var(--sp-5) 0 var(--sp-2) 0
 }
 
 .prompt-bubble {
     background: var(--user-a12);
-    border-radius: 16px 16px 4px 16px;
-    padding: 6px 14px;
+    border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
+    padding: var(--sp-3) var(--sp-7);
     max-width: 85%;
     font-weight: normal;
     white-space: pre-wrap;
@@ -132,10 +149,10 @@ body {
 .prompt-ctx-chip {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: var(--sp-1);
     background: var(--user-a15);
-    border-radius: 10px;
-    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    padding: 1px var(--sp-4);
     font-size: 0.82em;
     color: var(--user);
     text-decoration: none;
@@ -149,13 +166,13 @@ body {
 
 /* --- Agent response bubble (left-aligned) --- */
 .agent-row {
-    margin: 4px 0
+    margin: var(--sp-2) 0
 }
 
 .agent-bubble {
     background: var(--agent-a06);
-    border-radius: 4px 16px 16px 16px;
-    padding: 8px 16px;
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
+    padding: var(--sp-4) var(--sp-8);
     max-width: 90%;
 }
 
@@ -174,7 +191,7 @@ body {
 
 /* --- Collapsible section (shared by thinking + tool calls) --- */
 .collapse-section {
-    margin: 4px 0;
+    margin: var(--sp-2) 0;
     overflow: hidden;
     transition: opacity 0.25s ease, transform 0.25s ease;
     transform-origin: top center
@@ -184,9 +201,9 @@ body {
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 6px;
-    border-radius: 8px;
-    padding: 5px 12px;
+    gap: var(--sp-3);
+    border-radius: var(--r-md);
+    padding: 5px var(--sp-6);
     font-size: 0.88em;
     user-select: none;
     transition: background .15s;
@@ -208,7 +225,7 @@ body {
 .collapse-content {
     white-space: pre-wrap;
     font-size: 0.85em;
-    padding: 6px 12px 6px 30px;
+    padding: var(--sp-3) var(--sp-6) var(--sp-3) 30px;
     line-height: 1.4;
 }
 
@@ -240,7 +257,7 @@ body {
 /* --- Thinking (bubble style, matching agent-bubble shape) --- */
 .thinking-section {
     background: var(--think-a06);
-    border-radius: 4px 16px 16px 16px;
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
 }
 
 .thinking-section .collapse-header {
@@ -268,7 +285,7 @@ body {
 /* --- Tool calls (bubble style, matching agent-bubble shape) --- */
 .tool-section {
     background: var(--tool-a08);
-    border-radius: 4px 16px 16px 16px;
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
 }
 
 .tool-section .collapse-header {
@@ -358,8 +375,8 @@ body {
 /* Sub-agent bubble (like agent-bubble but in agent-specific color) */
 .subagent-bubble {
     background: var(--sa-a06);
-    border-radius: 4px 16px 16px 16px;
-    padding: 8px 16px;
+    border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
+    padding: var(--sp-4) var(--sp-8);
     max-width: 95%;
 }
 
@@ -379,6 +396,53 @@ body {
     animation: pulse 1.5s ease-in-out infinite;
 }
 
+/* --- Sub-agent status badge --- */
+.sa-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: 0.78em;
+    font-weight: 600;
+    padding: 1px var(--sp-4);
+    border-radius: var(--r-pill);
+    vertical-align: middle;
+    margin-left: var(--sp-4);
+    white-space: nowrap;
+}
+
+.sa-badge-working {
+    color: var(--sa-color);
+    background: var(--sa-a10);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.sa-badge-working::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sa-color);
+}
+
+.sa-badge-done {
+    color: var(--sa-color);
+    background: var(--sa-a10);
+}
+
+.sa-badge-done::before {
+    content: '✓ ';
+}
+
+.sa-badge-failed {
+    color: var(--error);
+    background: var(--error-a06);
+}
+
+.sa-badge-failed::before {
+    content: '✖ ';
+}
+
 /* --- Context files --- */
 .context-section .collapse-header {
     background: var(--user-a06);
@@ -386,12 +450,12 @@ body {
 }
 
 .context-section .collapse-content {
-    padding: 4px 12px 4px 30px;
+    padding: var(--sp-2) var(--sp-6) var(--sp-2) 30px;
     white-space: normal
 }
 
 .ctx-file {
-    padding: 2px 0
+    padding: var(--sp-1) 0
 }
 
 /* --- Chip-expanded style (section opened from turn chip) --- */
@@ -401,8 +465,8 @@ body {
 
 .chip-expanded .collapse-content {
     display: block;
-    margin: 2px 0;
-    padding: 4px 10px;
+    margin: var(--sp-1) 0;
+    padding: var(--sp-2) var(--sp-5);
     font-size: 0.82em;
     position: relative;
     animation: chipExpand 0.2s ease-out;
@@ -418,14 +482,14 @@ body {
 
 .chip-close {
     position: absolute;
-    top: 2px;
-    right: 4px;
+    top: var(--sp-1);
+    right: var(--sp-2);
     cursor: pointer !important;
     font-size: 0.8em;
     color: var(--think);
     opacity: 0.6;
-    padding: 2px 4px;
-    border-radius: 4px;
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-sm);
 }
 
 .chip-close:hover {
@@ -452,19 +516,19 @@ body {
 .tool-params-label, .tool-result-label {
     color: var(--think);
     font-size: 0.85em;
-    margin: 6px 0 2px 0;
+    margin: var(--sp-3) 0 var(--sp-1) 0;
     font-weight: 600;
 }
 
 .tool-params {
-    margin: 2px 0 6px 0;
-    padding: 6px 8px;
+    margin: var(--sp-1) 0 var(--sp-3) 0;
+    padding: var(--sp-3) var(--sp-4);
     font-size: 0.9em
 }
 
 .tool-output {
-    margin: 2px 0;
-    padding: 6px 8px;
+    margin: var(--sp-1) 0;
+    padding: var(--sp-3) var(--sp-4);
     font-size: 0.9em
 }
 
@@ -478,8 +542,8 @@ body {
     display: none;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 2px;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-1);
     width: 100%
 }
 
@@ -500,10 +564,10 @@ body {
 .turn-chip {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: var(--sp-1);
     background: var(--think-a08);
-    border-radius: 10px;
-    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    padding: var(--sp-1) var(--sp-4);
     font-size: 0.78em;
     color: var(--think);
     max-width: 260px;
@@ -538,12 +602,12 @@ body {
 .turn-chip.tool[data-tip]:hover::after {
     content: attr(data-tip);
     position: absolute;
-    bottom: calc(100% + 4px);
+    bottom: calc(100% + var(--sp-2));
     left: 0;
     background: var(--tooltip-bg);
     color: var(--think);
-    padding: 3px 8px;
-    border-radius: 4px;
+    padding: var(--sp-1) var(--sp-4);
+    border-radius: var(--r-sm);
     font-size: 0.85em;
     white-space: nowrap;
     z-index: 10;
@@ -587,12 +651,12 @@ body {
 .turn-chip.stats:hover::after {
     content: attr(data-tip);
     position: absolute;
-    bottom: calc(100% + 4px);
+    bottom: calc(100% + var(--sp-2));
     right: 0;
     background: var(--tooltip-bg);
     color: var(--think);
-    padding: 3px 8px;
-    border-radius: 4px;
+    padding: var(--sp-1) var(--sp-4);
+    border-radius: var(--r-sm);
     font-size: 0.85em;
     white-space: nowrap;
     z-index: 10;
@@ -606,10 +670,10 @@ body {
 
 /* --- Status entries --- */
 .status-row {
-    padding: 4px 12px;
-    margin: 2px 0;
+    padding: var(--sp-2) var(--sp-6);
+    margin: var(--sp-1) 0;
     font-size: 0.88em;
-    border-radius: 6px
+    border-radius: var(--r-sm)
 }
 
 .status-row.error {
@@ -626,8 +690,8 @@ body {
 .session-sep {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 16px 0;
+    gap: var(--sp-5);
+    margin: var(--sp-8) 0;
     opacity: 0.6
 }
 
@@ -646,7 +710,7 @@ body {
 /* --- Placeholder --- */
 .placeholder {
     color: var(--think);
-    padding: 20px 12px;
+    padding: var(--sp-10) var(--sp-6);
     text-align: center;
     white-space: pre-wrap;
     font-size: 0.95em;
@@ -654,8 +718,8 @@ body {
 
 /* --- Processing indicator (indeterminate progress bar) --- */
 .processing-indicator {
-    padding: 8px 16px;
-    margin: 4px 0
+    padding: var(--sp-4) var(--sp-8);
+    margin: var(--sp-2) 0
 }
 
 .processing-bar {
@@ -712,11 +776,11 @@ body {
 
 /* --- Markdown content --- */
 h2, h3, h4, h5 {
-    margin: 8px 0 4px 0
+    margin: var(--sp-4) 0 var(--sp-2) 0
 }
 
 p {
-    margin: 3px 0
+    margin: var(--sp-1) 0
 }
 
 a {
@@ -731,18 +795,19 @@ a:hover {
 
 code {
     background: var(--code-bg);
-    padding: 2px 5px;
-    border-radius: 4px;
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-sm);
     font-family: 'JetBrains Mono', monospace;
     font-size: var(--code-font-size);
 }
 
 pre {
     background: var(--code-bg);
-    padding: 10px;
-    border-radius: 6px;
-    margin: 6px 0;
-    overflow-x: auto
+    padding: var(--sp-5);
+    border-radius: var(--r-sm);
+    margin: var(--sp-3) 0;
+    overflow-x: auto;
+    position: relative;
 }
 
 pre code {
@@ -754,12 +819,12 @@ pre code {
 
 table {
     border-collapse: collapse;
-    margin: 6px 0
+    margin: var(--sp-3) 0
 }
 
 th, td {
     border: 1px solid var(--tbl-border);
-    padding: 4px 10px;
+    padding: var(--sp-2) var(--sp-5);
     text-align: left
 }
 
@@ -773,12 +838,12 @@ tr:nth-child(even) td {
 }
 
 ul, ol {
-    margin: 4px 0;
+    margin: var(--sp-2) 0;
     padding-left: 22px
 }
 
 li {
-    margin: 2px 0
+    margin: var(--sp-1) 0
 }
 
 b, strong {
@@ -789,9 +854,9 @@ b, strong {
 .quick-replies {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin: 8px 0 4px 0;
-    padding: 0 4px;
+    gap: var(--sp-3);
+    margin: var(--sp-4) 0 var(--sp-2) 0;
+    padding: 0 var(--sp-2);
 }
 
 .quick-reply-btn {
@@ -799,8 +864,8 @@ b, strong {
     background: var(--agent-a08);
     color: var(--agent);
     border: 1px solid var(--agent-a16);
-    border-radius: 14px;
-    padding: 4px 14px;
+    border-radius: var(--r-pill);
+    padding: var(--sp-2) var(--sp-7);
     font-size: 0.88em;
     cursor: pointer;
     transition: background .15s, border-color .15s;
@@ -824,19 +889,15 @@ b, strong {
 }
 
 /* --- Code block copy button --- */
-pre {
-    position: relative;
-}
-
 pre .copy-btn {
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: var(--sp-2);
+    right: var(--sp-2);
     background: var(--fg-a08);
     color: var(--fg);
     border: none;
-    border-radius: 4px;
-    padding: 2px 8px;
+    border-radius: var(--r-sm);
+    padding: var(--sp-1) var(--sp-4);
     font-size: 0.75em;
     cursor: pointer;
     opacity: 0;
