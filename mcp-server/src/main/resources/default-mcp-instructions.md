@@ -34,9 +34,14 @@ BEST PRACTICES:
 5. GIT: ALWAYS use built-in git tools (git_status, git_diff, git_log, git_commit, etc.). \
    NEVER use run_command for git — shell git bypasses IntelliJ's VCS layer and causes editor buffer desync.
 
-6. GrazieInspection (grammar) does NOT support apply_quickfix → use intellij_write_file instead.
+6. GIT WRITE RESTRICTION (sub-agents): If you are a sub-agent (launched via the Task tool), \
+   you MUST NOT use git write commands: git_commit, git_stage, git_unstage, git_branch, git_stash. \
+   Only the parent agent may perform git writes. Read-only git tools (git_status, git_diff, git_log, \
+   git_show, git_blame) are allowed.
 
-7. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
+7. GrazieInspection (grammar) does NOT support apply_quickfix → use intellij_write_file instead.
+
+8. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
    a) Auto-highlights in write response → after EACH edit. Instant. Catches most errors. \
    b) get_compilation_errors() → after editing multiple files. Fast scan of open files. \
    c) build_project → ONLY before committing. Full incremental compilation. \

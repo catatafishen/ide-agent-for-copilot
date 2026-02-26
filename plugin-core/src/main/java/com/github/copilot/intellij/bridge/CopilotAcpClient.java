@@ -55,6 +55,7 @@ public class CopilotAcpClient implements Closeable {
     private static final String UNKNOWN = "unknown";
     private static final String RUN_COMMAND_ABUSE_PREFIX = "run_command_abuse:";
     private static final String CLI_TOOL_ABUSE_PREFIX = "cli_tool_abuse:";
+    private static final String GIT_WRITE_ABUSE_PREFIX = "git_write_abuse:";
     private static final String USER_HOME = "user.home";
     private static final String TITLE_KEY = "title";
     private static final String PARAMETERS_KEY = "parameters";
@@ -114,6 +115,14 @@ public class CopilotAcpClient implements Closeable {
     private volatile boolean builtInActionDeniedDuringTurn = false;
     private volatile String lastDeniedKind = "";
 
+    // Sub-agent tracking: set by UI layer when a Task tool call is active
+    private volatile boolean subAgentActive = false;
+
+    // Git write tools that sub-agents must not use
+    private static final Set<String> GIT_WRITE_TOOLS = Set.of(
+        "git_commit", "git_stage", "git_unstage", "git_branch", "git_stash"
+    );
+
     // Activity tracking for inactivity-based timeout
     private volatile long lastActivityTimestamp = System.currentTimeMillis();
     private final AtomicInteger toolCallsInTurn = new AtomicInteger(0);
@@ -148,6 +157,14 @@ public class CopilotAcpClient implements Closeable {
      */
     public void addDebugListener(Consumer<DebugEvent> listener) {
         debugListeners.add(listener);
+    }
+
+    /**
+     * Set whether a sub-agent (Task tool) is currently active.
+     * When active, git write tools (commit, stage, unstage, branch, stash) are blocked.
+     */
+    public void setSubAgentActive(boolean active) {
+        this.subAgentActive = active;
     }
 
     /**
@@ -1071,6 +1088,25 @@ public class CopilotAcpClient implements Closeable {
             return;
         }
 
+        // Check if a sub-agent is trying to use git write tools
+        String gitWriteAbuse = detectSubAgentGitWrite(toolCall);
+        if (gitWriteAbuse != null) {
+            String rejectOptionId = findRejectOption(reqParams);
+            LOG.info("ACP request_permission: DENYING sub-agent git write: " + gitWriteAbuse);
+
+            Map<String, Object> retryParams = buildRetryParams(GIT_WRITE_ABUSE_PREFIX + gitWriteAbuse);
+            String retryMessage = (String) retryParams.get(MESSAGE);
+            fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
+            sendPromptMessage(retryMessage);
+
+            fireDebugEvent(PERMISSION_DENIED_EVENT, "Sub-agent git write: " + gitWriteAbuse,
+                toolCall.toString());
+            builtInActionDeniedDuringTurn = true;
+            lastDeniedKind = GIT_WRITE_ABUSE_PREFIX + gitWriteAbuse;
+            sendPermissionResponse(reqId, rejectOptionId);
+            return;
+        }
+
         if (DENIED_PERMISSION_KINDS.contains(permKind)) {
             String rejectOptionId = findRejectOption(reqParams);
             LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
@@ -1181,6 +1217,19 @@ public class CopilotAcpClient implements Closeable {
     }
 
     /**
+     * Detect if a git write tool is being called by a sub-agent.
+     * Returns the tool name (e.g. "git_commit") if blocked, null otherwise.
+     */
+    private String detectSubAgentGitWrite(JsonObject toolCall) {
+        if (!subAgentActive || toolCall == null) return null;
+
+        String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
+        // Strip MCP prefix if present
+        String shortName = toolName.replace("intellij-code-tools-", "");
+        return GIT_WRITE_TOOLS.contains(shortName) ? shortName : null;
+    }
+
+    /**
      * Build guidance message for denied actions.
      * Returns a map with "message" key containing the instruction text.
      */
@@ -1225,6 +1274,10 @@ public class CopilotAcpClient implements Closeable {
                         "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
                 default -> TOOL_DENIED_DEFAULT_MSG;
             };
+        } else if (deniedKind.startsWith(GIT_WRITE_ABUSE_PREFIX)) {
+            instruction = "⚠ Sub-agents must not use git write commands (git_commit, git_stage, git_unstage, " +
+                "git_branch, git_stash). Only the parent agent may perform git writes. " +
+                "Use read-only git tools (git_status, git_diff, git_log, git_show, git_blame) instead.";
         } else {
             // Generic message for other denials
             instruction = TOOL_DENIED_DEFAULT_MSG;

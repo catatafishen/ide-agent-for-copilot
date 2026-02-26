@@ -1529,6 +1529,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val agentType = extractJsonField(arguments, "agent_type")
             if (agentType != null) {
                 toolCallTitles[toolCallId] = "task" // mark as sub-agent for update routing
+                CopilotService.getInstance(project).getClient().setSubAgentActive(true)
                 val description = title.ifBlank { extractJsonField(arguments, "description") ?: "Sub-agent task" }
                 val prompt = extractJsonField(arguments, "prompt")
                 consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
@@ -1557,6 +1558,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         if (status == "completed") {
             setResponseStatus(MSG_THINKING)
             if (isSubAgent) {
+                CopilotService.getInstance(project).getClient().setSubAgentActive(false)
                 consolePanel.updateSubAgentResult(toolCallId, "completed", result)
             } else {
                 consolePanel.updateToolCall(toolCallId, "completed", result)
@@ -1566,6 +1568,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 ?: result
                 ?: update.toString().take(500)
             if (isSubAgent) {
+                CopilotService.getInstance(project).getClient().setSubAgentActive(false)
                 consolePanel.updateSubAgentResult(toolCallId, "failed", error)
             } else {
                 consolePanel.updateToolCall(toolCallId, "failed", error)
