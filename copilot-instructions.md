@@ -268,11 +268,13 @@ directly from disk, bypassing IntelliJ editor buffers. **We cannot remove these 
 is not implemented.
 
 **What we do:**
+
 - Deny permission via ACP `request_permission` when the agent asks to use them
 - Send guidance messages redirecting to `intellij-code-tools-*` equivalents
 - Block `bash`, `cat`, `sed`, `grep`, `find` in `run_command` abuse detection
 
 **What we can't control:**
+
 - The Copilot platform may invoke these tools directly without a permission request
 - Instructions and denials are best-effort — the agent may still occasionally use disk-based tools
 - This can cause stale reads (editor has newer content) or write conflicts (disk write overwrites buffer)

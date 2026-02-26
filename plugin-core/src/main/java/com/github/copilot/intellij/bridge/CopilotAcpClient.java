@@ -246,10 +246,19 @@ public class CopilotAcpClient implements Closeable {
             LOG.info("Copilot CLI model set to: " + savedModel);
         }
 
-        // NOTE: --available-tools and --excluded-tools CLI flags don't work in --acp mode.
-        // Tool filtering must be done via session params (see createSession method).
-        // These flags are left here for documentation but have no effect.
-        LOG.info("Tool filtering handled via session/new availableTools parameter");
+        // NOTE: --available-tools and --excluded-tools don't work in --acp mode (bug #556).
+        // However, --deny-tool operates at the permission layer (auto-denies permission
+        // requests) rather than the tool filtering layer, so it may work in ACP mode.
+        // This is our primary defense; DENIED_PERMISSION_KINDS is the fallback.
+        // See docs/CLI-BUG-556-WORKAROUND.md for details.
+        cmd.add("--deny-tool");
+        cmd.add("view");
+        cmd.add("edit");
+        cmd.add("create");
+        cmd.add("grep");
+        cmd.add("glob");
+        cmd.add("bash");
+        LOG.info("Copilot CLI --deny-tool set for built-in tools: view, edit, create, grep, glob, bash");
 
         // Configure Copilot CLI to use .agent-work/ for session state
         if (projectBasePath != null) {
@@ -1257,8 +1266,9 @@ public class CopilotAcpClient implements Closeable {
                     "Provides structured results, coverage, and failure details.";
                 case "sed" -> "⚠ Don't use sed. Use 'intellij-code-tools-intellij_write_file' instead. " +
                     "It provides proper file editing with undo/redo and live editor buffer access.";
-                case "cat" -> "⚠ Don't use cat/head/tail/less/more. Use 'intellij-code-tools-intellij_read_file' instead. " +
-                    "It reads from the live editor buffer, not stale disk files.";
+                case "cat" ->
+                    "⚠ Don't use cat/head/tail/less/more. Use 'intellij-code-tools-intellij_read_file' instead. " +
+                        "It reads from the live editor buffer, not stale disk files.";
                 case "grep" -> "⚠ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
                     "'intellij-code-tools-find_references' instead. They search live editor buffers.";
                 case "find" -> "⚠ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
@@ -1280,9 +1290,10 @@ public class CopilotAcpClient implements Closeable {
                     "Use 'intellij-code-tools-search_text' instead (searches live editor buffers).";
                 case "glob" -> "⚠ Don't use 'glob' for project files. " +
                     "Use 'intellij-code-tools-list_project_files' instead (uses IntelliJ's project index).";
-                case "bash" -> "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
-                    "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
-                    "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
+                case "bash" ->
+                    "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
+                        "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
+                        "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
                 default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
         } else {
