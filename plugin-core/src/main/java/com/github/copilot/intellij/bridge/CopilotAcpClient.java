@@ -13,11 +13,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +59,6 @@ public class CopilotAcpClient implements Closeable {
     private static final String TITLE_KEY = "title";
     private static final String PARAMETERS_KEY = "parameters";
     private static final String CREATE_KIND = "create";
-    private static final String MCP_SERVER_ERROR = "MCP Server Error";
     private static final String TOOL_DENIED_DEFAULT_MSG = "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
     private static final String BUILT_IN_TOOL_WARNING_PREFIX = "⚠ You used the built-in '";
     private static final String PRE_REJECTION_GUIDANCE_EVENT = "PRE_REJECTION_GUIDANCE";
@@ -194,10 +191,10 @@ public class CopilotAcpClient implements Closeable {
         }
 
         try {
-            String copilotPath = findCopilotCli();
+            String copilotPath = CopilotCliLocator.findCopilotCli();
             LOG.info("Starting Copilot ACP: " + copilotPath);
 
-            ProcessBuilder pb = buildAcpCommand(copilotPath);
+            ProcessBuilder pb = CopilotCliLocator.buildAcpCommand(copilotPath, projectBasePath);
             pb.redirectErrorStream(false);
             process = pb.start();
 
@@ -219,99 +216,6 @@ public class CopilotAcpClient implements Closeable {
         } catch (IOException e) {
             throw new CopilotException("Failed to start Copilot ACP process", e);
         }
-    }
-
-    /**
-     * Resolve the node binary for NVM-managed copilot installations.
-     */
-    private void addNodeAndCopilotCommand(java.util.List<String> cmd, String copilotPath) {
-        if (copilotPath.contains("/.nvm/versions/node/")) {
-            String nodeDir = copilotPath.substring(0, copilotPath.indexOf("/bin/copilot"));
-            String nodePath = nodeDir + "/bin/node";
-            if (new File(nodePath).exists()) {
-                cmd.add(nodePath);
-            }
-        }
-        cmd.add(copilotPath);
-    }
-
-    /**
-     * Build MCP config JSON, write to temp file, and add --additional-mcp-config flag.
-     */
-    private void addMcpConfigFlags(java.util.List<String> cmd) {
-        String mcpJarPath = findMcpServerJar();
-        if (mcpJarPath == null) {
-            showNotification(MCP_SERVER_ERROR,
-                "MCP server JAR not found. IntelliJ code tools will be unavailable.\nCheck IDE log for details.",
-                com.intellij.notification.NotificationType.ERROR);
-            return;
-        }
-        String javaExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java";
-        String javaPath = System.getProperty("java.home") + File.separator + "bin" + File.separator + javaExe;
-        if (!new File(javaPath).exists()) {
-            LOG.warn("Java not found at: " + javaPath + ", MCP tools unavailable");
-            showNotification(MCP_SERVER_ERROR,
-                "Java not found at: " + javaPath + "\nIntelliJ tools will be unavailable.",
-                com.intellij.notification.NotificationType.ERROR);
-            return;
-        }
-        try {
-            JsonObject mcpConfig = new JsonObject();
-            JsonObject servers = new JsonObject();
-            JsonObject codeTools = new JsonObject();
-            codeTools.addProperty(COMMAND, javaPath);
-            JsonArray args = new JsonArray();
-            args.add("-jar");
-            args.add(mcpJarPath);
-            args.add(System.getProperty(USER_HOME));
-            codeTools.add("args", args);
-            servers.add("intellij-code-tools", codeTools);
-            mcpConfig.add("mcpServers", servers);
-
-            File mcpConfigFile = File.createTempFile("copilot-mcp-", ".json");
-            mcpConfigFile.deleteOnExit();
-            try (java.io.FileWriter fw = new java.io.FileWriter(mcpConfigFile)) {
-                fw.write(gson.toJson(mcpConfig));
-            }
-            cmd.add("--additional-mcp-config");
-            cmd.add("@" + mcpConfigFile.getAbsolutePath());
-            LOG.info("MCP code-tools configured globally via " + mcpConfigFile.getAbsolutePath());
-        } catch (IOException e) {
-            LOG.warn("Failed to write MCP config file", e);
-            showNotification(MCP_SERVER_ERROR,
-                "Failed to write MCP config file: " + e.getMessage() + "\nIntelliJ tools will be unavailable.",
-                com.intellij.notification.NotificationType.ERROR);
-        }
-    }
-
-    private ProcessBuilder buildAcpCommand(String copilotPath) {
-        java.util.List<String> cmd = new java.util.ArrayList<>();
-
-        addNodeAndCopilotCommand(cmd, copilotPath);
-
-        cmd.add("--acp");
-        cmd.add("--stdio");
-
-        String savedModel = CopilotSettings.getSelectedModel();
-        if (savedModel != null && !savedModel.isEmpty()) {
-            cmd.add("--model");
-            cmd.add(savedModel);
-            LOG.info("Copilot CLI model set to: " + savedModel);
-        }
-
-        // NOTE: --deny-tool, --available-tools, --excluded-tools all DON'T work in --acp mode.
-        // All three are broken per CLI bug #556. See CLI-BUG-556-WORKAROUND.md
-
-        if (projectBasePath != null) {
-            Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
-            cmd.add("--config-dir");
-            cmd.add(agentWorkPath.toString());
-            LOG.info("Copilot CLI config-dir set to: " + agentWorkPath);
-        }
-
-        addMcpConfigFlags(cmd);
-
-        return new ProcessBuilder(cmd);
     }
 
     /**
@@ -1356,144 +1260,6 @@ public class CopilotAcpClient implements Closeable {
             .findFirst()
             .map(m -> m.getUsage() != null ? m.getUsage() : "1x")
             .orElse("1x");
-    }
-
-    /**
-     * Find the copilot CLI executable.
-     */
-    @NotNull
-    private String findCopilotCli() throws CopilotException {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-
-        // Check PATH first
-        String pathResult = checkCopilotInPath(isWindows);
-        if (pathResult != null) return pathResult;
-
-        // Check known Windows winget install location
-        if (isWindows) {
-            String wingetPath = checkWindowsWingetPath();
-            if (wingetPath != null) return wingetPath;
-        }
-
-        // Check common Linux/macOS locations
-        if (!isWindows) {
-            String unixPath = checkUnixLocations();
-            if (unixPath != null) return unixPath;
-        }
-
-        String installInstructions = isWindows
-            ? "Install with: winget install GitHub.Copilot"
-            : "Install with: npm install -g @anthropic-ai/copilot-cli";
-        throw new CopilotException("Copilot CLI not found. " + installInstructions, null, false);
-    }
-
-    @Nullable
-    private String checkCopilotInPath(boolean isWindows) {
-        try {
-            String command = isWindows ? "where" : "which";
-            Process check = new ProcessBuilder(command, "copilot").start();
-            if (check.waitFor() == 0) {
-                String path = new String(check.getInputStream().readAllBytes()).trim().split("\\r?\\n")[0];
-                if (new File(path).exists()) return path;
-            }
-        } catch (IOException e) {
-            LOG.debug("Failed to check for copilot in PATH", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOG.debug("Interrupted while checking for copilot in PATH", e);
-        }
-        return null;
-    }
-
-    @Nullable
-    private String checkWindowsWingetPath() {
-        String wingetPath = System.getenv("LOCALAPPDATA") +
-            "\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe";
-        if (new File(wingetPath).exists()) return wingetPath;
-        return null;
-    }
-
-    @Nullable
-    private String checkUnixLocations() {
-        String home = System.getProperty(USER_HOME);
-        List<String> candidates = new ArrayList<>();
-
-        // NVM-managed node installations
-        addNvmCandidates(home, candidates);
-
-        // Common global npm/yarn locations
-        candidates.add(home + "/.local/bin/copilot");
-        candidates.add("/usr/local/bin/copilot");
-        candidates.add(home + "/.npm-global/bin/copilot");
-        candidates.add(home + "/.yarn/bin/copilot");
-        // Homebrew
-        candidates.add("/opt/homebrew/bin/copilot");
-
-        for (String path : candidates) {
-            if (new File(path).exists()) {
-                LOG.info("Found Copilot CLI at: " + path);
-                return path;
-            }
-        }
-        return null;
-    }
-
-    private void addNvmCandidates(String home, List<String> candidates) {
-        File nvmDir = new File(home, ".nvm/versions/node");
-        if (nvmDir.isDirectory()) {
-            File[] nodeDirs = nvmDir.listFiles(File::isDirectory);
-            if (nodeDirs != null) {
-                // Sort descending to prefer the latest version
-                java.util.Arrays.sort(nodeDirs, (a, b) -> b.getName().compareTo(a.getName()));
-                for (File nodeDir : nodeDirs) {
-                    candidates.add(new File(nodeDir, "bin/copilot").getAbsolutePath());
-                }
-            }
-        }
-    }
-
-    /**
-     * Find the bundled MCP server JAR in the plugin's lib directory.
-     * Returns null if not found (MCP tools will be unavailable).
-     */
-    @SuppressWarnings("deprecation") // getPath() deprecated in PluginDescriptor
-    @Nullable
-    private String findMcpServerJar() {
-        // Strategy 1: Use IntelliJ plugin API to find plugin directory
-        try {
-            var pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.copilot.intellij");
-            var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-            if (plugin != null) {
-                File libDir = plugin.getPath().toPath().resolve("lib").toFile();
-                File mcpJar = new File(libDir, "mcp-server.jar");
-                if (mcpJar.exists()) {
-                    LOG.info("Found MCP server JAR via plugin API: " + mcpJar.getAbsolutePath());
-                    return mcpJar.getAbsolutePath();
-                }
-                LOG.warn("MCP JAR not in plugin lib dir: " + libDir);
-            }
-        } catch (Exception e) {
-            LOG.warn("Plugin API lookup failed: " + e.getMessage());
-        }
-
-        // Strategy 2: Fall back to classloader-based discovery
-        try {
-            java.net.URL url = getClass().getProtectionDomain().getCodeSource().getLocation();
-            if (url != null) {
-                LOG.info("CodeSource URL: " + url);
-                File jarDir = new File(url.toURI()).getParentFile();
-                File mcpJar = new File(jarDir, "mcp-server.jar");
-                if (mcpJar.exists()) {
-                    LOG.info("Found MCP server JAR via classloader: " + mcpJar.getAbsolutePath());
-                    return mcpJar.getAbsolutePath();
-                }
-            }
-        } catch (java.net.URISyntaxException | SecurityException e) {
-            LOG.warn("Classloader JAR lookup failed: " + e.getMessage());
-        }
-
-        LOG.warn("MCP server JAR not found - MCP tools will be unavailable");
-        return null;
     }
 
     private String findAllowOption(JsonObject reqParams) {
