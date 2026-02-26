@@ -1770,6 +1770,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             com.github.copilot.intellij.psi.PsiBridgeService.getInstance(project).flushPendingAutoFormat()
 
             consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
+            notifyIfUnfocused(turnToolCallCount)
             setResponseStatus("Done", loading = false)
             addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
             saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
@@ -2050,6 +2051,19 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val dir = java.io.File(project.basePath ?: "", AGENT_WORK_DIR)
         dir.mkdirs()
         return java.io.File(dir, "conversation.json")
+    }
+
+    private fun notifyIfUnfocused(toolCallCount: Int) {
+        val frame = com.intellij.openapi.wm.WindowManager.getInstance().getFrame(project) ?: return
+        if (frame.isActive) return
+        val title = "Copilot response ready"
+        val content =
+            if (toolCallCount > 0) "Turn completed with $toolCallCount tool call${if (toolCallCount != 1) "s" else ""}"
+            else "Turn completed"
+        com.intellij.notification.NotificationGroupManager.getInstance()
+            .getNotificationGroup("Copilot Notifications")
+            .createNotification(title, content, com.intellij.notification.NotificationType.INFORMATION)
+            .notify(project)
     }
 
     private fun saveConversation() {
