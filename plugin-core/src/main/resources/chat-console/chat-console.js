@@ -80,6 +80,83 @@ function animateCollapse(el, callback) {
     }, 250);
 }
 
+function _findNextAgentMeta(el) {
+    let sib = el.nextElementSibling;
+    while (sib) {
+        if (sib.classList.contains('agent-row')) {
+            return sib.querySelector('.meta');
+        }
+        sib = sib.nextElementSibling;
+    }
+    return null;
+}
+
+function _closeChipSection(el, chip) {
+    chip.style.opacity = '1';
+    const btn = el.querySelector('.chip-close');
+    if (btn) btn.remove();
+    animateCollapse(el, function () {
+        el.classList.add('turn-hidden', 'collapsed');
+        el.classList.remove('chip-expanded');
+    });
+}
+
+function _ensureCloseButton(el, chip) {
+    const cc = el.querySelector('.collapse-content');
+    if (cc && !cc.querySelector('.chip-close')) {
+        const btn = document.createElement('span');
+        btn.className = 'chip-close';
+        btn.textContent = '\u2715';
+        btn.onclick = function (e) {
+            e.stopPropagation();
+            _closeChipSection(el, chip);
+        };
+        cc.insertBefore(btn, cc.firstChild);
+    }
+}
+
+function _attachChipToggle(chip, el) {
+    chip.onclick = function (ev) {
+        ev.stopPropagation();
+        if (el.classList.contains('turn-hidden')) {
+            el.classList.remove('turn-hidden', 'collapsed');
+            el.classList.add('chip-expanded');
+            chip.style.opacity = '0.5';
+            _ensureCloseButton(el, chip);
+        } else {
+            _closeChipSection(el, chip);
+        }
+    };
+}
+
+function _createChipForElement(el) {
+    const chip = document.createElement('span');
+    if (el.classList.contains('thinking-section')) {
+        chip.className = 'turn-chip';
+        chip.textContent = '\uD83D\uDCAD Thought';
+    } else if (el.classList.contains('tool-section')) {
+        const lbl = el.querySelector('.collapse-label');
+        const icon = el.querySelector('.collapse-icon');
+        const failed = icon?.style.color === 'red';
+        chip.className = 'turn-chip tool' + (failed ? ' failed' : '');
+        chip.textContent = lbl ? lbl.textContent : 'Tool';
+    } else if (el.classList.contains('context-section')) {
+        chip.className = 'turn-chip ctx';
+        const n = el.querySelectorAll('.ctx-file').length;
+        chip.textContent = '\uD83D\uDCCE ' + n + ' file' + (n === 1 ? '' : 's');
+    } else if (el.classList.contains('status-row')) {
+        if (el.classList.contains('error')) {
+            chip.className = 'turn-chip err';
+            chip.textContent = '\u274C Error';
+        } else {
+            chip.className = 'turn-chip';
+            chip.textContent = '\u2139\uFE0F Info';
+        }
+    }
+    chip.style.cursor = 'pointer';
+    return chip;
+}
+
 function finalizeTurn(stats) {
     const items = document.querySelectorAll(
         '.thinking-section:not(.turn-hidden),' +
@@ -92,76 +169,11 @@ function finalizeTurn(stats) {
     const lastRow = lastBubble ? lastBubble.parentElement : null;
     const lastMeta = lastRow ? lastRow.querySelector('.meta') : null;
     items.forEach(function (el) {
-        let targetMeta = null;
-        let sib = el.nextElementSibling;
-        while (sib) {
-            if (sib.classList.contains('agent-row')) {
-                targetMeta = sib.querySelector('.meta');
-                break;
-            }
-            sib = sib.nextElementSibling;
-        }
-        if (!targetMeta) targetMeta = lastMeta;
+        const targetMeta = _findNextAgentMeta(el) || lastMeta;
         if (!targetMeta) return;
-        const chip = document.createElement('span');
-        const elId = el.id || '';
-        if (el.classList.contains('thinking-section')) {
-            chip.className = 'turn-chip';
-            chip.textContent = '\uD83D\uDCAD Thought';
-        } else if (el.classList.contains('tool-section')) {
-            const lbl = el.querySelector('.collapse-label');
-            const icon = el.querySelector('.collapse-icon');
-            const failed = icon?.style.color === 'red';
-            chip.className = 'turn-chip tool' + (failed ? ' failed' : '');
-            chip.textContent = lbl ? lbl.textContent : 'Tool';
-        } else if (el.classList.contains('context-section')) {
-            chip.className = 'turn-chip ctx';
-            const n = el.querySelectorAll('.ctx-file').length;
-            chip.textContent = '\uD83D\uDCCE ' + n + ' file' + (n === 1 ? '' : 's');
-        } else if (el.classList.contains('status-row')) {
-            if (el.classList.contains('error')) {
-                chip.className = 'turn-chip err';
-                chip.textContent = '\u274C Error';
-            } else {
-                chip.className = 'turn-chip';
-                chip.textContent = '\u2139\uFE0F Info';
-            }
-        }
-        chip.style.cursor = 'pointer';
-        chip.dataset.chipFor = elId;
-        chip.onclick = function (ev) {
-            ev.stopPropagation();
-            if (el.classList.contains('turn-hidden')) {
-                el.classList.remove('turn-hidden', 'collapsed');
-                el.classList.add('chip-expanded');
-                chip.style.opacity = '0.5';
-                const cc = el.querySelector('.collapse-content');
-                if (cc && !cc.querySelector('.chip-close')) {
-                    const btn = document.createElement('span');
-                    btn.className = 'chip-close';
-                    btn.textContent = '\u2715';
-                    btn.onclick = function (e) {
-                        e.stopPropagation();
-                        chip.style.opacity = '1';
-                        const b2 = el.querySelector('.chip-close');
-                        if (b2) b2.remove();
-                        animateCollapse(el, function () {
-                            el.classList.add('turn-hidden', 'collapsed');
-                            el.classList.remove('chip-expanded');
-                        });
-                    };
-                    cc.insertBefore(btn, cc.firstChild);
-                }
-            } else {
-                chip.style.opacity = '1';
-                const btn2 = el.querySelector('.chip-close');
-                if (btn2) btn2.remove();
-                animateCollapse(el, function () {
-                    el.classList.add('turn-hidden', 'collapsed');
-                    el.classList.remove('chip-expanded');
-                });
-            }
-        };
+        const chip = _createChipForElement(el);
+        chip.dataset.chipFor = el.id || '';
+        _attachChipToggle(chip, el);
         el.dataset.chipOwned = '1';
         targetMeta.appendChild(chip);
         targetMeta.classList.add('show');
@@ -184,15 +196,7 @@ function finalizeTurn(stats) {
 function collapseToolToChip(elId) {
     const el = document.getElementById(elId);
     if (!el || el.dataset.chipOwned) return;
-    let targetMeta = null;
-    let sib = el.nextElementSibling;
-    while (sib) {
-        if (sib.classList.contains('agent-row')) {
-            targetMeta = sib.querySelector('.meta');
-            break;
-        }
-        sib = sib.nextElementSibling;
-    }
+    const targetMeta = _findNextAgentMeta(el);
     if (!targetMeta) {
         el.dataset.pendingCollapse = '1';
         return;
@@ -218,38 +222,7 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     el.dataset.chipOwned = '1';
     chip.dataset.chipFor = elId;
     chip.style.cursor = 'pointer';
-
-    function closeSection() {
-        chip.style.opacity = '1';
-        const btn = el.querySelector('.chip-close');
-        if (btn) btn.remove();
-        animateCollapse(el, function () {
-            el.classList.add('turn-hidden', 'collapsed');
-            el.classList.remove('chip-expanded');
-        });
-    }
-
-    chip.onclick = function (ev) {
-        ev.stopPropagation();
-        if (el.classList.contains('turn-hidden')) {
-            el.classList.remove('turn-hidden', 'collapsed');
-            el.classList.add('chip-expanded');
-            chip.style.opacity = '0.5';
-            const cc = el.querySelector('.collapse-content');
-            if (cc && !cc.querySelector('.chip-close')) {
-                const btn = document.createElement('span');
-                btn.className = 'chip-close';
-                btn.textContent = '\u2715';
-                btn.onclick = function (e) {
-                    e.stopPropagation();
-                    closeSection();
-                };
-                cc.insertBefore(btn, cc.firstChild);
-            }
-        } else {
-            closeSection();
-        }
-    };
+    _attachChipToggle(chip, el);
     targetMeta.appendChild(chip);
     targetMeta.classList.add('show');
     animateCollapse(el, function () {
@@ -261,15 +234,7 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
 function collapseThinkingToChip(elId) {
     const el = document.getElementById(elId);
     if (!el || el.dataset.chipOwned) return;
-    let targetMeta = null;
-    let sib = el.nextElementSibling;
-    while (sib) {
-        if (sib.classList.contains('agent-row')) {
-            targetMeta = sib.querySelector('.meta');
-            break;
-        }
-        sib = sib.nextElementSibling;
-    }
+    const targetMeta = _findNextAgentMeta(el);
     if (!targetMeta) {
         el.dataset.pendingCollapse = '1';
         return;
@@ -284,38 +249,7 @@ function _doCollapseThinkingToChip(el, elId, targetMeta) {
     el.dataset.chipOwned = '1';
     chip.dataset.chipFor = elId;
     chip.style.cursor = 'pointer';
-
-    function closeSection() {
-        chip.style.opacity = '1';
-        const btn = el.querySelector('.chip-close');
-        if (btn) btn.remove();
-        animateCollapse(el, function () {
-            el.classList.add('turn-hidden', 'collapsed');
-            el.classList.remove('chip-expanded');
-        });
-    }
-
-    chip.onclick = function (ev) {
-        ev.stopPropagation();
-        if (el.classList.contains('turn-hidden')) {
-            el.classList.remove('turn-hidden', 'collapsed');
-            el.classList.add('chip-expanded');
-            chip.style.opacity = '0.5';
-            const cc = el.querySelector('.collapse-content');
-            if (cc && !cc.querySelector('.chip-close')) {
-                const btn = document.createElement('span');
-                btn.className = 'chip-close';
-                btn.textContent = '\u2715';
-                btn.onclick = function (e) {
-                    e.stopPropagation();
-                    closeSection();
-                };
-                cc.insertBefore(btn, cc.firstChild);
-            }
-        } else {
-            closeSection();
-        }
-    };
+    _attachChipToggle(chip, el);
     targetMeta.appendChild(chip);
     targetMeta.classList.add('show');
     animateCollapse(el, function () {
@@ -327,15 +261,7 @@ function _doCollapseThinkingToChip(el, elId, targetMeta) {
 function collapsePendingTools() {
     const pending = document.querySelectorAll('.tool-section[data-pending-collapse], .thinking-section[data-pending-collapse]');
     pending.forEach(function (el) {
-        let targetMeta = null;
-        let sib = el.nextElementSibling;
-        while (sib) {
-            if (sib.classList.contains('agent-row')) {
-                targetMeta = sib.querySelector('.meta');
-                break;
-            }
-            sib = sib.nextElementSibling;
-        }
+        const targetMeta = _findNextAgentMeta(el);
         if (!targetMeta) return;
         delete el.dataset.pendingCollapse;
         if (el.classList.contains('thinking-section')) {
@@ -406,6 +332,15 @@ function disableQuickReplies() {
 }
 
 /* --- Code block copy buttons --- */
+function _handleCopyClick(btn, pre) {
+    const code = pre.querySelector('code');
+    const text = code ? code.textContent : pre.textContent;
+    navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+}
+
 const _copyObserver = new MutationObserver(function () {
     document.querySelectorAll('pre:not([data-copy-btn])').forEach(function (pre) {
         pre.dataset.copyBtn = '1';
@@ -414,16 +349,7 @@ const _copyObserver = new MutationObserver(function () {
         btn.textContent = 'Copy';
         btn.tabIndex = 0;
         btn.setAttribute('role', 'button');
-        btn.onclick = function () {
-            const code = pre.querySelector('code');
-            const text = code ? code.textContent : pre.textContent;
-            navigator.clipboard.writeText(text).then(function () {
-                btn.textContent = 'Copied!';
-                setTimeout(function () {
-                    btn.textContent = 'Copy';
-                }, 1500);
-            });
-        };
+        btn.onclick = function () { _handleCopyClick(btn, pre); };
         // Insert button as a sibling after the pre element instead of as a child
         // This prevents the button text from appearing in the code content during streaming
         pre.parentElement.insertBefore(btn, pre.nextElementSibling);
