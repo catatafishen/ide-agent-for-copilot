@@ -68,26 +68,15 @@
     --error-a12: rgba(199, 34, 34, 0.12);
     --error-a16: rgba(199, 34, 34, 0.16);
     --shadow: rgba(128, 128, 128, 0.25);
-    --sa-explore: rgb(91, 192, 222);
-    --sa-explore-a06: rgba(91, 192, 222, 0.06);
-    --sa-explore-a10: rgba(91, 192, 222, 0.10);
-    --sa-explore-a15: rgba(91, 192, 222, 0.15);
-    --sa-task: rgb(240, 173, 78);
-    --sa-task-a06: rgba(240, 173, 78, 0.06);
-    --sa-task-a10: rgba(240, 173, 78, 0.10);
-    --sa-task-a15: rgba(240, 173, 78, 0.15);
-    --sa-general: rgb(86, 156, 214);
-    --sa-general-a06: rgba(86, 156, 214, 0.06);
-    --sa-general-a10: rgba(86, 156, 214, 0.10);
-    --sa-general-a15: rgba(86, 156, 214, 0.15);
-    --sa-review: rgb(218, 165, 32);
-    --sa-review-a06: rgba(218, 165, 32, 0.06);
-    --sa-review-a10: rgba(218, 165, 32, 0.10);
-    --sa-review-a15: rgba(218, 165, 32, 0.15);
-    --sa-ui: rgb(216, 112, 147);
-    --sa-ui-a06: rgba(216, 112, 147, 0.06);
-    --sa-ui-a10: rgba(216, 112, 147, 0.10);
-    --sa-ui-a15: rgba(216, 112, 147, 0.15);
+    /* Sub-agent instance color palette (8 distinct hues, rotated per invocation) */
+    --sa-c0: rgb(38, 166, 154);   --sa-c0-a06: rgba(38, 166, 154, 0.06);  --sa-c0-a10: rgba(38, 166, 154, 0.10);  --sa-c0-a15: rgba(38, 166, 154, 0.15);
+    --sa-c1: rgb(240, 173, 78);   --sa-c1-a06: rgba(240, 173, 78, 0.06);  --sa-c1-a10: rgba(240, 173, 78, 0.10);  --sa-c1-a15: rgba(240, 173, 78, 0.15);
+    --sa-c2: rgb(156, 120, 216);  --sa-c2-a06: rgba(156, 120, 216, 0.06); --sa-c2-a10: rgba(156, 120, 216, 0.10); --sa-c2-a15: rgba(156, 120, 216, 0.15);
+    --sa-c3: rgb(216, 112, 147);  --sa-c3-a06: rgba(216, 112, 147, 0.06); --sa-c3-a10: rgba(216, 112, 147, 0.10); --sa-c3-a15: rgba(216, 112, 147, 0.15);
+    --sa-c4: rgb(91, 192, 222);   --sa-c4-a06: rgba(91, 192, 222, 0.06);  --sa-c4-a10: rgba(91, 192, 222, 0.10);  --sa-c4-a15: rgba(91, 192, 222, 0.15);
+    --sa-c5: rgb(139, 195, 74);   --sa-c5-a06: rgba(139, 195, 74, 0.06);  --sa-c5-a10: rgba(139, 195, 74, 0.10);  --sa-c5-a15: rgba(139, 195, 74, 0.15);
+    --sa-c6: rgb(229, 115, 115);  --sa-c6-a06: rgba(229, 115, 115, 0.06); --sa-c6-a10: rgba(229, 115, 115, 0.10); --sa-c6-a15: rgba(229, 115, 115, 0.15);
+    --sa-c7: rgb(86, 156, 214);   --sa-c7-a06: rgba(86, 156, 214, 0.06);  --sa-c7-a10: rgba(86, 156, 214, 0.10);  --sa-c7-a15: rgba(86, 156, 214, 0.15);
 }
 
 * {
@@ -336,41 +325,15 @@ body {
     }
 }
 
-/* --- Sub-agent conversations --- */
-.subagent-explore {
-    --sa-color: var(--sa-explore);
-    --sa-a06: var(--sa-explore-a06);
-    --sa-a10: var(--sa-explore-a10);
-    --sa-a15: var(--sa-explore-a15);
-}
-
-.subagent-task {
-    --sa-color: var(--sa-task);
-    --sa-a06: var(--sa-task-a06);
-    --sa-a10: var(--sa-task-a10);
-    --sa-a15: var(--sa-task-a15);
-}
-
-.subagent-general {
-    --sa-color: var(--sa-general);
-    --sa-a06: var(--sa-general-a06);
-    --sa-a10: var(--sa-general-a10);
-    --sa-a15: var(--sa-general-a15);
-}
-
-.subagent-review {
-    --sa-color: var(--sa-review);
-    --sa-a06: var(--sa-review-a06);
-    --sa-a10: var(--sa-review-a10);
-    --sa-a15: var(--sa-review-a15);
-}
-
-.subagent-ui {
-    --sa-color: var(--sa-ui);
-    --sa-a06: var(--sa-ui-a06);
-    --sa-a10: var(--sa-ui-a10);
-    --sa-a15: var(--sa-ui-a15);
-}
+/* --- Sub-agent conversations (per-instance color via rotating palette) --- */
+.subagent-c0 { --sa-color: var(--sa-c0); --sa-a06: var(--sa-c0-a06); --sa-a10: var(--sa-c0-a10); --sa-a15: var(--sa-c0-a15); }
+.subagent-c1 { --sa-color: var(--sa-c1); --sa-a06: var(--sa-c1-a06); --sa-a10: var(--sa-c1-a10); --sa-a15: var(--sa-c1-a15); }
+.subagent-c2 { --sa-color: var(--sa-c2); --sa-a06: var(--sa-c2-a06); --sa-a10: var(--sa-c2-a10); --sa-a15: var(--sa-c2-a15); }
+.subagent-c3 { --sa-color: var(--sa-c3); --sa-a06: var(--sa-c3-a06); --sa-a10: var(--sa-c3-a10); --sa-a15: var(--sa-c3-a15); }
+.subagent-c4 { --sa-color: var(--sa-c4); --sa-a06: var(--sa-c4-a06); --sa-a10: var(--sa-c4-a10); --sa-a15: var(--sa-c4-a15); }
+.subagent-c5 { --sa-color: var(--sa-c5); --sa-a06: var(--sa-c5-a06); --sa-a10: var(--sa-c5-a10); --sa-a15: var(--sa-c5-a15); }
+.subagent-c6 { --sa-color: var(--sa-c6); --sa-a06: var(--sa-c6-a06); --sa-a10: var(--sa-c6-a10); --sa-a15: var(--sa-c6-a15); }
+.subagent-c7 { --sa-color: var(--sa-c7); --sa-a06: var(--sa-c7-a06); --sa-a10: var(--sa-c7-a10); --sa-a15: var(--sa-c7-a15); }
 
 /* Sub-agent bubble (like agent-bubble but in agent-specific color) */
 .subagent-bubble {
@@ -394,53 +357,6 @@ body {
     color: var(--sa-color);
     font-size: 0.88em;
     animation: pulse 1.5s ease-in-out infinite;
-}
-
-/* --- Sub-agent status badge --- */
-.sa-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    font-size: 0.78em;
-    font-weight: 600;
-    padding: 1px var(--sp-4);
-    border-radius: var(--r-pill);
-    vertical-align: middle;
-    margin-left: var(--sp-4);
-    white-space: nowrap;
-}
-
-.sa-badge-working {
-    color: var(--sa-color);
-    background: var(--sa-a10);
-    animation: pulse 1.5s ease-in-out infinite;
-}
-
-.sa-badge-working::before {
-    content: '';
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--sa-color);
-}
-
-.sa-badge-done {
-    color: var(--sa-color);
-    background: var(--sa-a10);
-}
-
-.sa-badge-done::before {
-    content: '✓ ';
-}
-
-.sa-badge-failed {
-    color: var(--error);
-    background: var(--error-a06);
-}
-
-.sa-badge-failed::before {
-    content: '✖ ';
 }
 
 /* --- Context files --- */

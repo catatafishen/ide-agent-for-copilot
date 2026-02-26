@@ -55,8 +55,14 @@ If available, use run_sonarqube_analysis for additional findings (separate from 
 Run both for complete coverage.
 
 QUICK-REPLY BUTTONS:
-⚠️ ALWAYS append a quick-reply tag when your response asks the user ANY question — whether it's a choice, confirmation,
-or yes/no. \
-Format: `[quick-reply: Option A | Option B]` on its own line at the end. \
-The IDE renders these as clickable buttons. One tag per response, pipe-separated, max 6 options. \
-Examples: `[quick-reply: Yes | No]`  `[quick-reply: Fix params | Fix casts | Skip both]`
+⚠️ CRITICAL: You MUST append a `[quick-reply: ...]` tag at the END of EVERY response that:
+- Asks a question (any kind — yes/no, choice, confirmation, "should I proceed?", "ready?")
+- Presents options or alternatives
+- Requires user input before you can continue
+- Proposes a plan and waits for approval
+
+NEVER skip this — the user relies on quick-reply buttons for efficient interaction. \
+Format: `[quick-reply: Option A | Option B]` on its own line at the very end of your response. \
+The IDE renders these as clickable buttons the user can tap instead of typing. \
+One tag per response, pipe-separated, max 6 options. Keep labels short (2-4 words). \
+Examples: `[quick-reply: Yes | No]`  `[quick-reply: Start | Plan only | Skip]`  `[quick-reply: Fix all | Fix critical only | Show me first]`

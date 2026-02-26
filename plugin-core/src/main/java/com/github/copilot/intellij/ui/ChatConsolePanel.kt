@@ -78,21 +78,21 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** Human-readable name and short description for each tool */
         private data class ToolInfo(val displayName: String, val description: String)
 
-        /** Sub-agent type metadata for colored bubbles */
-        private data class SubAgentInfo(val icon: String, val displayName: String, val cssClass: String)
+        /** Sub-agent display name lookup (icon removed — color is per-instance now) */
+        private data class SubAgentInfo(val displayName: String)
 
         private const val AGENT_TYPE_GENERAL = "general-purpose"
-        private const val SA_CSS_GENERAL = "subagent-general"
+        private const val SA_COLOR_COUNT = 8
 
         private const val AGENT_ROW_OPEN = "<div class='agent-row'><div class='agent-bubble'>"
         private const val DIV_CLOSE_2 = "</div></div>"
 
         private val SUB_AGENT_INFO = mapOf(
-            "explore" to SubAgentInfo("", "Explore Agent", "subagent-explore"),
-            "task" to SubAgentInfo("", "Task Agent", "subagent-task"),
-            AGENT_TYPE_GENERAL to SubAgentInfo("", "General Agent", SA_CSS_GENERAL),
-            "code-review" to SubAgentInfo("", "Code Review Agent", "subagent-review"),
-            "ui-reviewer" to SubAgentInfo("", "UI Review Agent", "subagent-ui"),
+            "explore" to SubAgentInfo("Explore Agent"),
+            "task" to SubAgentInfo("Task Agent"),
+            AGENT_TYPE_GENERAL to SubAgentInfo("General Agent"),
+            "code-review" to SubAgentInfo("Code Review Agent"),
+            "ui-reviewer" to SubAgentInfo("UI Review Agent"),
         )
 
         /** JSON key to use as subtitle in the chip label for specific tools */
@@ -306,7 +306,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val description: String,
             val prompt: String? = null,
             var result: String? = null,
-            var status: String? = null
+            var status: String? = null,
+            var colorIndex: Int = 0
         ) : EntryData()
 
         class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
@@ -320,6 +321,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var entryCounter = 0
     private var thinkingCounter = 0
     private var contextCounter = 0
+    private var nextSubAgentColor = 0
 
     // JCEF
     private val browser: JBCefBrowser?
@@ -615,34 +617,31 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun addSubAgentEntry(id: String, agentType: String, description: String, prompt: String?) {
         finalizeCurrentText()
-        entries.add(EntryData.SubAgent(agentType, description, prompt))
+        val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
+        entries.add(EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex))
         val did = domId(id)
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
-            "",
-            agentType.replaceFirstChar { it.uppercase() } + " Agent",
-            SA_CSS_GENERAL)
+            agentType.replaceFirstChar { it.uppercase() } + " Agent")
         val safeName = escapeHtml(info.displayName)
+        val cssClass = "subagent-c$colorIndex"
 
         val sb = StringBuilder()
-        sb.append("<div class='${info.cssClass}'>")
+        sb.append("<div class='$cssClass'>")
 
-        // Render prompt as a normal green agent bubble with @Agent prefix + status badge
+        // Render prompt as a green agent bubble with colored @Agent prefix (no badge — result bubble shows status)
         if (!prompt.isNullOrBlank()) {
-            val safePrompt = escapeHtml(prompt)
             sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
-            sb.append("<span class='sa-badge sa-badge-working' id='badge-$did'>Working</span>")
-            sb.append(" $safePrompt")
+            sb.append(" ${escapeHtml(prompt)}")
             sb.append(DIV_CLOSE_2)
         } else {
             sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
-            sb.append("<span class='sa-badge sa-badge-working' id='badge-$did'>Working</span>")
             sb.append(" ${escapeHtml(description)}")
             sb.append(DIV_CLOSE_2)
         }
 
-        // Response bubble in agent-specific color (no @Agent prefix)
+        // Response bubble in instance-specific color
         sb.append("<div class='agent-row'><div class='subagent-bubble' id='result-$did'>")
         sb.append("<span class='subagent-pending'>Working...</span>")
         sb.append(DIV_CLOSE_2)
@@ -665,12 +664,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
         }
         val encoded = Base64.getEncoder().encodeToString(resultHtml.toByteArray(Charsets.UTF_8))
-        // Replace the bubble content and update status badge
-        val badgeClass = if (status == "completed") "sa-badge-done" else "sa-badge-failed"
-        val badgeText = if (status == "completed") "Done" else "Failed"
         executeJs(
             """(function(){var r=document.getElementById('result-$did');if(r){r.innerHTML=b64('$encoded');}
-            var b=document.getElementById('badge-$did');if(b){b.className='sa-badge $badgeClass';b.textContent='$badgeText';}
             scrollIfNeeded();})()"""
         )
     }
@@ -731,7 +726,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun showPlaceholder(text: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
-            0; contextCounter = 0
+            0; contextCounter = 0; nextSubAgentColor = 0
         executeJs("document.getElementById('container').innerHTML='<div class=\"placeholder\">${escapeJs(escapeHtml(text))}</div>'")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
@@ -739,7 +734,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun clear() {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
-            0; contextCounter = 0
+            0; contextCounter = 0; nextSubAgentColor = 0
         executeJs("document.getElementById('container').innerHTML=''")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
     }
@@ -776,6 +771,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     obj.addProperty("prompt", e.prompt ?: "")
                     obj.addProperty("result", e.result ?: "")
                     obj.addProperty("status", e.status ?: "")
+                    obj.addProperty("colorIndex", e.colorIndex)
                 }
 
                 is EntryData.ContextFiles -> {
@@ -885,7 +881,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     obj["description"]?.asString ?: "",
                     obj["prompt"]?.asString?.ifEmpty { null },
                     obj["result"]?.asString?.ifEmpty { null },
-                    obj["status"]?.asString?.ifEmpty { null })
+                    obj["status"]?.asString?.ifEmpty { null },
+                    obj["colorIndex"]?.asInt ?: 0)
             )
 
             "context" -> {
@@ -1061,18 +1058,17 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private fun renderBatchSubagent(obj: com.google.gson.JsonObject): String {
         val agentType = obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
-            "", agentType.replaceFirstChar { it.uppercase() } + " Agent", SA_CSS_GENERAL)
+            agentType.replaceFirstChar { it.uppercase() } + " Agent")
         val safeName = escapeHtml(info.displayName)
         val prompt = obj["prompt"]?.asString?.ifEmpty { null }
         val result = obj["result"]?.asString?.ifEmpty { null }
         val status = obj["status"]?.asString?.ifEmpty { null }
-        val badgeCls = if (status == "failed") "sa-badge-failed" else "sa-badge-done"
-        val badgeTxt = if (status == "failed") "Failed" else "Done"
-        val sb = StringBuilder("<div class='${info.cssClass}'>")
+        val colorIndex = obj["colorIndex"]?.asInt ?: (nextSubAgentColor++ % SA_COLOR_COUNT)
+        val cssClass = "subagent-c$colorIndex"
+        val sb = StringBuilder("<div class='$cssClass'>")
         if (!prompt.isNullOrBlank()) {
             sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
-            sb.append("<span class='sa-badge $badgeCls'>$badgeTxt</span>")
             sb.append(" ${escapeHtml(prompt)}")
             sb.append(DIV_CLOSE_2)
         }
