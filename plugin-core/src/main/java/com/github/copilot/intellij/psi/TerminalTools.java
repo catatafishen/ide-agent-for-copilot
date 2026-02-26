@@ -33,6 +33,11 @@ final class TerminalTools extends AbstractToolHandler {
         boolean newTab = args.has("new_tab") && args.get("new_tab").getAsBoolean();
         String shell = args.has("shell") ? args.get("shell").getAsString() : null;
 
+        // Flush all editor buffers to disk so terminal commands see current content
+        EdtUtil.invokeAndWait(() ->
+            com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction(() ->
+                com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments()));
+
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
         EdtUtil.invokeLater(() -> {

@@ -222,6 +222,12 @@ public final class ToolUtils {
             return "git";
         }
 
+        // Block cat/head/tail/less/more — should use intellij_read_file for live buffer access
+        if (cmd.matches("(cat|head|tail|less|more) .*") ||
+            cmd.contains("| cat ") || cmd.contains("&& cat ") || cmd.contains("; cat ")) {
+            return "cat";
+        }
+
         // Block sed — should use intellij_write_file for proper undo/redo and live buffer access
         if (cmd.startsWith("sed ") || cmd.contains("| sed") ||
             cmd.contains("&& sed") || cmd.contains("; sed")) {
@@ -260,6 +266,8 @@ public final class ToolUtils {
             case "git" -> "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
                 + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
                 + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
+            case "cat" -> "Error: cat/head/tail/less/more are not allowed via run_command (reads stale disk files). "
+                + "Use intellij_read_file to read live editor buffers instead.";
             case "sed" -> "Error: sed is not allowed via run_command (bypasses IntelliJ editor buffers). "
                 + "Use intellij_write_file with old_str/new_str for file editing instead.";
             case "grep" -> "Error: grep/rg commands are not allowed via run_command (searches stale disk files). "

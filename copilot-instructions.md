@@ -234,14 +234,17 @@ Then tell the user to **restart the main IDE**.
 The MCP server provides IntelliJ-integrated tools that read from editor buffers (always up-to-date, even unsaved
 changes). **Always use these instead of generic alternatives:**
 
-| ❌ Don't use        | ✅ Use instead                               |
-|--------------------|---------------------------------------------|
-| `view` (file)      | `intellij_read_file`                        |
-| `grep` / `ripgrep` | `search_text` or `search_symbols`           |
-| `glob`             | `list_project_files`                        |
-| `create` (file)    | `create_file`                               |
-| `edit` (file)      | `intellij_write_file`                       |
-| `bash: git ...`    | `git_status`, `git_diff`, `git_commit` etc. |
+| ❌ Don't use             | ✅ Use instead                               |
+|-------------------------|---------------------------------------------|
+| `view` (file)           | `intellij_read_file`                        |
+| `cat`/`head`/`tail`     | `intellij_read_file`                        |
+| `grep` / `ripgrep`      | `search_text` or `search_symbols`           |
+| `glob`                  | `list_project_files`                        |
+| `create` (file)         | `create_file`                               |
+| `edit` (file)           | `intellij_write_file`                       |
+| `sed`                   | `intellij_write_file`                       |
+| `bash`                  | `run_command` (flushes buffers first)       |
+| `bash: git ...`         | `git_status`, `git_diff`, `git_commit` etc. |
 
 ### Why this matters
 
@@ -249,6 +252,8 @@ changes). **Always use these instead of generic alternatives:**
 - IntelliJ tools respect project structure and excludes (build/, .gradle/)
 - Symbol search uses IDE indexes — faster and more accurate than text grep
 - Git tools sync with IntelliJ's VCS, avoiding buffer desync
+- `run_command` and git tools flush editor buffers to disk before running, so CLI tools see current content
+- `bash` does NOT flush buffers — commands may see stale files
 
 ### Exceptions
 

@@ -1225,6 +1225,7 @@ public class CopilotAcpClient implements Closeable {
                 String path = extractPathParam(toolCall);
                 yield (path.isEmpty() || isInsideProject(path)) ? "glob" : null;
             }
+            case "bash" -> "bash";
             default -> null;
         };
     }
@@ -1256,6 +1257,8 @@ public class CopilotAcpClient implements Closeable {
                     "Provides structured results, coverage, and failure details.";
                 case "sed" -> "⚠ Don't use sed. Use 'intellij-code-tools-intellij_write_file' instead. " +
                     "It provides proper file editing with undo/redo and live editor buffer access.";
+                case "cat" -> "⚠ Don't use cat/head/tail/less/more. Use 'intellij-code-tools-intellij_read_file' instead. " +
+                    "It reads from the live editor buffer, not stale disk files.";
                 case "grep" -> "⚠ Don't use grep. Use 'intellij-code-tools-search_symbols' or " +
                     "'intellij-code-tools-find_references' instead. They search live editor buffers.";
                 case "find" -> "⚠ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
@@ -1277,6 +1280,9 @@ public class CopilotAcpClient implements Closeable {
                     "Use 'intellij-code-tools-search_text' instead (searches live editor buffers).";
                 case "glob" -> "⚠ Don't use 'glob' for project files. " +
                     "Use 'intellij-code-tools-list_project_files' instead (uses IntelliJ's project index).";
+                case "bash" -> "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
+                    "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
+                    "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
                 default -> "⚠ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.";
             };
         } else {

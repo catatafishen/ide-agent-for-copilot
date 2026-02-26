@@ -106,6 +106,12 @@ class InfrastructureTools extends AbstractToolHandler {
         // Block abusive commands — MCP tools bypass the ACP permission system
         String abuseType = ToolUtils.detectCommandAbuseType(command);
         if (abuseType != null) return ToolUtils.getCommandAbuseMessage(abuseType);
+
+        // Flush all editor buffers to disk so CLI tools see current content
+        EdtUtil.invokeAndWait(() ->
+            com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction(() ->
+                com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments()));
+
         String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
