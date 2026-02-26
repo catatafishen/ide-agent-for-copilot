@@ -13,15 +13,14 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.components.*
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBPanel
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import java.awt.*
 import java.awt.datatransfer.StringSelection
-import java.awt.geom.Path2D
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import javax.swing.*
 
 /**
@@ -45,12 +44,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         private val ERROR_COLOR: JBColor
             get() = UIManager.getColor("Label.errorForeground") as? JBColor
                 ?: JBColor(Color(0xC7, 0x22, 0x22), Color(0xE0, 0x60, 0x60))
-
-        /** Returns the error color as an HTML hex string for use in HTML font tags. */
-        private fun errorHex(): String {
-            val c = ERROR_COLOR
-            return "#%02X%02X%02X".format(c.red, c.green, c.blue)
-        }
     }
 
     private val mainPanel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -77,6 +70,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Timeline events (populated from ACP session/update notifications)
     private val timelineModel = DefaultListModel<TimelineEvent>()
+    private val debugPanel = DebugPanel(project, timelineModel)
 
     // Plans tree (populated from ACP plan updates)
     private lateinit var planTreeModel: javax.swing.tree.DefaultTreeModel
@@ -84,31 +78,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var planDetailsArea: JBTextArea
     private lateinit var sessionInfoLabel: JBLabel
 
-    // Usage display components (updated after each prompt)
-    private val usageLabel: JBLabel = JBLabel("")
-    private val costLabel: JBLabel = JBLabel("")
+    // Billing/usage management (extracted to BillingManager)
+    private val billing = BillingManager()
     private lateinit var consolePanel: ChatConsolePanel
 
     // Per-turn tracking
     private var turnToolCallCount = 0
     private var turnModelId = ""
 
-    // Animation state for usage indicator
-    private var previousUsedCount = -1
-    private var usageAnimationTimer: javax.swing.Timer? = null
-
-    // Usage display toggle and graph
-    private enum class UsageDisplayMode { MONTHLY, SESSION }
-
-    private var usageDisplayMode = UsageDisplayMode.MONTHLY
-    private var billingCycleStartUsed = -1
-    private lateinit var usageGraphPanel: UsageGraphPanel
-    private var lastBillingUsed = 0
-    private var lastBillingEntitlement = 0
-    private var lastBillingUnlimited = false
-    private var lastBillingRemaining = 0
-    private var lastBillingOveragePermitted = false
-    private var lastBillingResetDate = ""
     private var conversationSummaryInjected = false
 
     init {
@@ -240,270 +217,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
-     * Loads real billing data from GitHub's internal Copilot API via gh CLI.
-     * Shows premium request quota, usage, and overage info.
-     */
-    private fun loadBillingData() {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                val ghCli = findGhCli() ?: run {
-                    updateUsageUi(
-                        "Usage info unavailable (gh CLI not found)",
-                        "Install GitHub CLI: https://cli.github.com  then run 'gh auth login'"
-                    )
-                    return@executeOnPooledThread
-                }
-
-                if (!isGhAuthenticated(ghCli)) {
-                    updateUsageUi(
-                        "Usage info unavailable (not authenticated)",
-                        "Run 'gh auth login' in a terminal to authenticate with GitHub"
-                    )
-                    return@executeOnPooledThread
-                }
-
-                val obj = fetchCopilotUserData(ghCli) ?: return@executeOnPooledThread
-                val snapshots = obj.getAsJsonObject("quota_snapshots") ?: return@executeOnPooledThread
-                val premium = snapshots.getAsJsonObject("premium_interactions") ?: return@executeOnPooledThread
-
-                displayBillingQuota(premium, obj)
-            } catch (e: Exception) {
-                updateUsageUi(
-                    "Usage info unavailable",
-                    "Error: ${e.message}. Ensure 'gh auth login' has been run."
-                )
-            }
-        }
-    }
-
-    private fun updateUsageUi(text: String, tooltip: String, cost: String = "") {
-        SwingUtilities.invokeLater {
-            usageLabel.text = text
-            usageLabel.toolTipText = tooltip
-            costLabel.text = cost
-        }
-    }
-
-    private fun isGhAuthenticated(ghCli: String): Boolean {
-        val process = ProcessBuilder(ghCli, "auth", "status").redirectErrorStream(true).start()
-        val authOutput = process.inputStream.bufferedReader().readText()
-        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-        return process.exitValue() == 0 && "not logged in" !in authOutput.lowercase() && "gh auth login" !in authOutput
-    }
-
-    private fun fetchCopilotUserData(ghCli: String): com.google.gson.JsonObject? {
-        val apiProcess = ProcessBuilder(ghCli, "api", "/copilot_internal/user").redirectErrorStream(true).start()
-        val json = apiProcess.inputStream.bufferedReader().readText()
-        apiProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-        return com.google.gson.Gson().fromJson(json, com.google.gson.JsonObject::class.java)
-    }
-
-    private fun displayBillingQuota(premium: com.google.gson.JsonObject, obj: com.google.gson.JsonObject) {
-        val entitlement = premium["entitlement"]?.asInt ?: 0
-        val remaining = premium["remaining"]?.asInt ?: 0
-        val unlimited = premium["unlimited"]?.asBoolean ?: false
-        val overagePermitted = premium["overage_permitted"]?.asBoolean ?: false
-        val resetDate = obj["quota_reset_date"]?.asString ?: ""
-        val used = entitlement - remaining
-        val shouldAnimate = previousUsedCount >= 0 && used > previousUsedCount
-        previousUsedCount = used
-
-        // Track session start baseline
-        if (billingCycleStartUsed < 0) billingCycleStartUsed = used
-
-        // Store latest billing data for toggle
-        lastBillingUsed = used
-        lastBillingEntitlement = entitlement
-        lastBillingUnlimited = unlimited
-        lastBillingRemaining = remaining
-        lastBillingOveragePermitted = overagePermitted
-        lastBillingResetDate = resetDate
-
-        SwingUtilities.invokeLater {
-            refreshUsageDisplay()
-            updateUsageGraph(used, entitlement, unlimited, resetDate)
-            if (shouldAnimate) animateUsageChange()
-        }
-    }
-
-    /** Refreshes usage label and cost label based on current display mode. */
-    private fun refreshUsageDisplay() {
-        when (usageDisplayMode) {
-            UsageDisplayMode.MONTHLY -> {
-                if (lastBillingUnlimited) {
-                    usageLabel.text = "Unlimited"
-                    usageLabel.toolTipText = "Click to show session usage"
-                    costLabel.text = ""
-                } else {
-                    usageLabel.text = "$lastBillingUsed / $lastBillingEntitlement"
-                    usageLabel.toolTipText = "Premium requests this cycle \u2022 Click to show session usage"
-                    updateCostLabel(lastBillingRemaining, lastBillingOveragePermitted)
-                }
-            }
-
-            UsageDisplayMode.SESSION -> {
-                val sessionUsed = lastBillingUsed - billingCycleStartUsed.coerceAtLeast(0)
-                usageLabel.text = "$sessionUsed session"
-                usageLabel.toolTipText = "Premium requests this session \u2022 Click to show monthly usage"
-                costLabel.text = ""
-            }
-        }
-    }
-
-    /** Updates the mini usage graph with current billing cycle data. */
-    private fun updateUsageGraph(
-        used: Int,
-        entitlement: Int,
-        unlimited: Boolean,
-        resetDate: String
-    ) {
-        if (!::usageGraphPanel.isInitialized) return
-        if (unlimited || entitlement <= 0) {
-            usageGraphPanel.graphData = null
-            usageGraphPanel.repaint()
-            return
-        }
-
-        try {
-            val resetLocalDate = LocalDate.parse(resetDate, DateTimeFormatter.ISO_LOCAL_DATE)
-            val today = LocalDate.now()
-            val cycleStart = resetLocalDate.minusMonths(1)
-            val totalDays = ChronoUnit.DAYS.between(cycleStart, resetLocalDate).toInt().coerceAtLeast(1)
-            val currentDay = ChronoUnit.DAYS.between(cycleStart, today).toInt().coerceIn(0, totalDays)
-
-            usageGraphPanel.graphData = UsageGraphData(currentDay, totalDays, used, entitlement)
-            usageGraphPanel.toolTipText =
-                buildGraphTooltip(used, entitlement, currentDay, totalDays, resetLocalDate)
-            usageGraphPanel.repaint()
-        } catch (_: Exception) {
-            usageGraphPanel.graphData = null
-            usageGraphPanel.repaint()
-        }
-    }
-
-    private fun buildGraphTooltip(
-        used: Int,
-        entitlement: Int,
-        currentDay: Int,
-        totalDays: Int,
-        resetDate: LocalDate,
-    ): String {
-        val rate = if (currentDay > 0) used.toFloat() / currentDay else 0f
-        val projected = (rate * totalDays).toInt()
-        val overage = (used - entitlement).coerceAtLeast(0)
-        val projectedOverage = (projected - entitlement).coerceAtLeast(0)
-        val overageCostPerReq = 0.04
-        val resetFormatted = resetDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
-
-        val sb = StringBuilder("<html>")
-        sb.append("Day $currentDay / $totalDays<br>")
-        sb.append("Usage: $used / $entitlement<br>")
-        if (overage > 0) {
-            val cost = overage * overageCostPerReq
-            sb.append(
-                "<font color='${errorHex()}'>Overage: $overage reqs (\$${
-                    String.format(
-                        "%.2f",
-                        cost
-                    )
-                })</font><br>"
-            )
-        }
-        sb.append("Projected: ~$projected by cycle end<br>")
-        if (projectedOverage > 0) {
-            val projCost = projectedOverage * overageCostPerReq
-            sb.append(
-                "<font color='${errorHex()}'>Projected overage: ~$projectedOverage (\$${
-                    String.format(
-                        "%.2f",
-                        projCost
-                    )
-                })</font><br>"
-            )
-        }
-        sb.append("Resets: $resetFormatted")
-        sb.append("</html>")
-        return sb.toString()
-    }
-
-    private fun updateCostLabel(remaining: Int, overagePermitted: Boolean) {
-        if (remaining < 0) {
-            val overageCost = -remaining * 0.04
-            costLabel.text = if (overagePermitted) {
-                "Est. overage: $${String.format("%.2f", overageCost)}"
-            } else {
-                "Quota exceeded - overages not permitted"
-            }
-            costLabel.foreground = ERROR_COLOR
-        } else {
-            costLabel.text = ""
-        }
-    }
-
-    /** Briefly pulses [usageLabel] foreground from a green accent back to normal. */
-    private fun animateUsageChange() {
-        usageAnimationTimer?.stop()
-        val normalColor = usageLabel.foreground
-        val highlightColor = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
-        val totalSteps = 20
-        var step = 0
-
-        usageLabel.foreground = highlightColor
-        usageAnimationTimer = javax.swing.Timer(50) {
-            step++
-            if (step >= totalSteps) {
-                usageLabel.foreground = normalColor
-                usageAnimationTimer?.stop()
-            } else {
-                val ratio = step.toFloat() / totalSteps
-                usageLabel.foreground = interpolateColor(highlightColor, normalColor, ratio)
-            }
-        }
-        usageAnimationTimer!!.start()
-    }
-
-    private fun interpolateColor(from: Color, to: Color, ratio: Float): Color {
-        val r = (from.red + (to.red - from.red) * ratio).toInt()
-        val g = (from.green + (to.green - from.green) * ratio).toInt()
-        val b = (from.blue + (to.blue - from.blue) * ratio).toInt()
-        return Color(r, g, b)
-    }
-
-    /**
-     * Finds the gh CLI executable, checking PATH and known install locations.
-     */
-    private fun findGhCli(): String? {
-        // Check PATH using platform-appropriate command
-        try {
-            val cmd = if (System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")) "where" else "which"
-            val check = ProcessBuilder(cmd, "gh").start()
-            if (check.waitFor() == 0) return "gh"
-        } catch (_: Exception) {
-            // gh CLI detection is best-effort
-        }
-
-        // Check known install locations
-        val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
-        val knownPaths = if (isWindows) {
-            listOf(
-                "C:\\Program Files\\GitHub CLI\\gh.exe",
-                "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
-                "C:\\Tools\\gh\\bin\\gh.exe",
-                System.getProperty("user.home") + "\\AppData\\Local\\GitHub CLI\\gh.exe"
-            )
-        } else {
-            listOf(
-                "/usr/bin/gh",
-                "/usr/local/bin/gh",
-                System.getProperty("user.home") + "/.local/bin/gh",
-                "/snap/bin/gh",
-                "/home/linuxbrew/.linuxbrew/bin/gh"
-            )
-        }
-        return knownPaths.firstOrNull { java.io.File(it).exists() }
-    }
-
-    /**
      * Launches the Copilot CLI auth flow in a new command window.
      * Uses the auth method from the ACP initialize response if available.
      */
@@ -588,7 +301,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val fixedFooter = createFixedFooter()
         panel.add(fixedFooter, BorderLayout.SOUTH)
 
-        loadBillingData()
+        billing.loadBillingData()
 
         // Load models
         fun loadModels() {
@@ -792,7 +505,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(ProjectFilesDropdownAction())
         leftGroup.addSeparator()
         leftGroup.add(CopyConversationAction())
-        leftGroup.add(HelpAction())
+        leftGroup.add(HelpAction(project))
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -803,7 +516,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Right toolbar: processing indicator + usage graph (always right-aligned)
         val rightGroup = DefaultActionGroup()
         rightGroup.add(ProcessingIndicatorAction())
-        rightGroup.add(UsageGraphAction())
+        rightGroup.add(billing.UsageGraphAction())
 
         val usageToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotUsage", rightGroup, true
@@ -815,25 +528,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         row.add(usageToolbar.component, BorderLayout.EAST)
 
         return row
-    }
-
-    /** Toolbar action showing the usage sparkline graph as a clickable custom component */
-    private inner class UsageGraphAction : AnAction("Usage Graph"), CustomComponentAction {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) {
-            showUsagePopup(usageGraphPanel)
-        }
-
-        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
-            usageGraphPanel = UsageGraphPanel()
-            usageGraphPanel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            usageGraphPanel.addMouseListener(object : java.awt.event.MouseAdapter() {
-                override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                    showUsagePopup(usageGraphPanel)
-                }
-            })
-            return usageGraphPanel
-        }
     }
 
     /** Toolbar action showing a native processing timer while the agent works */
@@ -997,8 +691,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
             toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
             toolsLabel.isVisible = totalTools > 0
-            val billingReqs = if (billingCycleStartUsed >= 0 && lastBillingUsed > billingCycleStartUsed)
-                lastBillingUsed - billingCycleStartUsed else -1
+            val billingReqs = if (billing.billingCycleStartUsed >= 0 && billing.lastBillingUsed > billing.billingCycleStartUsed)
+                billing.lastBillingUsed - billing.billingCycleStartUsed else -1
             val totalReqs = sessionTotalRequests + if (isRunning) requestsUsed else 0
             requestsLabel.text = when {
                 billingReqs > 0 -> "\u2022 $billingReqs req"
@@ -1013,61 +707,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val elapsed = (System.currentTimeMillis() - startedAt) / 1000
             timerLabel.text = if (elapsed < 60) "${elapsed}s" else "${elapsed / 60}m ${elapsed % 60}s"
         }
-    }
-
-    private fun showUsagePopup(owner: JComponent) {
-        val data = (if (::usageGraphPanel.isInitialized) usageGraphPanel.graphData else null) ?: return
-
-        val popupGraph = UsageGraphPanel()
-        popupGraph.graphData = data
-        val pw = JBUI.scale(320)
-        val ph = JBUI.scale(180)
-        popupGraph.preferredSize = Dimension(pw, ph)
-        popupGraph.minimumSize = popupGraph.preferredSize
-        popupGraph.maximumSize = popupGraph.preferredSize
-
-        val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
-        val projected = (rate * data.totalDays).toInt()
-        val overQuota = data.usedSoFar > data.entitlement
-
-        val infoHtml = buildString {
-            append("<html>")
-            append("Used: <b>${data.usedSoFar}</b> / ${data.entitlement}")
-            append(" &nbsp;\u00B7&nbsp; Day ${data.currentDay} of ${data.totalDays}")
-            append(" &nbsp;\u00B7&nbsp; Projected: ~$projected")
-            if (overQuota) {
-                val overage = data.usedSoFar - data.entitlement
-                append("<br><font color='${errorHex()}'>Over quota by $overage requests</font>")
-            }
-            if (lastBillingResetDate.isNotEmpty()) {
-                try {
-                    val resetDate = LocalDate.parse(lastBillingResetDate, DateTimeFormatter.ISO_LOCAL_DATE)
-                    append("<br>Resets: ${resetDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}")
-                } catch (_: Exception) { /* Date parse failed — skip reset date display */
-                }
-            }
-            append("</html>")
-        }
-
-        val content = JBPanel<JBPanel<*>>(BorderLayout()).apply {
-            border = JBUI.Borders.empty(10)
-            add(JBLabel("Premium Request Usage").apply {
-                font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + 1)
-                border = JBUI.Borders.emptyBottom(8)
-            }, BorderLayout.NORTH)
-            add(popupGraph, BorderLayout.CENTER)
-            add(JBLabel(infoHtml).apply {
-                border = JBUI.Borders.emptyTop(8)
-            }, BorderLayout.SOUTH)
-        }
-
-        com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
-            .createComponentPopupBuilder(content, null)
-            .setResizable(false)
-            .setMovable(true)
-            .setRequestFocus(false)
-            .createPopup()
-            .showUnderneathOf(owner)
     }
 
     // Send/Stop toggle action for the toolbar
@@ -1224,331 +863,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private class HelpRow(val icon: javax.swing.Icon, val name: String, val description: String)
-    private class HelpToolInfo(val name: String, val description: String)
-    private class HelpToolCategory(val title: String, val tools: List<HelpToolInfo>)
+    // HelpAction extracted to HelpDialog.kt
 
-    private inner class HelpAction : AnAction(
-        "Help", "Show help for all toolbar features and plugin behavior",
-        com.intellij.icons.AllIcons.Actions.Help
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
-        override fun actionPerformed(e: AnActionEvent) {
-            val content = buildHelpDialogContent()
-            com.intellij.openapi.ui.DialogBuilder(project).apply {
-                setTitle("Copilot Bridge \u2014 Help")
-                setCenterPanel(content)
-                removeAllActions()
-                addOkAction()
-                show()
-            }
-        }
-
-        private fun buildToolbarHelpItems(): List<HelpRow?> = listOf(
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Execute,
-                "Send",
-                "Send your prompt to the agent. Shortcut: Enter. Use Shift+Enter for a new line."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Suspend,
-                "Stop",
-                "While the agent is working, this replaces Send. Stops the current agent turn."
-            ),
-            null,
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.AddFile,
-                "Attach File",
-                "Attach the currently open editor file to your prompt as context."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.AddMulticaret,
-                "Attach Selection",
-                "Attach the current text selection from the editor to your prompt."
-            ),
-            null,
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Lightning,
-                "Model",
-                "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50×\")."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.General.Settings,
-                "Mode",
-                "Dropdown: Agent = autonomous tool use. Plan = conversation only, no tool calls."
-            ),
-            null,
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Preview,
-                "Follow Agent",
-                "Toggle: auto-open files in the editor as the agent reads or writes them."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.ReformatCode,
-                "Format",
-                "Toggle: instruct the agent to auto-format code after editing files."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Compile,
-                "Build",
-                "Toggle: instruct the agent to build the project before completing its turn."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.Nodes.Test,
-                "Test",
-                "Toggle: instruct the agent to run tests before completing its turn."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Commit,
-                "Commit",
-                "Toggle: instruct the agent to auto-commit changes before completing its turn."
-            ),
-            null,
-            HelpRow(
-                com.intellij.icons.AllIcons.Nodes.Folder,
-                "Project Files",
-                "Dropdown: open Instructions, TODO, Agent Definitions, or MCP Server Instructions."
-            ),
-            null,
-            HelpRow(
-                com.intellij.icons.AllIcons.ToolbarDecorator.Export,
-                "Export Chat",
-                "Copy the full conversation to clipboard (as text or HTML)."
-            ),
-            HelpRow(com.intellij.icons.AllIcons.Actions.Help, "Help", "This dialog."),
-        )
-
-        private fun buildTitleBarHelpItems(): List<HelpRow> = listOf(
-            HelpRow(
-                com.intellij.icons.AllIcons.Actions.Restart,
-                "New Chat",
-                "Start a fresh conversation (top-right of the tool window)."
-            ),
-            HelpRow(
-                com.intellij.icons.AllIcons.General.Settings,
-                "Settings",
-                "Configure inactivity timeout and max tool calls per turn."
-            ),
-        )
-
-        private fun buildToolCategories(): List<HelpToolCategory> = listOf(
-            HelpToolCategory(
-                "Code Intelligence", listOf(
-                    HelpToolInfo("search_symbols", "Search for symbols (classes, methods, fields) by name."),
-                    HelpToolInfo("get_file_outline", "Get the structural outline of a file."),
-                    HelpToolInfo("get_class_outline", "Show constructors, methods, fields of any class."),
-                    HelpToolInfo("find_references", "Find all usages of a symbol across the project."),
-                    HelpToolInfo("get_type_hierarchy", "Show supertypes and subtypes of a class."),
-                    HelpToolInfo("go_to_declaration", "Navigate to where a symbol is declared."),
-                    HelpToolInfo("get_documentation", "Get Javadoc/KDoc for a symbol."),
-                    HelpToolInfo("search_text", "Search text or regex across project files.")
-                )
-            ),
-            HelpToolCategory(
-                "File Operations", listOf(
-                    HelpToolInfo("intellij_read_file", "Read a file (optionally a line range)."),
-                    HelpToolInfo("intellij_write_file", "Write or edit a file (full, partial, or line-range)."),
-                    HelpToolInfo("create_file", "Create a new file with content."),
-                    HelpToolInfo("delete_file", "Delete a file."),
-                    HelpToolInfo("undo", "Undo the last edit on a file."),
-                    HelpToolInfo("list_project_files", "List files in a directory with optional glob filter."),
-                    HelpToolInfo("open_in_editor", "Open a file in the editor, optionally at a line."),
-                    HelpToolInfo("show_diff", "Show a diff between files or proposed content.")
-                )
-            ),
-            HelpToolCategory(
-                "Code Quality", listOf(
-                    HelpToolInfo("get_problems", "Get problems/errors for open files."),
-                    HelpToolInfo("get_highlights", "Get cached editor highlights (warnings, errors)."),
-                    HelpToolInfo("get_compilation_errors", "Fast compilation error check using cached daemon results."),
-                    HelpToolInfo("run_inspections", "Run full IntelliJ inspection engine on a scope."),
-                    HelpToolInfo("optimize_imports", "Optimize imports in a file."),
-                    HelpToolInfo("format_code", "Format code in a file."),
-                    HelpToolInfo("apply_quickfix", "Apply an IntelliJ quickfix at a specific line."),
-                    HelpToolInfo("suppress_inspection", "Suppress an inspection finding."),
-                    HelpToolInfo("add_to_dictionary", "Add a word to the spell-check dictionary."),
-                    HelpToolInfo("run_qodana", "Run Qodana static analysis."),
-                    HelpToolInfo("run_sonarqube_analysis", "Run SonarQube for IDE analysis.")
-                )
-            ),
-            HelpToolCategory(
-                "Refactoring", listOf(
-                    HelpToolInfo("refactor", "Rename, extract method, inline, or safe-delete.")
-                )
-            ),
-            HelpToolCategory(
-                "Build, Run & Test", listOf(
-                    HelpToolInfo("build_project", "Trigger incremental project compilation."),
-                    HelpToolInfo("list_tests", "List available tests."),
-                    HelpToolInfo("run_tests", "Run tests by class, method, or pattern."),
-                    HelpToolInfo("get_test_results", "Get results from the last test run."),
-                    HelpToolInfo("get_coverage", "Get code coverage results."),
-                    HelpToolInfo("get_project_info", "Get project metadata (SDK, modules, etc.)."),
-                    HelpToolInfo("list_run_configurations", "List available run configurations."),
-                    HelpToolInfo("run_configuration", "Execute a run configuration by name."),
-                    HelpToolInfo("create_run_configuration", "Create a new run configuration."),
-                    HelpToolInfo("edit_run_configuration", "Edit an existing run configuration.")
-                )
-            ),
-            HelpToolCategory(
-                "Git", listOf(
-                    HelpToolInfo("git_status", "Show working tree status."),
-                    HelpToolInfo("git_diff", "Show file diffs (staged, unstaged, or vs a commit)."),
-                    HelpToolInfo("git_log", "Show commit history."),
-                    HelpToolInfo("git_blame", "Show line-by-line authorship."),
-                    HelpToolInfo("git_commit", "Commit staged changes."),
-                    HelpToolInfo("git_stage", "Stage files for commit."),
-                    HelpToolInfo("git_unstage", "Unstage files."),
-                    HelpToolInfo("git_branch", "List, create, switch, or delete branches."),
-                    HelpToolInfo("git_stash", "Stash or restore working changes."),
-                    HelpToolInfo("git_show", "Show commit details.")
-                )
-            ),
-            HelpToolCategory(
-                "Infrastructure", listOf(
-                    HelpToolInfo("run_command", "Run a shell command in the project directory."),
-                    HelpToolInfo("http_request", "Make an HTTP request (GET, POST, PUT, etc.)."),
-                    HelpToolInfo("run_in_terminal", "Run a command in the IDE terminal."),
-                    HelpToolInfo("read_terminal_output", "Read output from a terminal tab."),
-                    HelpToolInfo("read_ide_log", "Read recent IDE log entries."),
-                    HelpToolInfo("read_run_output", "Read output from a Run panel tab."),
-                    HelpToolInfo("get_notifications", "Get IDE notifications."),
-                    HelpToolInfo("get_indexing_status", "Check if indexing is in progress."),
-                    HelpToolInfo("create_scratch_file", "Create an IntelliJ scratch file."),
-                    HelpToolInfo("list_scratch_files", "List existing scratch files.")
-                )
-            )
-        )
-
-        private fun addHelpRows(panel: JBPanel<*>, items: List<HelpRow?>) {
-            for (item in items) {
-                if (item == null) {
-                    panel.add(javax.swing.JSeparator(javax.swing.SwingConstants.HORIZONTAL).apply {
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(8))
-                    })
-                } else {
-                    panel.add(createHelpRow(item.icon, item.name, item.description))
-                }
-            }
-        }
-
-        private fun addToolCategories(panel: JBPanel<*>, categories: List<HelpToolCategory>) {
-            for (category in categories) {
-                panel.add(JBLabel(category.title).apply {
-                    font = font.deriveFont(Font.BOLD)
-                    alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                    border = JBUI.Borders.empty(4, 0, 2, 0)
-                })
-                for (tool in category.tools) {
-                    panel.add(JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(24))
-                        isOpaque = false
-                        border = JBUI.Borders.empty(1, JBUI.scale(8), 1, 0)
-                        add(JBLabel(tool.name).apply {
-                            font = java.awt.Font("Monospaced", Font.PLAIN, JBUI.Fonts.label().size - 1)
-                            foreground = com.intellij.util.ui.JBUI.CurrentTheme.Link.Foreground.ENABLED
-                            preferredSize = java.awt.Dimension(JBUI.scale(170), preferredSize.height)
-                            minimumSize = preferredSize
-                        }, BorderLayout.WEST)
-                        add(JBLabel(tool.description).apply {
-                            font = font.deriveFont(font.size2D - 1)
-                        }, BorderLayout.CENTER)
-                    })
-                }
-            }
-        }
-
-        private fun addSectionHeader(panel: JBPanel<*>, title: String, large: Boolean = false) {
-            panel.add(JBLabel(title).apply {
-                font = font.deriveFont(Font.BOLD, JBUI.Fonts.label().size2D + if (large) 4 else 2)
-                alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                border = JBUI.Borders.emptyBottom(4)
-            })
-        }
-
-        private fun buildHelpDialogContent(): JBPanel<JBPanel<*>> {
-            return JBPanel<JBPanel<*>>(BorderLayout()).apply {
-                border = JBUI.Borders.empty(12)
-
-                val mainPanel = JBPanel<JBPanel<*>>().apply {
-                    layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
-
-                    addSectionHeader(this, "Agentic Copilot \u2014 Toolbar Guide", large = true)
-                    add(JBLabel("Each button in the toolbar, from left to right:").apply {
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(8)
-                    })
-                    addHelpRows(this, buildToolbarHelpItems())
-
-                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
-                    addSectionHeader(this, "Right Side")
-                    add(JBLabel("A processing timer appears while the agent is working. Next to it, a usage graph shows premium requests consumed \u2014 click it for details.").apply {
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(8)
-                    })
-
-                    addSectionHeader(this, "Title Bar")
-                    for (item in buildTitleBarHelpItems()) {
-                        add(createHelpRow(item.icon, item.name, item.description))
-                    }
-
-                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
-                    addSectionHeader(this, "Chat Panel")
-                    add(JBLabel("Agent responses render as Markdown with syntax-highlighted code blocks. Tool calls appear as collapsible chips \u2014 click to expand and see arguments/results.").apply {
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                    })
-
-                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(12)))
-                    addSectionHeader(this, "Available Tools")
-                    add(JBLabel("The agent has access to these IDE tools via the MCP server:").apply {
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                        border = JBUI.Borders.emptyBottom(8)
-                    })
-                    addToolCategories(this, buildToolCategories())
-
-                    add(javax.swing.Box.createVerticalStrut(JBUI.scale(16)))
-                    val versionText = com.github.copilot.intellij.BuildInfo.getSummary()
-                    add(JBLabel("Copilot Bridge $versionText").apply {
-                        foreground = com.intellij.util.ui.JBUI.CurrentTheme.Label.disabledForeground()
-                        font = font.deriveFont(font.size2D - 1)
-                        alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                    })
-                }
-
-                val scrollPane = com.intellij.ui.components.JBScrollPane(mainPanel).apply {
-                    preferredSize = java.awt.Dimension(JBUI.scale(640), JBUI.scale(600))
-                    border = null
-                }
-                add(scrollPane, BorderLayout.CENTER)
-            }
-        }
-
-        private fun createHelpRow(icon: javax.swing.Icon, name: String, description: String): JBPanel<JBPanel<*>> {
-            return JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(8), 0)).apply {
-                alignmentX = java.awt.Component.LEFT_ALIGNMENT
-                maximumSize = java.awt.Dimension(Int.MAX_VALUE, JBUI.scale(32))
-                border = JBUI.Borders.empty(2, 0)
-
-                add(JBLabel(icon).apply {
-                    preferredSize = java.awt.Dimension(JBUI.scale(20), JBUI.scale(20))
-                    horizontalAlignment = javax.swing.SwingConstants.CENTER
-                }, BorderLayout.WEST)
-
-                add(JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
-                    isOpaque = false
-                    add(JBLabel(name).apply {
-                        font = font.deriveFont(Font.BOLD)
-                        preferredSize = java.awt.Dimension(JBUI.scale(100), preferredSize.height)
-                        minimumSize = preferredSize
-                    }, BorderLayout.WEST)
-                    add(JBLabel(description), BorderLayout.CENTER)
-                }, BorderLayout.CENTER)
-            }
-        }
-    }
 
     /** Open a project-root file in the editor if it exists */
     private fun openProjectFile(fileName: String) {
@@ -1985,7 +1302,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
         saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
         saveConversation()
-        loadBillingData()
+        billing.loadBillingData()
 
         val lastResponse = consolePanel.getLastResponseText()
         val quickReplies = detectQuickReplies(lastResponse)
@@ -2451,384 +1768,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
     }
 
-    private fun createTimelineTab(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(10)
-
-        // Timeline list — uses shared timelineModel populated from real events
-        val timelineList = com.intellij.ui.components.JBList(timelineModel)
-
-        // Custom cell renderer for timeline events
-        timelineList.cellRenderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?,
-                value: Any?,
-                index: Int,
-                isSelected: Boolean,
-                cellHasFocus: Boolean
-            ): Component {
-                val event = value as? TimelineEvent
-                val label =
-                    super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
-
-                if (event != null) {
-                    val icon = when (event.type) {
-                        EventType.SESSION_START -> com.intellij.icons.AllIcons.Actions.Execute
-                        EventType.MESSAGE_SENT -> com.intellij.icons.AllIcons.Actions.Upload
-                        EventType.RESPONSE_RECEIVED -> com.intellij.icons.AllIcons.Actions.Download
-                        EventType.ERROR -> com.intellij.icons.AllIcons.General.Error
-                        EventType.TOOL_CALL -> com.intellij.icons.AllIcons.Actions.Lightning
-                    }
-                    label.icon = icon
-
-                    val timeStr = java.text.SimpleDateFormat("HH:mm:ss").format(event.timestamp)
-                    label.text = "<html><b>$timeStr</b> - ${event.message}</html>"
-                    label.border = JBUI.Borders.empty(5)
-                }
-
-                return label
-            }
-        }
-
-        val scrollPane = JBScrollPane(timelineList)
-        panel.add(scrollPane, BorderLayout.CENTER)
-
-        // Bottom toolbar
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(10), JBUI.scale(5)))
-
-        val clearButton = JButton("Clear Timeline")
-        clearButton.addActionListener {
-            if (timelineModel.size() > 0) {
-                timelineModel.clear()
-            }
-        }
-        toolbar.add(clearButton)
-
-        panel.add(toolbar, BorderLayout.SOUTH)
-
-        return panel
-    }
-
-    private fun createDebugTab(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(5)
-
-        // Build info header
-        val buildInfoLabel = JBLabel("Build: ${com.github.copilot.intellij.BuildInfo.getSummary()}")
-        buildInfoLabel.font = JBUI.Fonts.smallFont()
-        buildInfoLabel.border = JBUI.Borders.empty(0, 0, 5, 0)
-        panel.add(buildInfoLabel, BorderLayout.NORTH)
-
-        val debugModel = DefaultListModel<CopilotAcpClient.DebugEvent>()
-        val list = JBList(debugModel)
-        list.cellRenderer = createDebugCellRenderer()
-
-        val detailsArea = JBTextArea()
-        detailsArea.isEditable = false
-        detailsArea.lineWrap = true
-        detailsArea.wrapStyleWord = true
-        detailsArea.text = "Select an event to see details"
-
-        setupDebugSelectionListener(list, detailsArea)
-
-        val splitPane = OnePixelSplitter(true, 0.6f)
-        splitPane.firstComponent = JBScrollPane(list)
-        splitPane.secondComponent = JBScrollPane(detailsArea)
-        panel.add(splitPane, BorderLayout.CENTER)
-
-        panel.add(createDebugToolbar(debugModel, list), BorderLayout.SOUTH)
-        registerDebugListener(debugModel, list)
-
-        return panel
-    }
-
-    private fun createDebugCellRenderer(): DefaultListCellRenderer {
-        return object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?, value: Any?, index: Int,
-                isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                if (value is CopilotAcpClient.DebugEvent) {
-                    text = value.toString()
-                    foreground = when (value.type) {
-                        "PERMISSION_APPROVED" -> JBColor.GREEN.darker()
-                        "PERMISSION_DENIED" -> ERROR_COLOR
-                        "RETRY_PROMPT", "RETRY_RESPONSE" -> JBColor.ORANGE
-                        else -> if (isSelected) list?.selectionForeground else list?.foreground
-                    }
-                }
-                return this
-            }
-        }
-    }
-
-    private fun setupDebugSelectionListener(list: JBList<CopilotAcpClient.DebugEvent>, detailsArea: JBTextArea) {
-        list.addListSelectionListener {
-            if (!it.valueIsAdjusting) {
-                val selected = list.selectedValue
-                if (selected != null) {
-                    detailsArea.text = """
-                        |Timestamp: ${selected.timestamp}
-                        |Type: ${selected.type}
-                        |Message: ${selected.message}
-                        |
-                        |Details:
-                        |${selected.details.ifEmpty { "(none)" }}
-                    """.trimMargin()
-                    detailsArea.caretPosition = 0
-                }
-            }
-        }
-    }
-
-    private fun createDebugToolbar(
-        debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>,
-        list: JBList<CopilotAcpClient.DebugEvent>
-    ): JBPanel<JBPanel<*>> {
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT))
-        val clearBtn = JButton("Clear")
-        clearBtn.addActionListener { debugModel.clear() }
-
-        val copyBtn = JButton("Copy Selected")
-        copyBtn.addActionListener {
-            val selected = list.selectedValue
-            if (selected != null) {
-                val content =
-                    "${selected.timestamp} [${selected.type}] ${selected.message}\n${selected.details}"
-                Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                    StringSelection(content), null
-                )
-            }
-        }
-
-        val exportBtn = JButton("Export All")
-        exportBtn.addActionListener { exportDebugEvents(debugModel) }
-
-        toolbar.add(clearBtn)
-        toolbar.add(copyBtn)
-        toolbar.add(exportBtn)
-        return toolbar
-    }
-
-    private fun exportDebugEvents(debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>) {
-        val sb = StringBuilder()
-        for (i in 0 until debugModel.size()) {
-            val event = debugModel.getElementAt(i)
-            sb.append("${event.timestamp} [${event.type}] ${event.message}\n")
-            if (event.details.isNotEmpty()) {
-                sb.append("  ${event.details}\n")
-            }
-            sb.append("\n")
-        }
-        Toolkit.getDefaultToolkit().systemClipboard.setContents(
-            StringSelection(sb.toString()), null
-        )
-    }
-
-    private fun registerDebugListener(
-        debugModel: DefaultListModel<CopilotAcpClient.DebugEvent>,
-        list: JBList<CopilotAcpClient.DebugEvent>
-    ) {
-        val listener: (CopilotAcpClient.DebugEvent) -> Unit = { event ->
-            SwingUtilities.invokeLater {
-                debugModel.addElement(event)
-                while (debugModel.size() > 500) {
-                    debugModel.remove(0)
-                }
-                list.ensureIndexIsVisible(debugModel.size() - 1)
-            }
-        }
-
-        val copilotService = CopilotService.getInstance(project)
-        try {
-            val client = copilotService.getClient()
-            client.addDebugListener(listener)
-        } catch (_: Exception) {
-            // Client not started yet - will add listener when it starts
-        }
-    }
-
-    private fun createLogViewerTab(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.empty(5)
-
-        val logArea = JBTextArea()
-        logArea.isEditable = false
-        logArea.font = java.awt.Font("JetBrains Mono", java.awt.Font.PLAIN, JBUI.Fonts.label().size - 1)
-
-        // Load plugin-related logs from idea.log
-        val logFile = java.io.File(
-            com.intellij.openapi.application.PathManager.getLogPath(), "idea.log"
-        )
-        val pluginPrefixes = listOf(
-            "com.github.copilot", "CopilotAcp", "CopilotService",
-            "PsiBridge", "McpServer", "ContextSnippet", "Copilot Bridge"
-        )
-        val loadLogs = {
-            com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
-                val lines = try {
-                    if (logFile.exists()) {
-                        logFile.useLines { seq ->
-                            seq.filter { line -> pluginPrefixes.any { p -> line.contains(p) } }
-                                .toList()
-                                .takeLast(500)
-                        }
-                    } else emptyList()
-                } catch (_: Exception) {
-                    emptyList()
-                }
-                SwingUtilities.invokeLater {
-                    logArea.text = if (lines.isEmpty()) "No plugin logs found."
-                    else lines.joinToString("\n")
-                    logArea.caretPosition = logArea.text.length
-                }
-            }
-        }
-        loadLogs()
-
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT))
-        val refreshBtn = JButton("Refresh")
-        refreshBtn.addActionListener { loadLogs() }
-        val copyBtn = JButton("Copy All")
-        copyBtn.addActionListener {
-            Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                StringSelection(logArea.text), null
-            )
-        }
-        val openLogBtn = JButton("Open Full Log")
-        openLogBtn.addActionListener {
-            val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-                .refreshAndFindFileByIoFile(logFile)
-            if (vf != null) {
-                com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
-            }
-        }
-        toolbar.add(refreshBtn)
-        toolbar.add(copyBtn)
-        toolbar.add(openLogBtn)
-
-        panel.add(JBScrollPane(logArea), BorderLayout.CENTER)
-        panel.add(toolbar, BorderLayout.SOUTH)
-        return panel
-    }
-
-    fun openSessionFiles() {
-        val agentWorkDir = java.io.File(project.basePath ?: return, AGENT_WORK_DIR)
-        if (!agentWorkDir.exists()) {
-            agentWorkDir.mkdirs()
-        }
-        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-            .refreshAndFindFileByIoFile(agentWorkDir)
-        if (vf != null) {
-            com.intellij.ide.projectView.ProjectView.getInstance(project).select(null, vf, true)
-        }
-    }
-
-    /**
-     * Creates the settings panel and returns it along with a save callback.
-     */
-    private fun createSettingsTab(): Pair<JComponent, () -> Unit> {
-        val panel = JBPanel<JBPanel<*>>(GridBagLayout())
-        panel.border = JBUI.Borders.empty(10)
-
-        val gbc = GridBagConstraints()
-        gbc.gridx = 0
-        gbc.gridy = 0
-        gbc.anchor = GridBagConstraints.WEST
-        gbc.insets = JBUI.insets(5)
-        gbc.fill = GridBagConstraints.HORIZONTAL
-
-        // --- Agent behavior section ---
-        val agentLabel = JBLabel("<html><b>Agent behavior</b></html>")
-        gbc.gridwidth = 2
-        panel.add(agentLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 1
-        panel.add(JBLabel("Inactivity timeout (seconds):"), gbc)
-
-        gbc.gridx = 1
-        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 30, 600, 30))
-        timeoutSpinner.toolTipText =
-            "Stop agent after this many seconds of no activity. Includes model thinking time, so keep generous for complex tasks (default 300s)"
-        panel.add(timeoutSpinner, gbc)
-
-        gbc.gridx = 0
-        gbc.gridy++
-        panel.add(JBLabel("Max tool calls per turn:"), gbc)
-
-        gbc.gridx = 1
-        val toolCallSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getMaxToolCallsPerTurn(), 0, 500, 10))
-        toolCallSpinner.toolTipText = "Limit tool calls per turn to control credit usage (0 = unlimited)"
-        panel.add(toolCallSpinner, gbc)
-
-        // Add filler to push everything to top
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.weighty = 1.0
-        gbc.fill = GridBagConstraints.BOTH
-        panel.add(JBPanel<JBPanel<*>>(), gbc)
-
-        val saveCallback: () -> Unit = {
-            CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
-            CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
-        }
-
-        return Pair(panel, saveCallback)
-    }
-
+    // Debug/Timeline/Settings tabs extracted to DebugPanel.kt
     fun getComponent(): JComponent = mainPanel
-
-    fun openSettings() {
-        val (settingsPanel, saveCallback) = createSettingsTab()
-        val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
-            init {
-                title = "Copilot Bridge Settings"
-                setOKButtonText("Apply")
-                init()
-            }
-
-            override fun createCenterPanel(): JComponent {
-                val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                wrapper.preferredSize = JBUI.size(450, 400)
-                wrapper.add(settingsPanel, BorderLayout.CENTER)
-                return wrapper
-            }
-
-            override fun doOKAction() {
-                saveCallback()
-                super.doOKAction()
-            }
-        }
-        dialog.show()
-    }
-
-    fun openDebug() {
-        val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
-            init {
-                title = "Copilot Bridge Debug"
-                init()
-            }
-
-            override fun createCenterPanel(): JComponent {
-                val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                wrapper.preferredSize = JBUI.size(700, 550)
-                val tabs = com.intellij.ui.components.JBTabbedPane()
-                tabs.addTab("Events", createDebugTab())
-                tabs.addTab("Timeline", createTimelineTab())
-                tabs.addTab("Plugin Logs", createLogViewerTab())
-                wrapper.add(tabs, BorderLayout.CENTER)
-                return wrapper
-            }
-        }
-        dialog.show()
-    }
+    fun openSettings() = debugPanel.openSettings()
+    fun openDebug() = debugPanel.openDebug()
+    fun openSessionFiles() = debugPanel.openSessionFiles()
 
     fun resetSession() {
         currentSessionId = null
-        billingCycleStartUsed = -1
+        billing.billingCycleStartUsed = -1
         if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
         consolePanel.clear()
         consolePanel.showPlaceholder("New conversation started.")
@@ -2994,19 +1942,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val isSelection: Boolean
     )
 
-    private data class TimelineEvent(
-        val type: EventType,
-        val message: String,
-        val timestamp: java.util.Date
-    )
-
-    private enum class EventType {
-        SESSION_START,
-        MESSAGE_SENT,
-        RESPONSE_RECEIVED,
-        ERROR,
-        TOOL_CALL
-    }
+    // TimelineEvent and EventType extracted to DebugPanel.kt
 
     /** Tree node that holds file content and path for the Plans tab. */
     private class FileTreeNode(
@@ -3014,161 +1950,4 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val filePath: String,
         val fileContent: String
     ) : javax.swing.tree.DefaultMutableTreeNode("\uD83D\uDCC4 $fileName")
-
-// --- Usage graph ---
-
-    private data class UsageGraphData(
-        val currentDay: Int,
-        val totalDays: Int,
-        val usedSoFar: Int,
-        val entitlement: Int
-    )
-
-    /**
-     * Tiny sparkline panel showing cumulative usage over the billing cycle,
-     * a linear projection to end-of-month, and a horizontal entitlement bar.
-     * Shows red fill for usage above the entitlement threshold.
-     */
-    private class UsageGraphPanel : JBPanel<UsageGraphPanel>() {
-        var graphData: UsageGraphData? = null
-
-        init {
-            isOpaque = false
-            val h = JBUI.scale(28)
-            preferredSize = Dimension(JBUI.scale(120), h)
-            minimumSize = preferredSize
-            maximumSize = Dimension(JBUI.scale(120), h)
-            border = JBUI.Borders.empty(1, JBUI.scale(2))
-        }
-
-        override fun paintComponent(g: Graphics) {
-            super.paintComponent(g)
-            val data = graphData ?: return
-            if (data.entitlement <= 0) return
-
-            val g2 = (g as Graphics2D).also {
-                it.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            }
-            val pad = 1
-            val w = width - 2 * pad
-            val h = height - 2 * pad
-            if (w <= 0 || h <= 0) return
-
-            val arc = JBUI.scale(6)
-
-            // Border — light gray, matching ComboBoxAction style
-            val borderShape = java.awt.geom.RoundRectangle2D.Float(
-                0.5f, 0.5f, (width - 1).toFloat(), (height - 1).toFloat(), arc.toFloat(), arc.toFloat()
-            )
-            g2.color = UIManager.getColor("Component.borderColor") ?: JBColor(0xC4C4C4, 0x5E6060)
-            g2.stroke = BasicStroke(1f)
-            g2.draw(borderShape)
-
-            val clipShape = java.awt.geom.RoundRectangle2D.Float(
-                pad.toFloat(), pad.toFloat(), w.toFloat(), h.toFloat(), arc.toFloat(), arc.toFloat()
-            )
-
-            // Clip all content to the rounded rect
-            val oldClip = g2.clip
-            g2.clip(clipShape)
-
-            val rate = if (data.currentDay > 0) data.usedSoFar.toFloat() / data.currentDay else 0f
-            val projected = (rate * data.totalDays).toInt()
-            val maxY = maxOf(data.entitlement, projected, data.usedSoFar) * 1.15f
-            val overQuota = data.usedSoFar > data.entitlement
-
-            fun dx(day: Float) = pad + (day / data.totalDays * w)
-            fun dy(v: Float) = pad + h - (v / maxY * h)
-
-            // Entitlement line (dashed)
-            val entY = dy(data.entitlement.toFloat())
-            g2.color = if (overQuota)
-                JBColor(Color(0xE0, 0x40, 0x40, 0x70), Color(0xE0, 0x60, 0x60, 0x70))
-            else
-                JBColor(Color(0x80, 0x80, 0x80, 0x40), Color(0xA0, 0xA0, 0xA0, 0x40))
-            g2.stroke = BasicStroke(
-                1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
-                floatArrayOf(3f, 3f), 0f
-            )
-            g2.drawLine(pad, entY.toInt(), pad + w, entY.toInt())
-
-            val baseY = dy(0f)
-            val curX = dx(data.currentDay.toFloat())
-            val curY = dy(data.usedSoFar.toFloat())
-
-            if (overQuota) {
-                val quotaY = dy(data.entitlement.toFloat())
-                // Intersection of usage line with entitlement line
-                val t = (quotaY - baseY) / (curY - baseY)
-                val intersectX = pad + t * (curX - pad)
-
-                // Below-quota area (green quadrilateral)
-                val belowPath = Path2D.Float().apply {
-                    moveTo(pad.toFloat(), baseY)
-                    lineTo(intersectX, quotaY)
-                    lineTo(curX, quotaY)
-                    lineTo(curX, baseY)
-                    closePath()
-                }
-                g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x30), Color(0x6A, 0xAB, 0x73, 0x30))
-                g2.fill(belowPath)
-
-                // Over-quota area (red triangle)
-                val overPath = Path2D.Float().apply {
-                    moveTo(intersectX, quotaY)
-                    lineTo(curX, curY)
-                    lineTo(curX, quotaY)
-                    closePath()
-                }
-                g2.color = JBColor(Color(0xE0, 0x40, 0x40, 0x40), Color(0xE0, 0x60, 0x60, 0x40))
-                g2.fill(overPath)
-
-                // Usage line (red)
-                g2.color = JBColor(Color(0xE0, 0x40, 0x40), Color(0xE0, 0x60, 0x60))
-                g2.stroke = BasicStroke(1.5f)
-                g2.drawLine(pad, baseY.toInt(), curX.toInt(), curY.toInt())
-            } else {
-                // Normal: green filled area
-                val areaPath = Path2D.Float().apply {
-                    moveTo(pad.toFloat(), baseY)
-                    lineTo(curX, curY)
-                    lineTo(curX, baseY)
-                    closePath()
-                }
-                g2.color = JBColor(Color(0x59, 0xA8, 0x69, 0x40), Color(0x6A, 0xAB, 0x73, 0x40))
-                g2.fill(areaPath)
-
-                // Usage line (green)
-                g2.color = JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
-                g2.stroke = BasicStroke(1.5f)
-                g2.drawLine(pad, baseY.toInt(), curX.toInt(), curY.toInt())
-            }
-
-            // Projection line (dashed gray)
-            if (data.currentDay < data.totalDays) {
-                val projX = dx(data.totalDays.toFloat())
-                val projY = dy(projected.toFloat())
-                g2.color = JBColor(Color(0x80, 0x80, 0x80, 0x80), Color(0xA0, 0xA0, 0xA0, 0x80))
-                g2.stroke = BasicStroke(
-                    1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
-                    floatArrayOf(3f, 3f), 0f
-                )
-                g2.drawLine(curX.toInt(), curY.toInt(), projX.toInt(), projY.toInt())
-            }
-
-            // Current day dot
-            val dotColor = if (overQuota)
-                JBColor(Color(0xE0, 0x40, 0x40), Color(0xE0, 0x60, 0x60))
-            else
-                JBColor(Color(0x59, 0xA8, 0x69), Color(0x6A, 0xAB, 0x73))
-            g2.color = dotColor
-            g2.fillOval(
-                curX.toInt() - JBUI.scale(2), curY.toInt() - JBUI.scale(2),
-                JBUI.scale(4), JBUI.scale(4)
-            )
-
-            // Restore clip
-            g2.clip = oldClip
-        }
-    }
 }
