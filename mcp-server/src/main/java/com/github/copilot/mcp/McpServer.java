@@ -160,150 +160,33 @@ public class McpServer {
         tools.addProperty("listChanged", false);
         capabilities.add("tools", tools);
         result.add("capabilities", capabilities);
-        result.addProperty("instructions", """
-            You are running inside an IntelliJ IDEA plugin with access to 56 IDE tools.
-
-            FILE OPERATIONS:
-            - intellij_read_file: Read any file. Supports 'start_line'/'end_line' for partial reads. \
-              ⚠️ ALWAYS use start_line/end_line when you only need a section — full file reads waste tokens. \
-              Example: intellij_read_file(path, start_line=50, end_line=100) reads only lines 50-100.
-            - intellij_write_file: Write/edit files. \
-              ⚠️ ALWAYS use 'old_str'+'new_str' for targeted edits. NEVER send full file content unless creating a new file. \
-              Full file writes waste tokens and risk overwriting concurrent changes. \
-              Example: intellij_write_file(path, old_str="old code", new_str="new code") \
-              ✅ WRITE RESPONSES INCLUDE HIGHLIGHTS: Every successful edit automatically returns file highlights \
-              (errors/warnings). Check the "--- Highlights (auto) ---" section in the response. \
-              If errors are reported, fix them immediately before editing other files.
-
-            CODE SEARCH (AST-based, searches live editor buffers):
-            - search_symbols: Find class/method/function definitions by name
-            - find_references: Find all usages of a symbol at specific location
-            - get_file_outline: Get structure/symbols in a file
-            - get_class_outline: Get constructors/methods/fields of any class by FQN (works on library JARs and JDK)
-
-            COMMANDS:
-            - run_command: One-shot commands (gradle build, git status). Output in Run panel.
-            - run_in_terminal: Interactive shells or long-running processes. Opens visible terminal tab.
-
-            BEST PRACTICES:
-
-            1. TRUST TOOL OUTPUTS - they return data directly. Don't try to read temp files or invent processing tools.
-
-            2. READ FILES EFFICIENTLY - Use start_line/end_line to read only the section you need. \
-            Only read full files when you need the complete picture (e.g., first time reading a file).
-
-            3. WORKSPACE: ALL temp files, plans, notes MUST go in '.agent-work/' inside the project root. \
-            NEVER write to /tmp/, home directory, or any location outside the project. \
-            '.agent-work/' is git-ignored and persists across sessions.
-
-            4. AFTER EDITING: Check the auto-highlights in the write response. \
-            If the "--- Highlights (auto) ---" section shows errors, fix them IMMEDIATELY before editing other files. \
-            You do NOT need to call get_highlights separately — it's included in every write response. \
-            Only call get_highlights explicitly for files you haven't edited (e.g., to check existing code quality).
-
-            5. For MULTIPLE SEQUENTIAL EDITS: \
-            When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
-            Check the auto-highlights in each write response \u2192 fix errors before continuing. \
-            After all edits complete, call format_code and optimize_imports ONCE.
-
-            AUTO_FORMAT IMPORTANT NOTES: \
-            a) auto_format runs SYNCHRONOUSLY \u2192 the write response reflects the formatted state. \
-            b) auto_format includes optimize_imports which REMOVES imports it considers unused. \
-               If you add imports in one edit and the code using them in a later edit, \
-               set auto_format=false on the import edit or add imports and code in the SAME edit. \
-            c) auto_format may reindent code. The write response includes context lines showing the \
-               post-format state so you can verify structure is correct. \
-            d) If auto_format damages the file (e.g., shifts braces, removes needed imports), \
-               use the 'undo' tool to revert. Each write+format creates 2 undo steps.
-
-            6. BEFORE EDITING UNFAMILIAR FILES: If a file has inconsistent formatting or you get old_str match failures, \
-            call format_code on the file first, then re-read it. This normalizes line endings, whitespace, and indentation. \
-            Formatting changes can be committed separately before starting the actual fix. \
-            The write tool auto-formats as a fallback when matching fails, but calling format_code explicitly is more reliable.
-
-            7. CHECKING FILE HIGHLIGHTS (errors/warnings): \
-            a) Just call get_highlights(file) directly - NO waiting or daemon commands needed. \
-            b) IntelliJ analyzes files automatically in background. get_highlights returns current state. \
-            c) DO NOT use shell commands like "sleep" or "wait for daemon" - just call get_highlights. \
-            d) IMPORTANT: get_highlights only works for files ALREADY OPEN in the editor (cached daemon results). \
-            For project-wide analysis, ALWAYS use run_inspections instead — it runs the full inspection engine. \
-            Example: get_highlights("PsiBridgeService.java") returns all problems in that file.
-
-            8. NEVER use grep/glob for IntelliJ project files or scratch files. \
-            ALWAYS use IntelliJ tools: search_symbols, find_references, search_text, get_file_outline, get_class_outline, list_project_files, intellij_read_file. \
-            Use search_text for text/regex pattern matching across files (replaces grep). \
-            grep/glob will FAIL on scratch files (they're stored outside the project). \
-            After creating a scratch file, save its path and use intellij_read_file to access it.
-
-            9. TESTING RULES: \
-            ALWAYS use 'run_tests' to run tests. DO NOT use './gradlew test' or 'mvn test'. \
-            run_tests integrates with IntelliJ's test runner and provides structured results in the IDE's Run panel. \
-            Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
-            Only use run_command for tests as a last resort if run_tests fails.
-
-            10. GrazieInspection (grammar) does NOT support apply_quickfix \u2192 use intellij_write_file instead.
-
-            11. GIT OPERATIONS: \
-            ALWAYS use the built-in git tools (git_status, git_diff, git_log, git_blame, git_commit, \
-            git_stage, git_unstage, git_branch, git_stash, git_show). \
-            NEVER use 'run_command' for git operations (e.g., 'git checkout', 'git reset', 'git pull'). \
-            Shell git commands bypass IntelliJ's VCS layer and cause editor buffer desync \u2192 \
-            the editor will show stale content that doesn't match the files on disk. \
-            IntelliJ git tools properly sync editor buffers, undo history, and VFS state. \
-            If you need a git operation not covered by the built-in tools, ask the user to perform it manually.
-
-            12. UNDO: \
-            Use the 'undo' tool to revert bad edits. Each write registers as an undo step, \
-            and auto_format registers a separate step. So a write with auto_format=true creates 2 undo steps. \
-            Undo is the fastest way to recover from a bad edit \u2192 faster than re-reading and re-editing.
-
-            13. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
-            a) Check auto-highlights in write response \u2192 after EACH edit. Instant. Catches most errors. \
-            b) get_compilation_errors() \u2192 after editing multiple files. Fast scan of open files for ERROR-level only. \
-            c) build_project \u2192 ONLY before committing. Full incremental compilation. Only one build runs at a time. \
-            NEVER use build_project as your first error check after an edit \u2192 it's 100x slower than highlights. \
-            If build_project says "Build already in progress", wait and retry \u2192 do NOT spam it.
-
-            WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
-            \u26A0\uFE0F CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
-
-            Step 1: run_inspections() to get a COMPLETE overview of all issues. \
-            TRUST the run_inspections output \u2192 it IS the authoritative source of all warnings/errors. \
-            Do NOT use get_highlights to re-scan files \u2192 run_inspections already found everything.
-            Step 2: Group issues by PROBLEM TYPE (not by file). Examples: \
-            "Unused parameters: 5 across 3 files", "Redundant casts: 3 in PsiBridge", "Grammar: 50+ issues".
-            Step 3: Pick the FIRST problem category and fix ALL instances of that problem \
-            (this may span multiple files if they share the same issue \u2192 that's fine).
-            Step 4: format_code + optimize_imports on changed files, then build_project to verify.
-            Step 5: Commit the logical unit with a descriptive message like "fix: resolve unused parameters in test mocks".
-            Step 6: \u26A0\uFE0F STOP HERE AND ASK THE USER \u26A0\uFE0F
-               Say: "\u2705 Fixed [problem type] ([N] issues across [M] files). Should I continue with [next category]?"
-               WAIT for user response. DO NOT proceed to the next category automatically.
-            Step 7: If user says yes, repeat from Step 3 with the next problem category.
-
-            \u26A0\uFE0F RULE: After fixing EACH problem TYPE, you MUST stop and ask before continuing. \
-            Even if you found 10 different problem types, fix ONE type at a time and ask after EACH one.
-
-            Example correct workflow:
-            - Find issues: 5 unused params, 3 StringBuilder, 2 XXE vulnerabilities
-            - Fix unused params \u2192 commit \u2192 ASK "Continue with StringBuilder?"
-            - (user says yes)
-            - Fix StringBuilder \u2192 commit \u2192 ASK "Continue with XXE vulnerabilities?"
-            - (user says yes)
-            - Fix XXE \u2192 commit \u2192 DONE
-
-            KEY PRINCIPLES:
-            - Related changes belong in ONE commit (e.g. refactoring that touches 4 files).
-            - Unrelated changes need SEPARATE commits (don't mix grammar fixes with null checks).
-            - Skip grammar issues (GrazieInspection) unless user specifically requests them.
-            - Skip generated files (gradlew.bat, log files).
-            - If you see 200+ issues, prioritize: compilation errors > warnings > style > grammar.
-
-            SONARQUBE FOR IDE:
-            If available, use run_sonarqube_analysis to find additional issues from SonarQube/SonarLint. \
-            SonarQube findings are SEPARATE from IntelliJ inspections — run both for complete coverage. \
-            SonarQube rules use keys like 'java:S1135' (TODO comments), 'java:S1172' (unused params).""");
+        result.addProperty("instructions", loadInstructions());
         return result;
+    }
+
+    /** Load MCP instructions from the persisted user file, falling back to the bundled default. */
+    private static String loadInstructions() {
+        Path customFile = Path.of(projectRoot, ".agent-work", "startup-instructions.md");
+        if (Files.isRegularFile(customFile)) {
+            try {
+                return Files.readString(customFile, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "Failed to read custom startup instructions, using default", e);
+            }
+        }
+        return loadDefaultInstructions();
+    }
+
+    /** Load the bundled default instructions from the classpath resource. */
+    static String loadDefaultInstructions() {
+        try (InputStream is = McpServer.class.getResourceAsStream("/default-mcp-instructions.md")) {
+            if (is != null) {
+                return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to load default MCP instructions resource", e);
+        }
+        return "You are running inside an IntelliJ IDEA plugin with IDE tools.";
     }
 
     private static JsonObject handleToolsList() {

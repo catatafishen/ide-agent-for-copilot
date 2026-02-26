@@ -746,7 +746,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
         // Left toolbar — grouped logically:
-        // [Send] | [Attach File, Attach Selection] | [Model, Mode] | [Follow, Format, Build, Test, Commit] | [Instructions, TODO] | [Export, Help]
+        // [Send] | [Attach File, Attach Selection] | [Model, Mode] | [Follow, Format, Build, Test, Commit] | [Project Files ▾] | [Export, Help]
         val leftGroup = DefaultActionGroup()
         leftGroup.add(SendStopAction())
         leftGroup.addSeparator()
@@ -762,8 +762,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(TestBeforeEndToggleAction())
         leftGroup.add(CommitBeforeEndToggleAction())
         leftGroup.addSeparator()
-        leftGroup.add(OpenInstructionsAction())
-        leftGroup.add(OpenTodoAction())
+        leftGroup.add(ProjectFilesDropdownAction())
         leftGroup.addSeparator()
         leftGroup.add(CopyConversationAction())
         leftGroup.add(HelpAction())
@@ -1262,14 +1261,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 ),
                 null,
                 HelpRow(
-                    com.intellij.icons.AllIcons.Actions.IntentionBulb,
-                    "Instructions",
-                    "Open copilot-instructions.md — persistent instructions the agent follows every turn."
-                ),
-                HelpRow(
-                    com.intellij.icons.AllIcons.General.TodoDefault,
-                    "TODO",
-                    "Open TODO.md — a task list the agent can read and update."
+                    com.intellij.icons.AllIcons.Nodes.Folder,
+                    "Project Files",
+                    "Dropdown: open Instructions, TODO, Agent Definitions, or MCP Server Instructions."
                 ),
                 null,
                 HelpRow(
@@ -1413,30 +1407,122 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
     }
 
-    private inner class OpenInstructionsAction : AnAction(
-        "Instructions", "Open copilot-instructions.md",
-        com.intellij.icons.AllIcons.Actions.IntentionBulb
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-        override fun update(e: AnActionEvent) {
-            val base = project.basePath
-            e.presentation.isEnabled = base != null && java.io.File(base, "copilot-instructions.md").exists()
+    /** Open a file in the editor, creating it with default content if it doesn't exist yet. */
+    private fun openOrCreateProjectFile(relativePath: String, defaultContent: () -> String) {
+        val base = project.basePath ?: return
+        val file = java.io.File(base, relativePath)
+        if (!file.exists()) {
+            file.parentFile?.mkdirs()
+            file.writeText(defaultContent())
         }
-
-        override fun actionPerformed(e: AnActionEvent) = openProjectFile("copilot-instructions.md")
+        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+            .refreshAndFindFileByPath(file.absolutePath) ?: return
+        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
     }
 
-    private inner class OpenTodoAction : AnAction(
-        "TODO", "Open TODO.md",
-        com.intellij.icons.AllIcons.General.TodoDefault
-    ) {
+    /** Load the bundled default MCP instructions from plugin resources. */
+    private fun loadDefaultMcpInstructions(): String {
+        val stream = javaClass.getResourceAsStream("/default-mcp-instructions.md")
+        return stream?.bufferedReader()?.use { it.readText() }
+            ?: "You are running inside an IntelliJ IDEA plugin with IDE tools."
+    }
+
+    /** Dropdown action for project configuration files: Instructions, TODO, Agent Definitions, MCP Instructions */
+    private inner class ProjectFilesDropdownAction : AnAction(
+        "Project Files", "Open project configuration files",
+        com.intellij.icons.AllIcons.Nodes.Folder
+    ), com.intellij.openapi.actionSystem.ex.CustomComponentAction {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
-        override fun update(e: AnActionEvent) {
-            val base = project.basePath
-            e.presentation.isEnabled = base != null && java.io.File(base, "TODO.md").exists()
+        override fun actionPerformed(e: AnActionEvent) {
+            val inputEvent = e.inputEvent ?: return
+            val component = inputEvent.source as? java.awt.Component ?: return
+            showPopup(component)
         }
 
-        override fun actionPerformed(e: AnActionEvent) = openProjectFile("TODO.md")
+        override fun createCustomComponent(presentation: com.intellij.openapi.actionSystem.Presentation, place: String): javax.swing.JComponent {
+            val button = com.intellij.openapi.actionSystem.impl.ActionButtonWithText(this, presentation, place, com.intellij.openapi.actionSystem.ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE)
+            return button
+        }
+
+        private fun showPopup(owner: java.awt.Component) {
+            val group = DefaultActionGroup()
+            val base = project.basePath
+
+            // Instructions
+            group.add(object : AnAction("Instructions", "Open copilot-instructions.md", com.intellij.icons.AllIcons.Actions.IntentionBulb) {
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabled = base != null && java.io.File(base, "copilot-instructions.md").exists()
+                }
+                override fun actionPerformed(e: AnActionEvent) = openProjectFile("copilot-instructions.md")
+            })
+
+            // TODO
+            group.add(object : AnAction("TODO", "Open TODO.md", com.intellij.icons.AllIcons.General.TodoDefault) {
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabled = base != null && java.io.File(base, "TODO.md").exists()
+                }
+                override fun actionPerformed(e: AnActionEvent) = openProjectFile("TODO.md")
+            })
+
+            group.addSeparator("Agent Definitions")
+
+            // Agent definition files from .github/agents/
+            val agentsDir = if (base != null) java.io.File(base, ".github/agents") else null
+            val agentFiles = agentsDir?.listFiles { f -> f.isFile && f.extension == "md" }
+                ?.sortedBy { it.name } ?: emptyList()
+            if (agentFiles.isNotEmpty()) {
+                for (agentFile in agentFiles) {
+                    val name = agentFile.nameWithoutExtension
+                    group.add(object : AnAction(name, "Open ${agentFile.name}", com.intellij.icons.AllIcons.General.User) {
+                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                        override fun actionPerformed(e: AnActionEvent) = openProjectFile(".github/agents/${agentFile.name}")
+                    })
+                }
+            } else {
+                group.add(object : AnAction("No agents defined", null, null) {
+                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                    override fun update(e: AnActionEvent) { e.presentation.isEnabled = false }
+                    override fun actionPerformed(e: AnActionEvent) {}
+                })
+            }
+
+            group.addSeparator("MCP Server")
+
+            // Startup Instructions (MCP server instructions)
+            group.add(object : AnAction("Startup Instructions", "Open .agent-work/startup-instructions.md", com.intellij.icons.AllIcons.Actions.IntentionBulbGrey) {
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                override fun actionPerformed(e: AnActionEvent) {
+                    openOrCreateProjectFile(".agent-work/startup-instructions.md") {
+                        loadDefaultMcpInstructions()
+                    }
+                }
+            })
+
+            // Restore default
+            group.add(object : AnAction("Restore Default Instructions", "Reset startup instructions to built-in default", com.intellij.icons.AllIcons.Actions.Rollback) {
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                override fun actionPerformed(e: AnActionEvent) {
+                    val filePath = ".agent-work/startup-instructions.md"
+                    val absFile = java.io.File(base ?: return, filePath)
+                    absFile.parentFile?.mkdirs()
+                    absFile.writeText(loadDefaultMcpInstructions())
+                    // Refresh and open
+                    val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                        .refreshAndFindFileByPath(absFile.absolutePath) ?: return
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
+                }
+            })
+
+            val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
+                .createActionGroupPopup(
+                    null, group, com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project),
+                    com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
+                    true
+                )
+            popup.showUnderneathOf(owner)
+        }
     }
 
     // ComboBoxAction for model selection ? matches Run panel dropdown style
