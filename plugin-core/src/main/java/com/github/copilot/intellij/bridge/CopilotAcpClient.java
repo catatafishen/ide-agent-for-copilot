@@ -1426,21 +1426,42 @@ public class CopilotAcpClient implements Closeable {
      */
     @Nullable
     private String findMcpServerJar() {
+        // Strategy 1: Use IntelliJ plugin API to find plugin directory
         try {
-            // Find the MCP JAR relative to this class's JAR in the plugin's lib directory
+            var pluginId = com.intellij.openapi.extensions.PluginId.findId("com.github.copilot.intellij");
+            if (pluginId != null) {
+                var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                if (plugin != null) {
+                    File libDir = plugin.getPluginPath().resolve("lib").toFile();
+                    File mcpJar = new File(libDir, "mcp-server.jar");
+                    if (mcpJar.exists()) {
+                        LOG.info("Found MCP server JAR via plugin API: " + mcpJar.getAbsolutePath());
+                        return mcpJar.getAbsolutePath();
+                    }
+                    LOG.warn("MCP JAR not in plugin lib dir: " + libDir);
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Plugin API lookup failed: " + e.getMessage());
+        }
+
+        // Strategy 2: Fall back to classloader-based discovery
+        try {
             java.net.URL url = getClass().getProtectionDomain().getCodeSource().getLocation();
             if (url != null) {
+                LOG.info("CodeSource URL: " + url);
                 File jarDir = new File(url.toURI()).getParentFile();
                 File mcpJar = new File(jarDir, "mcp-server.jar");
                 if (mcpJar.exists()) {
-                    LOG.info("Found MCP server JAR: " + mcpJar.getAbsolutePath());
+                    LOG.info("Found MCP server JAR via classloader: " + mcpJar.getAbsolutePath());
                     return mcpJar.getAbsolutePath();
                 }
             }
-            LOG.warn("MCP server JAR not found - MCP tools will be unavailable");
         } catch (java.net.URISyntaxException | SecurityException e) {
-            LOG.warn("Could not find MCP server JAR: " + e.getMessage());
+            LOG.warn("Classloader JAR lookup failed: " + e.getMessage());
         }
+
+        LOG.warn("MCP server JAR not found - MCP tools will be unavailable");
         return null;
     }
 
