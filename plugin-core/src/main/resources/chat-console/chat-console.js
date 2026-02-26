@@ -147,6 +147,7 @@ function finalizeTurn(stats) {
         el.classList.add('turn-hidden');
         el.dataset.chipOwned = '1';
         targetMeta.appendChild(chip);
+        targetMeta.classList.add('show');
     });
     if (stats && stats.mult) {
         const existing = document.getElementById('turn-stats');
@@ -184,7 +185,13 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
     const icon = el.querySelector('.collapse-icon');
     const failed = icon && icon.style.color === 'red';
     const chip = document.createElement('span');
-    chip.className = 'turn-chip tool' + (failed ? ' failed' : '');
+    // Detect sub-agent sections by their color class
+    const saMatch = el.className.match(/subagent-\w+/);
+    if (saMatch) {
+        chip.className = 'turn-chip subagent ' + saMatch[0] + (failed ? ' failed' : '');
+    } else {
+        chip.className = 'turn-chip tool' + (failed ? ' failed' : '');
+    }
     const fullText = (lbl ? lbl.textContent : 'Tool');
     chip.textContent = fullText.length > 50 ? fullText.substring(0, 47) + '\u2026' : fullText;
     if (fullText.length > 50) chip.setAttribute('data-tip', fullText);
@@ -223,11 +230,74 @@ function _doCollapseToolToChip(el, elId, targetMeta) {
         }
     };
     targetMeta.appendChild(chip);
+    targetMeta.classList.add('show');
+    scrollIfNeeded();
+}
+
+function collapseThinkingToChip(elId) {
+    const el = document.getElementById(elId);
+    if (!el || el.dataset.chipOwned) return;
+    let targetMeta = null;
+    let sib = el.nextElementSibling;
+    while (sib) {
+        if (sib.classList.contains('agent-row')) {
+            targetMeta = sib.querySelector('.meta');
+            break;
+        }
+        sib = sib.nextElementSibling;
+    }
+    if (!targetMeta) {
+        el.dataset.pendingCollapse = '1';
+        return;
+    }
+    _doCollapseThinkingToChip(el, elId, targetMeta);
+}
+
+function _doCollapseThinkingToChip(el, elId, targetMeta) {
+    const chip = document.createElement('span');
+    chip.className = 'turn-chip';
+    chip.textContent = '\uD83D\uDCAD Thought';
+    el.classList.add('turn-hidden');
+    el.dataset.chipOwned = '1';
+    chip.dataset.chipFor = elId;
+    chip.style.cursor = 'pointer';
+
+    function closeSection() {
+        el.classList.add('turn-hidden', 'collapsed');
+        el.classList.remove('chip-expanded');
+        chip.style.opacity = '1';
+        const btn = el.querySelector('.chip-close');
+        if (btn) btn.remove();
+    }
+
+    chip.onclick = function (ev) {
+        ev.stopPropagation();
+        if (el.classList.contains('turn-hidden')) {
+            el.classList.remove('turn-hidden', 'collapsed');
+            el.classList.add('chip-expanded');
+            chip.style.opacity = '0.5';
+            const cc = el.querySelector('.collapse-content');
+            if (cc && !cc.querySelector('.chip-close')) {
+                const btn = document.createElement('span');
+                btn.className = 'chip-close';
+                btn.textContent = '\u2715';
+                btn.onclick = function (e) {
+                    e.stopPropagation();
+                    closeSection();
+                };
+                cc.insertBefore(btn, cc.firstChild);
+            }
+        } else {
+            closeSection();
+        }
+    };
+    targetMeta.appendChild(chip);
+    targetMeta.classList.add('show');
     scrollIfNeeded();
 }
 
 function collapsePendingTools() {
-    const pending = document.querySelectorAll('.tool-section[data-pending-collapse]');
+    const pending = document.querySelectorAll('.tool-section[data-pending-collapse], .thinking-section[data-pending-collapse]');
     pending.forEach(function (el) {
         let targetMeta = null;
         let sib = el.nextElementSibling;
@@ -240,17 +310,27 @@ function collapsePendingTools() {
         }
         if (!targetMeta) return;
         delete el.dataset.pendingCollapse;
-        _doCollapseToolToChip(el, el.id, targetMeta);
+        if (el.classList.contains('thinking-section')) {
+            _doCollapseThinkingToChip(el, el.id, targetMeta);
+        } else {
+            _doCollapseToolToChip(el, el.id, targetMeta);
+        }
     });
 }
+
 
 // noinspection SpellCheckingInspection
 document.addEventListener('click', function (e) {
     let el = e.target;
     while (el && el.tagName !== 'A') el = el.parentElement;
-    if (el && el.getAttribute('href') && el.getAttribute('href').indexOf('openfile://') === 0) {
+    if (!el || !el.getAttribute('href')) return;
+    var href = el.getAttribute('href');
+    if (href.indexOf('openfile://') === 0) {
         e.preventDefault();
-        window._bridge.openFile(el.getAttribute('href'));
+        window._bridge.openFile(href);
+    } else if (href.indexOf('http://') === 0 || href.indexOf('https://') === 0) {
+        e.preventDefault();
+        window._bridge.openUrl(href);
     }
 });
 

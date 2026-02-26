@@ -64,6 +64,17 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         /** Human-readable name and short description for each tool */
         private data class ToolInfo(val displayName: String, val description: String)
 
+        /** Sub-agent type metadata for colored bubbles */
+        private data class SubAgentInfo(val icon: String, val displayName: String, val cssClass: String)
+
+        private val SUB_AGENT_INFO = mapOf(
+            "explore" to SubAgentInfo("", "Explore Agent", "subagent-explore"),
+            "task" to SubAgentInfo("", "Task Agent", "subagent-task"),
+            "general-purpose" to SubAgentInfo("", "General Agent", "subagent-general"),
+            "code-review" to SubAgentInfo("", "Code Review Agent", "subagent-review"),
+            "ui-reviewer" to SubAgentInfo("", "UI Review Agent", "subagent-ui"),
+        )
+
         /** JSON key to use as subtitle in the chip label for specific tools */
         private val TOOL_SUBTITLE_KEY = mapOf(
             // File operations
@@ -270,6 +281,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         class Text(val raw: StringBuilder = StringBuilder()) : EntryData()
         class Thinking(val raw: StringBuilder = StringBuilder()) : EntryData()
         class ToolCall(val title: String, val arguments: String? = null) : EntryData()
+        class SubAgent(
+            val agentType: String,
+            val description: String,
+            val prompt: String? = null,
+            var result: String? = null,
+            var status: String? = null
+        ) : EntryData()
+
         class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
         class Status(val icon: String, val message: String) : EntryData()
         class SessionSeparator(val timestamp: String) : EntryData()
@@ -288,6 +307,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var browserReady = false
     private val pendingJs = mutableListOf<String>()
     private var cursorBridgeJs = ""
+    private var openUrlBridgeJs = ""
     private var loadMoreBridgeJs = ""
     private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
     private var deferredIdCounter = 0
@@ -298,10 +318,22 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     init {
         if (JBCefApp.isSupported()) {
             browser = JBCefBrowser()
+            // Set initial browser background to match the IDE tool window background
+            val panelBg = com.intellij.util.ui.JBUI.CurrentTheme.ToolWindow.background()
+            browser.setPageBackgroundColor("rgb(${panelBg.red},${panelBg.green},${panelBg.blue})")
             openFileQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
             openFileQuery.addHandler { handleFileLink(it); null }
             Disposer.register(this, openFileQuery)
             Disposer.register(this, browser)
+
+            // URL bridge: JS notifies Kotlin to open external URLs in the system browser
+            val openUrlQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            openUrlQuery.addHandler { url ->
+                com.intellij.ide.BrowserUtil.browse(url)
+                null
+            }
+            Disposer.register(this, openUrlQuery)
+            openUrlBridgeJs = openUrlQuery.inject("url")
 
             // Cursor bridge: JS notifies Swing of cursor changes
             val cursorQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
@@ -446,7 +478,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             el.classList.add('collapsed');
             el.querySelector('.collapse-icon').classList.remove('thinking-pulse');
             el.querySelector('.collapse-label').textContent='Thought process';
-            el.querySelector('.caret').textContent='▸';})()"""
+            el.querySelector('.caret').textContent='▸';
+            collapseThinkingToChip('$id');})()"""
         )
     }
 
@@ -553,6 +586,58 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
+    fun addSubAgentEntry(id: String, agentType: String, description: String, prompt: String?) {
+        finalizeCurrentText()
+        entries.add(EntryData.SubAgent(agentType, description, prompt))
+        val did = domId(id)
+        val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
+            "",
+            agentType.replaceFirstChar { it.uppercase() } + " Agent",
+            "subagent-general")
+        val safeName = escapeHtml(info.displayName)
+
+        val sb = StringBuilder()
+        sb.append("<div class='${info.cssClass}'>")
+
+        // Render prompt as a normal green agent bubble with @Agent prefix
+        if (!prompt.isNullOrBlank()) {
+            val safePrompt = escapeHtml(prompt)
+            sb.append("<div class='agent-row'><div class='agent-bubble'>")
+            sb.append("<span class='subagent-prefix'>@$safeName</span> $safePrompt")
+            sb.append("</div></div>")
+        }
+
+        // Response bubble in agent-specific color (no @Agent prefix)
+        sb.append("<div class='agent-row'><div class='subagent-bubble' id='result-$did'>")
+        sb.append("<span class='subagent-pending'>Working...</span>")
+        sb.append("</div></div>")
+
+        sb.append("</div>")
+        appendHtml(sb.toString())
+        fallbackArea?.let { SwingUtilities.invokeLater { it.append("${info.displayName}: $description\n") } }
+    }
+
+    fun updateSubAgentResult(id: String, status: String, result: String?) {
+        // Persist result in entry data so it survives serialization/restore
+        entries.filterIsInstance<EntryData.SubAgent>().lastOrNull()?.let {
+            it.result = result
+            it.status = status
+        }
+        val did = domId(id)
+        // Find the agent name from the existing prefix in the bubble
+        val resultHtml = if (!result.isNullOrBlank()) {
+            markdownToHtml(result)
+        } else {
+            if (status == "completed") "Completed" else "<span style='color:red'>✖ Failed</span>"
+        }
+        val encoded = Base64.getEncoder().encodeToString(resultHtml.toByteArray(Charsets.UTF_8))
+        // Replace the bubble content (no prefix in response bubble)
+        executeJs(
+            """(function(){var r=document.getElementById('result-$did');if(!r)return;
+            r.innerHTML=b64('$encoded');scrollIfNeeded();})()"""
+        )
+    }
+
     fun addErrorEntry(message: String) {
         finalizeCurrentText()
         entries.add(EntryData.Status(ICON_ERROR, message))
@@ -645,6 +730,15 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                         "args",
                         e.arguments ?: ""
                     )
+                }
+
+                is EntryData.SubAgent -> {
+                    obj.addProperty("type", "subagent")
+                    obj.addProperty("agentType", e.agentType)
+                    obj.addProperty("description", e.description)
+                    obj.addProperty("prompt", e.prompt ?: "")
+                    obj.addProperty("result", e.result ?: "")
+                    obj.addProperty("status", e.status ?: "")
                 }
 
                 is EntryData.ContextFiles -> {
@@ -748,6 +842,15 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     obj["args"]?.asString?.ifEmpty { null })
             )
 
+            "subagent" -> entries.add(
+                EntryData.SubAgent(
+                    obj["agentType"]?.asString ?: "general-purpose",
+                    obj["description"]?.asString ?: "",
+                    obj["prompt"]?.asString?.ifEmpty { null },
+                    obj["result"]?.asString?.ifEmpty { null },
+                    obj["status"]?.asString?.ifEmpty { null })
+            )
+
             "context" -> {
                 val files = obj["files"]?.asJsonArray?.map {
                     val f = it.asJsonObject; Pair(f["name"]?.asString ?: "", f["path"]?.asString ?: "")
@@ -781,6 +884,20 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 "restored-${entryCounter}", obj["title"]?.asString ?: "",
                 obj["args"]?.asString?.ifEmpty { null }
             )
+
+            "subagent" -> {
+                val restoredId = "restored-${entryCounter}"
+                addSubAgentEntry(
+                    restoredId,
+                    obj["agentType"]?.asString ?: "general-purpose",
+                    obj["description"]?.asString ?: "Sub-agent task",
+                    obj["prompt"]?.asString?.ifEmpty { null }
+                )
+                val savedStatus = obj["status"]?.asString?.ifEmpty { null }
+                if (savedStatus != null) {
+                    updateSubAgentResult(restoredId, savedStatus, obj["result"]?.asString?.ifEmpty { null })
+                }
+            }
 
             "context" -> {
                 val files = obj["files"]?.asJsonArray?.map {
@@ -910,6 +1027,33 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     sb.append("<div class='collapse-content'>$contentParts</div></div>")
                 }
 
+                "subagent" -> {
+                    val agentType = obj["agentType"]?.asString ?: "general-purpose"
+                    val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
+                        "", agentType.replaceFirstChar { it.uppercase() } + " Agent", "subagent-general")
+                    val safeName = escapeHtml(info.displayName)
+                    val prompt = obj["prompt"]?.asString?.ifEmpty { null }
+                    val result = obj["result"]?.asString?.ifEmpty { null }
+                    val status = obj["status"]?.asString?.ifEmpty { null }
+                    sb.append("<div class='${info.cssClass}'>")
+                    if (!prompt.isNullOrBlank()) {
+                        sb.append("<div class='agent-row'><div class='agent-bubble'>")
+                        sb.append("<span class='subagent-prefix'>@$safeName</span> ${escapeHtml(prompt)}")
+                        sb.append("</div></div>")
+                    }
+                    sb.append("<div class='agent-row'><div class='subagent-bubble'>")
+                    if (!result.isNullOrBlank()) {
+                        sb.append(markdownToHtml(result))
+                    } else if (status == "completed") {
+                        sb.append("Completed")
+                    } else if (status == "failed") {
+                        sb.append("<span style='color:red'>\u2716 Failed</span>")
+                    } else {
+                        sb.append("Completed")
+                    }
+                    sb.append("</div></div></div>")
+                }
+
                 "status" -> {
                     val icon = obj["icon"]?.asString ?: ""
                     val msg = obj["message"]?.asString ?: ""
@@ -946,6 +1090,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val name = info?.displayName ?: e.title
                 sb.appendLine("\uD83D\uDD27 $name")
                 if (e.arguments != null) sb.appendLine("  params: ${e.arguments}")
+            }
+
+            is EntryData.SubAgent -> {
+                val info = SUB_AGENT_INFO[e.agentType]
+                sb.appendLine("${info?.displayName ?: e.agentType}: ${e.description}")
             }
 
             is EntryData.ContextFiles -> sb.appendLine(
@@ -987,6 +1136,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 sb.appendLine("Tool: $name")
             }
 
+            is EntryData.SubAgent -> {
+                val info = SUB_AGENT_INFO[e.agentType]
+                sb.appendLine("Tool: ${info?.displayName ?: e.agentType} — ${e.description}")
+            }
+
             is EntryData.ContextFiles -> sb.appendLine("Context: ${e.files.joinToString(", ") { it.first }}")
             is EntryData.SessionSeparator -> sb.appendLine("--- ${e.timestamp} ---")
             is EntryData.Thinking -> { /* Thinking entries are rendered in HTML only */
@@ -1005,9 +1159,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun getConversationHtml(): String {
         val font = UIUtil.getLabelFont()
         val fg = UIUtil.getLabelForeground()
-        val codeBg = JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
-        val tblBorder = JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
-        val thBg = JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
+        val codeBg = UIManager.getColor("Editor.backgroundColor")
+            ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
+        val tblBorder = UIManager.getColor("TableCell.borderColor")
+            ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
+        val thBg = UIManager.getColor("TableHeader.background")
+            ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
 
@@ -1080,6 +1237,14 @@ ul,ol{margin:4px 0;padding-left:22px}
                     }</code></pre></div>"
                 )
                 sb.append("</details>\n")
+            }
+
+            is EntryData.SubAgent -> {
+                val info = SUB_AGENT_INFO[e.agentType]
+                val name = info?.displayName ?: e.agentType
+                if (e.prompt != null) sb.append("<div class='response'><b>@$name</b> ${escapeHtml(e.prompt)}</div>\n")
+                if (e.result != null) sb.append("<div class='response'>${markdownToHtml(e.result!!)}</div>\n")
+                else sb.append("<div class='response'><b>@$name</b> — ${escapeHtml(e.description)}</div>\n")
             }
 
             is EntryData.ContextFiles -> {
@@ -1202,7 +1367,7 @@ ul,ol{margin:4px 0;padding-left:22px}
     private fun buildCssVars(): String {
         val font = UIUtil.getLabelFont()
         val fg = UIUtil.getLabelForeground()
-        val bg = UIUtil.getPanelBackground()
+        val bg = com.intellij.util.ui.JBUI.CurrentTheme.ToolWindow.background()
         val codeBg = UIManager.getColor("Editor.backgroundColor")
             ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
         val tblBorder = UIManager.getColor("TableCell.borderColor")
@@ -1213,6 +1378,8 @@ ul,ol{margin:4px 0;padding-left:22px}
             ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
         val linkColor = UIManager.getColor("Component.linkColor")
             ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
+        val tooltipBg = UIManager.getColor("ToolTip.background")
+            ?: JBColor(Color(0xF7, 0xF7, 0xF7), Color(0x3C, 0x3F, 0x41))
         return """
             --font-family: '${font.family}';
             --font-size: ${font.size - 2}pt;
@@ -1253,6 +1420,7 @@ ul,ol{margin:4px 0;padding-left:22px}
             --tbl-border: ${rgb(tblBorder)};
             --th-bg: ${rgb(thBg)};
             --link: ${rgb(linkColor)};
+            --tooltip-bg: ${rgb(tooltipBg)};
         """.trimIndent()
     }
 
@@ -1260,6 +1428,9 @@ ul,ol{margin:4px 0;padding-left:22px}
     private fun updateThemeColors() {
         val vars = buildCssVars().replace("'", "\\'").replace("\n", " ")
         executeJs("document.documentElement.style.cssText='$vars'")
+        // Also update the JCEF initial background for next load
+        val panelBg = com.intellij.util.ui.JBUI.CurrentTheme.ToolWindow.background()
+        browser?.setPageBackgroundColor("rgb(${panelBg.red},${panelBg.green},${panelBg.blue})")
     }
 
     private fun buildInitialPage(): String {
@@ -1270,6 +1441,7 @@ ul,ol{margin:4px 0;padding-left:22px}
         val bridgeJs = """
             window._bridge = {
                 openFile: function(href) { $fileHandler },
+                openUrl: function(url) { $openUrlBridgeJs },
                 setCursor: function(c) { $cursorBridgeJs },
                 loadMore: function() { $loadMoreBridgeJs }
             };
@@ -1394,15 +1566,35 @@ ul,ol{margin:4px 0;padding-left:22px}
     private fun formatInline(text: String): String {
         val result = StringBuilder()
         var lastEnd = 0
-        for (match in Regex("`([^`]+)`").findAll(text)) {
+        // Match inline code, markdown links [text](url), or bare URLs
+        val combinedPattern = Regex("""`([^`]+)`|\[([^\]]+)]\((https?://[^)]+)\)|(https?://[^\s<>\[\]()]+)""")
+        for (match in combinedPattern.findAll(text)) {
             result.append(formatNonCode(text.substring(lastEnd, match.range.first)))
-            val content = match.groupValues[1]
-            val resolved = resolveFileReference(content)
-            if (resolved != null) {
-                val href = resolved.first + if (resolved.second != null) ":${resolved.second}" else ""
-                result.append("<a href='openfile://$href'><code>${escapeHtml(content)}</code></a>")
-            } else {
-                result.append("<code>${escapeHtml(content)}</code>")
+            when {
+                match.groupValues[1].isNotEmpty() -> {
+                    // Inline code: `content`
+                    val content = match.groupValues[1]
+                    val resolved = resolveFileReference(content)
+                    if (resolved != null) {
+                        val href = resolved.first + if (resolved.second != null) ":${resolved.second}" else ""
+                        result.append("<a href='openfile://$href'><code>${escapeHtml(content)}</code></a>")
+                    } else {
+                        result.append("<code>${escapeHtml(content)}</code>")
+                    }
+                }
+
+                match.groupValues[3].isNotEmpty() -> {
+                    // Markdown link: [text](url)
+                    val linkText = escapeHtml(match.groupValues[2])
+                    val url = escapeHtml(match.groupValues[3])
+                    result.append("<a href='$url'>$linkText</a>")
+                }
+
+                match.groupValues[4].isNotEmpty() -> {
+                    // Bare URL: https://example.com
+                    val url = escapeHtml(match.groupValues[4])
+                    result.append("<a href='$url'>$url</a>")
+                }
             }
             lastEnd = match.range.last + 1
         }

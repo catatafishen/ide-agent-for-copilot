@@ -44,6 +44,7 @@
     --tbl-border: rgb(60, 60, 60);
     --th-bg: rgb(50, 50, 50);
     --link: rgb(86, 156, 214);
+    --tooltip-bg: rgb(60, 63, 65);
 }
 
 * {
@@ -252,6 +253,66 @@ body {
     }
 }
 
+/* --- Sub-agent conversations --- */
+.subagent-explore {
+    --sa-color: rgb(91, 192, 222);
+    --sa-a06: rgba(91, 192, 222, 0.06);
+    --sa-a10: rgba(91, 192, 222, 0.10);
+    --sa-a15: rgba(91, 192, 222, 0.15);
+}
+
+.subagent-task {
+    --sa-color: rgb(240, 173, 78);
+    --sa-a06: rgba(240, 173, 78, 0.06);
+    --sa-a10: rgba(240, 173, 78, 0.10);
+    --sa-a15: rgba(240, 173, 78, 0.15);
+}
+
+.subagent-general {
+    --sa-color: rgb(86, 156, 214);
+    --sa-a06: rgba(86, 156, 214, 0.06);
+    --sa-a10: rgba(86, 156, 214, 0.10);
+    --sa-a15: rgba(86, 156, 214, 0.15);
+}
+
+.subagent-review {
+    --sa-color: rgb(218, 165, 32);
+    --sa-a06: rgba(218, 165, 32, 0.06);
+    --sa-a10: rgba(218, 165, 32, 0.10);
+    --sa-a15: rgba(218, 165, 32, 0.15);
+}
+
+.subagent-ui {
+    --sa-color: rgb(216, 112, 147);
+    --sa-a06: rgba(216, 112, 147, 0.06);
+    --sa-a10: rgba(216, 112, 147, 0.10);
+    --sa-a15: rgba(216, 112, 147, 0.15);
+}
+
+/* Sub-agent bubble (like agent-bubble but in agent-specific color) */
+.subagent-bubble {
+    background: var(--sa-a06);
+    border-radius: 4px 16px 16px 16px;
+    padding: 8px 16px;
+    max-width: 95%;
+}
+
+.subagent-bubble:hover {
+    background: var(--sa-a10);
+}
+
+.subagent-prefix {
+    font-weight: 600;
+    color: var(--sa-color);
+    margin-right: 6px;
+}
+
+.subagent-pending {
+    color: var(--sa-color);
+    font-size: 0.88em;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
 /* --- Context files --- */
 .context-section .collapse-header {
     background: var(--user-a06);
@@ -411,7 +472,7 @@ body {
     position: absolute;
     bottom: calc(100% + 4px);
     left: 0;
-    background: rgb(50, 50, 54);
+    background: var(--tooltip-bg);
     color: var(--think);
     padding: 3px 8px;
     border-radius: 4px;
@@ -460,7 +521,7 @@ body {
     position: absolute;
     bottom: calc(100% + 4px);
     right: 0;
-    background: rgb(50, 50, 54);
+    background: var(--tooltip-bg);
     color: var(--think);
     padding: 3px 8px;
     border-radius: 4px;

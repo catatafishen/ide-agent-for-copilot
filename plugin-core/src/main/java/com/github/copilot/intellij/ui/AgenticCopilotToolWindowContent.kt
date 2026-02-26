@@ -585,7 +585,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createFixedFooter(): JBPanel<JBPanel<*>> {
         val footer = JBPanel<JBPanel<*>>()
         footer.layout = BoxLayout(footer, BoxLayout.Y_AXIS)
-        footer.border = JBUI.Borders.empty(0, 0, 2, 0)
+        footer.border = JBUI.Borders.compound(
+            com.intellij.ui.SideBorder(JBColor.border(), com.intellij.ui.SideBorder.TOP),
+            JBUI.Borders.empty(0, 0, 2, 0)
+        )
 
         // Single row: controls + usage (wraps on narrow windows)
         val controlsRow = createControlsRow()
@@ -632,6 +635,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             editor.setShowPlaceholderWhenFocused(true)
             editor.settings.isUseSoftWraps = true
             editor.contentComponent.border = JBUI.Borders.empty(4, 6)
+            editor.setBorder(null)
         }
 
         // Auto-revalidate on document changes
@@ -644,8 +648,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val inputWrapper = JBPanel<JBPanel<*>>(BorderLayout())
         inputWrapper.add(attachmentsPanel, BorderLayout.NORTH)
         val scrollPane = JBScrollPane(promptTextArea)
+        scrollPane.horizontalScrollBarPolicy = javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
         scrollPane.border = null
+        scrollPane.viewportBorder = null
         inputWrapper.add(scrollPane, BorderLayout.CENTER)
+        row.border = JBUI.Borders.empty()
         row.add(inputWrapper, BorderLayout.CENTER)
 
         // Refresh attachment chips when list changes
@@ -665,7 +672,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 val item = contextListModel.getElementAt(i)
                 val chip = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 2, 0))
                 chip.isOpaque = true
-                chip.background = JBColor(Color(0xE8, 0xEE, 0xF7), Color(0x35, 0x3B, 0x48))
+                chip.background = UIManager.getColor("ActionButton.hoverBackground")
+                    ?: JBColor(Color(0xDF, 0xE1, 0xE5), Color(0x35, 0x3B, 0x48))
                 chip.border = JBUI.Borders.empty(1, 6, 1, 2)
                 val icon = if (item.isSelection) "\u2702" else "\uD83D\uDCC4"
                 val label = JBLabel("$icon ${item.name}")
@@ -1349,14 +1357,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                     // Version info
                     add(javax.swing.Box.createVerticalStrut(JBUI.scale(16)))
-                    val versionText = try {
-                        val props = java.util.Properties()
-                        javaClass.getResourceAsStream("/build-info.properties")?.use { props.load(it) }
-                        "v${props.getProperty("build.version", "unknown")}"
-                    } catch (_: Exception) {
-                        "unknown"
-                    }
-                    add(JBLabel("Agentic Copilot $versionText").apply {
+                    val versionText = com.github.copilot.intellij.BuildInfo.getSummary()
+                    add(JBLabel("Copilot Bridge $versionText").apply {
                         foreground = com.intellij.util.ui.JBUI.CurrentTheme.Label.disabledForeground()
                         font = font.deriveFont(font.size2D - 1)
                         alignmentX = java.awt.Component.LEFT_ALIGNMENT
@@ -1371,7 +1373,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
 
             com.intellij.openapi.ui.DialogBuilder(project).apply {
-                setTitle("Agentic Copilot \u2014 Help")
+                setTitle("Copilot Bridge \u2014 Help")
                 setCenterPanel(content)
                 removeAllActions()
                 addOkAction()
@@ -1586,123 +1588,51 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun setupPromptContextMenu(textArea: EditorTextField, editor: EditorEx) {
-        val popup = javax.swing.JPopupMenu()
+        // Build a combined action group: native editor menu + our custom items
+        val group = DefaultActionGroup().apply {
+            // Include the standard editor popup menu (Cut, Copy, Paste, Select All, etc.)
+            val editorPopup = ActionManager.getInstance().getAction("EditorPopupMenu")
+            if (editorPopup != null) {
+                add(editorPopup)
+            }
 
-        // Edit actions
-        val cutAction = javax.swing.JMenuItem("Cut").apply {
-            accelerator =
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_X, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener {
-                val editor = textArea.editor ?: return@addActionListener
-                val selectionModel = editor.selectionModel
-                if (selectionModel.hasSelection()) {
-                    val start = selectionModel.selectionStart
-                    val end = selectionModel.selectionEnd
-                    val selectedText = editor.document.getText(com.intellij.openapi.util.TextRange(start, end))
-                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                        java.awt.datatransfer.StringSelection(selectedText),
-                        null
+            addSeparator()
+
+            // Attach actions
+            add(object : AnAction("Attach Current File", null, com.intellij.icons.AllIcons.Actions.AddFile) {
+                override fun actionPerformed(e: AnActionEvent) = handleAddCurrentFile(mainPanel)
+            })
+            add(object : AnAction("Attach Editor Selection", null, com.intellij.icons.AllIcons.Actions.AddMulticaret) {
+                override fun actionPerformed(e: AnActionEvent) = handleAddSelection(mainPanel)
+            })
+            add(object : AnAction("Clear Attachments", null, com.intellij.icons.AllIcons.Actions.GC) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    contextListModel.clear()
+                }
+
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabled = contextListModel.size() > 0
+                }
+            })
+
+            addSeparator()
+
+            // Conversation actions
+            add(object : AnAction("New Conversation", null, com.intellij.icons.AllIcons.General.Add) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    currentSessionId = null
+                    consolePanel.addSessionSeparator(
+                        java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
                     )
-                    editor.document.deleteString(start, end)
+                    updateSessionInfo()
                 }
-            }
-        }
-        val copyAction = javax.swing.JMenuItem("Copy").apply {
-            accelerator =
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener {
-                val editor = textArea.editor ?: return@addActionListener
-                val selectionModel = editor.selectionModel
-                if (selectionModel.hasSelection()) {
-                    val start = selectionModel.selectionStart
-                    val end = selectionModel.selectionEnd
-                    val selectedText = editor.document.getText(com.intellij.openapi.util.TextRange(start, end))
-                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                        java.awt.datatransfer.StringSelection(selectedText),
-                        null
-                    )
-                }
-            }
-        }
-        val pasteAction = javax.swing.JMenuItem("Paste").apply {
-            accelerator =
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener {
-                val editor = textArea.editor ?: return@addActionListener
-                val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                val pastedText = clipboard.getContents(null)
-                    .getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
-                if (pastedText != null) {
-                    val offset = editor.caretModel.offset
-                    editor.document.insertString(offset, pastedText)
-                }
-            }
-        }
-        val selectAllAction = javax.swing.JMenuItem("Select All").apply {
-            accelerator =
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_A, Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-            addActionListener { textArea.selectAll() }
+            })
         }
 
-        popup.add(cutAction)
-        popup.add(copyAction)
-        popup.add(pasteAction)
-        popup.add(selectAllAction)
-        popup.addSeparator()
-
-        // Attach actions
-        popup.add(javax.swing.JMenuItem("Attach Current File").apply {
-            icon = com.intellij.icons.AllIcons.Actions.AddFile
-            addActionListener { handleAddCurrentFile(mainPanel) }
-        })
-        popup.add(javax.swing.JMenuItem("Attach Editor Selection").apply {
-            icon = com.intellij.icons.AllIcons.Actions.AddMulticaret
-            addActionListener { handleAddSelection(mainPanel) }
-        })
-
-        // Context management
-        popup.add(javax.swing.JMenuItem("Clear Attachments").apply {
-            icon = com.intellij.icons.AllIcons.Actions.GC
-            addActionListener { contextListModel.clear() }
-            isEnabled = contextListModel.size() > 0
-        })
-        popup.addSeparator()
-
-        // Conversation actions
-        popup.add(javax.swing.JMenuItem("New Conversation").apply {
-            icon = com.intellij.icons.AllIcons.General.Add
-            addActionListener {
-                currentSessionId = null
-                consolePanel.addSessionSeparator(
-                    java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                )
-                updateSessionInfo()
-            }
-        })
-
-        // Install on the editor's content component (not the wrapper)
-        // so it overrides the default editor popup
-        editor.contentComponent.componentPopupMenu = popup
-
-        // Update enabled states dynamically before showing
-        popup.addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
-            override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
-                val hasSelection = editor.selectionModel.hasSelection()
-                val hasText = textArea.text.isNotBlank()
-                cutAction.isEnabled = hasSelection
-                copyAction.isEnabled = hasSelection
-                selectAllAction.isEnabled = hasText
-                // Re-check context items count
-                popup.components.filterIsInstance<javax.swing.JMenuItem>()
-                    .find { it.text == "Clear Attachments" }?.isEnabled = contextListModel.size() > 0
-            }
-
-            override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) { /* No action needed */
-            }
-
-            override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) { /* No action needed */
-            }
-        })
+        // Install via the IntelliJ editor popup handler (replaces the default EditorPopupMenu with our combined group)
+        editor.installPopupHandler(
+            com.intellij.openapi.editor.impl.ContextMenuPopupHandler.Simple(group)
+        )
     }
 
     private fun setupPromptDragDrop(textArea: EditorTextField) {
@@ -1982,8 +1912,27 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val arguments = extractJsonArguments(update)
         setResponseStatus("Running: $title")
         if (status != "completed" && toolCallId.isNotEmpty()) {
-            toolCallTitles[toolCallId] = title
-            consolePanel.addToolCallEntry(toolCallId, title, arguments)
+            // Detect sub-agent calls by checking for agent_type in arguments
+            // (title is the description, not "task", e.g. "Review chat UI code")
+            val agentType = extractJsonField(arguments, "agent_type")
+            if (agentType != null) {
+                toolCallTitles[toolCallId] = "task" // mark as sub-agent for update routing
+                val description = title.ifBlank { extractJsonField(arguments, "description") ?: "Sub-agent task" }
+                val prompt = extractJsonField(arguments, "prompt")
+                consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
+            } else {
+                toolCallTitles[toolCallId] = title
+                consolePanel.addToolCallEntry(toolCallId, title, arguments)
+            }
+        }
+    }
+
+    private fun extractJsonField(json: String?, key: String): String? {
+        if (json.isNullOrBlank()) return null
+        return try {
+            com.google.gson.JsonParser.parseString(json).asJsonObject[key]?.asString
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -1992,14 +1941,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val toolCallId = update["toolCallId"]?.asString ?: ""
         val result = update["result"]?.asString
             ?: update["content"]?.let { extractContentText(it) }
+        val isSubAgent = toolCallTitles[toolCallId] == "task"
         if (status == "completed") {
             setResponseStatus(MSG_THINKING)
-            consolePanel.updateToolCall(toolCallId, "completed", result)
+            if (isSubAgent) {
+                consolePanel.updateSubAgentResult(toolCallId, "completed", result)
+            } else {
+                consolePanel.updateToolCall(toolCallId, "completed", result)
+            }
         } else if (status == "failed") {
             val error = update["error"]?.asString
                 ?: result
                 ?: update.toString().take(500)
-            consolePanel.updateToolCall(toolCallId, "failed", error)
+            if (isSubAgent) {
+                consolePanel.updateSubAgentResult(toolCallId, "failed", error)
+            } else {
+                consolePanel.updateToolCall(toolCallId, "failed", error)
+            }
         }
     }
 
