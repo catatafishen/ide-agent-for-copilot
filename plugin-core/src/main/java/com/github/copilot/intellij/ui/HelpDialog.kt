@@ -118,7 +118,7 @@ internal class HelpAction(private val project: Project) : AnAction(
         HelpRow(
             com.intellij.icons.AllIcons.General.Settings,
             "Settings",
-            "Configure inactivity timeout and max tool calls per turn."
+            "Configure inactivity timeout, max tool calls, and max requests per turn."
         ),
     )
 

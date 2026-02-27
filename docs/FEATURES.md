@@ -658,6 +658,7 @@ rounded thumb that brightens on hover.
 |-----------------------------|---------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Inactivity Timeout**      | 300 seconds   | 30–600s | Stops the agent if no activity (no streaming chunks or tool calls) for this duration. Prevents hung agents from consuming resources indefinitely. |
 | **Max Tool Calls Per Turn** | 0 (unlimited) | 0–500   | Limits tool invocations per turn. `0` means unlimited. Prevents runaway loops where the agent calls the same tool repeatedly.                     |
+| **Max Requests Per Turn**   | 0 (unlimited) | 0–500   | Limits model requests per turn. `0` means unlimited. Each approved tool call triggers another request; this caps the total model invocations.     |
 
 ### Workflow Automation Settings
 
