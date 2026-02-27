@@ -1694,15 +1694,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val content =
             if (toolCallCount > 0) "Turn completed with $toolCallCount tool call${if (toolCallCount != 1) "s" else ""}"
             else "Turn completed"
-        com.intellij.notification.NotificationGroupManager.getInstance()
-            .getNotificationGroup("Copilot Notifications")
-            .createNotification(title, content, com.intellij.notification.NotificationType.INFORMATION)
-            .setImportant(true)
-            .notify(project)
-        // Play system alert sound so the user notices even without looking at the IDE
-        try {
-            java.awt.Toolkit.getDefaultToolkit().beep()
-        } catch (_: Exception) { /* best-effort */ }
+        // Balloon attached to the Copilot tool window tab (same style as build/test notifications)
+        com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+            .notifyByBalloon("Copilot Bridge", com.intellij.openapi.ui.MessageType.INFO, "<b>$title</b><br>$content")
+        // OS-native notification with sound
+        com.intellij.ui.SystemNotifications.getInstance().notify("Copilot Notifications", title, content)
+        // Flash the taskbar icon
+        com.intellij.ui.AppIcon.getInstance().requestAttention(project, false)
     }
 
     private fun saveConversation() {
