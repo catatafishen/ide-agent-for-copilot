@@ -1697,7 +1697,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         com.intellij.notification.NotificationGroupManager.getInstance()
             .getNotificationGroup("Copilot Notifications")
             .createNotification(title, content, com.intellij.notification.NotificationType.INFORMATION)
-            .setSuggestionType(false)
+            .setImportant(true)
             .notify(project)
     }
 
