@@ -672,7 +672,10 @@ const ChatController = {
         const bubble = document.getElementById('bubble-' + turnId);
         if (!bubble && !encodedHtml) return;
         if (encodedHtml) {
-            (bubble || this._getOrCreateBubble(turnId)).finalize(b64(encodedHtml));
+            const target = bubble || this._getOrCreateBubble(turnId);
+            target.finalize(b64(encodedHtml));
+            // Release ID so next _getOrCreateBubble creates a fresh bubble
+            target.removeAttribute('id');
         } else if (bubble) {
             const msg = bubble.closest('chat-message');
             bubble.remove();
