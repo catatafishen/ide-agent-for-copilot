@@ -200,51 +200,20 @@ body {
     font-size: inherit;
 }
 
-/* ── Collapse section (thinking + tool) ──────────────── */
-.collapse-section {
-    display: block;
+/* ── Thinking section ─────────────────────────────────── */
+.thinking-section {
+    padding: var(--sp-3) var(--sp-6);
+    font-size: 0.88em;
     margin: var(--sp-2) 0;
+    background: var(--think-a04);
+    border-radius: var(--r-md);
     overflow: hidden;
     transition: opacity 0.25s ease, transform 0.25s ease;
     transform-origin: top center;
 }
 
-.collapse-header {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    border-radius: var(--r-md);
-    padding: 5px var(--sp-6);
-    font-size: 0.88em;
-    user-select: none;
-}
-
-.collapse-section.collapsed .collapse-content {
-    display: none;
-}
-
-.collapse-content {
-    padding: var(--sp-3) var(--sp-6);
-    font-size: 0.88em;
+.thinking-content {
     white-space: pre-wrap;
-    position: relative;
-}
-
-.caret {
-    margin-left: auto;
-    font-size: 0.85em;
-    transition: transform 0.15s;
-}
-
-.thinking-section .collapse-header {
-    background: var(--think-a06);
-    color: var(--think);
-}
-
-.thinking-section .collapse-content {
-    background: var(--think-a04);
-    border-radius: 0 0 var(--r-md) var(--r-md);
     color: var(--think);
 }
 
@@ -254,10 +223,6 @@ body {
     margin: var(--sp-2) 0;
     background: var(--tool-a08);
     border-radius: var(--r-md);
-}
-
-.thinking-pulse {
-    animation: pulse 1.2s ease-in-out infinite;
 }
 
 /* ── Turn chips (meta pills) ─────────────────────────── */
@@ -664,15 +629,6 @@ pre:hover .copy-btn {
 }
 
 /* ── Animations ──────────────────────────────────────── */
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.4;
-    }
-}
-
 @keyframes spin {
     to {
         transform: rotate(360deg);
@@ -702,7 +658,7 @@ pre:hover .copy-btn {
 }
 
 /* ── Keyboard accessibility ──────────────────────────── */
-.collapse-header:focus-visible, .turn-chip:focus-visible, .prompt-bubble:focus-visible,
+.turn-chip:focus-visible, .prompt-bubble:focus-visible,
 .quick-reply-btn:focus-visible, .copy-btn:focus-visible {
     outline: 2px solid var(--agent);
     outline-offset: 2px;

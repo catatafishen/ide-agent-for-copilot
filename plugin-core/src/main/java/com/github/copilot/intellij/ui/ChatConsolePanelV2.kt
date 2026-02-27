@@ -159,7 +159,11 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         val ctxHtml = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
-                "<a class=\\'prompt-ctx-chip\\' href=\\'$href\\' title=\\'${escJs(path)}${if (line > 0) ":$line" else ""}\\'>📄 ${escJs(name)}</a>"
+                "<a class=\\'prompt-ctx-chip\\' href=\\'$href\\' title=\\'${escJs(path)}${if (line > 0) ":$line" else ""}\\'>📄 ${
+                    escJs(
+                        name
+                    )
+                }</a>"
             }
         } else ""
         executeJs("ChatController.addUserMessage('${escJs(text)}','$ts','$ctxHtml')")
@@ -215,7 +219,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun updateToolCall(id: String, status: String, details: String?) {
         val did = domId(id)
         val resultHtml = if (!details.isNullOrBlank()) {
-            val encoded = b64("<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${esc(details)}</code></pre>")
+            val encoded =
+                b64("<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${esc(details)}</code></pre>")
             "b64('$encoded')"
         } else {
             if (status == "completed") "'Completed'" else "'<span style=\"color:var(--error)\">✖ Failed</span>'"
@@ -230,8 +235,11 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     ) {
         finalizeCurrentText()
         val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
-        val entry = ChatConsolePanel.EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id)
-        if (initialResult != null) { entry.result = initialResult; entry.status = initialStatus }
+        val entry =
+            ChatConsolePanel.EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id)
+        if (initialResult != null) {
+            entry.result = initialResult; entry.status = initialStatus
+        }
         entries.add(entry)
         val did = domId(id)
         val info = ChatConsolePanel.SUB_AGENT_INFO[agentType]
@@ -239,7 +247,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         val promptText = prompt ?: description
         executeJs("ChatController.addSubAgent('$did','${escJs(displayName)}',$colorIndex,'${escJs(promptText)}')")
         if (!initialResult.isNullOrBlank() || initialStatus == "completed" || initialStatus == "failed") {
-            val resultHtml = if (!initialResult.isNullOrBlank()) markdownToHtml(initialResult) else if (initialStatus == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
+            val resultHtml =
+                if (!initialResult.isNullOrBlank()) markdownToHtml(initialResult) else if (initialStatus == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
             val encoded = b64(resultHtml)
             executeJs("ChatController.updateSubAgent('$did','${initialStatus ?: "completed"}',b64('$encoded'))")
         }
@@ -250,7 +259,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             ?: entries.filterIsInstance<ChatConsolePanel.EntryData.SubAgent>().lastOrNull()
         entry?.let { it.result = result; it.status = status }
         val did = domId(id)
-        val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
+        val resultHtml =
+            if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
         val encoded = b64(resultHtml)
         executeJs("ChatController.updateSubAgent('$did','$status',b64('$encoded'))")
     }
@@ -322,24 +332,54 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         for (e in entries) {
             val obj = com.google.gson.JsonObject()
             when (e) {
-                is ChatConsolePanel.EntryData.Prompt -> { obj.addProperty("type", "prompt"); obj.addProperty("text", e.text) }
-                is ChatConsolePanel.EntryData.Text -> { obj.addProperty("type", "text"); obj.addProperty("raw", e.raw.toString()) }
-                is ChatConsolePanel.EntryData.Thinking -> { obj.addProperty("type", "thinking"); obj.addProperty("raw", e.raw.toString()) }
-                is ChatConsolePanel.EntryData.ToolCall -> { obj.addProperty("type", "tool"); obj.addProperty("title", e.title); obj.addProperty("args", e.arguments ?: "") }
+                is ChatConsolePanel.EntryData.Prompt -> {
+                    obj.addProperty("type", "prompt"); obj.addProperty("text", e.text)
+                }
+
+                is ChatConsolePanel.EntryData.Text -> {
+                    obj.addProperty("type", "text"); obj.addProperty("raw", e.raw.toString())
+                }
+
+                is ChatConsolePanel.EntryData.Thinking -> {
+                    obj.addProperty("type", "thinking"); obj.addProperty("raw", e.raw.toString())
+                }
+
+                is ChatConsolePanel.EntryData.ToolCall -> {
+                    obj.addProperty("type", "tool"); obj.addProperty("title", e.title); obj.addProperty(
+                        "args",
+                        e.arguments ?: ""
+                    )
+                }
+
                 is ChatConsolePanel.EntryData.SubAgent -> {
                     obj.addProperty("type", "subagent"); obj.addProperty("agentType", e.agentType)
                     obj.addProperty("description", e.description); obj.addProperty("prompt", e.prompt ?: "")
                     obj.addProperty("result", e.result ?: ""); obj.addProperty("status", e.status ?: "")
                     obj.addProperty("colorIndex", e.colorIndex)
                 }
+
                 is ChatConsolePanel.EntryData.ContextFiles -> {
                     obj.addProperty("type", "context")
                     val fa = com.google.gson.JsonArray()
-                    e.files.forEach { f -> val fo = com.google.gson.JsonObject(); fo.addProperty("name", f.first); fo.addProperty("path", f.second); fa.add(fo) }
+                    e.files.forEach { f ->
+                        val fo = com.google.gson.JsonObject(); fo.addProperty(
+                        "name",
+                        f.first
+                    ); fo.addProperty("path", f.second); fa.add(fo)
+                    }
                     obj.add("files", fa)
                 }
-                is ChatConsolePanel.EntryData.Status -> { obj.addProperty("type", "status"); obj.addProperty("icon", e.icon); obj.addProperty("message", e.message) }
-                is ChatConsolePanel.EntryData.SessionSeparator -> { obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp) }
+
+                is ChatConsolePanel.EntryData.Status -> {
+                    obj.addProperty("type", "status"); obj.addProperty("icon", e.icon); obj.addProperty(
+                        "message",
+                        e.message
+                    )
+                }
+
+                is ChatConsolePanel.EntryData.SessionSeparator -> {
+                    obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp)
+                }
             }
             arr.add(obj)
         }
@@ -349,7 +389,11 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun restoreEntries(json: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
-        val arr = try { com.google.gson.JsonParser.parseString(json).asJsonArray } catch (_: Exception) { return }
+        val arr = try {
+            com.google.gson.JsonParser.parseString(json).asJsonArray
+        } catch (_: Exception) {
+            return
+        }
         if (arr.size() == 0) return
 
         // Split: show last N prompt turns immediately, defer the rest
@@ -380,18 +424,26 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             "prompt" -> entries.add(ChatConsolePanel.EntryData.Prompt(obj["text"]?.asString ?: ""))
             "text" -> entries.add(ChatConsolePanel.EntryData.Text(StringBuilder(obj["raw"]?.asString ?: "")))
             "thinking" -> entries.add(ChatConsolePanel.EntryData.Thinking(StringBuilder(obj["raw"]?.asString ?: "")))
-            "tool" -> entries.add(ChatConsolePanel.EntryData.ToolCall(obj["title"]?.asString ?: "", obj["args"]?.asString))
+            "tool" -> entries.add(
+                ChatConsolePanel.EntryData.ToolCall(
+                    obj["title"]?.asString ?: "",
+                    obj["args"]?.asString
+                )
+            )
+
             "subagent" -> {
                 val ci = obj["colorIndex"]?.asInt ?: (nextSubAgentColor++ % SA_COLOR_COUNT)
-                entries.add(ChatConsolePanel.EntryData.SubAgent(
-                    obj["agentType"]?.asString ?: "general-purpose",
-                    obj["description"]?.asString ?: "",
-                    obj["prompt"]?.asString?.ifEmpty { null },
-                    obj["result"]?.asString?.ifEmpty { null },
-                    obj["status"]?.asString?.ifEmpty { null } ?: "completed",
-                    ci
-                ))
+                entries.add(
+                    ChatConsolePanel.EntryData.SubAgent(
+                        obj["agentType"]?.asString ?: "general-purpose",
+                        obj["description"]?.asString ?: "",
+                        obj["prompt"]?.asString?.ifEmpty { null },
+                        obj["result"]?.asString?.ifEmpty { null },
+                        obj["status"]?.asString?.ifEmpty { null } ?: "completed",
+                        ci
+                    ))
             }
+
             "context" -> {
                 val files = mutableListOf<Pair<String, String>>()
                 obj["files"]?.asJsonArray?.forEach { f ->
@@ -400,7 +452,14 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 }
                 entries.add(ChatConsolePanel.EntryData.ContextFiles(files))
             }
-            "status" -> entries.add(ChatConsolePanel.EntryData.Status(obj["icon"]?.asString ?: "ℹ", obj["message"]?.asString ?: ""))
+
+            "status" -> entries.add(
+                ChatConsolePanel.EntryData.Status(
+                    obj["icon"]?.asString ?: "ℹ",
+                    obj["message"]?.asString ?: ""
+                )
+            )
+
             "separator" -> entries.add(ChatConsolePanel.EntryData.SessionSeparator(obj["timestamp"]?.asString ?: ""))
         }
     }
@@ -411,6 +470,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val text = obj["text"]?.asString ?: ""
                 executeJs("ChatController.addUserMessage('${escJs(text)}','','')")
             }
+
             "text" -> {
                 val raw = obj["raw"]?.asString ?: ""
                 if (raw.isNotBlank()) {
@@ -420,12 +480,14 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                     executeJs("ChatController._ensureAgentMessage();ChatController.finalizeAgentText('$encoded')")
                 }
             }
+
             "thinking" -> {
                 val raw = obj["raw"]?.asString ?: ""
                 if (raw.isNotBlank()) {
                     executeJs("ChatController.addThinkingText('${escJs(raw)}');ChatController.collapseThinking()")
                 }
             }
+
             "tool" -> {
                 val title = obj["title"]?.asString ?: ""
                 val args = obj["args"]?.asString
@@ -437,6 +499,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val did = "restored-tool-${entries.size}"
                 executeJs("ChatController.addToolCall('$did','${escJs(label)}','${escJs(args ?: "")}');ChatController.updateToolCall('$did','completed',null)")
             }
+
             "subagent" -> {
                 val agentType = obj["agentType"]?.asString ?: "general-purpose"
                 val saInfo = ChatConsolePanel.SUB_AGENT_INFO[agentType]
@@ -448,16 +511,19 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val did = "restored-sa-${entries.size}"
                 val promptText = prompt ?: (obj["description"]?.asString ?: "")
                 executeJs("ChatController.addSubAgent('$did','${escJs(displayName)}',$ci,'${escJs(promptText)}')")
-                val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
+                val resultHtml =
+                    if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
                 val encoded = b64(resultHtml)
                 executeJs("ChatController.updateSubAgent('$did','$status',b64('$encoded'))")
             }
+
             "status" -> {
                 val icon = obj["icon"]?.asString ?: "ℹ"
                 val msg = obj["message"]?.asString ?: ""
                 if (icon == "❌") executeJs("ChatController.addError('${escJs(msg)}')")
                 else executeJs("ChatController.addInfo('${escJs(msg)}')")
             }
+
             "separator" -> {
                 val ts = obj["timestamp"]?.asString ?: ""
                 executeJs("ChatController.addSessionSeparator('${escJs(ts)}')")
@@ -502,6 +568,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val text = obj["text"]?.asString ?: ""
                 sb.append("<chat-message type='user'><message-bubble type='user'>${esc(text)}</message-bubble></chat-message>")
             }
+
             "text" -> {
                 val raw = obj["raw"]?.asString ?: ""
                 if (raw.isNotBlank()) {
@@ -510,19 +577,32 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                     sb.append("<chat-message type='agent'><message-bubble>$html</message-bubble></chat-message>")
                 }
             }
+
             "thinking" -> {
                 val raw = obj["raw"]?.asString ?: ""
                 if (raw.isNotBlank()) {
-                    sb.append("<thinking-block><div class='collapse-header'><span class='collapse-icon'>💭</span><span class='collapse-label'>Thought process</span><span class='caret'>▸</span></div><div class='collapse-content'>${esc(raw)}</div></thinking-block>")
+                    sb.append(
+                        "<chat-message type='agent'><thinking-block class='thinking-section turn-hidden'><div class='thinking-content'>${
+                            esc(raw)
+                        }</div></thinking-block></chat-message>"
+                    )
                 }
             }
+
             "tool" -> {
                 val title = obj["title"]?.asString ?: ""
                 val baseName = title.substringAfterLast("-").substringAfterLast("_")
                 val info = ChatConsolePanel.TOOL_DISPLAY_INFO[baseName]
                 val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
-                sb.append("<chat-message type='agent'><message-meta class='meta show'><span class='turn-chip tool'>${esc(displayName)}</span></message-meta><message-bubble>Completed</message-bubble></chat-message>")
+                sb.append(
+                    "<chat-message type='agent'><message-meta class='meta show'><span class='turn-chip tool'>${
+                        esc(
+                            displayName
+                        )
+                    }</span></message-meta><message-bubble>Completed</message-bubble></chat-message>"
+                )
             }
+
             "subagent" -> {
                 val agentType = obj["agentType"]?.asString ?: "general-purpose"
                 val saInfo = ChatConsolePanel.SUB_AGENT_INFO[agentType]
@@ -531,15 +611,23 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val ci = obj["colorIndex"]?.asInt ?: 0
                 val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else "Completed"
                 sb.append("<subagent-block color-index='$ci'>")
-                sb.append("<div class='agent-row'><div class='agent-bubble'><span class='subagent-prefix'>@${esc(displayName)}</span></div></div>")
+                sb.append(
+                    "<div class='agent-row'><div class='agent-bubble'><span class='subagent-prefix'>@${
+                        esc(
+                            displayName
+                        )
+                    }</span></div></div>"
+                )
                 sb.append("<div class='agent-row'><div class='subagent-bubble'>$resultHtml</div></div>")
                 sb.append("</subagent-block>")
             }
+
             "status" -> {
                 val icon = obj["icon"]?.asString ?: "ℹ"
                 val type = if (icon == "❌") "error" else "info"
                 sb.append("<status-message type='$type' message='${esc(obj["message"]?.asString ?: "")}'></status-message>")
             }
+
             "separator" -> {
                 sb.append("<session-divider timestamp='${esc(obj["timestamp"]?.asString ?: "")}'></session-divider>")
             }
@@ -547,7 +635,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         return sb.toString()
     }
 
-    override fun dispose() { /* children auto-disposed via Disposer */ }
+    override fun dispose() { /* children auto-disposed via Disposer */
+    }
 
     // ── Internal ───────────────────────────────────────────────────
 
@@ -570,8 +659,16 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     private fun executeJs(js: String) {
-        if (browserReady) browser?.cefBrowser?.executeJavaScript(js, "", 0)
-        else pendingJs.add(js)
+        val short = if (js.length > 80) js.take(80) + "…" else js
+        if (browserReady) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanelV2::class.java)
+                .info("V2 executeJs (ready): $short")
+            browser?.cefBrowser?.executeJavaScript(js, "", 0)
+        } else {
+            com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanelV2::class.java)
+                .info("V2 executeJs (queued): $short")
+            pendingJs.add(js)
+        }
     }
 
     private fun formatToolSubtitle(baseName: String, arguments: String?): String? {
@@ -581,7 +678,9 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             val json = com.google.gson.JsonParser.parseString(arguments).asJsonObject
             val value = json[key]?.asString ?: return null
             if (value.length > 40) "…" + value.takeLast(37) else value
-        } catch (_: Exception) { null }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun handleFileLink(href: String) {
@@ -605,7 +704,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             val num = afterColon.split(",", " ").firstOrNull()?.toIntOrNull()
             if (num != null) ref.substring(0, colonIdx) to num else ref to null
         } else ref to null
-        val path = resolveFilePath(name) ?: if (!name.contains("/") && name.contains(".")) findProjectFileByName(name) else null
+        val path = resolveFilePath(name)
+            ?: if (!name.contains("/") && name.contains(".")) findProjectFileByName(name) else null
         return if (path != null) Pair(path, lineNum) else null
     }
 
@@ -624,14 +724,19 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             if (files.size == 1) result = files.first().path
         }
         result
-    } catch (_: Exception) { null }
+    } catch (_: Exception) {
+        null
+    }
 
     // ── Helpers ────────────────────────────────────────────────────
 
     private fun escJs(s: String) = s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "")
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;")
     private fun b64(s: String): String = Base64.getEncoder().encodeToString(s.toByteArray(Charsets.UTF_8))
-    private fun timestamp(): String { val c = Calendar.getInstance(); return "%02d:%02d".format(c[Calendar.HOUR_OF_DAY], c[Calendar.MINUTE]) }
+    private fun timestamp(): String {
+        val c = Calendar.getInstance(); return "%02d:%02d".format(c[Calendar.HOUR_OF_DAY], c[Calendar.MINUTE])
+    }
+
     private fun domId(id: String) = id.replace(Regex("[^a-zA-Z0-9_-]"), "_")
     private fun rgb(c: Color) = "rgb(${c.red},${c.green},${c.blue})"
     private fun rgba(c: Color, a: Double) = "rgba(${c.red},${c.green},${c.blue},$a)"
@@ -642,33 +747,100 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         val font = UIUtil.getLabelFont()
         val fg = UIUtil.getLabelForeground()
         val bg = com.intellij.util.ui.JBUI.CurrentTheme.ToolWindow.background()
-        val codeBg = UIManager.getColor("Editor.backgroundColor") ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
-        val tblBorder = UIManager.getColor("TableCell.borderColor") ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
-        val thBg = UIManager.getColor("TableHeader.background") ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
+        val codeBg =
+            UIManager.getColor("Editor.backgroundColor") ?: JBColor(Color(0xF0, 0xF0, 0xF0), Color(0x2B, 0x2D, 0x30))
+        val tblBorder =
+            UIManager.getColor("TableCell.borderColor") ?: JBColor(Color(0xD0, 0xD0, 0xD0), Color(0x45, 0x48, 0x4A))
+        val thBg =
+            UIManager.getColor("TableHeader.background") ?: JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x35, 0x38, 0x3B))
         val spinBg = UIManager.getColor("Panel.background") ?: JBColor(Color(0xDD, 0xDD, 0xDD), Color(0x55, 0x55, 0x55))
         val linkColor = UIManager.getColor(LINK_COLOR_KEY) ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
-        val tooltipBg = UIManager.getColor("ToolTip.background") ?: JBColor(Color(0xF7, 0xF7, 0xF7), Color(0x3C, 0x3F, 0x41))
+        val tooltipBg =
+            UIManager.getColor("ToolTip.background") ?: JBColor(Color(0xF7, 0xF7, 0xF7), Color(0x3C, 0x3F, 0x41))
         val sb = StringBuilder()
         sb.append("--font-family:'${font.family}';--font-size:${font.size - 2}pt;--code-font-size:${font.size - 3}pt;")
         sb.append("--fg:${rgb(fg)};--fg-a08:${rgba(fg, 0.08)};--fg-a16:${rgba(fg, 0.16)};--bg:${rgb(bg)};")
-        sb.append("--user:${rgb(USER_COLOR)};--user-a06:${rgba(USER_COLOR, 0.06)};--user-a08:${rgba(USER_COLOR, 0.08)};")
-        sb.append("--user-a12:${rgba(USER_COLOR, 0.12)};--user-a15:${rgba(USER_COLOR, 0.15)};--user-a16:${rgba(USER_COLOR, 0.16)};")
+        sb.append(
+            "--user:${rgb(USER_COLOR)};--user-a06:${rgba(USER_COLOR, 0.06)};--user-a08:${
+                rgba(
+                    USER_COLOR,
+                    0.08
+                )
+            };"
+        )
+        sb.append(
+            "--user-a12:${rgba(USER_COLOR, 0.12)};--user-a15:${rgba(USER_COLOR, 0.15)};--user-a16:${
+                rgba(
+                    USER_COLOR,
+                    0.16
+                )
+            };"
+        )
         sb.append("--user-a18:${rgba(USER_COLOR, 0.18)};--user-a25:${rgba(USER_COLOR, 0.25)};")
-        sb.append("--agent:${rgb(AGENT_COLOR)};--agent-a06:${rgba(AGENT_COLOR, 0.06)};--agent-a08:${rgba(AGENT_COLOR, 0.08)};")
+        sb.append(
+            "--agent:${rgb(AGENT_COLOR)};--agent-a06:${rgba(AGENT_COLOR, 0.06)};--agent-a08:${
+                rgba(
+                    AGENT_COLOR,
+                    0.08
+                )
+            };"
+        )
         sb.append("--agent-a10:${rgba(AGENT_COLOR, 0.10)};--agent-a16:${rgba(AGENT_COLOR, 0.16)};")
-        sb.append("--think:${rgb(THINK_COLOR)};--think-a04:${rgba(THINK_COLOR, 0.04)};--think-a06:${rgba(THINK_COLOR, 0.06)};")
-        sb.append("--think-a08:${rgba(THINK_COLOR, 0.08)};--think-a10:${rgba(THINK_COLOR, 0.10)};--think-a16:${rgba(THINK_COLOR, 0.16)};")
-        sb.append("--think-a25:${rgba(THINK_COLOR, 0.25)};--think-a30:${rgba(THINK_COLOR, 0.30)};--think-a35:${rgba(THINK_COLOR, 0.35)};")
+        sb.append(
+            "--think:${rgb(THINK_COLOR)};--think-a04:${rgba(THINK_COLOR, 0.04)};--think-a06:${
+                rgba(
+                    THINK_COLOR,
+                    0.06
+                )
+            };"
+        )
+        sb.append(
+            "--think-a08:${rgba(THINK_COLOR, 0.08)};--think-a10:${rgba(THINK_COLOR, 0.10)};--think-a16:${
+                rgba(
+                    THINK_COLOR,
+                    0.16
+                )
+            };"
+        )
+        sb.append(
+            "--think-a25:${rgba(THINK_COLOR, 0.25)};--think-a30:${rgba(THINK_COLOR, 0.30)};--think-a35:${
+                rgba(
+                    THINK_COLOR,
+                    0.35
+                )
+            };"
+        )
         sb.append("--think-a40:${rgba(THINK_COLOR, 0.40)};--think-a55:${rgba(THINK_COLOR, 0.55)};")
-        sb.append("--tool:${rgb(TOOL_COLOR)};--tool-a08:${rgba(TOOL_COLOR, 0.08)};--tool-a16:${rgba(TOOL_COLOR, 0.16)};--tool-a40:${rgba(TOOL_COLOR, 0.40)};")
+        sb.append(
+            "--tool:${rgb(TOOL_COLOR)};--tool-a08:${rgba(TOOL_COLOR, 0.08)};--tool-a16:${
+                rgba(
+                    TOOL_COLOR,
+                    0.16
+                )
+            };--tool-a40:${rgba(TOOL_COLOR, 0.40)};"
+        )
         sb.append("--spin-bg:${rgb(spinBg)};--code-bg:${rgb(codeBg)};--tbl-border:${rgb(tblBorder)};--th-bg:${rgb(thBg)};")
         sb.append("--link:${rgb(linkColor)};--tooltip-bg:${rgb(tooltipBg)};")
-        sb.append("--error:${rgb(ERROR_COLOR)};--error-a05:${rgba(ERROR_COLOR, 0.05)};--error-a06:${rgba(ERROR_COLOR, 0.06)};")
+        sb.append(
+            "--error:${rgb(ERROR_COLOR)};--error-a05:${rgba(ERROR_COLOR, 0.05)};--error-a06:${
+                rgba(
+                    ERROR_COLOR,
+                    0.06
+                )
+            };"
+        )
         sb.append("--error-a12:${rgba(ERROR_COLOR, 0.12)};--error-a16:${rgba(ERROR_COLOR, 0.16)};")
         sb.append("--shadow:${rgba(THINK_COLOR, 0.25)};")
         for (i in SA_COLORS.indices) {
             val c = SA_COLORS[i]
-            sb.append("--sa-c$i:${rgb(c)};--sa-c$i-a06:${rgba(c, 0.06)};--sa-c$i-a10:${rgba(c, 0.10)};--sa-c$i-a15:${rgba(c, 0.15)};")
+            sb.append(
+                "--sa-c$i:${rgb(c)};--sa-c$i-a06:${rgba(c, 0.06)};--sa-c$i-a10:${
+                    rgba(
+                        c,
+                        0.10
+                    )
+                };--sa-c$i-a15:${rgba(c, 0.15)};"
+            )
         }
         return sb.toString()
     }

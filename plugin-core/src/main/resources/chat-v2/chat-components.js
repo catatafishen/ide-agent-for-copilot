@@ -125,7 +125,7 @@ class MessageBubble extends HTMLElement {
         this.setAttribute('tabindex', '0');
         this.setAttribute('role', 'button');
         this.onclick = (e) => {
-            if (e.target.closest('a,.turn-chip,.collapse-header')) return;
+            if (e.target.closest('a,.turn-chip')) return;
             const meta = parent?.querySelector('message-meta');
             if (meta) meta.classList.toggle('show');
         };
@@ -182,32 +182,15 @@ customElements.define('message-meta', MessageMeta);
 /* ── <thinking-block> ────────────────────────────────── */
 
 class ThinkingBlock extends HTMLElement {
-    static get observedAttributes() {
-        return ['expanded', 'active'];
-    }
-
     connectedCallback() {
         if (this._init) return;
         this._init = true;
-        this.classList.add('collapse-section', 'thinking-section');
-        if (!this.hasAttribute('expanded')) this.classList.add('collapsed');
-
-        const isActive = this.hasAttribute('active');
-        this.innerHTML = `
-            <div class="collapse-header" tabindex="0" role="button" aria-expanded="${this.hasAttribute('expanded')}">
-                <span class="collapse-icon${isActive ? ' thinking-pulse' : ''}">💭</span>
-                <span class="collapse-label">${isActive ? 'Thinking...' : 'Thought process'}</span>
-                <span class="caret">${this.hasAttribute('expanded') ? '▾' : '▸'}</span>
-            </div>
-            <div class="collapse-content"></div>`;
-
-        this.querySelector('.collapse-header').onclick = () => {
-            this.toggle();
-        };
+        this.classList.add('thinking-section');
+        this.innerHTML = `<div class="thinking-content"></div>`;
     }
 
     get contentEl() {
-        return this.querySelector('.collapse-content');
+        return this.querySelector('.thinking-content');
     }
 
     appendText(text) {
@@ -215,24 +198,8 @@ class ThinkingBlock extends HTMLElement {
         if (el) el.textContent += text;
     }
 
-    toggle() {
-        const expanded = this.classList.toggle('collapsed');
-        const isOpen = !this.classList.contains('collapsed');
-        this.classList.toggle('open', isOpen);
-        this.querySelector('.caret').textContent = isOpen ? '▾' : '▸';
-        this.querySelector('.collapse-header')?.setAttribute('aria-expanded', String(isOpen));
-    }
-
     finalize() {
         this.removeAttribute('active');
-        const icon = this.querySelector('.collapse-icon');
-        if (icon) icon.classList.remove('thinking-pulse');
-        const label = this.querySelector('.collapse-label');
-        if (label) label.textContent = 'Thought process';
-        if (!this.classList.contains('collapsed')) {
-            this.classList.add('collapsed');
-            this.querySelector('.caret').textContent = '▸';
-        }
     }
 }
 
@@ -338,10 +305,6 @@ customElements.define('tool-chip', ToolChip);
 /* ── <thinking-chip> ─────────────────────────────────── */
 
 class ThinkingChip extends HTMLElement {
-    static get observedAttributes() {
-        return ['expanded'];
-    }
-
     connectedCallback() {
         if (this._init) return;
         this._init = true;
@@ -358,7 +321,7 @@ class ThinkingChip extends HTMLElement {
         const section = this._linkedSection;
         if (!section) return;
         if (section.classList.contains('turn-hidden')) {
-            section.classList.remove('turn-hidden', 'collapsed');
+            section.classList.remove('turn-hidden');
             section.classList.add('chip-expanded');
             this.style.opacity = '0.5';
         } else {
@@ -366,7 +329,7 @@ class ThinkingChip extends HTMLElement {
             section.classList.add('collapsing');
             setTimeout(() => {
                 section.classList.remove('collapsing', 'chip-expanded');
-                section.classList.add('turn-hidden', 'collapsed');
+                section.classList.add('turn-hidden');
             }, 250);
         }
     }
@@ -583,8 +546,8 @@ let _lastCursor = '';
 document.addEventListener('mouseover', e => {
     const el = e.target;
     let c = 'default';
-    if (el.closest('a,.collapse-header,.turn-chip,.chip-close,.prompt-ctx-chip,.quick-reply-btn')) c = 'pointer';
-    else if (el.closest('p,pre,code,li,td,th,.collapse-content,.streaming')) c = 'text';
+    if (el.closest('a,.turn-chip,.chip-close,.prompt-ctx-chip,.quick-reply-btn')) c = 'pointer';
+    else if (el.closest('p,pre,code,li,td,th,.thinking-content,.streaming')) c = 'text';
     if (c !== _lastCursor) {
         _lastCursor = c;
         globalThis._bridge?.setCursor(c);

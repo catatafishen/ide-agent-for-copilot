@@ -120,34 +120,21 @@ describe('thinking-block', () => {
         document.body.appendChild(block);
     });
 
-    it('creates collapse structure on connect', () => {
-        expect(block.querySelector('.collapse-header')).not.toBeNull();
-        expect(block.querySelector('.collapse-content')).not.toBeNull();
+    it('creates thinking content on connect', () => {
+        expect(block.querySelector('.thinking-content')).not.toBeNull();
     });
 
     it('appendText adds to content', () => {
         block.appendText('Thought 1');
-        const content = block.querySelector('.collapse-content');
+        const content = block.querySelector('.thinking-content');
         expect(content.textContent).toContain('Thought 1');
     });
 
-    it('finalize removes active and adds collapsed', () => {
+    it('finalize removes active attribute', () => {
         block.setAttribute('active', '');
-        block.setAttribute('expanded', '');
         block.appendText('some thinking');
         block.finalize();
         expect(block.hasAttribute('active')).toBe(false);
-        expect(block.classList.contains('collapsed')).toBe(true);
-    });
-
-    it('clicking header toggles collapsed class', () => {
-        const header = block.querySelector('.collapse-header');
-        // Initially collapsed (no expanded attr)
-        expect(block.classList.contains('collapsed')).toBe(true);
-        header.click();
-        expect(block.classList.contains('collapsed')).toBe(false);
-        header.click();
-        expect(block.classList.contains('collapsed')).toBe(true);
     });
 });
 

@@ -94,7 +94,7 @@ describe('ChatController', () => {
             CC().addThinkingText('Step 1. ');
             CC().addThinkingText('Step 2.');
             const block = getMessages().querySelector('thinking-block');
-            const content = block.querySelector('.collapse-content');
+            const content = block.querySelector('.thinking-content');
             expect(content.textContent).toContain('Step 1. Step 2.');
         });
 
