@@ -38,9 +38,9 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override var onQuickReply: ((String) -> Unit)? = null
 
     // ── Data model (same types as V1 for serialization compat) ─────
-    private val entries = mutableListOf<ChatConsolePanel.EntryData>()
-    private var currentTextData: ChatConsolePanel.EntryData.Text? = null
-    private var currentThinkingData: ChatConsolePanel.EntryData.Thinking? = null
+    private val entries = mutableListOf<EntryData>()
+    private var currentTextData: EntryData.Text? = null
+    private var currentThinkingData: EntryData.Thinking? = null
     private var nextSubAgentColor = 0
 
     // ── JCEF ───────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?) {
         finalizeCurrentText()
         collapseThinking()
-        entries.add(ChatConsolePanel.EntryData.Prompt(text))
+        entries.add(EntryData.Prompt(text))
         val ts = timestamp()
         val ctxHtml = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
@@ -175,12 +175,12 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun addContextFilesEntry(files: List<Pair<String, String>>) {
-        entries.add(ChatConsolePanel.EntryData.ContextFiles(files))
+        entries.add(EntryData.ContextFiles(files))
     }
 
     override fun appendThinkingText(text: String) {
         if (currentThinkingData == null) {
-            currentThinkingData = ChatConsolePanel.EntryData.Thinking().also { entries.add(it) }
+            currentThinkingData = EntryData.Thinking().also { entries.add(it) }
         }
         currentThinkingData!!.raw.append(text)
         executeJs("ChatController.addThinkingText('${escJs(text)}')")
@@ -196,7 +196,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         collapseThinking()
         if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
-            currentTextData = ChatConsolePanel.EntryData.Text().also { entries.add(it) }
+            currentTextData = EntryData.Text().also { entries.add(it) }
         }
         currentTextData!!.raw.append(text)
         executeJs("ChatController.appendAgentText('${escJs(text)}')")
@@ -205,10 +205,10 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     override fun addToolCallEntry(id: String, title: String, arguments: String?) {
         finalizeCurrentText()
-        entries.add(ChatConsolePanel.EntryData.ToolCall(title, arguments))
+        entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
         val baseName = title.substringAfterLast("-").substringAfterLast("_")
-        val info = ChatConsolePanel.TOOL_DISPLAY_INFO[baseName]
+        val info = TOOL_DISPLAY_INFO[baseName]
         val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
         val short = formatToolSubtitle(baseName, arguments)
         val label = if (short != null) "$displayName — $short" else displayName
@@ -236,13 +236,13 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         finalizeCurrentText()
         val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
         val entry =
-            ChatConsolePanel.EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id)
+            EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id)
         if (initialResult != null) {
             entry.result = initialResult; entry.status = initialStatus
         }
         entries.add(entry)
         val did = domId(id)
-        val info = ChatConsolePanel.SUB_AGENT_INFO[agentType]
+        val info = SUB_AGENT_INFO[agentType]
         val displayName = info?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
         val promptText = prompt ?: description
         executeJs("ChatController.addSubAgent('$did','${escJs(displayName)}',$colorIndex,'${escJs(promptText)}')")
@@ -255,8 +255,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun updateSubAgentResult(id: String, status: String, result: String?) {
-        val entry = entries.filterIsInstance<ChatConsolePanel.EntryData.SubAgent>().find { it.callId == id }
-            ?: entries.filterIsInstance<ChatConsolePanel.EntryData.SubAgent>().lastOrNull()
+        val entry = entries.filterIsInstance<EntryData.SubAgent>().find { it.callId == id }
+            ?: entries.filterIsInstance<EntryData.SubAgent>().lastOrNull()
         entry?.let { it.result = result; it.status = status }
         val did = domId(id)
         val resultHtml =
@@ -267,13 +267,13 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     override fun addErrorEntry(message: String) {
         finalizeCurrentText()
-        entries.add(ChatConsolePanel.EntryData.Status("❌", message))
+        entries.add(EntryData.Status("❌", message))
         executeJs("ChatController.addError('${escJs(message)}')")
     }
 
     override fun addInfoEntry(message: String) {
         finalizeCurrentText()
-        entries.add(ChatConsolePanel.EntryData.Status("ℹ", message))
+        entries.add(EntryData.Status("ℹ", message))
         executeJs("ChatController.addInfo('${escJs(message)}')")
     }
 
@@ -281,7 +281,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     override fun addSessionSeparator(timestamp: String) {
         finalizeCurrentText()
-        entries.add(ChatConsolePanel.EntryData.SessionSeparator(timestamp))
+        entries.add(EntryData.SessionSeparator(timestamp))
         executeJs("ChatController.addSessionSeparator('${escJs(timestamp)}')")
     }
 
@@ -325,40 +325,40 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun getConversationHtml(): String = exporter.getConversationHtml()
 
     override fun getLastResponseText(): String =
-        entries.filterIsInstance<ChatConsolePanel.EntryData.Text>().lastOrNull()?.raw?.toString() ?: ""
+        entries.filterIsInstance<EntryData.Text>().lastOrNull()?.raw?.toString() ?: ""
 
     override fun serializeEntries(): String {
         val arr = com.google.gson.JsonArray()
         for (e in entries) {
             val obj = com.google.gson.JsonObject()
             when (e) {
-                is ChatConsolePanel.EntryData.Prompt -> {
+                is EntryData.Prompt -> {
                     obj.addProperty("type", "prompt"); obj.addProperty("text", e.text)
                 }
 
-                is ChatConsolePanel.EntryData.Text -> {
+                is EntryData.Text -> {
                     obj.addProperty("type", "text"); obj.addProperty("raw", e.raw.toString())
                 }
 
-                is ChatConsolePanel.EntryData.Thinking -> {
+                is EntryData.Thinking -> {
                     obj.addProperty("type", "thinking"); obj.addProperty("raw", e.raw.toString())
                 }
 
-                is ChatConsolePanel.EntryData.ToolCall -> {
+                is EntryData.ToolCall -> {
                     obj.addProperty("type", "tool"); obj.addProperty("title", e.title); obj.addProperty(
                         "args",
                         e.arguments ?: ""
                     )
                 }
 
-                is ChatConsolePanel.EntryData.SubAgent -> {
+                is EntryData.SubAgent -> {
                     obj.addProperty("type", "subagent"); obj.addProperty("agentType", e.agentType)
                     obj.addProperty("description", e.description); obj.addProperty("prompt", e.prompt ?: "")
                     obj.addProperty("result", e.result ?: ""); obj.addProperty("status", e.status ?: "")
                     obj.addProperty("colorIndex", e.colorIndex)
                 }
 
-                is ChatConsolePanel.EntryData.ContextFiles -> {
+                is EntryData.ContextFiles -> {
                     obj.addProperty("type", "context")
                     val fa = com.google.gson.JsonArray()
                     e.files.forEach { f ->
@@ -370,14 +370,14 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                     obj.add("files", fa)
                 }
 
-                is ChatConsolePanel.EntryData.Status -> {
+                is EntryData.Status -> {
                     obj.addProperty("type", "status"); obj.addProperty("icon", e.icon); obj.addProperty(
                         "message",
                         e.message
                     )
                 }
 
-                is ChatConsolePanel.EntryData.SessionSeparator -> {
+                is EntryData.SessionSeparator -> {
                     obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp)
                 }
             }
@@ -421,11 +421,11 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     private fun addEntryFromJson(obj: com.google.gson.JsonObject) {
         when (obj["type"]?.asString) {
-            "prompt" -> entries.add(ChatConsolePanel.EntryData.Prompt(obj["text"]?.asString ?: ""))
-            "text" -> entries.add(ChatConsolePanel.EntryData.Text(StringBuilder(obj["raw"]?.asString ?: "")))
-            "thinking" -> entries.add(ChatConsolePanel.EntryData.Thinking(StringBuilder(obj["raw"]?.asString ?: "")))
+            "prompt" -> entries.add(EntryData.Prompt(obj["text"]?.asString ?: ""))
+            "text" -> entries.add(EntryData.Text(StringBuilder(obj["raw"]?.asString ?: "")))
+            "thinking" -> entries.add(EntryData.Thinking(StringBuilder(obj["raw"]?.asString ?: "")))
             "tool" -> entries.add(
-                ChatConsolePanel.EntryData.ToolCall(
+                EntryData.ToolCall(
                     obj["title"]?.asString ?: "",
                     obj["args"]?.asString
                 )
@@ -434,7 +434,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             "subagent" -> {
                 val ci = obj["colorIndex"]?.asInt ?: (nextSubAgentColor++ % SA_COLOR_COUNT)
                 entries.add(
-                    ChatConsolePanel.EntryData.SubAgent(
+                    EntryData.SubAgent(
                         obj["agentType"]?.asString ?: "general-purpose",
                         obj["description"]?.asString ?: "",
                         obj["prompt"]?.asString?.ifEmpty { null },
@@ -450,17 +450,17 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                     val fo = f.asJsonObject
                     files.add(Pair(fo["name"]?.asString ?: "", fo["path"]?.asString ?: ""))
                 }
-                entries.add(ChatConsolePanel.EntryData.ContextFiles(files))
+                entries.add(EntryData.ContextFiles(files))
             }
 
             "status" -> entries.add(
-                ChatConsolePanel.EntryData.Status(
+                EntryData.Status(
                     obj["icon"]?.asString ?: "ℹ",
                     obj["message"]?.asString ?: ""
                 )
             )
 
-            "separator" -> entries.add(ChatConsolePanel.EntryData.SessionSeparator(obj["timestamp"]?.asString ?: ""))
+            "separator" -> entries.add(EntryData.SessionSeparator(obj["timestamp"]?.asString ?: ""))
         }
     }
 
@@ -492,7 +492,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val title = obj["title"]?.asString ?: ""
                 val args = obj["args"]?.asString
                 val baseName = title.substringAfterLast("-").substringAfterLast("_")
-                val info = ChatConsolePanel.TOOL_DISPLAY_INFO[baseName]
+                val info = TOOL_DISPLAY_INFO[baseName]
                 val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
                 val short = formatToolSubtitle(baseName, args)
                 val label = if (short != null) "$displayName — $short" else displayName
@@ -502,7 +502,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
             "subagent" -> {
                 val agentType = obj["agentType"]?.asString ?: "general-purpose"
-                val saInfo = ChatConsolePanel.SUB_AGENT_INFO[agentType]
+                val saInfo = SUB_AGENT_INFO[agentType]
                 val displayName = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
                 val prompt = obj["prompt"]?.asString?.ifEmpty { null }
                 val result = obj["result"]?.asString?.ifEmpty { null }
@@ -592,7 +592,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             "tool" -> {
                 val title = obj["title"]?.asString ?: ""
                 val baseName = title.substringAfterLast("-").substringAfterLast("_")
-                val info = ChatConsolePanel.TOOL_DISPLAY_INFO[baseName]
+                val info = TOOL_DISPLAY_INFO[baseName]
                 val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
                 sb.append(
                     "<chat-message type='agent'><message-meta class='meta show'><span class='turn-chip tool'>${
@@ -605,7 +605,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
             "subagent" -> {
                 val agentType = obj["agentType"]?.asString ?: "general-purpose"
-                val saInfo = ChatConsolePanel.SUB_AGENT_INFO[agentType]
+                val saInfo = SUB_AGENT_INFO[agentType]
                 val displayName = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
                 val result = obj["result"]?.asString?.ifEmpty { null }
                 val ci = obj["colorIndex"]?.asInt ?: 0
@@ -673,7 +673,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     private fun formatToolSubtitle(baseName: String, arguments: String?): String? {
         if (arguments.isNullOrBlank()) return null
-        val key = ChatConsolePanel.TOOL_SUBTITLE_KEY[baseName] ?: return null
+        val key = TOOL_SUBTITLE_KEY[baseName] ?: return null
         return try {
             val json = com.google.gson.JsonParser.parseString(arguments).asJsonObject
             val value = json[key]?.asString ?: return null

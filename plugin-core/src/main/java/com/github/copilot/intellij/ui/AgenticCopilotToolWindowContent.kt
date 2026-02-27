@@ -504,8 +504,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(BuildBeforeEndToggleAction())
         leftGroup.add(TestBeforeEndToggleAction())
         leftGroup.add(CommitBeforeEndToggleAction())
-        leftGroup.add(Separator.create())
-        leftGroup.add(UseNewChatPaneToggleAction())
         leftGroup.addSeparator()
         leftGroup.add(ProjectFilesDropdownAction())
         leftGroup.addSeparator()
@@ -864,22 +862,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private inner class UseNewChatPaneToggleAction : ToggleAction(
-        "Use New Chat Pane (V2)", "Switch to the web-component-based chat pane",
-        com.intellij.icons.AllIcons.Actions.Refresh
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return CopilotSettings.getUseNewChatPane()
-        }
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            CopilotSettings.setUseNewChatPane(state)
-            SwingUtilities.invokeLater { rebuildChatPanel() }
-        }
-    }
-
     // HelpAction extracted to HelpDialog.kt
 
     /** Open a project-root file in the editor if it exists */
@@ -1112,28 +1094,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun createResponsePanel(): JComponent {
-        consolePanel = if (com.github.copilot.intellij.services.CopilotSettings.getUseNewChatPane()) {
-            ChatConsolePanelV2(project)
-        } else {
-            ChatConsolePanel(project)
-        }
+        consolePanel = ChatConsolePanelV2(project)
         consolePanel.onQuickReply = { text -> SwingUtilities.invokeLater { sendQuickReply(text) } }
         // Register for proper JCEF browser disposal
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
         // Placeholder only shown if no conversation is restored (set after restore check)
         return consolePanel.component
-    }
-
-    internal fun rebuildChatPanel() {
-        // Dispose old panel
-        com.intellij.openapi.util.Disposer.dispose(consolePanel)
-        // Create new panel
-        val newComponent = createResponsePanel()
-        // Swap in the container
-        responsePanelContainer.removeAll()
-        responsePanelContainer.add(newComponent, BorderLayout.CENTER)
-        responsePanelContainer.revalidate()
-        responsePanelContainer.repaint()
     }
 
     private fun appendResponse(text: String) {
@@ -1434,7 +1400,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
      * Extract quick-reply options from `[quick-reply: A | B | C]` tags in the response.
      */
     private fun detectQuickReplies(responseText: String): List<String> {
-        val match = ChatConsolePanel.QUICK_REPLY_TAG_REGEX.findAll(responseText).lastOrNull() ?: return emptyList()
+        val match = QUICK_REPLY_TAG_REGEX.findAll(responseText).lastOrNull() ?: return emptyList()
         return match.groupValues[1].split("|").map { it.trim() }.filter { it.isNotEmpty() }
     }
 

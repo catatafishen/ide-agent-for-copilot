@@ -4,9 +4,8 @@ import com.intellij.openapi.Disposable
 import javax.swing.JComponent
 
 /**
- * Public API for the chat console panel, shared by both legacy and v2 implementations.
- * AgenticCopilotToolWindowContent programs against this interface so the implementation
- * can be swapped via the "useNewChatPane" setting.
+ * Public API for the chat console panel.
+ * AgenticCopilotToolWindowContent programs against this interface.
  */
 interface ChatPanelApi : Disposable {
 
