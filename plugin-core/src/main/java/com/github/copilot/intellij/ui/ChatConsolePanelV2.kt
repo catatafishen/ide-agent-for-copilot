@@ -211,7 +211,6 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun addToolCallEntry(id: String, title: String, arguments: String?) {
-        maybeStartNewSegment()
         finalizeCurrentText()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
