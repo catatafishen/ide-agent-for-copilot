@@ -618,10 +618,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
-    fun addSubAgentEntry(id: String, agentType: String, description: String, prompt: String?) {
+    fun addSubAgentEntry(
+        id: String, agentType: String, description: String, prompt: String?,
+        initialResult: String? = null, initialStatus: String? = null
+    ) {
         finalizeCurrentText()
         val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
-        entries.add(EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id))
+        val entry = EntryData.SubAgent(agentType, description, prompt, colorIndex = colorIndex, callId = id)
+        entry.result = initialResult
+        entry.status = initialStatus
+        entries.add(entry)
         val did = domId(id)
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
             agentType.replaceFirstChar { it.uppercase() } + " Agent")
@@ -647,8 +653,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
         // Response bubble in instance-specific color with meta for tool chips
         sb.append("<div class='agent-row'><div class='meta' id='meta-$wrapperId'></div>")
-        sb.append("<div class='subagent-bubble' id='result-$did'>")
-        sb.append("<span class='subagent-pending'>Working...</span>")
+        sb.append("<div class='subagent-bubble' id='result-$did' onclick='toggleMeta(this)'>")
+        when {
+            !initialResult.isNullOrBlank() -> sb.append(markdownToHtml(initialResult))
+            initialStatus == "completed" -> sb.append("Completed")
+            initialStatus == "failed" -> sb.append("<span style='color:var(--error)'>\u2716 Failed</span>")
+            else -> sb.append("<span class='subagent-pending'>Working...</span>")
+        }
         sb.append("</div></div>")
 
         sb.append("</div>")
@@ -936,11 +947,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     restoredId,
                     obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL,
                     obj["description"]?.asString ?: "Sub-agent task",
-                    obj["prompt"]?.asString?.ifEmpty { null }
+                    obj["prompt"]?.asString?.ifEmpty { null },
+                    obj["result"]?.asString?.ifEmpty { null },
+                    obj["status"]?.asString?.ifEmpty { null } ?: "completed"
                 )
-                // Always update on restore — default to "completed" so we never show stale "Working..."
-                val savedStatus = obj["status"]?.asString?.ifEmpty { null } ?: "completed"
-                updateSubAgentResult(restoredId, savedStatus, obj["result"]?.asString?.ifEmpty { null })
             }
 
             "context" -> {
@@ -1091,7 +1101,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             sb.append(renderBatchTool(toolObj))
         }
         sb.append("<div class='agent-row'><div class='meta' id='meta-$wrapperId'></div>")
-        sb.append("<div class='subagent-bubble'>")
+        sb.append("<div class='subagent-bubble' onclick='toggleMeta(this)'>")
         when {
             !result.isNullOrBlank() -> sb.append(markdownToHtml(result))
             status == "failed" -> sb.append("<span style='color:var(--error)'>\u2716 Failed</span>")
