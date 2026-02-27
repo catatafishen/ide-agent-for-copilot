@@ -124,6 +124,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Track tool calls for Session tab file correlation
     private val toolCallFiles = mutableMapOf<String, String>() // toolCallId -> file path
     private val toolCallTitles = mutableMapOf<String, String>() // toolCallId -> display title
+    private var activeSubAgentId: String? = null // non-null while a sub-agent is running
 
     /** Handle ACP session/update notifications — routes to timeline and session tab. */
     private fun handleAcpUpdate(update: com.google.gson.JsonObject) {
@@ -140,6 +141,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val title = update["title"]?.asString ?: "Unknown tool"
         val status = update["status"]?.asString ?: "pending"
         val toolCallId = update["toolCallId"]?.asString ?: ""
+        // Skip sub-agent internal tool calls from timeline/session tracking
+        if (toolCallTitles[toolCallId] == "subagent_internal") return
         addTimelineEvent(EventType.TOOL_CALL, "$title ($status)")
 
         val filePath = extractFilePath(update, title)
@@ -162,6 +165,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val status = update["status"]?.asString ?: ""
         val toolCallId = update["toolCallId"]?.asString ?: ""
         if (status != "completed" && status != "failed") return
+        // Skip sub-agent internal tool calls
+        if (toolCallTitles[toolCallId] == "subagent_internal") return
 
         addTimelineEvent(EventType.TOOL_CALL, "Tool $toolCallId $status")
 
@@ -1323,6 +1328,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (selectedModelIndex >= 0 && selectedModelIndex < loadedModels.size) loadedModels[selectedModelIndex] else null
             val modelId = selectedModelObj?.id ?: ""
             turnToolCallCount = 0
+            activeSubAgentId = null
             turnModelId = modelId
 
             SwingUtilities.invokeLater {
@@ -1514,22 +1520,28 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val title = update["title"]?.asString ?: "tool"
         val status = update["status"]?.asString ?: ""
         val toolCallId = update["toolCallId"]?.asString ?: ""
-        turnToolCallCount++
-        if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
         val arguments = extractJsonArguments(update)
-        setResponseStatus("Running: $title")
         if (status != "completed" && toolCallId.isNotEmpty()) {
             // Detect sub-agent calls by checking for agent_type in arguments
-            // (title is the description, not "task", e.g. "Review chat UI code")
             val agentType = extractJsonField(arguments, "agent_type")
             if (agentType != null) {
+                turnToolCallCount++
+                if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
                 toolCallTitles[toolCallId] = "task" // mark as sub-agent for update routing
+                activeSubAgentId = toolCallId
                 CopilotService.getInstance(project).getClient().setSubAgentActive(true)
+                setResponseStatus("Running: $title")
                 val description = title.ifBlank { extractJsonField(arguments, "description") ?: "Sub-agent task" }
                 val prompt = extractJsonField(arguments, "prompt")
                 consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
+            } else if (activeSubAgentId != null) {
+                // Internal tool call from a running sub-agent — suppress from UI
+                toolCallTitles[toolCallId] = "subagent_internal"
             } else {
+                turnToolCallCount++
+                if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
                 toolCallTitles[toolCallId] = title
+                setResponseStatus("Running: $title")
                 consolePanel.addToolCallEntry(toolCallId, title, arguments)
             }
         }
@@ -1549,10 +1561,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val toolCallId = update["toolCallId"]?.asString ?: ""
         val result = update["result"]?.asString
             ?: update["content"]?.let { extractContentText(it) }
-        val isSubAgent = toolCallTitles[toolCallId] == "task"
+        val callType = toolCallTitles[toolCallId]
+        // Suppress updates for sub-agent internal tool calls
+        if (callType == "subagent_internal") return
+        val isSubAgent = callType == "task"
         if (status == "completed") {
             setResponseStatus(MSG_THINKING)
             if (isSubAgent) {
+                activeSubAgentId = null
                 CopilotService.getInstance(project).getClient().setSubAgentActive(false)
                 consolePanel.updateSubAgentResult(toolCallId, "completed", result)
             } else {
@@ -1563,6 +1579,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 ?: result
                 ?: update.toString().take(500)
             if (isSubAgent) {
+                activeSubAgentId = null
                 CopilotService.getInstance(project).getClient().setSubAgentActive(false)
                 consolePanel.updateSubAgentResult(toolCallId, "failed", error)
             } else {
