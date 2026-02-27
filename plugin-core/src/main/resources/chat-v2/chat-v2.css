@@ -613,6 +613,7 @@ b, strong {
     position: absolute;
     top: var(--sp-2);
     right: var(--sp-2);
+    z-index: 1;
     background: var(--fg-a08);
     color: var(--fg);
     border: none;

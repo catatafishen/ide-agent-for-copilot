@@ -43,7 +43,7 @@ class ChatContainer extends HTMLElement {
 
         // Copy-button observer
         this._copyObs = new MutationObserver(() => {
-            this._messages.querySelectorAll('pre:not([data-copy-btn])').forEach(pre => {
+            this._messages.querySelectorAll('pre:not([data-copy-btn]):not(.streaming)').forEach(pre => {
                 pre.dataset.copyBtn = '1';
                 const btn = document.createElement('button');
                 btn.className = 'copy-btn';
