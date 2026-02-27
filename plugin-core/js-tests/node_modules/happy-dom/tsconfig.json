@@ -1,0 +1,39 @@
+{
+	"compilerOptions": {
+		"outDir": "lib",
+		"rootDir": "src",
+		"target": "ES2022",
+		"declaration": true,
+		"declarationMap": true,
+		"module": "Node16",
+		"moduleResolution": "Node16",
+		"esModuleInterop": true,
+		"experimentalDecorators": true,
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+        "noImplicitReturns": false,
+		"removeComments": false,
+		"preserveConstEnums": true,
+        "strict": false,
+		"sourceMap": true,
+		"skipLibCheck": true,
+		"baseUrl": ".",
+		"composite": false,
+		"incremental": false,
+		"lib": [
+			"ES2022"
+		],
+		"types": [
+			"node"
+		]
+	},
+	"include": [
+		"@types/node",
+		"src"
+	],
+	"exclude": [
+		"@types/dom"
+	]
+}

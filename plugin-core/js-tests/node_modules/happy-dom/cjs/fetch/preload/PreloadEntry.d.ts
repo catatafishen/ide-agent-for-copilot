@@ -1,0 +1,26 @@
+import Response from '../Response.cjs';
+/**
+ * Preload entry.
+ *
+ * @see https://html.spec.whatwg.org/multipage/links.html#preload-entry
+ */
+export default class PreloadEntry {
+    #private;
+    integrityMetadata: string | null;
+    response: Response | null;
+    error: Error | null;
+    /**
+     * On response available.
+     *
+     * @returns Response.
+     */
+    onResponseAvailable(): Promise<Response>;
+    /**
+     * Response available.
+     *
+     * @param error
+     * @param response
+     */
+    responseAvailable(error: Error | null, response: Response): void;
+}
+//# sourceMappingURL=PreloadEntry.d.ts.map

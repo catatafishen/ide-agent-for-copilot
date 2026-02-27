@@ -1,0 +1,238 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const HTMLElement_js_1 = __importDefault(require("../html-element/HTMLElement.cjs"));
+const PropertySymbol = __importStar(require("../../PropertySymbol.cjs"));
+const ValidityState_js_1 = __importDefault(require("../../validity-state/ValidityState.cjs"));
+/**
+ * HTMLObjectElement
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLObjectElement
+ */
+class HTMLObjectElement extends HTMLElement_js_1.default {
+    [PropertySymbol.formNode] = null;
+    [PropertySymbol.validationMessage] = '';
+    [PropertySymbol.validity] = new ValidityState_js_1.default(this);
+    /**
+     * Returns the content document.
+     *
+     * @returns Document
+     */
+    get contentDocument() {
+        return null;
+    }
+    /**
+     * Returns the content window.
+     *
+     * @returns Window
+     */
+    get contentWindow() {
+        return null;
+    }
+    /**
+     * Returns source.
+     *
+     * @returns Source.
+     */
+    get data() {
+        if (!this.hasAttribute('data')) {
+            return '';
+        }
+        try {
+            return new URL(this.getAttribute('data'), this[PropertySymbol.ownerDocument].location.href)
+                .href;
+        }
+        catch (e) {
+            return this.getAttribute('data');
+        }
+    }
+    /**
+     * Sets source.
+     *
+     * @param data Source.
+     */
+    set data(data) {
+        this.setAttribute('data', data);
+    }
+    /**
+     * Returns the parent form element.
+     *
+     * @returns Form.
+     */
+    get form() {
+        if (this[PropertySymbol.formNode]) {
+            return this[PropertySymbol.formNode];
+        }
+        const id = this.getAttribute('form');
+        if (!id || !this[PropertySymbol.isConnected]) {
+            return null;
+        }
+        return this[PropertySymbol.ownerDocument].getElementById(id);
+    }
+    /**
+     * Returns height.
+     *
+     * @returns Height.
+     */
+    get height() {
+        return this.getAttribute('height') || '';
+    }
+    /**
+     * Sets height.
+     *
+     * @param height Height.
+     */
+    set height(height) {
+        this.setAttribute('height', height);
+    }
+    /**
+     * Returns width.
+     *
+     * @returns Width.
+     */
+    get width() {
+        return this.getAttribute('width') || '';
+    }
+    /**
+     * Sets width.
+     *
+     * @param width Width.
+     */
+    set width(width) {
+        this.setAttribute('width', width);
+    }
+    /**
+     * Returns name.
+     *
+     * @returns Name.
+     */
+    get name() {
+        return this.getAttribute('name') || '';
+    }
+    /**
+     * Sets name.
+     *
+     * @param name Name.
+     */
+    set name(name) {
+        this.setAttribute('name', name);
+    }
+    /**
+     * Returns type.
+     *
+     * @returns Type.
+     */
+    get type() {
+        return this.getAttribute('type') || '';
+    }
+    /**
+     * Sets type.
+     *
+     * @param type Type.
+     */
+    set type(type) {
+        this.setAttribute('type', type);
+    }
+    /**
+     * Returns validation message.
+     *
+     * @returns Validation message.
+     */
+    get validationMessage() {
+        return this[PropertySymbol.validationMessage];
+    }
+    /**
+     * Returns validity.
+     *
+     * @returns Validity.
+     */
+    get validity() {
+        return this[PropertySymbol.validity];
+    }
+    /**
+     * Returns "true" if it will validate.
+     *
+     * @returns "true" if it will validate.
+     */
+    get willValidate() {
+        return false;
+    }
+    /**
+     * @override
+     */
+    get tabIndex() {
+        const tabIndex = this.getAttribute('tabindex');
+        if (tabIndex !== null) {
+            const parsed = Number(tabIndex);
+            return isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+    }
+    /**
+     * @override
+     */
+    set tabIndex(tabIndex) {
+        super.tabIndex = tabIndex;
+    }
+    /**
+     * Checks validity.
+     *
+     * @returns "true" if the field is valid.
+     */
+    checkValidity() {
+        return true;
+    }
+    /**
+     * Reports validity.
+     *
+     * @returns Validity.
+     */
+    reportValidity() {
+        return this.checkValidity();
+    }
+    /**
+     * Sets validation message.
+     *
+     * @param message Message.
+     */
+    setCustomValidity(message) {
+        this[PropertySymbol.validationMessage] = String(message);
+    }
+}
+exports.default = HTMLObjectElement;
+//# sourceMappingURL=HTMLObjectElement.cjs.map
