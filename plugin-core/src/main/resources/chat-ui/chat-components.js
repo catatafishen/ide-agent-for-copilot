@@ -131,9 +131,11 @@
       const parent = this.closest("chat-message");
       const isUser = parent?.getAttribute("type") === "user";
       this.classList.add(isUser ? "prompt-bubble" : "agent-bubble");
-      this.setAttribute("tabindex", "0");
-      this.setAttribute("role", "button");
-      this.setAttribute("aria-label", isUser ? "Toggle message details" : "Toggle response details");
+      if (isUser) {
+        this.setAttribute("tabindex", "0");
+        this.setAttribute("role", "button");
+        this.setAttribute("aria-label", "Toggle message details");
+      }
       this.onclick = (e) => {
         if (e.target.closest("a,.turn-chip")) return;
         collapseAllChips(parent);
@@ -234,6 +236,179 @@
     }
   };
 
+  // src/toolDisplayName.ts
+  function toolCategory(rawTitle) {
+    const name = rawTitle.replace(/^[Ii]ntellij-code-tools-/, "").replace(/^github-mcp-server-/, "gh:");
+    if (name.startsWith("gh:")) return "github";
+    if (name.startsWith("git_")) return "git";
+    const cats = {
+      "intellij_read_file": "file",
+      "intellij_write_file": "file",
+      "create_file": "file",
+      "delete_file": "file",
+      "open_in_editor": "file",
+      "show_diff": "file",
+      "undo": "file",
+      "search_text": "search",
+      "search_symbols": "search",
+      "find_references": "search",
+      "go_to_declaration": "search",
+      "get_file_outline": "search",
+      "get_class_outline": "search",
+      "get_type_hierarchy": "search",
+      "get_documentation": "search",
+      "list_project_files": "search",
+      "list_tests": "search",
+      "format_code": "quality",
+      "optimize_imports": "quality",
+      "run_inspections": "quality",
+      "get_compilation_errors": "quality",
+      "get_problems": "quality",
+      "get_highlights": "quality",
+      "apply_quickfix": "quality",
+      "suppress_inspection": "quality",
+      "add_to_dictionary": "quality",
+      "run_qodana": "quality",
+      "run_sonarqube_analysis": "quality",
+      "build_project": "build",
+      "run_command": "build",
+      "run_tests": "build",
+      "get_test_results": "build",
+      "get_coverage": "build",
+      "run_configuration": "build",
+      "create_run_configuration": "build",
+      "edit_run_configuration": "build",
+      "list_run_configurations": "build",
+      "get_project_info": "ide",
+      "read_ide_log": "ide",
+      "get_notifications": "ide",
+      "read_run_output": "ide",
+      "run_in_terminal": "ide",
+      "read_terminal_output": "ide",
+      "download_sources": "ide",
+      "create_scratch_file": "ide",
+      "list_scratch_files": "ide",
+      "get_indexing_status": "ide",
+      "mark_directory": "ide",
+      "get_chat_html": "ide",
+      "http_request": "ide",
+      "refactor": "ide"
+    };
+    return cats[name] || "default";
+  }
+  function shortPath(p) {
+    if (!p) return "";
+    const parts = p.replace(/\\/g, "/").split("/");
+    return parts[parts.length - 1];
+  }
+  function trunc(s, max = 24) {
+    return s.length > max ? s.substring(0, max - 1) + "\u2026" : s;
+  }
+  function shortClass(fqn) {
+    const i = fqn.lastIndexOf(".");
+    return i >= 0 ? fqn.substring(i + 1) : fqn;
+  }
+  function toolDisplayName(rawTitle, paramsJson) {
+    const name = rawTitle.replace(/^[Ii]ntellij-code-tools-/, "").replace(/^github-mcp-server-/, "gh:");
+    let p = {};
+    if (paramsJson) {
+      try {
+        p = JSON.parse(paramsJson);
+      } catch {
+      }
+    }
+    const file = shortPath(p.path || p.file || p.scope || "");
+    const map = {
+      // File operations
+      "intellij_read_file": () => file ? `Reading ${file}` : "Reading file",
+      "intellij_write_file": () => file ? `Editing ${file}` : "Editing file",
+      "create_file": () => file ? `Creating ${file}` : "Creating file",
+      "delete_file": () => file ? `Deleting ${file}` : "Deleting file",
+      "open_in_editor": () => file ? `Opening ${file}` : "Opening file",
+      "show_diff": () => file ? `Diff ${file}` : "Showing diff",
+      "undo": () => file ? `Undo in ${file}` : "Undoing",
+      // Search & navigation
+      "search_text": () => p.query ? `Searching \u201C${trunc(p.query, 20)}\u201D` : "Searching text",
+      "search_symbols": () => p.query ? `Finding \u201C${trunc(p.query, 20)}\u201D` : "Finding symbols",
+      "find_references": () => p.symbol ? `Refs: ${p.symbol}` : "Finding references",
+      "go_to_declaration": () => p.symbol ? `Go to ${p.symbol}` : "Go to declaration",
+      "get_file_outline": () => file ? `Outline ${file}` : "File outline",
+      "get_class_outline": () => p.class_name ? `Outline ${shortClass(p.class_name)}` : "Class outline",
+      "get_type_hierarchy": () => p.symbol ? `Hierarchy: ${p.symbol}` : "Type hierarchy",
+      "get_documentation": () => p.symbol ? `Docs: ${trunc(p.symbol, 28)}` : "Getting docs",
+      "list_project_files": () => "Listing files",
+      "list_tests": () => "Listing tests",
+      // Code quality
+      "format_code": () => file ? `Formatting ${file}` : "Formatting code",
+      "optimize_imports": () => file ? `Imports ${file}` : "Optimizing imports",
+      "run_inspections": () => file ? `Inspecting ${file}` : "Running inspections",
+      "get_compilation_errors": () => "Checking compilation",
+      "get_problems": () => "Getting problems",
+      "get_highlights": () => "Getting highlights",
+      "apply_quickfix": () => "Applying quickfix",
+      "suppress_inspection": () => "Suppressing inspection",
+      "add_to_dictionary": () => p.word ? `Adding \u201C${p.word}\u201D to dictionary` : "Adding to dictionary",
+      "run_qodana": () => "Running Qodana",
+      "run_sonarqube_analysis": () => "Running SonarQube",
+      // Refactoring
+      "refactor": () => p.operation === "rename" ? `Renaming ${p.symbol || ""}` : p.operation ? `Refactor: ${p.operation}` : "Refactoring",
+      // Build & run
+      "build_project": () => "Building project",
+      "run_command": () => p.title ? trunc(p.title, 32) : p.command ? `Running ${trunc(p.command, 24)}` : "Running command",
+      "run_tests": () => p.target ? `Testing ${trunc(p.target, 24)}` : "Running tests",
+      "get_test_results": () => "Test results",
+      "get_coverage": () => "Getting coverage",
+      "run_configuration": () => p.name ? `Running \u201C${trunc(p.name, 20)}\u201D` : "Running config",
+      "create_run_configuration": () => p.name ? `Creating config \u201C${trunc(p.name, 16)}\u201D` : "Creating run config",
+      "edit_run_configuration": () => p.name ? `Editing config \u201C${trunc(p.name, 16)}\u201D` : "Editing run config",
+      "list_run_configurations": () => "Listing run configs",
+      // Git
+      "git_status": () => "Git status",
+      "git_diff": () => file ? `Git diff ${file}` : "Git diff",
+      "git_commit": () => "Git commit",
+      "git_stage": () => file ? `Staging ${file}` : "Git stage",
+      "git_unstage": () => file ? `Unstaging ${file}` : "Git unstage",
+      "git_log": () => "Git log",
+      "git_blame": () => file ? `Blame ${file}` : "Git blame",
+      "git_show": () => "Git show",
+      "git_branch": () => p.action === "switch" ? `Switch to ${p.name}` : p.action === "create" ? `Create branch ${p.name}` : "Git branch",
+      "git_stash": () => p.action ? `Git stash ${p.action}` : "Git stash",
+      // IDE
+      "get_project_info": () => "Project info",
+      "read_ide_log": () => "Reading IDE log",
+      "get_notifications": () => "Getting notifications",
+      "read_run_output": () => "Reading run output",
+      "run_in_terminal": () => "Running in terminal",
+      "read_terminal_output": () => "Reading terminal",
+      "download_sources": () => "Downloading sources",
+      "create_scratch_file": () => p.name ? `Scratch: ${p.name}` : "Creating scratch",
+      "list_scratch_files": () => "Listing scratches",
+      "get_indexing_status": () => "Indexing status",
+      "mark_directory": () => "Marking directory",
+      "get_chat_html": () => "Getting chat HTML",
+      "http_request": () => p.url ? `${p.method || "GET"} ${trunc(p.url, 28)}` : "HTTP request",
+      // GitHub MCP tools (after prefix stripped to "gh:*")
+      "gh:get_file_contents": () => p.path ? `GH: ${shortPath(p.path)}` : "GH: get file",
+      "gh:search_code": () => "GH: search code",
+      "gh:search_repositories": () => "GH: search repos",
+      "gh:search_issues": () => "GH: search issues",
+      "gh:search_pull_requests": () => "GH: search PRs",
+      "gh:search_users": () => "GH: search users",
+      "gh:list_issues": () => "GH: list issues",
+      "gh:list_pull_requests": () => "GH: list PRs",
+      "gh:list_commits": () => "GH: list commits",
+      "gh:list_branches": () => "GH: list branches",
+      "gh:get_commit": () => "GH: get commit",
+      "gh:issue_read": () => p.issue_number ? `GH: issue #${p.issue_number}` : "GH: read issue",
+      "gh:pull_request_read": () => p.pullNumber ? `GH: PR #${p.pullNumber}` : "GH: read PR",
+      "gh:actions_list": () => "GH: list actions",
+      "gh:actions_get": () => "GH: get action",
+      "gh:get_job_logs": () => "GH: job logs"
+    };
+    const fn = map[name];
+    return fn ? fn() : name;
+  }
+
   // src/components/ToolChip.ts
   var ToolChip = class extends HTMLElement {
     constructor() {
@@ -249,21 +424,38 @@
       this._init = true;
       this.classList.add("turn-chip", "tool");
       this.style.cursor = "pointer";
+      this.setAttribute("role", "button");
+      this.setAttribute("tabindex", "0");
+      this.setAttribute("aria-expanded", "false");
       this._render();
       this.onclick = (e) => {
         e.stopPropagation();
         this._toggleExpand();
       };
+      this.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this._toggleExpand();
+        }
+      };
     }
     _render() {
-      const label = this.getAttribute("label") || "";
+      const rawLabel = this.getAttribute("label") || "";
       const status = this.getAttribute("status") || "running";
-      const display = label.length > 50 ? label.substring(0, 47) + "\u2026" : label;
+      this._resolveLink();
+      const paramsStr = this._linkedSection?.getAttribute("params") || void 0;
+      const display = toolDisplayName(rawLabel, paramsStr);
+      const cat = toolCategory(rawLabel);
+      const truncated = display.length > 50 ? display.substring(0, 47) + "\u2026" : display;
+      this.className = this.className.replace(/\bcat-\S+/g, "").trim();
+      this.classList.add("turn-chip", "tool", `cat-${cat}`);
       let iconHtml = "";
       if (status === "running") iconHtml = '<span class="chip-spinner"></span> ';
       else if (status === "failed") this.classList.add("failed");
-      this.innerHTML = iconHtml + escHtml(display);
-      if (label.length > 50) this.dataset.tip = label;
+      this.innerHTML = iconHtml + escHtml(truncated);
+      if (display.length > 50) this.dataset.tip = display;
+      else if (rawLabel !== display) this.dataset.tip = rawLabel;
+      if (this.dataset.tip) this.setAttribute("title", this.dataset.tip);
     }
     _resolveLink() {
       if (!this._linkedSection && this.dataset.chipFor) {
@@ -279,6 +471,7 @@
         section.classList.remove("turn-hidden");
         section.classList.add("chip-expanded");
         this.style.opacity = "0.5";
+        this.setAttribute("aria-expanded", "true");
       } else {
         this.style.opacity = "1";
         section.classList.add("collapsing");
@@ -286,6 +479,7 @@
           section.classList.remove("collapsing", "chip-expanded");
           section.classList.add("turn-hidden");
         }, 250);
+        this.setAttribute("aria-expanded", "false");
       }
     }
     linkSection(section) {
@@ -312,10 +506,19 @@
       this._init = true;
       this.classList.add("turn-chip");
       this.style.cursor = "pointer";
+      this.setAttribute("role", "button");
+      this.setAttribute("tabindex", "0");
+      this.setAttribute("aria-expanded", "false");
       this._render();
       this.onclick = (e) => {
         e.stopPropagation();
         this._toggleExpand();
+      };
+      this.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this._toggleExpand();
+        }
       };
     }
     _render() {
@@ -341,6 +544,7 @@
         section.classList.remove("turn-hidden");
         section.classList.add("chip-expanded");
         this.style.opacity = "0.5";
+        this.setAttribute("aria-expanded", "true");
       } else {
         this.style.opacity = "1";
         section.classList.add("collapsing");
@@ -348,6 +552,7 @@
           section.classList.remove("collapsing", "chip-expanded");
           section.classList.add("turn-hidden");
         }, 250);
+        this.setAttribute("aria-expanded", "false");
       }
     }
     linkSection(section) {
@@ -371,10 +576,19 @@
       const ci = this.getAttribute("color-index") || "0";
       this.classList.add("turn-chip", "subagent", "subagent-c" + ci);
       this.style.cursor = "pointer";
+      this.setAttribute("role", "button");
+      this.setAttribute("tabindex", "0");
+      this.setAttribute("aria-expanded", "false");
       this._render();
       this.onclick = (e) => {
         e.stopPropagation();
         this._toggleExpand();
+      };
+      this.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this._toggleExpand();
+        }
       };
     }
     _render() {
@@ -401,10 +615,15 @@
         section.classList.remove("turn-hidden", "collapsed");
         section.classList.add("chip-expanded");
         this.style.opacity = "0.5";
+        this.setAttribute("aria-expanded", "true");
       } else {
         this.style.opacity = "1";
-        section.classList.add("turn-hidden", "collapsed");
-        section.classList.remove("chip-expanded");
+        section.classList.add("collapsing");
+        setTimeout(() => {
+          section.classList.remove("collapsing", "chip-expanded");
+          section.classList.add("turn-hidden", "collapsed");
+        }, 250);
+        this.setAttribute("aria-expanded", "false");
       }
     }
     linkSection(section) {
@@ -433,7 +652,8 @@
     set options(arr) {
       this.innerHTML = "";
       (arr || []).forEach((text) => {
-        const btn = document.createElement("span");
+        const btn = document.createElement("button");
+        btn.type = "button";
         btn.className = "quick-reply-btn";
         btn.textContent = text;
         btn.onclick = () => {
@@ -488,11 +708,13 @@
       if (this._init) return;
       this._init = true;
       this.classList.add("session-sep");
+      this.setAttribute("role", "separator");
       this._render();
     }
     _render() {
       const ts = this.getAttribute("timestamp") || "";
-      this.innerHTML = `<span class="session-sep-line"></span><span class="session-sep-label">New session \u{1F4C5} ${escHtml(ts)}</span><span class="session-sep-line"></span>`;
+      this.setAttribute("aria-label", "New session started " + ts);
+      this.innerHTML = `<span class="session-sep-line"></span><span class="session-sep-label"><span aria-hidden="true">\u{1F4C5} </span>New session \u2014 ${escHtml(ts)}</span><span class="session-sep-line"></span>`;
     }
     attributeChangedCallback() {
       if (this._init) this._render();
@@ -512,11 +734,20 @@
       if (this._init) return;
       this._init = true;
       this.classList.add("load-more-banner");
+      this.setAttribute("role", "button");
+      this.setAttribute("tabindex", "0");
+      this.setAttribute("aria-label", "Load earlier messages");
       this._render();
       this.onclick = () => {
         if (!this.hasAttribute("loading")) {
           this.setAttribute("loading", "");
           this.dispatchEvent(new CustomEvent("load-more", { bubbles: true }));
+        }
+      };
+      this.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this.click();
         }
       };
     }
@@ -527,6 +758,19 @@
     }
     attributeChangedCallback() {
       if (this._init) this._render();
+    }
+  };
+
+  // src/components/TurnDetails.ts
+  var TurnDetails = class extends HTMLElement {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "_init", false);
+    }
+    connectedCallback() {
+      if (this._init) return;
+      this._init = true;
+      this.classList.add("turn-details");
     }
   };
 
@@ -546,6 +790,7 @@
         this._ctx[key] = {
           msg: null,
           meta: null,
+          details: null,
           textBubble: null,
           thinkingBlock: null
         };
@@ -565,9 +810,12 @@
         tsSpan.textContent = ts;
         meta.appendChild(tsSpan);
         msg.appendChild(meta);
+        const details = document.createElement("turn-details");
+        msg.appendChild(details);
         this._msgs().appendChild(msg);
         ctx.msg = msg;
         ctx.meta = meta;
+        ctx.details = details;
       }
       return ctx;
     },
@@ -593,6 +841,7 @@
       this._collapseThinkingFor(ctx);
       ctx.msg = null;
       ctx.meta = null;
+      ctx.details = null;
       ctx.textBubble = null;
     },
     // ── Public API ─────────────────────────────────────────────
@@ -662,7 +911,7 @@
         el.id = "think-" + this._thinkingCounter;
         el.setAttribute("active", "");
         el.setAttribute("expanded", "");
-        ctx.msg.appendChild(el);
+        ctx.details.appendChild(el);
         ctx.thinkingBlock = el;
         const chip = document.createElement("thinking-chip");
         chip.setAttribute("status", "thinking");
@@ -686,9 +935,7 @@
       section.id = id;
       section.setAttribute("title", title);
       if (paramsJson) section.setAttribute("params", paramsJson);
-      const bubble = ctx.msg.querySelector("message-bubble");
-      if (bubble) ctx.msg.insertBefore(section, bubble);
-      else ctx.msg.appendChild(section);
+      ctx.details.appendChild(section);
       const chip = document.createElement("tool-chip");
       chip.setAttribute("label", title);
       chip.setAttribute("status", "running");
@@ -736,6 +983,8 @@
       tsSpan.textContent = ts;
       meta.appendChild(tsSpan);
       msg.appendChild(meta);
+      const saDetails = document.createElement("turn-details");
+      msg.appendChild(saDetails);
       const resultBubble = document.createElement("message-bubble");
       resultBubble.id = "result-" + sectionId;
       resultBubble.classList.add("subagent-result");
@@ -761,8 +1010,8 @@
       section.id = toolDomId;
       section.setAttribute("title", title);
       if (paramsJson) section.setAttribute("params", paramsJson);
-      const resultBubble = msg.querySelector(".subagent-result");
-      if (resultBubble) msg.insertBefore(section, resultBubble);
+      const details = msg.querySelector("turn-details");
+      if (details) details.appendChild(section);
       else msg.appendChild(section);
       const chip = document.createElement("tool-chip");
       chip.setAttribute("label", title);
@@ -820,6 +1069,7 @@
           chip.className = "turn-chip stats";
           chip.textContent = stats.mult || "1x";
           chip.dataset.tip = stats.model;
+          chip.setAttribute("title", stats.model);
           meta.appendChild(chip);
           meta.classList.add("show");
         }
@@ -856,6 +1106,7 @@
       chip.className = "turn-chip stats";
       chip.textContent = multiplier;
       chip.dataset.tip = model;
+      chip.setAttribute("title", model);
       meta.appendChild(chip);
     },
     restoreBatch(encodedHtml) {
@@ -887,7 +1138,14 @@
       const rows = Array.from(msgs.children).filter(
         (c) => c.tagName === "CHAT-MESSAGE" || c.tagName === "STATUS-MESSAGE"
       );
-      if (rows.length > 80) for (let i = 0; i < rows.length - 80; i++) rows[i].remove();
+      if (rows.length > 80) {
+        const trimCount = rows.length - 80;
+        for (let i = 0; i < trimCount; i++) rows[i].remove();
+        const notice = document.createElement("status-message");
+        notice.setAttribute("type", "info");
+        notice.setAttribute("message", `${trimCount} older messages trimmed for performance`);
+        msgs.insertBefore(notice, msgs.firstChild);
+      }
     }
   };
   var ChatController_default = ChatController;
@@ -906,6 +1164,7 @@
   customElements.define("status-message", StatusMessage);
   customElements.define("session-divider", SessionDivider);
   customElements.define("load-more", LoadMore);
+  customElements.define("turn-details", TurnDetails);
   window.ChatController = ChatController_default;
   window.b64 = b64;
   document.addEventListener("click", (e) => {

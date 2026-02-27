@@ -15,9 +15,11 @@ export default class MessageBubble extends HTMLElement {
         const isUser = parent?.getAttribute('type') === 'user';
         this.classList.add(isUser ? 'prompt-bubble' : 'agent-bubble');
 
-        this.setAttribute('tabindex', '0');
-        this.setAttribute('role', 'button');
-        this.setAttribute('aria-label', isUser ? 'Toggle message details' : 'Toggle response details');
+        if (isUser) {
+            this.setAttribute('tabindex', '0');
+            this.setAttribute('role', 'button');
+            this.setAttribute('aria-label', 'Toggle message details');
+        }
         this.onclick = (e: MouseEvent) => {
             if ((e.target as Element).closest('a,.turn-chip')) return;
             collapseAllChips(parent);

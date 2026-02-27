@@ -330,6 +330,7 @@ const ChatController = {
                 chip.className = 'turn-chip stats';
                 chip.textContent = stats.mult || '1x';
                 chip.dataset.tip = stats.model;
+                chip.setAttribute('title', stats.model);
                 meta.appendChild(chip);
                 meta.classList.add('show');
             }
@@ -369,6 +370,7 @@ const ChatController = {
         chip.className = 'turn-chip stats';
         chip.textContent = multiplier;
         chip.dataset.tip = model;
+        chip.setAttribute('title', model);
         meta.appendChild(chip);
     },
 
@@ -404,7 +406,14 @@ const ChatController = {
         const rows = Array.from(msgs.children).filter(
             c => c.tagName === 'CHAT-MESSAGE' || c.tagName === 'STATUS-MESSAGE'
         );
-        if (rows.length > 80) for (let i = 0; i < rows.length - 80; i++) rows[i].remove();
+        if (rows.length > 80) {
+            const trimCount = rows.length - 80;
+            for (let i = 0; i < trimCount; i++) rows[i].remove();
+            const notice = document.createElement('status-message');
+            notice.setAttribute('type', 'info');
+            notice.setAttribute('message', `${trimCount} older messages trimmed for performance`);
+            msgs.insertBefore(notice, msgs.firstChild);
+        }
     },
 
 };

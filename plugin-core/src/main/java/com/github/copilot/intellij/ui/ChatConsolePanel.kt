@@ -77,20 +77,20 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             UIManager.getColor(key) ?: JBColor(lightFallback, darkFallback)
 
         private val LINK_COLOR_KEY = "Link.activeForeground"
-        private val USER_COLOR = JBColor(Color(86, 156, 214), Color(86, 156, 214))
-        private val AGENT_COLOR = JBColor(Color(150, 200, 150), Color(150, 200, 150))
-        private val TOOL_COLOR = JBColor(Color(180, 160, 220), Color(180, 160, 220))
-        private val THINK_COLOR = JBColor(Color(176, 176, 176), Color(176, 176, 176))
-        private val ERROR_COLOR = JBColor(Color(199, 34, 34), Color(199, 34, 34))
+        private val USER_COLOR = JBColor(Color(0x28, 0x6B, 0xC0), Color(86, 156, 214))
+        private val AGENT_COLOR = JBColor(Color(0x2A, 0x80, 0x2A), Color(150, 200, 150))
+        private val TOOL_COLOR = JBColor(Color(0x6A, 0x4C, 0xB0), Color(180, 160, 220))
+        private val THINK_COLOR = JBColor(Color(0x68, 0x68, 0x68), Color(176, 176, 176))
+        private val ERROR_COLOR = JBColor(Color(0xC7, 0x22, 0x22), Color(199, 34, 34))
         private val SA_COLORS = arrayOf(
-            JBColor(Color(38, 166, 154), Color(38, 166, 154)),
-            JBColor(Color(240, 173, 78), Color(240, 173, 78)),
-            JBColor(Color(156, 120, 216), Color(156, 120, 216)),
-            JBColor(Color(216, 112, 147), Color(216, 112, 147)),
-            JBColor(Color(91, 192, 222), Color(91, 192, 222)),
-            JBColor(Color(139, 195, 74), Color(139, 195, 74)),
-            JBColor(Color(229, 115, 115), Color(229, 115, 115)),
-            JBColor(Color(86, 156, 214), Color(86, 156, 214)),
+            JBColor(Color(0x1E, 0x88, 0x7E), Color(38, 166, 154)),
+            JBColor(Color(0xC8, 0x8E, 0x32), Color(240, 173, 78)),
+            JBColor(Color(0x7B, 0x5D, 0xAE), Color(156, 120, 216)),
+            JBColor(Color(0xB8, 0x58, 0x78), Color(216, 112, 147)),
+            JBColor(Color(0x3B, 0x9F, 0xB8), Color(91, 192, 222)),
+            JBColor(Color(0x68, 0x9F, 0x30), Color(139, 195, 74)),
+            JBColor(Color(0xC6, 0x50, 0x50), Color(229, 115, 115)),
+            JBColor(Color(0x28, 0x6B, 0xC0), Color(86, 156, 214)),
         )
     }
 
@@ -1024,7 +1024,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         """.trimIndent()
         val css = loadResource("/chat/chat.css")
         val js = loadResource("/chat/chat-components.js")
-        return """<!DOCTYPE html><html><head><meta charset="utf-8">
+        return """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <style>$css</style>
 <style>:root { $cssVars }</style></head><body>
 <chat-container></chat-container>

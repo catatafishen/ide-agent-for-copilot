@@ -669,17 +669,9 @@ ul, ol {
     padding-left: 22px;
 }
 
-ul {
-    list-style-type: disc;
-}
-
-ol {
-    list-style-type: decimal;
-}
-
-ul ul {
-    list-style-type: circle;
-}
+ul { list-style-type: disc; }
+ol { list-style-type: decimal; }
+ul ul { list-style-type: circle; }
 
 li {
     margin: var(--sp-1) 0;

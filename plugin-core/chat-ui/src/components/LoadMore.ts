@@ -9,11 +9,20 @@ export default class LoadMore extends HTMLElement {
         if (this._init) return;
         this._init = true;
         this.classList.add('load-more-banner');
+        this.setAttribute('role', 'button');
+        this.setAttribute('tabindex', '0');
+        this.setAttribute('aria-label', 'Load earlier messages');
         this._render();
         this.onclick = () => {
             if (!this.hasAttribute('loading')) {
                 this.setAttribute('loading', '');
-                this.dispatchEvent(new CustomEvent('load-more', { bubbles: true }));
+                this.dispatchEvent(new CustomEvent('load-more', {bubbles: true}));
+            }
+        };
+        this.onkeydown = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.click();
             }
         };
     }

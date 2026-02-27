@@ -1,4 +1,4 @@
-import { escHtml } from '../helpers';
+import {escHtml} from '../helpers';
 
 export default class SessionDivider extends HTMLElement {
     static get observedAttributes(): string[] {
@@ -11,12 +11,14 @@ export default class SessionDivider extends HTMLElement {
         if (this._init) return;
         this._init = true;
         this.classList.add('session-sep');
+        this.setAttribute('role', 'separator');
         this._render();
     }
 
     private _render(): void {
         const ts = this.getAttribute('timestamp') || '';
-        this.innerHTML = `<span class="session-sep-line"></span><span class="session-sep-label">New session 📅 ${escHtml(ts)}</span><span class="session-sep-line"></span>`;
+        this.setAttribute('aria-label', 'New session started ' + ts);
+        this.innerHTML = `<span class="session-sep-line"></span><span class="session-sep-label"><span aria-hidden="true">📅 </span>New session — ${escHtml(ts)}</span><span class="session-sep-line"></span>`;
     }
 
     attributeChangedCallback(): void {

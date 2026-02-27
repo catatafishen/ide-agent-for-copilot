@@ -14,13 +14,14 @@ export default class QuickReplies extends HTMLElement {
     set options(arr: string[]) {
         this.innerHTML = '';
         (arr || []).forEach(text => {
-            const btn = document.createElement('span');
+            const btn = document.createElement('button');
+            btn.type = 'button';
             btn.className = 'quick-reply-btn';
             btn.textContent = text;
             btn.onclick = () => {
                 if (this.hasAttribute('disabled')) return;
                 this.setAttribute('disabled', '');
-                this.dispatchEvent(new CustomEvent('quick-reply', { detail: { text }, bubbles: true }));
+                this.dispatchEvent(new CustomEvent('quick-reply', {detail: {text}, bubbles: true}));
             };
             this.appendChild(btn);
         });
