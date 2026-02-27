@@ -1699,6 +1699,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             .createNotification(title, content, com.intellij.notification.NotificationType.INFORMATION)
             .setImportant(true)
             .notify(project)
+        // Play system alert sound so the user notices even without looking at the IDE
+        try {
+            java.awt.Toolkit.getDefaultToolkit().beep()
+        } catch (_: Exception) { /* best-effort */ }
     }
 
     private fun saveConversation() {
