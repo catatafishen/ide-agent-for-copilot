@@ -1532,6 +1532,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
             } else if (activeSubAgentId != null) {
                 // Internal tool call from a running sub-agent — show on sub-agent's message
+                turnToolCallCount++
+                if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
                 toolCallTitles[toolCallId] = "subagent_internal"
                 consolePanel.addSubAgentToolCall(activeSubAgentId!!, toolCallId, title, arguments)
             } else {
