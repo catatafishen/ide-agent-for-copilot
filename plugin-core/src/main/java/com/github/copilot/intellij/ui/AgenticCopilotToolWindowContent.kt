@@ -81,6 +81,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     // Billing/usage management (extracted to BillingManager)
     private val billing = BillingManager()
     private lateinit var consolePanel: ChatPanelApi
+    private lateinit var responsePanelContainer: JBPanel<JBPanel<*>>
 
     // Per-turn tracking
     private var turnToolCallCount = 0
@@ -281,9 +282,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         // Response/chat history area (top of splitter)
         val responsePanel = createResponsePanel()
+        responsePanelContainer = JBPanel<JBPanel<*>>(BorderLayout())
+        responsePanelContainer.add(responsePanel, BorderLayout.CENTER)
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
         topPanel.add(authPanel, BorderLayout.NORTH)
-        topPanel.add(responsePanel, BorderLayout.CENTER)
+        topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 
         // Input row (bottom of splitter — resizable)
         val inputRow = createInputRow()
@@ -862,7 +865,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class UseNewChatPaneToggleAction : ToggleAction(
-        "Use New Chat Pane (V2)", "Switch to the web-component-based chat pane (requires restart)",
+        "Use New Chat Pane (V2)", "Switch to the web-component-based chat pane",
         com.intellij.icons.AllIcons.Actions.Refresh
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -873,6 +876,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             CopilotSettings.setUseNewChatPane(state)
+            SwingUtilities.invokeLater { rebuildChatPanel() }
         }
     }
 
@@ -1118,6 +1122,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
         // Placeholder only shown if no conversation is restored (set after restore check)
         return consolePanel.component
+    }
+
+    internal fun rebuildChatPanel() {
+        // Dispose old panel
+        com.intellij.openapi.util.Disposer.dispose(consolePanel)
+        // Create new panel
+        val newComponent = createResponsePanel()
+        // Swap in the container
+        responsePanelContainer.removeAll()
+        responsePanelContainer.add(newComponent, BorderLayout.CENTER)
+        responsePanelContainer.revalidate()
+        responsePanelContainer.repaint()
     }
 
     private fun appendResponse(text: String) {

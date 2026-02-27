@@ -36,14 +36,16 @@ class AgenticCopilotToolWindowFactory : ToolWindowFactory, DumbAware {
         val gearGroup = com.intellij.openapi.actionSystem.DefaultActionGroup()
         gearGroup.add(object : com.intellij.openapi.actionSystem.ToggleAction(
             "Use New Chat Pane (V2)",
-            "Switch to the web-component-based chat pane (takes effect on next restart/new chat)",
+            "Switch to the web-component-based chat pane",
             null
         ) {
             override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.BGT
             override fun isSelected(e: AnActionEvent): Boolean =
                 com.github.copilot.intellij.services.CopilotSettings.getUseNewChatPane()
+
             override fun setSelected(e: AnActionEvent, state: Boolean) {
                 com.github.copilot.intellij.services.CopilotSettings.setUseNewChatPane(state)
+                javax.swing.SwingUtilities.invokeLater { content.rebuildChatPanel() }
             }
         })
         toolWindow.setAdditionalGearActions(gearGroup)
