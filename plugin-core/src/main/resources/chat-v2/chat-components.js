@@ -305,16 +305,31 @@ customElements.define('tool-chip', ToolChip);
 /* ── <thinking-chip> ─────────────────────────────────── */
 
 class ThinkingChip extends HTMLElement {
+    static get observedAttributes() {
+        return ['status'];
+    }
+
     connectedCallback() {
         if (this._init) return;
         this._init = true;
         this.classList.add('turn-chip');
         this.style.cursor = 'pointer';
-        this.textContent = '\uD83D\uDCAD Thought';
+        this._render();
         this.onclick = (e) => {
             e.stopPropagation();
             this._toggleExpand();
         };
+    }
+
+    _render() {
+        const status = this.getAttribute('status') || 'complete';
+        if (status === 'running') this.innerHTML = '<span class="chip-spinner"></span> \uD83D\uDCAD Thinking\u2026';
+        else this.textContent = '\uD83D\uDCAD Thought';
+    }
+
+    attributeChangedCallback(name) {
+        if (!this._init) return;
+        if (name === 'status') this._render();
     }
 
     _toggleExpand() {
@@ -670,6 +685,13 @@ const ChatController = {
             this._currentThinking = el;
             this._ensureAgentMessage();
             this._insertSection(el);
+            // Create chip immediately with running status
+            const chip = document.createElement('thinking-chip');
+            chip.setAttribute('status', 'running');
+            chip.linkSection(el);
+            this._pendingMeta?.appendChild(chip);
+            this._pendingMeta?.classList.add('show');
+            this._currentThinkingChip = chip;
         }
         this._currentThinking.appendText(text);
         this._container()?.scrollIfNeeded();
@@ -684,11 +706,10 @@ const ChatController = {
         const el = this._currentThinking;
         this._currentThinking = null;
         el.finalize();
-        this._ensureAgentMessage();
-        const chip = document.createElement('thinking-chip');
-        chip.linkSection(el);
-        this._pendingMeta?.appendChild(chip);
-        this._pendingMeta?.classList.add('show');
+        if (this._currentThinkingChip) {
+            this._currentThinkingChip.setAttribute('status', 'complete');
+            this._currentThinkingChip = null;
+        }
         el.classList.add('turn-hidden');
     },
 

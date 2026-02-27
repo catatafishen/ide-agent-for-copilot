@@ -295,6 +295,10 @@ body {
     animation: spin 0.6s linear infinite;
 }
 
+thinking-chip .chip-spinner {
+    border-top-color: var(--think);
+}
+
 .chip-expanded {
     animation: chipExpand 0.2s ease;
 }
