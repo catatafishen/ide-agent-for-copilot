@@ -1,5 +1,5 @@
-import { b64, escHtml } from './helpers';
-import type { TurnContext } from './types';
+import {b64, escHtml} from './helpers';
+import type {TurnContext} from './types';
 
 interface TurnStats {
     model?: string;
@@ -16,9 +16,12 @@ const ChatController = {
     },
 
     _thinkingCounter: 0,
-    _ctx: {} as Record<string, TurnContext & { thinkingMsg?: HTMLElement | null }>,
+    _ctx: {} as Record<string, TurnContext & { thinkingMsg?: HTMLElement | null; thinkingChip?: HTMLElement | null }>,
 
-    _getCtx(turnId: string, agentId: string): TurnContext & { thinkingMsg?: HTMLElement | null } {
+    _getCtx(turnId: string, agentId: string): TurnContext & {
+        thinkingMsg?: HTMLElement | null;
+        thinkingChip?: HTMLElement | null
+    } {
         const key = turnId + '-' + agentId;
         if (!this._ctx[key]) {
             this._ctx[key] = {
@@ -30,7 +33,10 @@ const ChatController = {
         return this._ctx[key];
     },
 
-    _ensureMsg(turnId: string, agentId: string): TurnContext & { thinkingMsg?: HTMLElement | null } {
+    _ensureMsg(turnId: string, agentId: string): TurnContext & {
+        thinkingMsg?: HTMLElement | null;
+        thinkingChip?: HTMLElement | null
+    } {
         const ctx = this._getCtx(turnId, agentId);
         if (!ctx.msg) {
             const msg = document.createElement('chat-message');
@@ -50,11 +56,18 @@ const ChatController = {
         return ctx;
     },
 
-    _collapseThinkingFor(ctx: TurnContext & { thinkingMsg?: HTMLElement | null } | null): void {
+    _collapseThinkingFor(ctx: TurnContext & {
+        thinkingMsg?: HTMLElement | null;
+        thinkingChip?: HTMLElement | null
+    } | null): void {
         if (!ctx?.thinkingBlock) return;
         ctx.thinkingBlock.removeAttribute('active');
         ctx.thinkingBlock.removeAttribute('expanded');
         ctx.thinkingBlock.classList.add('turn-hidden');
+        if (ctx.thinkingChip) {
+            ctx.thinkingChip.setAttribute('status', 'complete');
+            ctx.thinkingChip = null;
+        }
         ctx.thinkingBlock = null;
         ctx.thinkingMsg = null;
     },
@@ -147,9 +160,11 @@ const ChatController = {
             ctx.thinkingBlock = el;
             const chip = document.createElement('thinking-chip');
             chip.setAttribute('status', 'thinking');
+            chip.dataset.chipFor = el.id;
             (chip as any).linkSection(el);
             ctx.meta!.appendChild(chip);
             ctx.meta!.classList.add('show');
+            ctx.thinkingChip = chip;
         }
         (ctx.thinkingBlock as any).appendText(text);
         this._container()?.scrollIfNeeded();

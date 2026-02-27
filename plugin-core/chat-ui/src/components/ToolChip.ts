@@ -1,4 +1,4 @@
-import { collapseAllChips, escHtml } from '../helpers';
+import {collapseAllChips, escHtml} from '../helpers';
 
 export default class ToolChip extends HTMLElement {
     static get observedAttributes(): string[] {
@@ -31,7 +31,14 @@ export default class ToolChip extends HTMLElement {
         if (label.length > 50) this.dataset.tip = label;
     }
 
+    private _resolveLink(): void {
+        if (!this._linkedSection && this.dataset.chipFor) {
+            this._linkedSection = document.getElementById(this.dataset.chipFor);
+        }
+    }
+
     private _toggleExpand(): void {
+        this._resolveLink();
         const section = this._linkedSection;
         if (!section) return;
         collapseAllChips(this.closest('chat-message'), this);

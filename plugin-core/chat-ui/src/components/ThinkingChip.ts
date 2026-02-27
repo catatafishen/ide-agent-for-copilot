@@ -1,4 +1,4 @@
-import { collapseAllChips } from '../helpers';
+import {collapseAllChips} from '../helpers';
 
 export default class ThinkingChip extends HTMLElement {
     static get observedAttributes(): string[] {
@@ -31,7 +31,14 @@ export default class ThinkingChip extends HTMLElement {
         if (name === 'status') this._render();
     }
 
+    private _resolveLink(): void {
+        if (!this._linkedSection && this.dataset.chipFor) {
+            this._linkedSection = document.getElementById(this.dataset.chipFor);
+        }
+    }
+
     private _toggleExpand(): void {
+        this._resolveLink();
         const section = this._linkedSection;
         if (!section) return;
         collapseAllChips(this.closest('chat-message'), this);

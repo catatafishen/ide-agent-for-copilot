@@ -1,4 +1,4 @@
-import { collapseAllChips } from '../helpers';
+import {collapseAllChips} from '../helpers';
 
 export default class MessageBubble extends HTMLElement {
     static get observedAttributes(): string[] {
@@ -17,6 +17,7 @@ export default class MessageBubble extends HTMLElement {
 
         this.setAttribute('tabindex', '0');
         this.setAttribute('role', 'button');
+        this.setAttribute('aria-label', isUser ? 'Toggle message details' : 'Toggle response details');
         this.onclick = (e: MouseEvent) => {
             if ((e.target as Element).closest('a,.turn-chip')) return;
             collapseAllChips(parent);

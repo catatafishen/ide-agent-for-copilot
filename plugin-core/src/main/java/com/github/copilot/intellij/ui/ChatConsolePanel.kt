@@ -191,8 +191,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         collapseThinking()
         currentTurnId = "t${turnCounter++}"
-        entries.add(EntryData.Prompt(text))
         val ts = timestamp()
+        entries.add(EntryData.Prompt(text, ts))
         val ctxHtml = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
@@ -412,6 +412,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             when (e) {
                 is EntryData.Prompt -> {
                     obj.addProperty("type", "prompt"); obj.addProperty("text", e.text)
+                    if (e.timestamp.isNotEmpty()) obj.addProperty("ts", e.timestamp)
                 }
 
                 is EntryData.Text -> {
@@ -500,7 +501,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun addEntryFromJson(obj: com.google.gson.JsonObject) {
         when (obj["type"]?.asString) {
-            "prompt" -> entries.add(EntryData.Prompt(obj["text"]?.asString ?: ""))
+            "prompt" -> entries.add(EntryData.Prompt(obj["text"]?.asString ?: "", obj["ts"]?.asString ?: ""))
             "text" -> entries.add(EntryData.Text(StringBuilder(obj["raw"]?.asString ?: "")))
             "thinking" -> entries.add(EntryData.Thinking(StringBuilder(obj["raw"]?.asString ?: "")))
             "tool" -> entries.add(
@@ -548,7 +549,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "prompt" -> {
                 currentTurnId = "t${turnCounter++}"
                 val text = obj["text"]?.asString ?: ""
-                executeJs("ChatController.addUserMessage('${escJs(text)}','','')")
+                val ts = obj["ts"]?.asString ?: ""
+                executeJs("ChatController.addUserMessage('${escJs(text)}','$ts','')")
             }
 
             "text" -> {
@@ -634,15 +636,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
         if (start < 0) start = 0
         val batch = deferredRestoreJson.subList(start, deferredRestoreJson.size)
-        val html = StringBuilder()
-        for (el in batch) {
-            val obj = el.asJsonObject
-            addEntryFromJson(obj)
-            html.append(renderBatchHtml(obj))
-        }
+        val entries = batch.map { it.asJsonObject }
+        for (obj in entries) addEntryFromJson(obj)
+        val html = renderBatchGroupedHtml(entries)
         batch.clear()
         if (html.isNotEmpty()) {
-            val encoded = b64(html.toString())
+            val encoded = b64(html)
             executeJs("ChatController.restoreBatch('$encoded')")
         }
         if (deferredRestoreJson.isEmpty()) {
@@ -652,75 +651,111 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
-    private fun renderBatchHtml(obj: com.google.gson.JsonObject): String {
+    private var batchIdCounter = 0
+
+    private fun renderBatchGroupedHtml(entries: List<com.google.gson.JsonObject>): String {
         val sb = StringBuilder()
-        when (obj["type"]?.asString) {
-            "prompt" -> {
-                val text = obj["text"]?.asString ?: ""
-                sb.append("<chat-message type='user'><message-bubble type='user'>${esc(text)}</message-bubble></chat-message>")
-            }
-
-            "text" -> {
-                val raw = obj["raw"]?.asString ?: ""
-                if (raw.isNotBlank()) {
-                    val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
-                    val html = markdownToHtml(clean)
-                    sb.append("<chat-message type='agent'><message-bubble>$html</message-bubble></chat-message>")
+        var i = 0
+        while (i < entries.size) {
+            val obj = entries[i]
+            when (obj["type"]?.asString) {
+                "prompt" -> {
+                    val text = obj["text"]?.asString ?: ""
+                    val ts = obj["ts"]?.asString ?: ""
+                    sb.append("<chat-message type='user'>")
+                    sb.append("<message-meta><span class='ts'>${esc(ts)}</span></message-meta>")
+                    sb.append("<message-bubble type='user'>${esc(text)}</message-bubble>")
+                    sb.append("</chat-message>")
+                    i++
                 }
-            }
 
-            "thinking" -> {
-                val raw = obj["raw"]?.asString ?: ""
-                if (raw.isNotBlank()) {
-                    sb.append(
-                        "<chat-message type='agent'><thinking-block class='thinking-section turn-hidden'><div class='thinking-content'>${
-                            esc(raw)
-                        }</div></thinking-block></chat-message>"
-                    )
+                "separator" -> {
+                    sb.append("<session-divider timestamp='${esc(obj["timestamp"]?.asString ?: "")}'></session-divider>")
+                    i++
                 }
-            }
 
-            "tool" -> {
-                val title = obj["title"]?.asString ?: ""
-                val baseName = title.substringAfterLast("-").substringAfterLast("_")
-                val info = TOOL_DISPLAY_INFO[baseName]
-                val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
-                sb.append(
-                    "<chat-message type='agent'><message-meta class='meta show'><span class='turn-chip tool'>${
-                        esc(
-                            displayName
-                        )
-                    }</span></message-meta><message-bubble>Completed</message-bubble></chat-message>"
-                )
-            }
+                "status" -> {
+                    val icon = obj["icon"]?.asString ?: "ℹ"
+                    val type = if (icon == ICON_ERROR) "error" else "info"
+                    sb.append("<status-message type='$type' message='${esc(obj["message"]?.asString ?: "")}'></status-message>")
+                    i++
+                }
 
-            "subagent" -> {
-                val agentType = obj["agentType"]?.asString ?: "general-purpose"
-                val saInfo = SUB_AGENT_INFO[agentType]
-                val displayName = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
-                val result = obj["result"]?.asString?.ifEmpty { null }
-                val ci = obj["colorIndex"]?.asInt ?: 0
-                val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else "Completed"
-                sb.append("<subagent-block color-index='$ci'>")
-                sb.append(
-                    "<div class='agent-row'><div class='agent-bubble'><span class='subagent-prefix'>@${
-                        esc(
-                            displayName
-                        )
-                    }</span></div></div>"
-                )
-                sb.append("<div class='agent-row'><div class='subagent-bubble'>$resultHtml</div></div>")
-                sb.append("</subagent-block>")
-            }
+                "context" -> {
+                    i++
+                }
 
-            "status" -> {
-                val icon = obj["icon"]?.asString ?: "ℹ"
-                val type = if (icon == "❌") "error" else "info"
-                sb.append("<status-message type='$type' message='${esc(obj["message"]?.asString ?: "")}'></status-message>")
-            }
+                else -> {
+                    // Agent turn: group consecutive agent entries into one chat-message
+                    sb.append("<chat-message type='agent'>")
+                    val metaChips = StringBuilder()
+                    val content = StringBuilder()
+                    while (i < entries.size) {
+                        val e = entries[i]
+                        val t = e["type"]?.asString
+                        if (t == "prompt" || t == "separator" || t == "status") break
+                        when (t) {
+                            "thinking" -> {
+                                val raw = e["raw"]?.asString ?: ""
+                                if (raw.isNotBlank()) {
+                                    val id = "batch-think-${batchIdCounter++}"
+                                    metaChips.append("<thinking-chip status='complete' data-chip-for='$id'></thinking-chip>")
+                                    content.append(
+                                        "<thinking-block id='$id' class='thinking-section turn-hidden'><div class='thinking-content'>${
+                                            esc(
+                                                raw
+                                            )
+                                        }</div></thinking-block>"
+                                    )
+                                }
+                            }
 
-            "separator" -> {
-                sb.append("<session-divider timestamp='${esc(obj["timestamp"]?.asString ?: "")}'></session-divider>")
+                            "tool" -> {
+                                val title = e["title"]?.asString ?: ""
+                                val args = e["args"]?.asString
+                                val baseName = title.substringAfterLast("-").substringAfterLast("_")
+                                val info = TOOL_DISPLAY_INFO[baseName]
+                                val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
+                                val short = formatToolSubtitle(baseName, args)
+                                val label = if (short != null) "$displayName — $short" else displayName
+                                val id = "batch-tool-${batchIdCounter++}"
+                                metaChips.append("<tool-chip label='${esc(label)}' status='complete' data-chip-for='$id'></tool-chip>")
+                                content.append("<tool-section id='$id' title='${esc(label)}'")
+                                if (args != null) content.append(" params='${esc(args)}'")
+                                content.append("><div class='tool-params'></div><div class='tool-result'>Completed</div></tool-section>")
+                            }
+
+                            "text" -> {
+                                val raw = e["raw"]?.asString ?: ""
+                                if (raw.isNotBlank()) {
+                                    val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
+                                    val html = markdownToHtml(clean)
+                                    content.append("<message-bubble>$html</message-bubble>")
+                                }
+                            }
+
+                            "subagent" -> {
+                                val agentType = e["agentType"]?.asString ?: "general-purpose"
+                                val saInfo = SUB_AGENT_INFO[agentType]
+                                val dn = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
+                                val result = e["result"]?.asString?.ifEmpty { null }
+                                val ci = e["colorIndex"]?.asInt ?: 0
+                                val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else "Completed"
+                                val id = "batch-sa-${batchIdCounter++}"
+                                metaChips.append("<subagent-chip label='${esc(dn)}' status='complete' color-index='$ci' data-chip-for='$id'></subagent-chip>")
+                                content.append("<div id='$id' class='subagent-indent subagent-c$ci turn-hidden'><message-bubble>$resultHtml</message-bubble></div>")
+                            }
+
+                            else -> {}
+                        }
+                        i++
+                    }
+                    if (metaChips.isNotEmpty()) {
+                        sb.append("<message-meta class='show'>$metaChips</message-meta>")
+                    }
+                    sb.append(content)
+                    sb.append("</chat-message>")
+                }
             }
         }
         return sb.toString()
