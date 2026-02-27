@@ -56,6 +56,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var loadMoreBridgeJs = ""
     private var quickReplyBridgeJs = ""
     private var htmlQueryBridgeJs = ""
+
     @Volatile
     private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
     private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
@@ -731,7 +732,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val trigger = Runnable {
             htmlPageFuture = future
             browser.cefBrowser.executeJavaScript(
-                "(function(){ var el = document.querySelector('chat-container')?.shadowRoot?.getElementById('msgs'); var html = el ? el.innerHTML : ''; $htmlQueryBridgeJs })()",
+                "(function(){ var el = document.querySelector('#messages'); var html = el ? el.innerHTML : ''; $htmlQueryBridgeJs })()",
                 "", 0
             )
         }
