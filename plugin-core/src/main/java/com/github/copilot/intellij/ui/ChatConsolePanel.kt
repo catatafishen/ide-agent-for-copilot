@@ -317,6 +317,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var contextCounter = 0
     private var nextSubAgentColor = 0
     private var activeSubAgentWrapperId: String? = null
+    private var pendingAgentMetaId: String? = null
 
     // JCEF
     private val browser: JBCefBrowser?
@@ -510,11 +511,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
-            entryCounter++
-            val ts = timestamp()
-            val html =
-                "<div class='agent-row'><div class='meta' id='meta-$entryCounter'><span class='ts'>$ts</span></div><div class='agent-bubble' id='text-$entryCounter' onclick='toggleMeta(this)'><pre class='streaming'></pre></div></div>"
-            appendHtml(html)
+            if (pendingAgentMetaId != null) {
+                // Reuse the "Working…" bubble — replace placeholder with streaming content
+                pendingAgentMetaId = null
+                val id = "text-$entryCounter"
+                executeJs("(function(){var e=document.getElementById('$id');if(e){e.innerHTML='<pre class=\"streaming\"></pre>';}})()")
+            } else {
+                entryCounter++
+                val ts = timestamp()
+                val html =
+                    "<div class='agent-row'><div class='meta' id='meta-$entryCounter'><span class='ts'>$ts</span></div><div class='agent-bubble' id='text-$entryCounter' onclick='toggleMeta(this)'><pre class='streaming'></pre></div></div>"
+                appendHtml(html)
+            }
             executeJs("collapsePendingTools()")
         }
         currentTextData!!.raw.append(text)
@@ -555,7 +563,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
         val contentKey = TOOL_CONTENT_KEY[title] ?: TOOL_CONTENT_KEY[baseName]
         if (contentKey != null && !arguments.isNullOrBlank()) {
-            // Tool with markdown content (e.g. update_todo) — write to file and show link
             val filePath = writeToolContentFile(title, contentKey, arguments)
             if (filePath != null) {
                 contentParts.append(
@@ -573,19 +580,38 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
         contentParts.append("<div class='tool-result' id='result-$did'><span class='tool-result-pending'>Running...</span></div>")
 
-        val html = """<div class='collapse-section tool-section collapsed' id='tool-$did'>
+        // Tool section is hidden from the start; a chip on the agent bubble represents it
+        val html = """<div class='collapse-section tool-section collapsed turn-hidden' id='tool-$did'>
             <div class='collapse-header' tabindex='0' role='button' aria-expanded='false' onclick='toggleTool("tool-$did")' onkeydown='if(event.key==="Enter"||event.key===" ")this.click()'>
                 <span class='collapse-icon'><span class='tool-spinner'></span></span>
                 <span class='collapse-label'>$safeDisplayName</span>
                 <span class='caret'>▸</span>
             </div>
             <div class='collapse-content'>$contentParts</div></div>"""
+
         val wrapperId = activeSubAgentWrapperId
+        val metaId: String
         if (wrapperId != null) {
             appendHtmlToSubAgent(html, wrapperId)
+            metaId = "meta-$wrapperId"
         } else {
+            // Ensure a "Working…" agent bubble exists for chips
+            if (pendingAgentMetaId == null) {
+                entryCounter++
+                val ts = timestamp()
+                val metaIdVal = "meta-$entryCounter"
+                pendingAgentMetaId = metaIdVal
+                val bubbleHtml =
+                    "<div class='agent-row'><div class='meta show' id='$metaIdVal'><span class='ts'>$ts</span></div>" +
+                        "<div class='agent-bubble' id='text-$entryCounter' onclick='toggleMeta(this)'>" +
+                        "<span class='agent-pending'>Working\u2026</span></div></div>"
+                appendHtml(bubbleHtml)
+            }
+            metaId = pendingAgentMetaId!!
             appendHtml(html)
         }
+        // Create chip directly on the meta container
+        executeJs("addToolChipDirect('tool-$did','${escapeJs(safeDisplayName)}','$metaId')")
         fallbackArea?.let { SwingUtilities.invokeLater { it.append("⚒ $displayName\n") } }
     }
 
@@ -597,22 +623,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             if (status == "completed") "✓ Completed" else "✖ Failed"
         }
         val encoded = Base64.getEncoder().encodeToString(resultContent.toByteArray(Charsets.UTF_8))
-        when (status) {
-            "completed" -> executeJs(
-                """(function(){var el=document.getElementById('tool-$did');if(!el)return;
-                var icon=el.querySelector('.collapse-icon');icon.innerHTML='✓';
-                var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');
-                collapseToolToChip('tool-$did');})()"""
-            )
-
-            "failed" -> executeJs(
-                """(function(){var el=document.getElementById('tool-$did');if(!el)return;
-                var icon=el.querySelector('.collapse-icon');icon.innerHTML='✖';icon.style.color='red';
-                el.querySelector('.collapse-label').style.color='red';
-                var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');
-                collapseToolToChip('tool-$did');})()"""
-            )
-        }
+        val failed = status == "failed"
+        val iconHtml = if (failed) "✖" else "✓"
+        val colorJs =
+            if (failed) "icon.style.color='red';el.querySelector('.collapse-label').style.color='red';" else ""
+        executeJs(
+            """(function(){var el=document.getElementById('tool-$did');if(!el)return;
+            var icon=el.querySelector('.collapse-icon');icon.innerHTML='$iconHtml';$colorJs
+            var r=document.getElementById('result-$did');if(r)r.innerHTML=b64('$encoded');
+            updateToolChipStatus('tool-$did',$failed);})()"""
+        )
     }
 
     fun addSubAgentEntry(
@@ -1142,6 +1162,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         collapseThinking()
         activeSubAgentWrapperId = null
+        if (pendingAgentMetaId != null) {
+            // Tool calls happened but no text followed — remove the "Working…" placeholder
+            val id = "text-$entryCounter"
+            executeJs("(function(){var e=document.getElementById('$id');if(e){var p=e.querySelector('.agent-pending');if(p)p.remove();}})()")
+            pendingAgentMetaId = null
+        }
         val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
         executeJs("finalizeTurn($statsJson)")
         trimMessages()

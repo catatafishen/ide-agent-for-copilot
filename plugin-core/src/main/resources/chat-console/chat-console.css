@@ -321,6 +321,23 @@ body {
     animation: spin .8s linear infinite;
 }
 
+.chip-spinner {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid var(--spin-bg);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    flex-shrink: 0;
+}
+
+.agent-pending {
+    color: var(--think);
+    font-size: 0.88em;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
 @keyframes spin {
     to {
         transform: rotate(360deg)

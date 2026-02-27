@@ -272,6 +272,40 @@ function collapsePendingTools() {
     });
 }
 
+function addToolChipDirect(sectionId, label, metaId) {
+    const el = document.getElementById(sectionId);
+    const meta = document.getElementById(metaId);
+    if (!el || !meta) return;
+    const saMatch = el.className.match(/subagent-\w+/);
+    const chip = document.createElement('span');
+    if (saMatch) {
+        chip.className = 'turn-chip subagent ' + saMatch[0];
+    } else {
+        chip.className = 'turn-chip tool';
+    }
+    const spinner = document.createElement('span');
+    spinner.className = 'chip-spinner';
+    chip.appendChild(spinner);
+    const txt = document.createTextNode(' ' + (label.length > 50 ? label.substring(0, 47) + '\u2026' : label));
+    chip.appendChild(txt);
+    if (label.length > 50) chip.dataset.tip = label;
+    el.dataset.chipOwned = '1';
+    chip.dataset.chipFor = sectionId;
+    chip.style.cursor = 'pointer';
+    _attachChipToggle(chip, el);
+    meta.appendChild(chip);
+    meta.classList.add('show');
+    scrollIfNeeded();
+}
+
+function updateToolChipStatus(sectionId, failed) {
+    const chip = document.querySelector('[data-chip-for="' + sectionId + '"]');
+    if (!chip) return;
+    const spinner = chip.querySelector('.chip-spinner');
+    if (spinner) spinner.remove();
+    if (failed) chip.classList.add('failed');
+}
+
 
 // noinspection SpellCheckingInspection
 document.addEventListener('click', function (e) {
@@ -335,7 +369,9 @@ function _handleCopyClick(btn, pre) {
     const text = code ? code.textContent : pre.textContent;
     navigator.clipboard.writeText(text).then(function () {
         btn.textContent = 'Copied!';
-        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        setTimeout(function () {
+            btn.textContent = 'Copy';
+        }, 1500);
     });
 }
 
@@ -347,7 +383,9 @@ const _copyObserver = new MutationObserver(function () {
         btn.textContent = 'Copy';
         btn.tabIndex = 0;
         btn.setAttribute('role', 'button');
-        btn.onclick = function () { _handleCopyClick(btn, pre); };
+        btn.onclick = function () {
+            _handleCopyClick(btn, pre);
+        };
         // Insert button as a sibling after the pre element instead of as a child
         // This prevents the button text from appearing in the code content during streaming
         pre.parentElement.insertBefore(btn, pre.nextElementSibling);
