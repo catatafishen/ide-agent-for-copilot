@@ -55,6 +55,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var cursorBridgeJs = ""
     private var loadMoreBridgeJs = ""
     private var quickReplyBridgeJs = ""
+    private var htmlQueryBridgeJs = ""
+    @Volatile
+    private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
     private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
 
     // ── Swing fallback ─────────────────────────────────────────────
@@ -63,6 +66,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     companion object {
         private const val SA_COLOR_COUNT = 8
         private val QUICK_REPLY_TAG_REGEX = Regex("\\[quick-reply:\\s*([^]]+)]")
+
+        /** Active panels keyed by project — used by MCP tool to retrieve page HTML. */
+        private val instances = java.util.concurrent.ConcurrentHashMap<Project, ChatConsolePanel>()
+
+        fun getInstance(project: Project): ChatConsolePanel? = instances[project]
 
         private fun getThemeColor(key: String, lightFallback: Color, darkFallback: Color): Color =
             UIManager.getColor(key) ?: JBColor(lightFallback, darkFallback)
@@ -126,6 +134,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             Disposer.register(this, quickReplyQuery)
             quickReplyBridgeJs = quickReplyQuery.inject("text")
 
+            val htmlQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            htmlQuery.addHandler { html ->
+                htmlPageFuture?.complete(html)
+                null
+            }
+            Disposer.register(this, htmlQuery)
+            htmlQueryBridgeJs = htmlQuery.inject("html")
+
             add(browser.component, BorderLayout.CENTER)
 
             browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
@@ -164,6 +180,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             fallbackArea = JBTextArea().apply { isEditable = false; lineWrap = true; wrapStyleWord = true }
             add(JBScrollPane(fallbackArea), BorderLayout.CENTER)
         }
+        instances[project] = this
     }
 
     // ── Public API ─────────────────────────────────────────────────
@@ -708,7 +725,32 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         return sb.toString()
     }
 
-    override fun dispose() { /* children auto-disposed via Disposer */
+    override fun getPageHtml(): String? {
+        if (browser == null || !browserReady || htmlQueryBridgeJs.isBlank()) return null
+        val future = java.util.concurrent.CompletableFuture<String>()
+        val trigger = Runnable {
+            htmlPageFuture = future
+            browser.cefBrowser.executeJavaScript(
+                "(function(){ var html = document.documentElement.outerHTML; $htmlQueryBridgeJs })()",
+                "", 0
+            )
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            trigger.run()
+        } else {
+            SwingUtilities.invokeLater(trigger)
+        }
+        return try {
+            future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            null
+        } finally {
+            htmlPageFuture = null
+        }
+    }
+
+    override fun dispose() {
+        instances.remove(project)
     }
 
     // ── Internal ───────────────────────────────────────────────────

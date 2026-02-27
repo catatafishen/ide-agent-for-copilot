@@ -651,6 +651,10 @@ public class McpServer {
             ),
             List.of("path", "type")));
 
+        tools.add(buildTool("get_chat_html", "Get Chat HTML: retrieves the live DOM HTML from the JCEF chat panel for debugging. Returns the full page HTML including all rendered messages and components.",
+            Map.of(),
+            List.of()));
+
         result.add("tools", tools);
         return result;
     }

@@ -72,4 +72,9 @@ interface ChatPanelApi : Disposable {
     fun getLastResponseText(): String
     fun serializeEntries(): String
     fun restoreEntries(json: String)
+
+    // ── Debug / introspection ──────────────────────────────────────
+
+    /** Returns the full HTML of the JCEF page (live DOM), or null if unavailable. */
+    fun getPageHtml(): String?
 }

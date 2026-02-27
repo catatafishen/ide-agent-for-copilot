@@ -37,6 +37,7 @@ class EditorTools extends AbstractToolHandler {
         register("show_diff", this::showDiff);
         register("create_scratch_file", this::createScratchFile);
         register("list_scratch_files", this::listScratchFiles);
+        register("get_chat_html", this::getChatHtml);
     }
 
     private String openInEditor(JsonObject args) throws Exception {
@@ -305,5 +306,18 @@ class EditorTools extends AbstractToolHandler {
                 }
             }
         }
+    }
+
+    @SuppressWarnings("unused")
+    private String getChatHtml(JsonObject args) throws Exception {
+        var panel = com.github.copilot.intellij.ui.ChatConsolePanel.Companion.getInstance(project);
+        if (panel == null) {
+            return "Error: Chat panel not found. Is the Copilot tool window open?";
+        }
+        String html = panel.getPageHtml();
+        if (html == null) {
+            return "Error: Could not retrieve page HTML. Browser may not be ready.";
+        }
+        return html;
     }
 }
