@@ -65,6 +65,7 @@ body {
     margin: var(--sp-5) 0 var(--sp-2) 0;
 }
 .prompt-bubble {
+    display: inline-block;
     background: var(--user-a12); border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
     padding: var(--sp-3) var(--sp-7); max-width: 85%; font-weight: normal;
     white-space: pre-wrap; font-size: 0.88em;
