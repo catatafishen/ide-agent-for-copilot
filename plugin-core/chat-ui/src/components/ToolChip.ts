@@ -1,4 +1,5 @@
 import {collapseAllChips, escHtml} from '../helpers';
+import {toolDisplayName} from '../toolDisplayName';
 
 export default class ToolChip extends HTMLElement {
     static get observedAttributes(): string[] {
@@ -21,14 +22,18 @@ export default class ToolChip extends HTMLElement {
     }
 
     private _render(): void {
-        const label = this.getAttribute('label') || '';
+        const rawLabel = this.getAttribute('label') || '';
         const status = this.getAttribute('status') || 'running';
-        const display = label.length > 50 ? label.substring(0, 47) + '\u2026' : label;
+        this._resolveLink();
+        const paramsStr = this._linkedSection?.getAttribute('params') || undefined;
+        const display = toolDisplayName(rawLabel, paramsStr);
+        const truncated = display.length > 50 ? display.substring(0, 47) + '\u2026' : display;
         let iconHtml = '';
         if (status === 'running') iconHtml = '<span class="chip-spinner"></span> ';
         else if (status === 'failed') this.classList.add('failed');
-        this.innerHTML = iconHtml + escHtml(display);
-        if (label.length > 50) this.dataset.tip = label;
+        this.innerHTML = iconHtml + escHtml(truncated);
+        if (display.length > 50) this.dataset.tip = display;
+        else if (rawLabel !== display) this.dataset.tip = rawLabel;
     }
 
     private _resolveLink(): void {
