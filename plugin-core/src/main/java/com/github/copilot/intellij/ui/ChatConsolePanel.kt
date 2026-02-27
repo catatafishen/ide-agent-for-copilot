@@ -925,10 +925,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 appendThinkingText(obj["raw"]?.asString ?: ""); collapseThinking()
             }
 
-            "tool" -> addToolCallEntry(
-                "restored-${entryCounter}", obj["title"]?.asString ?: "",
-                obj["args"]?.asString?.ifEmpty { null }
-            )
+            "tool" -> {
+                val restoredId = "restored-${entryCounter}"
+                addToolCallEntry(restoredId, obj["title"]?.asString ?: "", obj["args"]?.asString?.ifEmpty { null })
+                updateToolCall(restoredId, "completed")
+            }
 
             "subagent" -> {
                 val restoredId = "restored-${entryCounter}"
