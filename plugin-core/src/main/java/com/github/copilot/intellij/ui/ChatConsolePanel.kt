@@ -318,6 +318,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var nextSubAgentColor = 0
     private var activeSubAgentWrapperId: String? = null
     private var pendingAgentMetaId: String? = null
+    private var restoreIdCounter = 0
 
     // JCEF
     private val browser: JBCefBrowser?
@@ -926,15 +927,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
 
             "tool" -> {
-                entryCounter++
-                val restoredId = "restored-${entryCounter}"
+                val restoredId = "restored-tool-${restoreIdCounter++}"
                 addToolCallEntry(restoredId, obj["title"]?.asString ?: "", obj["args"]?.asString?.ifEmpty { null })
                 updateToolCall(restoredId, "completed")
             }
 
             "subagent" -> {
-                entryCounter++
-                val restoredId = "restored-${entryCounter}"
+                val restoredId = "restored-sa-${restoreIdCounter++}"
                 addSubAgentEntry(
                     restoredId,
                     obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL,
