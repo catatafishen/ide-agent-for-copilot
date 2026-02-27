@@ -202,6 +202,7 @@ body {
 
 /* ── Thinking section ─────────────────────────────────── */
 .thinking-section {
+    display: block;
     padding: var(--sp-3) var(--sp-6);
     font-size: 0.88em;
     margin: var(--sp-2) 0;
@@ -218,6 +219,7 @@ body {
 }
 
 .tool-section {
+    display: block;
     padding: var(--sp-3) var(--sp-6);
     font-size: 0.88em;
     margin: var(--sp-2) 0;

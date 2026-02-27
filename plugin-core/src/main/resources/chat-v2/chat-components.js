@@ -715,6 +715,7 @@ const ChatController = {
         if (section) {
             section.updateStatus(status);
             if (resultHtml) section.result = resultHtml;
+            else if (status === 'completed' || status === 'failed') section.result = '';
         }
         const chip = document.querySelector('[data-chip-for="' + sectionId + '"]');
         if (chip) chip.setAttribute('status', status === 'failed' ? 'failed' : 'complete');
