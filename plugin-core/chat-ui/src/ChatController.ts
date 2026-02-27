@@ -328,6 +328,11 @@ const ChatController = {
                 meta.classList.add('show');
             }
         }
+        // If the turn has no message-bubble (tool-only turn), collapse meta
+        // so the user doesn't see a floating chip bar with nothing below it
+        if (ctx?.msg && !ctx.msg.querySelector('message-bubble')) {
+            ctx.msg.querySelector('message-meta')?.classList.remove('show');
+        }
         if (ctx) {
             ctx.thinkingBlock = null;
             ctx.textBubble = null;
@@ -399,6 +404,16 @@ const ChatController = {
             c => c.tagName === 'CHAT-MESSAGE' || c.tagName === 'STATUS-MESSAGE'
         );
         if (rows.length > 80) for (let i = 0; i < rows.length - 80; i++) rows[i].remove();
+    },
+
+    collapseEmptyTurns(): void {
+        const msgs = this._msgs();
+        if (!msgs) return;
+        msgs.querySelectorAll('chat-message[type="agent"]').forEach(msg => {
+            if (!msg.querySelector('message-bubble')) {
+                msg.querySelector('message-meta')?.classList.remove('show');
+            }
+        });
     },
 };
 
