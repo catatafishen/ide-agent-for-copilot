@@ -560,13 +560,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         private val requestsLabel = JBLabel("")
         private var startedAt = 0L
         private var toolCallCount = 0
-        private var requestsUsed = 0
         private val ticker = javax.swing.Timer(1000) { refreshDisplay() }
 
         // Session-wide accumulators
         private var sessionTotalTimeMs = 0L
         private var sessionTotalToolCalls = 0
-        private var sessionTotalRequests = 0
         private var sessionTurnCount = 0
         private var isRunning = false
 
@@ -609,7 +607,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         fun start() {
             startedAt = System.currentTimeMillis()
             toolCallCount = 0
-            requestsUsed = 0
             isRunning = true
             displayMode = modeTurn
             timerLabel.text = "0s"
@@ -632,7 +629,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             // Accumulate into session totals
             sessionTotalTimeMs += System.currentTimeMillis() - startedAt
             sessionTotalToolCalls += toolCallCount
-            sessionTotalRequests += requestsUsed
             sessionTurnCount++
             refreshDisplay()
             spinner.suspend()
@@ -644,7 +640,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         fun resetSession() {
             sessionTotalTimeMs = 0L
             sessionTotalToolCalls = 0
-            sessionTotalRequests = 0
             sessionTurnCount = 0
             displayMode = modeTurn
         }
@@ -665,19 +660,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         private fun refreshTurnMode() {
-            toolTipText = "Turn stats (estimated from model multiplier) · Click for session"
+            toolTipText = "Turn stats · Click for session"
             updateLabel()
             toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
             toolsLabel.isVisible = toolCallCount > 0
-            // Read premium request count from ACP client (single source of truth)
-            val reqs = try {
-                CopilotService.getInstance(project).getClient().requestsInTurn
-            } catch (_: Exception) {
-                requestsUsed
-            }
-            requestsUsed = reqs
-            requestsLabel.text = if (reqs > 0) "\u2022 ~$reqs req" else ""
-            requestsLabel.isVisible = reqs > 0
+            requestsLabel.isVisible = false
             if (!isRunning) doneIcon.text = "\u2705"
         }
 
@@ -1357,7 +1344,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     appendResponse(chunk)
                 },
                 { update -> handlePromptStreamingUpdate(update, receivedContent) },
-                null // request counting handled by CopilotAcpClient.requestsInTurn
+                null // premium requests tracked via billing API, not per-turn
             )
 
             handlePromptCompletion(prompt)

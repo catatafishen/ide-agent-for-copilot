@@ -321,16 +321,6 @@ internal class DebugPanel(
 
         gbc.gridx = 0
         gbc.gridy++
-        panel.add(JBLabel("Max requests per turn:"), gbc)
-
-        gbc.gridx = 1
-        val requestSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getMaxRequestsPerTurn(), 0, 500, 10))
-        requestSpinner.toolTipText =
-            "Limit model requests per turn (0 = unlimited). Each approved tool call triggers another request."
-        panel.add(requestSpinner, gbc)
-
-        gbc.gridx = 0
-        gbc.gridy++
         gbc.gridwidth = 2
         gbc.weighty = 1.0
         gbc.fill = GridBagConstraints.BOTH
@@ -339,7 +329,6 @@ internal class DebugPanel(
         val saveCallback: () -> Unit = {
             CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
             CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
-            CopilotSettings.setMaxRequestsPerTurn(requestSpinner.value as Int)
         }
 
         return Pair(panel, saveCallback)

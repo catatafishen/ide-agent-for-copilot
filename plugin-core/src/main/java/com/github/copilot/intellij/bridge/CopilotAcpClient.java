@@ -126,8 +126,6 @@ public class CopilotAcpClient implements Closeable {
     // Activity tracking for inactivity-based timeout
     private volatile long lastActivityTimestamp = System.currentTimeMillis();
     private final AtomicInteger toolCallsInTurn = new AtomicInteger(0);
-    private final AtomicInteger requestsInTurn = new AtomicInteger(0);
-    private volatile int currentModelMultiplier = 1;
 
     // Debug event listeners for UI debug tab
     private final CopyOnWriteArrayList<Consumer<DebugEvent>> debugListeners = new CopyOnWriteArrayList<>();
@@ -429,9 +427,6 @@ public class CopilotAcpClient implements Closeable {
             int maxRetries = 3;
             int retryCount = 0;
 
-            // Compute model multiplier for premium request counting
-            currentModelMultiplier = parseMultiplier(getModelMultiplier(model != null ? model : ""));
-
             while (true) {
                 JsonObject params = buildPromptParams(sessionId, currentPrompt, references);
 
@@ -439,7 +434,6 @@ public class CopilotAcpClient implements Closeable {
                 builtInActionDeniedDuringTurn = false;
                 lastActivityTimestamp = System.currentTimeMillis();
                 toolCallsInTurn.set(0);
-                requestsInTurn.set(currentModelMultiplier); // initial model invocation
 
                 if (onRequest != null) onRequest.run();
 
@@ -530,7 +524,6 @@ public class CopilotAcpClient implements Closeable {
         throws CopilotException, ExecutionException, InterruptedException {
         int inactivityTimeoutSec = CopilotSettings.getPromptTimeout();
         int maxToolCalls = CopilotSettings.getMaxToolCallsPerTurn();
-        int maxRequests = CopilotSettings.getMaxRequestsPerTurn();
         long pollIntervalMs = 5000;
 
         while (true) {
@@ -539,7 +532,6 @@ public class CopilotAcpClient implements Closeable {
             } catch (TimeoutException e) {
                 checkInactivityTimeout(id, inactivityTimeoutSec, e);
                 checkCreditLimit(id, maxToolCalls, e);
-                checkRequestLimit(id, maxRequests, e);
             }
         }
     }
@@ -570,20 +562,6 @@ public class CopilotAcpClient implements Closeable {
             terminateAgent();
             throw new CopilotException(
                 "Agent stopped: tool call limit reached (" + toolCallsInTurn.get() + "/" + maxToolCalls + ")", cause, true);
-        }
-    }
-
-    private void checkRequestLimit(long id, int maxRequests, TimeoutException cause)
-        throws CopilotException {
-        if (maxRequests > 0 && requestsInTurn.get() >= maxRequests) {
-            pendingRequests.remove(id);
-            LOG.warn("Request limit reached: " + requestsInTurn.get() + "/" + maxRequests);
-            fireDebugEvent("REQUEST_LIMIT",
-                "Request limit reached: " + requestsInTurn.get() + "/" + maxRequests,
-                "Terminating agent to prevent excess usage");
-            terminateAgent();
-            throw new CopilotException(
-                "Agent stopped: request limit reached (" + requestsInTurn.get() + "/" + maxRequests + ")", cause, true);
         }
     }
 
@@ -1148,7 +1126,7 @@ public class CopilotAcpClient implements Closeable {
             String allowOptionId = findAllowOption(reqParams);
             LOG.info("ACP request_permission: auto-approving " + permKind + ", option=" + allowOptionId);
             fireDebugEvent("PERMISSION_APPROVED", formattedPermission, "");
-            requestsInTurn.addAndGet(currentModelMultiplier); // approved tool → model will be invoked again
+            // Premium requests are billed per user turn, not per tool call
             sendPermissionResponse(reqId, allowOptionId);
         }
     }
@@ -1336,25 +1314,6 @@ public class CopilotAcpClient implements Closeable {
             .findFirst()
             .map(m -> m.getUsage() != null ? m.getUsage() : "1x")
             .orElse("1x");
-    }
-
-    /**
-     * Parse a multiplier string like "3x" into an integer. Returns 1 on failure.
-     */
-    private static int parseMultiplier(@NotNull String multiplierStr) {
-        try {
-            return Integer.parseInt(multiplierStr.replace("x", "").trim());
-        } catch (NumberFormatException e) {
-            return 1;
-        }
-    }
-
-    /**
-     * Returns the number of premium requests consumed so far in this turn.
-     * Accounts for model multiplier (e.g. 3× model = 3 per invocation).
-     */
-    public int getRequestsInTurn() {
-        return requestsInTurn.get();
     }
 
     private String findAllowOption(JsonObject reqParams) {
