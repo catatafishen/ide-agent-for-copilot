@@ -55,6 +55,9 @@ mcp-server/build/
 plugin-core/chat-ui/node_modules/
 plugin-core/js-tests/node_modules/
 
+# Generated chat UI bundle (built from chat-ui/src/ TypeScript)
+plugin-core/src/main/resources/chat/chat-components.js
+
 # Agent workspace (for Copilot session state)
 .agent-work/
 
