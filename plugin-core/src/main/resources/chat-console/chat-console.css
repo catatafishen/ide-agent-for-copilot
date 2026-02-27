@@ -706,46 +706,6 @@ body {
     font-size: 0.95em;
 }
 
-/* --- Processing indicator (indeterminate progress bar) --- */
-.processing-indicator {
-    padding: var(--sp-4) var(--sp-8);
-    margin: var(--sp-2) 0
-}
-
-.processing-bar {
-    height: 2px;
-    border-radius: 1px;
-    background: var(--fg-a08);
-    overflow: hidden;
-    position: relative;
-}
-
-.processing-bar-inner {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    width: 30%;
-    border-radius: 1px;
-    background: var(--agent);
-    animation: indeterminate 1.5s ease-in-out infinite;
-}
-
-@keyframes indeterminate {
-    0% {
-        left: -30%;
-        width: 30%
-    }
-    50% {
-        left: 50%;
-        width: 40%
-    }
-    100% {
-        left: 100%;
-        width: 30%
-    }
-}
-
 /* --- Load more banner (lazy loading) --- */
 .load-more-banner {
     text-align: center;

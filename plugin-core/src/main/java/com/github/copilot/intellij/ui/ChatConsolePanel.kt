@@ -64,9 +64,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private val SA_UI_COLOR: Color get() = JBColor(Color(0xD8, 0x70, 0x93), Color(0xD8, 0x70, 0x93))
 
         internal const val ICON_ERROR = "\u274C"
-        private const val JS_REMOVE_PROCESSING =
-            "(function(){var e=document.getElementById('processing-ind');if(e)e.remove();})()"
-
         /** Matches `[quick-reply: Option A | Option B | ...]` tags on their own line. */
         val QUICK_REPLY_TAG_REGEX = Regex("""^\[quick-reply:\s*([^\]]+)]\s*$""", RegexOption.MULTILINE)
 
@@ -469,7 +466,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     fun appendThinkingText(text: String) {
-        // Don't hide processing indicator here — thinking is collapsed and not visually obvious
         if (currentThinkingData == null) {
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
             thinkingCounter++
@@ -701,34 +697,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         entries.add(EntryData.Status("\u2139", message))
         appendHtml("<div class='status-row info'>\u2139 ${escapeHtml(message)}</div>")
-    }
-
-    private var processingShownAt = 0L
-
-    /** Show a bouncing-dots indicator at the bottom of the chat while the agent is processing. */
-    fun showProcessingIndicator() {
-        processingShownAt = System.currentTimeMillis()
-        executeJs(
-            """(function(){
-            if(document.getElementById('processing-ind'))return;
-            var d=document.createElement('div');d.id='processing-ind';d.className='processing-indicator';
-            d.innerHTML='<div class="processing-bar"><div class="processing-bar-inner"></div></div>';
-            document.getElementById('container').appendChild(d);scrollIfNeeded();
-        })()"""
-        )
-    }
-
-    /** Remove the bouncing-dots processing indicator, ensuring minimum 500ms visibility. */
-    fun hideProcessingIndicator() {
-        val elapsed = System.currentTimeMillis() - processingShownAt
-        val minDisplay = 500L
-        if (elapsed < minDisplay && processingShownAt > 0) {
-            javax.swing.Timer((minDisplay - elapsed).toInt()) {
-                executeJs(JS_REMOVE_PROCESSING)
-            }.apply { isRepeats = false; start() }
-        } else {
-            executeJs(JS_REMOVE_PROCESSING)
-        }
     }
 
     fun hasContent(): Boolean = entries.isNotEmpty()
@@ -1173,9 +1141,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         collapseThinking()
         activeSubAgentWrapperId = null
-        // Force-remove indicator immediately (response is done)
-        processingShownAt = 0
-        executeJs(JS_REMOVE_PROCESSING)
         val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
         executeJs("finalizeTurn($statsJson)")
         trimMessages()
@@ -1250,9 +1215,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
         executeJs(
             """(function(){var c=document.getElementById('container');
-            var ind=document.getElementById('processing-ind');if(ind)ind.remove();
             c.insertAdjacentHTML('beforeend',b64('$encoded'));
-            if(ind)c.appendChild(ind);scrollIfNeeded();})()"""
+            scrollIfNeeded();})()"""
         )
     }
 

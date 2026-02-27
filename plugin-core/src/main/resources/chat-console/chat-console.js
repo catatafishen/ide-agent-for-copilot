@@ -318,9 +318,7 @@ function showQuickReplies(options) {
         };
         div.appendChild(btn);
     });
-    const ind = document.getElementById('processing-ind');
-    if (ind) ind.before(div);
-    else c.appendChild(div);
+    c.appendChild(div);
     scrollIfNeeded();
 }
 

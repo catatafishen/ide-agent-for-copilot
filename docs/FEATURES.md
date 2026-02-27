@@ -622,8 +622,6 @@ reload needed.
 
 ### Processing Indicators
 
-- **Processing bar**: A 2px animated bar (green, sliding left-to-right) appears during agent
-  turns with a 500ms minimum visibility to avoid flashing.
 - **Streaming text**: Agent responses render progressively with auto-scroll to keep the latest
   content visible.
 - **Spinner**: An animated pulse icon on thinking and tool call sections while they're active.
