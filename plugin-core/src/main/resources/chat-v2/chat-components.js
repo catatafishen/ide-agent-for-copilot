@@ -599,14 +599,14 @@ const ChatController = {
     _currentThinking: null,
     _thinkingCounter: 0,
 
-    // ── ID-based element access (no mutable pointers) ──────────
+    // ── ID-based element access ───────────────────────────
 
-    _getOrCreateMsg(turnId) {
-        const existing = document.getElementById('msg-' + turnId);
+    _getOrCreateMsg(segId) {
+        const existing = document.getElementById('msg-' + segId);
         if (existing) return existing;
         const msg = document.createElement('chat-message');
         msg.setAttribute('type', 'agent');
-        msg.id = 'msg-' + turnId;
+        msg.id = 'msg-' + segId;
         const meta = document.createElement('message-meta');
         const now = new Date();
         const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
@@ -619,24 +619,24 @@ const ChatController = {
         return msg;
     },
 
-    _getMeta(turnId) {
-        return document.querySelector('#msg-' + turnId + ' > message-meta');
+    _getMeta(segId) {
+        return document.querySelector('#msg-' + segId + ' > message-meta');
     },
 
-    _getOrCreateBubble(turnId) {
-        const existing = document.getElementById('bubble-' + turnId);
+    _getOrCreateBubble(segId) {
+        const existing = document.getElementById('bubble-' + segId);
         if (existing) return existing;
-        const msg = this._getOrCreateMsg(turnId);
+        const msg = this._getOrCreateMsg(segId);
         const bubble = document.createElement('message-bubble');
-        bubble.id = 'bubble-' + turnId;
+        bubble.id = 'bubble-' + segId;
         bubble.setAttribute('streaming', '');
         msg.appendChild(bubble);
         return bubble;
     },
 
-    _insertSection(turnId, el) {
-        const msg = this._getOrCreateMsg(turnId);
-        const bubble = document.getElementById('bubble-' + turnId);
+    _insertSection(segId, el) {
+        const msg = this._getOrCreateMsg(segId);
+        const bubble = document.getElementById('bubble-' + segId);
         if (bubble) {
             msg.insertBefore(el, bubble);
         } else {
@@ -660,22 +660,19 @@ const ChatController = {
         this._container()?.forceScroll();
     },
 
-    appendAgentText(turnId, text) {
+    appendAgentText(segId, text) {
         this._collapseThinkingInternal();
-        const bubble = document.getElementById('bubble-' + turnId);
+        const bubble = document.getElementById('bubble-' + segId);
         if (!bubble && !text.trim()) return;
-        this._getOrCreateBubble(turnId).appendStreamingText(text);
+        this._getOrCreateBubble(segId).appendStreamingText(text);
         this._container()?.scrollIfNeeded();
     },
 
-    finalizeAgentText(turnId, encodedHtml) {
-        const bubble = document.getElementById('bubble-' + turnId);
+    finalizeAgentText(segId, encodedHtml) {
+        const bubble = document.getElementById('bubble-' + segId);
         if (!bubble && !encodedHtml) return;
         if (encodedHtml) {
-            const target = bubble || this._getOrCreateBubble(turnId);
-            target.finalize(b64(encodedHtml));
-            // Release ID so next _getOrCreateBubble creates a fresh bubble
-            target.removeAttribute('id');
+            (bubble || this._getOrCreateBubble(segId)).finalize(b64(encodedHtml));
         } else if (bubble) {
             const msg = bubble.closest('chat-message');
             bubble.remove();
@@ -686,7 +683,7 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
-    addThinkingText(turnId, text) {
+    addThinkingText(segId, text) {
         if (!this._currentThinking) {
             this._thinkingCounter++;
             const el = document.createElement('thinking-block');
@@ -694,8 +691,8 @@ const ChatController = {
             el.setAttribute('active', '');
             el.setAttribute('expanded', '');
             this._currentThinking = el;
-            this._insertSection(turnId, el);
-            const meta = this._getMeta(turnId);
+            this._insertSection(segId, el);
+            const meta = this._getMeta(segId);
             if (meta) {
                 const chip = document.createElement('thinking-chip');
                 chip.setAttribute('status', 'thinking');
@@ -719,14 +716,14 @@ const ChatController = {
         this._currentThinking = null;
     },
 
-    addToolCall(turnId, id, title, paramsJson) {
+    addToolCall(segId, id, title, paramsJson) {
         this._collapseThinkingInternal();
         const section = document.createElement('tool-section');
         section.id = id;
         section.setAttribute('title', title);
         if (paramsJson) section.setAttribute('params', paramsJson);
-        this._insertSection(turnId, section);
-        const meta = this._getMeta(turnId);
+        this._insertSection(segId, section);
+        const meta = this._getMeta(segId);
         if (meta) {
             const chip = document.createElement('tool-chip');
             chip.setAttribute('label', title);
@@ -752,10 +749,10 @@ const ChatController = {
         if (chip) chip.setAttribute('status', status === 'failed' ? 'failed' : 'complete');
     },
 
-    addSubAgent(turnId, sectionId, displayName, colorIndex, promptText) {
+    addSubAgent(segId, sectionId, displayName, colorIndex, promptText) {
         this._collapseThinkingInternal();
-        const parentMsg = this._getOrCreateMsg(turnId);
-        const parentMeta = this._getMeta(turnId);
+        const parentMsg = this._getOrCreateMsg(segId);
+        const parentMeta = this._getMeta(segId);
         const chip = document.createElement('subagent-chip');
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
@@ -832,15 +829,15 @@ const ChatController = {
         this._thinkingCounter = 0;
     },
 
-    finalizeTurn(turnId, statsJson) {
+    finalizeTurn(segId, statsJson) {
         // Clean up leftover empty streaming bubble
-        const bubble = document.getElementById('bubble-' + turnId);
+        const bubble = document.getElementById('bubble-' + segId);
         if (bubble && !bubble.textContent?.trim()) {
             bubble.remove();
         }
-        let meta = this._getMeta(turnId);
+        let meta = this._getMeta(segId);
         if (!meta) {
-            const rows = this._msgs().querySelectorAll('chat-message.agent-row:not(.subagent-indent)');
+            const rows = this._msgs().querySelectorAll('chat-message[type="agent"]:not(.subagent-indent)');
             if (rows.length) meta = rows[rows.length - 1].querySelector('message-meta');
         }
         if (statsJson && meta) {
