@@ -479,7 +479,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 </div>
                 <div class='collapse-content'></div>
             </div>"""
-            appendHtml(html)
+            insertHtmlBeforePendingBubble(html)
         }
         currentThinkingData!!.raw.append(text)
         val id = "think-$thinkingCounter"
@@ -608,7 +608,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 appendHtml(bubbleHtml)
             }
             metaId = pendingAgentMetaId!!
-            appendHtml(html)
+            insertHtmlBeforePendingBubble(html)
         }
         // Create chip directly on the meta container
         executeJs("addToolChipDirect('tool-$did','${escapeJs(safeDisplayName)}','$metaId')")
@@ -1246,6 +1246,23 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs(
             """(function(){var c=document.getElementById('container');
             c.insertAdjacentHTML('beforeend',b64('$encoded'));
+            scrollIfNeeded();})()"""
+        )
+    }
+
+    /** Insert HTML before the pending "Working…" agent row so expanded sections appear above the bubble. */
+    private fun insertHtmlBeforePendingBubble(html: String) {
+        val metaId = pendingAgentMetaId
+        if (metaId == null) {
+            appendHtml(html)
+            return
+        }
+        val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
+        executeJs(
+            """(function(){var m=document.getElementById('$metaId');if(!m){return;}
+            var row=m.parentElement;var c=row.parentElement;
+            var tmp=document.createElement('div');tmp.innerHTML=b64('$encoded');
+            while(tmp.firstChild)c.insertBefore(tmp.firstChild,row);
             scrollIfNeeded();})()"""
         )
     }
