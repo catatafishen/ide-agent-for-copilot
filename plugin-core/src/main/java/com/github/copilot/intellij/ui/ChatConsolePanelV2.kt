@@ -42,6 +42,13 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     private var currentTextData: EntryData.Text? = null
     private var currentThinkingData: EntryData.Thinking? = null
     private var nextSubAgentColor = 0
+    private var turnCounter = 0
+    private var currentTurnId = ""
+
+    private fun ensureTurnId(): String {
+        if (currentTurnId.isEmpty()) currentTurnId = "t${turnCounter++}"
+        return currentTurnId
+    }
 
     // ── JCEF ───────────────────────────────────────────────────────
     private val browser: JBCefBrowser?
@@ -154,6 +161,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?) {
         finalizeCurrentText()
         collapseThinking()
+        currentTurnId = ""
         entries.add(EntryData.Prompt(text))
         val ts = timestamp()
         val ctxHtml = if (!contextFiles.isNullOrEmpty()) {
@@ -183,7 +191,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
         }
         currentThinkingData!!.raw.append(text)
-        executeJs("ChatController.addThinkingText('${escJs(text)}')")
+        executeJs("ChatController.addThinkingText('${ensureTurnId()}','${escJs(text)}')")
     }
 
     override fun collapseThinking() {
@@ -199,7 +207,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             currentTextData = EntryData.Text().also { entries.add(it) }
         }
         currentTextData!!.raw.append(text)
-        executeJs("ChatController.appendAgentText('${escJs(text)}')")
+        executeJs("ChatController.appendAgentText('${ensureTurnId()}','${escJs(text)}')")
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(text) } }
     }
 
@@ -213,7 +221,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         val short = formatToolSubtitle(baseName, arguments)
         val label = if (short != null) "$displayName — $short" else displayName
         val paramsJson = if (!arguments.isNullOrBlank()) escJs(arguments) else ""
-        executeJs("ChatController.addToolCall('$did','${escJs(label)}','$paramsJson')")
+        executeJs("ChatController.addToolCall('${ensureTurnId()}','$did','${escJs(label)}','$paramsJson')")
     }
 
     override fun updateToolCall(id: String, status: String, details: String?) {
@@ -245,7 +253,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         val info = SUB_AGENT_INFO[agentType]
         val displayName = info?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
         val promptText = prompt ?: description
-        executeJs("ChatController.addSubAgent('$did','${escJs(displayName)}',$colorIndex,'${escJs(promptText)}')")
+        val tid = ensureTurnId()
+        executeJs("ChatController.addSubAgent('$tid','$did','${escJs(displayName)}',$colorIndex,'${escJs(promptText)}')")
         if (!initialResult.isNullOrBlank() || initialStatus == "completed" || initialStatus == "failed") {
             val resultHtml =
                 if (!initialResult.isNullOrBlank()) markdownToHtml(initialResult) else if (initialStatus == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
@@ -281,6 +290,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     override fun addSessionSeparator(timestamp: String) {
         finalizeCurrentText()
+        currentTurnId = ""
         entries.add(EntryData.SessionSeparator(timestamp))
         executeJs("ChatController.addSessionSeparator('${escJs(timestamp)}')")
     }
@@ -288,6 +298,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun showPlaceholder(text: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
+        currentTurnId = ""; turnCounter = 0
         executeJs("ChatController.showPlaceholder('${escJs(text)}')")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
@@ -295,6 +306,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun clear() {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
+        currentTurnId = ""; turnCounter = 0
         executeJs("ChatController.clear()")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
     }
@@ -302,8 +314,10 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun finishResponse(toolCallCount: Int, modelId: String, multiplier: String) {
         finalizeCurrentText()
         collapseThinking()
+        val tid = currentTurnId.ifEmpty { "t${turnCounter++}" }
         val statsJson = """{"tools":$toolCallCount,"model":"${escJs(modelId)}","mult":"${escJs(multiplier)}"}"""
-        executeJs("ChatController.finalizeTurn($statsJson)")
+        executeJs("ChatController.finalizeTurn('$tid',$statsJson)")
+        currentTurnId = ""
         SwingUtilities.invokeLater { browser?.component?.repaint() }
     }
 
@@ -389,6 +403,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun restoreEntries(json: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
+        currentTurnId = ""; turnCounter = 0
         val arr = try {
             com.google.gson.JsonParser.parseString(json).asJsonArray
         } catch (_: Exception) {
@@ -467,28 +482,32 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     private fun renderRestoredEntry(obj: com.google.gson.JsonObject) {
         when (obj["type"]?.asString) {
             "prompt" -> {
+                currentTurnId = ""
                 val text = obj["text"]?.asString ?: ""
                 executeJs("ChatController.addUserMessage('${escJs(text)}','','')")
             }
 
             "text" -> {
+                val tid = ensureTurnId()
                 val raw = obj["raw"]?.asString ?: ""
                 if (raw.isNotBlank()) {
                     val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
                     val html = markdownToHtml(clean)
                     val encoded = b64(html)
-                    executeJs("ChatController._ensureAgentMessage();ChatController.finalizeAgentText('$encoded')")
+                    executeJs("ChatController.finalizeAgentText('$tid','$encoded')")
                 }
             }
 
             "thinking" -> {
+                val tid = ensureTurnId()
                 val raw = obj["raw"]?.asString ?: ""
                 if (raw.isNotBlank()) {
-                    executeJs("ChatController.addThinkingText('${escJs(raw)}');ChatController.collapseThinking()")
+                    executeJs("ChatController.addThinkingText('$tid','${escJs(raw)}');ChatController.collapseThinking()")
                 }
             }
 
             "tool" -> {
+                val tid = ensureTurnId()
                 val title = obj["title"]?.asString ?: ""
                 val args = obj["args"]?.asString
                 val baseName = title.substringAfterLast("-").substringAfterLast("_")
@@ -497,10 +516,11 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val short = formatToolSubtitle(baseName, args)
                 val label = if (short != null) "$displayName — $short" else displayName
                 val did = "restored-tool-${entries.size}"
-                executeJs("ChatController.addToolCall('$did','${escJs(label)}','${escJs(args ?: "")}');ChatController.updateToolCall('$did','completed','Completed')")
+                executeJs("ChatController.addToolCall('$tid','$did','${escJs(label)}','${escJs(args ?: "")}');ChatController.updateToolCall('$did','completed','Completed')")
             }
 
             "subagent" -> {
+                val tid = ensureTurnId()
                 val agentType = obj["agentType"]?.asString ?: "general-purpose"
                 val saInfo = SUB_AGENT_INFO[agentType]
                 val displayName = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
@@ -510,7 +530,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val ci = obj["colorIndex"]?.asInt ?: 0
                 val did = "restored-sa-${entries.size}"
                 val promptText = prompt ?: (obj["description"]?.asString ?: "")
-                executeJs("ChatController.addSubAgent('$did','${escJs(displayName)}',$ci,'${escJs(promptText)}')")
+                executeJs("ChatController.addSubAgent('$tid','$did','${escJs(displayName)}',$ci,'${escJs(promptText)}')")
                 val resultHtml =
                     if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
                 val encoded = b64(resultHtml)
@@ -525,6 +545,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             }
 
             "separator" -> {
+                currentTurnId = ""
                 val ts = obj["timestamp"]?.asString ?: ""
                 executeJs("ChatController.addSessionSeparator('${escJs(ts)}')")
             }
@@ -643,9 +664,10 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     private fun finalizeCurrentText() {
         val data = currentTextData ?: return
         currentTextData = null
+        val tid = currentTurnId.ifEmpty { "t${turnCounter++}" }
         val rawText = data.raw.toString()
         if (rawText.isBlank()) {
-            executeJs("ChatController.finalizeAgentText(null)")
+            executeJs("ChatController.finalizeAgentText('$tid',null)")
             entries.remove(data); return
         }
         val cleanText = rawText.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
@@ -653,7 +675,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             val html = markdownToHtml(cleanText)
             val encoded = b64(html)
             SwingUtilities.invokeLater {
-                executeJs("ChatController.finalizeAgentText('$encoded')")
+                executeJs("ChatController.finalizeAgentText('$tid','$encoded')")
             }
         }
     }
