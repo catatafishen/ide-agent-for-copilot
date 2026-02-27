@@ -450,6 +450,10 @@ body {
     animation: pulse 1.5s ease-in-out infinite;
 }
 
+[class*="subagent-c"] > .agent-row > .meta {
+    margin-left: var(--r-lg);
+}
+
 /* --- Context files --- */
 .context-section .collapse-header {
     background: var(--user-a06);

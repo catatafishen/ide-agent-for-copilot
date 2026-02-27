@@ -128,6 +128,11 @@ function _attachChipToggle(chip, el) {
     chip.onclick = function (ev) {
         ev.stopPropagation();
         if (el.classList.contains('turn-hidden')) {
+            // Move section to right before the agent-row containing the chip
+            var agentRow = chip.closest('.agent-row');
+            if (agentRow && agentRow.parentElement) {
+                agentRow.parentElement.insertBefore(el, agentRow);
+            }
             el.classList.remove('turn-hidden', 'collapsed');
             el.classList.add('chip-expanded');
             chip.style.opacity = '0.5';
