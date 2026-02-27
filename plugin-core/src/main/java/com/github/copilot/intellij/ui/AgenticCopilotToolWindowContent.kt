@@ -80,7 +80,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Billing/usage management (extracted to BillingManager)
     private val billing = BillingManager()
-    private lateinit var consolePanel: ChatConsolePanel
+    private lateinit var consolePanel: ChatPanelApi
 
     // Per-turn tracking
     private var turnToolCallCount = 0
@@ -501,6 +501,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(BuildBeforeEndToggleAction())
         leftGroup.add(TestBeforeEndToggleAction())
         leftGroup.add(CommitBeforeEndToggleAction())
+        leftGroup.add(Separator.create())
+        leftGroup.add(UseNewChatPaneToggleAction())
         leftGroup.addSeparator()
         leftGroup.add(ProjectFilesDropdownAction())
         leftGroup.addSeparator()
@@ -859,6 +861,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    private inner class UseNewChatPaneToggleAction : ToggleAction(
+        "Use New Chat Pane (V2)", "Switch to the web-component-based chat pane (requires restart)",
+        com.intellij.icons.AllIcons.Actions.Refresh
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean {
+            return CopilotSettings.getUseNewChatPane()
+        }
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            CopilotSettings.setUseNewChatPane(state)
+        }
+    }
+
     // HelpAction extracted to HelpDialog.kt
 
     /** Open a project-root file in the editor if it exists */
@@ -1091,12 +1108,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun createResponsePanel(): JComponent {
-        consolePanel = ChatConsolePanel(project)
+        consolePanel = if (com.github.copilot.intellij.services.CopilotSettings.getUseNewChatPane()) {
+            ChatConsolePanelV2(project)
+        } else {
+            ChatConsolePanel(project)
+        }
         consolePanel.onQuickReply = { text -> SwingUtilities.invokeLater { sendQuickReply(text) } }
         // Register for proper JCEF browser disposal
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
         // Placeholder only shown if no conversation is restored (set after restore check)
-        return consolePanel
+        return consolePanel.component
     }
 
     private fun appendResponse(text: String) {

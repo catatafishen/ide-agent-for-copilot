@@ -1,0 +1,71 @@
+package com.github.copilot.intellij.ui
+
+import com.intellij.openapi.Disposable
+import javax.swing.JComponent
+
+/**
+ * Public API for the chat console panel, shared by both legacy and v2 implementations.
+ * AgenticCopilotToolWindowContent programs against this interface so the implementation
+ * can be swapped via the "useNewChatPane" setting.
+ */
+interface ChatPanelApi : Disposable {
+
+    /** The Swing component to embed in the tool window. */
+    val component: JComponent
+
+    /** Callback invoked when the user clicks a quick-reply button. */
+    var onQuickReply: ((String) -> Unit)?
+
+    // ── User messages ──────────────────────────────────────────────
+
+    fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>? = null)
+    fun setPromptStats(modelId: String, multiplier: String)
+    fun addContextFilesEntry(files: List<Pair<String, String>>)
+
+    // ── Agent text (streaming) ─────────────────────────────────────
+
+    fun appendText(text: String)
+    fun appendThinkingText(text: String)
+    fun collapseThinking()
+
+    // ── Tool calls ─────────────────────────────────────────────────
+
+    fun addToolCallEntry(id: String, title: String, arguments: String? = null)
+    fun updateToolCall(id: String, status: String, details: String? = null)
+
+    // ── Sub-agents ─────────────────────────────────────────────────
+
+    fun addSubAgentEntry(
+        id: String, agentType: String, description: String, prompt: String?,
+        initialResult: String? = null, initialStatus: String? = null
+    )
+
+    fun updateSubAgentResult(id: String, status: String, result: String?)
+
+    // ── Status / errors ────────────────────────────────────────────
+
+    fun addErrorEntry(message: String)
+    fun addInfoEntry(message: String)
+
+    // ── Session management ─────────────────────────────────────────
+
+    fun hasContent(): Boolean
+    fun addSessionSeparator(timestamp: String)
+    fun showPlaceholder(text: String)
+    fun clear()
+
+    // ── Turn lifecycle ─────────────────────────────────────────────
+
+    fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x")
+    fun showQuickReplies(options: List<String>)
+    fun disableQuickReplies()
+
+    // ── Conversation export / persistence ──────────────────────────
+
+    fun getConversationText(): String
+    fun getCompressedSummary(maxChars: Int = 8000): String
+    fun getConversationHtml(): String
+    fun getLastResponseText(): String
+    fun serializeEntries(): String
+    fun restoreEntries(json: String)
+}

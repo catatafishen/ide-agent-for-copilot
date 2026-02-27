@@ -21,6 +21,7 @@ public final class CopilotSettings {
     private static final String KEY_BUILD_BEFORE_END = "copilot.buildBeforeEnd";
     private static final String KEY_TEST_BEFORE_END = "copilot.testBeforeEnd";
     private static final String KEY_COMMIT_BEFORE_END = "copilot.commitBeforeEnd";
+    private static final String KEY_USE_NEW_CHAT_PANE = "copilot.useNewChatPane";
     private static final int DEFAULT_PROMPT_TIMEOUT = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS = 0;
     private static final int DEFAULT_MAX_REQUESTS = 0;
@@ -153,5 +154,13 @@ public final class CopilotSettings {
 
     public static void setCommitBeforeEnd(boolean enabled) {
         PropertiesComponent.getInstance().setValue(KEY_COMMIT_BEFORE_END, enabled, false);
+    }
+
+    public static boolean getUseNewChatPane() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_USE_NEW_CHAT_PANE, false);
+    }
+
+    public static void setUseNewChatPane(boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_USE_NEW_CHAT_PANE, enabled, false);
     }
 }

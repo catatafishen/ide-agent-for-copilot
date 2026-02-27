@@ -1,7 +1,6 @@
 package com.github.copilot.intellij.ui
 
 import com.intellij.ide.ui.LafManagerListener
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -92,7 +91,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
 
         /** JSON key to use as subtitle in the chip label for specific tools */
-        private val TOOL_SUBTITLE_KEY = mapOf(
+        internal val TOOL_SUBTITLE_KEY = mapOf(
             // File operations
             "read_file" to "path",
             "intellij_read_file" to "path",
@@ -417,7 +416,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     // --- Public API ---
 
-    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>? = null) {
+    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?) {
         finalizeCurrentText()
         collapseThinking()
         entries.add(EntryData.Prompt(text))
@@ -535,7 +534,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(text) } }
     }
 
-    override fun addToolCallEntry(id: String, title: String, arguments: String? = null) {
+    override fun addToolCallEntry(id: String, title: String, arguments: String?) {
         finalizeCurrentText()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
@@ -619,7 +618,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.append("⚒ $displayName\n") } }
     }
 
-    override fun updateToolCall(id: String, status: String, details: String? = null) {
+    override fun updateToolCall(id: String, status: String, details: String?) {
         val did = domId(id)
         val resultContent = if (!details.isNullOrBlank()) {
             "<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${escapeHtml(details)}</code></pre>"
@@ -641,7 +640,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     override fun addSubAgentEntry(
         id: String, agentType: String, description: String, prompt: String?,
-        initialResult: String? = null, initialStatus: String? = null
+        initialResult: String?, initialStatus: String?
     ) {
         finalizeCurrentText()
         val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
