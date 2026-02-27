@@ -445,16 +445,6 @@ body {
 }
 
 /* ── Tool section detail ─────────────────────────────── */
-.tool-spinner {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--spin-bg);
-    border-top-color: var(--tool);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-}
-
 .tool-params-code {
     font-size: 0.85em;
 }

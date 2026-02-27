@@ -178,14 +178,10 @@ describe('tool-section', () => {
         expect(section.innerHTML).toContain('Output here');
     });
 
-    it('updateStatus sets attribute', () => {
+    it('updateStatus is a no-op (status tracked on chip)', () => {
         section.updateStatus('completed');
-        expect(section.getAttribute('status')).toBe('completed');
-    });
-
-    it('updateStatus failed sets attribute', () => {
         section.updateStatus('failed');
-        expect(section.getAttribute('status')).toBe('failed');
+        // no error thrown
     });
 });
 

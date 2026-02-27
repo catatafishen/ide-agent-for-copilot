@@ -241,10 +241,6 @@ customElements.define('thinking-block', ThinkingBlock);
 /* ── <tool-section> ──────────────────────────────────── */
 
 class ToolSection extends HTMLElement {
-    static get observedAttributes() {
-        return ['title', 'status'];
-    }
-
     connectedCallback() {
         if (this._init) return;
         this._init = true;
@@ -264,8 +260,7 @@ class ToolSection extends HTMLElement {
         if (el) el.innerHTML = val;
     }
 
-    updateStatus(status) {
-        this.setAttribute('status', status);
+    updateStatus(_status) { /* status tracked on chip only */
     }
 
     _esc(s) {
