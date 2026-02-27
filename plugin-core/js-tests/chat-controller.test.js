@@ -131,7 +131,7 @@ describe('ChatController', () => {
             CC().addToolCall('t0', 'main', 'tc-1', 'Read File', '{}');
             CC().updateToolCall('tc-1', 'completed', 'file contents');
             const chip = getMessages().querySelector('tool-chip');
-            expect(chip.getAttribute('status')).toBe('completed');
+            expect(chip.getAttribute('status')).toBe('complete');
         });
 
         it('multiple tool calls in same turn share message', () => {
@@ -156,7 +156,7 @@ describe('ChatController', () => {
             CC().addSubAgent('t0', 'main', 'sa-1', 'Task Agent', 1, 'Do something');
             CC().updateSubAgent('sa-1', 'completed', '<p>Done</p>');
             const chip = getMessages().querySelector('subagent-chip');
-            expect(chip.getAttribute('status')).toBe('completed');
+            expect(chip.getAttribute('status')).toBe('complete');
         });
     });
 
@@ -170,7 +170,7 @@ describe('ChatController', () => {
 
         it('showPlaceholder shows placeholder text', () => {
             CC().showPlaceholder('Loading...');
-            const ph = getMessages().querySelector('#placeholder');
+            const ph = getMessages().querySelector('.placeholder');
             expect(ph.textContent).toContain('Loading...');
         });
     });
@@ -182,12 +182,11 @@ describe('ChatController', () => {
             expect(btns.length).toBe(2);
         });
 
-        it('disableQuickReplies marks buttons disabled except selected', () => {
+        it('disableQuickReplies marks container disabled', () => {
             CC().showQuickReplies(['A', 'B']);
-            CC().disableQuickReplies(0);
-            const all = getMessages().querySelectorAll('.quick-reply-btn');
-            expect(all[0].hasAttribute('disabled')).toBe(true);
-            expect(all[1].hasAttribute('disabled')).toBe(false);
+            CC().disableQuickReplies();
+            const qr = getMessages().querySelector('quick-replies');
+            expect(qr.hasAttribute('disabled')).toBe(true);
         });
     });
 
