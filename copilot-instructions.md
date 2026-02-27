@@ -1,147 +1,287 @@
-You are running inside an IntelliJ IDEA plugin with access to 56 IDE tools.
+# Project Development Guidelines — IntelliJ Copilot Plugin
 
-FILE OPERATIONS:
-- intellij_read_file: Read any file. Supports 'start_line'/'end_line' for partial reads. \
-  ⚠️ ALWAYS use start_line/end_line when you only need a section — full file reads waste tokens. \
-  Example: intellij_read_file(path, start_line=50, end_line=100) reads only lines 50-100.
-- intellij_write_file: Write/edit files. \
-  ⚠️ ALWAYS use 'old_str'+'new_str' for targeted edits. NEVER send full file content unless creating a new file. \
-  Full file writes waste tokens and risk overwriting concurrent changes. \
-  Example: intellij_write_file(path, old_str="old code", new_str="new code") \
-  ✅ WRITE RESPONSES INCLUDE HIGHLIGHTS: Every successful edit automatically returns file highlights \
-  (errors/warnings). Check the "--- Highlights (auto) ---" section in the response. \
-  If errors are reported, fix them immediately before editing other files.
+> This file provides project-specific conventions. Tool usage rules and workflow instructions are provided by the MCP
+> server at initialization.
+>
+> **Project Spec**: See `PROJECT-SPEC.md` for full architecture details.
 
-CODE SEARCH (AST-based, searches live editor buffers):
-- search_symbols: Find class/method/function definitions by name
-- find_references: Find all usages of a symbol at specific location
-- get_file_outline: Get structure/symbols in a file
-- get_class_outline: Get constructors/methods/fields of any class by FQN (works on library JARs and JDK)
+---
 
-COMMANDS:
-- run_command: One-shot commands (gradle build, git status). Output in Run panel.
-- run_in_terminal: Interactive shells or long-running processes. Opens visible terminal tab.
+## 1) Project Context
 
-BEST PRACTICES:
+- IntelliJ plugin integrating GitHub Copilot with 54 MCP tools for code intelligence
+- Written in **Java 21**, targets IntelliJ 2024.3-2025.2, built with Gradle
+- Three modules: `plugin-core` (UI + services), `mcp-server` (tool definitions), `integration-tests`
+- ACP protocol via Copilot CLI, MCP via stdio server, PSI bridge via HTTP
 
-1. TRUST TOOL OUTPUTS - they return data directly. Don't try to read temp files or invent processing tools.
+---
 
-2. READ FILES EFFICIENTLY - Use start_line/end_line to read only the section you need. \
-Only read full files when you need the complete picture (e.g., first time reading a file).
+## 2) IntelliJ Platform Rules
 
-3. WORKSPACE: ALL temp files, plans, notes MUST go in '.agent-work/' inside the project root. \
-NEVER write to /tmp/, home directory, or any location outside the project. \
-'.agent-work/' is git-ignored and persists across sessions.
+### Threading
 
-4. AFTER EDITING: Check the auto-highlights in the write response. \
-If the "--- Highlights (auto) ---" section shows errors, fix them IMMEDIATELY before editing other files. \
-You do NOT need to call get_highlights separately — it's included in every write response. \
-Only call get_highlights explicitly for files you haven't edited (e.g., to check existing code quality).
+- ✅ **Always** wrap PSI access in `ReadAction.compute()` or `ReadAction.run()`
+- ✅ **Always** wrap file writes in `WriteAction.compute()` or `WriteAction.run()`
+- ❌ **Never** nest read/write actions
+- ✅ Use `invokeLater()` for UI operations
 
-5. For MULTIPLE SEQUENTIAL EDITS: \
-When making 3+ edits to the same or different files, set auto_format=false to prevent reformatting between edits. \
-Check the auto-highlights in each write response → fix errors before continuing. \
-After all edits complete, call format_code and optimize_imports ONCE.
+### Null Checks
 
-AUTO_FORMAT IMPORTANT NOTES: \
-a) auto_format runs SYNCHRONOUSLY → the write response reflects the formatted state. \
-b) auto_format includes optimize_imports which REMOVES imports it considers unused. \
-   If you add imports in one edit and the code using them in a later edit, \
-   set auto_format=false on the import edit or add imports and code in the SAME edit. \
-c) auto_format may reindent code. The write response includes context lines showing the \
-   post-format state so you can verify structure is correct. \
-d) If auto_format damages the file (e.g., shifts braces, removes needed imports), \
-   use the 'undo' tool to revert. Each write+format creates 2 undo steps.
+- ✅ **Keep defensive null checks** even if marked `@NotNull` (runtime != compile-time)
+- ✅ Suppress with `@SuppressWarnings({"ConstantValue", "DataFlowIssue"})` if IntelliJ complains
 
-6. BEFORE EDITING UNFAMILIAR FILES: If a file has inconsistent formatting or you get old_str match failures, \
-call format_code on the file first, then re-read it. This normalizes line endings, whitespace, and indentation. \
-Your next old_str will match on the first try.
+---
 
-7. search_text reads from IntelliJ's live editor buffers (always up-to-date, even for unsaved files). \
-Use it instead of grep/ripgrep for cross-file text/regex searches. \
-Use the file_pattern parameter to scope searches (e.g., '*.kt', '*.java').
+## 3) Code Quality Standards
 
-8. BEFORE RUNNING COMMANDS: Use run_command for one-shot commands (build, lint, test). \
-Use run_in_terminal for interactive shells or long-running processes (servers, watches). \
-NEVER use run_command for anything that needs stdin input or runs indefinitely.
+### Priority Order
 
-9. TESTING: ALWAYS prefer run_tests over run_command for test execution. \
-run_tests integrates with IntelliJ's test framework → shows pass/fail per test, clickable stack traces. \
-Use get_test_results to retrieve results after run_tests completes. \
-Use 'list_tests' to discover tests. DO NOT use grep for finding test methods. \
-Only use run_command for tests as a last resort if run_tests fails.
+1. **Compilation errors** (must fix immediately)
+2. **Warnings** (fix all when asked to "clean up")
+3. **Style issues** (fix if easy)
+4. **Grammar** (LOW priority — only if requested)
 
-10. GrazieInspection (grammar) does NOT support apply_quickfix → use intellij_write_file instead.
+### Tool-Specific Quirks
 
-11. GIT OPERATIONS: \
-ALWAYS use the built-in git tools (git_status, git_diff, git_log, git_blame, git_commit, \
-git_stage, git_unstage, git_branch, git_stash, git_show). \
-NEVER use 'run_command' for git operations (e.g., 'git checkout', 'git reset', 'git pull'). \
-Shell git commands bypass IntelliJ's VCS layer and cause editor buffer desync → \
-the editor will show stale content that doesn't match the files on disk. \
-IntelliJ git tools properly sync editor buffers, undo history, and VFS state. \
-If you need a git operation not covered by the built-in tools, ask the user to perform it manually.
+**GrazieInspection (Grammar)**:
 
-12. UNDO: \
-Use the 'undo' tool to revert bad edits. Each write registers as an undo step, \
-and auto_format registers a separate step. So a write with auto_format=true creates 2 undo steps. \
-Undo is the fastest way to recover from a bad edit → faster than re-reading and re-editing.
+- ❌ Does NOT support `apply_quickfix`
+- ✅ Must manually edit with `intellij_write_file`
+- If 50+ grammar issues, ask user first
 
-13. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
-a) Check auto-highlights in write response → after EACH edit. Instant. Catches most errors. \
-b) get_compilation_errors() → after editing multiple files. Fast scan of open files for ERROR-level only. \
-c) build_project → ONLY before committing. Full incremental compilation. Only one build runs at a time. \
-NEVER use build_project as your first error check after an edit → it's 100x slower than highlights. \
-If build_project says "Build already in progress", wait and retry → do NOT spam it.
+**SonarLint**:
 
-WORKFLOW FOR "FIX ALL ISSUES" / "FIX WHOLE PROJECT" TASKS:
-⚠️ CRITICAL: You MUST ask the user between EACH problem category. Do NOT fix everything in one go.
+- Shows in `get_highlights` only (not `run_inspections`)
+- Open file in editor first: `open_in_editor` → `get_highlights(path)`
 
-Step 1: run_inspections() to get a COMPLETE overview of all issues. \
-TRUST the run_inspections output → it IS the authoritative source of all warnings/errors. \
-Do NOT use get_highlights to re-scan files → run_inspections already found everything.
-Step 2: Group issues by PROBLEM TYPE (not by file). Examples: \
-"Unused parameters: 5 across 3 files", "Redundant casts: 3 in PsiBridge", "Grammar: 50+ issues".
-Step 3: Pick the FIRST problem category and fix ALL instances of that problem \
-(this may span multiple files if they share the same issue → that's fine).
-Step 4: format_code + optimize_imports on changed files, then build_project to verify.
-Step 5: Commit the logical unit with a descriptive message like "fix: resolve unused parameters in test mocks".
-Step 6: ⚠️ STOP HERE AND ASK THE USER ⚠️
-   Say: "✅ Fixed [problem type] ([N] issues across [M] files). Should I continue with [next category]?"
-   WAIT for user response. DO NOT proceed to the next category automatically.
-Step 7: If user says yes, repeat from Step 3 with the next problem category.
+**Cognitive Complexity**:
 
-⚠️ RULE: After fixing EACH problem TYPE, you MUST stop and ask before continuing. \
-Even if you found 10 different problem types, fix ONE type at a time and ask after EACH one.
+- When writing NEW code: check `get_highlights` after each method
+- If "Cognitive Complexity" warning: refactor IMMEDIATELY by extracting methods
 
-Example correct workflow:
-- Find issues: 5 unused params, 3 StringBuilder, 2 XXE vulnerabilities
-- Fix unused params → commit → ASK "Continue with StringBuilder?"
-- (user says yes)
-- Fix StringBuilder → commit → ASK "Continue with XXE vulnerabilities?"
-- (user says yes)
-- Fix XXE → commit → DONE
+### Commit Strategy
 
-KEY PRINCIPLES:
-- Related changes belong in ONE commit (e.g. refactoring that touches 4 files).
-- Unrelated changes need SEPARATE commits (don't mix grammar fixes with null checks).
-- Skip grammar issues (GrazieInspection) unless user specifically requests them.
-- Skip generated files (gradlew.bat, log files).
-- If you see 200+ issues, prioritize: compilation errors > warnings > style > grammar.
+**Group RELATED changes as logical units** — may span multiple files:
 
-SONARQUBE FOR IDE:
-If available, use run_sonarqube_analysis to find additional issues from SonarQube/SonarLint. \
-SonarQube findings are SEPARATE from IntelliJ inspections — run both for complete coverage.
+- ✅ "Fix unused parameters across 3 test files" (related problem)
+- ✅ "Refactor authentication flow" (4 files, one feature)
+- ❌ "Fix random issues in 5 unrelated files" (separate commits)
+- ❌ "Grammar + refactoring + bug fix" (3 different concerns)
 
-QUICK-REPLY BUTTONS:
-⚠️ CRITICAL: You MUST append a `[quick-reply: ...]` tag at the END of EVERY response that:
-- Asks a question (any kind — yes/no, choice, confirmation, "should I proceed?", "ready?")
-- Presents options or alternatives
-- Requires user input before you can continue
-- Proposes a plan and waits for approval
+**Build must pass** before committing.
 
-NEVER skip this — the user relies on quick-reply buttons for efficient interaction. \
-Format: `[quick-reply: Option A | Option B]` on its own line at the very end of your response. \
-The IDE renders these as clickable buttons the user can tap instead of typing. \
-One tag per response, pipe-separated, max 6 options. Keep labels short (2-4 words). \
-Examples: `[quick-reply: Yes | No]`  `[quick-reply: Start | Plan only | Skip]`  `[quick-reply: Fix all | Fix critical only | Show me first]`
+---
+
+## 4) Common Pitfalls
+
+### ❌ Split related refactoring across commits
+
+```
+Commit 1: Class A (broken build)
+Commit 2: Class B (still broken)
+Commit 3: Class C (finally works)
+```
+
+### ✅ Keep related changes atomic
+
+```
+Commit 1: All 3 classes → "refactor: extract common interface"
+Build passes, logical change is complete
+```
+
+---
+
+### ❌ Mix unrelated fixes in one commit
+
+```
+One commit: grammar + null checks + unused params
+```
+
+### ✅ Separate commits per problem type
+
+```
+Commit 1: "fix: unused parameters in test mocks"
+Commit 2: "fix: add null safety checks"
+```
+
+---
+
+## 5) Fixing Inspection Issues (SonarQube, IntelliJ, Qodana)
+
+### Philosophy: Fix Root Causes, Don't Suppress
+
+**When asked to fix inspection issues:**
+
+✅ **DO**:
+
+- **Investigate thoroughly** — understand WHY the issue is flagged
+- **Fix the underlying problem** — refactor code to eliminate the issue
+- **Test your fix** — ensure it doesn't break functionality
+- **Question false positives** — if genuinely wrong, document why and get confirmation
+
+❌ **DON'T**:
+
+- **Suppress warnings** without investigation
+- **Add `@SuppressWarnings` as first resort**
+- **Disable inspection rules** to make count go down
+- **Assume all issues are false positives**
+
+### Common Issues & Proper Fixes
+
+**Duplicate string literals**:
+
+- ✅ Extract to private static final constants
+- ❌ Don't suppress — it's real technical debt
+
+**Cognitive complexity**:
+
+- ✅ Extract methods, simplify conditions, reduce nesting
+- ❌ Don't suppress — refactor the complex logic
+
+**Empty catch blocks**:
+
+- ✅ Log the exception or add comment explaining why it's safe to ignore
+- ❌ Don't suppress — either handle it or document why it's intentional
+
+**InterruptedException**:
+
+- ✅ Always call `Thread.currentThread().interrupt()` after catching
+- ❌ Don't suppress — this is critical for thread safety
+
+**Unused parameters/methods**:
+
+- ✅ Remove if truly unused; keep if required by interface/override
+- ✅ Add `@SuppressWarnings("unused")` ONLY if kept for API compatibility
+- ❌ Don't suppress private methods that can be deleted
+
+### When Suppression IS Appropriate
+
+Only suppress when:
+
+1. **Required by framework** (override signature, interface implementation)
+2. **Public API** that must be kept for backward compatibility
+3. **Defensive code** that IntelliJ marks as "always true/false" but protects against edge cases
+4. **Known false positive** that has been investigated and documented
+
+Example of appropriate suppression:
+
+```java
+
+@Override
+@SuppressWarnings("unused") // Required by SomeInterface contract
+public void methodUsedByFramework(Object param) {
+    // Framework calls this reflectively
+}
+```
+
+### Workflow for Fixing Issues
+
+1. **Run inspections**: `run_inspections` to see all issues
+2. **Understand the issue**: Read the description, check the flagged code
+3. **Fix properly**: Refactor code to eliminate root cause
+4. **Verify**: Re-run inspections to confirm issue is gone
+5. **Test**: Build project to ensure no breakage
+6. **Commit**: Group related fixes in logical commits
+
+---
+
+## 6) Deploying to Main IDE
+
+The sandbox IDE (`runIde`) picks up code changes automatically. The **main IDE does not** — you must manually rebuild
+and deploy after each change.
+
+**After every code change, run these 3 commands:**
+
+```bash
+cd /home/catatafish/IdeaProjects/intellij-copilot-plugin
+
+# 1. Build the plugin zip
+./gradlew :plugin-core:buildPlugin -x buildSearchableOptions --quiet
+
+# 2. Remove the old installed plugin
+rm -rf ~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core
+
+# 3. Extract the new one (use latest zip)
+unzip -q "$(ls -t plugin-core/build/distributions/*.zip | head -1)" -d ~/.local/share/JetBrains/IntelliJIdea2025.3/
+```
+
+Then tell the user to **restart the main IDE**.
+
+> **Key points:**
+> - Install path: `~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core/` — no `plugins/` subfolder (Toolbox-managed
+    layout)
+> - **Must** `rm -rf` the old folder first — otherwise stale JARs remain
+> - `-x buildSearchableOptions` is required — that task tries to launch an IDE which conflicts with the running one
+> - Zip filename includes a commit hash (e.g. `plugin-core-0.2.0-2bb9797.zip`), so always use `ls -t ... | head -1`
+
+---
+
+## 7) Implementation Decisions (Feb 2026)
+
+- **Build**: Gradle 8.x with IntelliJ Platform Plugin 2.x
+- **Protocol**: ACP (via Copilot CLI), MCP (stdio server)
+- **Authentication**: GitHub OAuth via Copilot CLI
+- **Development**: Sandbox-first with `./restart-sandbox.sh` for fast reload
+- **Testing**: JUnit 5, 89 unit tests passing
+- **All code**: Java 21. Kotlin shims only when IntelliJ API requires it.
+
+---
+
+## 8) Tool Preferences
+
+### Always prefer IntelliJ MCP tools over generic CLI tools
+
+The MCP server provides IntelliJ-integrated tools that read from editor buffers (always up-to-date, even unsaved
+changes). **Always use these instead of generic alternatives:**
+
+| ❌ Don't use         | ✅ Use instead                               |
+|---------------------|---------------------------------------------|
+| `view` (file)       | `intellij_read_file`                        |
+| `cat`/`head`/`tail` | `intellij_read_file`                        |
+| `grep` / `ripgrep`  | `search_text` or `search_symbols`           |
+| `glob`              | `list_project_files`                        |
+| `create` (file)     | `create_file`                               |
+| `edit` (file)       | `intellij_write_file`                       |
+| `sed`               | `intellij_write_file`                       |
+| `bash`              | `run_command` (flushes buffers first)       |
+| `bash: git ...`     | `git_status`, `git_diff`, `git_commit` etc. |
+
+### Why this matters
+
+- Editor buffers may have unsaved changes that disk-based tools miss
+- IntelliJ tools respect project structure and excludes (build/, .gradle/)
+- Symbol search uses IDE indexes — faster and more accurate than text grep
+- Git tools sync with IntelliJ's VCS, avoiding buffer desync
+- `run_command` and git tools flush editor buffers to disk before running, so CLI tools see current content
+- `bash` does NOT flush buffers — commands may see stale files
+
+### Exceptions
+
+- Use `run_command` for build commands (`gradlew`), process management, or system operations
+- Use `run_command` for commands that don't have an IntelliJ tool equivalent
+
+### ⚠ Known Limitation: Platform-Provided Tools Bypass Our Controls
+
+Copilot CLI injects built-in tools (`view`, `grep`, `glob`, `edit`, `create`, `bash`) that read/write
+directly from disk, bypassing IntelliJ editor buffers. **We cannot remove these tools** due to a
+[Copilot CLI bug](https://github.com/github/copilot-cli/issues/1485) — the `tools/remove` capability
+is not implemented.
+
+**What we do:**
+
+- Deny permission via ACP `request_permission` when the agent asks to use them
+- Send guidance messages redirecting to `intellij-code-tools-*` equivalents
+- Block `bash`, `cat`, `sed`, `grep`, `find` in `run_command` abuse detection
+
+**What we can't control:**
+
+- The Copilot platform may invoke these tools directly without a permission request
+- Instructions and denials are best-effort — the agent may still occasionally use disk-based tools
+- This can cause stale reads (editor has newer content) or write conflicts (disk write overwrites buffer)
+
+**Impact:** Occasional buffer desync. Mitigated by `saveAllDocuments()` in `run_command`, `run_in_terminal`,
+and all git operations, which flush buffers to disk before execution.
+
+---
+
+*Tool usage rules and workflows are provided by the MCP server. See `PROJECT-SPEC.md` for architecture.*
