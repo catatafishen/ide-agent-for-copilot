@@ -175,13 +175,11 @@ body {
 
 /* ── Agent response ──────────────────────────────────── */
 .agent-row {
-    display: flex;
-    flex-direction: column;
+    display: block;
     margin: var(--sp-2) 0;
 }
 
 .agent-bubble {
-    order: 99;
     display: block;
     background: var(--agent-a06);
     border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);

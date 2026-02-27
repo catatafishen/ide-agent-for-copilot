@@ -686,7 +686,9 @@
       section.id = id;
       section.setAttribute("title", title);
       if (paramsJson) section.setAttribute("params", paramsJson);
-      ctx.msg.appendChild(section);
+      const bubble = ctx.msg.querySelector("message-bubble");
+      if (bubble) ctx.msg.insertBefore(section, bubble);
+      else ctx.msg.appendChild(section);
       const chip = document.createElement("tool-chip");
       chip.setAttribute("label", title);
       chip.setAttribute("status", "running");
