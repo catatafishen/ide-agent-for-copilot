@@ -731,7 +731,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val trigger = Runnable {
             htmlPageFuture = future
             browser.cefBrowser.executeJavaScript(
-                "(function(){ var html = document.documentElement.outerHTML; $htmlQueryBridgeJs })()",
+                "(function(){ var el = document.querySelector('chat-container')?.shadowRoot?.getElementById('msgs'); var html = el ? el.innerHTML : ''; $htmlQueryBridgeJs })()",
                 "", 0
             )
         }
