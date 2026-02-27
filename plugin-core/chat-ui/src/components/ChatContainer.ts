@@ -5,6 +5,8 @@ export default class ChatContainer extends HTMLElement {
     private _scrollRAF: number | null = null;
     private _observer!: MutationObserver;
     private _copyObs!: MutationObserver;
+    private _prevScrollY = 0;
+    private _programmaticScroll = false;
 
     connectedCallback(): void {
         if (this._init) return;
@@ -15,7 +17,20 @@ export default class ChatContainer extends HTMLElement {
         this.appendChild(this._messages);
 
         window.addEventListener('scroll', () => {
-            this._autoScroll = (window.innerHeight + window.scrollY >= document.body.scrollHeight - 20);
+            // Ignore scroll events caused by our own scrollTo calls
+            if (this._programmaticScroll) {
+                this._programmaticScroll = false;
+                this._prevScrollY = window.scrollY;
+                return;
+            }
+            const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
+            if (atBottom) {
+                this._autoScroll = true;
+            } else if (window.scrollY < this._prevScrollY) {
+                // User intentionally scrolled up — disable auto-scroll
+                this._autoScroll = false;
+            }
+            this._prevScrollY = window.scrollY;
         });
 
         // Auto-scroll when children change (debounced via rAF)
@@ -55,12 +70,14 @@ export default class ChatContainer extends HTMLElement {
 
     scrollIfNeeded(): void {
         if (this._autoScroll) {
+            this._programmaticScroll = true;
             window.scrollTo(0, document.body.scrollHeight);
         }
     }
 
     forceScroll(): void {
         this._autoScroll = true;
+        this._programmaticScroll = true;
         window.scrollTo(0, document.body.scrollHeight);
     }
 
