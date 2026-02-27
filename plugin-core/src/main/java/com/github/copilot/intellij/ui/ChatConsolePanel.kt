@@ -25,6 +25,7 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.io.File
 import java.util.*
+import javax.swing.JComponent
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 
@@ -32,7 +33,9 @@ import javax.swing.UIManager
  * Chat-style conversation panel with speech bubbles, collapsible thinking,
  * tool call pills, and clickable file links — rendered in a single JBCefBrowser.
  */
-class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>(BorderLayout()), Disposable {
+class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>(BorderLayout()), ChatPanelApi {
+
+    override val component: JComponent get() = this
 
     companion object {
         private fun getThemeColor(key: String, lightFallback: Color, darkFallback: Color): Color {
@@ -329,7 +332,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var openUrlBridgeJs = ""
     private var loadMoreBridgeJs = ""
     private var quickReplyBridgeJs = ""
-    var onQuickReply: ((String) -> Unit)? = null
+    override var onQuickReply: ((String) -> Unit)? = null
     private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
     private var deferredIdCounter = 0
 
@@ -414,7 +417,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     // --- Public API ---
 
-    fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>? = null) {
+    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>? = null) {
         finalizeCurrentText()
         collapseThinking()
         entries.add(EntryData.Prompt(text))
@@ -440,7 +443,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     /** Show model/multiplier on the prompt bubble immediately when sending */
-    fun setPromptStats(modelId: String, multiplier: String) {
+    override fun setPromptStats(modelId: String, multiplier: String) {
         val shortModel = escapeJs(modelId.substringAfterLast("/").take(30))
         val mult = escapeJs(multiplier)
         executeJs(
@@ -463,12 +466,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     /** Adds a collapsible context files section showing attached file names/paths. */
-    fun addContextFilesEntry(files: List<Pair<String, String>>) {
+    override fun addContextFilesEntry(files: List<Pair<String, String>>) {
         entries.add(EntryData.ContextFiles(files))
         // Context files are now shown as chips in the prompt bubble via addPromptEntry
     }
 
-    fun appendThinkingText(text: String) {
+    override fun appendThinkingText(text: String) {
         if (currentThinkingData == null) {
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
             thinkingCounter++
@@ -491,7 +494,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
     }
 
-    fun collapseThinking() {
+    override fun collapseThinking() {
         if (currentThinkingData == null) return
         currentThinkingData = null
         val id = "think-$thinkingCounter"
@@ -505,7 +508,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
     }
 
-    fun appendText(text: String) {
+    override fun appendText(text: String) {
         collapseThinking()
         activeSubAgentWrapperId = null
         // Skip empty/blank chunks before the bubble exists to avoid rendering an empty bubble
@@ -532,7 +535,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(text) } }
     }
 
-    fun addToolCallEntry(id: String, title: String, arguments: String? = null) {
+    override fun addToolCallEntry(id: String, title: String, arguments: String? = null) {
         finalizeCurrentText()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
@@ -616,7 +619,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.append("⚒ $displayName\n") } }
     }
 
-    fun updateToolCall(id: String, status: String, details: String? = null) {
+    override fun updateToolCall(id: String, status: String, details: String? = null) {
         val did = domId(id)
         val resultContent = if (!details.isNullOrBlank()) {
             "<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${escapeHtml(details)}</code></pre>"
@@ -636,7 +639,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
     }
 
-    fun addSubAgentEntry(
+    override fun addSubAgentEntry(
         id: String, agentType: String, description: String, prompt: String?,
         initialResult: String? = null, initialStatus: String? = null
     ) {
@@ -686,7 +689,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.append("${info.displayName}: $description\n") } }
     }
 
-    fun updateSubAgentResult(id: String, status: String, result: String?) {
+    override fun updateSubAgentResult(id: String, status: String, result: String?) {
         // Don't clear activeSubAgentWrapperId here — it's cleared when main agent text starts
         // Persist result in entry data so it survives serialization/restore
         // Match by callId to handle parallel sub-agents correctly
@@ -709,22 +712,22 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
     }
 
-    fun addErrorEntry(message: String) {
+    override fun addErrorEntry(message: String) {
         finalizeCurrentText()
         entries.add(EntryData.Status(ICON_ERROR, message))
         appendHtml("<div class='status-row error'>$ICON_ERROR ${escapeHtml(message)}</div>")
     }
 
-    fun addInfoEntry(message: String) {
+    override fun addInfoEntry(message: String) {
         finalizeCurrentText()
         entries.add(EntryData.Status("\u2139", message))
         appendHtml("<div class='status-row info'>\u2139 ${escapeHtml(message)}</div>")
     }
 
-    fun hasContent(): Boolean = entries.isNotEmpty()
+    override fun hasContent(): Boolean = entries.isNotEmpty()
 
     /** Adds a visual separator marking previous session content as stale */
-    fun addSessionSeparator(timestamp: String) {
+    override fun addSessionSeparator(timestamp: String) {
         finalizeCurrentText()
         entries.add(EntryData.SessionSeparator(timestamp))
         val html =
@@ -734,7 +737,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         appendHtml(html)
     }
 
-    fun showPlaceholder(text: String) {
+    override fun showPlaceholder(text: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
             0; contextCounter = 0; nextSubAgentColor = 0
@@ -742,7 +745,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
 
-    fun clear() {
+    override fun clear() {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; entryCounter = 0; thinkingCounter =
             0; contextCounter = 0; nextSubAgentColor = 0
@@ -751,7 +754,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     /** Serialize conversation entries to JSON for persistence */
-    fun serializeEntries(): String {
+    override fun serializeEntries(): String {
         val arr = com.google.gson.JsonArray()
         for (e in entries) {
             val obj = com.google.gson.JsonObject()
@@ -812,7 +815,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     /** Restore conversation entries from JSON and rebuild the chat view */
-    fun restoreEntries(json: String) {
+    override fun restoreEntries(json: String) {
         try {
             val arr = com.google.gson.JsonParser.parseString(json).asJsonArray
             // Find split point: show last N complete prompt/response turns
@@ -1149,18 +1152,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private val exporter: ConversationExporter get() = ConversationExporter(entries)
 
-    fun getConversationText(): String = exporter.getConversationText()
+    override fun getConversationText(): String = exporter.getConversationText()
 
     /**
      * Produce a compressed summary of the conversation for context injection.
      * Omits thinking blocks, truncates long responses, and caps total size.
      */
-    fun getCompressedSummary(maxChars: Int = 8000): String = exporter.getCompressedSummary(maxChars)
+    override fun getCompressedSummary(maxChars: Int): String = exporter.getCompressedSummary(maxChars)
 
     /** Returns the conversation as a self-contained HTML document */
-    fun getConversationHtml(): String = exporter.getConversationHtml()
+    override fun getConversationHtml(): String = exporter.getConversationHtml()
 
-    fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x") {
+    override fun finishResponse(toolCallCount: Int, modelId: String, multiplier: String) {
         finalizeCurrentText()
         collapseThinking()
         activeSubAgentWrapperId = null
@@ -1177,18 +1180,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         SwingUtilities.invokeLater { browser?.component?.repaint() }
     }
 
-    fun showQuickReplies(options: List<String>) {
+    override fun showQuickReplies(options: List<String>) {
         if (options.isEmpty()) return
         val json = options.joinToString(",") { "\"${escapeJs(it)}\"" }
         executeJs("showQuickReplies([$json])")
     }
 
-    fun disableQuickReplies() {
+    override fun disableQuickReplies() {
         executeJs("disableQuickReplies()")
     }
 
     /** Returns the raw text of the most recent agent response entry. */
-    fun getLastResponseText(): String {
+    override fun getLastResponseText(): String {
         return entries.filterIsInstance<EntryData.Text>().lastOrNull()?.raw?.toString() ?: ""
     }
 
