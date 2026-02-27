@@ -1,9 +1,5 @@
 # Architecture Overview
 
-> **⚠️ OUTDATED**: This document describes the original sidecar-based architecture which has been replaced by direct
-> ACP (Agent Client Protocol) integration. The Go sidecar no longer exists. For current architecture,
-> see [FEATURES.md](FEATURES.md).
-
 ## System Architecture
 
 ```
@@ -16,63 +12,43 @@
 │  │  ┌──────────────┐  ┌───────────────────────────────┐  │    │
 │  │  │ Tool Window  │  │  Services Layer               │  │    │
 │  │  │  (Swing UI)  │  │                               │  │    │
-│  │  │              │  │  - SidecarService             │  │    │
-│  │  │ • Prompt     │◄─┤  - AgenticCopilotService     │  │    │
+│  │  │              │  │  - CopilotService             │  │    │
+│  │  │ • Chat       │◄─┤  - AgenticCopilotService     │  │    │
 │  │  │ • Context    │  │  - GitService                 │  │    │
-│  │  │ • Plans      │  │  - FormatService              │  │    │
-│  │  │ • Timeline   │  │  - SettingsService            │  │    │
-│  │  │ • Settings   │  │                               │  │    │
+│  │  │ • Session    │  │  - FormatService              │  │    │
+│  │  │ • Settings   │  │  - SettingsService            │  │    │
 │  │  └──────────────┘  └─────┬─────────────────────────┘  │    │
 │  │                           │                             │    │
 │  │  ┌────────────────────────▼──────────────────────┐    │    │
-│  │  │     Bridge Layer (SidecarClient)             │    │    │
-│  │  │  • HTTP JSON-RPC Client                      │    │    │
-│  │  │  • SSE Event Stream Consumer                 │    │    │
-│  │  │  • Retry & Error Handling                    │    │    │
+│  │  │     Bridge Layer (CopilotAcpClient)          │    │    │
+│  │  │  • JSON-RPC 2.0 over stdin/stdout            │    │    │
+│  │  │  • Permission handler (deny + retry)         │    │    │
+│  │  │  • Streaming response handling               │    │    │
 │  │  └────────────────────┬──────────────────────────┘    │    │
+│  │                       │                                │    │
+│  │  ┌────────────────────▼──────────────────────┐        │    │
+│  │  │     PSI Bridge (PsiBridgeService)         │        │    │
+│  │  │  • HTTP server inside IntelliJ process    │        │    │
+│  │  │  • 55 MCP tools via IntelliJ APIs         │        │    │
+│  │  └────────────────────┬──────────────────────┘        │    │
 │  └───────────────────────┼───────────────────────────────┘    │
-│                          │ HTTP/SSE                           │
+│                          │ stdin/stdout (ACP)                  │
 └──────────────────────────┼────────────────────────────────────┘
                            │
-                    localhost:dynamic-port
-                           │
-┌──────────────────────────▼────────────────────────────────────┐
-│              Go Sidecar Process (copilot-sidecar.exe)         │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │              HTTP Server (JSON-RPC 2.0)                  │ │
-│  │  • POST /rpc        - Main RPC endpoint                  │ │
-│  │  • GET /stream/{id} - SSE event stream                   │ │
-│  │  • GET /health      - Health check                       │ │
-│  └────────────────────┬─────────────────────────────────────┘ │
-│                       │                                        │
-│  ┌────────────────────▼─────────────────────────────────────┐ │
-│  │            Session Manager                               │ │
-│  │  • Create/Close sessions                                 │ │
-│  │  • Session lifecycle tracking                            │ │
-│  │  • Concurrent session support                            │ │
-│  └────────────────────┬─────────────────────────────────────┘ │
-│                       │                                        │
-│  ┌────────────────────▼─────────────────────────────────────┐ │
-│  │         Copilot SDK Integration                          │ │
-│  │  • github.com/github/copilot-sdk/go                      │ │
-│  │  • Agent session management                              │ │
-│  │  • Model selection                                       │ │
-│  │  • Tool registration & callbacks                         │ │
-│  │  • Plan/Timeline event streaming                         │ │
-│  └────────────────────┬─────────────────────────────────────┘ │
-│                       │                                        │
-└───────────────────────┼────────────────────────────────────────┘
-                        │
-            ┌───────────▼───────────┐
-            │   GitHub Copilot CLI  │
-            │  (managed by SDK)     │
-            └───────────┬───────────┘
-                        │
-            ┌───────────▼───────────┐
-            │  Copilot API Service  │
-            │  (cloud or local LLM) │
-            └───────────────────────┘
+              ┌────────────▼────────────┐
+              │   GitHub Copilot CLI    │
+              │   (ACP protocol)        │
+              └────────────┬────────────┘
+                           │ stdio
+              ┌────────────▼────────────┐
+              │   MCP Server (JAR)      │
+              │   (routes to PSI Bridge)│
+              └────────────┬────────────┘
+                           │ HTTP
+              ┌────────────▼────────────┐
+              │  Copilot API Service    │
+              │  (cloud LLM)            │
+              └─────────────────────────┘
 ```
 
 ---
@@ -84,7 +60,7 @@
 #### Tool Window
 
 - **Framework**: Swing (JPanel-based)
-- **Layout**: Single-panel with chat console, toolbar, and prompt input (no tabs)
+- **Layout**: Single-panel with chat console, toolbar, and prompt input
 - **Responsibilities**:
     - Render UI components
     - Handle user input
@@ -95,10 +71,10 @@
 
 All services implement `Disposable` for proper cleanup.
 
-**SidecarService** (Application-level):
+**CopilotService** (Application-level):
 
-- Manages sidecar process lifecycle
-- Provides `SidecarClient` instance
+- Manages ACP client lifecycle
+- Starts Copilot CLI process
 - Auto-restarts on crashes (with backoff)
 
 **AgenticCopilotService** (Project-level):
@@ -129,176 +105,110 @@ All services implement `Disposable` for proper cleanup.
 
 #### Bridge Layer
 
-**SidecarClient**:
+**CopilotAcpClient**:
 
 ```java
-public class SidecarClient {
-    private final String baseUrl;
-    private final HttpClient httpClient;
+public class CopilotAcpClient {
+    // Communicates with Copilot CLI via ACP (JSON-RPC 2.0 over stdin/stdout)
 
-    public SessionResponse createSession() throws SidecarException;
+    public void initialize();
 
-    public void closeSession(String sessionId) throws SidecarException;
+    public SessionResponse createSession();
 
-    public MessageResponse sendMessage(SendRequest request) throws SidecarException;
+    public void sendPrompt(String sessionId, String prompt);
 
-    public List<Model> listModels() throws SidecarException;
-
-    public EventStream streamEvents(String sessionId);
+    public void cancelSession(String sessionId);
 }
 ```
 
-**EventStream**:
+**Permission Handler**:
 
-```java
-public class EventStream implements AutoCloseable {
-    public void onEvent(EventType type, Consumer<JsonObject> handler);
+Built-in Copilot file operations are denied so all writes go through IntelliJ's Document API:
 
-    public void start();
+1. Agent requests permission (kind="edit")
+2. Plugin denies the permission
+3. Agent retries using MCP tool (`intellij_write_file`)
+4. Write goes through Document API with undo support
+5. Auto-format runs (optimize imports + reformat)
 
-    public void stop();
-}
+---
+
+### 2. MCP Tool Bridge
+
+```
+Copilot CLI ──stdio──► MCP Server (JAR) ──HTTP──► PsiBridgeService
+                       intellij-code-tools         (IntelliJ process)
+```
+
+- **MCP Server** (`mcp-server/`): Standalone JAR, stdio protocol, routes tool calls to PSI bridge
+- **PSI Bridge** (`PsiBridgeService`): HTTP server inside IntelliJ process, accesses PSI/VFS/Document APIs
+- **Bridge file**: `~/.copilot/psi-bridge.json` contains port for HTTP connection
+
+---
+
+### 3. Tool Callbacks
+
+When Copilot CLI invokes a tool (e.g., `intellij_write_file`), the MCP server makes an HTTP request to the PSI bridge:
+
+```
+Copilot CLI → MCP Server (stdio) → PSI Bridge (HTTP) → IntelliJ APIs
+```
+
+#### Auto-Format After Write
+
+Every file write through `intellij_write_file` triggers:
+
+1. `PsiDocumentManager.commitAllDocuments()`
+2. `OptimizeImportsProcessor`
+3. `ReformatCodeProcessor`
+
+This runs inside a single undoable command group on the EDT.
+
+---
+
+## Data Flow
+
+### Typical Prompt Flow
+
+```
+┌─────────┐            ┌────────┐           ┌─────────────┐
+│  User   │            │ Plugin │           │ Copilot CLI │
+└────┬────┘            └───┬────┘           └──────┬──────┘
+     │                     │                       │
+     │  Type prompt        │                       │
+     ├────────────────────►│                       │
+     │                     │  session/prompt        │
+     │                     ├──────────────────────►│
+     │                     │                       │
+     │                     │  session/update        │
+     │                     │◄──────────────────────┤
+     │                     │  (streaming chunks)    │
+     │  Display response   │                       │
+     │◄────────────────────┤                       │
+     │                     │                       │
+     │                     │  request_permission    │
+     │                     │◄──────────────────────┤
+     │                     │  (deny built-in edit)  │
+     │                     ├──────────────────────►│
+     │                     │                       │
+     │                     │  MCP tool call         │
+     │                     │◄──────────────────────┤
+     │                     │  (intellij_write_file) │
+     │                     ├──────────────────────►│
+     │                     │                       │
 ```
 
 ---
 
-### 2. Sidecar Layer (Go 1.22+)
+## Configuration
 
-#### HTTP Server
-
-- **Framework**: `net/http` (stdlib)
-- **Port**: Dynamic allocation (0 = OS picks)
-- **Protocol**: JSON-RPC 2.0
-- **Streaming**: Server-Sent Events (SSE)
-
-#### Session Manager
-
-```go
-type Session struct {
-    ID        string
-    CreatedAt time.Time
-    CopilotSession *copilot.Session  // SDK session
-}
-
-type Manager struct {
-    sessions map[string]*Session
-    mu       sync.RWMutex
-}
-```
-
-#### Copilot SDK Integration
-
-```go
-type CopilotClient interface {
-    CreateSession(opts SessionOptions) (*Session, error)
-    SendMessage(sessionID, prompt string, context []Context) error
-    RegisterTool(name string, handler ToolHandler) error
-    ListModels() ([]Model, error)
-}
-```
-
-**Tool Callbacks**:
-When Copilot SDK invokes a tool (e.g., `git.commit`), the sidecar makes an HTTP POST back to the plugin:
-
-```
-POST http://localhost:{plugin-port}/tool-callback
-{
-    "sessionId": "session-uuid",
-    "toolName": "git.commit",
-    "callId": "call-uuid",
-    "args": { "type": "feat", "description": "..." }
-}
-```
-
-Plugin responds with approval and result or denial.
-
----
-
-## Data Flow: Sending a Prompt
-
-```
-┌──────────┐                ┌────────┐               ┌─────────┐
-│  User    │                │ Plugin │               │ Sidecar │
-└────┬─────┘                └───┬────┘               └────┬────┘
-     │                          │                         │
-     │ 1. Types prompt         │                         │
-     │ + adds context           │                         │
-     │ + clicks "Run"           │                         │
-     ├─────────────────────────►│                         │
-     │                          │                         │
-     │                          │ 2. POST /rpc            │
-     │                          │    session.send         │
-     │                          ├────────────────────────►│
-     │                          │                         │
-     │                          │ 3. Response             │
-     │                          │    {messageId, streamUrl}│
-     │                          │◄────────────────────────┤
-     │                          │                         │
-     │                          │ 4. Connect SSE          │
-     │                          │    GET /stream/{id}     │
-     │                          ├────────────────────────►│
-     │                          │                         │
-     │                          │                         │ 5. Forward to
-     │                          │                         │    Copilot SDK
-     │                          │                         ├────────────────►
-     │                          │                         │                 
-     │                          │                         │ 6. Plan events
-     │                          │    event: plan.step     │◄────────────────
-     │                          │◄────────────────────────┤
-     │ 7. Update UI             │                         │
-     │    (show plan steps)     │                         │
-     │◄─────────────────────────┤                         │
-     │                          │                         │
-     │                          │    event: tool.approval │
-     │                          │    (git.commit request) │
-     │                          │◄────────────────────────┤
-     │                          │                         │
-     │ 8. Show approval dialog  │                         │
-     │◄─────────────────────────┤                         │
-     │                          │                         │
-     │ 9. Approve               │                         │
-     ├─────────────────────────►│                         │
-     │                          │                         │
-     │                          │ 10. Execute Git commit  │
-     │                          │     (via GitService)    │
-     │                          ├──────────┐              │
-     │                          │          │              │
-     │                          │◄─────────┘              │
-     │                          │                         │
-     │                          │ 11. POST /tool-callback │
-     │                          │     {success, result}   │
-     │                          ├────────────────────────►│
-     │                          │                         │
-     │                          │                         │ 12. Send result
-     │                          │                         │     to SDK
-     │                          │                         ├────────────────►
-     │                          │                         │
-     │                          │    event: plan.complete │
-     │                          │◄────────────────────────┤
-     │ 13. Show completion      │                         │
-     │◄─────────────────────────┤                         │
-     │                          │                         │
-```
-
----
-
-## Configuration & Settings
-
-### Plugin Settings (`.idea/copilot-agent.json`)
+### Plugin Settings (JSON)
 
 ```json
 {
-  "sidecarPort": 0,
-  "model": "gpt-5-mini",
-  "toolPermissions": {
-    "git.commit": "ask",
-    "git.push": "ask",
-    "git.forcePush": "deny",
-    "fs.write": "ask",
-    "exec.run": "deny"
-  },
+  "model": "gpt-4o",
+  "mode": "agent",
   "formatting": {
-    "formatOnSave": true,
     "optimizeImportsOnSave": true,
     "formatAfterAgentEdits": true,
     "preCommitReformat": true
@@ -322,15 +232,6 @@ Plugin responds with approval and result or denial.
     ]
   }
 }
-```
-
-### Sidecar Configuration (CLI args)
-
-```
-copilot-sidecar.exe 
-  --port 0                            # 0 = dynamic
-  --callback http://localhost:XXXX    # Plugin callback URL
-  --debug                             # Enable debug logging
 ```
 
 ---
@@ -366,17 +267,16 @@ Always require approval:
 
 ```java
 try{
-        client.sendMessage(request);
+        client.sendPrompt(sessionId, prompt);
 }catch(
-SidecarException e){
+AcpException e){
         if(e.
 
 isRecoverable()){
 
-// Show retry dialog
-showRetryDialog(e);
+// Auto-restart ACP process
+restartAcpClient();
     }else{
-            // Show error notification
             Notifications.Bus.
 
 notify(
@@ -386,27 +286,11 @@ notify(
         }
 ```
 
-### Sidecar Layer
-
-```go
-func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
-    // ... parse request ...
-    
-    result, err := s.handleMethod(req.Method, req.Params)
-    if err != nil {
-        s.writeError(w, req.ID, errorCode(err), err.Error())
-        return
-    }
-    
-    s.writeResult(w, req.ID, result)
-}
-```
-
 ### SDK Errors
 
 - Network timeouts: Retry with exponential backoff
 - Rate limits: Queue requests, show progress
-- Auth failures: Re-authenticate via OAuth flow
+- Auth failures: Re-authenticate via `copilot auth`
 
 ---
 
@@ -414,28 +298,22 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 ### Unit Tests (Plugin)
 
-- `SidecarClient`: Mock HTTP responses
+- `CopilotAcpClient`: Mock stdin/stdout protocol
 - `GitService`: Mock VCS API
 - `FormatService`: Test on sample code
 - `SettingsService`: Test JSON serialization
 
 ### Integration Tests (Plugin)
 
-- Start real sidecar process
+- Start real Copilot CLI process
 - Create session, send message
-- Verify JSON-RPC communication
+- Verify ACP communication
 - Test event streaming
-
-### Unit Tests (Sidecar)
-
-- Session manager: Concurrent operations
-- JSON-RPC parsing: Valid/invalid requests
-- Tool callbacks: Success/failure paths
 
 ### E2E Tests
 
 - Full workflow: Prompt → Plan → Git commit
-- Error scenarios: Sidecar crash, network failure
+- Error scenarios: Process crash, network failure
 - Permission flows: Approve/deny dialogs
 
 ---
@@ -444,16 +322,10 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 ### Plugin
 
-- Lazy-load sidecar (on first use)
+- Lazy-load ACP client (on first use)
 - Cache model list (5 min TTL)
 - Debounce UI updates (50ms)
 - Use background threads for I/O
-
-### Sidecar
-
-- Connection pooling (keep-alive)
-- Stream events (don't buffer large responses)
-- Graceful degradation (fall back to simple responses)
 
 ### Memory
 
@@ -471,12 +343,6 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 - Workspace-level context (search across files)
 - Custom tool registration (user-defined)
 - Inline code suggestions (like Copilot Chat)
-
-### Sidecar
-
-- WebSocket for bidirectional streaming
-- gRPC for better performance
-- Plugin marketplace for custom tools
 
 ### Integration
 

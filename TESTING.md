@@ -44,56 +44,37 @@ After IDE restarts:
 
 ---
 
-### 3. Check Logs for Sidecar Startup
+### 3. Check Logs for ACP Startup
 
 **View Logs:**
 
 - **Help → Show Log in Explorer**
 - Open `idea.log`
-- Search for "sidecar" or "AgenticCopilot"
+- Search for "Copilot" or "AgenticCopilot"
 
 **Expected Log Messages:**
 
 ```
-INFO - Starting sidecar process...
-INFO - Sidecar started on port XXXXX
-INFO - Health check passed
+INFO - Starting Copilot CLI process...
+INFO - ACP client initialized
+INFO - MCP tools registered
 ```
 
 **If Errors:**
 
 - Note the error message
-- Check if sidecar binary exists: `copilot-bridge\bin\copilot-sidecar.exe`
-- Try manual start (see below)
+- Check if Copilot CLI is installed and authenticated (`copilot auth status`)
 
 ---
 
-### 4. Manual Sidecar Test (Optional)
+### 4. Manual ACP Test (Optional)
 
-If you want to verify the sidecar works independently:
+If you want to verify the Copilot CLI works independently:
 
-```powershell
-cd copilot-bridge
-.\bin\copilot-sidecar.exe --port 8765
+```bash
+copilot --version
+copilot auth status
 ```
-
-**Expected output:**
-
-```
-SIDECAR_PORT=8765
-Sidecar server starting on :8765
-```
-
-**Test health endpoint:**
-
-```powershell
-# In another terminal:
-curl http://localhost:8765/health
-```
-
-Should return: `{"status":"ok"}`
-
-Press Ctrl+C to stop.
 
 ---
 
@@ -123,21 +104,20 @@ Press Ctrl+C to stop.
     - Can create/edit files normally
     - IDE doesn't crash
 
-### Sidecar Integration
+### ACP Integration
 
-- [ ] **Sidecar Auto-Starts**
+- [ ] **ACP Client Auto-Starts**
     - Check logs after opening tool window
-    - Should see "Sidecar started on port XXXX"
+    - Should see "ACP client initialized"
     - No error messages
 
 - [ ] **Health Check Works**
-    - Check logs for "Health check passed"
-    - Port number is printed (e.g., port 54321)
+    - Check logs for "MCP tools registered"
 
 - [ ] **Process Management**
     - Close IDE
-    - Sidecar should terminate automatically
-    - Verify no orphan processes: `tasklist | findstr sidecar`
+    - Copilot CLI process should terminate automatically
+    - Verify no orphan processes
 
 ---
 
@@ -155,39 +135,29 @@ Press Ctrl+C to stop.
 
 ---
 
-### "Sidecar Failed to Start" Error
+### "ACP Client Failed to Start" Error
 
-**Symptom:** Error in logs about starting sidecar
+**Symptom:** Error in logs about starting Copilot CLI
 
-**Check Binary Exists:**
+**Check Copilot CLI is installed:**
 
-```powershell
-Test-Path "copilot-bridge\bin\copilot-sidecar.exe"
+```bash
+copilot --version
 ```
 
-If FALSE:
+If not found, install the Copilot CLI.
 
-```powershell
-cd copilot-bridge
-make build
+**Check Authentication:**
+
+```bash
+copilot auth status
 ```
 
-**Check Binary is Executable:**
-
-- Right-click → Properties → Unblock (if present)
-- Run manually to test: `.\bin\copilot-sidecar.exe --port 0`
-
-**Check Antivirus:**
-
-- Corporate AV might be blocking the binary
-- Check AV logs/quarantine
-- May need IT approval for custom executables
+If not authenticated, run `copilot auth` or `gh auth login`.
 
 ---
 
 ### Port Already in Use
-
-**Symptom:** Sidecar fails with "address already in use"
 
 **Find Process:**
 
@@ -229,7 +199,7 @@ This is a **technical preview** with infrastructure only:
 ❌ **Not Implemented Yet:**
 
 - No working UI controls (all placeholder text)
-- No actual Copilot SDK integration (sidecar uses mocks)
+- No actual Copilot SDK integration (uses mocks in development mode)
 - Can't send prompts or receive responses
 - No context management
 - No plan execution
@@ -242,7 +212,7 @@ This is a **technical preview** with infrastructure only:
 
 - Plugin loads and displays UI
 - Tool window with tabbed interface
-- Sidecar auto-starts and responds to health checks
+- ACP client auto-starts and responds to health checks
 - Clean shutdown and restart
 
 ---
@@ -255,7 +225,7 @@ Once you've verified the plugin works:
 
 1. Implement Prompt tab with working editor
 2. Implement Context tab with "Add Selection" action
-3. Wire up actual message sending to sidecar
+3. Wire up actual message sending via ACP
 4. Display real responses in Timeline
 5. Connect to real Copilot SDK (not mocks)
 
@@ -277,7 +247,7 @@ If you encounter problems:
 
 1. **IDE Version:** Help → About → Copy full version info
 2. **Logs:** Help → Show Log in Explorer → Copy relevant errors
-3. **Sidecar Logs:** If running manually, copy console output
+3. **ACP Logs:** Check IDE logs for Copilot communication details
 4. **Screenshots:** Capture any error dialogs or UI issues
 
 **Common Info Needed:**
@@ -316,7 +286,7 @@ Once you've:
 1. ✅ Installed the plugin
 2. ✅ Restarted IDE
 3. ✅ Verified tool window appears
-4. ✅ Checked logs for sidecar startup
+4. ✅ Checked logs for ACP startup
 
 Come back and report the results! We'll then:
 

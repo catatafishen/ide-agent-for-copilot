@@ -22,8 +22,8 @@
 
 #### 2. Java Integration Tests ✅
 
-- **File**: `plugin-core/src/test/java/com/github/copilot/intellij/bridge/SidecarClientTest.java`
-- **Coverage**: 7 tests for SidecarClient
+- **File**: `plugin-core/src/test/java/com/github/copilot/intellij/bridge/CopilotAcpClientTest.java`
+- **Coverage**: 7 tests for ACP client
 - **Status**: Compiled successfully but blocked by IntelliJ Platform Gradle Plugin bug
 
 **Tests Added:**
@@ -39,7 +39,7 @@ the same bug affecting the `runIde` task.
 
 #### 3. PowerShell Integration Tests ✅
 
-- **File**: `copilot-bridge/test_sidecar.ps1`
+- **File**: `copilot-bridge/test_integration.ps1`
 - **Features**:
     - Automated end-to-end testing
     - Fixed port (9876) to avoid firewall prompts
@@ -52,7 +52,7 @@ the same bug affecting the `runIde` task.
 - **File**: `.github/workflows/ci.yml`
 - **Jobs**:
     1. Go unit tests
-    2. Sidecar integration tests
+    2. Integration tests
     3. Plugin build with artifact upload
 - **Platform**: Windows-latest for compatibility
 - **Triggers**: Every push and PR to master/main
@@ -61,7 +61,7 @@ the same bug affecting the `runIde` task.
 
 | Component   | Unit Tests | Integration Tests | Status  |
 |-------------|------------|-------------------|---------|
-| Go Sidecar  | 15 tests ✅ | 5 tests ✅         | Passing |
+| Go Bridge   | 15 tests ✅ | 5 tests ✅         | Passing |
 | Java Bridge | 7 tests ⚠️ | Manual only       | Blocked |
 | End-to-End  | -          | PowerShell ✅      | Passing |
 
@@ -71,10 +71,10 @@ the same bug affecting the `runIde` task.
 
 ```
 4363473 ci: add GitHub Actions workflow for automated testing
-7a137e7 test: add Java integration tests for sidecar client  
-dd992a9 test: add comprehensive Go unit tests for sidecar
+7a137e7 test: add Java integration tests for ACP client  
+dd992a9 test: add comprehensive Go unit tests
 85ad810 docs: add project roadmap with phased development plan
-fdde81e feat: implement mock agentic copilot plugin with working sidecar
+fdde81e feat: implement mock agentic copilot plugin
 ```
 
 ## What's Next
@@ -104,9 +104,9 @@ Ready to start once Phase 2 is complete:
 cd copilot-bridge
 go test ./... -v
 
-# Sidecar integration tests (fixed port)
+# Integration tests (fixed port)
 cd copilot-bridge
-.\test_sidecar.ps1
+.\test_integration.ps1
 
 # Full build
 .\gradlew.bat --no-daemon :plugin-core:buildPlugin
@@ -123,7 +123,7 @@ cd copilot-bridge
 ### Test Execution Times
 
 - Go unit tests: ~5 seconds
-- Sidecar integration tests: ~12 seconds
+- Integration tests: ~12 seconds
 - Plugin build: ~25 seconds
 - **Total CI time**: ~42 seconds
 

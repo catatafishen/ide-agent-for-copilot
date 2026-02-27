@@ -4,7 +4,6 @@
 
 - IntelliJ IDEA 2025.1 or later
 - Java 21 installed
-- Go 1.22+ installed (for sidecar binary)
 
 ## Installation Steps
 
@@ -59,46 +58,14 @@ After restart:
 3. Check IDE logs for errors:
     - **Help → Show Log in Explorer**
     - Open `idea.log`
-    - Search for "AgenticCopilot" or "Sidecar"
+    - Search for "AgenticCopilot" or "Copilot"
     - Look for any ERROR or WARN messages
 
 ---
 
-### 4. Build Sidecar Binary (If Not Already Done)
+### 4. Test the Plugin
 
-The plugin needs the Go sidecar binary to function:
-
-```powershell
-cd copilot-bridge
-make build
-```
-
-**Expected output:**
-
-```
-Built: bin\copilot-sidecar.exe (7.2 MB)
-```
-
-**Verify it works:**
-
-```powershell
-.\bin\copilot-sidecar.exe --port 8765
-```
-
-You should see:
-
-```
-SIDECAR_PORT=8765
-Sidecar server starting on :8765
-```
-
-Press Ctrl+C to stop.
-
----
-
-### 5. Test the Plugin
-
-#### 5.1 Open Tool Window
+#### 4.1 Open Tool Window
 
 1. Click **AgenticCopilot** in the right sidebar
 2. Tool window should open with a single-panel chat interface:
@@ -106,7 +73,7 @@ Press Ctrl+C to stop.
     - **Toolbar** (model selector, mode toggle, settings)
     - **Prompt input** with file attachment support
 
-#### 5.2 Check ACP Connection
+#### 4.2 Check ACP Connection
 
 When the tool window opens and you send your first prompt, the plugin automatically starts the Copilot CLI.
 
@@ -120,11 +87,11 @@ INFO - MCP tools registered
 
 If you see errors:
 
-- Verify sidecar binary exists: `copilot-bridge\bin\copilot-sidecar.exe`
-- Check binary path in logs
+- Verify Copilot CLI is installed and authenticated
+- Check error details in logs
 - Verify port is not in use
 
-#### 5.3 Test Health Check
+#### 4.3 Test Health Check
 
 Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to see if any actions are registered.
 
@@ -141,24 +108,6 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 1. Check if plugin is enabled: **Settings → Plugins → Agentic Copilot** (should have checkmark)
 2. Restart IDE: **File → Invalidate Caches and Restart → Just Restart**
 3. Check logs for errors: `Help → Show Log in Explorer`
-
-### "Sidecar Failed to Start" Error
-
-**Symptom:** Error in IDE logs about sidecar process
-
-**Solutions:**
-
-1. **Binary not found:**
-    - Build the binary: `cd copilot-bridge && make build`
-    - Check path: `copilot-bridge\bin\copilot-sidecar.exe` exists
-
-2. **Port already in use:**
-    - Check for existing processes: `netstat -ano | findstr :8765`
-    - Kill the process or restart
-
-3. **Permission denied:**
-    - Run IntelliJ as Administrator (temporary test)
-    - Check antivirus isn't blocking the binary
 
 ### Plugin Install Fails
 
@@ -227,12 +176,9 @@ $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
 
 For faster development cycles:
 
-1. Keep sidecar running separately: `.\copilot-bridge\bin\copilot-sidecar.exe --port 8765`
-2. Make plugin changes
-3. Rebuild and reinstall
-4. Restart IDE
-
-The sidecar will stay running between IDE restarts.
+1. Make plugin changes
+2. Rebuild and reinstall
+3. Restart IDE
 
 ---
 
@@ -246,7 +192,7 @@ Once installation is successful:
     - Multi-line text editor with syntax highlighting
     - Token counter
     - Model selector dropdown
-    - "Run" button to send to sidecar
+    - "Run" button to send prompt
 
 2. **Implement Context Tab:**
     - List view of context items
@@ -263,7 +209,7 @@ Once installation is successful:
     - Auto-scroll to bottom
 
 5. **Implement Settings Tab:**
-    - Model dropdown (populated from sidecar)
+    - Model dropdown (populated from ACP)
     - Tool permission matrix
     - Formatting options
 
@@ -283,12 +229,10 @@ Once installation is successful:
 If you encounter issues not covered here:
 
 1. **Check logs:** `Help → Show Log in Explorer → idea.log`
-2. **Check sidecar logs:** If sidecar runs separately, check console output
-3. **Verify versions:**
+2. **Verify versions:**
     - IntelliJ IDEA: 2025.1+
     - Java: 21
-    - Go: 1.22+
-4. **Rebuild from scratch:**
+3. **Rebuild from scratch:**
    ```powershell
    .\gradlew.bat clean
    .\gradlew.bat :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
@@ -298,7 +242,7 @@ If you encounter issues not covered here:
 
 ## Known Limitations (v0.1.0-SNAPSHOT)
 
-- **No real Copilot SDK integration yet:** Sidecar uses mock responses
+- **No real Copilot SDK integration yet:** Uses mock responses in development mode
 - **No editor actions yet:** Right-click "Add to Context" not implemented
 - **No settings persistence:** Settings don't save between sessions
 - **No Git integration yet:** Commit/branch operations not implemented

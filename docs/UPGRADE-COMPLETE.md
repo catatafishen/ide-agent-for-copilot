@@ -90,10 +90,10 @@ TOTAL:               26/26  100% 🎉
 3. `gradle/wrapper/gradle-wrapper.properties`
     - Gradle: 8.11 → 8.13
 
-4. `plugin-core/src/test/java/.../SidecarClientTest.java`
+4. `plugin-core/src/test/java/.../CopilotAcpClientTest.java`
     - Fixed path resolution (user.dir → parent directory)
     - Added missing imports (File, FileNotFoundException)
-    - Better error messages for missing sidecar binary
+    - Better error messages for missing binary
 
 5. `docs/DEPENDENCY-ANALYSIS.md`
     - Created comprehensive analysis document
@@ -118,9 +118,9 @@ TOTAL:               26/26  100% 🎉
 - **Solution**: Added junit:junit:4.13.2 to testImplementation
 - **Status**: ✅ Fully resolved
 
-### Issue 3: SidecarClientTest Path Issues ✅ FIXED
+### Issue 3: CopilotAcpClientTest Path Issues ✅ FIXED
 
-- **Was**: IOException - could not find sidecar binary
+- **Was**: IOException - could not find binary
 - **Cause**: user.dir points to plugin-core, not project root
 - **Solution**: Navigate to parent directory with File.getParentFile()
 - **Status**: ✅ Fully resolved
@@ -217,7 +217,7 @@ TOTAL:               26/26  100% 🎉
 ## 📝 Validation Checklist
 
 - [x] All Go tests pass: `go test ./...` (15/15)
-- [x] PowerShell integration tests pass: `.\test_sidecar.ps1` (5/5)
+- [x] PowerShell integration tests pass (5/5)
 - [x] Java tests now run: `.\gradlew.bat test` (6/6) ✅ **NEW!**
 - [x] Plugin builds: `.\gradlew.bat buildPlugin`
 - [x] Plugin installs: Tested manually

@@ -273,7 +273,7 @@ cd copilot-bridge
 go test ./...
 
 # Integration tests
-.\test_sidecar.ps1
+.\gradlew.bat :plugin-core:test
 
 # Java tests (NOW WILL WORK!)
 .\gradlew.bat test
@@ -370,12 +370,11 @@ Target: sinceBuild=253, untilBuild=253.* ⚠️ (validate)
 ### Checklist
 
 - [ ] All Go tests pass: `go test ./...`
-- [ ] PowerShell integration tests pass: `.\test_sidecar.ps1`
+- [ ] Integration tests pass: `.\gradlew.bat :plugin-core:test`
 - [ ] Java tests now run: `.\gradlew.bat test` (previously blocked!)
 - [ ] Plugin builds: `.\gradlew.bat buildPlugin`
 - [ ] Plugin installs: Manual ZIP install test
 - [ ] runIde works: `.\gradlew.bat runIde` (previously blocked!)
-- [ ] Sidecar starts on random port
 - [ ] Models list loads
 - [ ] Session create/send/close works
 - [ ] CI pipeline passes

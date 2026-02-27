@@ -57,7 +57,7 @@
 - `mcp-server` (Java): Standalone MCP stdio server bundled as JAR, routes tool calls to PSI bridge.
 - `integration-tests` (Java): UI‑less functional tests (placeholder).
 
-### 3.2 ACP Integration (direct, no sidecar)
+### 3.2 ACP Integration (direct)
 
 - The plugin spawns **Copilot CLI** (`copilot --acp --stdio`) and communicates via **JSON-RPC 2.0** over stdin/stdout
   using the **Agent Client Protocol (ACP)**.

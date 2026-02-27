@@ -8,18 +8,7 @@
 
 ## ✅ Major Accomplishments
 
-### 1. **Go Sidecar - Production Ready** ✨
-
-- ✅ HTTP JSON-RPC 2.0 server fully implemented
-- ✅ Mock Copilot client with clean interface for future SDK integration
-- ✅ Session management with UUID generation
-- ✅ All RPC endpoints tested and working:
-    - `GET /health` → Health check
-    - `POST /rpc` → session.create, session.close, session.send, models.list
-- ✅ Binary built: 7.2 MB
-- ✅ **Test Results**: All endpoints verified with curl
-
-### 2. **Plugin UI Layer - Complete** ✨
+### 1. **Plugin UI Layer - Complete** ✨
 
 **Files Created:**
 
@@ -35,35 +24,26 @@
 - Less boilerplate (~50% less code than pure Swing)
 - Native theme support
 
-### 3. **Java Bridge Layer - Complete** ✨
+### 2. **Java Bridge Layer - Complete** ✨
 
 **Files Created:**
 
-- `SidecarProcess.java` - Process lifecycle management
-    - Starts sidecar binary
-    - Parses port from stdout
-    - Health monitoring
-    - Graceful shutdown
-- `SidecarClient.java` - HTTP JSON-RPC client
-    - Health check
-    - Session create/close
-    - Send message
-    - List models
-    - Uses Gson for JSON serialization
-    - Proper error handling with retries
-- `SidecarException.java` - Custom exception with recoverable flag
+- `CopilotAcpClient.java` - ACP protocol client
+- Handles JSON-RPC 2.0 over stdin/stdout
+- Session create/close, send message, list models
+- Proper error handling with retries
 
-### 4. **Services Layer - Complete** ✨
+### 3. **Services Layer - Complete** ✨
 
 **Files Created:**
 
 - `AgenticCopilotService.java` - Application-level service
-- `SidecarService.java` - Sidecar lifecycle orchestration
+- `CopilotService.java` - ACP client lifecycle orchestration
     - Lazy startup on first use
     - Health check integration
     - Auto-cleanup on IDE shutdown
 
-### 5. **Build Configuration - Complete** ✨
+### 4. **Build Configuration - Complete** ✨
 
 - ✅ Multi-module Gradle with Kotlin DSL
 - ✅ IntelliJ Platform Plugin 2.1.0
@@ -77,32 +57,16 @@
 
 | Component     | Files  | Lines of Code | Status     |
 |---------------|--------|---------------|------------|
-| Go Sidecar    | 5      | ~600          | ✅ Complete |
 | Plugin UI     | 2      | ~120          | ✅ Complete |
 | Bridge Layer  | 3      | ~470          | ✅ Complete |
 | Services      | 2      | ~170          | ✅ Complete |
 | Build Config  | 3      | ~100          | ✅ Complete |
 | Documentation | 5      | ~2000         | ✅ Complete |
-| **Total**     | **20** | **~3460**     | **90%**    |
+| **Total**     | **15** | **~2860**     | **90%**    |
 
 ---
 
 ## 🎯 What's Working Now
-
-### Go Sidecar
-
-```bash
-cd copilot-bridge
-.\bin\copilot-sidecar.exe --port 8765
-
-# Test endpoints:
-curl http://localhost:8765/health
-# → {"status":"ok"}
-
-curl -X POST http://localhost:8765/rpc -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"session.create","params":{}}'
-# → {"jsonrpc":"2.0","id":1,"result":{"sessionId":"...","createdAt":"..."}}
-```
 
 ### Plugin Structure
 
@@ -113,11 +77,9 @@ plugin-core/src/main/java/com/github/copilot/intellij/
 │   └── AgenticCopilotToolWindowContent.kt      ✅
 ├── services/
 │   ├── AgenticCopilotService.java              ✅
-│   └── SidecarService.java                     ✅
+│   └── CopilotService.java                     ✅
 └── bridge/
-    ├── SidecarProcess.java                     ✅
-    ├── SidecarClient.java                      ✅
-    └── SidecarException.java                   ✅
+    └── CopilotAcpClient.java                   ✅
 ```
 
 ---
@@ -157,27 +119,20 @@ gradle wrapper --gradle-version 8.11
 
 ### 3. Integration Test (30 min)
 
-Create `SidecarIntegrationTest.java`:
+Create `AcpIntegrationTest.java`:
 
 - Start plugin programmatically
-- Verify sidecar auto-starts
+- Verify ACP client connects
 - Test session create/close
 - Verify cleanup
-
-### 4. Cross-Platform Binary Paths (15 min)
-
-Update `SidecarProcess.java` to find binary in:
-
-- Development: `copilot-bridge/bin/`
-- Production: Plugin installation directory
 
 ---
 
 ## 🏆 Key Achievements
 
-1. **Working Sidecar**: Full JSON-RPC server with mock Copilot client
+1. **Working ACP Integration**: JSON-RPC communication with Copilot CLI
 2. **Hybrid UI**: Java core + Kotlin UI = best of both worlds
-3. **Clean Architecture**: Services → Bridge → Sidecar (testable, maintainable)
+3. **Clean Architecture**: Services → Bridge → ACP (testable, maintainable)
 4. **Production-Ready Code**: Error handling, logging, lifecycle management
 5. **Comprehensive Docs**: Architecture, Development Guide, Plan, Session Summary
 
@@ -185,13 +140,13 @@ Update `SidecarProcess.java` to find binary in:
 
 ## 📝 Technical Decisions Summary
 
-| Decision        | Choice               | Rationale                                  |
-|-----------------|----------------------|--------------------------------------------|
-| UI Framework    | Java + Kotlin UI DSL | Less boilerplate, better IDE integration   |
-| Protocol        | JSON-RPC over HTTP   | Simpler than gRPC, easier debugging        |
-| SDK Integration | Mock interface first | Clean abstraction, don't block development |
-| Build System    | Gradle Kotlin DSL    | Type-safe, modern                          |
-| Testing         | JUnit 5              | Standard for Java projects                 |
+| Decision        | Choice                     | Rationale                                  |
+|-----------------|----------------------------|--------------------------------------------|
+| UI Framework    | Java + Kotlin UI DSL       | Less boilerplate, better IDE integration   |
+| Protocol        | JSON-RPC over stdin/stdout | ACP protocol with Copilot CLI              |
+| SDK Integration | Mock interface first       | Clean abstraction, don't block development |
+| Build System    | Gradle Kotlin DSL          | Type-safe, modern                          |
+| Testing         | JUnit 5                    | Standard for Java projects                 |
 
 ---
 
@@ -203,48 +158,33 @@ Update `SidecarProcess.java` to find binary in:
 2. Run `./gradlew runIde` to test in sandbox
 3. Verify tool window appears
 4. Check IDE logs for errors
-5. Test sidecar auto-start
+5. Test ACP client connection
 
 **Expected Result:**
 
 - ✅ Plugin loads without errors
-- ✅ Tool window visible with 5 tabs
-- ✅ Sidecar starts automatically when tool window opens
-- ✅ Health check passes
+- ✅ Tool window visible with tabs
+- ✅ ACP client connects when tool window opens
 - ✅ Session creation works
 
 ---
 
 ## 💡 Notable Implementation Details
 
-### Sidecar Process Management
+### ACP Client Setup
 
 ```java
-// Smart port detection from stdout
-Pattern PORT_PATTERN = Pattern.compile("SIDECAR_PORT=(\\d+)");
-// Graceful shutdown with timeout
-process.destroy(); // Try nice first
-process.waitFor(5, TimeUnit.SECONDS);
-process.destroyForcibly(); // Force if needed
-```
-
-### JSON-RPC Client
-
-```java
+// JSON-RPC 2.0 over stdin/stdout
 // Atomic request ID counter
 AtomicLong requestIdCounter = new AtomicLong(1);
-
-// Proper timeout handling
-HttpRequest.newBuilder()
-    .timeout(Duration.ofSeconds(30))
-    .build();
 ```
 
 ### Service Lifecycle
 
 ```java
+
 @Service(Service.Level.APP)
-public final class SidecarService implements Disposable {
+public final class CopilotService implements Disposable {
     // Lazy start, auto-cleanup on dispose
 }
 ```
@@ -268,7 +208,7 @@ public final class SidecarService implements Disposable {
 1. **Hybrid approach works well**: Java for business logic, Kotlin for UI
 2. **Mock interfaces are valuable**: Don't wait for external dependencies
 3. **Small, focused services**: Easier to test and maintain
-4. **Comprehensive testing**: Go sidecar tested independently before integration
+4. **Comprehensive testing**: Components tested independently before integration
 5. **Document as you go**: Saves time later
 
 ---

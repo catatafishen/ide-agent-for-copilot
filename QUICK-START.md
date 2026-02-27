@@ -15,7 +15,6 @@ The file contains two machine-specific paths that must match your environment:
 ```properties
 # Path to your IntelliJ IDEA installation (for platform SDK)
 intellijPlatform.localPath=/path/to/your/IntelliJ IDEA
-
 # Path to JDK 21 (Gradle build JVM)
 org.gradle.java.home=/path/to/jdk-21
 ```
@@ -85,7 +84,7 @@ restarting.
 ## What's Included
 
 - **60 MCP tools** — File I/O, PSI analysis, refactoring, git, testing, terminal, documentation
-- **ACP protocol** — Direct integration with GitHub Copilot CLI (no sidecar)
+- **ACP protocol** — Direct integration with GitHub Copilot CLI
 - **Multi-turn chat** — Session-based conversations with context awareness
 - **Permission routing** — File edits routed through IntelliJ Document API with auto-format
 

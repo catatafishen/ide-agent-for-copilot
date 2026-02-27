@@ -1,29 +1,19 @@
 # Development Guide
 
-> **⚠️ PARTIALLY OUTDATED**: This document contains references to a Go sidecar which has been removed. The plugin now
-> uses direct ACP integration with the Copilot CLI. See [QUICK-START.md](../QUICK-START.md) for current setup
-> instructions.
-
 ## Prerequisites
 
 ### Required Software
 
 - **JDK 21+** (Temurin recommended)
-    - Location: `C:\Users\developer\.jdks\temurin-21.0.6`
     - Set `JAVA_HOME` environment variable
-- **Go 1.22+**
-    - Location: `C:\Go`
-    - Add `C:\Go\bin` to PATH
-- **Gradle 8.11**
-    - Location: `C:\Gradle\gradle-8.11`
-    - Add `C:\Gradle\gradle-8.11\bin` to PATH
+- **Gradle 8.13+**
+    - Or use the included Gradle wrapper (`./gradlew`)
 - **IntelliJ IDEA 2025.1+** (Community or Ultimate)
-    - Install Go plugin for sidecar development
 
 ### Optional
 
 - **Git** (for version control)
-- **GitHub Copilot CLI** (for real SDK integration later)
+- **GitHub Copilot CLI** (for ACP integration)
 - **GitHub Copilot Subscription**
 
 ---
@@ -53,30 +43,6 @@ Open the project in IntelliJ IDEA:
     - Help > Edit Custom Properties
     - Add: `idea.is.internal=true`
     - Restart IDE
-
-3. **Configure Go Support**
-    - Right-click `copilot-bridge` directory
-    - Mark Directory as > Project Sources and Roots > Go Project Sources Root
-    - File > Settings > Languages & Frameworks > Go
-    - Set GOROOT to `C:\Go`
-
-### 3. Build the Go Sidecar
-
-```bash
-cd copilot-bridge
-make build
-```
-
-This creates `copilot-bridge/bin/copilot-sidecar.exe`
-
-Verify it works:
-
-```bash
-./bin/copilot-sidecar.exe --help
-./bin/copilot-sidecar.exe --port 8765
-# In another terminal:
-curl http://localhost:8765/health
-```
 
 ---
 
@@ -153,7 +119,8 @@ intellij-copilot-plugin/
 │       │   │   └── com/github/copilot/intellij/
 │       │   │       ├── ui/           # Swing UI components
 │       │   │       ├── services/     # Application/project services
-│       │   │       ├── bridge/       # Sidecar communication
+│       │   │       ├── bridge/       # ACP protocol communication
+│       │   │       ├── psi/          # PSI bridge (MCP tools)
 │       │   │       ├── git/          # Git VCS integration
 │       │   │       ├── format/       # Code formatting
 │       │   │       └── settings/     # Configuration
@@ -163,17 +130,8 @@ intellij-copilot-plugin/
 │       └── test/
 │           └── java/                 # Unit tests
 │
-├── copilot-bridge/           # Go sidecar
-│   ├── Makefile
-│   ├── go.mod
-│   ├── protocol/             # JSON-RPC schemas
-│   ├── cmd/
-│   │   └── sidecar/
-│   │       └── main.go       # Entry point
-│   └── internal/
-│       ├── server/           # HTTP JSON-RPC server
-│       ├── copilot/          # SDK integration (mock for now)
-│       └── session/          # Session management
+├── mcp-server/               # MCP stdio server (standalone JAR)
+│   └── src/main/java/
 │
 ├── integration-tests/        # End-to-end tests
 │   └── src/test/java/
@@ -196,6 +154,7 @@ intellij-copilot-plugin/
 package com.github.copilot.intellij.ui;
 
 import com.intellij.ui.components.JBPanel;
+
 import javax.swing.*;
 
 public class NewTab extends JBPanel {
@@ -210,7 +169,7 @@ Add to Tool Window:
 
 ```java
 // In AgenticCopilotToolWindow.java
-tabbedPane.addTab("New Tab", new NewTab());
+tabbedPane.addTab("New Tab",new NewTab());
 ```
 
 ### 2. Create a New Service
@@ -272,14 +231,15 @@ public class InvokeAgentAction extends AnAction {
 Register in `plugin.xml`:
 
 ```xml
+
 <actions>
-  <action id="AgenticCopilot.Invoke"
-          class="com.github.copilot.intellij.actions.InvokeAgentAction"
-          text="Invoke Copilot Agent"
-          description="Open Copilot Agent with current selection">
-    <add-to-group group-id="EditorPopupMenu" anchor="first"/>
-    <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt C"/>
-  </action>
+    <action id="AgenticCopilot.Invoke"
+            class="com.github.copilot.intellij.actions.InvokeAgentAction"
+            text="Invoke Copilot Agent"
+            description="Open Copilot Agent with current selection">
+        <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt C"/>
+    </action>
 </actions>
 ```
 
@@ -312,13 +272,13 @@ Register in `plugin.xml`:
 package com.github.copilot.intellij.bridge;
 
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-class SidecarClientTest {
+class CopilotAcpClientTest {
     @Test
-    void testCreateSession() throws Exception {
-        // Mock HTTP responses
-        SidecarClient client = new SidecarClient("http://localhost:8765");
+    void testSessionCreate() throws Exception {
+        // Test ACP protocol communication
         // ... assertions
     }
 }
@@ -331,27 +291,11 @@ package com.github.copilot.intellij;
 
 import org.junit.jupiter.api.*;
 
-class SidecarIntegrationTest {
-    private static Process sidecarProcess;
-
-    @BeforeAll
-    static void startSidecar() throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            "copilot-bridge/bin/copilot-sidecar.exe",
-            "--port", "8765"
-        );
-        sidecarProcess = pb.start();
-        Thread.sleep(1000); // Wait for startup
-    }
-
-    @AfterAll
-    static void stopSidecar() {
-        sidecarProcess.destroy();
-    }
+class AcpIntegrationTest {
 
     @Test
     void testHealthCheck() {
-        // Test /health endpoint
+        // Test ACP client lifecycle
     }
 }
 ```
@@ -371,17 +315,6 @@ class SidecarIntegrationTest {
 4. Select the process with port 5005
 5. Breakpoints will be hit in sandbox IDE
 
-### Debug Go Sidecar
-
-1. In IntelliJ, create Run Configuration:
-    - Run > Edit Configurations > + > Go Build
-    - Package path: `github.com/yourusername/intellij-copilot-plugin/copilot-bridge/cmd/sidecar`
-    - Working directory: `copilot-bridge`
-    - Program arguments: `--port 8765 --debug`
-2. Set breakpoints in Go code
-3. Click Debug button
-4. Test with curl or plugin
-
 ### View Logs
 
 **Plugin Logs**:
@@ -396,18 +329,16 @@ import com.intellij.openapi.diagnostic.Logger;
 
 private static final Logger LOG = Logger.getInstance(MyClass.class);
 
-LOG.info("Info message");
-LOG.warn("Warning message");
-LOG.error("Error message", exception);
+LOG.
+
+info("Info message");
+LOG.
+
+warn("Warning message");
+LOG.
+
+error("Error message",exception);
 ```
-
-**Sidecar Logs**:
-
-- Stdout/stderr when run manually
-- Or redirect to file:
-  ```bash
-  ./copilot-sidecar.exe --debug > sidecar.log 2>&1
-  ```
 
 ---
 
@@ -421,16 +352,6 @@ LOG.error("Error message", exception);
 plugins {
     id("org.jetbrains.intellij.platform") version "2.1.0" apply false
 }
-```
-
-### Issue: Go module errors: "cannot find package"
-
-**Solution**:
-
-```bash
-cd copilot-bridge
-go mod tidy
-go mod download
 ```
 
 ### Issue: Sandbox IDE won't start
@@ -468,12 +389,6 @@ $env:Path += ";$env:JAVA_HOME\bin"
 - Prefer immutability where possible
 - Document public APIs with Javadoc
 
-### Go
-
-- Follow standard Go conventions (`gofmt`, `golint`)
-- Use `go fmt` before committing
-- Document exported functions and types
-
 ---
 
 ## Useful Commands
@@ -494,13 +409,6 @@ $env:Path += ";$env:JAVA_HOME\bin"
 
 # Clean all build artifacts
 ./gradlew clean
-
-# Go sidecar commands
-cd copilot-bridge
-make build        # Build binary
-make clean        # Clean artifacts
-make test         # Run tests
-make build-all    # Build for all platforms
 ```
 
 ---
@@ -517,6 +425,5 @@ make build-all    # Build for all platforms
 ## Getting Help
 
 - **IntelliJ Platform SDK Docs**: https://plugins.jetbrains.com/docs/intellij/
-- **GitHub Copilot SDK**: https://github.com/github/copilot-sdk
-- **Go Documentation**: https://go.dev/doc/
+- **GitHub Copilot**: https://docs.github.com/copilot
 - **Project Issues**: https://github.com/yourusername/intellij-copilot-plugin/issues

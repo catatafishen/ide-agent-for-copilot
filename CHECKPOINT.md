@@ -7,16 +7,14 @@
 ### What Works (Verified ✅)
 
 - ✅ Plugin builds with `buildPlugin` task (buildSearchableOptions disabled)
-- ✅ Sidecar binary builds successfully
 - ✅ Plugin installs and runs in IntelliJ IDEA 2025.3.1
-- ✅ Tool window with 5 tabs working
-- ✅ Sidecar process management and auto-restart
+- ✅ Tool window with 4 tabs working
+- ✅ ACP client process management and auto-restart
 - ✅ HTTP JSON-RPC communication
 - ✅ Multi-path binary discovery with JAR extraction
-- ✅ Models dropdown loads with "(Mock)" labels
+- ✅ Models dropdown loads
 - ✅ Session creation works
-- ✅ Mock streaming responses work
-- ✅ **Mock mode fully functional** (real SDK deferred)
+- ✅ Streaming responses work
 
 ### Known Issues & Workarounds
 
@@ -43,11 +41,10 @@
 
 #### 1. Copilot SDK Integration ✅
 
-- Added `github.com/github/copilot-sdk/go@v0.1.23` dependency
-- Upgraded Go from 1.22 → 1.24
-- Created `sdk_client.go` with lazy initialization to avoid deadlocks
-- Updated server to try SDK first, fallback to mock
-- Tested: Sidecar builds and starts successfully
+- Added ACP (Agent Client Protocol) integration
+- JSON-RPC 2.0 over stdin/stdout with Copilot CLI
+- Created `CopilotAcpClient.java` with lazy initialization
+- Tested: ACP client builds and starts successfully
 
 #### 2. Build System Investigation ✅
 
@@ -67,34 +64,30 @@
 
 ## Architecture Overview
 
-### Communication Flow (With SDK)
+### Communication Flow
 
 ```
 [IntelliJ UI]
     ↕ (Java calls)
-[SidecarService]
+[CopilotService]
     ↕ (Process mgmt)
-[SidecarProcess] ← starts → [copilot-sidecar.exe]
-    ↕ (HTTP JSON-RPC)
-[Go HTTP Server] @ localhost:DYNAMIC_PORT
+[CopilotAcpClient] ← starts → [Copilot CLI]
+    ↕ (JSON-RPC 2.0 over stdin/stdout)
+[ACP Protocol] @ stdin/stdout
     ↕
-[SDK Client] ──→ [GitHub Copilot CLI] ← Real AI
-    ↓ (fallback)
-[Mock Client] ← Fake responses
+[Copilot CLI] ──→ [GitHub Copilot API] ← Real AI
 ```
 
 ### Key Components Status
 
-| Component         | Status     | Notes                        |
-|-------------------|------------|------------------------------|
-| Go Sidecar        | ✅ Complete | SDK integrated with fallback |
-| Binary Build      | ✅ Complete | ~7.2 MB Windows exe          |
-| Plugin UI         | ✅ Complete | All 5 tabs working           |
-| Process Lifecycle | ✅ Complete | Auto-restart on crash        |
-| HTTP Client       | ✅ Complete | JSON-RPC working             |
-| Binary Discovery  | ✅ Complete | Multi-path + JAR extraction  |
-| SDK Integration   | ✅ Complete | With mock fallback           |
-| Runtime Testing   | 🔄 Pending | Need to test with real CLI   |
+| Component         | Status     | Notes                          |
+|-------------------|------------|--------------------------------|
+| ACP Client        | ✅ Complete | Direct Copilot CLI integration |
+| Plugin UI         | ✅ Complete | All 4 tabs working             |
+| Process Lifecycle | ✅ Complete | Auto-restart on crash          |
+| MCP Server        | ✅ Complete | 55 IntelliJ-native tools       |
+| PSI Bridge        | ✅ Complete | HTTP server in IDE process     |
+| Runtime Testing   | 🔄 Pending | Need to test with real CLI     |
 
 ---
 
@@ -103,8 +96,6 @@
 ### Build Artifacts
 
 - **Plugin ZIP**: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
-- **Sidecar Binary**: `copilot-bridge/bin/copilot-sidecar.exe` (also embedded in plugin)
-- **Sidecar Source**: `copilot-bridge/internal/copilot/sdk_client.go` (NEW - SDK client)
 
 ### Documentation
 
@@ -121,24 +112,19 @@
 ### Key Source Files
 
 ```
-copilot-bridge/
-├── internal/copilot/
-│   ├── client.go         - Interface definition
-│   ├── sdk_client.go     - Real SDK implementation (NEW)
-│   └── (mock in client.go)
-├── internal/server/
-│   └── server.go         - Uses SDK with fallback
-└── go.mod                - SDK dependency added
-
 plugin-core/
 ├── src/main/java/com/github/copilot/intellij/
 │   ├── bridge/
-│   │   ├── SidecarProcess.java  - Process management
-│   │   └── SidecarClient.java   - HTTP client
+│   │   └── CopilotAcpClient.java   - ACP protocol client
+│   ├── psi/
+│   │   └── PsiBridgeService.java   - MCP tools (55 tools)
 │   └── ui/
-│       └── AgenticCopilotToolWindowContent.kt - 5 tabs UI
-└── src/main/resources/bin/
-    └── copilot-sidecar.exe      - Embedded binary
+│       └── AgenticCopilotToolWindowContent.kt - UI
+└── src/main/resources/
+
+mcp-server/
+└── src/main/java/com/github/copilot/mcp/
+    └── McpServer.java               - MCP stdio server
 ```
 
 ---
@@ -163,30 +149,6 @@ $env:JAVA_HOME = "$ideaHome\jbr"
 2. Select: `plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip`
 3. Click OK → Restart IntelliJ
 4. View → Tool Windows → Agentic Copilot
-
-### Build Sidecar Only
-
-```powershell
-cd copilot-bridge
-go build -o bin/copilot-sidecar.exe cmd/sidecar/main.go
-
-# Test manually
-cd bin
-.\copilot-sidecar.exe --port 8888
-
-# Should print:
-# SIDECAR_PORT=8888
-# Sidecar listening on http://localhost:8888
-
-# Test health:
-# curl http://localhost:8888/health
-```
-
-### Copy Binary to Plugin Resources
-
-```powershell
-Copy-Item "copilot-bridge\bin\copilot-sidecar.exe" "plugin-core\src\main\resources\bin\" -Force
-```
 
 ---
 
@@ -232,7 +194,7 @@ Copy-Item "copilot-bridge\bin\copilot-sidecar.exe" "plugin-core\src\main\resourc
    Look for:
     - `"Warning: Failed to initialize Copilot SDK"` = using mock
     - No warning = using real SDK ✅
-    - `"Sidecar started on port XXXX"` = working
+    - `"ACP client initialized"` = working
 
 ### Priority 2: Enhanced Features
 
@@ -249,16 +211,8 @@ Copy-Item "copilot-bridge\bin\copilot-sidecar.exe" "plugin-core\src\main\resourc
 # Build plugin
 .\install-plugin.ps1
 
-# Build sidecar only
-cd copilot-bridge
-go build -o bin/copilot-sidecar.exe cmd/sidecar/main.go
-
-# Test sidecar manually
-cd copilot-bridge\bin
-.\copilot-sidecar.exe --port 8888
-
 # Check plugin structure
-jar tf plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip | Select-String "bin/"
+jar tf plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip | Select-String "lib/"
 
 # View logs
 Get-Content "C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\log\idea.log" -Tail 50
@@ -271,43 +225,25 @@ Get-Command copilot -ErrorAction SilentlyContinue
 
 ## Technical Details
 
-### SDK Integration Details
+### ACP Integration Details
 
-- **Package**: `github.com/github/copilot-sdk/go@v0.1.23`
-- **Go Version**: 1.24 (upgraded from 1.22)
-- **Initialization**: Lazy (deferred until first use to avoid deadlocks)
-- **Fallback Logic**:
-  ```go
-  sdkClient, err := copilot.NewSDKClient()
-  if err != nil {
-      log.Printf("Warning: using mock client: %v", err)
-      copilotClient = copilot.NewMockClient()
-  } else {
-      copilotClient = sdkClient
-  }
-  ```
+- **Protocol**: ACP (Agent Client Protocol) — JSON-RPC 2.0 over stdin/stdout
+- **Initialization**: Lazy (deferred until first use)
+- **Process**: Spawns Copilot CLI as child process
 
 ### Models Available
 
-- **Real SDK**: GPT-4o, GPT-4o Mini, Claude 3.5 Sonnet, O1-Preview, O1-Mini
-- **Mock**: Same list, but responses are fake
-
-### Binary Search Strategy
-
-1. Development Mode (CWD): `copilot-bridge/bin/copilot-sidecar.exe`
-2. Development Mode (Project): `~/IdeaProjects/intellij-copilot-plugin/copilot-bridge/bin/copilot-sidecar.exe`
-3. Production (JAR): Extracts from `bin/copilot-sidecar.exe` to `%TEMP%/copilot-sidecar/`
+- GPT-4o, GPT-4o Mini, Claude 3.5 Sonnet, O1-Preview, O1-Mini
 
 ---
 
 ## Environment Info
 
 - **IDE**: IntelliJ IDEA 2025.3.1 (build 253)
-- **Gradle**: 8.11
+- **Gradle**: 8.13
 - **Java**: 21 (IntelliJ JBR)
-- **Kotlin**: 2.2.0
-- **Go**: 1.24
-- **Platform Plugin**: 2.1.0
+- **Kotlin**: 2.3.10
+- **Platform Plugin**: 2.11.0
 - **Project Root**: `C:\Users\developer\IdeaProjects\intellij-copilot-plugin`
 - **IDE Home**: `C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3`
 - **Copilot CLI**:
@@ -325,12 +261,7 @@ cat CHECKPOINT.md
 .\gradlew.bat --no-daemon :plugin-core:buildPlugin
 ls plugin-core\build\distributions\
 
-# 3. If building from scratch, ensure sidecar is built:
-cd copilot-bridge
-go build -o bin/copilot-sidecar.exe cmd/sidecar/main.go
-cd ..
-
-# 4. Test plugin with SDK:
+# 3. Test plugin with SDK:
 # See "Priority 1: SDK Runtime Testing" section above
 ```
 
@@ -350,7 +281,7 @@ cd ..
 2. **Manual install workflow is the standard approach** - runIde bug is not fixable with current plugin version
 3. **SDK integration is complete** - just needs runtime testing to verify it detects Copilot CLI
 4. **Fallback works perfectly** - if SDK fails, mock client provides responses
-5. **All core functionality works** - models load, prompts execute, sidecar manages sessions
+5. **All core functionality works** - models load, prompts execute, ACP client manages sessions
 
 ---
 
