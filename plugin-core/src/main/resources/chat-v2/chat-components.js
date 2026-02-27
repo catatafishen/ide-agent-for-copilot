@@ -674,43 +674,50 @@ const ChatController = {
     },
 
     appendAgentText(turnId, agentId, text) {
-        const ctx = this._getCtx(turnId, agentId);
-        this._collapseThinkingFor(ctx);
-        if (!ctx.textBubble) {
-            if (!text.trim()) return;
-            const c = this._ensureMsg(turnId, agentId);
-            const bubble = document.createElement('message-bubble');
-            bubble.setAttribute('streaming', '');
-            c.msg.appendChild(bubble);
-            c.textBubble = bubble;
+        try {
+            const ctx = this._getCtx(turnId, agentId);
+            this._collapseThinkingFor(ctx);
+            if (!ctx.textBubble) {
+                if (!text.trim()) return;
+                const c = this._ensureMsg(turnId, agentId);
+                const bubble = document.createElement('message-bubble');
+                bubble.setAttribute('streaming', '');
+                c.msg.appendChild(bubble);
+                c.textBubble = bubble;
+            }
+            ctx.textBubble.appendStreamingText(text);
+            this._container()?.scrollIfNeeded();
+        } catch (e) {
+            console.error('[appendAgentText ERROR]', e.message, e.stack);
         }
-        ctx.textBubble.appendStreamingText(text);
-        this._container()?.scrollIfNeeded();
     },
 
     finalizeAgentText(turnId, agentId, encodedHtml) {
-        const ctx = this._getCtx(turnId, agentId);
-        if (!ctx.textBubble && !encodedHtml) return;
-        if (encodedHtml) {
-            if (ctx.textBubble) {
-                ctx.textBubble.finalize(b64(encodedHtml));
-            } else {
-                const c = this._ensureMsg(turnId, agentId);
-                const bubble = document.createElement('message-bubble');
-                c.msg.appendChild(bubble);
-                bubble.finalize(b64(encodedHtml));
+        try {
+            const ctx = this._getCtx(turnId, agentId);
+            if (!ctx.textBubble && !encodedHtml) return;
+            if (encodedHtml) {
+                if (ctx.textBubble) {
+                    ctx.textBubble.finalize(b64(encodedHtml));
+                } else {
+                    const c = this._ensureMsg(turnId, agentId);
+                    const bubble = document.createElement('message-bubble');
+                    c.msg.appendChild(bubble);
+                    bubble.finalize(b64(encodedHtml));
+                }
+            } else if (ctx.textBubble) {
+                ctx.textBubble.remove();
+                if (ctx.msg && !ctx.msg.querySelector('message-bubble, tool-section, thinking-block')) {
+                    ctx.msg.remove();
+                    ctx.msg = null;
+                    ctx.meta = null;
+                }
             }
-        } else if (ctx.textBubble) {
-            ctx.textBubble.remove();
-            // Clean up the msg if nothing else remains
-            if (ctx.msg && !ctx.msg.querySelector('message-bubble, tool-section, thinking-block')) {
-                ctx.msg.remove();
-                ctx.msg = null;
-                ctx.meta = null;
-            }
+            ctx.textBubble = null;
+            this._container()?.scrollIfNeeded();
+        } catch (e) {
+            console.error('[finalizeAgentText ERROR]', e.message, e.stack);
         }
-        ctx.textBubble = null;
-        this._container()?.scrollIfNeeded();
     },
 
     addThinkingText(turnId, agentId, text) {
