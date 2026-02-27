@@ -698,6 +698,7 @@ const ChatController = {
                 chip.setAttribute('status', 'thinking');
                 chip.linkSection(el);
                 meta.appendChild(chip);
+                meta.classList.add('show');
             }
         }
         this._currentThinking.appendText(text);
