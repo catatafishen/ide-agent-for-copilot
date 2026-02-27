@@ -744,6 +744,14 @@ const ChatController = {
 
     addSubAgent(sectionId, displayName, colorIndex, promptText) {
         this._collapseThinkingInternal();
+        // If a streaming bubble exists, its finalizeAgentText is arriving
+        // asynchronously — detach so the prompt goes in a fresh message.
+        // The async finalizeAgentText will find the orphan via querySelectorAll.
+        if (this._currentBubble) {
+            this._currentBubble = null;
+            this._currentAgentMsg = null;
+            this._pendingMeta = null;
+        }
         // Ensure a non-indented parent message for the chip and prompt
         this._ensureAgentMessage();
         const parentMeta = this._pendingMeta;
