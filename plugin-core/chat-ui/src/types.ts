@@ -1,8 +1,12 @@
 export interface Bridge {
     openFile(href: string): void;
+
     openUrl(href: string): void;
+
     setCursor(cursor: string): void;
+
     loadMore(): void;
+
     quickReply(text: string): void;
 }
 
@@ -19,6 +23,7 @@ declare global {
         _bridge?: Bridge;
         ChatController: typeof import('./ChatController').default;
     }
+
     // eslint-disable-next-line no-var
     var _bridge: Bridge | undefined;
 }

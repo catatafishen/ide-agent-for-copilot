@@ -187,6 +187,10 @@ body {
     max-width: 90%;
 }
 
+.agent-bubble + .agent-bubble {
+    margin-top: var(--sp-4);
+}
+
 .agent-bubble:hover {
     background: var(--agent-a10);
 }
