@@ -52,6 +52,9 @@
 
   <!-- Extension points and implementations -->
   <extensions defaultExtensionNs="com.intellij">
+    <!-- New UI (expui) icon mapping -->
+    <iconMapper mappingFile="CopilotBridgeIconMappings.json"/>
+
     <!-- Tool Window -->
     <toolWindow id="Copilot Bridge"
                 secondary="false"
