@@ -1,0 +1,58 @@
+import { collapseAllChips } from '../helpers';
+
+export default class SubagentChip extends HTMLElement {
+    static get observedAttributes(): string[] {
+        return ['label', 'status', 'color-index'];
+    }
+
+    private _init = false;
+    _linkedSection: HTMLElement | null = null;
+
+    connectedCallback(): void {
+        if (this._init) return;
+        this._init = true;
+        const ci = this.getAttribute('color-index') || '0';
+        this.classList.add('turn-chip', 'subagent', 'subagent-c' + ci);
+        this.style.cursor = 'pointer';
+        this._render();
+        this.onclick = (e) => {
+            e.stopPropagation();
+            this._toggleExpand();
+        };
+    }
+
+    private _render(): void {
+        const label = this.getAttribute('label') || '';
+        const status = this.getAttribute('status') || 'running';
+        const display = label.length > 50 ? label.substring(0, 47) + '\u2026' : label;
+        let html = '';
+        if (status === 'running') html = '<span class="chip-spinner"></span> ';
+        else if (status === 'failed') this.classList.add('failed');
+        html += (label.length > 50 ? '<span>' + display + '</span>' : display);
+        this.innerHTML = html;
+    }
+
+    private _toggleExpand(): void {
+        const section = this._linkedSection;
+        if (!section) return;
+        collapseAllChips(this.closest('chat-message'), this);
+        if (section.classList.contains('turn-hidden')) {
+            section.classList.remove('turn-hidden', 'collapsed');
+            section.classList.add('chip-expanded');
+            this.style.opacity = '0.5';
+        } else {
+            this.style.opacity = '1';
+            section.classList.add('turn-hidden', 'collapsed');
+            section.classList.remove('chip-expanded');
+        }
+    }
+
+    linkSection(section: HTMLElement): void {
+        this._linkedSection = section;
+    }
+
+    attributeChangedCallback(name: string): void {
+        if (!this._init) return;
+        if (name === 'status' || name === 'label') this._render();
+    }
+}

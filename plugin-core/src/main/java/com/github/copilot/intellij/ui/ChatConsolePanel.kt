@@ -29,10 +29,10 @@ import javax.swing.SwingUtilities
 import javax.swing.UIManager
 
 /**
- * Chat panel V2 — web-component-based implementation.
+ * Chat panel — web-component-based implementation.
  * All rendering delegated to JS ChatController; Kotlin manages data model and bridge.
  */
-class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePanelV2>(BorderLayout()), ChatPanelApi {
+class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>(BorderLayout()), ChatPanelApi {
 
     override val component: JComponent get() = this
     override var onQuickReply: ((String) -> Unit)? = null
@@ -137,6 +137,20 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                             pendingJs.clear()
                         }
                     }
+                }
+            }, browser.cefBrowser)
+
+            browser.jbCefClient.addDisplayHandler(object : org.cef.handler.CefDisplayHandlerAdapter() {
+                override fun onConsoleMessage(
+                    b: org.cef.browser.CefBrowser?,
+                    level: org.cef.CefSettings.LogSeverity?,
+                    message: String?,
+                    source: String?,
+                    line: Int
+                ): Boolean {
+                    com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
+                        .info("JCEF Console [$level]: $message")
+                    return false
                 }
             }, browser.cefBrowser)
 
@@ -725,12 +739,12 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     private fun executeJs(js: String) {
         val short = if (js.length > 80) js.take(80) + "…" else js
         if (browserReady) {
-            com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanelV2::class.java)
-                .info("V2 executeJs (ready): $short")
+            com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
+                .info("executeJs (ready): $short")
             browser?.cefBrowser?.executeJavaScript(js, "", 0)
         } else {
-            com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanelV2::class.java)
-                .info("V2 executeJs (queued): $short")
+            com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
+                .info("executeJs (queued): $short")
             pendingJs.add(js)
         }
     }
@@ -928,8 +942,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 quickReply: function(text) { $quickReplyBridgeJs }
             };
         """.trimIndent()
-        val css = loadResource("/chat-v2/chat-v2.css")
-        val js = loadResource("/chat-v2/chat-components.js")
+        val css = loadResource("/chat/chat.css")
+        val js = loadResource("/chat/chat-components.js")
         return """<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>$css</style>
 <style>:root { $cssVars }</style></head><body>

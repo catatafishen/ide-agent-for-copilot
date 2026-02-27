@@ -122,6 +122,14 @@ tasks.named("prepareSandbox") {
     }
 }
 
+// Build chat-ui TypeScript → bundled JS
+val buildChatUi by tasks.registering(Exec::class) {
+    workingDir = file("chat-ui")
+    commandLine("npm", "run", "build")
+    inputs.dir("chat-ui/src")
+    outputs.file("src/main/resources/chat/chat-components.js")
+}
+
 // Also include in the distribution ZIP
 tasks.named<Zip>("buildPlugin") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -187,6 +195,7 @@ tasks {
 
     named("processResources") {
         dependsOn(generateBuildInfo)
+        dependsOn(buildChatUi)
     }
 
     withType<Jar> {

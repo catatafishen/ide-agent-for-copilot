@@ -1,0 +1,14 @@
+{
+  "name": "chat-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=iife --global-name=__chatUI --outfile=../src/main/resources/chat/chat-components.js --target=es2022",
+    "build:watch": "esbuild src/index.ts --bundle --format=iife --global-name=__chatUI --outfile=../src/main/resources/chat/chat-components.js --target=es2022 --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1095,7 +1095,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun createResponsePanel(): JComponent {
-        consolePanel = ChatConsolePanelV2(project)
+        consolePanel = ChatConsolePanel(project)
         consolePanel.onQuickReply = { text -> SwingUtilities.invokeLater { sendQuickReply(text) } }
         // Register for proper JCEF browser disposal
         com.intellij.openapi.util.Disposer.register(project, consolePanel)

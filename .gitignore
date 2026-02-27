@@ -51,6 +51,10 @@ plugin-core/build/
 integration-tests/build/
 mcp-server/build/
 
+# Node.js (chat-ui build tooling)
+plugin-core/chat-ui/node_modules/
+plugin-core/js-tests/node_modules/
+
 # Agent workspace (for Copilot session state)
 .agent-work/
 
