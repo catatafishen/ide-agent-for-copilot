@@ -122,12 +122,21 @@ tasks.named("prepareSandbox") {
     }
 }
 
-// Build chat-ui TypeScript → bundled JS
-val buildChatUi by tasks.registering(Exec::class) {
-    workingDir = file("chat-ui")
-    commandLine("npm", "run", "build")
+// Build chat-ui TypeScript → bundled JS + copy static assets
+val buildChatUi by tasks.registering {
     inputs.dir("chat-ui/src")
-    outputs.file("src/main/resources/chat/chat-components.js")
+    outputs.dir("src/main/resources/chat")
+
+    doLast {
+        exec {
+            workingDir = file("chat-ui")
+            commandLine("npm", "run", "build")
+        }
+        copy {
+            from("chat-ui/src/chat.css")
+            into("src/main/resources/chat")
+        }
+    }
 }
 
 // Also include in the distribution ZIP

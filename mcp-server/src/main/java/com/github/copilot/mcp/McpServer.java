@@ -164,7 +164,9 @@ public class McpServer {
         return result;
     }
 
-    /** Load MCP instructions from the persisted user file, falling back to the bundled default. */
+    /**
+     * Load MCP instructions from the persisted user file, falling back to the bundled default.
+     */
     private static String loadInstructions() {
         Path customFile = Path.of(projectRoot, ".agent-work", "startup-instructions.md");
         if (Files.isRegularFile(customFile)) {
@@ -177,7 +179,9 @@ public class McpServer {
         return loadDefaultInstructions();
     }
 
-    /** Load the bundled default instructions from the classpath resource. */
+    /**
+     * Load the bundled default instructions from the classpath resource.
+     */
     static String loadDefaultInstructions() {
         try (InputStream is = McpServer.class.getResourceAsStream("/default-mcp-instructions.md")) {
             if (is != null) {
@@ -639,6 +643,13 @@ public class McpServer {
                 "module", Map.of("type", "string", "description", "Optional: build only a specific module (e.g., 'plugin-core')")
             ),
             List.of()));
+
+        tools.add(buildTool("mark_directory", "Mark Directory: configure a directory's type in IntelliJ project structure. Can mark as source root, test source root, resource root, test resource root, excluded, or generated sources root. Can also unmark a previously marked directory.",
+            Map.of(
+                "path", Map.of("type", "string", "description", "Directory path (absolute or project-relative)"),
+                "type", Map.of("type", "string", "description", "Directory type: 'sources', 'test_sources', 'resources', 'test_resources', 'generated_sources', 'excluded', or 'unmark' to remove marking")
+            ),
+            List.of("path", "type")));
 
         result.add("tools", tools);
         return result;

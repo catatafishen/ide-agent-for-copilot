@@ -3,6 +3,7 @@ package com.github.copilot.intellij.psi;
 import com.google.gson.JsonObject;
 import com.intellij.execution.RunManager;
 import com.intellij.openapi.application.ApplicationInfo;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
@@ -10,8 +11,13 @@ import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.roots.ContentEntry;
+import com.intellij.openapi.roots.ExcludeFolder;
+import com.intellij.openapi.roots.ModifiableRootModel;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.roots.SourceFolder;
+import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 
 import java.lang.reflect.Method;
@@ -43,6 +49,7 @@ class ProjectTools extends AbstractToolHandler {
         register("build_project", this::buildProject);
         register("get_indexing_status", this::getIndexingStatus);
         register("download_sources", this::downloadSources);
+        register("mark_directory", this::markDirectory);
     }
 
     // ---- get_project_info ----
@@ -282,6 +289,128 @@ class ProjectTools extends AbstractToolHandler {
                 "Some tools (inspections, find_references, search_symbols) may return incomplete results while indexing.";
         }
         return "IDE is ready. Indexing is complete.";
+    }
+
+    // ---- mark_directory ----
+
+    private String markDirectory(JsonObject args) throws Exception {
+        String pathStr = args.get("path").getAsString();
+        String type = args.get("type").getAsString();
+
+        // Validate type
+        List<String> validTypes = List.of("sources", "test_sources", "resources",
+            "test_resources", "generated_sources", "excluded", "unmark");
+        if (!validTypes.contains(type)) {
+            return "Error: invalid type '" + type + "'. Must be one of: " + String.join(", ", validTypes);
+        }
+
+        // Resolve the path
+        String basePath = project.getBasePath();
+        Path dirPath = Path.of(pathStr);
+        if (!dirPath.isAbsolute() && basePath != null) {
+            dirPath = Path.of(basePath).resolve(dirPath);
+        }
+        String absolutePath = dirPath.toAbsolutePath().toString();
+
+        // Ensure the directory exists on disk
+        if (!Files.isDirectory(dirPath)) {
+            Files.createDirectories(dirPath);
+        }
+
+        // Refresh VFS to make IntelliJ aware of the directory
+        VirtualFile vDir = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath);
+        if (vDir == null) {
+            return "Error: could not find directory in VFS: " + absolutePath;
+        }
+
+        CompletableFuture<String> future = new CompletableFuture<>();
+        EdtUtil.invokeLater(() -> {
+            try {
+                String result = ApplicationManager.getApplication().runWriteAction(
+                    (com.intellij.openapi.util.Computable<String>) () ->
+                        applyDirectoryMarking(absolutePath, vDir, type));
+                future.complete(result);
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future.get(10, TimeUnit.SECONDS);
+    }
+
+    private String applyDirectoryMarking(String absolutePath, VirtualFile vDir, String type) {
+        Module[] modules = ModuleManager.getInstance(project).getModules();
+        for (Module module : modules) {
+            ModifiableRootModel model = ModuleRootManager.getInstance(module).getModifiableModel();
+            try {
+                for (ContentEntry entry : model.getContentEntries()) {
+                    VirtualFile contentRoot = entry.getFile();
+                    if (contentRoot == null) continue;
+                    if (!absolutePath.startsWith(contentRoot.getPath())) continue;
+
+                    if ("unmark".equals(type)) {
+                        return unmarkDirectory(entry, model, module, vDir.getUrl(), absolutePath);
+                    }
+
+                    if ("excluded".equals(type)) {
+                        entry.addExcludeFolder(vDir);
+                        model.commit();
+                        return "Marked '" + absolutePath + "' as excluded in module '" + module.getName() + "'";
+                    }
+
+                    return addSourceRoot(entry, model, module, vDir, absolutePath, type);
+                }
+            } finally {
+                if (!model.isDisposed() && model.isWritable()) {
+                    model.dispose();
+                }
+            }
+        }
+        return "Error: directory '" + absolutePath + "' is not under any module's content root";
+    }
+
+    private static String addSourceRoot(ContentEntry entry, ModifiableRootModel model,
+                                        Module module, VirtualFile vDir, String absolutePath, String type) {
+        boolean isTest = type.startsWith("test_");
+        if (type.contains("resources")) {
+            var rootType = isTest
+                ? org.jetbrains.jps.model.java.JavaResourceRootType.TEST_RESOURCE
+                : org.jetbrains.jps.model.java.JavaResourceRootType.RESOURCE;
+            entry.addSourceFolder(vDir, rootType);
+        } else if ("generated_sources".equals(type)) {
+            var rootType = org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE;
+            var props = new org.jetbrains.jps.model.java.JavaSourceRootProperties("", true);
+            entry.addSourceFolder(vDir, rootType, props);
+        } else if (isTest) {
+            entry.addSourceFolder(vDir, org.jetbrains.jps.model.java.JavaSourceRootType.TEST_SOURCE);
+        } else {
+            entry.addSourceFolder(vDir, org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE);
+        }
+        model.commit();
+        return "Marked '" + absolutePath + "' as " + type + " in module '" + module.getName() + "'";
+    }
+
+    private static String unmarkDirectory(ContentEntry entry, ModifiableRootModel model,
+                                          Module module, String url, String absolutePath) {
+        boolean found = false;
+        for (SourceFolder sf : entry.getSourceFolders()) {
+            if (url.equals(sf.getUrl())) {
+                entry.removeSourceFolder(sf);
+                found = true;
+            }
+        }
+        for (ExcludeFolder ef : entry.getExcludeFolders()) {
+            if (url.equals(ef.getUrl())) {
+                entry.removeExcludeFolder(ef);
+                found = true;
+            }
+        }
+        if (found) {
+            model.commit();
+            return "Unmarked '" + absolutePath + "' in module '" + module.getName() + "'";
+        }
+        model.dispose();
+        return "Directory '" + absolutePath + "' was not marked in module '" + module.getName() + "'";
     }
 
     // ---- download_sources ----
