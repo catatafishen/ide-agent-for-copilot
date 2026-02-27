@@ -322,4 +322,36 @@ describe('ChatController', () => {
             expect(agentMsgs[1].querySelectorAll('message-bubble').length).toBe(1);
         });
     });
+
+    describe('addSubAgentToolCall', () => {
+        it('adds tool chip and section to sub-agent result message', () => {
+            CC().addSubAgent('t0', 'main', 'sa-1', 'Explore Agent', 0, 'Find stuff');
+            CC().addSubAgentToolCall('sa-1', 'sa-tc-1', 'Glob — *.kt', '{"pattern":"*.kt"}');
+            CC().addSubAgentToolCall('sa-1', 'sa-tc-2', 'Grep — foo', '{"pattern":"foo"}');
+
+            const saMsg = document.getElementById('sa-sa-1');
+            expect(saMsg).toBeTruthy();
+
+            // Tool chips in sub-agent meta
+            const chips = saMsg.querySelectorAll('tool-chip');
+            expect(chips.length).toBe(2);
+            expect(chips[0].getAttribute('label')).toBe('Glob — *.kt');
+            expect(chips[1].getAttribute('label')).toBe('Grep — foo');
+
+            // Tool sections before result bubble
+            const sections = saMsg.querySelectorAll('tool-section');
+            expect(sections.length).toBe(2);
+            const resultBubble = saMsg.querySelector('.subagent-result');
+            expect(sections[1].compareDocumentPosition(resultBubble) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('updateToolCall works for sub-agent internal tools', () => {
+            CC().addSubAgent('t0', 'main', 'sa-2', 'Task Agent', 1, 'Build');
+            CC().addSubAgentToolCall('sa-2', 'sa-tc-3', 'Run Tests', '{}');
+            CC().updateToolCall('sa-tc-3', 'completed', 'All passed');
+
+            const chip = document.querySelector('[data-chip-for="sa-tc-3"]');
+            expect(chip.getAttribute('status')).toBe('complete');
+        });
+    });
 });

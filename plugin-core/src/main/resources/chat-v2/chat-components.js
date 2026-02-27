@@ -814,6 +814,30 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
+    /** Add a tool call chip+section to a sub-agent's result message. */
+    addSubAgentToolCall(subAgentDomId, toolDomId, title, paramsJson) {
+        const msg = document.getElementById('sa-' + subAgentDomId);
+        if (!msg) return;
+        const meta = msg.querySelector('message-meta');
+        const section = document.createElement('tool-section');
+        section.id = toolDomId;
+        section.setAttribute('title', title);
+        if (paramsJson) section.setAttribute('params', paramsJson);
+        const resultBubble = msg.querySelector('.subagent-result');
+        if (resultBubble) msg.insertBefore(section, resultBubble);
+        else msg.appendChild(section);
+        const chip = document.createElement('tool-chip');
+        chip.setAttribute('label', title);
+        chip.setAttribute('status', 'running');
+        chip.dataset.chipFor = toolDomId;
+        chip.linkSection(section);
+        if (meta) {
+            meta.appendChild(chip);
+            meta.classList.add('show');
+        }
+        this._container()?.scrollIfNeeded();
+    },
+
     addError(message) {
         const el = document.createElement('status-message');
         el.setAttribute('type', 'error');

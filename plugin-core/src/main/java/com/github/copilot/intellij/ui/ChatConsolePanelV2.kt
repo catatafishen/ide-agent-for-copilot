@@ -238,6 +238,33 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         toolJustCompleted = true
     }
 
+    /** Add a tool call chip+section to a sub-agent's result message. */
+    override fun addSubAgentToolCall(subAgentId: String, toolId: String, title: String, arguments: String?) {
+        val saDid = domId(subAgentId)
+        val toolDid = domId(toolId)
+        val baseName = title.substringAfterLast("-").substringAfterLast("_")
+        val info = TOOL_DISPLAY_INFO[baseName]
+        val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
+        val short = formatToolSubtitle(baseName, arguments)
+        val label = if (short != null) "$displayName — $short" else displayName
+        val paramsJson = if (!arguments.isNullOrBlank()) escJs(arguments) else ""
+        executeJs("ChatController.addSubAgentToolCall('$saDid','$toolDid','${escJs(label)}','$paramsJson')")
+    }
+
+    /** Update a sub-agent internal tool call (no segment break). */
+    override fun updateSubAgentToolCall(toolId: String, status: String, details: String?) {
+        val did = domId(toolId)
+        val resultHtml = if (!details.isNullOrBlank()) {
+            val encoded =
+                b64("<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${esc(details)}</code></pre>")
+            "b64('$encoded')"
+        } else {
+            if (status == "completed") "'Completed'" else "'<span style=\"color:var(--error)\">✖ Failed</span>'"
+        }
+        val failed = if (status == "failed") "failed" else "completed"
+        executeJs("(function(){ChatController.updateToolCall('$did','$failed',$resultHtml);})()")
+    }
+
     override fun addSubAgentEntry(
         id: String, agentType: String, description: String, prompt: String?,
         initialResult: String?, initialStatus: String?
