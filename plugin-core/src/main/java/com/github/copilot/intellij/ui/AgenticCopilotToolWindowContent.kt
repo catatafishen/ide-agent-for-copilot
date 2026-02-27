@@ -1307,6 +1307,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         if (quickReplies.isNotEmpty()) {
             SwingUtilities.invokeLater { consolePanel.showQuickReplies(quickReplies) }
         }
+
+        // Force Swing repaint so the JCEF panel reflects final state
+        SwingUtilities.invokeLater {
+            consolePanel.component.revalidate()
+            consolePanel.component.repaint()
+        }
     }
 
     private fun executePrompt(prompt: String) {
