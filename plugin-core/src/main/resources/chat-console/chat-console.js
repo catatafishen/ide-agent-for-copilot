@@ -13,7 +13,16 @@ window.addEventListener('scroll', function () {
 });
 
 function scrollIfNeeded() {
-    if (autoScroll) window.scrollTo(0, document.body.scrollHeight);
+    if (autoScroll) {
+        window.scrollTo(0, document.body.scrollHeight);
+        // Force JCEF repaint to avoid rendering artifacts after programmatic scroll
+        requestAnimationFrame(function () {
+            document.body.style.opacity = '0.999';
+            requestAnimationFrame(function () {
+                document.body.style.opacity = '1';
+            });
+        });
+    }
 }
 
 function b64(s) {
