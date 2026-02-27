@@ -1,5 +1,51 @@
-/** Maps raw MCP tool names (e.g. "Intellij-code-tools-intellij_read_file") to
- *  short human-friendly chip labels (e.g. "Reading MyFile.kt"). */
+/** Maps raw MCP tool names to human-friendly chip labels and color categories. */
+
+export type ToolCategory = 'file' | 'search' | 'quality' | 'build' | 'git' | 'ide' | 'github' | 'default';
+
+/** Returns the color category for a tool chip. */
+export function toolCategory(rawTitle: string): ToolCategory {
+    const name = rawTitle
+        .replace(/^[Ii]ntellij-code-tools-/, '')
+        .replace(/^github-mcp-server-/, 'gh:');
+
+    if (name.startsWith('gh:')) return 'github';
+    if (name.startsWith('git_')) return 'git';
+
+    const cats: Record<string, ToolCategory> = {
+        'intellij_read_file': 'file', 'intellij_write_file': 'file',
+        'create_file': 'file', 'delete_file': 'file',
+        'open_in_editor': 'file', 'show_diff': 'file', 'undo': 'file',
+
+        'search_text': 'search', 'search_symbols': 'search',
+        'find_references': 'search', 'go_to_declaration': 'search',
+        'get_file_outline': 'search', 'get_class_outline': 'search',
+        'get_type_hierarchy': 'search', 'get_documentation': 'search',
+        'list_project_files': 'search', 'list_tests': 'search',
+
+        'format_code': 'quality', 'optimize_imports': 'quality',
+        'run_inspections': 'quality', 'get_compilation_errors': 'quality',
+        'get_problems': 'quality', 'get_highlights': 'quality',
+        'apply_quickfix': 'quality', 'suppress_inspection': 'quality',
+        'add_to_dictionary': 'quality', 'run_qodana': 'quality',
+        'run_sonarqube_analysis': 'quality',
+
+        'build_project': 'build', 'run_command': 'build',
+        'run_tests': 'build', 'get_test_results': 'build',
+        'get_coverage': 'build', 'run_configuration': 'build',
+        'create_run_configuration': 'build', 'edit_run_configuration': 'build',
+        'list_run_configurations': 'build',
+
+        'get_project_info': 'ide', 'read_ide_log': 'ide',
+        'get_notifications': 'ide', 'read_run_output': 'ide',
+        'run_in_terminal': 'ide', 'read_terminal_output': 'ide',
+        'download_sources': 'ide', 'create_scratch_file': 'ide',
+        'list_scratch_files': 'ide', 'get_indexing_status': 'ide',
+        'mark_directory': 'ide', 'get_chat_html': 'ide',
+        'http_request': 'ide', 'refactor': 'ide',
+    };
+
+    return cats[name] || 'default';
+}
 
 function shortPath(p: string): string {
     if (!p) return '';

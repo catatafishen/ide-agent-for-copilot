@@ -1,5 +1,5 @@
 import {collapseAllChips, escHtml} from '../helpers';
-import {toolDisplayName} from '../toolDisplayName';
+import {toolDisplayName, toolCategory} from '../toolDisplayName';
 
 export default class ToolChip extends HTMLElement {
     static get observedAttributes(): string[] {
@@ -27,7 +27,11 @@ export default class ToolChip extends HTMLElement {
         this._resolveLink();
         const paramsStr = this._linkedSection?.getAttribute('params') || undefined;
         const display = toolDisplayName(rawLabel, paramsStr);
+        const cat = toolCategory(rawLabel);
         const truncated = display.length > 50 ? display.substring(0, 47) + '\u2026' : display;
+        // Remove any previous category class and apply current one
+        this.className = this.className.replace(/\bcat-\S+/g, '').trim();
+        this.classList.add('turn-chip', 'tool', `cat-${cat}`);
         let iconHtml = '';
         if (status === 'running') iconHtml = '<span class="chip-spinner"></span> ';
         else if (status === 'failed') this.classList.add('failed');

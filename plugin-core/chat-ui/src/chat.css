@@ -53,6 +53,15 @@
     --tool-a08: rgba(180, 160, 220, 0.08);
     --tool-a16: rgba(180, 160, 220, 0.16);
     --tool-a40: rgba(180, 160, 220, 0.40);
+    /* Tool category colors */
+    --cat-file: rgb(100, 185, 185);
+    --cat-search: rgb(195, 175, 110);
+    --cat-quality: rgb(130, 190, 130);
+    --cat-build: rgb(205, 155, 95);
+    --cat-git: rgb(195, 135, 135);
+    --cat-ide: rgb(170, 155, 210);
+    --cat-github: rgb(135, 165, 215);
+    --cat-default: rgb(160, 165, 170);
     --spin-bg: rgb(60, 60, 60);
     --code-bg: rgb(30, 30, 30);
     --tbl-border: rgb(60, 60, 60);
@@ -276,6 +285,35 @@ body {
 .turn-chip.tool:hover {
     background: var(--tool-a16);
 }
+
+/* Tool category color overrides */
+.turn-chip.cat-file    { color: var(--cat-file);    background: rgba(100, 185, 185, 0.10); }
+.turn-chip.cat-search  { color: var(--cat-search);  background: rgba(195, 175, 110, 0.10); }
+.turn-chip.cat-quality { color: var(--cat-quality); background: rgba(130, 190, 130, 0.10); }
+.turn-chip.cat-build   { color: var(--cat-build);   background: rgba(205, 155, 95, 0.10); }
+.turn-chip.cat-git     { color: var(--cat-git);     background: rgba(195, 135, 135, 0.10); }
+.turn-chip.cat-ide     { color: var(--cat-ide);     background: rgba(170, 155, 210, 0.10); }
+.turn-chip.cat-github  { color: var(--cat-github);  background: rgba(135, 165, 215, 0.10); }
+.turn-chip.cat-default { color: var(--cat-default); background: rgba(160, 165, 170, 0.08); }
+
+.turn-chip.cat-file:hover    { background: rgba(100, 185, 185, 0.18); }
+.turn-chip.cat-search:hover  { background: rgba(195, 175, 110, 0.18); }
+.turn-chip.cat-quality:hover { background: rgba(130, 190, 130, 0.18); }
+.turn-chip.cat-build:hover   { background: rgba(205, 155, 95, 0.18); }
+.turn-chip.cat-git:hover     { background: rgba(195, 135, 135, 0.18); }
+.turn-chip.cat-ide:hover     { background: rgba(170, 155, 210, 0.18); }
+.turn-chip.cat-github:hover  { background: rgba(135, 165, 215, 0.18); }
+.turn-chip.cat-default:hover { background: rgba(160, 165, 170, 0.16); }
+
+/* Category-colored spinners */
+.turn-chip.cat-file .chip-spinner    { border-top-color: var(--cat-file); }
+.turn-chip.cat-search .chip-spinner  { border-top-color: var(--cat-search); }
+.turn-chip.cat-quality .chip-spinner { border-top-color: var(--cat-quality); }
+.turn-chip.cat-build .chip-spinner   { border-top-color: var(--cat-build); }
+.turn-chip.cat-git .chip-spinner     { border-top-color: var(--cat-git); }
+.turn-chip.cat-ide .chip-spinner     { border-top-color: var(--cat-ide); }
+.turn-chip.cat-github .chip-spinner  { border-top-color: var(--cat-github); }
+.turn-chip.cat-default .chip-spinner { border-top-color: var(--cat-default); }
 
 .turn-chip.stats {
     background: var(--think-a06);
