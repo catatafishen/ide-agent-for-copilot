@@ -395,8 +395,10 @@ const ChatController = {
     _trimMessages(): void {
         const msgs = this._msgs();
         if (!msgs) return;
-        const rows = msgs.querySelectorAll('chat-message,thinking-block,tool-section,status-message');
-        if (rows.length > 100) for (let i = 0; i < rows.length - 100; i++) (rows[i] as Element).remove();
+        const rows = Array.from(msgs.children).filter(
+            c => c.tagName === 'CHAT-MESSAGE' || c.tagName === 'STATUS-MESSAGE'
+        );
+        if (rows.length > 80) for (let i = 0; i < rows.length - 80; i++) rows[i].remove();
     },
 };
 

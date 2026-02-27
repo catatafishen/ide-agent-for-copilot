@@ -4,5 +4,6 @@ export default class MessageMeta extends HTMLElement {
     connectedCallback(): void {
         if (this._init) return;
         this._init = true;
+        this.classList.add('meta');
     }
 }

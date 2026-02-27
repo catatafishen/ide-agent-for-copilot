@@ -7,6 +7,7 @@
 
 import './types';
 
+import {b64} from './helpers';
 import ChatContainer from './components/ChatContainer';
 import ChatMessage from './components/ChatMessage';
 import MessageBubble from './components/MessageBubble';
@@ -42,6 +43,7 @@ customElements.define('load-more', LoadMore);
 // ── Expose controller to Kotlin bridge ────────────────
 
 window.ChatController = ChatController;
+(window as any).b64 = b64;
 
 // ── Global event handlers ─────────────────────────────
 
