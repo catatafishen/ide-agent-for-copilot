@@ -497,7 +497,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
                 val short = formatToolSubtitle(baseName, args)
                 val label = if (short != null) "$displayName — $short" else displayName
                 val did = "restored-tool-${entries.size}"
-                executeJs("ChatController.addToolCall('$did','${escJs(label)}','${escJs(args ?: "")}');ChatController.updateToolCall('$did','completed',null)")
+                executeJs("ChatController.addToolCall('$did','${escJs(label)}','${escJs(args ?: "")}');ChatController.updateToolCall('$did','completed','Completed')")
             }
 
             "subagent" -> {
