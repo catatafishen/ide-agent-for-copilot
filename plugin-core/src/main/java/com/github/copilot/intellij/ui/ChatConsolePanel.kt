@@ -488,7 +488,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             addEntryFromJson(obj)
             renderRestoredEntry(obj)
         }
-        executeJs("ChatController.collapseEmptyTurns()")
     }
 
     private fun findSplitIndex(arr: com.google.gson.JsonArray, turnsFromEnd: Int): Int {
@@ -645,7 +644,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val encoded = b64(html)
             executeJs("ChatController.restoreBatch('$encoded')")
         }
-        executeJs("ChatController.collapseEmptyTurns()")
         if (deferredRestoreJson.isEmpty()) {
             executeJs("ChatController.removeLoadMore()")
         } else {

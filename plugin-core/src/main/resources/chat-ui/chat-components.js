@@ -822,9 +822,6 @@
           meta.classList.add("show");
         }
       }
-      if (ctx?.msg && !ctx.msg.querySelector("message-bubble")) {
-        ctx.msg.querySelector("message-meta")?.classList.remove("show");
-      }
       if (ctx) {
         ctx.thinkingBlock = null;
         ctx.textBubble = null;
@@ -889,15 +886,6 @@
         (c) => c.tagName === "CHAT-MESSAGE" || c.tagName === "STATUS-MESSAGE"
       );
       if (rows.length > 80) for (let i = 0; i < rows.length - 80; i++) rows[i].remove();
-    },
-    collapseEmptyTurns() {
-      const msgs = this._msgs();
-      if (!msgs) return;
-      msgs.querySelectorAll('chat-message[type="agent"]').forEach((msg) => {
-        if (!msg.querySelector("message-bubble")) {
-          msg.querySelector("message-meta")?.classList.remove("show");
-        }
-      });
     }
   };
   var ChatController_default = ChatController;
