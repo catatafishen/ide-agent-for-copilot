@@ -1317,6 +1317,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             turnModelId = modelId
 
             SwingUtilities.invokeLater {
+                consolePanel.setCurrentModel(modelId)
                 consolePanel.setPromptStats(modelId, getModelMultiplier(modelId))
             }
 

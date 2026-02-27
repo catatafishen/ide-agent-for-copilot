@@ -16,6 +16,9 @@ const ChatController = {
     },
 
     _thinkingCounter: 0,
+    _modelColors: {} as Record<string, number>,
+    _nextModelColor: 0,
+    _currentModel: '',
     _ctx: {} as Record<string, TurnContext & { thinkingMsg?: HTMLElement | null; thinkingChip?: HTMLElement | null }>,
 
     _getCtx(turnId: string, agentId: string): TurnContext & {
@@ -41,6 +44,13 @@ const ChatController = {
         if (!ctx.msg) {
             const msg = document.createElement('chat-message');
             msg.setAttribute('type', 'agent');
+            // Apply model-based color class for main agent messages
+            if (this._currentModel && agentId === 'main') {
+                if (!(this._currentModel in this._modelColors)) {
+                    this._modelColors[this._currentModel] = this._nextModelColor++ % 6;
+                }
+                msg.classList.add('model-c' + this._modelColors[this._currentModel]);
+            }
             const meta = document.createElement('message-meta');
             const now = new Date();
             const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
@@ -311,6 +321,9 @@ const ChatController = {
         this._msgs().innerHTML = '';
         this._ctx = {};
         this._thinkingCounter = 0;
+        this._modelColors = {};
+        this._nextModelColor = 0;
+        this._currentModel = '';
     },
 
     finalizeTurn(turnId: string, statsJson?: string): void {
@@ -364,6 +377,10 @@ const ChatController = {
         chip.dataset.tip = model;
         chip.setAttribute('title', model);
         meta.appendChild(chip);
+    },
+
+    setCurrentModel(modelId: string): void {
+        this._currentModel = modelId;
     },
 
     restoreBatch(encodedHtml: string): void {

@@ -413,6 +413,56 @@ thinking-chip .chip-spinner {
 }
 
 /* ── Sub-agent colors ────────────────────────────────── */
+
+/* ── Model colors (main agent bubbles cycle per model) ── */
+.model-c0 .agent-bubble {
+    background: rgba(150, 200, 150, 0.06);
+}
+
+.model-c0 .agent-bubble:hover {
+    background: rgba(150, 200, 150, 0.10);
+}
+
+.model-c1 .agent-bubble {
+    background: rgba(130, 170, 220, 0.06);
+}
+
+.model-c1 .agent-bubble:hover {
+    background: rgba(130, 170, 220, 0.10);
+}
+
+.model-c2 .agent-bubble {
+    background: rgba(190, 150, 210, 0.06);
+}
+
+.model-c2 .agent-bubble:hover {
+    background: rgba(190, 150, 210, 0.10);
+}
+
+.model-c3 .agent-bubble {
+    background: rgba(220, 170, 100, 0.06);
+}
+
+.model-c3 .agent-bubble:hover {
+    background: rgba(220, 170, 100, 0.10);
+}
+
+.model-c4 .agent-bubble {
+    background: rgba(200, 130, 150, 0.06);
+}
+
+.model-c4 .agent-bubble:hover {
+    background: rgba(200, 130, 150, 0.10);
+}
+
+.model-c5 .agent-bubble {
+    background: rgba(100, 190, 190, 0.06);
+}
+
+.model-c5 .agent-bubble:hover {
+    background: rgba(100, 190, 190, 0.10);
+}
+
 .subagent-c0 {
     --sa-color: var(--sa-c0);
     --sa-a06: var(--sa-c0-a06);

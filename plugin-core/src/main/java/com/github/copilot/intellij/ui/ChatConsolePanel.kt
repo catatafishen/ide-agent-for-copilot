@@ -211,6 +211,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.setPromptStats('$short','${escJs(multiplier)}')")
     }
 
+    override fun setCurrentModel(modelId: String) {
+        executeJs("ChatController.setCurrentModel('${escJs(modelId)}')")
+    }
+
     override fun addContextFilesEntry(files: List<Pair<String, String>>) {
         entries.add(EntryData.ContextFiles(files))
     }

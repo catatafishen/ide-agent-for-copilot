@@ -19,6 +19,7 @@ interface ChatPanelApi : Disposable {
 
     fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>? = null)
     fun setPromptStats(modelId: String, multiplier: String)
+    fun setCurrentModel(modelId: String)
     fun addContextFilesEntry(files: List<Pair<String, String>>)
 
     // ── Agent text (streaming) ─────────────────────────────────────
