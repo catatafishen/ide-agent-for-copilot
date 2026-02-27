@@ -64,6 +64,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private val SA_UI_COLOR: Color get() = JBColor(Color(0xD8, 0x70, 0x93), Color(0xD8, 0x70, 0x93))
 
         internal const val ICON_ERROR = "\u274C"
+
         /** Matches `[quick-reply: Option A | Option B | ...]` tags on their own line. */
         val QUICK_REPLY_TAG_REGEX = Regex("""^\[quick-reply:\s*([^\]]+)]\s*$""", RegexOption.MULTILINE)
 
@@ -1144,6 +1145,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val statsJson = """{"tools":$toolCallCount,"model":"${escapeJs(modelId)}","mult":"${escapeJs(multiplier)}"}"""
         executeJs("finalizeTurn($statsJson)")
         trimMessages()
+        // Force repaint to clear any rendering artifacts from streaming
+        SwingUtilities.invokeLater { browser?.component?.repaint() }
     }
 
     fun showQuickReplies(options: List<String>) {
