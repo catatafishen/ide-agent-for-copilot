@@ -127,6 +127,7 @@ public class CopilotAcpClient implements Closeable {
     private volatile long lastActivityTimestamp = System.currentTimeMillis();
     private final AtomicInteger toolCallsInTurn = new AtomicInteger(0);
     private final AtomicInteger requestsInTurn = new AtomicInteger(0);
+    private volatile int currentModelMultiplier = 1;
 
     // Debug event listeners for UI debug tab
     private final CopyOnWriteArrayList<Consumer<DebugEvent>> debugListeners = new CopyOnWriteArrayList<>();
@@ -428,6 +429,9 @@ public class CopilotAcpClient implements Closeable {
             int maxRetries = 3;
             int retryCount = 0;
 
+            // Compute model multiplier for premium request counting
+            currentModelMultiplier = parseMultiplier(getModelMultiplier(model != null ? model : ""));
+
             while (true) {
                 JsonObject params = buildPromptParams(sessionId, currentPrompt, references);
 
@@ -435,7 +439,7 @@ public class CopilotAcpClient implements Closeable {
                 builtInActionDeniedDuringTurn = false;
                 lastActivityTimestamp = System.currentTimeMillis();
                 toolCallsInTurn.set(0);
-                requestsInTurn.set(1); // initial model invocation
+                requestsInTurn.set(currentModelMultiplier); // initial model invocation
 
                 if (onRequest != null) onRequest.run();
 
@@ -1144,7 +1148,7 @@ public class CopilotAcpClient implements Closeable {
             String allowOptionId = findAllowOption(reqParams);
             LOG.info("ACP request_permission: auto-approving " + permKind + ", option=" + allowOptionId);
             fireDebugEvent("PERMISSION_APPROVED", formattedPermission, "");
-            requestsInTurn.incrementAndGet(); // approved tool → model will be invoked again
+            requestsInTurn.addAndGet(currentModelMultiplier); // approved tool → model will be invoked again
             sendPermissionResponse(reqId, allowOptionId);
         }
     }
@@ -1332,6 +1336,25 @@ public class CopilotAcpClient implements Closeable {
             .findFirst()
             .map(m -> m.getUsage() != null ? m.getUsage() : "1x")
             .orElse("1x");
+    }
+
+    /**
+     * Parse a multiplier string like "3x" into an integer. Returns 1 on failure.
+     */
+    private static int parseMultiplier(@NotNull String multiplierStr) {
+        try {
+            return Integer.parseInt(multiplierStr.replace("x", "").trim());
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    /**
+     * Returns the number of premium requests consumed so far in this turn.
+     * Accounts for model multiplier (e.g. 3× model = 3 per invocation).
+     */
+    public int getRequestsInTurn() {
+        return requestsInTurn.get();
     }
 
     private String findAllowOption(JsonObject reqParams) {

@@ -61,7 +61,7 @@ internal class HelpAction(private val project: Project) : AnAction(
         HelpRow(
             com.intellij.icons.AllIcons.Actions.Lightning,
             "Model",
-            "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"50\u00d7\")."
+            "Dropdown: choose the AI model. Premium models show a cost multiplier (e.g. \"3×\")."
         ),
         HelpRow(
             com.intellij.icons.AllIcons.General.Settings,

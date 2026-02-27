@@ -650,18 +650,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             refreshDisplay()
         }
 
-        fun setRequestsUsed(count: Int) {
-            requestsUsed = count
-            refreshDisplay()
-        }
-
-        fun incrementRequests(multiplier: Int = 1) {
-            SwingUtilities.invokeLater {
-                requestsUsed += multiplier
-            }
-            refreshDisplay()
-        }
-
         private fun refreshDisplay() {
             SwingUtilities.invokeLater {
                 when (displayMode) {
@@ -677,8 +665,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             updateLabel()
             toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
             toolsLabel.isVisible = toolCallCount > 0
-            requestsLabel.text = if (requestsUsed > 0) "\u2022 $requestsUsed req" else ""
-            requestsLabel.isVisible = requestsUsed > 0
+            // Read premium request count from ACP client (single source of truth)
+            val reqs = try {
+                CopilotService.getInstance(project).getClient().requestsInTurn
+            } catch (_: Exception) {
+                requestsUsed
+            }
+            requestsUsed = reqs
+            requestsLabel.text = if (reqs > 0) "\u2022 $reqs req" else ""
+            requestsLabel.isVisible = reqs > 0
             if (!isRunning) doneIcon.text = "\u2705"
         }
 
@@ -1355,10 +1350,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     appendResponse(chunk)
                 },
                 { update -> handlePromptStreamingUpdate(update, receivedContent) },
-                {
-                    val mult = getModelMultiplier(modelId).removeSuffix("x").toIntOrNull() ?: 1
-                    if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementRequests(mult)
-                }
+                null // request counting handled by CopilotAcpClient.requestsInTurn
             )
 
             handlePromptCompletion(prompt)
