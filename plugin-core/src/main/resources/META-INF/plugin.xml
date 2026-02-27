@@ -77,7 +77,7 @@
       implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
 
     <!-- Notification Group for Copilot status messages -->
-    <notificationGroup id="Copilot Notifications" displayType="BALLOON"/>
+    <notificationGroup id="Copilot Notifications" displayType="STICKY_BALLOON"/>
   </extensions>
 
   <actions>
