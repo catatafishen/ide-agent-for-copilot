@@ -38,6 +38,8 @@ class EditorTools extends AbstractToolHandler {
         register("create_scratch_file", this::createScratchFile);
         register("list_scratch_files", this::listScratchFiles);
         register("get_chat_html", this::getChatHtml);
+        register("get_active_file", this::getActiveFile);
+        register("get_open_editors", this::getOpenEditors);
     }
 
     private String openInEditor(JsonObject args) throws Exception {
@@ -319,5 +321,89 @@ class EditorTools extends AbstractToolHandler {
             return "Error: Could not retrieve page HTML. Browser may not be ready.";
         }
         return html;
+    }
+
+    /**
+     * Returns the currently active (focused) file in the editor.
+     */
+    @SuppressWarnings("unused")
+    private String getActiveFile(JsonObject args) throws Exception {
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        EdtUtil.invokeLater(() -> {
+            try {
+                var editorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                var editor = editorManager.getSelectedTextEditor();
+                if (editor == null) {
+                    resultFuture.complete("No active editor");
+                    return;
+                }
+                var doc = editor.getDocument();
+                var vf = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(doc);
+                if (vf == null) {
+                    resultFuture.complete("No file associated with active editor");
+                    return;
+                }
+
+                String basePath = project.getBasePath();
+                String filePath = vf.getPath();
+                String displayPath = basePath != null ? relativize(basePath, filePath) : filePath;
+                int line = editor.getCaretModel().getLogicalPosition().line + 1;
+                int column = editor.getCaretModel().getLogicalPosition().column + 1;
+
+                resultFuture.complete(displayPath + " (line " + line + ", column " + column + ")");
+            } catch (Exception e) {
+                resultFuture.complete("Error: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Returns all currently open editor tabs with their file paths.
+     */
+    @SuppressWarnings("unused")
+    private String getOpenEditors(JsonObject args) throws Exception {
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        EdtUtil.invokeLater(() -> {
+            try {
+                var editorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                VirtualFile[] openFiles = editorManager.getOpenFiles();
+                if (openFiles.length == 0) {
+                    resultFuture.complete("No open editors");
+                    return;
+                }
+
+                // Find the currently selected file to mark it
+                var selectedEditor = editorManager.getSelectedTextEditor();
+                VirtualFile activeFile = null;
+                if (selectedEditor != null) {
+                    activeFile = com.intellij.openapi.fileEditor.FileDocumentManager
+                        .getInstance().getFile(selectedEditor.getDocument());
+                }
+
+                String basePath = project.getBasePath();
+                StringBuilder sb = new StringBuilder();
+                sb.append("Open editors (").append(openFiles.length).append("):\n");
+                for (VirtualFile file : openFiles) {
+                    String filePath = file.getPath();
+                    String displayPath = basePath != null ? relativize(basePath, filePath) : filePath;
+                    boolean isActive = activeFile != null && file.equals(activeFile);
+                    boolean isModified = com.intellij.openapi.fileEditor.FileDocumentManager
+                        .getInstance().isFileModified(file);
+                    sb.append(isActive ? "* " : "  ");
+                    sb.append(displayPath);
+                    if (isModified) sb.append(" [modified]");
+                    sb.append('\n');
+                }
+                resultFuture.complete(sb.toString().trim());
+            } catch (Exception e) {
+                resultFuture.complete("Error: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
     }
 }

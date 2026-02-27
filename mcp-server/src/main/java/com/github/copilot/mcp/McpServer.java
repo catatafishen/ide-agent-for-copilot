@@ -583,6 +583,14 @@ public class McpServer {
             ),
             List.of("file")));
 
+        tools.add(buildTool("get_active_file", "Get Active File",
+            Map.of(),
+            List.of()));
+
+        tools.add(buildTool("get_open_editors", "Get Open Editors",
+            Map.of(),
+            List.of()));
+
         // Refactoring & code modification tools
         tools.add(buildTool("apply_quickfix", "Apply Quickfix",
             Map.of(
