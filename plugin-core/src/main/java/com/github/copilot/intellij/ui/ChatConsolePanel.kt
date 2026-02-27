@@ -926,12 +926,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
 
             "tool" -> {
+                entryCounter++
                 val restoredId = "restored-${entryCounter}"
                 addToolCallEntry(restoredId, obj["title"]?.asString ?: "", obj["args"]?.asString?.ifEmpty { null })
                 updateToolCall(restoredId, "completed")
             }
 
             "subagent" -> {
+                entryCounter++
                 val restoredId = "restored-${entryCounter}"
                 addSubAgentEntry(
                     restoredId,
