@@ -248,24 +248,10 @@ class ToolSection extends HTMLElement {
     connectedCallback() {
         if (this._init) return;
         this._init = true;
-        this.classList.add('collapse-section', 'tool-section', 'turn-hidden', 'collapsed');
-        const title = this.getAttribute('title') || 'Tool Call';
+        this.classList.add('tool-section', 'turn-hidden');
         this.innerHTML = `
-            <div class="collapse-header" tabindex="0" role="button" aria-expanded="false">
-                <span class="collapse-icon tool-spinner"></span>
-                <span class="collapse-label">${this._esc(title)}</span>
-                <span class="caret">▸</span>
-            </div>
-            <div class="collapse-content">
-                <div class="tool-params"></div>
-                <div class="tool-result">Running...</div>
-            </div>`;
-        this.querySelector('.collapse-header').onclick = () => {
-            this.classList.toggle('collapsed');
-            const isOpen = !this.classList.contains('collapsed');
-            this.classList.toggle('open', isOpen);
-            this.querySelector('.caret').textContent = isOpen ? '▾' : '▸';
-        };
+            <div class="tool-params"></div>
+            <div class="tool-result">Running...</div>`;
     }
 
     set params(val) {
@@ -280,16 +266,6 @@ class ToolSection extends HTMLElement {
 
     updateStatus(status) {
         this.setAttribute('status', status);
-        const icon = this.querySelector('.collapse-icon');
-        if (!icon) return;
-        icon.classList.remove('tool-spinner');
-        if (status === 'failed') {
-            icon.textContent = '✖';
-            icon.style.color = 'var(--error)';
-        } else {
-            icon.textContent = '✓';
-            icon.style.color = 'var(--agent)';
-        }
     }
 
     _esc(s) {
@@ -333,7 +309,7 @@ class ToolChip extends HTMLElement {
         const section = this._linkedSection;
         if (!section) return;
         if (section.classList.contains('turn-hidden')) {
-            section.classList.remove('turn-hidden', 'collapsed');
+            section.classList.remove('turn-hidden');
             section.classList.add('chip-expanded');
             this.style.opacity = '0.5';
         } else {
@@ -341,7 +317,7 @@ class ToolChip extends HTMLElement {
             section.classList.add('collapsing');
             setTimeout(() => {
                 section.classList.remove('collapsing', 'chip-expanded');
-                section.classList.add('turn-hidden', 'collapsed');
+                section.classList.add('turn-hidden');
             }, 250);
         }
     }
@@ -696,13 +672,15 @@ const ChatController = {
     finalizeAgentText(encodedHtml) {
         if (!this._currentBubble && !encodedHtml) return;
         if (encodedHtml) {
-            this._ensureAgentMessage();
-            // Reuse existing streaming bubble if present, otherwise create one
             if (!this._currentBubble) {
-                const existing = this._currentAgentMsg.querySelector('message-bubble[streaming]');
+                // Search globally for the last streaming bubble (handles race with finalizeTurn)
+                const all = this._msgs()?.querySelectorAll('message-bubble[streaming]');
+                const existing = all?.length ? all[all.length - 1] : null;
                 if (existing) {
                     this._currentBubble = existing;
+                    this._currentAgentMsg = existing.closest('chat-message');
                 } else {
+                    this._ensureAgentMessage();
                     this._ensureBubble();
                 }
             }
@@ -786,22 +764,26 @@ const ChatController = {
 
     addSubAgent(sectionId, displayName, colorIndex, promptText) {
         this._collapseThinkingInternal();
-        // Place chip on existing parent meta if there is one; otherwise it goes on the sub-agent's own meta below
+        // Ensure a non-indented parent message for the chip and prompt
+        this._ensureAgentMessage();
         const parentMeta = this._pendingMeta;
+        const parentMsg = this._currentAgentMsg;
         const chip = document.createElement('subagent-chip');
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
         chip.setAttribute('color-index', String(colorIndex));
         chip.dataset.chipFor = 'sa-' + sectionId;
-        if (parentMeta) {
-            parentMeta.appendChild(chip);
-            parentMeta.classList.add('show');
-        }
-        // Close parent message — sub-agent becomes its own top-level message
+        parentMeta.appendChild(chip);
+        parentMeta.classList.add('show');
+        // Prompt bubble on parent (not indented)
+        const promptBubble = document.createElement('message-bubble');
+        promptBubble.innerHTML = '<span class="subagent-prefix subagent-c' + colorIndex + '">@' + this._esc(displayName) + '</span> ' + this._esc(promptText || '');
+        parentMsg.appendChild(promptBubble);
+        // Close parent message
         this._currentBubble = null;
         this._currentAgentMsg = null;
         this._pendingMeta = null;
-        // Create sub-agent message as a top-level chat-message with indent
+        // Create indented sub-agent message for tool calls and result
         const msg = document.createElement('chat-message');
         msg.setAttribute('type', 'agent');
         msg.id = 'sa-' + sectionId;
@@ -813,12 +795,7 @@ const ChatController = {
         tsSpan.className = 'ts';
         tsSpan.textContent = ts;
         meta.appendChild(tsSpan);
-        if (!parentMeta) meta.appendChild(chip);
         msg.appendChild(meta);
-        // Prompt bubble
-        const promptBubble = document.createElement('message-bubble');
-        promptBubble.innerHTML = '<span class="subagent-prefix">@' + this._esc(displayName) + '</span> ' + this._esc(promptText || '');
-        msg.appendChild(promptBubble);
         // Result bubble (hidden until content arrives via CSS :empty)
         const resultBubble = document.createElement('message-bubble');
         resultBubble.id = 'result-' + sectionId;

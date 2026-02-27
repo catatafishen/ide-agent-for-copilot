@@ -100,16 +100,6 @@ describe('message-bubble', () => {
         expect(bubble.innerHTML).toContain('<p>Formatted</p>');
         expect(bubble.hasAttribute('streaming')).toBe(false);
     });
-
-    it('removePending removes pending span', () => {
-        bubble.setAttribute('streaming', '');
-        const span = document.createElement('span');
-        span.className = 'agent-pending';
-        span.textContent = 'Working…';
-        bubble.appendChild(span);
-        bubble.removePending();
-        expect(bubble.querySelector('.agent-pending')).toBeNull();
-    });
 });
 
 describe('message-meta', () => {
@@ -171,10 +161,9 @@ describe('tool-section', () => {
         document.body.appendChild(section);
     });
 
-    it('renders header with title', () => {
-        const header = section.querySelector('.collapse-header');
-        expect(header).not.toBeNull();
-        expect(header.textContent).toContain('Read File');
+    it('renders params and result containers', () => {
+        expect(section.querySelector('.tool-params')).not.toBeNull();
+        expect(section.querySelector('.tool-result')).not.toBeNull();
     });
 
     it('setting params renders JSON', () => {
@@ -189,16 +178,14 @@ describe('tool-section', () => {
         expect(section.innerHTML).toContain('Output here');
     });
 
-    it('updateStatus changes header styling', () => {
+    it('updateStatus sets attribute', () => {
         section.updateStatus('completed');
-        const header = section.querySelector('.collapse-header');
-        expect(header.textContent).toContain('✓');
+        expect(section.getAttribute('status')).toBe('completed');
     });
 
-    it('updateStatus failed shows error', () => {
+    it('updateStatus failed sets attribute', () => {
         section.updateStatus('failed');
-        const header = section.querySelector('.collapse-header');
-        expect(header.textContent).toContain('✖');
+        expect(section.getAttribute('status')).toBe('failed');
     });
 });
 

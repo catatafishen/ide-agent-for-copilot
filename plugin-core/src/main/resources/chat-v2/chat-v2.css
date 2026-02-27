@@ -248,14 +248,12 @@ body {
     color: var(--think);
 }
 
-.tool-section .collapse-header {
+.tool-section {
+    padding: var(--sp-3) var(--sp-6);
+    font-size: 0.88em;
+    margin: var(--sp-2) 0;
     background: var(--tool-a08);
-    color: var(--tool);
-}
-
-.tool-section .collapse-content {
-    background: var(--tool-a08);
-    border-radius: 0 0 var(--r-md) var(--r-md);
+    border-radius: var(--r-md);
 }
 
 .thinking-pulse {
