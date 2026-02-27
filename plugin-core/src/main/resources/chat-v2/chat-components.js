@@ -605,28 +605,33 @@ const ChatController = {
         const key = turnId + '-' + agentId;
         if (!this._ctx[key]) {
             this._ctx[key] = {
-                textBubble: null, textMsg: null,
-                toolMsg: null,
-                thinkingBlock: null, thinkingMsg: null,
-                lastMeta: null,
+                msg: null, meta: null,
+                textBubble: null,
+                thinkingBlock: null,
             };
         }
         return this._ctx[key];
     },
 
-    _createAgentMsg() {
-        const msg = document.createElement('chat-message');
-        msg.setAttribute('type', 'agent');
-        const meta = document.createElement('message-meta');
-        const now = new Date();
-        const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-        const tsSpan = document.createElement('span');
-        tsSpan.className = 'ts';
-        tsSpan.textContent = ts;
-        meta.appendChild(tsSpan);
-        msg.appendChild(meta);
-        this._msgs().appendChild(msg);
-        return {msg, meta};
+    /** Ensures a single chat-message exists for this (turnId, agentId). */
+    _ensureMsg(turnId, agentId) {
+        const ctx = this._getCtx(turnId, agentId);
+        if (!ctx.msg) {
+            const msg = document.createElement('chat-message');
+            msg.setAttribute('type', 'agent');
+            const meta = document.createElement('message-meta');
+            const now = new Date();
+            const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            const tsSpan = document.createElement('span');
+            tsSpan.className = 'ts';
+            tsSpan.textContent = ts;
+            meta.appendChild(tsSpan);
+            msg.appendChild(meta);
+            this._msgs().appendChild(msg);
+            ctx.msg = msg;
+            ctx.meta = meta;
+        }
+        return ctx;
     },
 
     _collapseThinkingFor(ctx) {
@@ -657,16 +662,13 @@ const ChatController = {
     appendAgentText(turnId, agentId, text) {
         const ctx = this._getCtx(turnId, agentId);
         this._collapseThinkingFor(ctx);
-        ctx.toolMsg = null;
         if (!ctx.textBubble) {
             if (!text.trim()) return;
-            const {msg, meta} = this._createAgentMsg();
+            const c = this._ensureMsg(turnId, agentId);
             const bubble = document.createElement('message-bubble');
             bubble.setAttribute('streaming', '');
-            msg.appendChild(bubble);
-            ctx.textMsg = msg;
-            ctx.textBubble = bubble;
-            ctx.lastMeta = meta;
+            c.msg.appendChild(bubble);
+            c.textBubble = bubble;
         }
         ctx.textBubble.appendStreamingText(text);
         this._container()?.scrollIfNeeded();
@@ -679,42 +681,39 @@ const ChatController = {
             if (ctx.textBubble) {
                 ctx.textBubble.finalize(b64(encodedHtml));
             } else {
-                const {msg, meta} = this._createAgentMsg();
+                const c = this._ensureMsg(turnId, agentId);
                 const bubble = document.createElement('message-bubble');
-                msg.appendChild(bubble);
+                c.msg.appendChild(bubble);
                 bubble.finalize(b64(encodedHtml));
-                ctx.lastMeta = meta;
             }
         } else if (ctx.textBubble) {
-            const msg = ctx.textBubble.closest('chat-message');
             ctx.textBubble.remove();
-            if (msg && !msg.querySelector('message-bubble, tool-section, thinking-block')) {
-                msg.remove();
+            // Clean up the msg if nothing else remains
+            if (ctx.msg && !ctx.msg.querySelector('message-bubble, tool-section, thinking-block')) {
+                ctx.msg.remove();
+                ctx.msg = null;
+                ctx.meta = null;
             }
         }
         ctx.textBubble = null;
-        ctx.textMsg = null;
         this._container()?.scrollIfNeeded();
     },
 
     addThinkingText(turnId, agentId, text) {
-        const ctx = this._getCtx(turnId, agentId);
+        const ctx = this._ensureMsg(turnId, agentId);
         if (!ctx.thinkingBlock) {
             this._thinkingCounter++;
             const el = document.createElement('thinking-block');
             el.id = 'think-v2-' + this._thinkingCounter;
             el.setAttribute('active', '');
             el.setAttribute('expanded', '');
-            const {msg, meta} = this._createAgentMsg();
-            msg.appendChild(el);
+            ctx.msg.appendChild(el);
             ctx.thinkingBlock = el;
-            ctx.thinkingMsg = msg;
-            ctx.lastMeta = meta;
             const chip = document.createElement('thinking-chip');
             chip.setAttribute('status', 'thinking');
             chip.linkSection(el);
-            meta.appendChild(chip);
-            meta.classList.add('show');
+            ctx.meta.appendChild(chip);
+            ctx.meta.classList.add('show');
         }
         ctx.thinkingBlock.appendText(text);
         this._container()?.scrollIfNeeded();
@@ -726,30 +725,20 @@ const ChatController = {
     },
 
     addToolCall(turnId, agentId, id, title, paramsJson) {
-        const ctx = this._getCtx(turnId, agentId);
+        const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
-        ctx.textBubble = null;
-        ctx.textMsg = null;
-        if (!ctx.toolMsg) {
-            const {msg, meta} = this._createAgentMsg();
-            ctx.toolMsg = msg;
-            ctx.lastMeta = meta;
-        }
         const section = document.createElement('tool-section');
         section.id = id;
         section.setAttribute('title', title);
         if (paramsJson) section.setAttribute('params', paramsJson);
-        ctx.toolMsg.appendChild(section);
-        const meta = ctx.toolMsg.querySelector('message-meta');
-        if (meta) {
-            const chip = document.createElement('tool-chip');
-            chip.setAttribute('label', title);
-            chip.setAttribute('status', 'running');
-            chip.dataset.chipFor = id;
-            chip.linkSection(section);
-            meta.appendChild(chip);
-            meta.classList.add('show');
-        }
+        ctx.msg.appendChild(section);
+        const chip = document.createElement('tool-chip');
+        chip.setAttribute('label', title);
+        chip.setAttribute('status', 'running');
+        chip.dataset.chipFor = id;
+        chip.linkSection(section);
+        ctx.meta.appendChild(chip);
+        ctx.meta.classList.add('show');
         this._container()?.scrollIfNeeded();
     },
 
@@ -767,23 +756,19 @@ const ChatController = {
     },
 
     addSubAgent(turnId, agentId, sectionId, displayName, colorIndex, promptText) {
-        const ctx = this._getCtx(turnId, agentId);
+        const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
         ctx.textBubble = null;
-        ctx.textMsg = null;
-        ctx.toolMsg = null;
-        const {msg: parentMsg, meta: parentMeta} = this._createAgentMsg();
-        ctx.lastMeta = parentMeta;
         const chip = document.createElement('subagent-chip');
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
         chip.setAttribute('color-index', String(colorIndex));
         chip.dataset.chipFor = 'sa-' + sectionId;
-        parentMeta.appendChild(chip);
-        parentMeta.classList.add('show');
+        ctx.meta.appendChild(chip);
+        ctx.meta.classList.add('show');
         const promptBubble = document.createElement('message-bubble');
         promptBubble.innerHTML = '<span class="subagent-prefix subagent-c' + colorIndex + '">@' + this._esc(displayName) + '</span> ' + this._esc(promptText || '');
-        parentMsg.appendChild(promptBubble);
+        ctx.msg.appendChild(promptBubble);
         const msg = document.createElement('chat-message');
         msg.setAttribute('type', 'agent');
         msg.id = 'sa-' + sectionId;
@@ -853,7 +838,7 @@ const ChatController = {
         if (ctx?.textBubble && !ctx.textBubble.textContent?.trim()) {
             ctx.textBubble.remove();
         }
-        let meta = ctx?.lastMeta;
+        let meta = ctx?.meta;
         if (!meta) {
             const rows = this._msgs().querySelectorAll('chat-message[type="agent"]:not(.subagent-indent)');
             if (rows.length) meta = rows[rows.length - 1].querySelector('message-meta');
@@ -871,10 +856,7 @@ const ChatController = {
         }
         if (ctx) {
             ctx.thinkingBlock = null;
-            ctx.thinkingMsg = null;
             ctx.textBubble = null;
-            ctx.textMsg = null;
-            ctx.toolMsg = null;
         }
         this._container()?.scrollIfNeeded();
         this._trimMessages();

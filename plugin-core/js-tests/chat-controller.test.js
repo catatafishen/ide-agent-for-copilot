@@ -239,7 +239,7 @@ describe('ChatController', () => {
             expect(messages.querySelectorAll('chat-message[type="user"]').length).toBe(1);
             expect(messages.querySelectorAll('thinking-block').length).toBe(1);
             expect(messages.querySelectorAll('tool-section').length).toBe(1);
-            expect(messages.querySelectorAll('chat-message[type="agent"]').length).toBeGreaterThanOrEqual(2);
+            expect(messages.querySelectorAll('chat-message[type="agent"]').length).toBeGreaterThanOrEqual(1);
             expect(messages.querySelectorAll('tool-chip').length).toBe(1);
             expect(messages.querySelectorAll('thinking-chip').length).toBe(1);
         });

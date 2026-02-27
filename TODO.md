@@ -3,6 +3,7 @@
 ## ✅ Dependency Upgrades COMPLETE (2026-02-12)
 
 ### Completed
+
 - [x] Investigated all dependency versions and conflicts
 - [x] Upgraded IntelliJ Platform Plugin 2.1.0 → 2.11.0 (CRITICAL FIX!)
 - [x] Upgraded Kotlin 2.2.0 → 2.3.10
@@ -14,6 +15,7 @@
 - [x] Created UPGRADE-COMPLETE.md summary
 
 ### Test Results: 100% PASSING 🎉
+
 - Go tests: 15/15 ✅
 - PowerShell tests: 5/5 ✅
 - Java tests: 6/6 ✅ (previously blocked!)
@@ -24,12 +26,14 @@
 ## 🎯 Phase 3: Real SDK Integration (NEXT)
 
 ### Research & Planning
+
 - [ ] Study GitHub Copilot CLI SDK documentation
 - [ ] Understand authentication flow
 - [ ] Plan error handling strategy
 - [ ] Design fallback mechanisms
 
 ### Implementation
+
 - [ ] Remove mock mode completely
 - [ ] Implement SDK client initialization
 - [ ] Add authentication flow in UI
@@ -40,6 +44,7 @@
 - [ ] Remove "(Mock)" labels
 
 ### Testing
+
 - [ ] Test with real Copilot CLI
 - [ ] Verify authentication works
 - [ ] Test error scenarios
@@ -53,18 +58,21 @@
 ## 🚀 Phase 4: Enhanced Features
 
 ### Context Management
+
 - [ ] File/directory picker UI
 - [ ] @-mentions for files/symbols
 - [ ] Context preview panel
 - [ ] Workspace-aware context
 
 ### Streaming Improvements
+
 - [ ] Real-time SSE in Java client
 - [ ] Progress indicators
 - [ ] Cancel button for in-progress requests
 - [ ] Partial response handling
 
 ### UI Polish
+
 - [ ] Better loading states
 - [ ] Error recovery flows
 - [ ] Response formatting (markdown rendering)
@@ -73,11 +81,13 @@
 ---
 
 ## Technical Improvements (Ongoing)
+
 - [ ] Add comprehensive error handling
 - [ ] Implement structured logging
 - [ ] Add code coverage reporting
 - [ ] Performance optimization
 - [ ] Security hardening
+- [ ] Show error in chat UI when MCP bridge is down, with option to restart/reconnect
 
 ---
 
