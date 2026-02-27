@@ -45,6 +45,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     private var segmentCounter = 0
     private var currentTextSegmentId = ""
     private var currentThinkingSegmentId = ""
+    private var currentToolSegmentId = ""
     private var lastSegmentId = ""
 
     private fun newSegmentId(): String {
@@ -166,6 +167,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         collapseThinking()
         currentTextSegmentId = ""
         currentThinkingSegmentId = ""
+        currentToolSegmentId = ""
         entries.add(EntryData.Prompt(text))
         val ts = timestamp()
         val ctxHtml = if (!contextFiles.isNullOrEmpty()) {
@@ -191,6 +193,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun appendThinkingText(text: String) {
+        currentToolSegmentId = ""
         if (currentThinkingData == null) {
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
         }
@@ -203,11 +206,13 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         if (currentThinkingData == null) return
         currentThinkingData = null
         currentThinkingSegmentId = ""
+        currentToolSegmentId = ""
         executeJs("ChatController.collapseThinking()")
     }
 
     override fun appendText(text: String) {
         collapseThinking()
+        currentToolSegmentId = ""
         if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
@@ -228,7 +233,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         val short = formatToolSubtitle(baseName, arguments)
         val label = if (short != null) "$displayName — $short" else displayName
         val paramsJson = if (!arguments.isNullOrBlank()) escJs(arguments) else ""
-        executeJs("ChatController.addToolCall('${newSegmentId()}','$did','${escJs(label)}','$paramsJson')")
+        if (currentToolSegmentId.isEmpty()) currentToolSegmentId = newSegmentId()
+        executeJs("ChatController.addToolCall('$currentToolSegmentId','$did','${escJs(label)}','$paramsJson')")
     }
 
     override fun updateToolCall(id: String, status: String, details: String?) {
@@ -299,6 +305,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         finalizeCurrentText()
         currentTextSegmentId = ""
         currentThinkingSegmentId = ""
+        currentToolSegmentId = ""
         entries.add(EntryData.SessionSeparator(timestamp))
         executeJs("ChatController.addSessionSeparator('${escJs(timestamp)}')")
     }
@@ -306,7 +313,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun showPlaceholder(text: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
-        segmentCounter = 0; currentTextSegmentId = ""; currentThinkingSegmentId = ""; lastSegmentId = ""
+        segmentCounter = 0; currentTextSegmentId = ""; currentThinkingSegmentId = ""; currentToolSegmentId = ""; lastSegmentId = ""
         executeJs("ChatController.showPlaceholder('${escJs(text)}')")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
@@ -314,7 +321,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun clear() {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
-        segmentCounter = 0; currentTextSegmentId = ""; currentThinkingSegmentId = ""; lastSegmentId = ""
+        segmentCounter = 0; currentTextSegmentId = ""; currentThinkingSegmentId = ""; currentToolSegmentId = ""; lastSegmentId = ""
         executeJs("ChatController.clear()")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
     }
@@ -327,6 +334,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         executeJs("ChatController.finalizeTurn('$segId',$statsJson)")
         currentTextSegmentId = ""
         currentThinkingSegmentId = ""
+        currentToolSegmentId = ""
         SwingUtilities.invokeLater { browser?.component?.repaint() }
     }
 
@@ -412,7 +420,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun restoreEntries(json: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
-        segmentCounter = 0; currentTextSegmentId = ""; currentThinkingSegmentId = ""; lastSegmentId = ""
+        segmentCounter = 0; currentTextSegmentId = ""; currentThinkingSegmentId = ""; currentToolSegmentId = ""; lastSegmentId = ""
         val arr = try {
             com.google.gson.JsonParser.parseString(json).asJsonArray
         } catch (_: Exception) {
@@ -493,6 +501,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             "prompt" -> {
                 currentTextSegmentId = ""
                 currentThinkingSegmentId = ""
+                currentToolSegmentId = ""
                 val text = obj["text"]?.asString ?: ""
                 executeJs("ChatController.addUserMessage('${escJs(text)}','','')")
             }
@@ -517,7 +526,8 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             }
 
             "tool" -> {
-                val segId = newSegmentId()
+                if (currentToolSegmentId.isEmpty()) currentToolSegmentId = newSegmentId()
+                val segId = currentToolSegmentId
                 val title = obj["title"]?.asString ?: ""
                 val args = obj["args"]?.asString
                 val baseName = title.substringAfterLast("-").substringAfterLast("_")
@@ -557,6 +567,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             "separator" -> {
                 currentTextSegmentId = ""
                 currentThinkingSegmentId = ""
+                currentToolSegmentId = ""
                 val ts = obj["timestamp"]?.asString ?: ""
                 executeJs("ChatController.addSessionSeparator('${escJs(ts)}')")
             }
