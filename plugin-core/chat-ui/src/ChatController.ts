@@ -325,15 +325,7 @@ const ChatController = {
         }
         if (statsJson && meta) {
             const stats: TurnStats = typeof statsJson === 'string' ? JSON.parse(statsJson) : statsJson;
-            if (stats.model) {
-                const chip = document.createElement('span');
-                chip.className = 'turn-chip stats';
-                chip.textContent = stats.mult || '1x';
-                chip.dataset.tip = stats.model;
-                chip.setAttribute('title', stats.model);
-                meta.appendChild(chip);
-                meta.classList.add('show');
-            }
+            // Model multiplier is shown on the user prompt only, not on agent responses
         }
         if (ctx) {
             ctx.thinkingBlock = null;
