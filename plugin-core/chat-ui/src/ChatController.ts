@@ -25,7 +25,7 @@ const ChatController = {
         const key = turnId + '-' + agentId;
         if (!this._ctx[key]) {
             this._ctx[key] = {
-                msg: null, meta: null,
+                msg: null, meta: null, details: null,
                 textBubble: null,
                 thinkingBlock: null,
             };
@@ -49,9 +49,12 @@ const ChatController = {
             tsSpan.textContent = ts;
             meta.appendChild(tsSpan);
             msg.appendChild(meta);
+            const details = document.createElement('turn-details');
+            msg.appendChild(details);
             this._msgs().appendChild(msg);
             ctx.msg = msg;
             ctx.meta = meta;
+            ctx.details = details;
         }
         return ctx;
     },
@@ -82,6 +85,7 @@ const ChatController = {
         this._collapseThinkingFor(ctx);
         ctx.msg = null;
         ctx.meta = null;
+        ctx.details = null;
         ctx.textBubble = null;
     },
 
@@ -156,7 +160,7 @@ const ChatController = {
             el.id = 'think-' + this._thinkingCounter;
             el.setAttribute('active', '');
             el.setAttribute('expanded', '');
-            ctx.msg!.appendChild(el);
+            ctx.details!.appendChild(el);
             ctx.thinkingBlock = el;
             const chip = document.createElement('thinking-chip');
             chip.setAttribute('status', 'thinking');
@@ -182,9 +186,7 @@ const ChatController = {
         section.id = id;
         section.setAttribute('title', title);
         if (paramsJson) section.setAttribute('params', paramsJson);
-        const bubble = ctx.msg!.querySelector('message-bubble');
-        if (bubble) ctx.msg!.insertBefore(section, bubble);
-        else ctx.msg!.appendChild(section);
+        ctx.details!.appendChild(section);
         const chip = document.createElement('tool-chip');
         chip.setAttribute('label', title);
         chip.setAttribute('status', 'running');
@@ -234,6 +236,8 @@ const ChatController = {
         tsSpan.textContent = ts;
         meta.appendChild(tsSpan);
         msg.appendChild(meta);
+        const saDetails = document.createElement('turn-details');
+        msg.appendChild(saDetails);
         const resultBubble = document.createElement('message-bubble');
         resultBubble.id = 'result-' + sectionId;
         resultBubble.classList.add('subagent-result');
@@ -261,8 +265,8 @@ const ChatController = {
         section.id = toolDomId;
         section.setAttribute('title', title);
         if (paramsJson) section.setAttribute('params', paramsJson);
-        const resultBubble = msg.querySelector('.subagent-result');
-        if (resultBubble) msg.insertBefore(section, resultBubble);
+        const details = msg.querySelector('turn-details');
+        if (details) details.appendChild(section);
         else msg.appendChild(section);
         const chip = document.createElement('tool-chip');
         chip.setAttribute('label', title);

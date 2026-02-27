@@ -689,7 +689,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     // Agent turn: group consecutive agent entries into one chat-message
                     sb.append("<chat-message type='agent'>")
                     val metaChips = StringBuilder()
-                    val content = StringBuilder()
+                    val detailsContent = StringBuilder()
+                    val afterDetails = StringBuilder()
                     while (i < entries.size) {
                         val e = entries[i]
                         val t = e["type"]?.asString
@@ -700,7 +701,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                                 if (raw.isNotBlank()) {
                                     val id = "batch-think-${batchIdCounter++}"
                                     metaChips.append("<thinking-chip status='complete' data-chip-for='$id'></thinking-chip>")
-                                    content.append(
+                                    detailsContent.append(
                                         "<thinking-block id='$id' class='thinking-section turn-hidden'><div class='thinking-content'>${
                                             esc(
                                                 raw
@@ -720,9 +721,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                                 val label = if (short != null) "$displayName — $short" else displayName
                                 val id = "batch-tool-${batchIdCounter++}"
                                 metaChips.append("<tool-chip label='${esc(label)}' status='complete' data-chip-for='$id'></tool-chip>")
-                                content.append("<tool-section id='$id' title='${esc(label)}'")
-                                if (args != null) content.append(" params='${esc(args)}'")
-                                content.append("><div class='tool-params'></div><div class='tool-result'>Completed</div></tool-section>")
+                                detailsContent.append("<tool-section id='$id' title='${esc(label)}'")
+                                if (args != null) detailsContent.append(" params='${esc(args)}'")
+                                detailsContent.append("><div class='tool-params'></div><div class='tool-result'>Completed</div></tool-section>")
                             }
 
                             "text" -> {
@@ -730,7 +731,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                                 if (raw.isNotBlank()) {
                                     val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
                                     val html = markdownToHtml(clean)
-                                    content.append("<message-bubble>$html</message-bubble>")
+                                    afterDetails.append("<message-bubble>$html</message-bubble>")
                                 }
                             }
 
@@ -743,7 +744,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                                 val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else "Completed"
                                 val id = "batch-sa-${batchIdCounter++}"
                                 metaChips.append("<subagent-chip label='${esc(dn)}' status='complete' color-index='$ci' data-chip-for='$id'></subagent-chip>")
-                                content.append("<div id='$id' class='subagent-indent subagent-c$ci turn-hidden'><message-bubble>$resultHtml</message-bubble></div>")
+                                afterDetails.append("<div id='$id' class='subagent-indent subagent-c$ci turn-hidden'><message-bubble>$resultHtml</message-bubble></div>")
                             }
 
                             else -> {}
@@ -753,7 +754,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     if (metaChips.isNotEmpty()) {
                         sb.append("<message-meta class='show'>$metaChips</message-meta>")
                     }
-                    sb.append(content)
+                    sb.append("<turn-details>$detailsContent</turn-details>")
+                    sb.append(afterDetails)
                     sb.append("</chat-message>")
                 }
             }

@@ -9,6 +9,7 @@ export interface Bridge {
 export interface TurnContext {
     msg: HTMLElement | null;
     meta: HTMLElement | null;
+    details: HTMLElement | null;
     textBubble: HTMLElement | null;
     thinkingBlock: HTMLElement | null;
 }

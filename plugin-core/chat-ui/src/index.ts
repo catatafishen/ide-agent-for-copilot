@@ -21,6 +21,7 @@ import QuickReplies from './components/QuickReplies';
 import StatusMessage from './components/StatusMessage';
 import SessionDivider from './components/SessionDivider';
 import LoadMore from './components/LoadMore';
+import TurnDetails from './components/TurnDetails';
 
 import ChatController from './ChatController';
 
@@ -39,6 +40,7 @@ customElements.define('quick-replies', QuickReplies);
 customElements.define('status-message', StatusMessage);
 customElements.define('session-divider', SessionDivider);
 customElements.define('load-more', LoadMore);
+customElements.define('turn-details', TurnDetails);
 
 // ── Expose controller to Kotlin bridge ────────────────
 
