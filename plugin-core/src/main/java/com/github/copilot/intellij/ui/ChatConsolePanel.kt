@@ -318,6 +318,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var thinkingCounter = 0
     private var contextCounter = 0
     private var nextSubAgentColor = 0
+    private var activeSubAgentWrapperId: String? = null
 
     // JCEF
     private val browser: JBCefBrowser?
@@ -507,6 +508,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     fun appendText(text: String) {
         collapseThinking()
+        activeSubAgentWrapperId = null
         // Skip empty/blank chunks before the bubble exists to avoid rendering an empty bubble
         if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
@@ -581,7 +583,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 <span class='caret'>▸</span>
             </div>
             <div class='collapse-content'>$contentParts</div></div>"""
-        appendHtml(html)
+        val wrapperId = activeSubAgentWrapperId
+        if (wrapperId != null) {
+            appendHtmlToSubAgent(html, wrapperId)
+        } else {
+            appendHtml(html)
+        }
         fallbackArea?.let { SwingUtilities.invokeLater { it.append("⚒ $displayName\n") } }
     }
 
@@ -621,8 +628,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val safeName = escapeHtml(info.displayName)
         val cssClass = "subagent-c$colorIndex"
 
+        val wrapperId = "sa-$did"
         val sb = StringBuilder()
-        sb.append("<div class='$cssClass'>")
+        sb.append("<div class='$cssClass' id='$wrapperId'>")
 
         // Render prompt as a green agent bubble with colored @Agent prefix (no badge — result bubble shows status)
         if (!prompt.isNullOrBlank()) {
@@ -637,17 +645,20 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             sb.append(DIV_CLOSE_2)
         }
 
-        // Response bubble in instance-specific color
-        sb.append("<div class='agent-row'><div class='subagent-bubble' id='result-$did'>")
+        // Response bubble in instance-specific color with meta for tool chips
+        sb.append("<div class='agent-row'><div class='meta' id='meta-$wrapperId'></div>")
+        sb.append("<div class='subagent-bubble' id='result-$did'>")
         sb.append("<span class='subagent-pending'>Working...</span>")
-        sb.append(DIV_CLOSE_2)
+        sb.append("</div></div>")
 
         sb.append("</div>")
         appendHtml(sb.toString())
+        activeSubAgentWrapperId = wrapperId
         fallbackArea?.let { SwingUtilities.invokeLater { it.append("${info.displayName}: $description\n") } }
     }
 
     fun updateSubAgentResult(id: String, status: String, result: String?) {
+        // Don't clear activeSubAgentWrapperId here — it's cleared when main agent text starts
         // Persist result in entry data so it survives serialization/restore
         // Match by callId to handle parallel sub-agents correctly
         val entry = entries.filterIsInstance<EntryData.SubAgent>().find { it.callId == id }
@@ -1054,7 +1065,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "<div class='collapse-content'>$contentParts</div></div>"
     }
 
-    private fun renderBatchSubagent(obj: com.google.gson.JsonObject): String {
+    private fun renderBatchSubagent(
+        obj: com.google.gson.JsonObject,
+        childTools: List<com.google.gson.JsonObject> = emptyList()
+    ): String {
         val agentType = obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL
         val info = SUB_AGENT_INFO[agentType] ?: SubAgentInfo(
             agentType.replaceFirstChar { it.uppercase() } + " Agent")
@@ -1064,14 +1078,20 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val status = obj["status"]?.asString?.ifEmpty { null }
         val colorIndex = obj["colorIndex"]?.asInt ?: (nextSubAgentColor++ % SA_COLOR_COUNT)
         val cssClass = "subagent-c$colorIndex"
-        val sb = StringBuilder("<div class='$cssClass'>")
+        val wrapperId = "sa-batch-${entryCounter}"
+        val sb = StringBuilder("<div class='$cssClass' id='$wrapperId'>")
         if (!prompt.isNullOrBlank()) {
             sb.append(AGENT_ROW_OPEN)
             sb.append("<span class='subagent-prefix'>@$safeName</span>")
             sb.append(" ${escapeHtml(prompt)}")
             sb.append(DIV_CLOSE_2)
         }
-        sb.append("<div class='agent-row'><div class='subagent-bubble'>")
+        // Render child tool entries inside the wrapper
+        for (toolObj in childTools) {
+            sb.append(renderBatchTool(toolObj))
+        }
+        sb.append("<div class='agent-row'><div class='meta' id='meta-$wrapperId'></div>")
+        sb.append("<div class='subagent-bubble'>")
         when {
             !result.isNullOrBlank() -> sb.append(markdownToHtml(result))
             status == "failed" -> sb.append("<span style='color:var(--error)'>\u2716 Failed</span>")
@@ -1100,17 +1120,28 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun renderBatchHtml(batch: List<com.google.gson.JsonElement>): String {
         val sb = StringBuilder()
-        for (elem in batch) {
-            val obj = elem.asJsonObject
+        var i = 0
+        while (i < batch.size) {
+            val obj = batch[i].asJsonObject
             when (obj["type"]?.asString) {
                 "prompt" -> sb.append(renderBatchPrompt(obj))
                 "text" -> sb.append(renderBatchText(obj))
                 "thinking" -> sb.append(renderBatchThinking(obj))
                 "tool" -> sb.append(renderBatchTool(obj))
-                "subagent" -> sb.append(renderBatchSubagent(obj))
+                "subagent" -> {
+                    // Collect following tool entries that belong to this sub-agent
+                    val childTools = mutableListOf<com.google.gson.JsonObject>()
+                    while (i + 1 < batch.size && batch[i + 1].asJsonObject["type"]?.asString == "tool") {
+                        i++
+                        childTools.add(batch[i].asJsonObject)
+                    }
+                    sb.append(renderBatchSubagent(obj, childTools))
+                }
+
                 "status" -> sb.append(renderBatchStatus(obj))
                 "separator" -> sb.append(renderBatchSeparator(obj))
             }
+            i++
         }
         return sb.toString()
     }
@@ -1131,6 +1162,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x") {
         finalizeCurrentText()
         collapseThinking()
+        activeSubAgentWrapperId = null
         // Force-remove indicator immediately (response is done)
         processingShownAt = 0
         executeJs(JS_REMOVE_PROCESSING)
@@ -1211,6 +1243,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             var ind=document.getElementById('processing-ind');if(ind)ind.remove();
             c.insertAdjacentHTML('beforeend',b64('$encoded'));
             if(ind)c.appendChild(ind);scrollIfNeeded();})()"""
+        )
+    }
+
+    /** Insert HTML inside a sub-agent wrapper div, before its last child (the result row). */
+    private fun appendHtmlToSubAgent(html: String, wrapperId: String) {
+        val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
+        executeJs(
+            """(function(){var w=document.getElementById('$wrapperId');if(!w)return;
+            var last=w.lastElementChild;
+            var tmp=document.createElement('div');tmp.innerHTML=b64('$encoded');
+            while(tmp.firstChild)w.insertBefore(tmp.firstChild,last);
+            scrollIfNeeded();})()"""
         )
     }
 
