@@ -126,6 +126,7 @@ class MessageBubble extends HTMLElement {
         this.setAttribute('role', 'button');
         this.onclick = (e) => {
             if (e.target.closest('a,.turn-chip')) return;
+            _collapseAllChips(parent);
             const meta = parent?.querySelector('message-meta');
             if (meta) meta.classList.toggle('show');
         };
@@ -237,6 +238,20 @@ class ToolSection extends HTMLElement {
 
 customElements.define('tool-section', ToolSection);
 
+/* ── Chip helpers ────────────────────────────────────── */
+
+function _collapseAllChips(container, except) {
+    if (!container) return;
+    container.querySelectorAll('tool-chip, thinking-chip, subagent-chip').forEach(chip => {
+        if (chip === except) return;
+        const section = chip._linkedSection;
+        if (!section || section.classList.contains('turn-hidden')) return;
+        chip.style.opacity = '1';
+        section.classList.add('turn-hidden');
+        section.classList.remove('chip-expanded', 'collapsing', 'collapsed');
+    });
+}
+
 /* ── <tool-chip> ─────────────────────────────────────── */
 
 class ToolChip extends HTMLElement {
@@ -270,6 +285,7 @@ class ToolChip extends HTMLElement {
     _toggleExpand() {
         const section = this._linkedSection;
         if (!section) return;
+        _collapseAllChips(this.closest('chat-message'), this);
         if (section.classList.contains('turn-hidden')) {
             section.classList.remove('turn-hidden');
             section.classList.add('chip-expanded');
@@ -335,6 +351,7 @@ class ThinkingChip extends HTMLElement {
     _toggleExpand() {
         const section = this._linkedSection;
         if (!section) return;
+        _collapseAllChips(this.closest('chat-message'), this);
         if (section.classList.contains('turn-hidden')) {
             section.classList.remove('turn-hidden');
             section.classList.add('chip-expanded');
@@ -390,6 +407,7 @@ class SubagentChip extends HTMLElement {
     _toggleExpand() {
         const section = this._linkedSection;
         if (!section) return;
+        _collapseAllChips(this.closest('chat-message'), this);
         if (section.classList.contains('turn-hidden')) {
             section.classList.remove('turn-hidden', 'collapsed');
             section.classList.add('chip-expanded');
