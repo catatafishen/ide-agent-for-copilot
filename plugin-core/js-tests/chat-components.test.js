@@ -10,7 +10,7 @@ describe('Web Components Registration', () => {
         const tags = [
             'chat-container', 'chat-message', 'message-bubble', 'message-meta',
             'thinking-block', 'tool-section', 'tool-chip', 'thinking-chip',
-            'subagent-chip', 'subagent-block', 'quick-replies', 'status-message',
+            'subagent-chip', 'quick-replies', 'status-message',
             'session-divider', 'load-more',
         ];
         for (const tag of tags) {
@@ -292,16 +292,6 @@ describe('subagent-chip', () => {
         chip.setAttribute('status', 'complete');
         expect(chip.querySelector('.chip-spinner')).toBeNull();
         expect(chip.textContent).toContain('Explore Agent');
-    });
-});
-
-describe('subagent-block', () => {
-    it('applies color-index class on connect', () => {
-        const block = document.createElement('subagent-block');
-        block.setAttribute('color-index', '3');
-        document.body.appendChild(block);
-        // Should have styling for color index 3
-        expect(block.getAttribute('color-index')).toBe('3');
     });
 });
 

@@ -29,8 +29,16 @@ class ChatContainer extends HTMLElement {
             this._autoScroll = (window.innerHeight + window.scrollY >= document.body.scrollHeight - 20);
         });
 
-        // Auto-scroll when children change
-        this._observer = new MutationObserver(() => this.scrollIfNeeded());
+        // Auto-scroll when children change (debounced to avoid per-chunk flicker)
+        this._scrollRAF = null;
+        this._observer = new MutationObserver(() => {
+            if (!this._scrollRAF) {
+                this._scrollRAF = requestAnimationFrame(() => {
+                    this._scrollRAF = null;
+                    this.scrollIfNeeded();
+                });
+            }
+        });
         this._observer.observe(this._messages, {childList: true, subtree: true, characterData: true});
 
         // Copy-button observer
@@ -47,7 +55,7 @@ class ChatContainer extends HTMLElement {
                         setTimeout(() => btn.textContent = 'Copy', 1500);
                     });
                 };
-                pre.parentElement.insertBefore(btn, pre.nextElementSibling);
+                pre.appendChild(btn);
             });
         });
         this._copyObs.observe(this._messages, {childList: true, subtree: true});
@@ -60,10 +68,6 @@ class ChatContainer extends HTMLElement {
     scrollIfNeeded() {
         if (this._autoScroll) {
             window.scrollTo(0, document.body.scrollHeight);
-            requestAnimationFrame(() => {
-                document.body.style.opacity = '0.999';
-                requestAnimationFrame(() => document.body.style.opacity = '1');
-            });
         }
     }
 
@@ -108,7 +112,7 @@ customElements.define('chat-message', ChatMessage);
 
 class MessageBubble extends HTMLElement {
     static get observedAttributes() {
-        return ['streaming', 'pending', 'type'];
+        return ['streaming', 'type'];
     }
 
     connectedCallback() {
@@ -118,17 +122,15 @@ class MessageBubble extends HTMLElement {
         const isUser = parent?.getAttribute('type') === 'user';
         this.classList.add(isUser ? 'prompt-bubble' : 'agent-bubble');
 
-        if (isUser) {
-            this.setAttribute('tabindex', '0');
-            this.setAttribute('role', 'button');
-            this.onclick = () => {
-                const meta = parent?.querySelector('message-meta');
-                if (meta) meta.classList.toggle('show');
-            };
-        }
+        this.setAttribute('tabindex', '0');
+        this.setAttribute('role', 'button');
+        this.onclick = (e) => {
+            if (e.target.closest('a,.turn-chip,.collapse-header')) return;
+            const meta = parent?.querySelector('message-meta');
+            if (meta) meta.classList.toggle('show');
+        };
 
         if (this.hasAttribute('streaming')) this._setupStreaming();
-        if (this.hasAttribute('pending')) this._setupPending();
     }
 
     _setupStreaming() {
@@ -140,15 +142,6 @@ class MessageBubble extends HTMLElement {
         }
     }
 
-    _setupPending() {
-        if (!this.querySelector('.agent-pending')) {
-            const span = document.createElement('span');
-            span.className = 'agent-pending';
-            span.textContent = 'Working\u2026';
-            this.appendChild(span);
-        }
-    }
-
     appendStreamingText(text) {
         if (!this._pre) this._setupStreaming();
         this._pre.textContent += text;
@@ -156,15 +149,9 @@ class MessageBubble extends HTMLElement {
 
     finalize(html) {
         this.removeAttribute('streaming');
-        this.removeAttribute('pending');
         this._pre = null;
         this.innerHTML = html;
         this.classList.remove('streaming-bubble');
-    }
-
-    removePending() {
-        const p = this.querySelector('.agent-pending');
-        if (p) p.remove();
     }
 
     set content(val) {
@@ -214,7 +201,9 @@ class ThinkingBlock extends HTMLElement {
             </div>
             <div class="collapse-content"></div>`;
 
-        this.querySelector('.collapse-header').onclick = () => this.toggle();
+        this.querySelector('.collapse-header').onclick = () => {
+            this.toggle();
+        };
     }
 
     get contentEl() {
@@ -344,44 +333,17 @@ class ToolChip extends HTMLElement {
         const section = this._linkedSection;
         if (!section) return;
         if (section.classList.contains('turn-hidden')) {
-            // Place section right before the agent-row containing this chip
-            const agentRow = this.closest('.agent-row');
-            if (agentRow?.parentElement) {
-                agentRow.parentElement.insertBefore(section, agentRow);
-            }
             section.classList.remove('turn-hidden', 'collapsed');
             section.classList.add('chip-expanded');
             this.style.opacity = '0.5';
-            this._ensureClose(section);
         } else {
-            this._close(section);
+            this.style.opacity = '1';
+            section.classList.add('collapsing');
+            setTimeout(() => {
+                section.classList.remove('collapsing', 'chip-expanded');
+                section.classList.add('turn-hidden', 'collapsed');
+            }, 250);
         }
-    }
-
-    _ensureClose(section) {
-        const cc = section.querySelector('.collapse-content');
-        if (cc && !cc.querySelector('.chip-close')) {
-            const btn = document.createElement('span');
-            btn.className = 'chip-close';
-            btn.textContent = '\u2715';
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                this._close(section);
-            };
-            cc.insertBefore(btn, cc.firstChild);
-        }
-    }
-
-    _close(section) {
-        this.style.opacity = '1';
-        const btn = section.querySelector('.chip-close');
-        if (btn) btn.remove();
-        section.classList.add('collapsing');
-        setTimeout(() => {
-            section.classList.remove('collapsing');
-            section.classList.add('turn-hidden', 'collapsed');
-            section.classList.remove('chip-expanded');
-        }, 250);
     }
 
     linkSection(section) {
@@ -425,34 +387,16 @@ class ThinkingChip extends HTMLElement {
         const section = this._linkedSection;
         if (!section) return;
         if (section.classList.contains('turn-hidden')) {
-            const agentRow = this.closest('.agent-row');
-            if (agentRow?.parentElement) agentRow.parentElement.insertBefore(section, agentRow);
             section.classList.remove('turn-hidden', 'collapsed');
             section.classList.add('chip-expanded');
             this.style.opacity = '0.5';
-            const cc = section.querySelector('.collapse-content');
-            if (cc && !cc.querySelector('.chip-close')) {
-                const btn = document.createElement('span');
-                btn.className = 'chip-close';
-                btn.textContent = '\u2715';
-                btn.onclick = (e) => {
-                    e.stopPropagation();
-                    this.style.opacity = '1';
-                    btn.remove();
-                    section.classList.add('collapsing');
-                    setTimeout(() => {
-                        section.classList.remove('collapsing');
-                        section.classList.add('turn-hidden', 'collapsed');
-                        section.classList.remove('chip-expanded');
-                    }, 250);
-                };
-                cc.insertBefore(btn, cc.firstChild);
-            }
         } else {
             this.style.opacity = '1';
-            section.querySelector('.chip-close')?.remove();
-            section.classList.add('turn-hidden', 'collapsed');
-            section.classList.remove('chip-expanded');
+            section.classList.add('collapsing');
+            setTimeout(() => {
+                section.classList.remove('collapsing', 'chip-expanded');
+                section.classList.add('turn-hidden', 'collapsed');
+            }, 250);
         }
     }
 
@@ -498,8 +442,6 @@ class SubagentChip extends HTMLElement {
         const section = this._linkedSection;
         if (!section) return;
         if (section.classList.contains('turn-hidden')) {
-            const agentRow = this.closest('.agent-row');
-            if (agentRow?.parentElement) agentRow.parentElement.insertBefore(section, agentRow);
             section.classList.remove('turn-hidden', 'collapsed');
             section.classList.add('chip-expanded');
             this.style.opacity = '0.5';
@@ -521,29 +463,6 @@ class SubagentChip extends HTMLElement {
 }
 
 customElements.define('subagent-chip', SubagentChip);
-
-/* ── <subagent-block> ────────────────────────────────── */
-
-class SubagentBlock extends HTMLElement {
-    static get observedAttributes() {
-        return ['color-index', 'agent-name'];
-    }
-
-    connectedCallback() {
-        if (this._init) return;
-        this._init = true;
-        const ci = this.getAttribute('color-index') || '0';
-        this.classList.add('subagent-c' + ci);
-    }
-
-    attributeChangedCallback(name, oldVal, newVal) {
-        if (name === 'color-index' && this._init) {
-            this.className = this.className.replace(/subagent-c\d/, 'subagent-c' + newVal);
-        }
-    }
-}
-
-customElements.define('subagent-block', SubagentBlock);
 
 /* ── <quick-replies> ─────────────────────────────────── */
 
@@ -736,40 +655,73 @@ const ChatController = {
         const msg = document.createElement('chat-message');
         msg.setAttribute('type', 'agent');
         const meta = document.createElement('message-meta');
+        const now = new Date();
+        const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        const tsSpan = document.createElement('span');
+        tsSpan.className = 'ts';
+        tsSpan.textContent = ts;
+        meta.appendChild(tsSpan);
         this._pendingMeta = meta;
         msg.appendChild(meta);
+        this._currentAgentMsg = msg;
+        this._currentBubble = null;
+        this._msgs().appendChild(msg);
+    },
+
+    _insertSection(el) {
+        if (this._currentBubble) {
+            this._currentAgentMsg.insertBefore(el, this._currentBubble);
+        } else {
+            this._currentAgentMsg.appendChild(el);
+        }
+    },
+
+    _ensureBubble() {
+        if (this._currentBubble) return;
         const bubble = document.createElement('message-bubble');
         bubble.setAttribute('streaming', '');
-        msg.appendChild(bubble);
-        this._currentAgentMsg = msg;
+        this._currentAgentMsg.appendChild(bubble);
         this._currentBubble = bubble;
-        this._msgs().appendChild(msg);
     },
 
     appendAgentText(text) {
         this._collapseThinkingInternal();
         if (!this._currentBubble && !text.trim()) return;
         this._ensureAgentMessage();
+        this._ensureBubble();
         this._currentBubble.appendStreamingText(text);
         this._container()?.scrollIfNeeded();
     },
 
     finalizeAgentText(encodedHtml) {
-        if (!this._currentBubble) return;
+        if (!this._currentBubble && !encodedHtml) return;
         if (encodedHtml) {
+            this._ensureAgentMessage();
+            // Reuse existing streaming bubble if present, otherwise create one
+            if (!this._currentBubble) {
+                const existing = this._currentAgentMsg.querySelector('message-bubble[streaming]');
+                if (existing) {
+                    this._currentBubble = existing;
+                } else {
+                    this._ensureBubble();
+                }
+            }
             this._currentBubble.finalize(b64(encodedHtml));
         } else {
             this._currentAgentMsg?.remove();
         }
+        // Close out message so the next content creates a fresh one
         this._currentBubble = null;
+        this._currentAgentMsg = null;
+        this._pendingMeta = null;
         this._container()?.scrollIfNeeded();
     },
 
     _finalizeAgent() {
+        this._collapseThinkingInternal();
         this._currentBubble = null;
         this._currentAgentMsg = null;
         this._pendingMeta = null;
-        this._collapseThinkingInternal();
     },
 
     addThinkingText(text) {
@@ -780,11 +732,8 @@ const ChatController = {
             el.setAttribute('active', '');
             el.setAttribute('expanded', '');
             this._currentThinking = el;
-            if (this._currentAgentMsg) {
-                this._msgs().insertBefore(el, this._currentAgentMsg);
-            } else {
-                this._msgs().appendChild(el);
-            }
+            this._ensureAgentMessage();
+            this._insertSection(el);
         }
         this._currentThinking.appendText(text);
         this._container()?.scrollIfNeeded();
@@ -814,7 +763,7 @@ const ChatController = {
         section.id = sectionId;
         section.setAttribute('title', displayName);
         if (paramsJson) section.params = paramsJson;
-        this._msgs().insertBefore(section, this._currentAgentMsg);
+        this._insertSection(section);
         const chip = document.createElement('tool-chip');
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
@@ -837,45 +786,66 @@ const ChatController = {
 
     addSubAgent(sectionId, displayName, colorIndex, promptText) {
         this._collapseThinkingInternal();
-        this._ensureAgentMessage();
-        const block = document.createElement('subagent-block');
-        block.id = 'sa-' + sectionId;
-        block.setAttribute('color-index', String(colorIndex));
-        const promptRow = document.createElement('div');
-        promptRow.classList.add('agent-row');
-        const promptBubble = document.createElement('div');
-        promptBubble.classList.add('agent-bubble');
-        promptBubble.innerHTML = '<span class="subagent-prefix">@' + this._esc(displayName) + '</span> ' + this._esc(promptText || '');
-        promptRow.appendChild(promptBubble);
-        block.appendChild(promptRow);
-        const resultRow = document.createElement('div');
-        resultRow.classList.add('agent-row');
-        const resultMeta = document.createElement('message-meta');
-        resultMeta.id = 'meta-sa-' + sectionId;
-        resultRow.appendChild(resultMeta);
-        const resultBubble = document.createElement('div');
-        resultBubble.classList.add('subagent-bubble');
-        resultBubble.id = 'result-' + sectionId;
-        resultBubble.innerHTML = '<span class="subagent-pending">Working\u2026</span>';
-        resultRow.appendChild(resultBubble);
-        block.appendChild(resultRow);
-        this._msgs().insertBefore(block, this._currentAgentMsg);
+        // Place chip on existing parent meta if there is one; otherwise it goes on the sub-agent's own meta below
+        const parentMeta = this._pendingMeta;
         const chip = document.createElement('subagent-chip');
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
         chip.setAttribute('color-index', String(colorIndex));
         chip.dataset.chipFor = 'sa-' + sectionId;
-        chip.linkSection(block);
-        this._pendingMeta?.appendChild(chip);
-        this._pendingMeta?.classList.add('show');
+        if (parentMeta) {
+            parentMeta.appendChild(chip);
+            parentMeta.classList.add('show');
+        }
+        // Close parent message — sub-agent becomes its own top-level message
+        this._currentBubble = null;
+        this._currentAgentMsg = null;
+        this._pendingMeta = null;
+        // Create sub-agent message as a top-level chat-message with indent
+        const msg = document.createElement('chat-message');
+        msg.setAttribute('type', 'agent');
+        msg.id = 'sa-' + sectionId;
+        msg.classList.add('subagent-indent', 'subagent-c' + colorIndex);
+        const meta = document.createElement('message-meta');
+        const now = new Date();
+        const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        const tsSpan = document.createElement('span');
+        tsSpan.className = 'ts';
+        tsSpan.textContent = ts;
+        meta.appendChild(tsSpan);
+        if (!parentMeta) meta.appendChild(chip);
+        msg.appendChild(meta);
+        // Prompt bubble
+        const promptBubble = document.createElement('message-bubble');
+        promptBubble.innerHTML = '<span class="subagent-prefix">@' + this._esc(displayName) + '</span> ' + this._esc(promptText || '');
+        msg.appendChild(promptBubble);
+        // Result bubble (hidden until content arrives via CSS :empty)
+        const resultBubble = document.createElement('message-bubble');
+        resultBubble.id = 'result-' + sectionId;
+        resultBubble.classList.add('subagent-result');
+        msg.appendChild(resultBubble);
+        this._msgs().appendChild(msg);
+        // Set as current so subsequent tool calls go here
+        this._currentAgentMsg = msg;
+        this._pendingMeta = meta;
+        this._currentBubble = null;
+        chip.linkSection(msg);
         this._container()?.scrollIfNeeded();
     },
 
     updateSubAgent(sectionId, status, resultHtml) {
         const el = document.getElementById('result-' + sectionId);
-        if (el) el.innerHTML = resultHtml || (status === 'completed' ? 'Completed' : '<span style="color:var(--error)">\u2716 Failed</span>');
+        if (el) {
+            el.innerHTML = resultHtml || (status === 'completed' ? 'Completed' : '<span style="color:var(--error)">\u2716 Failed</span>');
+        }
         const chip = document.querySelector('[data-chip-for="sa-' + sectionId + '"]');
         if (chip) chip.setAttribute('status', status === 'failed' ? 'failed' : 'complete');
+        // Close sub-agent message so next content creates a fresh parent message
+        if (this._currentAgentMsg?.id === 'sa-' + sectionId) {
+            this._currentBubble = null;
+            this._currentAgentMsg = null;
+            this._pendingMeta = null;
+        }
         this._container()?.scrollIfNeeded();
     },
 
@@ -917,16 +887,25 @@ const ChatController = {
     },
 
     finalizeTurn(statsJson) {
-        if (this._currentBubble) this._currentBubble.removePending();
-        if (statsJson && this._pendingMeta) {
+        // Clean up leftover empty streaming bubble
+        if (this._currentBubble && !this._currentBubble.textContent?.trim()) {
+            this._currentBubble.remove();
+        }
+        // Find last non-subagent agent meta for stats
+        let meta = this._pendingMeta;
+        if (!meta) {
+            const rows = this._msgs().querySelectorAll('chat-message.agent-row:not(.subagent-indent)');
+            if (rows.length) meta = rows[rows.length - 1].querySelector('message-meta');
+        }
+        if (statsJson && meta) {
             const stats = typeof statsJson === 'string' ? JSON.parse(statsJson) : statsJson;
             if (stats.model) {
                 const chip = document.createElement('span');
                 chip.className = 'turn-chip stats';
                 chip.textContent = stats.mult || '1x';
                 chip.dataset.tip = stats.model;
-                this._pendingMeta.appendChild(chip);
-                this._pendingMeta.classList.add('show');
+                meta.appendChild(chip);
+                meta.classList.add('show');
             }
         }
         this._currentAgentMsg = null;
@@ -995,7 +974,7 @@ const ChatController = {
     _trimMessages() {
         const msgs = this._msgs();
         if (!msgs) return;
-        const rows = msgs.querySelectorAll('chat-message,thinking-block,tool-section,subagent-block,status-message');
+        const rows = msgs.querySelectorAll('chat-message,thinking-block,tool-section,status-message');
         if (rows.length > 100) for (let i = 0; i < rows.length - 100; i++) rows[i].remove();
     },
 

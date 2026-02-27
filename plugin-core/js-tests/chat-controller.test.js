@@ -158,11 +158,12 @@ describe('ChatController', () => {
     });
 
     describe('sub-agents', () => {
-        it('addSubAgent creates block and chip', () => {
+        it('addSubAgent creates message and chip', () => {
             CC().addSubAgent('sa-1', 'Explore Agent', 0, 'Find files');
-            const block = document.getElementById('sa-sa-1');
-            expect(block).not.toBeNull();
-            expect(block.tagName.toLowerCase()).toBe('subagent-block');
+            const msg = document.getElementById('sa-sa-1');
+            expect(msg).not.toBeNull();
+            expect(msg.tagName.toLowerCase()).toBe('chat-message');
+            expect(msg.classList.contains('subagent-indent')).toBe(true);
             const chip = getMessages().querySelector('subagent-chip');
             expect(chip).not.toBeNull();
             expect(chip.getAttribute('status')).toBe('running');
@@ -175,13 +176,13 @@ describe('ChatController', () => {
             expect(result.innerHTML).toContain('All passed');
         });
 
-        it('sub-agent block appears before agent message', () => {
+        it('sub-agent message is separate from parent', () => {
             CC().appendAgentText('Response');
             CC().addSubAgent('sa-order', 'Agent', 2, 'Prompt');
-            const children = Array.from(getMessages().children);
-            const blockIdx = children.findIndex(c => c.id === 'sa-sa-order');
-            const msgIdx = children.findIndex(c => c.tagName.toLowerCase() === 'chat-message' && c.getAttribute('type') === 'agent');
-            expect(blockIdx).toBeLessThan(msgIdx);
+            const msgs = getMessages().querySelectorAll('chat-message[type="agent"]');
+            expect(msgs.length).toBeGreaterThanOrEqual(2);
+            const saMsg = document.getElementById('sa-sa-order');
+            expect(saMsg.classList.contains('subagent-indent')).toBe(true);
         });
     });
 
@@ -337,7 +338,7 @@ describe('ChatController', () => {
             CC().finalizeAgentText(btoa('<p>Done</p>'));
             CC().finalizeTurn(null);
 
-            expect(getMessages().querySelectorAll('subagent-block').length).toBe(1);
+            expect(getMessages().querySelectorAll('.subagent-indent').length).toBe(1);
             expect(getMessages().querySelectorAll('subagent-chip').length).toBe(1);
         });
     });
