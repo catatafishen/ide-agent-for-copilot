@@ -665,7 +665,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         private fun refreshTurnMode() {
-            toolTipText = "Click to show session stats"
+            toolTipText = "Turn stats (estimated from model multiplier) · Click for session"
             updateLabel()
             toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
             toolsLabel.isVisible = toolCallCount > 0
@@ -676,13 +676,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 requestsUsed
             }
             requestsUsed = reqs
-            requestsLabel.text = if (reqs > 0) "\u2022 $reqs req" else ""
+            requestsLabel.text = if (reqs > 0) "\u2022 ~$reqs req" else ""
             requestsLabel.isVisible = reqs > 0
             if (!isRunning) doneIcon.text = "\u2705"
         }
 
         private fun refreshSessionMode() {
-            toolTipText = "Click to show turn stats"
             val totalMs =
                 sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
             val totalSec = totalMs / 1000
@@ -690,16 +689,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
             toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
             toolsLabel.isVisible = totalTools > 0
+            // Session requests: billing API only (no fallback to estimated turn totals)
             val billingReqs =
-                if (billing.billingCycleStartUsed >= 0 && billing.lastBillingUsed > billing.billingCycleStartUsed)
-                    billing.lastBillingUsed - billing.billingCycleStartUsed else -1
-            val totalReqs = sessionTotalRequests + if (isRunning) requestsUsed else 0
-            requestsLabel.text = when {
-                billingReqs > 0 -> "\u2022 $billingReqs req"
-                totalReqs > 0 -> "\u2022 ~$totalReqs req"
-                else -> ""
-            }
-            requestsLabel.isVisible = requestsLabel.text.isNotEmpty()
+                if (billing.billingCycleStartUsed >= 0 && billing.lastBillingUsed >= billing.billingCycleStartUsed)
+                    billing.lastBillingUsed - billing.billingCycleStartUsed else 0
+            requestsLabel.text = if (billingReqs > 0) "\u2022 $billingReqs req" else "\u2022 0 req"
+            requestsLabel.isVisible = true
+            toolTipText = "Session totals (reqs from GitHub billing API) · Click for turn"
             doneIcon.text = "\u2211"
         }
 
