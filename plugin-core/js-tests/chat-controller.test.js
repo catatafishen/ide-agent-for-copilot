@@ -285,5 +285,41 @@ describe('ChatController', () => {
             expect(bubbles[0].innerHTML).toContain('Before tool');
             expect(bubbles[1].innerHTML).toContain('After tool');
         });
+
+        it('newSegment splits content into separate chat-messages', () => {
+            // Response 1: thinking → tool → text
+            CC().addThinkingText('t0', 'main', 'thinking...');
+            CC().collapseThinking('t0', 'main');
+            CC().addToolCall('t0', 'main', 'tc-1', 'Search', '{}');
+            CC().updateToolCall('tc-1', 'completed', 'results');
+            CC().appendAgentText('t0', 'main', 'First response');
+            CC().finalizeAgentText('t0', 'main', btoa('<p>First response</p>'));
+
+            // Kotlin would call newSegment here (after tool results, before next response)
+            CC().newSegment('t0', 'main');
+
+            // Response 2: thinking → tool → text
+            CC().addThinkingText('t0', 'main', 'more thinking...');
+            CC().collapseThinking('t0', 'main');
+            CC().addToolCall('t0', 'main', 'tc-2', 'Read', '{}');
+            CC().updateToolCall('tc-2', 'completed', 'file data');
+            CC().appendAgentText('t0', 'main', 'Second response');
+            CC().finalizeAgentText('t0', 'main', btoa('<p>Second response</p>'));
+
+            CC().finalizeTurn('t0', {model: 'opus', mult: '3x'});
+
+            const agentMsgs = getMessages().querySelectorAll('chat-message[type="agent"]');
+            expect(agentMsgs.length).toBe(2);
+
+            // First message has thinking + tool + text
+            expect(agentMsgs[0].querySelectorAll('thinking-block').length).toBe(1);
+            expect(agentMsgs[0].querySelectorAll('tool-section').length).toBe(1);
+            expect(agentMsgs[0].querySelectorAll('message-bubble').length).toBe(1);
+
+            // Second message has thinking + tool + text
+            expect(agentMsgs[1].querySelectorAll('thinking-block').length).toBe(1);
+            expect(agentMsgs[1].querySelectorAll('tool-section').length).toBe(1);
+            expect(agentMsgs[1].querySelectorAll('message-bubble').length).toBe(1);
+        });
     });
 });

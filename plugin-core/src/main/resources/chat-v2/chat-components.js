@@ -643,6 +643,20 @@ const ChatController = {
         ctx.thinkingMsg = null;
     },
 
+    /** Start a new chat-message for the next content in this (turnId, agentId). */
+    newSegment(turnId, agentId) {
+        const ctx = this._getCtx(turnId, agentId);
+        if (ctx.textBubble) {
+            ctx.textBubble.removeAttribute('streaming');
+            const p = ctx.textBubble.querySelector('.pending');
+            if (p) p.remove();
+        }
+        this._collapseThinkingFor(ctx);
+        ctx.msg = null;
+        ctx.meta = null;
+        ctx.textBubble = null;
+    },
+
     // ── Public API ─────────────────────────────────────────────
 
     addUserMessage(text, timestamp, ctxChipsHtml) {

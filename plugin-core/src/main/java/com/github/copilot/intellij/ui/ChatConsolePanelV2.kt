@@ -44,6 +44,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     private var nextSubAgentColor = 0
     private var turnCounter = 0
     private var currentTurnId = ""
+    private var toolJustCompleted = false
 
     // ── JCEF ───────────────────────────────────────────────────────
     private val browser: JBCefBrowser?
@@ -154,6 +155,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     // ── Public API ─────────────────────────────────────────────────
 
     override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?) {
+        toolJustCompleted = false
         finalizeCurrentText()
         collapseThinking()
         currentTurnId = "t${turnCounter++}"
@@ -182,6 +184,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun appendThinkingText(text: String) {
+        maybeStartNewSegment()
         if (currentThinkingData == null) {
             currentThinkingData = EntryData.Thinking().also { entries.add(it) }
         }
@@ -196,6 +199,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun appendText(text: String) {
+        maybeStartNewSegment()
         collapseThinking()
         if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
@@ -207,6 +211,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     }
 
     override fun addToolCallEntry(id: String, title: String, arguments: String?) {
+        maybeStartNewSegment()
         finalizeCurrentText()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
@@ -230,12 +235,14 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
         }
         val failed = if (status == "failed") "failed" else "completed"
         executeJs("(function(){ChatController.updateToolCall('$did','$failed',$resultHtml);})()")
+        toolJustCompleted = true
     }
 
     override fun addSubAgentEntry(
         id: String, agentType: String, description: String, prompt: String?,
         initialResult: String?, initialStatus: String?
     ) {
+        maybeStartNewSegment()
         finalizeCurrentText()
         val colorIndex = nextSubAgentColor++ % SA_COLOR_COUNT
         val entry =
@@ -272,6 +279,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
         val encoded = b64(resultHtml)
         executeJs("ChatController.updateSubAgent('$did','$status',b64('$encoded'))")
+        toolJustCompleted = true
     }
 
     override fun addErrorEntry(message: String) {
@@ -297,7 +305,7 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun showPlaceholder(text: String) {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
-        turnCounter = 0; currentTurnId = ""
+        turnCounter = 0; currentTurnId = ""; toolJustCompleted = false
         executeJs("ChatController.showPlaceholder('${escJs(text)}')")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = text } }
     }
@@ -305,12 +313,13 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
     override fun clear() {
         entries.clear(); deferredRestoreJson.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
-        turnCounter = 0; currentTurnId = ""
+        turnCounter = 0; currentTurnId = ""; toolJustCompleted = false
         executeJs("ChatController.clear()")
         fallbackArea?.let { SwingUtilities.invokeLater { it.text = "" } }
     }
 
     override fun finishResponse(toolCallCount: Int, modelId: String, multiplier: String) {
+        toolJustCompleted = false
         finalizeCurrentText()
         collapseThinking()
         val statsJson = """{"tools":$toolCallCount,"model":"${escJs(modelId)}","mult":"${escJs(multiplier)}"}"""
@@ -664,6 +673,14 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
 
     // ── Internal ───────────────────────────────────────────────────
 
+    private fun maybeStartNewSegment() {
+        if (!toolJustCompleted) return
+        toolJustCompleted = false
+        finalizeCurrentText()
+        collapseThinking()
+        executeJs("ChatController.newSegment('$currentTurnId','main')")
+    }
+
     private fun finalizeCurrentText() {
         val data = currentTextData ?: return
         currentTextData = null
@@ -674,13 +691,9 @@ class ChatConsolePanelV2(private val project: Project) : JBPanel<ChatConsolePane
             entries.remove(data); return
         }
         val cleanText = rawText.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val html = markdownToHtml(cleanText)
-            val encoded = b64(html)
-            SwingUtilities.invokeLater {
-                executeJs("ChatController.finalizeAgentText('$turnId','main','$encoded')")
-            }
-        }
+        val html = markdownToHtml(cleanText)
+        val encoded = b64(html)
+        executeJs("ChatController.finalizeAgentText('$turnId','main','$encoded')")
     }
 
     private fun executeJs(js: String) {
