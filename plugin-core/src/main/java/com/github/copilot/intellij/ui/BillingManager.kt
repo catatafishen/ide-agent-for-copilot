@@ -36,6 +36,13 @@ internal class BillingManager {
     private var previousUsedCount = -1
     private var usageAnimationTimer: javax.swing.Timer? = null
 
+    // Post-turn polling: re-fetch billing every 60s until usage changes
+    @Volatile
+    private var billingPollFuture: java.util.concurrent.ScheduledFuture<*>? = null
+    private val pollExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "copilot-billing-poll").apply { isDaemon = true }
+    }
+
     // Usage display toggle and graph
     private enum class UsageDisplayMode { MONTHLY, SESSION }
 
@@ -60,7 +67,8 @@ internal class BillingManager {
         }
     }
 
-    fun loadBillingData() {
+    fun loadBillingData(startPolling: Boolean = false) {
+        if (startPolling) startPostTurnPolling()
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val ghCli = findGhCli() ?: run {
@@ -91,6 +99,35 @@ internal class BillingManager {
                 )
             }
         }
+    }
+
+    /**
+     * Polls billing API every 60s until the usage value changes from [lastBillingUsed].
+     * Cancels any previous poller first.
+     */
+    private fun startPostTurnPolling() {
+        billingPollFuture?.cancel(false)
+        val usageAtTurnEnd = lastBillingUsed
+        billingPollFuture = pollExecutor.scheduleAtFixedRate({
+            try {
+                val ghCli = findGhCli() ?: return@scheduleAtFixedRate
+                if (!isGhAuthenticated(ghCli)) return@scheduleAtFixedRate
+                val obj = fetchCopilotUserData(ghCli) ?: return@scheduleAtFixedRate
+                val snapshots = obj.getAsJsonObject("quota_snapshots") ?: return@scheduleAtFixedRate
+                val premium = snapshots.getAsJsonObject("premium_interactions") ?: return@scheduleAtFixedRate
+
+                displayBillingQuota(premium, obj)
+
+                val entitlement = premium["entitlement"]?.asInt ?: 0
+                val remaining = premium["remaining"]?.asInt ?: 0
+                val currentUsed = entitlement - remaining
+                if (currentUsed != usageAtTurnEnd) {
+                    billingPollFuture?.cancel(false)
+                }
+            } catch (_: Exception) {
+                // Silently retry on next poll
+            }
+        }, 60, 60, java.util.concurrent.TimeUnit.SECONDS)
     }
 
     private fun updateUsageUi(text: String, tooltip: String, cost: String = "") {

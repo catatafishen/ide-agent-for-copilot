@@ -1296,7 +1296,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         addTimelineEvent(EventType.RESPONSE_RECEIVED, "Response received")
         saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
         saveConversation()
-        billing.loadBillingData()
+        billing.loadBillingData(startPolling = true)
 
         val lastResponse = consolePanel.getLastResponseText()
         val quickReplies = detectQuickReplies(lastResponse)
