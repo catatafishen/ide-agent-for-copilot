@@ -36,6 +36,8 @@
       __publicField(this, "_scrollRAF", null);
       __publicField(this, "_observer");
       __publicField(this, "_copyObs");
+      __publicField(this, "_prevScrollY", 0);
+      __publicField(this, "_programmaticScroll", false);
     }
     connectedCallback() {
       if (this._init) return;
@@ -45,7 +47,24 @@
       this._messages.id = "messages";
       this.appendChild(this._messages);
       window.addEventListener("scroll", () => {
-        this._autoScroll = window.innerHeight + window.scrollY >= document.body.scrollHeight - 20;
+        if (this._programmaticScroll) {
+          this._programmaticScroll = false;
+          this._prevScrollY = window.scrollY;
+          return;
+        }
+        const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
+        if (atBottom) {
+          this._autoScroll = true;
+        } else if (window.scrollY < this._prevScrollY) {
+          this._autoScroll = false;
+        }
+        this._prevScrollY = window.scrollY;
+      });
+      window.addEventListener("resize", () => {
+        if (this._autoScroll) {
+          this._programmaticScroll = true;
+          window.scrollTo(0, document.body.scrollHeight);
+        }
       });
       this._observer = new MutationObserver(() => {
         if (!this._scrollRAF) {
@@ -79,11 +98,13 @@
     }
     scrollIfNeeded() {
       if (this._autoScroll) {
+        this._programmaticScroll = true;
         window.scrollTo(0, document.body.scrollHeight);
       }
     }
     forceScroll() {
       this._autoScroll = true;
+      this._programmaticScroll = true;
       window.scrollTo(0, document.body.scrollHeight);
     }
     disconnectedCallback() {
@@ -783,6 +804,9 @@
       return document.querySelector("chat-container");
     },
     _thinkingCounter: 0,
+    _modelColors: {},
+    _nextModelColor: 0,
+    _currentModel: "",
     _ctx: {},
     _getCtx(turnId, agentId) {
       const key = turnId + "-" + agentId;
@@ -802,6 +826,12 @@
       if (!ctx.msg) {
         const msg = document.createElement("chat-message");
         msg.setAttribute("type", "agent");
+        if (this._currentModel && agentId === "main") {
+          if (!(this._currentModel in this._modelColors)) {
+            this._modelColors[this._currentModel] = this._nextModelColor++ % 6;
+          }
+          msg.classList.add("model-c" + this._modelColors[this._currentModel]);
+        }
         const meta = document.createElement("message-meta");
         const now = /* @__PURE__ */ new Date();
         const ts = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
@@ -1051,6 +1081,9 @@
       this._msgs().innerHTML = "";
       this._ctx = {};
       this._thinkingCounter = 0;
+      this._modelColors = {};
+      this._nextModelColor = 0;
+      this._currentModel = "";
     },
     finalizeTurn(turnId, statsJson) {
       const ctx = this._ctx[turnId + "-main"];
@@ -1064,15 +1097,6 @@
       }
       if (statsJson && meta) {
         const stats = typeof statsJson === "string" ? JSON.parse(statsJson) : statsJson;
-        if (stats.model) {
-          const chip = document.createElement("span");
-          chip.className = "turn-chip stats";
-          chip.textContent = stats.mult || "1x";
-          chip.dataset.tip = stats.model;
-          chip.setAttribute("title", stats.model);
-          meta.appendChild(chip);
-          meta.classList.add("show");
-        }
       }
       if (ctx) {
         ctx.thinkingBlock = null;
@@ -1080,6 +1104,15 @@
       }
       this._container()?.scrollIfNeeded();
       this._trimMessages();
+    },
+    showPermissionRequest(reqId, toolDisplayName2, argsJson) {
+      this.disableQuickReplies();
+      const el = document.createElement("permission-request");
+      el.setAttribute("req-id", reqId);
+      el.setAttribute("tool-name", toolDisplayName2);
+      el.setAttribute("args-json", argsJson);
+      this._msgs().appendChild(el);
+      this._container()?.scrollIfNeeded();
     },
     showQuickReplies(options) {
       this.disableQuickReplies();
@@ -1108,6 +1141,9 @@
       chip.dataset.tip = model;
       chip.setAttribute("title", model);
       meta.appendChild(chip);
+    },
+    setCurrentModel(modelId) {
+      this._currentModel = modelId;
     },
     restoreBatch(encodedHtml) {
       const html = b64(encodedHtml);
@@ -1150,6 +1186,81 @@
   };
   var ChatController_default = ChatController;
 
+  // src/components/PermissionRequest.ts
+  var PermissionRequest = class extends HTMLElement {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "_init", false);
+    }
+    connectedCallback() {
+      if (this._init) return;
+      this._init = true;
+      this._render();
+    }
+    _render() {
+      const reqId = this.getAttribute("req-id") || "";
+      const toolName = this.getAttribute("tool-name") || "Unknown Tool";
+      const argsJson = this.getAttribute("args-json") || "{}";
+      let args = {};
+      try {
+        args = JSON.parse(argsJson);
+      } catch {
+      }
+      this.classList.add("permission-request", "agent-row");
+      const bubble = document.createElement("div");
+      bubble.className = "agent-bubble perm-bubble";
+      const question = document.createElement("div");
+      question.className = "perm-question";
+      question.innerHTML = `\u{1F510} Can I use <strong>${escHtml(toolName)}</strong>?`;
+      bubble.appendChild(question);
+      const chipRow = document.createElement("div");
+      chipRow.className = "perm-chip-row";
+      const sectionId = "perm-section-" + reqId;
+      const section = document.createElement("tool-section");
+      section.id = sectionId;
+      section.setAttribute("title", toolName);
+      section.setAttribute("params", argsJson);
+      section.classList.add("turn-hidden");
+      const chip = document.createElement("tool-chip");
+      const cat = toolCategory(toolName);
+      chip.setAttribute("label", toolName);
+      chip.setAttribute("status", "running");
+      chip.classList.add(`cat-${cat}`);
+      chip.dataset.chipFor = sectionId;
+      chip.linkSection(section);
+      chipRow.appendChild(chip);
+      bubble.appendChild(chipRow);
+      bubble.appendChild(section);
+      const actions = document.createElement("div");
+      actions.className = "perm-actions";
+      const allowBtn = document.createElement("button");
+      allowBtn.type = "button";
+      allowBtn.className = "quick-reply-btn perm-allow";
+      allowBtn.textContent = "Allow";
+      allowBtn.onclick = () => this._respond(reqId, true, chip);
+      const denyBtn = document.createElement("button");
+      denyBtn.type = "button";
+      denyBtn.className = "quick-reply-btn perm-deny";
+      denyBtn.textContent = "Deny";
+      denyBtn.onclick = () => this._respond(reqId, false, chip);
+      actions.appendChild(allowBtn);
+      actions.appendChild(denyBtn);
+      bubble.appendChild(actions);
+      this.appendChild(bubble);
+    }
+    _respond(reqId, allowed, chip) {
+      this.querySelectorAll("button").forEach((b) => b.disabled = true);
+      this.classList.add("resolved");
+      chip.setAttribute("status", allowed ? "complete" : "failed");
+      const result = document.createElement("div");
+      result.className = "perm-result " + (allowed ? "perm-allowed" : "perm-denied");
+      result.textContent = allowed ? "\u2713 Allowed" : "\u2717 Denied";
+      const actions = this.querySelector(".perm-actions");
+      if (actions) actions.replaceWith(result);
+      globalThis._bridge?.permissionResponse(`${reqId}:${allowed}`);
+    }
+  };
+
   // src/index.ts
   customElements.define("chat-container", ChatContainer);
   customElements.define("chat-message", ChatMessage);
@@ -1165,8 +1276,12 @@
   customElements.define("session-divider", SessionDivider);
   customElements.define("load-more", LoadMore);
   customElements.define("turn-details", TurnDetails);
+  customElements.define("permission-request", PermissionRequest);
   window.ChatController = ChatController_default;
   window.b64 = b64;
+  window.showPermissionRequest = (reqId, toolDisplayName2, argsJson) => {
+    ChatController_default.showPermissionRequest(reqId, toolDisplayName2, argsJson);
+  };
   document.addEventListener("click", (e) => {
     let el = e.target;
     while (el && el.tagName !== "A") el = el.parentElement;

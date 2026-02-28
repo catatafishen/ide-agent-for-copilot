@@ -413,6 +413,56 @@ thinking-chip .chip-spinner {
 }
 
 /* ── Sub-agent colors ────────────────────────────────── */
+
+/* ── Model colors (main agent bubbles cycle per model) ── */
+.model-c0 .agent-bubble {
+    background: rgba(150, 200, 150, 0.06);
+}
+
+.model-c0 .agent-bubble:hover {
+    background: rgba(150, 200, 150, 0.10);
+}
+
+.model-c1 .agent-bubble {
+    background: rgba(130, 170, 220, 0.06);
+}
+
+.model-c1 .agent-bubble:hover {
+    background: rgba(130, 170, 220, 0.10);
+}
+
+.model-c2 .agent-bubble {
+    background: rgba(190, 150, 210, 0.06);
+}
+
+.model-c2 .agent-bubble:hover {
+    background: rgba(190, 150, 210, 0.10);
+}
+
+.model-c3 .agent-bubble {
+    background: rgba(220, 170, 100, 0.06);
+}
+
+.model-c3 .agent-bubble:hover {
+    background: rgba(220, 170, 100, 0.10);
+}
+
+.model-c4 .agent-bubble {
+    background: rgba(200, 130, 150, 0.06);
+}
+
+.model-c4 .agent-bubble:hover {
+    background: rgba(200, 130, 150, 0.10);
+}
+
+.model-c5 .agent-bubble {
+    background: rgba(100, 190, 190, 0.06);
+}
+
+.model-c5 .agent-bubble:hover {
+    background: rgba(100, 190, 190, 0.10);
+}
+
 .subagent-c0 {
     --sa-color: var(--sa-c0);
     --sa-a06: var(--sa-c0-a06);
@@ -669,9 +719,17 @@ ul, ol {
     padding-left: 22px;
 }
 
-ul { list-style-type: disc; }
-ol { list-style-type: decimal; }
-ul ul { list-style-type: circle; }
+ul {
+    list-style-type: disc;
+}
+
+ol {
+    list-style-type: decimal;
+}
+
+ul ul {
+    list-style-type: circle;
+}
 
 li {
     margin: var(--sp-1) 0;
@@ -790,6 +848,72 @@ pre:focus-within .copy-btn {
 ::selection {
     background: var(--user-a25);
     color: var(--fg);
+}
+
+/* ── Permission request bubble ───────────────────────── */
+.permission-request {
+    display: block;
+    margin: var(--sp-2) 0;
+}
+
+.perm-bubble {
+    max-width: 85%;
+}
+
+.perm-question {
+    font-size: 0.95em;
+    margin-bottom: var(--sp-3);
+}
+
+.perm-chip-row {
+    display: flex;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+
+.perm-actions {
+    display: flex;
+    gap: var(--sp-3);
+    margin-top: var(--sp-2);
+}
+
+.perm-allow {
+    background: rgba(80, 180, 80, 0.12) !important;
+    color: #5cb85c !important;
+    border-color: rgba(80, 180, 80, 0.3) !important;
+}
+
+.perm-allow:hover {
+    background: rgba(80, 180, 80, 0.22) !important;
+    border-color: #5cb85c !important;
+}
+
+.perm-deny {
+    background: rgba(220, 80, 80, 0.10) !important;
+    color: #d9534f !important;
+    border-color: rgba(220, 80, 80, 0.25) !important;
+}
+
+.perm-deny:hover {
+    background: rgba(220, 80, 80, 0.20) !important;
+    border-color: #d9534f !important;
+}
+
+.perm-result {
+    font-size: 0.88em;
+    margin-top: var(--sp-2);
+}
+
+.perm-allowed {
+    color: #5cb85c;
+}
+
+.perm-denied {
+    color: #d9534f;
+}
+
+.permission-request.resolved .perm-bubble {
+    opacity: 0.75;
 }
 
 @media (prefers-reduced-motion: reduce) {

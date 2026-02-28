@@ -1,8 +1,12 @@
 import {escHtml} from '../helpers';
+import {toolCategory} from '../toolDisplayName';
 
-// Keys to prefer for the single-line preview under the tool name
-const PREVIEW_KEY_ORDER = ['path', 'file', 'file1', 'symbol', 'query', 'name', 'command', 'target'];
-
+/**
+ * Permission request rendered as an agent-style message bubble.
+ * Shows a question text + a tool chip (with hourglass while pending).
+ * Clicking the chip expands a tool-section showing parameters.
+ * Allow/Deny buttons styled as quick-reply pills.
+ */
 export default class PermissionRequest extends HTMLElement {
     private _init = false;
 
@@ -18,66 +22,46 @@ export default class PermissionRequest extends HTMLElement {
         const argsJson = this.getAttribute('args-json') || '{}';
 
         let args: Record<string, unknown> = {};
-        try { args = JSON.parse(argsJson); } catch { /* ignore parse errors */ }
-
-        this.classList.add('permission-request');
-
-        // Header: "🔐 Use Write File?"
-        const header = document.createElement('div');
-        header.className = 'perm-header';
-        header.innerHTML = `<span class="perm-icon">🔐</span>\u00a0Use <strong>${escHtml(toolName)}</strong>?`;
-        this.appendChild(header);
-
-        // Preview: show the most salient arg value inline
-        const previewKey = PREVIEW_KEY_ORDER.find(k => args[k] !== undefined);
-        if (previewKey) {
-            const val = String(args[previewKey]);
-            const preview = document.createElement('div');
-            preview.className = 'perm-preview';
-            preview.textContent = val.length > 80 ? val.slice(0, 77) + '\u2026' : val;
-            this.appendChild(preview);
+        try {
+            args = JSON.parse(argsJson);
+        } catch { /* ignore parse errors */
         }
 
-        // Collapsible parameters section
-        const entries = Object.entries(args);
-        if (entries.length > 0) {
-            const details = document.createElement('details');
-            details.className = 'perm-details';
-            const summary = document.createElement('summary');
-            summary.textContent = 'Parameters';
-            details.appendChild(summary);
+        this.classList.add('permission-request', 'agent-row');
 
-            entries.forEach(([k, v]) => {
-                const row = document.createElement('div');
-                row.className = 'perm-arg-row';
-                const valStr = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
-                if (valStr.length > 120) {
-                    // Long value: nested collapsible
-                    const kEl = document.createElement('span');
-                    kEl.className = 'perm-key';
-                    kEl.textContent = k + ':';
-                    row.appendChild(kEl);
-                    const valDetails = document.createElement('details');
-                    valDetails.className = 'perm-val-details';
-                    const valSummary = document.createElement('summary');
-                    valSummary.className = 'perm-val-summary';
-                    valSummary.textContent = valStr.slice(0, 80) + '\u2026';
-                    valDetails.appendChild(valSummary);
-                    const pre = document.createElement('pre');
-                    pre.className = 'perm-val-pre';
-                    pre.textContent = valStr;
-                    valDetails.appendChild(pre);
-                    row.appendChild(valDetails);
-                } else {
-                    row.innerHTML = `<span class="perm-key">${escHtml(k)}:</span> <span class="perm-val">${escHtml(valStr)}</span>`;
-                }
-                details.appendChild(row);
-            });
+        // Agent-style bubble with question
+        const bubble = document.createElement('div');
+        bubble.className = 'agent-bubble perm-bubble';
 
-            this.appendChild(details);
-        }
+        const question = document.createElement('div');
+        question.className = 'perm-question';
+        question.innerHTML = `\u{1F510} Can I use <strong>${escHtml(toolName)}</strong>?`;
+        bubble.appendChild(question);
 
-        // Action buttons
+        // Tool chip — reuses existing chip styling with hourglass status
+        const chipRow = document.createElement('div');
+        chipRow.className = 'perm-chip-row';
+
+        const sectionId = 'perm-section-' + reqId;
+        const section = document.createElement('tool-section') as HTMLElement;
+        section.id = sectionId;
+        section.setAttribute('title', toolName);
+        section.setAttribute('params', argsJson);
+        section.classList.add('turn-hidden');
+
+        const chip = document.createElement('tool-chip') as HTMLElement;
+        const cat = toolCategory(toolName);
+        chip.setAttribute('label', toolName);
+        chip.setAttribute('status', 'running');
+        chip.classList.add(`cat-${cat}`);
+        chip.dataset.chipFor = sectionId;
+        (chip as any).linkSection(section);
+
+        chipRow.appendChild(chip);
+        bubble.appendChild(chipRow);
+        bubble.appendChild(section);
+
+        // Allow / Deny buttons
         const actions = document.createElement('div');
         actions.className = 'perm-actions';
 
@@ -85,27 +69,35 @@ export default class PermissionRequest extends HTMLElement {
         allowBtn.type = 'button';
         allowBtn.className = 'quick-reply-btn perm-allow';
         allowBtn.textContent = 'Allow';
-        allowBtn.onclick = () => this._respond(reqId, true);
+        allowBtn.onclick = () => this._respond(reqId, true, chip);
 
         const denyBtn = document.createElement('button');
         denyBtn.type = 'button';
         denyBtn.className = 'quick-reply-btn perm-deny';
         denyBtn.textContent = 'Deny';
-        denyBtn.onclick = () => this._respond(reqId, false);
+        denyBtn.onclick = () => this._respond(reqId, false, chip);
 
         actions.appendChild(allowBtn);
         actions.appendChild(denyBtn);
-        this.appendChild(actions);
+        bubble.appendChild(actions);
+
+        this.appendChild(bubble);
     }
 
-    private _respond(reqId: string, allowed: boolean): void {
+    private _respond(reqId: string, allowed: boolean, chip: HTMLElement): void {
         this.querySelectorAll('button').forEach(b => ((b as HTMLButtonElement).disabled = true));
         this.classList.add('resolved');
+
+        // Update chip status
+        chip.setAttribute('status', allowed ? 'complete' : 'failed');
+
+        // Replace buttons with result text
         const result = document.createElement('div');
         result.className = 'perm-result ' + (allowed ? 'perm-allowed' : 'perm-denied');
         result.textContent = allowed ? '\u2713 Allowed' : '\u2717 Denied';
         const actions = this.querySelector('.perm-actions');
         if (actions) actions.replaceWith(result);
+
         (globalThis as any)._bridge?.permissionResponse(`${reqId}:${allowed}`);
     }
 }

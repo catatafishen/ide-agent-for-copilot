@@ -850,6 +850,72 @@ pre:focus-within .copy-btn {
     color: var(--fg);
 }
 
+/* ── Permission request bubble ───────────────────────── */
+.permission-request {
+    display: block;
+    margin: var(--sp-2) 0;
+}
+
+.perm-bubble {
+    max-width: 85%;
+}
+
+.perm-question {
+    font-size: 0.95em;
+    margin-bottom: var(--sp-3);
+}
+
+.perm-chip-row {
+    display: flex;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+
+.perm-actions {
+    display: flex;
+    gap: var(--sp-3);
+    margin-top: var(--sp-2);
+}
+
+.perm-allow {
+    background: rgba(80, 180, 80, 0.12) !important;
+    color: #5cb85c !important;
+    border-color: rgba(80, 180, 80, 0.3) !important;
+}
+
+.perm-allow:hover {
+    background: rgba(80, 180, 80, 0.22) !important;
+    border-color: #5cb85c !important;
+}
+
+.perm-deny {
+    background: rgba(220, 80, 80, 0.10) !important;
+    color: #d9534f !important;
+    border-color: rgba(220, 80, 80, 0.25) !important;
+}
+
+.perm-deny:hover {
+    background: rgba(220, 80, 80, 0.20) !important;
+    border-color: #d9534f !important;
+}
+
+.perm-result {
+    font-size: 0.88em;
+    margin-top: var(--sp-2);
+}
+
+.perm-allowed {
+    color: #5cb85c;
+}
+
+.perm-denied {
+    color: #d9534f;
+}
+
+.permission-request.resolved .perm-bubble {
+    opacity: 0.75;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.01ms !important;
