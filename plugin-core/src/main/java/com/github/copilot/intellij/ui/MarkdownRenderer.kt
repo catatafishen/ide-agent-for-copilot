@@ -39,7 +39,8 @@ internal object MarkdownRenderer {
                 t.isEmpty() -> { /* skip blank lines */
                 }
 
-                else -> sb.append("<p>").append(formatInline(line, resolveFileReference, resolveFilePath)).append("</p>")
+                else -> sb.append("<p>").append(formatInline(line, resolveFileReference, resolveFilePath))
+                    .append("</p>")
             }
         }
 
@@ -144,13 +145,16 @@ internal object MarkdownRenderer {
         val result = StringBuilder()
         var lastEnd = 0
         // Match bold **text**, inline code, markdown links [text](url), or bare URLs
-        val combinedPattern = Regex("""\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)]\((https?://[^)]+)\)|(https?://[^\s<>\[\]()]+)""")
+        val combinedPattern =
+            Regex("""\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)]\((https?://[^)]+)\)|(https?://[^\s<>\[\]()]+)""")
         for (match in combinedPattern.findAll(text)) {
             result.append(formatNonCode(text.substring(lastEnd, match.range.first), resolveFilePath))
             when {
                 match.groupValues[1].isNotEmpty() -> {
                     // Bold: **content** — recurse to allow inline code/links inside bold
-                    result.append("<b>").append(formatInline(match.groupValues[1], resolveFileReference, resolveFilePath)).append("</b>")
+                    result.append("<b>")
+                        .append(formatInline(match.groupValues[1], resolveFileReference, resolveFilePath))
+                        .append("</b>")
                 }
 
                 match.groupValues[2].isNotEmpty() -> {

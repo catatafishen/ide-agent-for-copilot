@@ -91,7 +91,7 @@ internal class HelpAction(private val project: Project) : AnAction(
             "Copy the full conversation to clipboard (as text or HTML)."
         ),
         HelpRow(
-            com.intellij.icons.AllIcons.Actions.ListFiles,
+            com.intellij.icons.AllIcons.General.Settings,
             "Tool Permissions",
             "Open the tool permissions panel to review which tools the agent can use."
         ),

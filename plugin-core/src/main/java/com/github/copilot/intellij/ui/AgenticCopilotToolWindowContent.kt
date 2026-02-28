@@ -1025,7 +1025,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     /** Toolbar button that opens the tool permissions dialog. */
     private inner class SettingsAction : AnAction(
         "Tool Permissions", "View and configure tool permissions",
-        AllIcons.Actions.ListFiles
+        AllIcons.General.Settings
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) = debugPanel.openSettings()
