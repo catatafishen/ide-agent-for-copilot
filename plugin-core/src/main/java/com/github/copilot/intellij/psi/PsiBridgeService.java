@@ -1,14 +1,14 @@
 package com.github.copilot.intellij.psi;
 
+import com.github.copilot.intellij.services.CopilotSettings;
+import com.github.copilot.intellij.services.ToolPermission;
+import com.github.copilot.intellij.services.ToolRegistry;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.github.copilot.intellij.services.CopilotSettings;
-import com.github.copilot.intellij.services.ToolPermission;
-import com.github.copilot.intellij.services.ToolRegistry;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.ComponentManager;
@@ -296,7 +296,8 @@ public final class PsiBridgeService implements Disposable {
     /**
      * Checks the configured permission for a plugin tool call.
      * Returns null if the call is allowed, or an error message string if it is denied/rejected.
-     * For ASK, blocks the calling thread and shows a modal confirmation dialog on the EDT.
+     * For ASK, injects a permission bubble into the chat panel and blocks until user responds.
+     * Falls back to a modal dialog if the chat panel is unavailable (no JCEF, etc.).
      */
     @Nullable
     private String checkPluginToolPermission(String toolName, JsonObject arguments) {
@@ -308,23 +309,49 @@ public final class PsiBridgeService implements Disposable {
             return "Permission denied: tool '" + toolName + "' is disabled in Tool Permissions settings.";
         }
 
-        // ASK: show a modal dialog on the EDT and block until user responds
+        // ASK: show a permission bubble in the chat panel and block until user responds
         ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
         String displayName = entry != null ? entry.displayName : toolName;
-        String argSummary = buildArgSummary(arguments);
+        String argsJson = arguments.toString();
+        String reqId = java.util.UUID.randomUUID().toString();
 
-        boolean[] allowed = {false};
-        ApplicationManager.getApplication().invokeAndWait(() -> {
-            String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
-                + argSummary + "</html>";
-            int choice = Messages.showYesNoDialog(
-                project, message, "Tool Permission Request",
-                "Allow", "Deny", Messages.getQuestionIcon()
+        com.github.copilot.intellij.ui.ChatConsolePanel chatPanel =
+            com.github.copilot.intellij.ui.ChatConsolePanel.Companion.getInstance(project);
+
+        boolean allowed;
+        if (chatPanel != null) {
+            java.util.concurrent.CompletableFuture<Boolean> future = new java.util.concurrent.CompletableFuture<>();
+            ApplicationManager.getApplication().invokeLater(() ->
+                chatPanel.showPermissionRequest(reqId, displayName, argsJson, result -> {
+                    future.complete(result);
+                    return kotlin.Unit.INSTANCE;
+                })
             );
-            allowed[0] = choice == Messages.YES;
-        });
+            try {
+                allowed = future.get(120, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.TimeoutException e) {
+                LOG.info("PSI Bridge: ASK timed out for " + toolName);
+                return "Permission request timed out for tool '" + toolName + "'.";
+            } catch (InterruptedException | java.util.concurrent.ExecutionException e) {
+                Thread.currentThread().interrupt();
+                return "Permission request interrupted for tool '" + toolName + "'.";
+            }
+        } else {
+            // Fallback: modal dialog when JCEF / chat panel is unavailable
+            boolean[] result = {false};
+            ApplicationManager.getApplication().invokeAndWait(() -> {
+                String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
+                    + buildArgSummary(arguments) + "</html>";
+                int choice = Messages.showYesNoDialog(
+                    project, message, "Tool Permission Request",
+                    "Allow", "Deny", Messages.getQuestionIcon()
+                );
+                result[0] = choice == Messages.YES;
+            });
+            allowed = result[0];
+        }
 
-        if (allowed[0]) {
+        if (allowed) {
             LOG.info("PSI Bridge: ASK approved by user for " + toolName);
             return null;
         } else {
@@ -374,13 +401,16 @@ public final class PsiBridgeService implements Disposable {
         StringBuilder sb = new StringBuilder("<table>");
         int count = 0;
         for (Map.Entry<String, JsonElement> e : args.entrySet()) {
-            if (count++ >= 5) { sb.append("<tr><td colspan='2'>…</td></tr>"); break; }
+            if (count++ >= 5) {
+                sb.append("<tr><td colspan='2'>…</td></tr>");
+                break;
+            }
             String val = e.getValue().isJsonPrimitive()
                 ? e.getValue().getAsString() : e.getValue().toString();
             if (val.length() > 100) val = val.substring(0, 97) + "…";
             sb.append("<tr><td><b>").append(StringUtil.escapeXmlEntities(e.getKey()))
-              .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
-              .append("</td></tr>");
+                .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
+                .append("</td></tr>");
         }
         sb.append("</table>");
         return sb.toString();

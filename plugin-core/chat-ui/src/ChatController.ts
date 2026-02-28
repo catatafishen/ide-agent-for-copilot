@@ -348,6 +348,16 @@ const ChatController = {
         this._trimMessages();
     },
 
+    showPermissionRequest(reqId: string, toolDisplayName: string, argsJson: string): void {
+        this.disableQuickReplies();
+        const el = document.createElement('permission-request');
+        el.setAttribute('req-id', reqId);
+        el.setAttribute('tool-name', toolDisplayName);
+        el.setAttribute('args-json', argsJson);
+        this._msgs().appendChild(el);
+        this._container()?.scrollIfNeeded();
+    },
+
     showQuickReplies(options: string[]): void {
         this.disableQuickReplies();
         if (!options?.length) return;

@@ -25,6 +25,8 @@ import TurnDetails from './components/TurnDetails';
 
 import ChatController from './ChatController';
 
+import PermissionRequest from './components/PermissionRequest';
+
 // ── Register custom elements ──────────────────────────
 
 customElements.define('chat-container', ChatContainer);
@@ -41,11 +43,15 @@ customElements.define('status-message', StatusMessage);
 customElements.define('session-divider', SessionDivider);
 customElements.define('load-more', LoadMore);
 customElements.define('turn-details', TurnDetails);
+customElements.define('permission-request', PermissionRequest);
 
 // ── Expose controller to Kotlin bridge ────────────────
 
 window.ChatController = ChatController;
 (window as any).b64 = b64;
+(window as any).showPermissionRequest = (reqId: string, toolDisplayName: string, argsJson: string) => {
+    ChatController.showPermissionRequest(reqId, toolDisplayName, argsJson);
+};
 
 // ── Global event handlers ─────────────────────────────
 
