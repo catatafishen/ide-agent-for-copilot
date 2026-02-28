@@ -664,6 +664,12 @@ public class McpServer {
             ),
             List.of("path")));
 
+        addIfEnabled.accept(buildTool("reload_from_disk", "Reload File from Disk: refreshes IntelliJ's VFS for a path, picking up changes made by external tools (e.g. build scripts, npm). Without a path, refreshes the entire project root.",
+            Map.of(
+                "path", Map.of("type", "string", "description", "File or directory path to reload (absolute or project-relative). Omit to reload the entire project root.")
+            ),
+            List.of()));
+
         addIfEnabled.accept(buildTool("build_project", "Build Project: triggers incremental compilation of the project or a specific module",
             Map.of(
                 "module", Map.of("type", "string", "description", "Optional: build only a specific module (e.g., 'plugin-core')")

@@ -78,6 +78,7 @@ public final class ToolRegistry {
         new ToolEntry("intellij_write_file", "Write File", Category.FILE, false, false, true),
         new ToolEntry("create_file", "Create File", Category.FILE, false, false, true),
         new ToolEntry("delete_file", "Delete File", Category.FILE, false, false, true),
+        new ToolEntry("reload_from_disk", "Reload from Disk", Category.FILE, false, false, true),
         new ToolEntry("open_in_editor", "Open in Editor", Category.FILE, false, false, true),
         new ToolEntry("show_diff", "Show Diff", Category.FILE, false, false, false),
 

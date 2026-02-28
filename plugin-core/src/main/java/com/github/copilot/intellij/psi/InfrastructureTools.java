@@ -137,12 +137,25 @@ class InfrastructureTools extends AbstractToolHandler {
 
         ProcessResult result = executeInRunPanel(cmd, tabTitle, timeoutSec);
 
+        String fullOutput = result.output();
         if (result.timedOut()) {
-            return "Command timed out after " + timeoutSec + " seconds.\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
+            return "Command timed out after " + timeoutSec + " seconds.\n\n"
+                + ToolUtils.truncateOutput(fullOutput, maxChars, offset);
         }
 
-        return (result.exitCode() == 0 ? "\u2705 Command succeeded" : "\u274C Command failed (exit code " + result.exitCode() + ")")
-            + "\n\n" + ToolUtils.truncateOutput(result.output(), maxChars, offset);
+        boolean failed = result.exitCode() != 0;
+        // On failure with no explicit offset, show the tail so stack traces / errors are visible
+        int effectiveOffset = offset;
+        if (failed && !args.has("offset") && fullOutput.length() > maxChars) {
+            effectiveOffset = fullOutput.length() - maxChars;
+        }
+        String header = failed
+            ? "❌ Command failed (exit code " + result.exitCode() + ")"
+            : "✅ Command succeeded";
+        if (failed && effectiveOffset > 0) {
+            header += "\n(showing last " + maxChars + " chars — use offset=0 for beginning)";
+        }
+        return header + "\n\n" + ToolUtils.truncateOutput(fullOutput, maxChars, effectiveOffset);
     }
 
     private static String truncateForTitle(String command) {

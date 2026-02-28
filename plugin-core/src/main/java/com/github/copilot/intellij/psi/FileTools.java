@@ -12,6 +12,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
@@ -72,6 +73,7 @@ class FileTools extends AbstractToolHandler {
         register("create_file", this::createFile);
         register("delete_file", this::deleteFile);
         register("undo", this::undo);
+        register("reload_from_disk", this::reloadFromDisk);
     }
 
     private String readFile(JsonObject args) {
@@ -274,11 +276,9 @@ class FileTools extends AbstractToolHandler {
         int matchLen = match[1];
 
         if (idx == -1) {
-            String text = doc.getText();
-            String preview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
             resultFuture.complete("old_str not found in " + pathStr +
-                ". Ensure the text matches exactly (check special characters, whitespace, line endings)." +
-                "\nFile starts with: " + preview.replace("\n", "\\n").substring(0, Math.min(preview.length(), 150)));
+                ". Ensure the text matches exactly (check whitespace, indentation, line endings)." +
+                closestMatchHint(doc.getText(), normalizedOld));
             return;
         }
         // Check for multiple matches using same strategy
@@ -397,6 +397,36 @@ class FileTools extends AbstractToolHandler {
             }
         }
         return new int[]{idx, matchLen};
+    }
+
+    /**
+     * Finds the closest line in {@code text} that contains the first non-blank line of
+     * {@code normalizedOld}, and returns a hint string with that line and its neighbours.
+     * Helps the agent understand why old_str didn't match.
+     */
+    private static String closestMatchHint(String text, String normalizedOld) {
+        String firstLine = null;
+        for (String l : normalizedOld.split("\n")) {
+            String t = l.trim();
+            if (!t.isEmpty()) {
+                firstLine = t;
+                break;
+            }
+        }
+        if (firstLine == null) return "";
+        String[] docLines = text.split("\n");
+        for (int i = 0; i < docLines.length; i++) {
+            if (docLines[i].contains(firstLine)) {
+                int start = Math.max(0, i - 1);
+                int end = Math.min(docLines.length - 1, i + 3);
+                StringBuilder ctx = new StringBuilder("\nClosest match found at line ").append(i + 1).append(":\n");
+                for (int j = start; j <= end; j++) {
+                    ctx.append("  L").append(j + 1).append(": ").append(docLines[j]).append("\n");
+                }
+                return ctx.toString();
+            }
+        }
+        return "";
     }
 
     /**
@@ -645,5 +675,39 @@ class FileTools extends AbstractToolHandler {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> performUndo(pathStr, count, resultFuture));
         return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Refreshes one or more files/directories in IntelliJ's VFS from disk.
+     * Useful after external tools (e.g. build scripts) modify files outside the editor.
+     */
+    private String reloadFromDisk(JsonObject args) {
+        String basePath = project.getBasePath();
+        if (basePath == null) return "No project base path";
+
+        if (!args.has("path") || args.get("path").isJsonNull()) {
+            // Refresh entire project root
+            VirtualFile root = LocalFileSystem.getInstance().findFileByPath(basePath);
+            if (root == null) return "Project root not found";
+            VfsUtil.markDirtyAndRefresh(false, true, true, root);
+            return "Reloaded project root from disk (" + basePath + ")";
+        }
+
+        String pathStr = args.get("path").getAsString();
+        VirtualFile vf = resolveVirtualFile(pathStr);
+        if (vf == null) {
+            // File may not be in VFS yet — refresh parent directory
+            java.io.File f = new java.io.File(pathStr);
+            if (!f.isAbsolute()) f = new java.io.File(basePath, pathStr);
+            java.io.File parent = f.getParentFile();
+            if (parent != null) {
+                VirtualFile parentVf = LocalFileSystem.getInstance().refreshAndFindFileByPath(parent.getAbsolutePath());
+                if (parentVf != null) return "Reloaded parent directory: " + parent.getAbsolutePath();
+            }
+            return "File not found: " + pathStr;
+        }
+
+        VfsUtil.markDirtyAndRefresh(false, vf.isDirectory(), true, vf);
+        return "Reloaded from disk: " + vf.getPath();
     }
 }
