@@ -153,22 +153,38 @@ internal class PermissionsPanel {
             val inProjectCombo: ComboBox<String>?
             val outProjectCombo: ComboBox<String>?
             if (tool.supportsPathSubPermissions && !tool.isBuiltIn && enabledBox != null) {
+                val topIsAllow = permCombo?.selectedIndex == 0
+                val toolEnabled = enabledBox.isSelected
+
+                fun subTooltip(inside: Boolean, active: Boolean) =
+                    if (active) "Permission for files ${if (inside) "inside" else "outside"} the current project"
+                    else "Controlled by the top-level permission above"
+
                 inProjectCombo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
                     setMinimumAndPreferredWidth(JBUI.scale(108))
-                    isEnabled = enabledBox.isSelected
+                    isEnabled = toolEnabled && topIsAllow
                     selectedIndex = CopilotSettings.getToolPermissionInsideProject(tool.id).toPluginIndex()
-                    toolTipText = "Permission for files inside the current project"
+                    toolTipText = subTooltip(true, toolEnabled && topIsAllow)
                 }
                 outProjectCombo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
                     setMinimumAndPreferredWidth(JBUI.scale(108))
-                    isEnabled = enabledBox.isSelected
+                    isEnabled = toolEnabled && topIsAllow
                     selectedIndex = CopilotSettings.getToolPermissionOutsideProject(tool.id).toPluginIndex()
-                    toolTipText = "Permission for files outside the current project"
+                    toolTipText = subTooltip(false, toolEnabled && topIsAllow)
                 }
-                enabledBox.addActionListener {
-                    inProjectCombo.isEnabled = enabledBox.isSelected
-                    outProjectCombo.isEnabled = enabledBox.isSelected
+
+                fun updateSubCombos() {
+                    val enabled = enabledBox.isSelected
+                    val allow = permCombo?.selectedIndex == 0
+                    val active = enabled && allow
+                    inProjectCombo.isEnabled = active
+                    outProjectCombo.isEnabled = active
+                    inProjectCombo.toolTipText = subTooltip(true, active)
+                    outProjectCombo.toolTipText = subTooltip(false, active)
                 }
+
+                enabledBox.addActionListener { updateSubCombos() }
+                permCombo?.addActionListener { updateSubCombos() }
             } else {
                 inProjectCombo = null
                 outProjectCombo = null
@@ -360,12 +376,22 @@ internal class PermissionsPanel {
             val id = row.tool.id
             if (row.isPlugin) {
                 row.enabledBox?.let { CopilotSettings.setToolEnabled(id, it.isSelected) }
-                row.permCombo?.let { CopilotSettings.setToolPermission(id, it.selectedIndex.toPluginPermission()) }
-                row.inProjectCombo?.let {
-                    CopilotSettings.setToolPermissionInsideProject(id, it.selectedIndex.toPluginPermission())
-                }
-                row.outProjectCombo?.let {
-                    CopilotSettings.setToolPermissionOutsideProject(id, it.selectedIndex.toPluginPermission())
+                row.permCombo?.let { combo ->
+                    val perm = combo.selectedIndex.toPluginPermission()
+                    CopilotSettings.setToolPermission(id, perm)
+
+                    // Only persist sub-permissions when top-level is Allow (the ceiling).
+                    // When top-level is Ask, clear stored sub-keys so they don't silently override.
+                    if (perm == ToolPermission.ALLOW) {
+                        row.inProjectCombo?.let {
+                            CopilotSettings.setToolPermissionInsideProject(id, it.selectedIndex.toPluginPermission())
+                        }
+                        row.outProjectCombo?.let {
+                            CopilotSettings.setToolPermissionOutsideProject(id, it.selectedIndex.toPluginPermission())
+                        }
+                    } else {
+                        CopilotSettings.clearToolSubPermissions(id)
+                    }
                 }
             } else {
                 row.permCombo?.let { CopilotSettings.setToolPermission(id, it.selectedIndex.toBuiltinPermission()) }

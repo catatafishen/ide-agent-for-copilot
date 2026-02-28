@@ -1233,14 +1233,12 @@ public class CopilotAcpClient implements Closeable {
     private ToolPermission resolveEffectivePermission(String toolId, String permKind, @Nullable JsonObject toolCall) {
         ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
 
-        // Path-based sub-permissions for file tools
+        // Path-based sub-permissions for file tools (ceiling enforced by CopilotSettings)
         if (entry != null && entry.supportsPathSubPermissions && toolCall != null) {
             String path = extractPathFromToolCall(toolCall);
             if (path != null && !path.isEmpty()) {
                 boolean insideProject = isPathInsideProject(path);
-                return insideProject
-                    ? CopilotSettings.getToolPermissionInsideProject(toolId)
-                    : CopilotSettings.getToolPermissionOutsideProject(toolId);
+                return CopilotSettings.resolveEffectivePermission(toolId, insideProject);
             }
         }
         return CopilotSettings.getToolPermission(toolId);

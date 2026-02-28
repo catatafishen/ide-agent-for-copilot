@@ -366,9 +366,7 @@ public final class PsiBridgeService implements Disposable {
             String path = extractPathArg(arguments);
             if (path != null && !path.isEmpty()) {
                 boolean inside = isInsideProject(path);
-                return inside
-                    ? CopilotSettings.getToolPermissionInsideProject(toolName)
-                    : CopilotSettings.getToolPermissionOutsideProject(toolName);
+                return CopilotSettings.resolveEffectivePermission(toolName, inside);
             }
         }
         return CopilotSettings.getToolPermission(toolName);

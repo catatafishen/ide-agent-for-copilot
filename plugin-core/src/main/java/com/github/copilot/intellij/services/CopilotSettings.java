@@ -233,4 +233,32 @@ public final class CopilotSettings {
     public static void setToolPermissionOutsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
         PropertiesComponent.getInstance().setValue(KEY_TOOL_PERM_OUT + toolId, perm.name());
     }
+
+    /**
+     * Resolves the effective runtime permission for a tool, enforcing the top-level
+     * as a ceiling over sub-permissions.
+     * If the top-level is ASK or DENY, sub-permissions are irrelevant — the ceiling wins.
+     * Sub-permissions only apply when the top-level is ALLOW.
+     */
+    @NotNull
+    public static ToolPermission resolveEffectivePermission(@NotNull String toolId, boolean isInsideProject) {
+        ToolPermission top = getToolPermission(toolId);
+        if (top != ToolPermission.ALLOW) return top;
+
+        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
+        if (entry == null || !entry.supportsPathSubPermissions) return top;
+
+        return isInsideProject
+            ? getToolPermissionInsideProject(toolId)
+            : getToolPermissionOutsideProject(toolId);
+    }
+
+    /**
+     * Clears stored sub-permissions for a tool, restoring fallback-to-top-level behavior.
+     * Called when the top-level permission is set to something other than ALLOW.
+     */
+    public static void clearToolSubPermissions(@NotNull String toolId) {
+        PropertiesComponent.getInstance().unsetValue(KEY_TOOL_PERM_IN + toolId);
+        PropertiesComponent.getInstance().unsetValue(KEY_TOOL_PERM_OUT + toolId);
+    }
 }
