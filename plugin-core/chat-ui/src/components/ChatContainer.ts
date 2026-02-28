@@ -33,6 +33,14 @@ export default class ChatContainer extends HTMLElement {
             this._prevScrollY = window.scrollY;
         });
 
+        // When the panel resizes (tool calls expand/collapse), re-anchor to bottom if we were there
+        window.addEventListener('resize', () => {
+            if (this._autoScroll) {
+                this._programmaticScroll = true;
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        });
+
         // Auto-scroll when children change (debounced via rAF)
         this._observer = new MutationObserver(() => {
             if (!this._scrollRAF) {
