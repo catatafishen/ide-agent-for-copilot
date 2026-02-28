@@ -770,16 +770,32 @@ public class McpServer {
             if (!Files.exists(bridgeFile)) return null;
 
             String content = Files.readString(bridgeFile);
-            JsonObject bridge = JsonParser.parseString(content).getAsJsonObject();
-            int port = bridge.get("port").getAsInt();
+            JsonObject bridgeData = JsonParser.parseString(content).getAsJsonObject();
 
-            // Verify project path matches
-            if (bridge.has("projectPath")) {
-                String bridgeProject = bridge.get("projectPath").getAsString().replace('\\', '/');
-                String ourProject = projectRoot.replace('\\', '/');
-                if (!ourProject.startsWith(bridgeProject) && !bridgeProject.startsWith(ourProject)) {
-                    return null;
+            int port;
+            if (bridgeData.has("port")) {
+                // Legacy single-entry format
+                port = bridgeData.get("port").getAsInt();
+                if (bridgeData.has("projectPath")) {
+                    String bridgeProject = bridgeData.get("projectPath").getAsString().replace('\\', '/');
+                    String ourProject = projectRoot.replace('\\', '/');
+                    if (!ourProject.startsWith(bridgeProject) && !bridgeProject.startsWith(ourProject)) {
+                        return null;
+                    }
                 }
+            } else {
+                // New multi-project registry: find the entry whose path matches ours
+                String ourProject = projectRoot.replace('\\', '/');
+                JsonObject matchedEntry = null;
+                for (Map.Entry<String, com.google.gson.JsonElement> e : bridgeData.entrySet()) {
+                    String key = e.getKey().replace('\\', '/');
+                    if (ourProject.equals(key) || ourProject.startsWith(key + "/") || key.startsWith(ourProject + "/")) {
+                        matchedEntry = e.getValue().getAsJsonObject();
+                        break;
+                    }
+                }
+                if (matchedEntry == null) return null;
+                port = matchedEntry.get("port").getAsInt();
             }
 
             URL url = URI.create("http://127.0.0.1:" + port + "/tools/call").toURL();

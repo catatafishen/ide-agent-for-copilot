@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
+import com.google.gson.JsonElement;
+
 /**
  * Lightweight HTTP bridge exposing IntelliJ PSI/AST analysis to the MCP server.
  * The MCP server (running as a separate process) delegates tool calls here for
@@ -127,7 +129,9 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    /** Builds a concise but informative error summary from an exception chain. */
+    /**
+     * Builds a concise but informative error summary from an exception chain.
+     */
     private static String buildExceptionDetail(Throwable t) {
         StringBuilder sb = new StringBuilder();
         Throwable cause = t;
@@ -144,21 +148,56 @@ public final class PsiBridgeService implements Disposable {
         return sb.toString();
     }
 
+    // Serialises all bridge-file writes/removes within the same JVM (single IntelliJ process).
+    // File-level locking across separate IDE processes is not needed in practice.
+    private static final Object BRIDGE_FILE_LOCK = new Object();
+
     private void writeBridgeFile() {
         if (ApplicationManager.getApplication().isUnitTestMode()) {
             LOG.info("Skipping bridge file write in unit test mode");
             return;
         }
+        String projectPath = project.getBasePath();
+        if (projectPath == null) return;
+
+        synchronized (BRIDGE_FILE_LOCK) {
+            try {
+                Path bridgeDir = Path.of(System.getProperty("user.home"), ".copilot");
+                Files.createDirectories(bridgeDir);
+                Path bridgeFile = bridgeDir.resolve("psi-bridge.json");
+
+                JsonObject registry = readRegistry(bridgeFile);
+
+                // Add / update our entry
+                JsonObject entry = new JsonObject();
+                entry.addProperty("port", port);
+                registry.add(projectPath, entry);
+
+                Files.writeString(bridgeFile, GSON.toJson(registry));
+                LOG.info("Bridge registry updated: " + registry.size() + " project(s) registered");
+            } catch (IOException e) {
+                LOG.error("Failed to write bridge file", e);
+            }
+        }
+    }
+
+    /**
+     * Reads the bridge registry file. Handles both the legacy single-entry format
+     * ({@code {"port":N,"projectPath":"…"}}) and the new multi-project map format.
+     * Returns an empty object on any parse or I/O error.
+     */
+    private static JsonObject readRegistry(Path bridgeFile) {
+        if (!Files.exists(bridgeFile)) return new JsonObject();
         try {
-            Path bridgeDir = Path.of(System.getProperty("user.home"), ".copilot");
-            Files.createDirectories(bridgeDir);
-            Path bridgeFile = bridgeDir.resolve("psi-bridge.json");
-            JsonObject info = new JsonObject();
-            info.addProperty("port", port);
-            info.addProperty("projectPath", project.getBasePath());
-            Files.writeString(bridgeFile, GSON.toJson(info));
-        } catch (IOException e) {
-            LOG.error("Failed to write bridge file", e);
+            String content = Files.readString(bridgeFile);
+            JsonElement el = JsonParser.parseString(content);
+            if (!el.isJsonObject()) return new JsonObject();
+            JsonObject obj = el.getAsJsonObject();
+            // Old single-entry format — discard; projects will re-register on startup.
+            if (obj.has("port")) return new JsonObject();
+            return obj;
+        } catch (Exception e) {
+            return new JsonObject();
         }
     }
 
@@ -297,11 +336,24 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("PSI Bridge stopped");
         }
         if (ApplicationManager.getApplication().isUnitTestMode()) return;
-        try {
-            Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
-            Files.deleteIfExists(bridgeFile);
-        } catch (IOException e) {
-            LOG.warn("Failed to clean up bridge file", e);
+        String projectPath = project.getBasePath();
+        if (projectPath == null) return;
+        synchronized (BRIDGE_FILE_LOCK) {
+            try {
+                Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
+                JsonObject registry = readRegistry(bridgeFile);
+                registry.remove(projectPath);
+                // Normalise slashes in case the key was stored differently
+                registry.remove(projectPath.replace('/', '\\'));
+                registry.remove(projectPath.replace('\\', '/'));
+                if (registry.size() == 0) {
+                    Files.deleteIfExists(bridgeFile);
+                } else {
+                    Files.writeString(bridgeFile, GSON.toJson(registry));
+                }
+            } catch (IOException e) {
+                LOG.warn("Failed to clean up bridge file", e);
+            }
         }
     }
 }

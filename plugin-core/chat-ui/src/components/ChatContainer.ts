@@ -42,7 +42,7 @@ export default class ChatContainer extends HTMLElement {
                 });
             }
         });
-        this._observer.observe(this._messages, { childList: true, subtree: true, characterData: true });
+        this._observer.observe(this._messages, {childList: true, subtree: true, characterData: true});
 
         // Copy-button observer
         this._copyObs = new MutationObserver(() => {
@@ -61,7 +61,7 @@ export default class ChatContainer extends HTMLElement {
                 pre.appendChild(btn);
             });
         });
-        this._copyObs.observe(this._messages, { childList: true, subtree: true });
+        this._copyObs.observe(this._messages, {childList: true, subtree: true});
     }
 
     get messages(): HTMLDivElement {

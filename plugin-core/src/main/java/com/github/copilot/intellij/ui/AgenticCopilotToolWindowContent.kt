@@ -424,9 +424,34 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return try {
             val content = java.nio.file.Files.readString(bridgeFile)
             val json = com.google.gson.JsonParser.parseString(content).asJsonObject
-            val port = json.get("port")?.asInt
-                ?: return "PSI bridge file found but has no 'port' field.\n\nFile content:\n$content"
-            val bridgeProject = json.get("projectPath")?.asString ?: "(unknown)"
+
+            val port: Int
+            val bridgeProject: String
+
+            if (json.has("port")) {
+                // Legacy single-entry format
+                port = json.get("port")?.asInt
+                    ?: return "PSI bridge file found but has no 'port' field.\n\nFile content:\n$content"
+                bridgeProject = json.get("projectPath")?.asString ?: "(unknown)"
+            } else {
+                // New multi-project registry — find this project's entry
+                val ourPath = project.basePath?.replace('\\', '/') ?: ""
+                val entry = json.entrySet().firstOrNull { (key, _) ->
+                    val k = key.replace('\\', '/')
+                    ourPath == k || ourPath.startsWith("$k/") || k.startsWith("$ourPath/")
+                }
+                if (entry == null) {
+                    val others = json.keySet().joinToString("\n") { "  • $it" }.ifEmpty { "  (none)" }
+                    return "No PSI bridge entry found for this project.\n\n" +
+                        "Looking for: ${project.basePath}\n\n" +
+                        "Projects with active bridges:\n$others\n\n" +
+                        "Try closing and reopening this project."
+                }
+                port = entry.value.asJsonObject.get("port")?.asInt
+                    ?: return "Bridge entry for this project has no 'port' field."
+                bridgeProject = entry.key
+            }
+
             val url = java.net.URI.create("http://127.0.0.1:$port/health").toURL()
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 1500
