@@ -325,13 +325,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         var lastDiag: String? = null
 
         // Scheduler used for adaptive polling: 5 s while bridge is down, 30 s while healthy.
+        // scheduledFuture tracks the next pending check so Recheck can cancel it (avoids duplicate chains).
         val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "psi-bridge-poll").also { it.isDaemon = true }
         }
+        var scheduledFuture: java.util.concurrent.ScheduledFuture<*>? = null
 
         fun scheduleNext(bridgeWasDown: Boolean) {
             val delay = if (bridgeWasDown) 5L else 30L
-            scheduler.schedule(
+            scheduledFuture = scheduler.schedule(
                 {
                     val diag = psiBridgeDiagnostics()
                     SwingUtilities.invokeLater {
@@ -346,8 +348,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         fun runCheck() {
+            // Cancel any pending poll so we don't end up with two parallel chains.
+            scheduledFuture?.cancel(false)
             recheckButton.isEnabled = false
-            // Run immediately on a pooled thread, then let scheduleNext take over.
             ApplicationManager.getApplication().executeOnPooledThread {
                 val diag = psiBridgeDiagnostics()
                 SwingUtilities.invokeLater {
@@ -360,17 +363,28 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         detailsButton.addActionListener {
-            com.intellij.openapi.ui.Messages.showMessageDialog(
-                project,
-                lastDiag ?: "PSI bridge is healthy.",
-                "PSI Bridge Diagnostics",
-                com.intellij.openapi.ui.Messages.getWarningIcon()
-            )
+            // Always run a fresh check so the dialog never shows stale data.
+            detailsButton.isEnabled = false
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val diag = psiBridgeDiagnostics()
+                SwingUtilities.invokeLater {
+                    detailsButton.isEnabled = true
+                    lastDiag = diag
+                    banner.isVisible = diag != null
+                    com.intellij.openapi.ui.Messages.showMessageDialog(
+                        project,
+                        diag ?: "PSI bridge is healthy.",
+                        "PSI Bridge Diagnostics",
+                        if (diag != null) com.intellij.openapi.ui.Messages.getWarningIcon()
+                        else com.intellij.openapi.ui.Messages.getInformationIcon()
+                    )
+                }
+            }
         }
         recheckButton.addActionListener { runCheck() }
 
         // First check after 5 s so the bridge has time to start.
-        scheduler.schedule(
+        scheduledFuture = scheduler.schedule(
             {
                 val diag = psiBridgeDiagnostics()
                 SwingUtilities.invokeLater {
