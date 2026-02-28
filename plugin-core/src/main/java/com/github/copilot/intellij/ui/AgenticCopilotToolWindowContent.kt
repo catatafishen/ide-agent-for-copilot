@@ -269,6 +269,54 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    /** Creates a warning banner shown when the PSI bridge HTTP server is not reachable. Hidden by default. */
+    private fun createPsiBridgeBanner(): JBPanel<JBPanel<*>> {
+        val banner = JBPanel<JBPanel<*>>(BorderLayout())
+        banner.isVisible = false
+        banner.border = JBUI.Borders.compound(
+            com.intellij.ui.SideBorder(JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)), com.intellij.ui.SideBorder.BOTTOM),
+            JBUI.Borders.empty(4, 8)
+        )
+        banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
+        banner.isOpaque = true
+
+        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
+        icon.border = JBUI.Borders.emptyRight(6)
+
+        val text = JBLabel("<html><b>IntelliJ code tools unavailable</b> — PSI bridge is not running. " +
+            "Make sure a project is open and the Copilot Bridge plugin is active, then restart IntelliJ.</html>")
+        text.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
+
+        val content = JBPanel<JBPanel<*>>(BorderLayout())
+        content.isOpaque = false
+        content.add(icon, BorderLayout.WEST)
+        content.add(text, BorderLayout.CENTER)
+        banner.add(content, BorderLayout.CENTER)
+        return banner
+    }
+
+    /**
+     * Returns true if the PSI bridge HTTP server is reachable.
+     * Reads ~/.copilot/psi-bridge.json and pings the /health endpoint.
+     * Safe to call on a background thread.
+     */
+    private fun isPsiBridgeAvailable(): Boolean {
+        return try {
+            val bridgeFile = java.nio.file.Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json")
+            if (!java.nio.file.Files.exists(bridgeFile)) return false
+            val json = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(bridgeFile)).asJsonObject
+            val port = json.get("port")?.asInt ?: return false
+            val url = java.net.URI.create("http://127.0.0.1:$port/health").toURL()
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 1500
+            conn.readTimeout = 1500
+            conn.requestMethod = "GET"
+            conn.responseCode == 200
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
@@ -281,13 +329,26 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val retryButton = JButton("Retry")
         createAuthButtons(modelErrorLabel, loginButton, retryButton, authPanel)
 
+        // PSI bridge status banner (shown when bridge is not reachable)
+        val psiBridgeBanner = createPsiBridgeBanner()
+
         // Response/chat history area (top of splitter)
         val responsePanel = createResponsePanel()
         responsePanelContainer = JBPanel<JBPanel<*>>(BorderLayout())
         responsePanelContainer.add(responsePanel, BorderLayout.CENTER)
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        topPanel.add(authPanel, BorderLayout.NORTH)
+        val northStack = JBPanel<JBPanel<*>>()
+        northStack.layout = BoxLayout(northStack, BoxLayout.Y_AXIS)
+        northStack.add(psiBridgeBanner)
+        northStack.add(authPanel)
+        topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
+
+        // Check PSI bridge in background and show/hide the banner
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val available = isPsiBridgeAvailable()
+            SwingUtilities.invokeLater { psiBridgeBanner.isVisible = !available }
+        }
 
         // Input row (bottom of splitter — resizable)
         val inputRow = createInputRow()

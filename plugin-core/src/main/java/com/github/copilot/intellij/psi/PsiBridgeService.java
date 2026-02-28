@@ -112,6 +112,14 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("PSI Bridge started on port " + port + " for project: " + project.getBasePath());
         } catch (Exception e) {
             LOG.error("Failed to start PSI Bridge", e);
+            com.intellij.notification.NotificationGroupManager.getInstance()
+                .getNotificationGroup("Copilot Notifications")
+                .createNotification(
+                    "Copilot Bridge: PSI bridge failed to start",
+                    "IntelliJ code tools will be unavailable. Check the IDE log (Help → Show Log) for details.\n" +
+                        "Error: " + e.getMessage(),
+                    com.intellij.notification.NotificationType.ERROR)
+                .notify(project);
         }
     }
 
