@@ -143,14 +143,19 @@ internal object MarkdownRenderer {
     ): String {
         val result = StringBuilder()
         var lastEnd = 0
-        // Match inline code, markdown links [text](url), or bare URLs
-        val combinedPattern = Regex("""`([^`]+)`|\[([^\]]+)]\((https?://[^)]+)\)|(https?://[^\s<>\[\]()]+)""")
+        // Match bold **text**, inline code, markdown links [text](url), or bare URLs
+        val combinedPattern = Regex("""\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)]\((https?://[^)]+)\)|(https?://[^\s<>\[\]()]+)""")
         for (match in combinedPattern.findAll(text)) {
             result.append(formatNonCode(text.substring(lastEnd, match.range.first), resolveFilePath))
             when {
                 match.groupValues[1].isNotEmpty() -> {
+                    // Bold: **content** — recurse to allow inline code/links inside bold
+                    result.append("<b>").append(formatInline(match.groupValues[1], resolveFileReference, resolveFilePath)).append("</b>")
+                }
+
+                match.groupValues[2].isNotEmpty() -> {
                     // Inline code: `content`
-                    val content = match.groupValues[1]
+                    val content = match.groupValues[2]
                     val resolved = resolveFileReference(content)
                     if (resolved != null) {
                         val href = resolved.first + if (resolved.second != null) ":${resolved.second}" else ""
@@ -160,16 +165,16 @@ internal object MarkdownRenderer {
                     }
                 }
 
-                match.groupValues[3].isNotEmpty() -> {
+                match.groupValues[4].isNotEmpty() -> {
                     // Markdown link: [text](url)
-                    val linkText = escapeHtml(match.groupValues[2])
-                    val url = escapeHtml(match.groupValues[3])
+                    val linkText = escapeHtml(match.groupValues[3])
+                    val url = escapeHtml(match.groupValues[4])
                     result.append("<a href='$url'>$linkText</a>")
                 }
 
-                match.groupValues[4].isNotEmpty() -> {
+                match.groupValues[5].isNotEmpty() -> {
                     // Bare URL: https://example.com
-                    val url = escapeHtml(match.groupValues[4])
+                    val url = escapeHtml(match.groupValues[5])
                     result.append("<a href='$url'>$url</a>")
                 }
             }
@@ -181,7 +186,6 @@ internal object MarkdownRenderer {
 
     private fun formatNonCode(text: String, resolveFilePath: (String) -> String?): String {
         var html = escapeHtml(text)
-        html = html.replace(Regex("\\*\\*(.+?)\\*\\*"), "<b>$1</b>")
         html = FILE_PATH_REGEX.replace(html) { m ->
             val pathPart = m.value.split(":")[0]
             val line = m.value.split(":").getOrNull(1)?.toIntOrNull()
