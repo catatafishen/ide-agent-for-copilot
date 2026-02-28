@@ -353,24 +353,7 @@ const ChatController = {
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
 
-        // Tool section in turn-details (same as addToolCall)
-        const sectionId = 'perm-' + reqId;
-        const section = document.createElement('tool-section');
-        section.id = sectionId;
-        section.setAttribute('title', toolDisplayName);
-        if (argsJson) section.setAttribute('params', argsJson);
-        ctx.details!.appendChild(section);
-
-        // Chip in meta bar (same as addToolCall)
-        const chip = document.createElement('tool-chip');
-        chip.setAttribute('label', toolDisplayName);
-        chip.setAttribute('status', 'running');
-        (chip as HTMLElement).dataset.chipFor = sectionId;
-        (chip as any).linkSection(section);
-        ctx.meta!.appendChild(chip);
-        ctx.meta!.classList.add('show');
-
-        // Question bubble
+        // Question bubble (no chip/tool-section — addToolCall handles those)
         const bubble = document.createElement('message-bubble');
         bubble.innerHTML = `Can I use <strong>${toolDisplayName}</strong>?`;
         ctx.msg!.appendChild(bubble);

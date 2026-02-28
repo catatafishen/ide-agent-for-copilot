@@ -39,11 +39,6 @@ export default class PermissionRequest extends HTMLElement {
     private _respond(reqId: string, allowed: boolean): void {
         this.querySelectorAll('button').forEach(b => (b as HTMLButtonElement).disabled = true);
 
-        // Update chip status
-        const chipId = 'perm-' + reqId;
-        const chip = document.querySelector(`[data-chip-for="${chipId}"]`);
-        if (chip) chip.setAttribute('status', allowed ? 'complete' : 'failed');
-
         // Replace buttons with result text
         const result = document.createElement('div');
         result.className = 'perm-result ' + (allowed ? 'perm-allowed' : 'perm-denied');
