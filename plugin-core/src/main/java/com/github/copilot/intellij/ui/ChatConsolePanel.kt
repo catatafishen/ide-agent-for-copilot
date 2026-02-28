@@ -1042,7 +1042,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val safeId = escJs(reqId)
         val safeName = escJs(toolDisplayName)
         val safeDesc = escJs(description)
-        executeJs("window.showPermissionRequest('$safeId','$safeName','$safeDesc');")
+        val turnId = currentTurnId.ifEmpty { "t${turnCounter++}".also { currentTurnId = it } }
+        executeJs("window.showPermissionRequest('$turnId','main','$safeId','$safeName','$safeDesc');")
     }
 
     private fun buildInitialPage(): String {

@@ -49,8 +49,8 @@ customElements.define('permission-request', PermissionRequest);
 
 window.ChatController = ChatController;
 (window as any).b64 = b64;
-(window as any).showPermissionRequest = (reqId: string, toolDisplayName: string, argsJson: string) => {
-    ChatController.showPermissionRequest(reqId, toolDisplayName, argsJson);
+(window as any).showPermissionRequest = (turnId: string, agentId: string, reqId: string, toolDisplayName: string, argsJson: string) => {
+    ChatController.showPermissionRequest(turnId, agentId, reqId, toolDisplayName, argsJson);
 };
 
 // ── Global event handlers ─────────────────────────────

@@ -850,31 +850,12 @@ pre:focus-within .copy-btn {
     color: var(--fg);
 }
 
-/* ── Permission request bubble ───────────────────────── */
-.permission-request {
-    display: block;
+/* ── Permission request actions ──────────────────────── */
+permission-request {
+    display: flex;
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4);
     margin: var(--sp-2) 0;
-}
-
-.perm-bubble {
-    max-width: 85%;
-}
-
-.perm-question {
-    font-size: 0.95em;
-    margin-bottom: var(--sp-3);
-}
-
-.perm-chip-row {
-    display: flex;
-    gap: var(--sp-3);
-    margin-bottom: var(--sp-3);
-}
-
-.perm-actions {
-    display: flex;
-    gap: var(--sp-3);
-    margin-top: var(--sp-2);
 }
 
 .perm-allow {
@@ -901,7 +882,7 @@ pre:focus-within .copy-btn {
 
 .perm-result {
     font-size: 0.88em;
-    margin-top: var(--sp-2);
+    padding: 0 var(--sp-4);
 }
 
 .perm-allowed {
@@ -910,10 +891,6 @@ pre:focus-within .copy-btn {
 
 .perm-denied {
     color: #d9534f;
-}
-
-.permission-request.resolved .perm-bubble {
-    opacity: 0.75;
 }
 
 @media (prefers-reduced-motion: reduce) {

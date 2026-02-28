@@ -348,13 +348,38 @@ const ChatController = {
         this._trimMessages();
     },
 
-    showPermissionRequest(reqId: string, toolDisplayName: string, argsJson: string): void {
+    showPermissionRequest(turnId: string, agentId: string, reqId: string, toolDisplayName: string, argsJson: string): void {
         this.disableQuickReplies();
-        const el = document.createElement('permission-request');
-        el.setAttribute('req-id', reqId);
-        el.setAttribute('tool-name', toolDisplayName);
-        el.setAttribute('args-json', argsJson);
-        this._msgs().appendChild(el);
+        const ctx = this._ensureMsg(turnId, agentId);
+        this._collapseThinkingFor(ctx);
+
+        // Tool section in turn-details (same as addToolCall)
+        const sectionId = 'perm-' + reqId;
+        const section = document.createElement('tool-section');
+        section.id = sectionId;
+        section.setAttribute('title', toolDisplayName);
+        if (argsJson) section.setAttribute('params', argsJson);
+        ctx.details!.appendChild(section);
+
+        // Chip in meta bar (same as addToolCall)
+        const chip = document.createElement('tool-chip');
+        chip.setAttribute('label', toolDisplayName);
+        chip.setAttribute('status', 'running');
+        (chip as HTMLElement).dataset.chipFor = sectionId;
+        (chip as any).linkSection(section);
+        ctx.meta!.appendChild(chip);
+        ctx.meta!.classList.add('show');
+
+        // Question bubble
+        const bubble = document.createElement('message-bubble');
+        bubble.innerHTML = `Can I use <strong>${toolDisplayName}</strong>?`;
+        ctx.msg!.appendChild(bubble);
+
+        // Allow/Deny actions (below the bubble, still inside chat-message)
+        const actions = document.createElement('permission-request');
+        actions.setAttribute('req-id', reqId);
+        ctx.msg!.appendChild(actions);
+
         this._container()?.scrollIfNeeded();
     },
 
