@@ -177,7 +177,7 @@ final class CopilotCliLocator {
     /**
      * Build MCP config JSON, write to temp file, and add --additional-mcp-config flag.
      */
-    static void addMcpConfigFlags(List<String> cmd) {
+    static void addMcpConfigFlags(List<String> cmd, @Nullable String projectBasePath) {
         String mcpJarPath = findMcpServerJar();
         if (mcpJarPath == null) {
             LOG.warn(MCP_SERVER_ERROR + ": MCP server JAR not found. IntelliJ code tools will be unavailable.");
@@ -203,7 +203,7 @@ final class CopilotCliLocator {
             JsonArray args = new JsonArray();
             args.add("-jar");
             args.add(mcpJarPath);
-            args.add(System.getProperty(USER_HOME));
+            args.add(projectBasePath != null ? projectBasePath : System.getProperty(USER_HOME));
             codeTools.add("args", args);
             servers.add("intellij-code-tools", codeTools);
             mcpConfig.add("mcpServers", servers);
@@ -249,7 +249,7 @@ final class CopilotCliLocator {
             LOG.info("Copilot CLI config-dir set to: " + agentWorkPath);
         }
 
-        addMcpConfigFlags(cmd);
+        addMcpConfigFlags(cmd, projectBasePath);
 
         return new ProcessBuilder(cmd);
     }
