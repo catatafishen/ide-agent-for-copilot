@@ -289,23 +289,28 @@ internal class DebugPanel(
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
                 title = "Tool Permissions"
-                setOKButtonText("Apply")
                 isResizable = true
                 init()
             }
 
-            override fun createCenterPanel(): JComponent {
-                val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                wrapper.preferredSize = JBUI.size(720, 560)
-                wrapper.minimumSize = JBUI.size(500, 300)
-                wrapper.add(permissionsPanel.component, BorderLayout.CENTER)
-                return wrapper
+            override fun createCenterPanel(): JComponent = permissionsPanel.component.also {
+                it.preferredSize = JBUI.size(740, 560)
+                it.minimumSize = JBUI.size(500, 340)
+            }
+
+            override fun createActions(): Array<javax.swing.Action> {
+                val applyAction = object : DialogWrapperAction("Apply") {
+                    override fun doAction(e: java.awt.event.ActionEvent) = permissionsPanel.save()
+                }
+                return arrayOf(okAction, applyAction, cancelAction)
             }
 
             override fun doOKAction() {
                 permissionsPanel.save()
                 super.doOKAction()
             }
+
+            override fun getDimensionServiceKey() = "CopilotToolPermissions"
         }
         dialog.show()
     }
