@@ -59,7 +59,7 @@
     <toolWindow id="IDE Agent for Copilot"
                 secondary="false"
                 anchor="right"
-                icon="/icons/copilot_v2.svg"
+                icon="/icons/copilot.svg"
                 factoryClass="com.github.copilot.intellij.ui.AgenticCopilotToolWindowFactory"/>
 
     <!-- Application Services -->
