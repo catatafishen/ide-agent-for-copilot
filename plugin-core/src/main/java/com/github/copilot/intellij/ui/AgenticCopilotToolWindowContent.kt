@@ -219,49 +219,51 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
-     * Launches the Copilot CLI auth flow in a new command window.
+     * Launches the Copilot CLI auth flow inside the embedded Terminal tool window.
      * Uses the auth method from the ACP initialize response if available.
+     * Falls back to an external terminal (or an error dialog) if the terminal plugin is absent.
      */
     private fun startCopilotLogin() {
+        // Resolve the command to run (ACP may provide a custom auth command)
+        var command = "copilot auth login"
+        try {
+            val authMethod = CopilotService.getInstance(project).getClient().authMethod
+            if (authMethod?.command != null) {
+                val args = authMethod.args?.joinToString(" ") { it } ?: ""
+                command = "${authMethod.command} $args".trim()
+            }
+        } catch (_: Exception) { /* best-effort */ }
+
+        val resolvedCommand = command
+        runAuthInEmbeddedTerminal(
+            project = project,
+            command = resolvedCommand,
+            tabName = "Copilot Sign In"
+        ) {
+            // Terminal plugin unavailable — fall back to external terminal
+            startCopilotLoginExternal(resolvedCommand)
+        }
+    }
+
+    /** External-terminal fallback for Copilot auth (used when embedded terminal plugin is absent). */
+    private fun startCopilotLoginExternal(command: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                // Try to get auth method from ACP client
-                val service = CopilotService.getInstance(project)
-                var authCommand: String? = null
-                var authArgs: List<String>? = null
-
-                try {
-                    val client = service.getClient()
-                    val authMethod = client.authMethod
-                    if (authMethod?.command != null) {
-                        authCommand = authMethod.command
-                        authArgs = authMethod.args
-                    }
-                } catch (_: Exception) {
-                    // Auth method extraction is best-effort
-                }
-
-                if (authCommand != null) {
-                    val cmd = mutableListOf("cmd", "/c", "start", "cmd", "/k", "\"$authCommand\"")
-                    authArgs?.forEach { cmd.add(it) }
-                    ProcessBuilder(cmd).start()
+                val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
+                if (isWindows) {
+                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k", command).start()
                 } else {
-                    // Fallback: try copilot login
-                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "copilot login").start()
+                    ProcessBuilder(
+                        "sh", "-c",
+                        "x-terminal-emulator -e '$command' || gnome-terminal -- $command || xterm -e $command"
+                    ).start()
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
-                    val terminalHint = if (System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win"))
-                        "Command Prompt or PowerShell" else "your terminal"
                     Messages.showErrorDialog(
                         project,
-                        "Could not start the authentication flow automatically.\n\n" +
-                            "To authenticate manually:\n" +
-                            "1. Open $terminalHint\n" +
-                            "2. Run: copilot auth login\n" +
-                            "3. Follow the browser prompts\n" +
-                            "4. Click 'Retry' in this plugin\n\n" +
-                            "Technical details: ${e.message}",
+                        "The IntelliJ Terminal plugin is not available and no external terminal could be opened.\n\n" +
+                            "Run manually: $command",
                         "Authentication Setup"
                     )
                 }
@@ -270,9 +272,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /**
-     * Launches the GH CLI auth flow in a new terminal window.
+     * Launches the GH CLI auth flow inside the embedded Terminal tool window.
+     * Falls back to an external terminal (or an error dialog) if the terminal plugin is absent.
      */
     private fun startGhLogin() {
+        runAuthInEmbeddedTerminal(
+            project = project,
+            command = "gh auth login",
+            tabName = "GitHub Sign In"
+        ) {
+            startGhLoginExternal()
+        }
+    }
+
+    /** External-terminal fallback for gh auth (used when embedded terminal plugin is absent). */
+    private fun startGhLoginExternal() {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
@@ -280,8 +294,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login").start()
                 } else {
                     ProcessBuilder(
-                        "sh",
-                        "-c",
+                        "sh", "-c",
                         "x-terminal-emulator -e 'gh auth login' || gnome-terminal -- gh auth login || xterm -e gh auth login"
                     ).start()
                 }
@@ -289,7 +302,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 SwingUtilities.invokeLater {
                     Messages.showErrorDialog(
                         project,
-                        "Could not open a terminal automatically.\n\nRun 'gh auth login' in your terminal manually, then click Retry.",
+                        "The IntelliJ Terminal plugin is not available and no external terminal could be opened.\n\n" +
+                            "Run manually: gh auth login",
                         "GitHub CLI Authentication"
                     )
                 }
@@ -312,7 +326,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val ghCli = billing.findGhCli()
             ?: return "GitHub CLI (gh) is not installed — it is used to display billing and usage information."
         return if (!billing.isGhAuthenticated(ghCli))
-            "Not authenticated with GitHub CLI (gh) — run 'gh auth login' in a terminal."
+            "Not authenticated with GitHub CLI (gh) — click Sign In in the banner above."
         else null
     }
 
@@ -395,7 +409,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                 isAuthError -> {
                     text.text =
-                        "<html><b>Not signed in to Copilot</b> — click Sign In or run <tt>copilot auth login</tt> in a terminal, then click Retry.</html>"
+                        "<html><b>Not signed in to Copilot</b> — click Sign In, then click Retry.</html>"
                     installButton.isVisible = false
                     signInButton.isVisible = true
                 }
@@ -537,7 +551,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
                 else -> {
                     text.text =
-                        "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In or run <tt>gh auth login</tt>.</html>"
+                        "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In.</html>"
                     installButton.isVisible = false
                     signInButton.isVisible = true
                 }
