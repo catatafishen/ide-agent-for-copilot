@@ -300,29 +300,67 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         detailsButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
         detailsButton.toolTipText = "Show diagnostic information"
 
+        val recheckButton = JButton("Recheck")
+        recheckButton.border = JBUI.Borders.emptyLeft(4)
+        recheckButton.isOpaque = false
+        recheckButton.isBorderPainted = false
+        recheckButton.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
+        recheckButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        recheckButton.toolTipText = "Re-run the PSI bridge check"
+
+        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 0, 0))
+        buttons.isOpaque = false
+        buttons.add(detailsButton)
+        buttons.add(recheckButton)
+
         val content = JBPanel<JBPanel<*>>(BorderLayout())
         content.isOpaque = false
         content.add(icon, BorderLayout.WEST)
         content.add(text, BorderLayout.CENTER)
-        content.add(detailsButton, BorderLayout.EAST)
+        content.add(buttons, BorderLayout.EAST)
         banner.add(content, BorderLayout.CENTER)
 
-        // Check PSI bridge in background; attach diagnostics to button if unavailable
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val diag = psiBridgeDiagnostics()
-            SwingUtilities.invokeLater {
-                banner.isVisible = diag != null
-                if (diag != null) {
-                    detailsButton.addActionListener {
-                        com.intellij.openapi.ui.Messages.showMessageDialog(
-                            project, diag,
-                            "PSI Bridge Diagnostics",
-                            com.intellij.openapi.ui.Messages.getWarningIcon()
-                        )
-                    }
+        // Runs check on a pooled thread, then updates the banner on the EDT.
+        // lastDiag is stored so Details… always shows the freshest result.
+        var lastDiag: String? = null
+
+        fun runCheck() {
+            recheckButton.isEnabled = false
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val diag = psiBridgeDiagnostics()
+                SwingUtilities.invokeLater {
+                    lastDiag = diag
+                    banner.isVisible = diag != null
+                    recheckButton.isEnabled = true
                 }
             }
         }
+
+        detailsButton.addActionListener {
+            com.intellij.openapi.ui.Messages.showMessageDialog(
+                project,
+                lastDiag ?: "PSI bridge is healthy.",
+                "PSI Bridge Diagnostics",
+                com.intellij.openapi.ui.Messages.getWarningIcon()
+            )
+        }
+        recheckButton.addActionListener { runCheck() }
+
+        // Poll every 5 s. First check is immediate (banner starts hidden, so no flicker).
+        // The executor is shut down when the panel is disposed.
+        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "psi-bridge-poll").also { it.isDaemon = true }
+        }
+        scheduler.scheduleWithFixedDelay(
+            { runCheck() }, 0, 5, java.util.concurrent.TimeUnit.SECONDS
+        )
+        banner.addAncestorListener(object : javax.swing.event.AncestorListener {
+            override fun ancestorAdded(e: javax.swing.event.AncestorEvent?) = Unit
+            override fun ancestorMoved(e: javax.swing.event.AncestorEvent?) = Unit
+            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent?) {
+                scheduler.shutdownNow()
+            }
+        })
 
         return banner
     }
