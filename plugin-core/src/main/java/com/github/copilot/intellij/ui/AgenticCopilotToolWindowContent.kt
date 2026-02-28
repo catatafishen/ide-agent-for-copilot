@@ -352,7 +352,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             Thread(r, "psi-bridge-poll").also { it.isDaemon = true }
         }
         scheduler.scheduleWithFixedDelay(
-            { runCheck() }, 0, 5, java.util.concurrent.TimeUnit.SECONDS
+            { runCheck() }, 5, 30, java.util.concurrent.TimeUnit.SECONDS
         )
         banner.addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(e: javax.swing.event.AncestorEvent?) = Unit
