@@ -1945,6 +1945,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return java.io.File(dir, "conversation.json")
     }
 
+    /** Move conversation.json to conversations/conversation-<timestamp>.json for future restore. */
+    private fun archiveConversation() {
+        try {
+            val src = conversationFile()
+            if (!src.exists() || src.length() < 10) return
+            val archiveDir = java.io.File(src.parentFile, "conversations")
+            archiveDir.mkdirs()
+            val stamp = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss"))
+            val renamed = src.renameTo(java.io.File(archiveDir, "conversation-$stamp.json"))
+            if (!renamed) LOG.debug("Could not archive conversation file")
+        } catch (_: Exception) { /* best-effort */ }
+    }
+
     private fun notifyIfUnfocused(toolCallCount: Int) {
         val frame = com.intellij.openapi.wm.WindowManager.getInstance().getFrame(project) ?: return
         if (frame.isActive) return
@@ -2063,20 +2077,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     fun resetSession() {
         currentSessionId = null
+        conversationSummaryInjected = false
         billing.billingCycleStartUsed = -1
         if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
         consolePanel.clear()
         consolePanel.showPlaceholder("New conversation started.")
         addTimelineEvent(EventType.SESSION_START, "New conversation started")
         updateSessionInfo()
-        // Clear saved conversation
-        try {
-            val deleted = conversationFile().delete()
-            if (!deleted) {
-                LOG.debug("Conversation file could not be deleted (may not exist)")
-            }
-        } catch (_: Exception) { /* Best-effort cleanup — ignore deletion failures */
-        }
+        archiveConversation()
         SwingUtilities.invokeLater {
             if (::planRoot.isInitialized) {
                 planRoot.removeAllChildren()
@@ -2090,6 +2098,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     /** Restart the agent session but keep the conversation history visible in the chat panel. */
     fun resetSessionKeepingHistory() {
         currentSessionId = null
+        conversationSummaryInjected = false  // allow summary re-injection on next prompt
         billing.billingCycleStartUsed = -1
         if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
         addTimelineEvent(EventType.SESSION_START, "New session started (history kept)")
