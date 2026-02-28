@@ -161,8 +161,10 @@ intellijPlatform {
         name = "IDE Agent for Copilot"
         version = project.version.toString()
         description = """
-            Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities
-            with full context awareness, planning, and Git integration.
+            Copilot Bridge transforms GitHub Copilot from a chat assistant into a true coding agent
+            inside your JetBrains IDE. Instead of suggesting code in isolation, the agent can plan
+            and execute multi-step tasks using the same IDE features you use every day — navigation,
+            refactoring, inspections, testing, build tools, and Git — all within a single conversation.
         """.trimIndent()
 
         ideaVersion {

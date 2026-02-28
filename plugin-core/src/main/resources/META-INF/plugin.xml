@@ -6,8 +6,11 @@
   </vendor>
 
   <description><![CDATA[
-    <p>Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities directly into your IDE
-    via the Agent Client Protocol (ACP).</p>
+    <p>Copilot Bridge transforms GitHub Copilot from a chat assistant into a true coding agent inside your JetBrains IDE.</p>
+
+    <p>Instead of suggesting code in isolation, the agent can plan and execute multi-step tasks using the same IDE
+    features you use every day &mdash; navigation, refactoring, inspections, testing, build tools, and Git &mdash;
+    all within a single conversation.</p>
 
     <h3>Features</h3>
     <ul>
