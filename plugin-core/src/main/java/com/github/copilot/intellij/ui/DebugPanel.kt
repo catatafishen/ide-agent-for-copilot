@@ -284,19 +284,20 @@ internal class DebugPanel(
         }
     }
 
-
     fun openSettings() {
         val permissionsPanel = PermissionsPanel()
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
                 title = "Tool Permissions"
                 setOKButtonText("Apply")
+                isResizable = true
                 init()
             }
 
             override fun createCenterPanel(): JComponent {
                 val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                wrapper.preferredSize = JBUI.size(700, 540)
+                wrapper.preferredSize = JBUI.size(720, 560)
+                wrapper.minimumSize = JBUI.size(500, 300)
                 wrapper.add(permissionsPanel.component, BorderLayout.CENTER)
                 return wrapper
             }

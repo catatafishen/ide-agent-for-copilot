@@ -16,10 +16,10 @@ import java.awt.GridBagLayout
 import javax.swing.*
 
 // Permission options for different tool types
-private val MCP_PERM_OPTIONS = arrayOf("Allow", "Ask")
+private val PLUGIN_PERM_OPTIONS = arrayOf("Allow", "Ask")
 private val BUILTIN_PERM_OPTIONS = arrayOf("Allow", "Ask", "Deny")
 
-private fun ToolPermission.toMcpIndex() = when (this) {
+private fun ToolPermission.toPluginIndex() = when (this) {
     ToolPermission.ASK -> 1; else -> 0
 }
 
@@ -27,7 +27,7 @@ private fun ToolPermission.toBuiltinIndex() = when (this) {
     ToolPermission.ALLOW -> 0; ToolPermission.ASK -> 1; else -> 2
 }
 
-private fun Int.toMcpPermission() = if (this == 1) ToolPermission.ASK else ToolPermission.ALLOW
+private fun Int.toPluginPermission() = if (this == 1) ToolPermission.ASK else ToolPermission.ALLOW
 private fun Int.toBuiltinPermission() = when (this) {
     0 -> ToolPermission.ALLOW; 1 -> ToolPermission.ASK; else -> ToolPermission.DENY
 }
@@ -46,7 +46,7 @@ internal class PermissionsPanel {
 
     private data class ToolRow(
         val toolId: String,
-        val isMcp: Boolean,
+        val isPlugin: Boolean,
         val enabledBox: JCheckBox?,          // null for built-ins
         val permCombo: JComboBox<String>?,   // null for silent built-ins
         val inProjectCombo: JComboBox<String>?,
@@ -82,13 +82,28 @@ internal class PermissionsPanel {
         gbc.gridy++; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
 
         var lastCategory: Category? = null
+        var lastIsBuiltIn: Boolean? = null
 
         for (tool in ToolRegistry.getAllTools()) {
+            // Top-level section break when transitioning between built-in and plugin tools
+            if (tool.isBuiltIn != lastIsBuiltIn) {
+                lastIsBuiltIn = tool.isBuiltIn
+                lastCategory = null  // reset category so it re-renders below
+                gbc.gridx = 0; gbc.gridwidth = 4; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
+                gbc.insets = JBUI.insets(12, 0, 2, 0)
+                val sectionTitle = if (tool.isBuiltIn) "Built-in Tools (GitHub Copilot CLI)"
+                else "IntelliJ Plugin Tools"
+                content.add(TitledSeparator("<html><b>$sectionTitle</b></html>"), gbc)
+                gbc.gridy++
+                gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+                gbc.insets = JBUI.insets(1, 0)
+            }
+
             // Category header
             if (tool.category != lastCategory) {
                 lastCategory = tool.category
                 gbc.gridx = 0; gbc.gridwidth = 4; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
-                gbc.insets = JBUI.insets(8, 0, 2, 0)
+                gbc.insets = JBUI.insets(8, 16, 2, 0)
                 content.add(TitledSeparator(tool.category.displayName), gbc)
                 gbc.gridy++
                 gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
@@ -99,7 +114,7 @@ internal class PermissionsPanel {
             val permCombo: JComboBox<String>?
 
             when {
-                // ── MCP tool — can be enabled/disabled + Allow/Ask ─────────────
+                // ── Plugin tool — can be enabled/disabled + Allow/Ask ─────────────
                 !tool.isBuiltIn -> {
                     val enabled = CopilotSettings.isToolEnabled(tool.id)
                     enabledBox = JCheckBox().apply {
@@ -107,10 +122,10 @@ internal class PermissionsPanel {
                         isSelected = enabled
                         toolTipText = "Enable or disable this tool (requires agent restart)"
                     }
-                    permCombo = JComboBox(MCP_PERM_OPTIONS).apply {
+                    permCombo = JComboBox(PLUGIN_PERM_OPTIONS).apply {
                         preferredSize = Dimension(JBUI.scale(108), preferredSize.height)
                         isEnabled = enabled
-                        selectedIndex = CopilotSettings.getToolPermission(tool.id).toMcpIndex()
+                        selectedIndex = CopilotSettings.getToolPermission(tool.id).toPluginIndex()
                         toolTipText = "Permission when agent requests this tool"
                     }
                     enabledBox.addActionListener {
@@ -144,16 +159,16 @@ internal class PermissionsPanel {
             val inProjectCombo: JComboBox<String>?
             val outProjectCombo: JComboBox<String>?
             if (tool.supportsPathSubPermissions && !tool.isBuiltIn) {
-                val options = MCP_PERM_OPTIONS
+                val options = PLUGIN_PERM_OPTIONS
                 inProjectCombo = JComboBox(options).apply {
                     preferredSize = Dimension(JBUI.scale(108), preferredSize.height)
-                    selectedIndex = CopilotSettings.getToolPermissionInsideProject(tool.id).toMcpIndex()
+                    selectedIndex = CopilotSettings.getToolPermissionInsideProject(tool.id).toPluginIndex()
                     toolTipText = "Permission when path is inside the project"
                     isEnabled = CopilotSettings.isToolEnabled(tool.id)
                 }
                 outProjectCombo = JComboBox(options).apply {
                     preferredSize = Dimension(JBUI.scale(108), preferredSize.height)
-                    selectedIndex = CopilotSettings.getToolPermissionOutsideProject(tool.id).toMcpIndex()
+                    selectedIndex = CopilotSettings.getToolPermissionOutsideProject(tool.id).toPluginIndex()
                     toolTipText = "Permission when path is outside the project"
                     isEnabled = CopilotSettings.isToolEnabled(tool.id)
                 }
@@ -174,7 +189,7 @@ internal class PermissionsPanel {
             content.add(enabledBox, gbc)
 
             gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
-            val badge = if (tool.isBuiltIn) " <small>[CLI]</small>" else " <small>[MCP]</small>"
+            val badge = if (tool.isBuiltIn) " <small>[Built-in]</small>" else ""
             val nameLabel = JBLabel("<html>${tool.displayName}$badge</html>").apply {
                 if (tool.isBuiltIn) foreground = JBColor.GRAY
                 border = JBUI.Borders.emptyLeft(4)
@@ -233,18 +248,18 @@ internal class PermissionsPanel {
     /** Persist all settings from the current UI state. */
     fun save() {
         for (row in rows) {
-            if (row.isMcp) {
-                // Save enabled flag for MCP tools
+            if (row.isPlugin) {
+                // Save enabled flag for plugin tools
                 row.enabledBox?.let { CopilotSettings.setToolEnabled(row.toolId, it.isSelected) }
-                // Save Allow/Ask permission (MCP)
+                // Save Allow/Ask permission
                 row.permCombo?.let {
-                    CopilotSettings.setToolPermission(row.toolId, it.selectedIndex.toMcpPermission())
+                    CopilotSettings.setToolPermission(row.toolId, it.selectedIndex.toPluginPermission())
                 }
                 row.inProjectCombo?.let {
-                    CopilotSettings.setToolPermissionInsideProject(row.toolId, it.selectedIndex.toMcpPermission())
+                    CopilotSettings.setToolPermissionInsideProject(row.toolId, it.selectedIndex.toPluginPermission())
                 }
                 row.outProjectCombo?.let {
-                    CopilotSettings.setToolPermissionOutsideProject(row.toolId, it.selectedIndex.toMcpPermission())
+                    CopilotSettings.setToolPermissionOutsideProject(row.toolId, it.selectedIndex.toPluginPermission())
                 }
             } else {
                 // Built-in with deny control — save Allow/Ask/Deny
