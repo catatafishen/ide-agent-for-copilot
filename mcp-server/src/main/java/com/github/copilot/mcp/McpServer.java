@@ -718,18 +718,15 @@ public class McpServer {
         JsonObject arguments = params.has("arguments") ? params.getAsJsonObject("arguments") : new JsonObject();
 
         try {
-            // All tools go through the PSI bridge — no silent fallbacks
             String bridgeResult = delegateToPsiBridge(toolName, arguments);
 
             String resultText;
-            if (bridgeResult != null) {
+            if (!bridgeResult.startsWith("ERROR:")) {
                 LOG.fine(() -> "MCP: tool '" + toolName + "' handled by PSI bridge");
                 resultText = bridgeResult;
             } else {
-                resultText = "ERROR: IntelliJ PSI bridge is unavailable. " +
-                    "The tool '" + toolName + "' requires IntelliJ to be running with the Copilot Bridge plugin active. " +
-                    "Please check that IntelliJ is open and the plugin is enabled.";
-                LOG.warning(() -> String.format("MCP: PSI bridge unavailable for tool '%s'", toolName));
+                resultText = bridgeResult;
+                LOG.warning(() -> String.format("MCP: PSI bridge error for tool '%s': %s", toolName, bridgeResult));
             }
 
             JsonObject result = new JsonObject();
@@ -762,12 +759,19 @@ public class McpServer {
         return "run_sonarqube_analysis".equals(toolName) || "run_qodana".equals(toolName);
     }
 
+    /**
+     * Delegates a tool call to the IntelliJ PSI bridge.
+     * Returns the bridge result string on success, or a descriptive ERROR: message on any failure.
+     * Never returns null.
+     */
     private static String delegateToPsiBridge(String toolName, JsonObject arguments) {
-        // Long-running tools need extended timeout
         int readTimeoutMs = isLongRunningTool(toolName) ? 180_000 : 30_000;
         try {
             Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
-            if (!Files.exists(bridgeFile)) return null;
+            if (!Files.exists(bridgeFile)) {
+                return "ERROR: IntelliJ bridge registry not found (~/.copilot/psi-bridge.json). " +
+                    "Make sure IntelliJ is open with the Copilot Bridge plugin enabled.";
+            }
 
             String content = Files.readString(bridgeFile);
             JsonObject bridgeData = JsonParser.parseString(content).getAsJsonObject();
@@ -780,21 +784,29 @@ public class McpServer {
                     String bridgeProject = bridgeData.get("projectPath").getAsString().replace('\\', '/');
                     String ourProject = projectRoot.replace('\\', '/');
                     if (!ourProject.startsWith(bridgeProject) && !bridgeProject.startsWith(ourProject)) {
-                        return null;
+                        return "ERROR: IntelliJ bridge is registered for project '" + bridgeProject +
+                            "' but this MCP server is running for '" + ourProject + "'. " +
+                            "Open the correct project in IntelliJ.";
                     }
                 }
             } else {
-                // New multi-project registry: find the entry whose path matches ours
+                // Multi-project registry: find the entry whose path matches ours
                 String ourProject = projectRoot.replace('\\', '/');
+                List<String> knownProjects = new ArrayList<>();
                 JsonObject matchedEntry = null;
                 for (Map.Entry<String, com.google.gson.JsonElement> e : bridgeData.entrySet()) {
                     String key = e.getKey().replace('\\', '/');
+                    knownProjects.add(key);
                     if (ourProject.equals(key) || ourProject.startsWith(key + "/") || key.startsWith(ourProject + "/")) {
                         matchedEntry = e.getValue().getAsJsonObject();
-                        break;
                     }
                 }
-                if (matchedEntry == null) return null;
+                if (matchedEntry == null) {
+                    String known = knownProjects.isEmpty() ? "none" : String.join(", ", knownProjects);
+                    return "ERROR: No IntelliJ bridge registered for project '" + ourProject + "'. " +
+                        "Projects with active bridges: [" + known + "]. " +
+                        "Open this project in IntelliJ with the Copilot Bridge plugin.";
+                }
                 port = matchedEntry.get("port").getAsInt();
             }
 
@@ -814,17 +826,26 @@ public class McpServer {
                 os.write(GSON.toJson(request).getBytes(StandardCharsets.UTF_8));
             }
 
-            if (conn.getResponseCode() == 200) {
+            int responseCode = conn.getResponseCode();
+            if (responseCode == 200) {
                 try (InputStream is = conn.getInputStream()) {
                     String response = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                     JsonObject result = JsonParser.parseString(response).getAsJsonObject();
                     return result.get("result").getAsString();
                 }
             }
+            return "ERROR: IntelliJ bridge returned HTTP " + responseCode + " for tool '" + toolName + "'.";
+
+        } catch (java.net.ConnectException e) {
+            return "ERROR: IntelliJ bridge connection refused for project '" + projectRoot + "' — " +
+                "IntelliJ may have restarted. Try running your prompt again once IntelliJ has fully loaded.";
+        } catch (java.net.SocketTimeoutException e) {
+            return "ERROR: IntelliJ bridge timed out for tool '" + toolName + "'. " +
+                "IntelliJ may be busy or unresponsive.";
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "PSI Bridge unavailable, using regex fallback", e);
+            LOG.log(Level.WARNING, "PSI Bridge error for tool: " + toolName, e);
+            return "ERROR: IntelliJ bridge error for tool '" + toolName + "': " + e.getMessage();
         }
-        return null;
     }
 
     // --- Tool implementations (regex fallback) ---
