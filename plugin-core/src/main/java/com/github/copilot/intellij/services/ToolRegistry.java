@@ -66,7 +66,7 @@ public final class ToolRegistry {
         new ToolEntry("read", "Read File alt (built-in)", Category.FILE, true, false, true),
         new ToolEntry("grep", "Grep Search (built-in)", Category.SEARCH, true, false, false),
         new ToolEntry("glob", "Glob Find (built-in)", Category.SEARCH, true, false, false),
-        new ToolEntry("bash", "Bash Shell (built-in)", Category.SHELL, true, false, false),
+        new ToolEntry("bash", "Bash Shell (built-in)", Category.SHELL, true, true, false),
         // edit/create/execute/runInTerminal fire permission requests (hasDenyControl=true)
         new ToolEntry("edit", "Edit File (built-in)", Category.FILE, true, true, true),
         new ToolEntry("create", "Create File (built-in)", Category.FILE, true, true, true),

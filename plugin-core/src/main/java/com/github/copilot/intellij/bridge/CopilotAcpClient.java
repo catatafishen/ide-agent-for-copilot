@@ -1432,6 +1432,10 @@ public class CopilotAcpClient implements Closeable {
             instruction = "⚠ Sub-agents must not use git write commands (git_commit, git_stage, git_unstage, " +
                 "git_branch, git_stash). Only the parent agent may perform git writes. " +
                 "Use read-only git tools (git_status, git_diff, git_log, git_show, git_blame) instead.";
+        } else if ("bash".equals(deniedKind)) {
+            instruction = "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
+                "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
+                "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
         } else {
             // Generic message for other denials
             instruction = TOOL_DENIED_DEFAULT_MSG;
