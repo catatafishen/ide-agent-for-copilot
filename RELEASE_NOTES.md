@@ -8,19 +8,19 @@
 ### ✨ New Features
 
 1. **Plan Mode with [[PLAN]] Prefix**
-   - Toggle "Plan" mode in toolbar to enable structured planning
-   - User prompts automatically prefixed with `[[PLAN]]` for agent awareness
-   - Applies to both direct prompts and quick-reply selections
+    - Toggle "Plan" mode in toolbar to enable structured planning
+    - User prompts automatically prefixed with `[[PLAN]]` for agent awareness
+    - Applies to both direct prompts and quick-reply selections
 
 2. **Improved Model Switching**
-   - Fixed: Model selection now uses `session/set_model` RPC instead of CLI restart
-   - Instant model switching without process interruption
-   - Saved model preference applied to new sessions automatically
+    - Fixed: Model selection now uses `session/set_model` RPC instead of CLI restart
+    - Instant model switching without process interruption
+    - Saved model preference applied to new sessions automatically
 
 3. **Code Block Copy Button Fix**
-   - Fixed: "Copy" text no longer appears during response streaming
-   - Copy button positioned as sibling element (not child of code block)
-   - Appears on hover in top-right corner of code blocks
+    - Fixed: "Copy" text no longer appears during response streaming
+    - Copy button positioned as sibling element (not child of code block)
+    - Appears on hover in top-right corner of code blocks
 
 ### 🐛 Bug Fixes
 
@@ -61,6 +61,7 @@
 - Replaced deprecated API calls
 
 **Remaining Issues (non-critical, tracked):**
+
 - 5 high-complexity methods flagged (S3776) - refactoring candidates
 - 2 regex complexity warnings - can be simplified
 - 3-4 other code quality suggestions (style-related)
@@ -72,10 +73,10 @@
 - 48 unit tests across 4 test files
 - All tests passing (verified Feb 26)
 - Coverage includes:
-  - ACP client communication
-  - Permission handling  
-  - MCP tool execution
-  - Session lifecycle
+    - ACP client communication
+    - Permission handling
+    - MCP tool execution
+    - Session lifecycle
 
 ### Running Tests
 
@@ -87,13 +88,16 @@
 ## 📚 Documentation Updates
 
 ### Updated Documentation
+
 - **README.md** - Current feature status and quick overview
 - **QUICK-START.md** - Step-by-step build/install guide with troubleshooting
 - **DEVELOPMENT.md** - Development setup and architecture
 - **TESTING.md** - How to run tests and test coverage info
 
 ### Archived Documentation
+
 The following checkpoint/phase documents are now archived and not needed for user testing:
+
 - CHECKPOINT.md (from Feb 12, obsolete)
 - docs/PHASE1-COMPLETE.md, PHASE2-COMPLETE.md, UPGRADE-COMPLETE.md
 - docs/DEVELOPMENT.md (superseded by root DEVELOPMENT.md)
@@ -102,6 +106,7 @@ The following checkpoint/phase documents are now archived and not needed for use
 - LINUX-DEV-GUIDE.md (consolidated into DEVELOPMENT.md)
 
 ### Active Documentation
+
 - **README.md** - Main overview and architecture
 - **QUICK-START.md** - User-focused getting started guide
 - **DEVELOPMENT.md** - Developer guide
@@ -129,10 +134,11 @@ The following checkpoint/phase documents are now archived and not needed for use
 See **QUICK-START.md** for detailed platform-specific instructions.
 
 **Quick Summary:**
+
 1. Close IntelliJ IDEA
-2. Extract ZIP to `{IDEA_CONFIG}/plugins/` directory  
+2. Extract ZIP to `{IDEA_CONFIG}/plugins/` directory
 3. Restart IntelliJ
-4. Open View → Tool Windows → Copilot Bridge
+4. Open View → Tool Windows → IDE Agent for Copilot
 
 ## ✅ User Testing Checklist
 
@@ -170,25 +176,26 @@ Before sharing with test users, verify:
 ### Tips for Testing
 
 1. **Start Simple:**
-   - "Explain what's in the root directory"
-   - "Create a test file with sample content"
-   - "What build system does this project use?"
+    - "Explain what's in the root directory"
+    - "Create a test file with sample content"
+    - "What build system does this project use?"
 
 2. **Test Advanced Features:**
-   - Attach files/selections as context
-   - Switch between models and observe instant change
-   - Toggle Plan mode to see structured planning
-   - Try quick-reply buttons
+    - Attach files/selections as context
+    - Switch between models and observe instant change
+    - Toggle Plan mode to see structured planning
+    - Try quick-reply buttons
 
 3. **Observe Quality:**
-   - Smooth streaming responses (no delays)
-   - Proper error handling (no crashes)
-   - Keyboard navigation works
-   - Dark/light theme support works
+    - Smooth streaming responses (no delays)
+    - Proper error handling (no crashes)
+    - Keyboard navigation works
+    - Dark/light theme support works
 
 ### Feedback Template
 
 Please report:
+
 - What worked well
 - What felt confusing
 - Any bugs or crashes
@@ -198,6 +205,7 @@ Please report:
 ## 🔮 What's Next
 
 After user testing phase:
+
 - Address high-priority feedback
 - Fix any remaining warnings (S3776 complex methods)
 - Performance optimization if needed

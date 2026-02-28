@@ -27,7 +27,7 @@ internal class HelpAction(private val project: Project) : AnAction(
     override fun actionPerformed(e: AnActionEvent) {
         val content = buildHelpDialogContent()
         com.intellij.openapi.ui.DialogBuilder(project).apply {
-            setTitle("Copilot Bridge \u2014 Help")
+            setTitle("IDE Agent for Copilot \u2014 Help")
             setCenterPanel(content)
             removeAllActions()
             addOkAction()
@@ -261,7 +261,7 @@ internal class HelpAction(private val project: Project) : AnAction(
             val mainPanel = JBPanel<JBPanel<*>>().apply {
                 layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
 
-                addSectionHeader(this, "Agentic Copilot \u2014 Toolbar Guide", large = true)
+                addSectionHeader(this, "IDE Agent for Copilot \u2014 Toolbar Guide", large = true)
                 add(JBLabel("Each button in the toolbar, from left to right:").apply {
                     alignmentX = java.awt.Component.LEFT_ALIGNMENT
                     border = JBUI.Borders.emptyBottom(8)
@@ -296,7 +296,7 @@ internal class HelpAction(private val project: Project) : AnAction(
 
                 add(javax.swing.Box.createVerticalStrut(JBUI.scale(16)))
                 val versionText = com.github.copilot.intellij.BuildInfo.getSummary()
-                add(JBLabel("Copilot Bridge $versionText").apply {
+                add(JBLabel("IDE Agent for Copilot $versionText").apply {
                     foreground = JBUI.CurrentTheme.Label.disabledForeground()
                     font = font.deriveFont(font.size2D - 1)
                     alignmentX = java.awt.Component.LEFT_ALIGNMENT

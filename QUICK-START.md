@@ -62,7 +62,7 @@ unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 ### 4. Verify
 
 1. Open IntelliJ and a project
-2. **View → Tool Windows → Agentic Copilot**
+2. **View → Tool Windows → IDE Agent for Copilot**
 3. Models dropdown should load available Copilot models
 4. Type a prompt and click Run
 

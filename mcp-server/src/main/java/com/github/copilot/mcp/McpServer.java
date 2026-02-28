@@ -770,7 +770,7 @@ public class McpServer {
             Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
             if (!Files.exists(bridgeFile)) {
                 return "ERROR: IntelliJ bridge registry not found (~/.copilot/psi-bridge.json). " +
-                    "Make sure IntelliJ is open with the Copilot Bridge plugin enabled.";
+                    "Make sure IntelliJ is open with the IDE Agent for Copilot plugin enabled.";
             }
 
             String content = Files.readString(bridgeFile);
@@ -805,7 +805,7 @@ public class McpServer {
                     String known = knownProjects.isEmpty() ? "none" : String.join(", ", knownProjects);
                     return "ERROR: No IntelliJ bridge registered for project '" + ourProject + "'. " +
                         "Projects with active bridges: [" + known + "]. " +
-                        "Open this project in IntelliJ with the Copilot Bridge plugin.";
+                        "Open this project in IntelliJ with the IDE Agent for Copilot plugin.";
                 }
                 port = matchedEntry.get("port").getAsInt();
             }

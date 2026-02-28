@@ -118,7 +118,7 @@ public final class PsiBridgeService implements Disposable {
                 com.intellij.notification.NotificationGroupManager.getInstance()
                     .getNotificationGroup("Copilot Notifications")
                     .createNotification(
-                        "Copilot Bridge: PSI bridge failed to start",
+                        "IDE Agent for Copilot: PSI bridge failed to start",
                         "IntelliJ code tools will be unavailable.\n" + detail,
                         com.intellij.notification.NotificationType.ERROR);
             notification.addAction(com.intellij.notification.NotificationAction.createSimple(

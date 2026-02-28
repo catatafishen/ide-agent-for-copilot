@@ -24,7 +24,7 @@ import java.awt.datatransfer.StringSelection
 import javax.swing.*
 
 /**
- * Main content for the Copilot Bridge tool window.
+ * Main content for the IDE Agent for Copilot tool window.
  * Uses Kotlin UI DSL for cleaner, more maintainable UI code.
  */
 class AgenticCopilotToolWindowContent(private val project: Project) {
@@ -316,7 +316,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         val text = JBLabel(
             "<html><b>IntelliJ code tools unavailable</b> — PSI bridge is not running. " +
-                "Make sure a project is open and the Copilot Bridge plugin is active, then restart IntelliJ.</html>"
+                "Make sure a project is open and the IDE Agent for Copilot plugin is active, then restart IntelliJ.</html>"
         )
         text.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
 
@@ -1901,7 +1901,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             else "Turn completed"
         // Balloon attached to the Copilot tool window tab (same style as build/test notifications)
         com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
-            .notifyByBalloon("Copilot Bridge", com.intellij.openapi.ui.MessageType.INFO, "<b>$title</b><br>$content")
+            .notifyByBalloon(
+                "IDE Agent for Copilot",
+                com.intellij.openapi.ui.MessageType.INFO,
+                "<b>$title</b><br>$content"
+            )
         // OS-native notification with sound
         com.intellij.ui.SystemNotifications.getInstance().notify("Copilot Notifications", title, content)
         // Flash the taskbar icon

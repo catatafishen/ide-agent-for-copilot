@@ -5,22 +5,22 @@
 ### Setup Steps:
 
 1. **Open the project in IntelliJ IDEA**
-   - File → Open → Select `intellij-copilot-plugin` directory
+    - File → Open → Select `intellij-copilot-plugin` directory
 
 2. **Create a Gradle Run Configuration**
-   - Run → Edit Configurations...
-   - Click "+" → Gradle
-   - Configure:
-     - Name: `Run Plugin in Sandbox`
-     - Gradle project: `intellij-copilot-plugin:plugin-core`
-     - Tasks: `runIde`
-     - VM options: `-Xmx2048m`
-   - Click OK
+    - Run → Edit Configurations...
+    - Click "+" → Gradle
+    - Configure:
+        - Name: `Run Plugin in Sandbox`
+        - Gradle project: `intellij-copilot-plugin:plugin-core`
+        - Tasks: `runIde`
+        - VM options: `-Xmx2048m`
+    - Click OK
 
 3. **Alternative: Use Gradle Tool Window**
-   - Open Gradle tool window (View → Tool Windows → Gradle)
-   - Navigate to: `intellij-copilot-plugin → plugin-core → Tasks → intellij → runIde`
-   - Right-click → Run
+    - Open Gradle tool window (View → Tool Windows → Gradle)
+    - Navigate to: `intellij-copilot-plugin → plugin-core → Tasks → intellij → runIde`
+    - Right-click → Run
 
 4. **If runIde still fails, use prepareSandbox + manual launch**:
    ```powershell
@@ -46,14 +46,14 @@ This is what you've been using successfully:
    ```
 
 2. **Install the ZIP**:
-   - Settings → Plugins → Gear icon → Install Plugin from Disk
-   - Select: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
-   - Restart IntelliJ
+    - Settings → Plugins → Gear icon → Install Plugin from Disk
+    - Select: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
+    - Restart IntelliJ
 
 3. **Test the plugin**:
-   - View → Tool Windows → Agentic Copilot
-   - Settings tab: Check models dropdown
-   - Prompt tab: Test a prompt
+    - View → Tool Windows → IDE Agent for Copilot
+    - Settings tab: Check models dropdown
+    - Prompt tab: Test a prompt
 
 ---
 
@@ -69,7 +69,7 @@ Add to `plugin-core/build.gradle.kts`:
 tasks {
     runIde {
         maxHeapSize = "2g"
-        
+
         // Try to work around the ProductInfo bug
         jvmArgs("-Didea.plugins.path=${layout.buildDirectory.dir("idea-sandbox/plugins").get()}")
         jvmArgs("-Didea.system.path=${layout.buildDirectory.dir("idea-sandbox/system").get()}")
@@ -80,6 +80,7 @@ tasks {
 ```
 
 Then try:
+
 ```powershell
 .\gradlew.bat --no-daemon :plugin-core:runIde --info
 ```
@@ -116,7 +117,8 @@ if ($LASTEXITCODE -eq 0) {
 
 ## Clean Build (Important!)
 
-After making code changes, the sandbox may use **stale cached class files** from incremental builds. If the agent or plugin doesn't reflect your latest changes, do a clean rebuild:
+After making code changes, the sandbox may use **stale cached class files** from incremental builds. If the agent or
+plugin doesn't reflect your latest changes, do a clean rebuild:
 
 ```bash
 # Option 1: Use the restart script (handles config persistence automatically)
@@ -128,9 +130,12 @@ JAVA_HOME=/path/to/jdk21 ./gradlew :mcp-server:clean :plugin-core:clean \
 JAVA_HOME=/path/to/jdk21 nohup ./gradlew :plugin-core:runIde --no-daemon > ide_launch.log 2>&1 &
 ```
 
-**Why this matters**: `prepareSandbox` copies compiled jars into the sandbox. If Gradle's incremental compilation caches a stale `.class` file, the sandbox IDE runs old code even though your source files are updated. The `clean` + `--rerun-tasks` flags force a full recompilation.
+**Why this matters**: `prepareSandbox` copies compiled jars into the sandbox. If Gradle's incremental compilation caches
+a stale `.class` file, the sandbox IDE runs old code even though your source files are updated. The `clean` +
+`--rerun-tasks` flags force a full recompilation.
 
-**Config persistence**: The `prepareSandbox` task automatically restores settings from `.sandbox-config/` (disabled plugins, UI preferences, etc.), so your IDE settings survive clean rebuilds.
+**Config persistence**: The `prepareSandbox` task automatically restores settings from `.sandbox-config/` (disabled
+plugins, UI preferences, etc.), so your IDE settings survive clean rebuilds.
 
 ---
 

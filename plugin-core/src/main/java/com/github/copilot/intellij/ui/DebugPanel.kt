@@ -223,7 +223,7 @@ internal class DebugPanel(
         )
         val pluginPrefixes = listOf(
             "com.github.copilot", "CopilotAcp", "CopilotService",
-            "PsiBridge", "McpServer", "ContextSnippet", "Copilot Bridge"
+            "PsiBridge", "McpServer", "ContextSnippet", "IDE Agent for Copilot"
         )
         val loadLogs = {
             com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
@@ -338,7 +338,7 @@ internal class DebugPanel(
         val (settingsPanel, saveCallback) = createSettingsTab()
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
-                title = "Copilot Bridge Settings"
+                title = "IDE Agent for Copilot Settings"
                 setOKButtonText("Apply")
                 init()
             }
@@ -361,7 +361,7 @@ internal class DebugPanel(
     fun openDebug() {
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
-                title = "Copilot Bridge Debug"
+                title = "IDE Agent for Copilot Debug"
                 init()
             }
 

@@ -30,7 +30,7 @@
 
 ## Introduction
 
-**Agentic GitHub Copilot for JetBrains** (also known as *Copilot Bridge*) is an IntelliJ Platform
+**IDE Agent for Copilot** (also known as *Copilot Bridge*) is an IntelliJ Platform
 plugin that embeds GitHub Copilot's full agent capabilities directly into the IDE via the **Agent
 Client Protocol (ACP)**. Unlike the official GitHub Copilot plugin — which focuses on inline code
 completions — this plugin provides a multi-turn conversational agent with deep IDE integration through

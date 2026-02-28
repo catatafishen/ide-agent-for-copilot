@@ -59,7 +59,8 @@ internal class AuthLoginService(private val project: Project) {
                 val args = authMethod.args?.joinToString(" ") ?: ""
                 command = "${authMethod.command} $args".trim()
             }
-        } catch (_: Exception) { /* best-effort */ }
+        } catch (_: Exception) { /* best-effort */
+        }
 
         val resolvedCommand = command
         runAuthInEmbeddedTerminal(project, resolvedCommand, "Copilot Sign In") {

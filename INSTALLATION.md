@@ -48,7 +48,7 @@ After restart:
 
 1. Check if plugin is loaded:
     - **Settings → Plugins → Installed**
-    - Look for **"Agentic Copilot"** in the list
+    - Look for **"IDE Agent for Copilot"** in the list
     - Status should be **✓ Enabled**
 
 2. Check for tool window:
@@ -105,7 +105,7 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 
 **Solutions:**
 
-1. Check if plugin is enabled: **Settings → Plugins → Agentic Copilot** (should have checkmark)
+1. Check if plugin is enabled: **Settings → Plugins → IDE Agent for Copilot** (should have checkmark)
 2. Restart IDE: **File → Invalidate Caches and Restart → Just Restart**
 3. Check logs for errors: `Help → Show Log in Explorer`
 
@@ -146,7 +146,7 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 To remove the plugin:
 
 1. **Settings → Plugins**
-2. Find **Agentic Copilot**
+2. Find **IDE Agent for Copilot**
 3. Click **⚙️ → Uninstall**
 4. Restart IDE
 
@@ -164,7 +164,7 @@ $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
 .\gradlew.bat :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
 
 # 2. Uninstall old version in IDE
-# Settings → Plugins → Agentic Copilot → Uninstall
+# Settings → Plugins → IDE Agent for Copilot → Uninstall
 
 # 3. Reinstall new version
 # Settings → Plugins → ⚙️ → Install Plugin from Disk → select new ZIP

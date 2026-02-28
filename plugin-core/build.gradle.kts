@@ -158,7 +158,7 @@ sourceSets {
 intellijPlatform {
     pluginConfiguration {
         id = "com.github.copilot.intellij"
-        name = "Copilot Bridge"
+        name = "IDE Agent for Copilot"
         version = project.version.toString()
         description = """
             Lightweight IntelliJ Platform plugin that embeds GitHub Copilot's agent capabilities

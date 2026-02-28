@@ -156,7 +156,7 @@ mcp-server/
 To verify everything works:
 
 1. Launch sandbox: `./gradlew :plugin-core:runIde` (wait ~90s first launch)
-2. In sandbox IDE: **View → Tool Windows → Agentic Copilot**
+2. In sandbox IDE: **View → Tool Windows → IDE Agent for Copilot**
 3. Models dropdown should load
 4. Make a code change, run `./gradlew :plugin-core:prepareSandbox`
 5. Watch plugin reload automatically!

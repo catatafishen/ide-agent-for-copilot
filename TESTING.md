@@ -29,7 +29,7 @@ After IDE restarts:
 **Check Plugin is Loaded:**
 
 - Settings → Plugins → Installed
-- Should see: **"Agentic Copilot"** with ✓ Enabled
+- Should see: **"IDE Agent for Copilot"** with ✓ Enabled
 
 **Find Tool Window:**
 
@@ -129,7 +129,7 @@ copilot auth status
 
 **Solutions:**
 
-1. Check Settings → Plugins → ensure "Agentic Copilot" is enabled (has checkmark)
+1. Check Settings → Plugins → ensure "IDE Agent for Copilot" is enabled (has checkmark)
 2. Restart IDE: File → Invalidate Caches and Restart → Just Restart
 3. Check IDE logs for errors (Help → Show Log in Explorer)
 

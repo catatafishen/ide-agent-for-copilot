@@ -148,7 +148,7 @@ $env:JAVA_HOME = "$ideaHome\jbr"
 1. Settings → Plugins → Gear icon (⚙️) → Install Plugin from Disk
 2. Select: `plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip`
 3. Click OK → Restart IntelliJ
-4. View → Tool Windows → Agentic Copilot
+4. View → Tool Windows → IDE Agent for Copilot
 
 ---
 
@@ -181,7 +181,7 @@ $env:JAVA_HOME = "$ideaHome\jbr"
    ```
 
 4. **Test the plugin**:
-    - Open Tool Window: View → Tool Windows → Agentic Copilot
+    - Open Tool Window: View → Tool Windows → IDE Agent for Copilot
     - Check Settings tab: Do models show real Copilot models or mock?
     - Check IDE logs for: "Failed to initialize Copilot SDK" vs no error
 
