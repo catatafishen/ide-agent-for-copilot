@@ -196,7 +196,7 @@
 
 ```powershell
 # Add to PowerShell profile for persistence
-$env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+$env:JAVA_HOME = "C:\path\to\jdk21"
 $env:Path += ";$env:JAVA_HOME\bin"
 $env:Path += ";C:\Go\bin"
 $env:Path += ";C:\Gradle\gradle-8.11\bin"
@@ -205,7 +205,7 @@ $env:Path += ";C:\Gradle\gradle-8.11\bin"
 Or add permanently:
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Users\developer\.jdks\temurin-21.0.6", "User")
+[System.Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\path\to\jdk21", "User")
 [System.Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Go\bin;C:\Gradle\gradle-8.11\bin", "User")
 ```
 

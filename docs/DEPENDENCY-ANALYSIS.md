@@ -313,7 +313,7 @@ go test ./...
 - **Problem**: `gradlew.bat` fails without JAVA_HOME
 - **Current Workaround**: Run from IntelliJ terminal (uses bundled JRE)
 - **Solution**: Set JAVA_HOME or use IDE's Java
-- **Path Found**: `C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3\jbr`
+- **Path Found**: `C:\path\to\IntelliJ-IDEA\jbr`
 
 ### Issue 3: IDE Version Mismatch
 

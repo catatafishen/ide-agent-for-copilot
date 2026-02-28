@@ -138,7 +138,7 @@ mcp-server/
 .\install-plugin.ps1
 
 # Option 2: Manual
-$ideaHome = Get-Content "C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\.home"
+$ideaHome = Get-Content "$env:LOCALAPPDATA\JetBrains\IntelliJIdea2025.3\.home"
 $env:JAVA_HOME = "$ideaHome\jbr"
 .\gradlew.bat --no-daemon :plugin-core:buildPlugin
 ```
@@ -168,13 +168,13 @@ $env:JAVA_HOME = "$ideaHome\jbr"
    copilot --version
    
    # If not in PATH, add it (session-specific):
-   $env:PATH += ";C:\Users\developer\AppData\Local\Microsoft\WinGet\Packages\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe"
+   $env:PATH += ";C:\path\to\copilot-cli"
    ```
 
 3. **Launch IntelliJ from terminal** (to inherit PATH):
    ```powershell
    # Find IntelliJ
-   $ideaHome = Get-Content "C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\.home"
+   $ideaHome = Get-Content "$env:LOCALAPPDATA\JetBrains\IntelliJIdea2025.3\.home"
    
    # Launch with Copilot in PATH
    & "$ideaHome\bin\idea64.exe"
@@ -188,7 +188,7 @@ $env:JAVA_HOME = "$ideaHome\jbr"
 5. **Check Logs**:
    ```
    Help → Show Log in Explorer
-   C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\log\idea.log
+   C:\Users\<username>\AppData\Local\JetBrains\IntelliJIdea2025.3\log\idea.log
    ```
 
    Look for:
@@ -215,7 +215,7 @@ $env:JAVA_HOME = "$ideaHome\jbr"
 jar tf plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip | Select-String "lib/"
 
 # View logs
-Get-Content "C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\log\idea.log" -Tail 50
+Get-Content "$env:LOCALAPPDATA\JetBrains\IntelliJIdea2025.3\log\idea.log" -Tail 50
 
 # Find Copilot CLI
 Get-Command copilot -ErrorAction SilentlyContinue
@@ -244,10 +244,9 @@ Get-Command copilot -ErrorAction SilentlyContinue
 - **Java**: 21 (IntelliJ JBR)
 - **Kotlin**: 2.3.10
 - **Platform Plugin**: 2.11.0
-- **Project Root**: `C:\Users\developer\IdeaProjects\intellij-copilot-plugin`
-- **IDE Home**: `C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3`
-- **Copilot CLI**:
-  `C:\Users\developer\AppData\Local\Microsoft\WinGet\Packages\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\copilot.exe`
+- **Project Root**: `<your project root>`
+- **IDE Home**: `<your IntelliJ IDEA installation>`
+- **Copilot CLI**: `<path to copilot.exe>`
 
 ---
 

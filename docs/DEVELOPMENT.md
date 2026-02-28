@@ -374,7 +374,7 @@ plugins {
 **Solution**:
 
 ```powershell
-$env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+$env:JAVA_HOME = "C:\path\to\jdk21"
 $env:Path += ";$env:JAVA_HOME\bin"
 ```
 

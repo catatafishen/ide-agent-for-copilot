@@ -33,7 +33,7 @@ Since manual installation is working perfectly, here's a quick script:
 
 Write-Host "`n🔨 Building plugin..." -ForegroundColor Cyan
 
-$ideaHome = Get-Content "C:\Users\developer\AppData\Local\JetBrains\IntelliJIdea2025.3\.home"
+$ideaHome = Get-Content "$env:LOCALAPPDATA\JetBrains\IntelliJIdea2025.3\.home"
 $env:JAVA_HOME = "$ideaHome\jbr"
 
 .\gradlew.bat --no-daemon :plugin-core:buildPlugin

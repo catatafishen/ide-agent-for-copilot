@@ -55,7 +55,7 @@ Remove-Item "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins\plugin-core" -Rec
 Expand-Archive "plugin-core\build\distributions\plugin-core-0.1.0-SNAPSHOT.zip" `
     "$env:APPDATA\JetBrains\IntelliJIdea2025.3\plugins" -Force
 
-Start-Process "C:\Users\developer\AppData\Local\JetBrains\IntelliJ IDEA 2023.3.3\bin\idea64.exe"
+Start-Process "$env:LOCALAPPDATA\JetBrains\IntelliJIdea2025.3\bin\idea64.exe"
 ```
 
 ### Deploy to Main IDE After Code Changes
@@ -64,7 +64,7 @@ The sandbox IDE (`runIde`) picks up changes automatically, but the **main IDE do
 After every code change, run these 3 commands to rebuild and deploy:
 
 ```bash
-cd /home/catatafish/IdeaProjects/intellij-copilot-plugin
+cd /path/to/ide-agent-for-copilot
 
 # 1. Build the plugin zip (-x buildSearchableOptions avoids launching a conflicting IDE instance)
 ./gradlew :plugin-core:buildPlugin -x buildSearchableOptions --quiet

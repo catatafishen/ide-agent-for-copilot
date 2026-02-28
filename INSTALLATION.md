@@ -117,7 +117,7 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 
 1. **Rebuild the plugin:**
    ```powershell
-   $env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+   $env:JAVA_HOME = "C:\path\to\jdk21"
    .\gradlew.bat :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
    ```
 
@@ -160,7 +160,7 @@ If you're actively developing and want to test changes:
 
 ```powershell
 # 1. Rebuild plugin
-$env:JAVA_HOME = "C:\Users\developer\.jdks\temurin-21.0.6"
+$env:JAVA_HOME = "C:\path\to\jdk21"
 .\gradlew.bat :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
 
 # 2. Uninstall old version in IDE

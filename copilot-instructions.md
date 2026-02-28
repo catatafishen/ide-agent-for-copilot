@@ -193,7 +193,7 @@ and deploy after each change.
 **After every code change, run these 3 commands:**
 
 ```bash
-cd /home/catatafish/IdeaProjects/intellij-copilot-plugin
+cd /path/to/ide-agent-for-copilot
 
 # 1. Build the plugin zip
 ./gradlew :plugin-core:buildPlugin -x buildSearchableOptions --quiet

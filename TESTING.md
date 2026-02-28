@@ -180,7 +180,7 @@ Stop-Process -Id <PID>
 **Safe Mode Boot:**
 
 1. Find your IDE's configuration directory:
-   `C:\Users\developer\AppData\Roaming\JetBrains\IntelliJIdea2025.3`
+   `C:\Users\<username>\AppData\Roaming\JetBrains\IntelliJIdea2025.3`
 2. Navigate to: `plugins\`
 3. Delete or rename the `agentic-copilot` folder
 4. Restart IDE normally
