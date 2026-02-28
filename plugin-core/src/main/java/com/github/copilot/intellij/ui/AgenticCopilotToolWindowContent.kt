@@ -80,6 +80,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Billing/usage management (extracted to BillingManager)
     private val billing = BillingManager()
+    private val authService = AuthLoginService(project)
     private lateinit var consolePanel: ChatPanelApi
     private lateinit var responsePanelContainer: JBPanel<JBPanel<*>>
 
@@ -218,402 +219,81 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    /**
-     * Launches the Copilot CLI auth flow inside the embedded Terminal tool window.
-     * Uses the auth method from the ACP initialize response if available.
-     * Falls back to an external terminal (or an error dialog) if the terminal plugin is absent.
-     */
-    private fun startCopilotLogin() {
-        // Resolve the command to run (ACP may provide a custom auth command)
-        var command = "copilot auth login"
-        try {
-            val authMethod = CopilotService.getInstance(project).getClient().authMethod
-            if (authMethod?.command != null) {
-                val args = authMethod.args?.joinToString(" ") { it } ?: ""
-                command = "${authMethod.command} $args".trim()
-            }
-        } catch (_: Exception) { /* best-effort */ }
-
-        val resolvedCommand = command
-        runAuthInEmbeddedTerminal(
-            project = project,
-            command = resolvedCommand,
-            tabName = "Copilot Sign In"
-        ) {
-            // Terminal plugin unavailable — fall back to external terminal
-            startCopilotLoginExternal(resolvedCommand)
-        }
-    }
-
-    /** External-terminal fallback for Copilot auth (used when embedded terminal plugin is absent). */
-    private fun startCopilotLoginExternal(command: String) {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
-                if (isWindows) {
-                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k", command).start()
-                } else {
-                    ProcessBuilder(
-                        "sh", "-c",
-                        "x-terminal-emulator -e '$command' || gnome-terminal -- $command || xterm -e $command"
-                    ).start()
-                }
-            } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    Messages.showErrorDialog(
-                        project,
-                        "The IntelliJ Terminal plugin is not available and no external terminal could be opened.\n\n" +
-                            "Run manually: $command",
-                        "Authentication Setup"
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * Launches the GH CLI auth flow inside the embedded Terminal tool window.
-     * Falls back to an external terminal (or an error dialog) if the terminal plugin is absent.
-     */
-    private fun startGhLogin() {
-        runAuthInEmbeddedTerminal(
-            project = project,
-            command = "gh auth login",
-            tabName = "GitHub Sign In"
-        ) {
-            startGhLoginExternal()
-        }
-    }
-
-    /** External-terminal fallback for gh auth (used when embedded terminal plugin is absent). */
-    private fun startGhLoginExternal() {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
-                if (isWindows) {
-                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login").start()
-                } else {
-                    ProcessBuilder(
-                        "sh", "-c",
-                        "x-terminal-emulator -e 'gh auth login' || gnome-terminal -- gh auth login || xterm -e gh auth login"
-                    ).start()
-                }
-            } catch (e: Exception) {
-                SwingUtilities.invokeLater {
-                    Messages.showErrorDialog(
-                        project,
-                        "The IntelliJ Terminal plugin is not available and no external terminal could be opened.\n\n" +
-                            "Run manually: gh auth login",
-                        "GitHub CLI Authentication"
-                    )
-                }
-            }
-        }
-    }
-
-    /** Checks Copilot CLI installation and auth. Returns null if healthy, error message otherwise. Safe to call on background. */
-    private fun copilotSetupDiagnostics(): String? {
-        return try {
-            CopilotService.getInstance(project).getClient().listModels()
-            null
-        } catch (e: Exception) {
-            e.message ?: "Failed to connect to Copilot CLI"
-        }
-    }
-
-    /** Checks GH CLI installation and auth. Returns null if healthy, error message otherwise. Safe to call on background. */
-    private fun ghSetupDiagnostics(): String? {
-        val ghCli = billing.findGhCli()
-            ?: return "GitHub CLI (gh) is not installed — it is used to display billing and usage information."
-        return if (!billing.isGhAuthenticated(ghCli))
-            "Not authenticated with GitHub CLI (gh) — click Sign In in the banner above."
-        else null
-    }
-
-    /** Creates a banner for Copilot CLI setup issues (not installed / not authenticated). Polls independently. onFixed called when healthy. */
-    private fun createCopilotSetupBanner(onFixed: () -> Unit): JBPanel<JBPanel<*>> {
-        val banner = JBPanel<JBPanel<*>>(BorderLayout())
-        banner.isVisible = false
-        banner.border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(
-                JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)),
-                com.intellij.ui.SideBorder.BOTTOM
-            ),
-            JBUI.Borders.empty(4, 8)
-        )
-        banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
-        banner.isOpaque = true
-
-        val fgColor = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
-
-        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
-        icon.border = JBUI.Borders.emptyRight(6)
-
-        val text = JBLabel()
-        text.foreground = fgColor
-
-        val installButton = JButton("Install…")
-        installButton.isOpaque = false
-        installButton.isBorderPainted = false
-        installButton.foreground = fgColor
-        installButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        installButton.isVisible = false
-        installButton.addActionListener {
-            val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
-            val url = if (isWindows) "https://github.com/github/copilot-cli#installation"
-            else "https://github.com/github/copilot-cli#installation"
-            com.intellij.ide.BrowserUtil.browse(url)
-        }
-
-        val signInButton = JButton("Sign In")
-        signInButton.isOpaque = false
-        signInButton.isBorderPainted = false
-        signInButton.foreground = fgColor
-        signInButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        signInButton.isVisible = false
-        signInButton.addActionListener { startCopilotLogin() }
-
-        val retryButton = JButton("Retry")
-        retryButton.isOpaque = false
-        retryButton.isBorderPainted = false
-        retryButton.foreground = fgColor
-        retryButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        retryButton.toolTipText = "Re-check Copilot CLI status"
-
-        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 0, 0))
-        buttons.isOpaque = false
-        buttons.add(installButton)
-        buttons.add(signInButton)
-        buttons.add(retryButton)
-
-        val content = JBPanel<JBPanel<*>>(BorderLayout())
-        content.isOpaque = false
-        content.add(icon, BorderLayout.WEST)
-        content.add(text, BorderLayout.CENTER)
-        content.add(buttons, BorderLayout.EAST)
-        banner.add(content, BorderLayout.CENTER)
-
-        fun updateForDiag(diag: String) {
-            val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
-            val isCLINotFound =
-                diag.lowercase().let { "copilot cli not found" in it || ("not found" in it && "copilot" in it) }
-            val isAuthError = isAuthenticationError(diag)
+    /** Creates a banner for Copilot CLI setup issues (not installed / not authenticated). */
+    private fun createCopilotSetupBanner(onFixed: () -> Unit): AuthSetupBanner {
+        val banner = AuthSetupBanner(
+            retryTooltip = "Re-check Copilot CLI status",
+            pollIntervalDown = 30,
+            pollIntervalUp = 60,
+            diagnosticsFn = { authService.copilotSetupDiagnostics() },
+            onFixed = onFixed,
+        ) { diag ->
+            val isCLINotFound = "copilot cli not found" in diag.lowercase() ||
+                ("not found" in diag.lowercase() && "copilot" in diag.lowercase())
             when {
                 isCLINotFound -> {
-                    val cmd =
-                        if (isWindows) "winget install GitHub.Copilot" else "npm install -g @anthropic-ai/copilot-cli"
-                    text.text = "<html><b>Copilot CLI is not installed</b> — install with: <tt>$cmd</tt></html>"
+                    val cmd = if (System.getProperty("os.name").lowercase().contains("win"))
+                        "winget install GitHub.Copilot" else "npm install -g @github/copilot-cli"
+                    textLabel.text = "<html><b>Copilot CLI is not installed</b> — install with: <tt>$cmd</tt></html>"
                     installButton.isVisible = true
-                    signInButton.isVisible = false
+                    actionButton.isVisible = false
                 }
 
-                isAuthError -> {
-                    text.text =
-                        "<html><b>Not signed in to Copilot</b> — click Sign In, then click Retry.</html>"
+                authService.isAuthenticationError(diag) -> {
+                    textLabel.text = "<html><b>Not signed in to Copilot</b> — click Sign In, then click Retry.</html>"
                     installButton.isVisible = false
-                    signInButton.isVisible = true
+                    actionButton.isVisible = true
                 }
 
                 else -> {
-                    text.text = "<html><b>Copilot CLI unavailable</b> — $diag</html>"
+                    textLabel.text = "<html><b>Copilot CLI unavailable</b></html>"
                     installButton.isVisible = false
-                    signInButton.isVisible = false
+                    actionButton.isVisible = false
                 }
             }
         }
-
-        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
-            Thread(r, "copilot-setup-poll").also { it.isDaemon = true }
+        banner.installButton.addActionListener {
+            com.intellij.ide.BrowserUtil.browse("https://github.com/github/copilot-cli#installation")
         }
-        var scheduledFuture: java.util.concurrent.ScheduledFuture<*>? = null
-        var wasDown = false
-
-        fun scheduleNext(currentlyDown: Boolean) {
-            val delay = if (currentlyDown) 30L else 60L
-            scheduledFuture = scheduler.schedule(
-                {
-                    val diag = copilotSetupDiagnostics()
-                    SwingUtilities.invokeLater {
-                        val nowDown = diag != null
-                        if (nowDown) updateForDiag(diag!!)
-                        banner.isVisible = nowDown
-                        retryButton.isEnabled = true
-                        if (wasDown && !nowDown) onFixed()
-                        wasDown = nowDown
-                    }
-                    scheduleNext(diag != null)
-                },
-                delay, java.util.concurrent.TimeUnit.SECONDS
-            )
+        banner.actionButton.addActionListener {
+            banner.showSignInPending()
+            authService.startCopilotLogin()
         }
-
-        fun runCheck() {
-            scheduledFuture?.cancel(false)
-            retryButton.isEnabled = false
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val diag = copilotSetupDiagnostics()
-                SwingUtilities.invokeLater {
-                    val nowDown = diag != null
-                    if (nowDown) updateForDiag(diag!!)
-                    banner.isVisible = nowDown
-                    retryButton.isEnabled = true
-                    if (wasDown && !nowDown) onFixed()
-                    wasDown = nowDown
-                }
-                scheduleNext(diag != null)
-            }
-        }
-
-        retryButton.addActionListener { runCheck() }
-
-        banner.addAncestorListener(object : javax.swing.event.AncestorListener {
-            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) {
-                runCheck()
-            }
-
-            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) {
-                scheduledFuture?.cancel(false)
-            }
-
-            override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
-        })
-
         return banner
     }
 
-    /** Creates a banner for GH CLI setup issues (not installed / not authenticated). Polls independently. onFixed called when healthy. */
-    private fun createGhSetupBanner(onFixed: () -> Unit): JBPanel<JBPanel<*>> {
-        val banner = JBPanel<JBPanel<*>>(BorderLayout())
-        banner.isVisible = false
-        banner.border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(
-                JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)),
-                com.intellij.ui.SideBorder.BOTTOM
-            ),
-            JBUI.Borders.empty(4, 8)
-        )
-        banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
-        banner.isOpaque = true
-
-        val fgColor = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
-
-        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
-        icon.border = JBUI.Borders.emptyRight(6)
-
-        val text = JBLabel()
-        text.foreground = fgColor
-
-        val installButton = JButton("Install…")
-        installButton.isOpaque = false
-        installButton.isBorderPainted = false
-        installButton.foreground = fgColor
-        installButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        installButton.isVisible = false
-        installButton.addActionListener { com.intellij.ide.BrowserUtil.browse("https://cli.github.com") }
-
-        val signInButton = JButton("Sign In")
-        signInButton.isOpaque = false
-        signInButton.isBorderPainted = false
-        signInButton.foreground = fgColor
-        signInButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        signInButton.isVisible = false
-        signInButton.addActionListener { startGhLogin() }
-
-        val retryButton = JButton("Retry")
-        retryButton.isOpaque = false
-        retryButton.isBorderPainted = false
-        retryButton.foreground = fgColor
-        retryButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        retryButton.toolTipText = "Re-check GitHub CLI status"
-
-        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 0, 0))
-        buttons.isOpaque = false
-        buttons.add(installButton)
-        buttons.add(signInButton)
-        buttons.add(retryButton)
-
-        val content = JBPanel<JBPanel<*>>(BorderLayout())
-        content.isOpaque = false
-        content.add(icon, BorderLayout.WEST)
-        content.add(text, BorderLayout.CENTER)
-        content.add(buttons, BorderLayout.EAST)
-        banner.add(content, BorderLayout.CENTER)
-
-        fun updateForDiag(diag: String) {
-            val isNotInstalled = "not installed" in diag.lowercase()
+    /** Creates a banner for GH CLI setup issues (not installed / not authenticated). */
+    private fun createGhSetupBanner(onFixed: () -> Unit): AuthSetupBanner {
+        val banner = AuthSetupBanner(
+            retryTooltip = "Re-check GitHub CLI status",
+            pollIntervalDown = 30,
+            pollIntervalUp = 120,
+            diagnosticsFn = { authService.ghSetupDiagnostics(billing) },
+            onFixed = onFixed,
+        ) { diag ->
             when {
-                isNotInstalled -> {
-                    text.text =
+                "not installed" in diag.lowercase() -> {
+                    textLabel.text =
                         "<html><b>GitHub CLI (gh) is not installed</b> — needed for billing info. Install from <tt>cli.github.com</tt>.</html>"
                     installButton.isVisible = true
-                    signInButton.isVisible = false
+                    actionButton.isVisible = false
                 }
 
                 else -> {
-                    text.text =
+                    textLabel.text =
                         "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In.</html>"
                     installButton.isVisible = false
-                    signInButton.isVisible = true
+                    actionButton.isVisible = true
                 }
             }
         }
-
-        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
-            Thread(r, "gh-setup-poll").also { it.isDaemon = true }
+        banner.installButton.addActionListener {
+            com.intellij.ide.BrowserUtil.browse("https://cli.github.com")
         }
-        var scheduledFuture: java.util.concurrent.ScheduledFuture<*>? = null
-        var wasDown = false
-
-        fun scheduleNext(currentlyDown: Boolean) {
-            val delay = if (currentlyDown) 30L else 120L
-            scheduledFuture = scheduler.schedule(
-                {
-                    val diag = ghSetupDiagnostics()
-                    SwingUtilities.invokeLater {
-                        val nowDown = diag != null
-                        if (nowDown) updateForDiag(diag!!)
-                        banner.isVisible = nowDown
-                        retryButton.isEnabled = true
-                        if (wasDown && !nowDown) onFixed()
-                        wasDown = nowDown
-                    }
-                    scheduleNext(diag != null)
-                },
-                delay, java.util.concurrent.TimeUnit.SECONDS
-            )
+        banner.actionButton.addActionListener {
+            banner.showSignInPending()
+            authService.startGhLogin()
         }
-
-        fun runCheck() {
-            scheduledFuture?.cancel(false)
-            retryButton.isEnabled = false
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val diag = ghSetupDiagnostics()
-                SwingUtilities.invokeLater {
-                    val nowDown = diag != null
-                    if (nowDown) updateForDiag(diag!!)
-                    banner.isVisible = nowDown
-                    retryButton.isEnabled = true
-                    if (wasDown && !nowDown) onFixed()
-                    wasDown = nowDown
-                }
-                scheduleNext(diag != null)
-            }
-        }
-
-        retryButton.addActionListener { runCheck() }
-
-        banner.addAncestorListener(object : javax.swing.event.AncestorListener {
-            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) {
-                runCheck()
-            }
-
-            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) {
-                scheduledFuture?.cancel(false)
-            }
-
-            override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
-        })
-
         return banner
     }
 
@@ -2350,14 +2030,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    // Helper methods to reduce code duplication
-
-    private fun isAuthenticationError(message: String): Boolean {
-        return message.contains("auth") ||
-            message.contains("Copilot CLI") ||
-            message.contains("authenticated")
-    }
-
     private fun restoreModelSelection(models: List<CopilotAcpClient.Model>) {
         val savedModel = CopilotSettings.getSelectedModel()
         LOG.info("Restoring model selection: saved='$savedModel', available=${models.map { it.id }}")
@@ -2391,7 +2063,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     return@executeOnPooledThread
                 } catch (e: Exception) {
                     lastError = e
-                    if (isAuthenticationError(e.message ?: "")) break
+                    if (authService.isAuthenticationError(e.message ?: "")) break
                     if (attempt < 3) Thread.sleep(2000L)
                 }
             }

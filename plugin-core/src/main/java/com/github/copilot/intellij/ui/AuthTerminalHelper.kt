@@ -3,42 +3,48 @@ package com.github.copilot.intellij.ui
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
 import javax.swing.SwingUtilities
 
+private val LOG = Logger.getInstance("AuthTerminalHelper")
+
 /**
- * Runs an authentication command inside IntelliJ's embedded Terminal tool window.
- * Falls back to an external terminal if the terminal plugin is unavailable.
+ * Opens a named tab in IntelliJ's embedded Terminal tool window and runs [command] once the
+ * shell is ready.  Falls back to [onTerminalUnavailable] (called on the EDT) when the terminal
+ * plugin class is not on the classpath.
  *
- * @param command  The shell command to run (e.g. "gh auth login").
- * @param tabName  Label for the terminal tab.
- * @param onTerminalUnavailable  Called on the EDT when the terminal plugin is not present;
- *                               the caller should launch an external terminal or show an error.
+ * Readiness is determined by polling `getProcessTtyConnector()` (non-null == shell connected)
+ * rather than a fixed sleep, with a 5-second timeout.
  */
 fun runAuthInEmbeddedTerminal(
     project: Project,
     command: String,
     tabName: String,
-    onTerminalUnavailable: () -> Unit
+    onTerminalUnavailable: () -> Unit,
 ) {
     ApplicationManager.getApplication().executeOnPooledThread {
         try {
             val terminalViewClass = Class.forName("org.jetbrains.plugins.terminal.TerminalView")
-            val getInstance = terminalViewClass.getMethod("getInstance", Project::class.java)
-            val terminalView = getInstance.invoke(null, project)
+            val terminalView = terminalViewClass
+                .getMethod("getInstance", Project::class.java)
+                .invoke(null, project)
 
             val widget = terminalViewClass.getMethod(
                 "createLocalShellWidget",
                 String::class.java,
                 String::class.java,
-                Boolean::class.javaPrimitiveType
-            ).invoke(terminalView, project.basePath, tabName, true)
+                Boolean::class.javaPrimitiveType,
+            ).invoke(terminalView, project.basePath, tabName, /* requestFocus */ true)
 
-            // Give the shell a moment to initialise before sending the command
-            Thread.sleep(800)
+            // Poll until the shell's TtyConnector is ready (max 5 s, checks every 100 ms).
+            val getTty = widget.javaClass.getMethod("getProcessTtyConnector")
+            val deadline = System.currentTimeMillis() + 5_000L
+            while (System.currentTimeMillis() < deadline) {
+                if (getTty.invoke(widget) != null) break
+                Thread.sleep(100)
+            }
 
-            val executeCommand = widget.javaClass.getMethod("executeCommand", String::class.java)
-            executeCommand.invoke(widget, command)
+            widget.javaClass.getMethod("executeCommand", String::class.java)
+                .invoke(widget, command)
         } catch (e: ClassNotFoundException) {
             LOG.info("Terminal plugin not available, falling back to external terminal")
             SwingUtilities.invokeLater { onTerminalUnavailable() }
@@ -48,5 +54,3 @@ fun runAuthInEmbeddedTerminal(
         }
     }
 }
-
-private val LOG = Logger.getInstance("AuthTerminalHelper")
