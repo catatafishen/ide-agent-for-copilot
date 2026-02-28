@@ -807,7 +807,7 @@ public class McpServer {
      * Never returns null.
      */
     private static String delegateToPsiBridge(String toolName, JsonObject arguments) {
-        int readTimeoutMs = isLongRunningTool(toolName) ? 180_000 : 30_000;
+        int readTimeoutMs = isLongRunningTool(toolName) ? 180_000 : 90_000;
         try {
             Path bridgeFile = Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json");
             if (!Files.exists(bridgeFile)) {
@@ -883,7 +883,8 @@ public class McpServer {
                 "IntelliJ may have restarted. Try running your prompt again once IntelliJ has fully loaded.";
         } catch (java.net.SocketTimeoutException e) {
             return "ERROR: IntelliJ bridge timed out for tool '" + toolName + "'. " +
-                "IntelliJ may be busy or unresponsive.";
+                "This may be because a permission request is waiting for user approval in the IDE, " +
+                "or IntelliJ may be busy. Check the IDE for any pending permission dialogs.";
         } catch (Exception e) {
             LOG.log(Level.WARNING, "PSI Bridge error for tool: " + toolName, e);
             return "ERROR: IntelliJ bridge error for tool '" + toolName + "': " + e.getMessage();
