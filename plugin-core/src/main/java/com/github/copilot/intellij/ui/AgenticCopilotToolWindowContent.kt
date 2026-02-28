@@ -3,6 +3,7 @@ package com.github.copilot.intellij.ui
 import com.github.copilot.intellij.bridge.CopilotAcpClient
 import com.github.copilot.intellij.services.CopilotService
 import com.github.copilot.intellij.services.CopilotSettings
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
@@ -992,18 +993,22 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
-        "Auto-open files as agent works",
-        "Instruct the agent to auto-open files in the editor as it reads or writes them",
-        com.intellij.icons.AllIcons.Actions.Preview
+        "Follow agent",
+        "Auto-open files in the editor as the agent reads or writes them",
+        AllIcons.General.AutoscrollToSource
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return com.github.copilot.intellij.services.CopilotSettings.getFollowAgentFiles()
-        }
+        override fun isSelected(e: AnActionEvent): Boolean =
+            CopilotSettings.getFollowAgentFiles()
 
         override fun setSelected(e: AnActionEvent, state: Boolean) {
-            com.github.copilot.intellij.services.CopilotSettings.setFollowAgentFiles(state)
+            CopilotSettings.setFollowAgentFiles(state)
+        }
+
+        override fun update(e: AnActionEvent) {
+            super.update(e)
+            e.presentation.isEnabled = !isSending
         }
     }
 
