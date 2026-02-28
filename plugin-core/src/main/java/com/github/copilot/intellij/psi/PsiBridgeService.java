@@ -6,15 +6,21 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.github.copilot.intellij.services.CopilotSettings;
+import com.github.copilot.intellij.services.ToolPermission;
+import com.github.copilot.intellij.services.ToolRegistry;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.ComponentManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.text.StringUtil;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -248,6 +254,19 @@ public final class PsiBridgeService implements Disposable {
 
         LOG.info("PSI Bridge tool call: " + toolName + " args=" + arguments);
 
+        // Enforce per-tool permissions (DENY / ASK / ALLOW)
+        String denied = checkPluginToolPermission(toolName, arguments);
+        if (denied != null) {
+            JsonObject response = new JsonObject();
+            response.addProperty("result", denied);
+            byte[] bytes = GSON.toJson(response).getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.getResponseBody().close();
+            return;
+        }
+
         String result;
         try {
             ToolHandler handler = toolRegistry.get(toolName);
@@ -272,6 +291,99 @@ public final class PsiBridgeService implements Disposable {
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.getResponseBody().close();
+    }
+
+    /**
+     * Checks the configured permission for a plugin tool call.
+     * Returns null if the call is allowed, or an error message string if it is denied/rejected.
+     * For ASK, blocks the calling thread and shows a modal confirmation dialog on the EDT.
+     */
+    @Nullable
+    private String checkPluginToolPermission(String toolName, JsonObject arguments) {
+        ToolPermission perm = resolvePluginPermission(toolName, arguments);
+        if (perm == ToolPermission.ALLOW) return null;
+
+        if (perm == ToolPermission.DENY) {
+            LOG.info("PSI Bridge: DENY for tool " + toolName);
+            return "Permission denied: tool '" + toolName + "' is disabled in Tool Permissions settings.";
+        }
+
+        // ASK: show a modal dialog on the EDT and block until user responds
+        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
+        String displayName = entry != null ? entry.displayName : toolName;
+        String argSummary = buildArgSummary(arguments);
+
+        boolean[] allowed = {false};
+        ApplicationManager.getApplication().invokeAndWait(() -> {
+            String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
+                + argSummary + "</html>";
+            int choice = Messages.showYesNoDialog(
+                project, message, "Tool Permission Request",
+                "Allow", "Deny", Messages.getQuestionIcon()
+            );
+            allowed[0] = choice == Messages.YES;
+        });
+
+        if (allowed[0]) {
+            LOG.info("PSI Bridge: ASK approved by user for " + toolName);
+            return null;
+        } else {
+            LOG.info("PSI Bridge: ASK denied by user for " + toolName);
+            return "Permission denied by user for tool '" + toolName + "'.";
+        }
+    }
+
+    private ToolPermission resolvePluginPermission(String toolName, JsonObject arguments) {
+        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
+        if (entry != null && entry.supportsPathSubPermissions) {
+            String path = extractPathArg(arguments);
+            if (path != null && !path.isEmpty()) {
+                boolean inside = isInsideProject(path);
+                return inside
+                    ? CopilotSettings.getToolPermissionInsideProject(toolName)
+                    : CopilotSettings.getToolPermissionOutsideProject(toolName);
+            }
+        }
+        return CopilotSettings.getToolPermission(toolName);
+    }
+
+    @Nullable
+    private static String extractPathArg(JsonObject args) {
+        for (String key : new String[]{"path", "file", "file1", "file2"}) {
+            if (args.has(key) && args.get(key).isJsonPrimitive()) {
+                return args.get(key).getAsString();
+            }
+        }
+        return null;
+    }
+
+    private boolean isInsideProject(String path) {
+        String basePath = project.getBasePath();
+        if (basePath == null) return true;
+        java.io.File f = new java.io.File(path);
+        if (!f.isAbsolute()) return true;
+        try {
+            return f.getCanonicalPath().startsWith(new java.io.File(basePath).getCanonicalPath());
+        } catch (java.io.IOException e) {
+            return true;
+        }
+    }
+
+    private static String buildArgSummary(JsonObject args) {
+        if (args.size() == 0) return "No arguments.";
+        StringBuilder sb = new StringBuilder("<table>");
+        int count = 0;
+        for (Map.Entry<String, JsonElement> e : args.entrySet()) {
+            if (count++ >= 5) { sb.append("<tr><td colspan='2'>…</td></tr>"); break; }
+            String val = e.getValue().isJsonPrimitive()
+                ? e.getValue().getAsString() : e.getValue().toString();
+            if (val.length() > 100) val = val.substring(0, 97) + "…";
+            sb.append("<tr><td><b>").append(StringUtil.escapeXmlEntities(e.getKey()))
+              .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
+              .append("</td></tr>");
+        }
+        sb.append("</table>");
+        return sb.toString();
     }
 
     private static boolean isSuccessfulWrite(String toolName, String result) {
