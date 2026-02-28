@@ -995,7 +995,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private inner class FollowAgentFilesToggleAction : ToggleAction(
         "Follow agent",
         "Auto-open files in the editor as the agent reads or writes them",
-        AllIcons.General.AutoscrollToSource
+        AllIcons.Actions.Preview
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
