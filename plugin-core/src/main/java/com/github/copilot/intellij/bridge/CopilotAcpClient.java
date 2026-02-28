@@ -122,7 +122,7 @@ public class CopilotAcpClient implements Closeable {
 
     // Git write tools that sub-agents must not use
     private static final Set<String> GIT_WRITE_TOOLS = Set.of(
-        "git_commit", "git_stage", "git_unstage", "git_branch", "git_stash"
+        "git_commit", "git_stage", "git_unstage", "git_branch", "git_stash", "git_push", "git_remote"
     );
 
     // Permission request listener and pending ASK map
@@ -1404,7 +1404,7 @@ public class CopilotAcpClient implements Closeable {
                 case "find" -> "⚠ Don't use find. Use 'intellij-code-tools-list_project_files' instead.";
                 case "git" -> "⚠ Don't use git commands via run_command — it desyncs IntelliJ editor buffers. " +
                     "Use dedicated git tools: git_status, git_diff, git_log, git_commit, git_stage, " +
-                    "git_unstage, git_branch, git_stash, git_show, git_blame.";
+                    "git_unstage, git_branch, git_stash, git_show, git_blame, git_push, git_remote.";
                 default -> TOOL_DENIED_DEFAULT_MSG;
             };
         } else if (deniedKind.startsWith(CLI_TOOL_ABUSE_PREFIX)) {
@@ -1428,7 +1428,7 @@ public class CopilotAcpClient implements Closeable {
             };
         } else if (deniedKind.startsWith(GIT_WRITE_ABUSE_PREFIX)) {
             instruction = "⚠ Sub-agents must not use git write commands (git_commit, git_stage, git_unstage, " +
-                "git_branch, git_stash). Only the parent agent may perform git writes. " +
+                "git_branch, git_stash, git_push, git_remote). Only the parent agent may perform git writes. " +
                 "Use read-only git tools (git_status, git_diff, git_log, git_show, git_blame) instead.";
         } else if ("bash".equals(deniedKind)) {
             instruction = "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +

@@ -281,6 +281,56 @@ final class GitToolHandler {
         };
     }
 
+    String gitPush(JsonObject args) throws Exception {
+        List<String> gitArgs = new ArrayList<>();
+        gitArgs.add("push");
+
+        if (args.has("force") && args.get("force").getAsBoolean()) {
+            gitArgs.add("--force");
+        }
+        if (args.has("set_upstream") && args.get("set_upstream").getAsBoolean()) {
+            gitArgs.add("--set-upstream");
+        }
+        if (args.has("remote")) {
+            gitArgs.add(args.get("remote").getAsString());
+        }
+        if (args.has(PARAM_BRANCH)) {
+            gitArgs.add(args.get(PARAM_BRANCH).getAsString());
+        }
+        if (args.has("tags") && args.get("tags").getAsBoolean()) {
+            gitArgs.add("--tags");
+        }
+
+        return runGit(gitArgs.toArray(new String[0]));
+    }
+
+    String gitRemote(JsonObject args) throws Exception {
+        String action = args.has(JSON_ACTION) ? args.get(JSON_ACTION).getAsString() : "list";
+
+        return switch (action) {
+            case "list" -> runGit("remote", "-v");
+            case "add" -> {
+                if (!args.has("name")) yield "Error: 'name' required for add";
+                if (!args.has("url")) yield "Error: 'url' required for add";
+                yield runGit("remote", "add", args.get("name").getAsString(), args.get("url").getAsString());
+            }
+            case "remove" -> {
+                if (!args.has("name")) yield "Error: 'name' required for remove";
+                yield runGit("remote", "remove", args.get("name").getAsString());
+            }
+            case "set_url", "set-url" -> {
+                if (!args.has("name")) yield "Error: 'name' required for set_url";
+                if (!args.has("url")) yield "Error: 'url' required for set_url";
+                yield runGit("remote", "set-url", args.get("name").getAsString(), args.get("url").getAsString());
+            }
+            case "get_url", "get-url" -> {
+                if (!args.has("name")) yield "Error: 'name' required for get_url";
+                yield runGit("remote", "get-url", args.get("name").getAsString());
+            }
+            default -> "Error: unknown action '" + action + "'. Use: list, add, remove, set_url, get_url";
+        };
+    }
+
     String gitShow(JsonObject args) throws Exception {
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("show");

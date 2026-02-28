@@ -131,6 +131,8 @@ public final class ToolRegistry {
         new ToolEntry("git_stash", "Git Stash", "Push, pop, apply, list, or drop stashed changes", Category.GIT, false, false, false),
         new ToolEntry("git_show", "Git Show", "Show details and diff for a specific commit", Category.GIT, false, false, false),
         new ToolEntry("git_blame", "Git Blame", "Show per-line authorship for a file, optionally restricted to a line range", Category.GIT, false, false, false),
+        new ToolEntry("git_push", "Git Push", "Push commits to a remote repository", Category.GIT, false, false, false),
+        new ToolEntry("git_remote", "Git Remote", "List, add, remove, or update remote repositories", Category.GIT, false, false, false),
 
         // ── Refactoring ───────────────────────────────────────────────────────────
         new ToolEntry("refactor", "Refactor", "Rename, extract method, inline, or safe-delete a symbol using IntelliJ's refactoring engine", Category.REFACTOR, false, false, false),

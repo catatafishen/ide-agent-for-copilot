@@ -501,6 +501,24 @@ public class McpServer {
             ),
             List.of()));
 
+        addIfEnabled.accept(buildTool("git_push", "Git Push",
+            Map.of(
+                "remote", Map.of("type", "string", "description", "Remote name (default: origin)"),
+                "branch", Map.of("type", "string", "description", "Branch to push (default: current)"),
+                "force", Map.of("type", "boolean", "description", "Force push"),
+                "set_upstream", Map.of("type", "boolean", "description", "Set upstream tracking reference"),
+                "tags", Map.of("type", "boolean", "description", "Push all tags")
+            ),
+            List.of()));
+
+        addIfEnabled.accept(buildTool("git_remote", "Git Remote",
+            Map.of(
+                "action", Map.of("type", "string", "description", "Action: 'list' (default), 'add', 'remove', 'set_url', 'get_url'"),
+                "name", Map.of("type", "string", "description", "Remote name (required for add/remove/set_url/get_url)"),
+                "url", Map.of("type", "string", "description", "Remote URL (required for add/set_url)")
+            ),
+            List.of()));
+
         // ---- Infrastructure tools ----
 
         addIfEnabled.accept(buildTool("http_request", "Http Request",

@@ -19,5 +19,7 @@ class GitTools extends AbstractToolHandler {
         register("git_branch", gitToolHandler::gitBranch);
         register("git_stash", gitToolHandler::gitStash);
         register("git_show", gitToolHandler::gitShow);
+        register("git_push", gitToolHandler::gitPush);
+        register("git_remote", gitToolHandler::gitRemote);
     }
 }

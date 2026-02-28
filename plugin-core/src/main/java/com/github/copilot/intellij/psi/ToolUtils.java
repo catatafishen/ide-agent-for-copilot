@@ -265,7 +265,7 @@ public final class ToolUtils {
         return switch (abuseType) {
             case "git" -> "Error: git commands are not allowed via run_command (causes IntelliJ buffer desync). "
                 + "Use the dedicated git tools instead: git_status, git_diff, git_log, git_commit, "
-                + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame.";
+                + "git_stage, git_unstage, git_branch, git_stash, git_show, git_blame, git_push, git_remote.";
             case "cat" -> "Error: cat/head/tail/less/more are not allowed via run_command (reads stale disk files). "
                 + "Use intellij_read_file to read live editor buffers instead.";
             case "sed" -> "Error: sed is not allowed via run_command (bypasses IntelliJ editor buffers). "
