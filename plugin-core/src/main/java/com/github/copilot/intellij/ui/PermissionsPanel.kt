@@ -6,34 +6,19 @@ import com.github.copilot.intellij.services.ToolRegistry
 import com.github.copilot.intellij.services.ToolRegistry.Category
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.ui.JBColor
-import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.SeparatorComponent
-import com.intellij.ui.SimpleColoredComponent
-import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.TitledSeparator
-import com.intellij.ui.TreeUIHelper
+import com.intellij.ui.*
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import java.awt.BorderLayout
-import java.awt.Component
-import java.awt.Dimension
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
+import java.awt.*
 import javax.swing.JComponent
-import javax.swing.JScrollPane
 import javax.swing.JTree
 import javax.swing.ScrollPaneConstants
 import javax.swing.SwingConstants
-import javax.swing.tree.DefaultMutableTreeNode
-import javax.swing.tree.DefaultTreeModel
-import javax.swing.tree.TreeCellRenderer
-import javax.swing.tree.TreePath
-import javax.swing.tree.TreeSelectionModel
+import javax.swing.tree.*
 
 // Permission options
 private val PLUGIN_PERM_OPTIONS = arrayOf("Allow", "Ask")
@@ -317,7 +302,6 @@ internal class PermissionsPanel {
             gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
             val nameLabel = SimpleColoredComponent().apply {
                 append(row.tool.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                if (row.tool.isBuiltIn) append("  built-in", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
                 if (row.tool.description.isNotEmpty()) toolTipText = row.tool.description
                 border = JBUI.Borders.emptyLeft(4)
             }
