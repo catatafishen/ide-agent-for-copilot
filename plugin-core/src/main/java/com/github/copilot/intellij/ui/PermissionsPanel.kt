@@ -174,9 +174,11 @@ internal class PermissionsPanel {
             content.add(enabledBox, gbc)
 
             gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
-            val nameLabel = JBLabel(tool.displayName).apply {
+            val badge = if (tool.isBuiltIn) " <small>[CLI]</small>" else " <small>[MCP]</small>"
+            val nameLabel = JBLabel("<html>${tool.displayName}$badge</html>").apply {
                 if (tool.isBuiltIn) foreground = JBColor.GRAY
                 border = JBUI.Borders.emptyLeft(4)
+                if (tool.description.isNotEmpty()) toolTipText = "<html>${tool.description}</html>"
             }
             content.add(nameLabel, gbc)
 
