@@ -279,7 +279,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (isWindows) {
                     ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login").start()
                 } else {
-                    ProcessBuilder("sh", "-c", "x-terminal-emulator -e 'gh auth login' || gnome-terminal -- gh auth login || xterm -e gh auth login").start()
+                    ProcessBuilder(
+                        "sh",
+                        "-c",
+                        "x-terminal-emulator -e 'gh auth login' || gnome-terminal -- gh auth login || xterm -e gh auth login"
+                    ).start()
                 }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
@@ -377,20 +381,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
         fun updateForDiag(diag: String) {
             val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
-            val isCLINotFound = diag.lowercase().let { "copilot cli not found" in it || ("not found" in it && "copilot" in it) }
+            val isCLINotFound =
+                diag.lowercase().let { "copilot cli not found" in it || ("not found" in it && "copilot" in it) }
             val isAuthError = isAuthenticationError(diag)
             when {
                 isCLINotFound -> {
-                    val cmd = if (isWindows) "winget install GitHub.Copilot" else "npm install -g @anthropic-ai/copilot-cli"
+                    val cmd =
+                        if (isWindows) "winget install GitHub.Copilot" else "npm install -g @anthropic-ai/copilot-cli"
                     text.text = "<html><b>Copilot CLI is not installed</b> — install with: <tt>$cmd</tt></html>"
                     installButton.isVisible = true
                     signInButton.isVisible = false
                 }
+
                 isAuthError -> {
-                    text.text = "<html><b>Not signed in to Copilot</b> — click Sign In or run <tt>copilot auth login</tt> in a terminal, then click Retry.</html>"
+                    text.text =
+                        "<html><b>Not signed in to Copilot</b> — click Sign In or run <tt>copilot auth login</tt> in a terminal, then click Retry.</html>"
                     installButton.isVisible = false
                     signInButton.isVisible = true
                 }
+
                 else -> {
                     text.text = "<html><b>Copilot CLI unavailable</b> — $diag</html>"
                     installButton.isVisible = false
@@ -444,8 +453,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         retryButton.addActionListener { runCheck() }
 
         banner.addAncestorListener(object : javax.swing.event.AncestorListener {
-            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) { runCheck() }
-            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) { scheduledFuture?.cancel(false) }
+            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) {
+                runCheck()
+            }
+
+            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) {
+                scheduledFuture?.cancel(false)
+            }
+
             override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
         })
 
@@ -514,12 +529,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val isNotInstalled = "not installed" in diag.lowercase()
             when {
                 isNotInstalled -> {
-                    text.text = "<html><b>GitHub CLI (gh) is not installed</b> — needed for billing info. Install from <tt>cli.github.com</tt>.</html>"
+                    text.text =
+                        "<html><b>GitHub CLI (gh) is not installed</b> — needed for billing info. Install from <tt>cli.github.com</tt>.</html>"
                     installButton.isVisible = true
                     signInButton.isVisible = false
                 }
+
                 else -> {
-                    text.text = "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In or run <tt>gh auth login</tt>.</html>"
+                    text.text =
+                        "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In or run <tt>gh auth login</tt>.</html>"
                     installButton.isVisible = false
                     signInButton.isVisible = true
                 }
@@ -571,8 +589,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         retryButton.addActionListener { runCheck() }
 
         banner.addAncestorListener(object : javax.swing.event.AncestorListener {
-            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) { runCheck() }
-            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) { scheduledFuture?.cancel(false) }
+            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) {
+                runCheck()
+            }
+
+            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) {
+                scheduledFuture?.cancel(false)
+            }
+
             override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
         })
 
@@ -1374,7 +1398,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     /** Load the bundled default MCP instructions from plugin resources. */
     private fun loadDefaultMcpInstructions(): String {
-        val stream = javaClass.getResourceAsStream("/default-mcp-instructions.md")
+        val stream = javaClass.getResourceAsStream("/default-startup-instructions.md")
         return stream?.bufferedReader()?.use { it.readText() }
             ?: "You are running inside an IntelliJ IDEA plugin with IDE tools."
     }

@@ -183,7 +183,7 @@ public class McpServer {
      * Load the bundled default instructions from the classpath resource.
      */
     static String loadDefaultInstructions() {
-        try (InputStream is = McpServer.class.getResourceAsStream("/default-mcp-instructions.md")) {
+        try (InputStream is = McpServer.class.getResourceAsStream("/default-startup-instructions.md")) {
             if (is != null) {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8);
             }

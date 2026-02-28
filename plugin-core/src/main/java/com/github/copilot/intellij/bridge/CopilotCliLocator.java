@@ -24,7 +24,8 @@ final class CopilotCliLocator {
     private static final String MCP_SERVER_ERROR = "MCP Server Error";
     private static final Gson gson = new Gson();
 
-    private CopilotCliLocator() {}
+    private CopilotCliLocator() {
+    }
 
     static String findCopilotCli() throws CopilotException {
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
