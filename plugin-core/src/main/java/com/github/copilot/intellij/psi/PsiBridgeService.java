@@ -3,6 +3,7 @@ package com.github.copilot.intellij.psi;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.Disposable;
@@ -24,8 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
-
-import com.google.gson.JsonElement;
 
 /**
  * Lightweight HTTP bridge exposing IntelliJ PSI/AST analysis to the MCP server.

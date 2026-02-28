@@ -169,6 +169,9 @@ class FileTools extends AbstractToolHandler {
         boolean autoFormat = !args.has("auto_format") || args.get("auto_format").getAsBoolean();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        // [0] = 1-based line to scroll to after the write; -1 = don't scroll.
+        // Set on EDT before completing resultFuture, read after get() (happens-before).
+        int[] followLine = {-1};
 
         EdtUtil.invokeLater(() -> {
             try {
@@ -177,10 +180,12 @@ class FileTools extends AbstractToolHandler {
                 if (args.has(PARAM_CONTENT)) {
                     writeFileFullContent(vf, pathStr, args.get(PARAM_CONTENT).getAsString(),
                         autoFormat, resultFuture);
+                    followLine[0] = 1;
                 } else if (args.has("old_str") && args.has(PARAM_NEW_STR)) {
                     writeFilePartialEdit(vf, pathStr, args.get("old_str").getAsString(),
-                        args.get(PARAM_NEW_STR).getAsString(), autoFormat, resultFuture);
+                        args.get(PARAM_NEW_STR).getAsString(), autoFormat, resultFuture, followLine);
                 } else if (args.has(PARAM_START_LINE) && args.has(PARAM_NEW_STR)) {
+                    followLine[0] = args.get(PARAM_START_LINE).getAsInt();
                     writeFileLineRange(vf, pathStr, args, autoFormat, resultFuture);
                 } else {
                     resultFuture.complete("write_file requires either 'content' (full write), " +
@@ -192,9 +197,7 @@ class FileTools extends AbstractToolHandler {
         });
 
         String result = resultFuture.get(15, TimeUnit.SECONDS);
-
-        int line = args.has(PARAM_START_LINE) ? args.get(PARAM_START_LINE).getAsInt() : -1;
-        followFileIfEnabled(pathStr, line);
+        followFileIfEnabled(pathStr, followLine[0]);
         return result;
     }
 
@@ -251,7 +254,8 @@ class FileTools extends AbstractToolHandler {
     }
 
     private void writeFilePartialEdit(VirtualFile vf, String pathStr, String oldStr, String newStr,
-                                      boolean autoFormat, CompletableFuture<String> resultFuture) {
+                                      boolean autoFormat, CompletableFuture<String> resultFuture,
+                                      int[] followLine) {
         if (vf == null) {
             resultFuture.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
             return;
@@ -295,6 +299,7 @@ class FileTools extends AbstractToolHandler {
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
         if (autoFormat && syntaxWarning.isEmpty()) pendingAutoFormat.add(pathStr);
+        followLine[0] = doc.getLineNumber(finalIdx) + 1;
         int ctxEnd = Math.min(finalIdx + normalizedNew.length(), doc.getTextLength());
         resultFuture.complete("Edited: " + pathStr + " (replaced " + finalLen + " chars with " + normalizedNew.length() + FORMAT_CHARS_SUFFIX
             + contextLines(doc, finalIdx, ctxEnd) + syntaxWarning);
