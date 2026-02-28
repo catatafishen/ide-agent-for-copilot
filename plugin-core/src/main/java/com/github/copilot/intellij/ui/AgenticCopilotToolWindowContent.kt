@@ -274,7 +274,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val banner = JBPanel<JBPanel<*>>(BorderLayout())
         banner.isVisible = false
         banner.border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)), com.intellij.ui.SideBorder.BOTTOM),
+            com.intellij.ui.SideBorder(
+                JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)),
+                com.intellij.ui.SideBorder.BOTTOM
+            ),
             JBUI.Borders.empty(4, 8)
         )
         banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
@@ -283,37 +286,83 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
         icon.border = JBUI.Borders.emptyRight(6)
 
-        val text = JBLabel("<html><b>IntelliJ code tools unavailable</b> — PSI bridge is not running. " +
-            "Make sure a project is open and the Copilot Bridge plugin is active, then restart IntelliJ.</html>")
+        val text = JBLabel(
+            "<html><b>IntelliJ code tools unavailable</b> — PSI bridge is not running. " +
+                "Make sure a project is open and the Copilot Bridge plugin is active, then restart IntelliJ.</html>"
+        )
         text.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
+
+        val detailsButton = JButton("Details…")
+        detailsButton.border = JBUI.Borders.emptyLeft(8)
+        detailsButton.isOpaque = false
+        detailsButton.isBorderPainted = false
+        detailsButton.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
+        detailsButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        detailsButton.toolTipText = "Show diagnostic information"
 
         val content = JBPanel<JBPanel<*>>(BorderLayout())
         content.isOpaque = false
         content.add(icon, BorderLayout.WEST)
         content.add(text, BorderLayout.CENTER)
+        content.add(detailsButton, BorderLayout.EAST)
         banner.add(content, BorderLayout.CENTER)
+
+        // Check PSI bridge in background; attach diagnostics to button if unavailable
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val diag = psiBridgeDiagnostics()
+            SwingUtilities.invokeLater {
+                banner.isVisible = diag != null
+                if (diag != null) {
+                    detailsButton.addActionListener {
+                        com.intellij.openapi.ui.Messages.showMessageDialog(
+                            project, diag,
+                            "PSI Bridge Diagnostics",
+                            com.intellij.openapi.ui.Messages.getWarningIcon()
+                        )
+                    }
+                }
+            }
+        }
+
         return banner
     }
 
     /**
-     * Returns true if the PSI bridge HTTP server is reachable.
-     * Reads ~/.copilot/psi-bridge.json and pings the /health endpoint.
+     * Checks PSI bridge availability. Returns a multi-line diagnostic string on failure, or null if healthy.
      * Safe to call on a background thread.
      */
-    private fun isPsiBridgeAvailable(): Boolean {
+    private fun psiBridgeDiagnostics(): String? {
+        val bridgeFile = java.nio.file.Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json")
+        if (!java.nio.file.Files.exists(bridgeFile)) {
+            return "PSI bridge file not found.\n\n" +
+                "Expected: ${bridgeFile.toAbsolutePath()}\n\n" +
+                "This file is written by the plugin when a project opens.\nPossible causes:\n" +
+                "  • No project is open (open a project, not the Welcome Screen)\n" +
+                "  • The plugin failed to initialize — check Help → Show Log for errors\n" +
+                "  • Write permission denied on ~/.copilot/"
+        }
         return try {
-            val bridgeFile = java.nio.file.Path.of(System.getProperty("user.home"), ".copilot", "psi-bridge.json")
-            if (!java.nio.file.Files.exists(bridgeFile)) return false
-            val json = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(bridgeFile)).asJsonObject
-            val port = json.get("port")?.asInt ?: return false
+            val content = java.nio.file.Files.readString(bridgeFile)
+            val json = com.google.gson.JsonParser.parseString(content).asJsonObject
+            val port = json.get("port")?.asInt
+                ?: return "PSI bridge file found but has no 'port' field.\n\nFile content:\n$content"
+            val bridgeProject = json.get("projectPath")?.asString ?: "(unknown)"
             val url = java.net.URI.create("http://127.0.0.1:$port/health").toURL()
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 1500
             conn.readTimeout = 1500
             conn.requestMethod = "GET"
-            conn.responseCode == 200
-        } catch (_: Exception) {
-            false
+            val code = try {
+                conn.responseCode
+            } catch (e: Exception) {
+                return "PSI bridge file found (port $port, project: $bridgeProject)\n" +
+                    "but the HTTP server is not responding.\n\n" +
+                    "Connection error: ${e.javaClass.simpleName}: ${e.message}\n\n" +
+                    "The bridge may have crashed. Check Help → Show Log,\nthen close and reopen the project."
+            }
+            if (code == 200) null else "PSI bridge returned HTTP $code from /health (port $port)."
+        } catch (e: Exception) {
+            "Failed to read PSI bridge file:\n${e.javaClass.simpleName}: ${e.message}\n\nFile: $bridgeFile"
         }
     }
 
@@ -343,12 +392,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         northStack.add(authPanel)
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
-
-        // Check PSI bridge in background and show/hide the banner
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val available = isPsiBridgeAvailable()
-            SwingUtilities.invokeLater { psiBridgeBanner.isVisible = !available }
-        }
 
         // Input row (bottom of splitter — resizable)
         val inputRow = createInputRow()

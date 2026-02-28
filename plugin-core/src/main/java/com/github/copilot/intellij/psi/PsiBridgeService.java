@@ -112,15 +112,36 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("PSI Bridge started on port " + port + " for project: " + project.getBasePath());
         } catch (Exception e) {
             LOG.error("Failed to start PSI Bridge", e);
-            com.intellij.notification.NotificationGroupManager.getInstance()
-                .getNotificationGroup("Copilot Notifications")
-                .createNotification(
-                    "Copilot Bridge: PSI bridge failed to start",
-                    "IntelliJ code tools will be unavailable. Check the IDE log (Help → Show Log) for details.\n" +
-                        "Error: " + e.getMessage(),
-                    com.intellij.notification.NotificationType.ERROR)
-                .notify(project);
+            String detail = buildExceptionDetail(e);
+            com.intellij.notification.Notification notification =
+                com.intellij.notification.NotificationGroupManager.getInstance()
+                    .getNotificationGroup("Copilot Notifications")
+                    .createNotification(
+                        "Copilot Bridge: PSI bridge failed to start",
+                        "IntelliJ code tools will be unavailable.\n" + detail,
+                        com.intellij.notification.NotificationType.ERROR);
+            notification.addAction(com.intellij.notification.NotificationAction.createSimple(
+                "Open IDE Log", () -> com.intellij.ide.actions.RevealFileAction.openFile(
+                    new java.io.File(com.intellij.openapi.application.PathManager.getLogPath(), "idea.log"))));
+            notification.notify(project);
         }
+    }
+
+    /** Builds a concise but informative error summary from an exception chain. */
+    private static String buildExceptionDetail(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        Throwable cause = t;
+        int depth = 0;
+        while (cause != null && depth < 4) {
+            if (depth > 0) sb.append("\nCaused by: ");
+            String name = cause.getClass().getSimpleName();
+            String msg = cause.getMessage();
+            sb.append(name);
+            if (msg != null && !msg.isBlank()) sb.append(": ").append(msg);
+            cause = cause.getCause();
+            depth++;
+        }
+        return sb.toString();
     }
 
     private void writeBridgeFile() {
