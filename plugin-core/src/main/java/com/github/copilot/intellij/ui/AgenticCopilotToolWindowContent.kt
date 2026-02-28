@@ -712,7 +712,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
         // Left toolbar — grouped logically:
-        // [Send] | [Attach File, Attach Selection] | [Model, Mode] | [Follow, Format, Build, Test, Commit] | [Project Files ▾] | [Export, Help] | [Restart ▾, Settings]
+        // [Send/Stop] | [Attach File, Attach Selection] | [Model, Mode] | [Follow Agent] | [Project Files ▾] | [Restart ▾] | [Export, Permissions, Help]
         val leftGroup = DefaultActionGroup()
         leftGroup.add(SendStopAction())
         leftGroup.addSeparator()
@@ -723,18 +723,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.add(ModeSelectorAction())
         leftGroup.addSeparator()
         leftGroup.add(FollowAgentFilesToggleAction())
-        leftGroup.add(FormatAfterEditToggleAction())
-        leftGroup.add(BuildBeforeEndToggleAction())
-        leftGroup.add(TestBeforeEndToggleAction())
-        leftGroup.add(CommitBeforeEndToggleAction())
         leftGroup.addSeparator()
         leftGroup.add(ProjectFilesDropdownAction())
         leftGroup.addSeparator()
-        leftGroup.add(CopyConversationAction())
-        leftGroup.add(HelpAction(project))
-        leftGroup.addSeparator()
         leftGroup.add(RestartSessionGroup())
+        leftGroup.addSeparator()
+        leftGroup.add(CopyConversationAction())
         leftGroup.add(SettingsAction())
+        leftGroup.add(HelpAction(project))
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -1049,66 +1045,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             CopilotSettings.setFollowAgentFiles(state)
         }
 
-    }
-
-    private inner class FormatAfterEditToggleAction : ToggleAction(
-        "Agent: auto-format after edits", "Instruct the agent to auto-format code after editing files",
-        com.intellij.icons.AllIcons.Actions.ReformatCode
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return CopilotSettings.getFormatAfterEdit()
-        }
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            CopilotSettings.setFormatAfterEdit(state)
-        }
-    }
-
-    private inner class BuildBeforeEndToggleAction : ToggleAction(
-        "Agent: build before completing", "Instruct the agent to build the project before completing its turn",
-        com.intellij.icons.AllIcons.Actions.Compile
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return CopilotSettings.getBuildBeforeEnd()
-        }
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            CopilotSettings.setBuildBeforeEnd(state)
-        }
-    }
-
-    private inner class TestBeforeEndToggleAction : ToggleAction(
-        "Agent: run tests before completing", "Instruct the agent to run tests before completing its turn",
-        com.intellij.icons.AllIcons.Nodes.Test
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return CopilotSettings.getTestBeforeEnd()
-        }
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            CopilotSettings.setTestBeforeEnd(state)
-        }
-    }
-
-    private inner class CommitBeforeEndToggleAction : ToggleAction(
-        "Agent: auto-commit before completing", "Instruct the agent to auto-commit changes before completing its turn",
-        com.intellij.icons.AllIcons.Actions.Commit
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return CopilotSettings.getCommitBeforeEnd()
-        }
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            CopilotSettings.setCommitBeforeEnd(state)
-        }
     }
 
     // HelpAction extracted to HelpDialog.kt
@@ -1525,11 +1461,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             effective = "[[PLAN]] $effective"
         }
 
-        val toggleSuffix = buildToggleSuffix()
-        if (toggleSuffix.isNotEmpty()) {
-            effective = "$effective\n\n$toggleSuffix"
-        }
-
         if (!conversationSummaryInjected) {
             conversationSummaryInjected = true
             val summary = consolePanel.getCompressedSummary()
@@ -1642,16 +1573,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         return references
-    }
-
-    /** Build a suffix telling the agent which completion-step toggles are enabled. */
-    private fun buildToggleSuffix(): String {
-        val steps = mutableListOf<String>()
-        if (CopilotSettings.getBuildBeforeEnd()) steps.add("build the project (build_project)")
-        if (CopilotSettings.getTestBeforeEnd()) steps.add("run tests (run_tests)")
-        if (CopilotSettings.getCommitBeforeEnd()) steps.add("commit your changes (git_stage + git_commit)")
-        if (steps.isEmpty()) return ""
-        return "Before completing your turn, you MUST: ${steps.joinToString(", ")}."
     }
 
     /** Send a quick-reply as if the user typed it. Called from the JS bridge on EDT. */
