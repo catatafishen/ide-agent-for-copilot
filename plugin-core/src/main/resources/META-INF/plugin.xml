@@ -60,21 +60,21 @@
                 secondary="false"
                 anchor="right"
                 icon="/icons/copilot.svg"
-                factoryClass="com.github.copilot.intellij.ui.AgenticCopilotToolWindowFactory"/>
+                factoryClass="com.github.catatafishen.ideagentforcopilot.ui.AgenticCopilotToolWindowFactory"/>
 
     <!-- Application Services -->
     <applicationService
-      serviceImplementation="com.github.copilot.intellij.services.AgenticCopilotService"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgenticCopilotService"/>
     <applicationService
-      serviceImplementation="com.github.copilot.intellij.services.CopilotService"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.CopilotService"/>
 
     <!-- Project Services -->
     <projectService
-      serviceImplementation="com.github.copilot.intellij.psi.PsiBridgeService"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
 
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity
-      implementation="com.github.copilot.intellij.psi.PsiBridgeStartup"/>
+      implementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeStartup"/>
 
     <!-- Notification Group for Copilot status messages -->
     <notificationGroup id="Copilot Notifications" displayType="STICKY_BALLOON"/>

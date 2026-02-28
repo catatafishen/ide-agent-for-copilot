@@ -2,7 +2,7 @@
 
 > **Version:** 0.2.0-BETA  
 > **Platform:** IntelliJ IDEA 2025.1+ (compatible through 2025.3)  
-> **Plugin ID:** `com.github.copilot.intellij`
+> **Plugin ID:** `com.github.catatafishen.ideagentforcopilot`
 
 ---
 

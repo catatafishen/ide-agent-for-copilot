@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-  <!-- ⚡ Lightning bolt -->
   <path d="M10.5 0 L5.5 7.5 L9 7.5 L5.5 16 L12.5 6.5 L8.5 6.5 Z" fill="#6C707E"/>
-  <!-- Feature nodes -->
   <circle cx="1.5" cy="1.5" r="1.5" fill="#6C707E"/>
-  <circle cx="1.5" cy="8" r="1.5" fill="#6C707E"/>
   <circle cx="1.5" cy="14.5" r="1.5" fill="#6C707E"/>
-  <!-- Connections from nodes to bolt -->
-  <path d="M3 1.5 C4.2 1.5, 5 3, 5.8 4.8" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" fill="none"/>
-  <path d="M3 8 L5.5 8" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" fill="none"/>
-  <path d="M3 14.5 C4.2 14.5, 5 13, 5.8 11.2" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" fill="none"/>
+  <circle cx="14.5" cy="1.5" r="1.5" fill="#6C707E"/>
+  <circle cx="14.5" cy="14.5" r="1.5" fill="#6C707E"/>
+  <polyline points="1.5,1.5 1.5,5.5 5.8,5.5" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="1.5,14.5 1.5,10.5 5.8,10.5" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="14.5,1.5 14.5,5.5 10.5,5.5" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="14.5,14.5 14.5,10.5 10.5,10.5" stroke="#6C707E" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

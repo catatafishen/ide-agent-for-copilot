@@ -200,7 +200,7 @@ This runs inside a single undoable command group on the EDT.
 Add to `Help > Diagnostic Tools > Debug Log Settings`:
 
 ```
-#com.github.copilot.intellij
+#com.github.catatafishen.ideagentforcopilot
 ```
 
 ### Log Locations

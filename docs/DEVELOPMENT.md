@@ -151,7 +151,7 @@ intellij-copilot-plugin/
 
 ```java
 // plugin-core/src/main/java/com/github/copilot/intellij/ui/NewTab.java
-package com.github.copilot.intellij.ui;
+package com.github.catatafishen.ideagentforcopilot.ui;
 
 import com.intellij.ui.components.JBPanel;
 
@@ -178,7 +178,7 @@ tabbedPane.addTab("New Tab",new NewTab());
 
 ```java
 // plugin-core/src/main/java/com/github/copilot/intellij/services/PreferenceService.java
-package com.github.copilot.intellij.services;
+package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.project.Project;
@@ -204,7 +204,7 @@ Register in `plugin.xml`:
 ```xml
 <extensions defaultExtensionNs="com.intellij">
   <projectService 
-      serviceImplementation="com.github.copilot.intellij.services.PreferenceService"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.PreferenceService"/>
 </extensions>
 ```
 
@@ -214,7 +214,7 @@ Register in `plugin.xml`:
 
 ```java
 // plugin-core/src/main/java/com/github/copilot/intellij/actions/InvokeAgentAction.java
-package com.github.copilot.intellij.actions;
+package com.github.catatafishen.ideagentforcopilot.actions;
 
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -234,7 +234,7 @@ Register in `plugin.xml`:
 
 <actions>
     <action id="AgenticCopilot.Invoke"
-            class="com.github.copilot.intellij.actions.InvokeAgentAction"
+            class="com.github.catatafishen.ideagentforcopilot.actions.InvokeAgentAction"
             text="Invoke Copilot Agent"
             description="Open Copilot Agent with current selection">
         <add-to-group group-id="EditorPopupMenu" anchor="first"/>
@@ -257,7 +257,7 @@ Register in `plugin.xml`:
 ./gradlew :plugin-core:test
 
 # Specific test class
-./gradlew test --tests "com.github.copilot.intellij.SomeTest"
+./gradlew test --tests "com.github.catatafishen.ideagentforcopilot.SomeTest"
 
 # With coverage
 ./gradlew test jacocoTestReport
@@ -269,7 +269,7 @@ Register in `plugin.xml`:
 **Unit Test Example**:
 
 ```java
-package com.github.copilot.intellij.bridge;
+package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import org.junit.jupiter.api.Test;
 
@@ -287,7 +287,7 @@ class CopilotAcpClientTest {
 **Integration Test Example**:
 
 ```java
-package com.github.copilot.intellij;
+package com.github.catatafishen.ideagentforcopilot;
 
 import org.junit.jupiter.api.*;
 

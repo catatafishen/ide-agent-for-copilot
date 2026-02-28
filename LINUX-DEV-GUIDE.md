@@ -84,7 +84,7 @@ unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 In the sandbox IDE:
 
 1. **Help → Diagnostic Tools → Debug Log Settings**
-2. Add: `#com.github.copilot.intellij`
+2. Add: `#com.github.catatafishen.ideagentforcopilot`
 
 ### Log Locations
 
