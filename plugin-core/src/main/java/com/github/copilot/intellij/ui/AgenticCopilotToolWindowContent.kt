@@ -1006,10 +1006,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             CopilotSettings.setFollowAgentFiles(state)
         }
 
-        override fun update(e: AnActionEvent) {
-            super.update(e)
-            e.presentation.isEnabled = !isSending
-        }
     }
 
     private inner class FormatAfterEditToggleAction : ToggleAction(
