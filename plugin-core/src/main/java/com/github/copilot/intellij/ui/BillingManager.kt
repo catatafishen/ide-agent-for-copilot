@@ -138,7 +138,7 @@ internal class BillingManager {
         }
     }
 
-    private fun isGhAuthenticated(ghCli: String): Boolean {
+    internal fun isGhAuthenticated(ghCli: String): Boolean {
         val process = ProcessBuilder(ghCli, "auth", "status").redirectErrorStream(true).start()
         val authOutput = process.inputStream.bufferedReader().readText()
         process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -326,7 +326,7 @@ internal class BillingManager {
     /**
      * Finds the gh CLI executable, checking PATH and known install locations.
      */
-    private fun findGhCli(): String? {
+    internal fun findGhCli(): String? {
         // Check PATH using platform-appropriate command
         try {
             val cmd = if (System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")) "where" else "which"

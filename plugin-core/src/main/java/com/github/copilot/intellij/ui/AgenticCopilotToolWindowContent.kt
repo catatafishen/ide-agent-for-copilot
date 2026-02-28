@@ -269,6 +269,316 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
+    /**
+     * Launches the GH CLI auth flow in a new terminal window.
+     */
+    private fun startGhLogin() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
+                if (isWindows) {
+                    ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "gh auth login").start()
+                } else {
+                    ProcessBuilder("sh", "-c", "x-terminal-emulator -e 'gh auth login' || gnome-terminal -- gh auth login || xterm -e gh auth login").start()
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    Messages.showErrorDialog(
+                        project,
+                        "Could not open a terminal automatically.\n\nRun 'gh auth login' in your terminal manually, then click Retry.",
+                        "GitHub CLI Authentication"
+                    )
+                }
+            }
+        }
+    }
+
+    /** Checks Copilot CLI installation and auth. Returns null if healthy, error message otherwise. Safe to call on background. */
+    private fun copilotSetupDiagnostics(): String? {
+        return try {
+            CopilotService.getInstance(project).getClient().listModels()
+            null
+        } catch (e: Exception) {
+            e.message ?: "Failed to connect to Copilot CLI"
+        }
+    }
+
+    /** Checks GH CLI installation and auth. Returns null if healthy, error message otherwise. Safe to call on background. */
+    private fun ghSetupDiagnostics(): String? {
+        val ghCli = billing.findGhCli()
+            ?: return "GitHub CLI (gh) is not installed — it is used to display billing and usage information."
+        return if (!billing.isGhAuthenticated(ghCli))
+            "Not authenticated with GitHub CLI (gh) — run 'gh auth login' in a terminal."
+        else null
+    }
+
+    /** Creates a banner for Copilot CLI setup issues (not installed / not authenticated). Polls independently. onFixed called when healthy. */
+    private fun createCopilotSetupBanner(onFixed: () -> Unit): JBPanel<JBPanel<*>> {
+        val banner = JBPanel<JBPanel<*>>(BorderLayout())
+        banner.isVisible = false
+        banner.border = JBUI.Borders.compound(
+            com.intellij.ui.SideBorder(
+                JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)),
+                com.intellij.ui.SideBorder.BOTTOM
+            ),
+            JBUI.Borders.empty(4, 8)
+        )
+        banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
+        banner.isOpaque = true
+
+        val fgColor = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
+
+        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
+        icon.border = JBUI.Borders.emptyRight(6)
+
+        val text = JBLabel()
+        text.foreground = fgColor
+
+        val installButton = JButton("Install…")
+        installButton.isOpaque = false
+        installButton.isBorderPainted = false
+        installButton.foreground = fgColor
+        installButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        installButton.isVisible = false
+        installButton.addActionListener {
+            val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
+            val url = if (isWindows) "https://github.com/github/copilot-cli#installation"
+            else "https://github.com/github/copilot-cli#installation"
+            com.intellij.ide.BrowserUtil.browse(url)
+        }
+
+        val signInButton = JButton("Sign In")
+        signInButton.isOpaque = false
+        signInButton.isBorderPainted = false
+        signInButton.foreground = fgColor
+        signInButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        signInButton.isVisible = false
+        signInButton.addActionListener { startCopilotLogin() }
+
+        val retryButton = JButton("Retry")
+        retryButton.isOpaque = false
+        retryButton.isBorderPainted = false
+        retryButton.foreground = fgColor
+        retryButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        retryButton.toolTipText = "Re-check Copilot CLI status"
+
+        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 0, 0))
+        buttons.isOpaque = false
+        buttons.add(installButton)
+        buttons.add(signInButton)
+        buttons.add(retryButton)
+
+        val content = JBPanel<JBPanel<*>>(BorderLayout())
+        content.isOpaque = false
+        content.add(icon, BorderLayout.WEST)
+        content.add(text, BorderLayout.CENTER)
+        content.add(buttons, BorderLayout.EAST)
+        banner.add(content, BorderLayout.CENTER)
+
+        fun updateForDiag(diag: String) {
+            val isWindows = System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")
+            val isCLINotFound = diag.lowercase().let { "copilot cli not found" in it || ("not found" in it && "copilot" in it) }
+            val isAuthError = isAuthenticationError(diag)
+            when {
+                isCLINotFound -> {
+                    val cmd = if (isWindows) "winget install GitHub.Copilot" else "npm install -g @anthropic-ai/copilot-cli"
+                    text.text = "<html><b>Copilot CLI is not installed</b> — install with: <tt>$cmd</tt></html>"
+                    installButton.isVisible = true
+                    signInButton.isVisible = false
+                }
+                isAuthError -> {
+                    text.text = "<html><b>Not signed in to Copilot</b> — click Sign In or run <tt>copilot auth login</tt> in a terminal, then click Retry.</html>"
+                    installButton.isVisible = false
+                    signInButton.isVisible = true
+                }
+                else -> {
+                    text.text = "<html><b>Copilot CLI unavailable</b> — $diag</html>"
+                    installButton.isVisible = false
+                    signInButton.isVisible = false
+                }
+            }
+        }
+
+        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "copilot-setup-poll").also { it.isDaemon = true }
+        }
+        var scheduledFuture: java.util.concurrent.ScheduledFuture<*>? = null
+        var wasDown = false
+
+        fun scheduleNext(currentlyDown: Boolean) {
+            val delay = if (currentlyDown) 30L else 60L
+            scheduledFuture = scheduler.schedule(
+                {
+                    val diag = copilotSetupDiagnostics()
+                    SwingUtilities.invokeLater {
+                        val nowDown = diag != null
+                        if (nowDown) updateForDiag(diag!!)
+                        banner.isVisible = nowDown
+                        retryButton.isEnabled = true
+                        if (wasDown && !nowDown) onFixed()
+                        wasDown = nowDown
+                    }
+                    scheduleNext(diag != null)
+                },
+                delay, java.util.concurrent.TimeUnit.SECONDS
+            )
+        }
+
+        fun runCheck() {
+            scheduledFuture?.cancel(false)
+            retryButton.isEnabled = false
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val diag = copilotSetupDiagnostics()
+                SwingUtilities.invokeLater {
+                    val nowDown = diag != null
+                    if (nowDown) updateForDiag(diag!!)
+                    banner.isVisible = nowDown
+                    retryButton.isEnabled = true
+                    if (wasDown && !nowDown) onFixed()
+                    wasDown = nowDown
+                }
+                scheduleNext(diag != null)
+            }
+        }
+
+        retryButton.addActionListener { runCheck() }
+
+        banner.addAncestorListener(object : javax.swing.event.AncestorListener {
+            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) { runCheck() }
+            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) { scheduledFuture?.cancel(false) }
+            override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
+        })
+
+        return banner
+    }
+
+    /** Creates a banner for GH CLI setup issues (not installed / not authenticated). Polls independently. onFixed called when healthy. */
+    private fun createGhSetupBanner(onFixed: () -> Unit): JBPanel<JBPanel<*>> {
+        val banner = JBPanel<JBPanel<*>>(BorderLayout())
+        banner.isVisible = false
+        banner.border = JBUI.Borders.compound(
+            com.intellij.ui.SideBorder(
+                JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)),
+                com.intellij.ui.SideBorder.BOTTOM
+            ),
+            JBUI.Borders.empty(4, 8)
+        )
+        banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
+        banner.isOpaque = true
+
+        val fgColor = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
+
+        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
+        icon.border = JBUI.Borders.emptyRight(6)
+
+        val text = JBLabel()
+        text.foreground = fgColor
+
+        val installButton = JButton("Install…")
+        installButton.isOpaque = false
+        installButton.isBorderPainted = false
+        installButton.foreground = fgColor
+        installButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        installButton.isVisible = false
+        installButton.addActionListener { com.intellij.ide.BrowserUtil.browse("https://cli.github.com") }
+
+        val signInButton = JButton("Sign In")
+        signInButton.isOpaque = false
+        signInButton.isBorderPainted = false
+        signInButton.foreground = fgColor
+        signInButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        signInButton.isVisible = false
+        signInButton.addActionListener { startGhLogin() }
+
+        val retryButton = JButton("Retry")
+        retryButton.isOpaque = false
+        retryButton.isBorderPainted = false
+        retryButton.foreground = fgColor
+        retryButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        retryButton.toolTipText = "Re-check GitHub CLI status"
+
+        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 0, 0))
+        buttons.isOpaque = false
+        buttons.add(installButton)
+        buttons.add(signInButton)
+        buttons.add(retryButton)
+
+        val content = JBPanel<JBPanel<*>>(BorderLayout())
+        content.isOpaque = false
+        content.add(icon, BorderLayout.WEST)
+        content.add(text, BorderLayout.CENTER)
+        content.add(buttons, BorderLayout.EAST)
+        banner.add(content, BorderLayout.CENTER)
+
+        fun updateForDiag(diag: String) {
+            val isNotInstalled = "not installed" in diag.lowercase()
+            when {
+                isNotInstalled -> {
+                    text.text = "<html><b>GitHub CLI (gh) is not installed</b> — needed for billing info. Install from <tt>cli.github.com</tt>.</html>"
+                    installButton.isVisible = true
+                    signInButton.isVisible = false
+                }
+                else -> {
+                    text.text = "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In or run <tt>gh auth login</tt>.</html>"
+                    installButton.isVisible = false
+                    signInButton.isVisible = true
+                }
+            }
+        }
+
+        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "gh-setup-poll").also { it.isDaemon = true }
+        }
+        var scheduledFuture: java.util.concurrent.ScheduledFuture<*>? = null
+        var wasDown = false
+
+        fun scheduleNext(currentlyDown: Boolean) {
+            val delay = if (currentlyDown) 30L else 120L
+            scheduledFuture = scheduler.schedule(
+                {
+                    val diag = ghSetupDiagnostics()
+                    SwingUtilities.invokeLater {
+                        val nowDown = diag != null
+                        if (nowDown) updateForDiag(diag!!)
+                        banner.isVisible = nowDown
+                        retryButton.isEnabled = true
+                        if (wasDown && !nowDown) onFixed()
+                        wasDown = nowDown
+                    }
+                    scheduleNext(diag != null)
+                },
+                delay, java.util.concurrent.TimeUnit.SECONDS
+            )
+        }
+
+        fun runCheck() {
+            scheduledFuture?.cancel(false)
+            retryButton.isEnabled = false
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val diag = ghSetupDiagnostics()
+                SwingUtilities.invokeLater {
+                    val nowDown = diag != null
+                    if (nowDown) updateForDiag(diag!!)
+                    banner.isVisible = nowDown
+                    retryButton.isEnabled = true
+                    if (wasDown && !nowDown) onFixed()
+                    wasDown = nowDown
+                }
+                scheduleNext(diag != null)
+            }
+        }
+
+        retryButton.addActionListener { runCheck() }
+
+        banner.addAncestorListener(object : javax.swing.event.AncestorListener {
+            override fun ancestorAdded(e: javax.swing.event.AncestorEvent) { runCheck() }
+            override fun ancestorRemoved(e: javax.swing.event.AncestorEvent) { scheduledFuture?.cancel(false) }
+            override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
+        })
+
+        return banner
+    }
+
     /** Creates a warning banner shown when the PSI bridge HTTP server is not reachable. Hidden by default. */
     private fun createPsiBridgeBanner(): JBPanel<JBPanel<*>> {
         val banner = JBPanel<JBPanel<*>>(BorderLayout())
@@ -474,15 +784,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // Auth status panel (shown on error only)
-        val authPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(5), 0))
-        authPanel.isVisible = false
-        authPanel.border = JBUI.Borders.emptyLeft(5)
-        val modelErrorLabel = JBLabel()
-        val loginButton = JButton("Login")
-        val retryButton = JButton("Retry")
-        createAuthButtons(modelErrorLabel, loginButton, retryButton, authPanel)
-
         // PSI bridge status banner (shown when bridge is not reachable)
         val psiBridgeBanner = createPsiBridgeBanner()
 
@@ -494,7 +795,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val northStack = JBPanel<JBPanel<*>>()
         northStack.layout = BoxLayout(northStack, BoxLayout.Y_AXIS)
         northStack.add(psiBridgeBanner)
-        northStack.add(authPanel)
+
+        // Load models
+        fun loadModels() {
+            loadModelsAsync { models -> loadedModels = models }
+        }
+
+        // Setup banners: Copilot CLI / auth, GH CLI / auth
+        northStack.add(createCopilotSetupBanner { loadModels() })
+        northStack.add(createGhSetupBanner { billing.loadBillingData() })
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 
@@ -515,21 +824,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         panel.add(fixedFooter, BorderLayout.SOUTH)
 
         billing.loadBillingData()
-
-        // Load models
-        fun loadModels() {
-            loadModelsAsync(
-                loadingSpinner,
-                modelErrorLabel,
-                loginButton,
-                retryButton,
-                authPanel
-            ) { models ->
-                loadedModels = models
-            }
-        }
-
-        retryButton.addActionListener { loadModels() }
         loadModels()
 
         return panel
@@ -2019,21 +2313,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     // Helper methods to reduce code duplication
-    private fun setLoadingState(
-        spinner: AsyncProcessIcon,
-        loginButton: JButton,
-        retryButton: JButton,
-        authPanel: JPanel
-    ) {
-        SwingUtilities.invokeLater {
-            spinner.isVisible = true
-            authPanel.isVisible = false
-            retryButton.isVisible = false
-            loginButton.isVisible = false
-            modelsStatusText = MSG_LOADING
-            selectedModelIndex = -1
-        }
-    }
 
     private fun isAuthenticationError(message: String): Boolean {
         return message.contains("auth") ||
@@ -2054,100 +2333,38 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         if (models.isNotEmpty()) selectedModelIndex = 0
     }
 
-    private fun showModelError(
-        spinner: AsyncProcessIcon,
-        errorLabel: JBLabel,
-        loginButton: JButton,
-        retryButton: JButton,
-        authPanel: JPanel,
-        errorMsg: String
-    ) {
-        val isAuthError = isAuthenticationError(errorMsg)
-        val isTimeout = errorMsg.contains("timed out") || errorMsg.contains("timeout", ignoreCase = true)
-
+    private fun loadModelsAsync(onSuccess: (List<CopilotAcpClient.Model>) -> Unit) {
         SwingUtilities.invokeLater {
-            spinner.suspend()
-            spinner.isVisible = false
-            modelsStatusText = "Unavailable"
-            errorLabel.text = when {
-                isAuthError -> "⚠️ Not signed in — sign in to get started"
-                isTimeout -> "⚠️ Connection timed out — the Copilot CLI may still be starting"
-                else -> "⚠️ $errorMsg"
-            }
-            loginButton.isVisible = isAuthError
-            retryButton.isVisible = true
-            authPanel.isVisible = true
+            loadingSpinner.isVisible = true
+            modelsStatusText = MSG_LOADING
+            selectedModelIndex = -1
         }
-    }
-
-    private fun loadModelsAsync(
-        spinner: AsyncProcessIcon,
-        errorLabel: JBLabel,
-        loginButton: JButton,
-        retryButton: JButton,
-        authPanel: JPanel,
-        onSuccess: (List<CopilotAcpClient.Model>) -> Unit
-    ) {
-        setLoadingState(spinner, loginButton, retryButton, authPanel)
         ApplicationManager.getApplication().executeOnPooledThread {
             var lastError: Exception? = null
-            val maxRetries = 3
-            val retryDelayMs = 2000L
-
-            for (attempt in 1..maxRetries) {
-                lastError = attemptLoadModels(spinner, authPanel, onSuccess)
-                if (lastError == null) return@executeOnPooledThread
-                if (isAuthenticationError(lastError.message ?: "")) break
-                if (attempt < maxRetries) Thread.sleep(retryDelayMs)
+            for (attempt in 1..3) {
+                try {
+                    val models = CopilotService.getInstance(project).getClient().listModels().toList()
+                    SwingUtilities.invokeLater {
+                        loadingSpinner.isVisible = false
+                        modelsStatusText = null
+                        restoreModelSelection(models)
+                        onSuccess(models)
+                    }
+                    return@executeOnPooledThread
+                } catch (e: Exception) {
+                    lastError = e
+                    if (isAuthenticationError(e.message ?: "")) break
+                    if (attempt < 3) Thread.sleep(2000L)
+                }
             }
-
             val errorMsg = lastError?.message ?: MSG_UNKNOWN_ERROR
-            showModelError(spinner, errorLabel, loginButton, retryButton, authPanel, errorMsg)
-        }
-    }
-
-    private fun attemptLoadModels(
-        spinner: AsyncProcessIcon,
-        authPanel: JPanel,
-        onSuccess: (List<CopilotAcpClient.Model>) -> Unit
-    ): Exception? {
-        return try {
-            val service = CopilotService.getInstance(project)
-            val models = service.getClient().listModels().toList()
+            LOG.warn("Failed to load models: $errorMsg")
             SwingUtilities.invokeLater {
-                spinner.isVisible = false
-                modelsStatusText = null
-                restoreModelSelection(models)
-                authPanel.isVisible = false
-                onSuccess(models)
+                loadingSpinner.suspend()
+                loadingSpinner.isVisible = false
+                modelsStatusText = "Unavailable"
             }
-            null
-        } catch (e: Exception) {
-            e
         }
-    }
-
-    private fun createAuthButtons(
-        errorLabel: JBLabel,
-        loginButton: JButton,
-        retryButton: JButton,
-        authPanel: JPanel
-    ) {
-        errorLabel.foreground = ERROR_COLOR
-        errorLabel.font = JBUI.Fonts.smallFont()
-        authPanel.add(errorLabel)
-
-        loginButton.text = "Sign In"
-        loginButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        loginButton.toolTipText = "Opens GitHub authentication in a terminal or browser"
-        loginButton.isVisible = false
-        loginButton.addActionListener { startCopilotLogin() }
-        authPanel.add(loginButton)
-
-        retryButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        retryButton.toolTipText = "Try connecting to the Copilot CLI again"
-        retryButton.isVisible = false
-        authPanel.add(retryButton)
     }
 
     // Data classes
