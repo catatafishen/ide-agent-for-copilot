@@ -1026,10 +1026,10 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
     }
 
-    /** Toolbar button that opens the plugin settings dialog (General + Permissions tabs). */
+    /** Toolbar button that opens the tool permissions dialog. */
     private inner class SettingsAction : AnAction(
-        "Settings", "Open IDE Agent for Copilot settings",
-        AllIcons.General.Settings
+        "Tool Permissions", "View and configure tool permissions",
+        AllIcons.Actions.ListFiles
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) = debugPanel.openSettings()
@@ -1956,7 +1956,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss"))
             val renamed = src.renameTo(java.io.File(archiveDir, "conversation-$stamp.json"))
             if (!renamed) LOG.debug("Could not archive conversation file")
-        } catch (_: Exception) { /* best-effort */ }
+        } catch (_: Exception) { /* best-effort */
+        }
     }
 
     private fun notifyIfUnfocused(toolCallCount: Int) {

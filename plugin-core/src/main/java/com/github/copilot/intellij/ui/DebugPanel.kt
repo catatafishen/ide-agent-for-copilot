@@ -2,7 +2,6 @@ package com.github.copilot.intellij.ui
 
 import com.github.copilot.intellij.bridge.CopilotAcpClient
 import com.github.copilot.intellij.services.CopilotService
-import com.github.copilot.intellij.services.CopilotSettings
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
@@ -285,79 +284,24 @@ internal class DebugPanel(
         }
     }
 
-    fun createSettingsTab(): Pair<JComponent, () -> Unit> {
-        val panel = JBPanel<JBPanel<*>>(GridBagLayout())
-        panel.border = JBUI.Borders.empty(10)
-
-        val gbc = GridBagConstraints()
-        gbc.gridx = 0
-        gbc.gridy = 0
-        gbc.anchor = GridBagConstraints.WEST
-        gbc.insets = JBUI.insets(5)
-        gbc.fill = GridBagConstraints.HORIZONTAL
-
-        val agentLabel = JBLabel("<html><b>Agent behavior</b></html>")
-        gbc.gridwidth = 2
-        panel.add(agentLabel, gbc)
-
-        gbc.gridy++
-        gbc.gridwidth = 1
-        panel.add(JBLabel("Inactivity timeout (seconds):"), gbc)
-
-        gbc.gridx = 1
-        val timeoutSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getPromptTimeout(), 30, 600, 30))
-        timeoutSpinner.toolTipText =
-            "Stop agent after this many seconds of no activity. Includes model thinking time, so keep generous for complex tasks (default 300s)"
-        panel.add(timeoutSpinner, gbc)
-
-        gbc.gridx = 0
-        gbc.gridy++
-        panel.add(JBLabel("Max tool calls per turn:"), gbc)
-
-        gbc.gridx = 1
-        val toolCallSpinner = JSpinner(SpinnerNumberModel(CopilotSettings.getMaxToolCallsPerTurn(), 0, 500, 10))
-        toolCallSpinner.toolTipText = "Limit tool calls per turn to control credit usage (0 = unlimited)"
-        panel.add(toolCallSpinner, gbc)
-
-        gbc.gridx = 0
-        gbc.gridy++
-        gbc.gridwidth = 2
-        gbc.weighty = 1.0
-        gbc.fill = GridBagConstraints.BOTH
-        panel.add(JBPanel<JBPanel<*>>(), gbc)
-
-        val saveCallback: () -> Unit = {
-            CopilotSettings.setPromptTimeout(timeoutSpinner.value as Int)
-            CopilotSettings.setMaxToolCallsPerTurn(toolCallSpinner.value as Int)
-        }
-
-        return Pair(panel, saveCallback)
-    }
 
     fun openSettings() {
-        val (settingsPanel, saveCallback) = createSettingsTab()
         val permissionsPanel = PermissionsPanel()
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
-                title = "IDE Agent for Copilot Settings"
+                title = "Tool Permissions"
                 setOKButtonText("Apply")
                 init()
             }
 
             override fun createCenterPanel(): JComponent {
-                val tabs = com.intellij.ui.components.JBTabbedPane()
-                val generalWrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                generalWrapper.add(settingsPanel, BorderLayout.CENTER)
-                tabs.addTab("General", generalWrapper)
-                tabs.addTab("Permissions", permissionsPanel.component)
                 val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                wrapper.preferredSize = JBUI.size(700, 580)
-                wrapper.add(tabs, BorderLayout.CENTER)
+                wrapper.preferredSize = JBUI.size(700, 540)
+                wrapper.add(permissionsPanel.component, BorderLayout.CENTER)
                 return wrapper
             }
 
             override fun doOKAction() {
-                saveCallback()
                 permissionsPanel.save()
                 super.doOKAction()
             }
