@@ -611,6 +611,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else "<span style='color:var(--error)'>✖ Failed</span>"
                 val encoded = b64(resultHtml)
                 executeJs("ChatController.updateSubAgent('$did','$status',b64('$encoded'))")
+                // Start a new segment so subsequent entries are appended after the
+                // subagent result element in the DOM, not inside the preceding message.
+                executeJs("ChatController.newSegment('$currentTurnId','main')")
             }
 
             "status" -> {
