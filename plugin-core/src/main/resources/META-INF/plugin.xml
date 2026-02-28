@@ -1,5 +1,5 @@
 <idea-plugin>
-  <id>com.github.copilot.intellij</id>
+  <id>com.github.catatafishen.ideagentforcopilot</id>
   <name>IDE Agent for Copilot</name>
   <vendor email="support@example.com" url="https://github.com/yourusername/intellij-copilot-plugin">
     IDE Agent for Copilot Contributors
@@ -48,7 +48,7 @@
   <depends>com.intellij.modules.platform</depends>
   <depends optional="true" config-file="java-features.xml">com.intellij.modules.java</depends>
   <depends optional="true" config-file="git-features.xml">Git4Idea</depends>
-  <depends optional="true">org.jetbrains.plugins.terminal</depends>
+  <depends optional="true" config-file="terminal-features.xml">org.jetbrains.plugins.terminal</depends>
 
   <!-- Extension points and implementations -->
   <extensions defaultExtensionNs="com.intellij">

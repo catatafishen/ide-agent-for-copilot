@@ -25,7 +25,7 @@ val gitHash: String = try {
 }
 
 allprojects {
-    group = "com.github.copilot.intellij"
+    group = "com.github.catatafishen.ideagentforcopilot"
     version = if (providers.gradleProperty("release").isPresent) baseVersion else "$baseVersion-$gitHash"
 
     repositories {

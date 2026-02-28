@@ -157,7 +157,7 @@ sourceSets {
 
 intellijPlatform {
     pluginConfiguration {
-        id = "com.github.copilot.intellij"
+        id = "com.github.catatafishen.ideagentforcopilot"
         name = "IDE Agent for Copilot"
         version = project.version.toString()
         description = """
