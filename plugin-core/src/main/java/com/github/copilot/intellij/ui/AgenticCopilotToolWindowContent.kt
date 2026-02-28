@@ -712,7 +712,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
         // Left toolbar — grouped logically:
-        // [Send] | [Attach File, Attach Selection] | [Model, Mode] | [Follow, Format, Build, Test, Commit] | [Project Files ▾] | [Export, Help]
+        // [Send] | [Attach File, Attach Selection] | [Model, Mode] | [Follow, Format, Build, Test, Commit] | [Project Files ▾] | [Export, Help] | [Restart ▾, Settings]
         val leftGroup = DefaultActionGroup()
         leftGroup.add(SendStopAction())
         leftGroup.addSeparator()
@@ -732,6 +732,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.addSeparator()
         leftGroup.add(CopyConversationAction())
         leftGroup.add(HelpAction(project))
+        leftGroup.addSeparator()
+        leftGroup.add(RestartSessionGroup())
+        leftGroup.add(SettingsAction())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -990,6 +993,46 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val comp = e.inputEvent?.component ?: return
             popup.component.show(comp, 0, comp.height)
         }
+    }
+
+    /** Dropdown toolbar button with two restart options: keep history or clear everything. */
+    private inner class RestartSessionGroup : DefaultActionGroup(
+        "Restart Session", true
+    ) {
+        init {
+            templatePresentation.icon = AllIcons.Actions.Restart
+            templatePresentation.text = "Restart Session"
+            templatePresentation.description = "Restart the agent session"
+
+            add(object : AnAction(
+                "Restart (keep history)",
+                "Start a new agent session while keeping the conversation visible",
+                AllIcons.Actions.Restart
+            ) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                override fun actionPerformed(e: AnActionEvent) = resetSessionKeepingHistory()
+            })
+
+            add(object : AnAction(
+                "Clear and restart",
+                "Clear the conversation and start a completely fresh session",
+                AllIcons.Actions.GC
+            ) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                override fun actionPerformed(e: AnActionEvent) = resetSession()
+            })
+        }
+
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    }
+
+    /** Toolbar button that opens the plugin settings dialog (General + Permissions tabs). */
+    private inner class SettingsAction : AnAction(
+        "Settings", "Open IDE Agent for Copilot settings",
+        AllIcons.General.Settings
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun actionPerformed(e: AnActionEvent) = debugPanel.openSettings()
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
@@ -2042,6 +2085,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     "Session files and plan details will appear here.\n\nSelect an item in the tree to see details."
             }
         }
+    }
+
+    /** Restart the agent session but keep the conversation history visible in the chat panel. */
+    fun resetSessionKeepingHistory() {
+        currentSessionId = null
+        billing.billingCycleStartUsed = -1
+        if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
+        addTimelineEvent(EventType.SESSION_START, "New session started (history kept)")
+        updateSessionInfo()
     }
 
     private fun restoreModelSelection(models: List<CopilotAcpClient.Model>) {
