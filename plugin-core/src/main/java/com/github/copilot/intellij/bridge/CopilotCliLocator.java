@@ -206,6 +206,13 @@ final class CopilotCliLocator {
             args.add(mcpJarPath);
             args.add(projectBasePath != null ? projectBasePath : System.getProperty(USER_HOME));
             codeTools.add("args", args);
+            // Pass currently-disabled tool IDs so the MCP server filters them from tools/list
+            String disabledTools = CopilotSettings.getDisabledMcpToolIds();
+            if (!disabledTools.isEmpty()) {
+                args.add("--disabled-tools");
+                args.add(disabledTools);
+                LOG.info("MCP disabled tools: " + disabledTools);
+            }
             servers.add("intellij-code-tools", codeTools);
             mcpConfig.add("mcpServers", servers);
 

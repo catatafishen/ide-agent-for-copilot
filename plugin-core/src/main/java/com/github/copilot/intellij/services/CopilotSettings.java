@@ -147,15 +147,46 @@ public final class CopilotSettings {
     private static final String KEY_TOOL_PERM = "copilot.tool.perm.";
     private static final String KEY_TOOL_PERM_IN = "copilot.tool.perm.in.";
     private static final String KEY_TOOL_PERM_OUT = "copilot.tool.perm.out.";
+    private static final String KEY_TOOL_ENABLED = "copilot.tool.enabled.";
 
     /**
-     * Built-in CLI tools default to DENY; everything else defaults to ALLOW.
+     * Built-in CLI tools that have a permission hook default to DENY;
+     * all others (MCP tools) default to ALLOW.
      */
     private static ToolPermission defaultPermissionFor(@NotNull String toolId) {
         return switch (toolId) {
-            case "view", "read", "edit", "create", "grep", "glob", "bash" -> ToolPermission.DENY;
+            case "edit", "create", "execute", "runInTerminal" -> ToolPermission.DENY;
             default -> ToolPermission.ALLOW;
         };
+    }
+
+    /**
+     * MCP tools are enabled by default; built-in tools cannot be disabled.
+     */
+    public static boolean isToolEnabled(@NotNull String toolId) {
+        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
+        if (entry != null && entry.isBuiltIn) return true; // can't disable built-ins
+        return PropertiesComponent.getInstance().getBoolean(KEY_TOOL_ENABLED + toolId, true);
+    }
+
+    public static void setToolEnabled(@NotNull String toolId, boolean enabled) {
+        PropertiesComponent.getInstance().setValue(KEY_TOOL_ENABLED + toolId, enabled, true);
+    }
+
+    /**
+     * Returns a comma-separated list of MCP tool IDs that are currently disabled.
+     * Used to pass --disabled-tools to the MCP server JAR at startup.
+     */
+    @NotNull
+    public static String getDisabledMcpToolIds() {
+        StringBuilder sb = new StringBuilder();
+        for (ToolRegistry.ToolEntry tool : ToolRegistry.getAllTools()) {
+            if (!tool.isBuiltIn && !isToolEnabled(tool.id)) {
+                if (sb.length() > 0) sb.append(',');
+                sb.append(tool.id);
+            }
+        }
+        return sb.toString();
     }
 
     @NotNull

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -40,6 +41,7 @@ public class McpServer {
     private static final Logger LOG = Logger.getLogger(McpServer.class.getName());
     private static final Gson GSON = new GsonBuilder().create();
     private static String projectRoot = ".";
+    private static final Set<String> disabledTools = new java.util.HashSet<>();
 
     private static final Map<String, Pattern> SYMBOL_PATTERNS = new LinkedHashMap<>();
 
@@ -93,6 +95,16 @@ public class McpServer {
     public static void main(String[] args) throws Exception {
         if (args.length > 0) {
             projectRoot = args[0];
+        }
+        // Parse --disabled-tools tool1,tool2,...
+        for (int i = 1; i < args.length - 1; i++) {
+            if ("--disabled-tools".equals(args[i])) {
+                for (String id : args[i + 1].split(",")) {
+                    String trimmed = id.trim();
+                    if (!trimmed.isEmpty()) disabledTools.add(trimmed);
+                }
+                break;
+            }
         }
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
@@ -197,39 +209,45 @@ public class McpServer {
         JsonObject result = new JsonObject();
         JsonArray tools = new JsonArray();
 
-        tools.add(buildTool("search_symbols", "Search Symbols",
+        // Helper: only add tool if it isn't in the disabled set
+        java.util.function.Consumer<JsonObject> addIfEnabled = tool -> {
+            String name = tool.has("name") ? tool.get("name").getAsString() : "";
+            if (!disabledTools.contains(name)) tools.add(tool);
+        };
+
+        addIfEnabled.accept(buildTool("search_symbols", "Search Symbols",
             Map.of(
                 "query", Map.of("type", "string", "description", "Symbol name to search for, or '*' to list all symbols in the project"),
                 "type", Map.of("type", "string", "description", "Optional: filter by type (class, method, field, property). Default: all types", "default", "")
             ),
             List.of("query")));
 
-        tools.add(buildTool("get_file_outline", "Get File Outline",
+        addIfEnabled.accept(buildTool("get_file_outline", "Get File Outline",
             Map.of("path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to outline")),
             List.of("path")));
 
-        tools.add(buildTool("get_class_outline", "Get Class Outline: shows constructors, methods, fields, and inner classes of any class by fully qualified name. Works on project classes, library classes (JARs), and JDK classes. Use this instead of go_to_declaration when you need to discover a class's API.",
+        addIfEnabled.accept(buildTool("get_class_outline", "Get Class Outline: shows constructors, methods, fields, and inner classes of any class by fully qualified name. Works on project classes, library classes (JARs), and JDK classes. Use this instead of go_to_declaration when you need to discover a class's API.",
             Map.of(
                 "class_name", Map.of("type", "string", "description", "Fully qualified class name (e.g. 'java.util.ArrayList', 'com.intellij.openapi.project.Project')"),
                 "include_inherited", Map.of("type", "boolean", "description", "If true, include inherited methods and fields from superclasses. Default: false (own members only)")
             ),
             List.of("class_name")));
 
-        tools.add(buildTool("find_references", "Find References",
+        addIfEnabled.accept(buildTool("find_references", "Find References",
             Map.of(
                 "symbol", Map.of("type", "string", "description", "The exact symbol name to search for"),
                 "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.java')", "default", "")
             ),
             List.of("symbol")));
 
-        tools.add(buildTool("list_project_files", "List Project Files",
+        addIfEnabled.accept(buildTool("list_project_files", "List Project Files",
             Map.of(
                 "directory", Map.of("type", "string", "description", "Optional subdirectory to list (relative to project root)", "default", ""),
                 "pattern", Map.of("type", "string", "description", "Optional glob pattern (e.g., '*.java')", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("search_text", "Search text or regex patterns across project files. Reads from IntelliJ editor buffers (always up-to-date, even for unsaved changes). Use instead of grep/ripgrep.",
+        addIfEnabled.accept(buildTool("search_text", "Search text or regex patterns across project files. Reads from IntelliJ editor buffers (always up-to-date, even for unsaved changes). Use instead of grep/ripgrep.",
             Map.of(
                 "query", Map.of("type", "string", "description", "Text or regex pattern to search for"),
                 "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter files (e.g., '*.kt', '*.java')", "default", ""),
@@ -239,13 +257,13 @@ public class McpServer {
             ),
             List.of("query")));
 
-        tools.add(buildTool("list_tests", "List Tests",
+        addIfEnabled.accept(buildTool("list_tests", "List Tests",
             Map.of(
                 "file_pattern", Map.of("type", "string", "description", "Optional glob pattern to filter test files (e.g., '*IntegrationTest*')", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("run_tests", "Run Tests",
+        addIfEnabled.accept(buildTool("run_tests", "Run Tests",
             Map.of(
                 "target", Map.of("type", "string", "description", "Test target: fully qualified class " +
                     "class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"),
@@ -253,33 +271,33 @@ public class McpServer {
             ),
             List.of("target")));
 
-        tools.add(buildTool("get_test_results", "Get Test Results",
+        addIfEnabled.accept(buildTool("get_test_results", "Get Test Results",
             Map.of(
                 "module", Map.of("type", "string", "description", "Optional Gradle module name to get results from", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("get_coverage", "Get Coverage",
+        addIfEnabled.accept(buildTool("get_coverage", "Get Coverage",
             Map.of(
                 "file", Map.of("type", "string", "description", "Optional file or class name to filter coverage results", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("get_project_info", "Get Project Info",
+        addIfEnabled.accept(buildTool("get_project_info", "Get Project Info",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("list_run_configurations", "List Run Configurations",
+        addIfEnabled.accept(buildTool("list_run_configurations", "List Run Configurations",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("run_configuration", "Run Configuration",
+        addIfEnabled.accept(buildTool("run_configuration", "Run Configuration",
             Map.of(
                 "name", Map.of("type", "string", "description", "Exact name of the run configuration")
             ),
             List.of("name")));
 
-        tools.add(buildTool("create_run_configuration", "Create Run Configuration",
+        addIfEnabled.accept(buildTool("create_run_configuration", "Create Run Configuration",
             Map.of(
                 "name", Map.of("type", "string", "description", "Name for the new run configuration"),
                 "type", Map.of("type", "string", "description", "Configuration type: 'application', 'junit', or 'gradle'"),
@@ -293,7 +311,7 @@ public class McpServer {
             List.of("name", "type")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
-        tools.add(buildTool("edit_run_configuration", "Edit Run Configuration",
+        addIfEnabled.accept(buildTool("edit_run_configuration", "Edit Run Configuration",
             Map.of(
                 "name", Map.of("type", "string", "description", "Name of the run configuration to edit"),
                 "jvm_args", Map.of("type", "string", "description", "Optional: new JVM arguments"),
@@ -303,38 +321,38 @@ public class McpServer {
             List.of("name")));
         addEnvProperty(tools.get(tools.size() - 1).getAsJsonObject());
 
-        tools.add(buildTool("get_problems", "Get Problems",
+        addIfEnabled.accept(buildTool("get_problems", "Get Problems",
             Map.of(
                 "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all open files", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("optimize_imports", "Optimize Imports",
+        addIfEnabled.accept(buildTool("optimize_imports", "Optimize Imports",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to optimize imports")
             ),
             List.of("path")));
 
-        tools.add(buildTool("format_code", "Format Code",
+        addIfEnabled.accept(buildTool("format_code", "Format Code",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to format")
             ),
             List.of("path")));
 
-        tools.add(buildTool("get_highlights", "Get cached editor highlights for open files. Use run_inspections for comprehensive project-wide analysis",
+        addIfEnabled.accept(buildTool("get_highlights", "Get cached editor highlights for open files. Use run_inspections for comprehensive project-wide analysis",
             Map.of(
                 "path", Map.of("type", "string", "description", "Optional: file path to check. If omitted, checks all open files", "default", ""),
                 "limit", Map.of("type", "integer", "description", "Maximum number of highlights to return (default: 100)")
             ),
             List.of()));
 
-        tools.add(buildTool("get_compilation_errors", "Fast compilation error check using cached daemon results. Much faster than build_project. Use after editing multiple files to quickly verify no compile errors were introduced",
+        addIfEnabled.accept(buildTool("get_compilation_errors", "Fast compilation error check using cached daemon results. Much faster than build_project. Use after editing multiple files to quickly verify no compile errors were introduced",
             Map.of(
                 "path", Map.of("type", "string", "description", "Optional: specific file to check. If omitted, checks all open source files", "default", "")
             ),
             List.of()));
 
-        tools.add(buildTool("run_inspections", "Run full IntelliJ inspection engine on project or scope. This is the PRIMARY tool for finding all warnings, errors, and code issues",
+        addIfEnabled.accept(buildTool("run_inspections", "Run full IntelliJ inspection engine on project or scope. This is the PRIMARY tool for finding all warnings, errors, and code issues",
             Map.of(
                 "scope", Map.of("type", "string", "description", "Optional: file or directory path to" +
                     "Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"),
@@ -345,13 +363,13 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("add_to_dictionary", "Add To Dictionary",
+        addIfEnabled.accept(buildTool("add_to_dictionary", "Add To Dictionary",
             Map.of(
                 "word", Map.of("type", "string", "description", "The word to add to the project dictionary")
             ),
             List.of("word")));
 
-        tools.add(buildTool("suppress_inspection", "Suppress Inspection",
+        addIfEnabled.accept(buildTool("suppress_inspection", "Suppress Inspection",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path to the file containing the code to suppress"),
                 "line", Map.of("type", "integer", "description", "Line number where the inspection finding is located"),
@@ -359,13 +377,13 @@ public class McpServer {
             ),
             List.of("path", "line", "inspection_id")));
 
-        tools.add(buildTool("run_qodana", "Run Qodana",
+        addIfEnabled.accept(buildTool("run_qodana", "Run Qodana",
             Map.of(
                 "limit", Map.of("type", "integer", "description", "Maximum number of problems to return (default: 100)")
             ),
             List.of()));
 
-        tools.add(buildTool("run_sonarqube_analysis", "Run SonarQube for IDE analysis. Requires SonarQube for IDE (SonarLint) plugin to be installed. Triggers full project or changed-files analysis and returns findings",
+        addIfEnabled.accept(buildTool("run_sonarqube_analysis", "Run SonarQube for IDE analysis. Requires SonarQube for IDE (SonarLint) plugin to be installed. Triggers full project or changed-files analysis and returns findings",
             Map.of(
                 "scope", Map.of("type", "string", "description", "Analysis scope: 'all' (full project) or 'changed' (VCS changed files only). Default: 'all'"),
                 "limit", Map.of("type", "integer", "description", "Maximum number of findings to return. Default: 100"),
@@ -373,7 +391,7 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("intellij_read_file", "Intellij Read File",
+        addIfEnabled.accept(buildTool("intellij_read_file", "Intellij Read File",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to read"),
                 "start_line", Map.of("type", "integer", "description", "Optional: first line to read (1-based, inclusive)"),
@@ -381,7 +399,7 @@ public class McpServer {
             ),
             List.of("path")));
 
-        tools.add(buildTool("intellij_write_file", "Write or edit a file. Supports three modes: (1) full write with 'content', (2) partial edit with 'old_str'+'new_str' (must match exactly one location), (3) line-range replace with 'start_line'+'new_str' (optionally 'end_line'). Operates on the IntelliJ editor buffer. Unicode and surrogate pairs in old_str are handled via normalized matching.",
+        addIfEnabled.accept(buildTool("intellij_write_file", "Write or edit a file. Supports three modes: (1) full write with 'content', (2) partial edit with 'old_str'+'new_str' (must match exactly one location), (3) line-range replace with 'start_line'+'new_str' (optionally 'end_line'). Operates on the IntelliJ editor buffer. Unicode and surrogate pairs in old_str are handled via normalized matching.",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to write or edit"),
                 "content", Map.of("type", "string", "description", "Optional: full file content to write (replaces entire file). Creates the file if it doesn't exist"),
@@ -395,13 +413,13 @@ public class McpServer {
 
         // ---- Git tools ----
 
-        tools.add(buildTool("git_status", "Git Status",
+        addIfEnabled.accept(buildTool("git_status", "Git Status",
             Map.of(
                 "verbose", Map.of("type", "boolean", "description", "If true, show full 'git status' output including untracked files")
             ),
             List.of()));
 
-        tools.add(buildTool("git_diff", "Git Diff",
+        addIfEnabled.accept(buildTool("git_diff", "Git Diff",
             Map.of(
                 "staged", Map.of("type", "boolean", "description", "If true, show staged (cached) changes only"),
                 "commit", Map.of("type", "string", "description", "Compare against this commit (e.g., 'HEAD~1', branch name)"),
@@ -410,7 +428,7 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("git_log", "Git Log",
+        addIfEnabled.accept(buildTool("git_log", "Git Log",
             Map.of(
                 "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show (default: 10)"),
                 "format", Map.of("type", "string", "description", "Output format: 'oneline', 'short', 'medium', 'full'"),
@@ -421,7 +439,7 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("git_blame", "Git Blame",
+        addIfEnabled.accept(buildTool("git_blame", "Git Blame",
             Map.of(
                 "path", Map.of("type", "string", "description", "File path to blame"),
                 "line_start", Map.of("type", "integer", "description", "Start line number for partial blame"),
@@ -429,7 +447,7 @@ public class McpServer {
             ),
             List.of("path")));
 
-        tools.add(buildTool("git_commit", "Git Commit",
+        addIfEnabled.accept(buildTool("git_commit", "Git Commit",
             Map.of(
                 "message", Map.of("type", "string", "description", "Commit message (use conventional commit format)"),
                 "amend", Map.of("type", "boolean", "description", "If true, amend the previous commit instead of creating a new one"),
@@ -456,7 +474,7 @@ public class McpServer {
         addArrayItems(gitUnstage, "paths");
         tools.add(gitUnstage);
 
-        tools.add(buildTool("git_branch", "Git Branch",
+        addIfEnabled.accept(buildTool("git_branch", "Git Branch",
             Map.of(
                 "action", Map.of("type", "string", "description", "Action: 'list' (default), 'create', 'switch', 'delete'"),
                 "name", Map.of("type", "string", "description", "Branch name (required for create/switch/delete)"),
@@ -466,7 +484,7 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("git_stash", "Git Stash",
+        addIfEnabled.accept(buildTool("git_stash", "Git Stash",
             Map.of(
                 "action", Map.of("type", "string", "description", "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"),
                 "message", Map.of("type", "string", "description", "Stash message (for push action)"),
@@ -475,7 +493,7 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("git_show", "Git Show",
+        addIfEnabled.accept(buildTool("git_show", "Git Show",
             Map.of(
                 "ref", Map.of("type", "string", "description", "Commit SHA, branch, tag, or ref (default: HEAD)"),
                 "stat_only", Map.of("type", "boolean", "description", "If true, show only file stats, not full diff content"),
@@ -485,7 +503,7 @@ public class McpServer {
 
         // ---- Infrastructure tools ----
 
-        tools.add(buildTool("http_request", "Http Request",
+        addIfEnabled.accept(buildTool("http_request", "Http Request",
             Map.of(
                 "url", Map.of("type", "string", "description", "Full URL to request (e.g., http://localhost:8080/api)"),
                 "method", Map.of("type", "string", "description", "HTTP method: GET (default), POST, PUT, PATCH, DELETE"),
@@ -494,7 +512,7 @@ public class McpServer {
             ),
             List.of("url")));
 
-        tools.add(buildTool("run_command", "Run a shell command in the project directory. Output is paginated (default 8000 chars). For running tests use run_tests; for code search use search_symbols instead. NEVER use for git commands (use git_status, git_diff, git_commit etc. instead \u2192 shell git causes buffer desync).",
+        addIfEnabled.accept(buildTool("run_command", "Run a shell command in the project directory. Output is paginated (default 8000 chars). For running tests use run_tests; for code search use search_symbols instead. NEVER use for git commands (use git_status, git_diff, git_commit etc. instead \u2192 shell git causes buffer desync).",
             Map.of(
                 "command", Map.of("type", "string", "description", "Shell command to execute (e.g., 'gradle build', 'cat file.txt')"),
                 "timeout", Map.of("type", "integer", "description", "Timeout in seconds (default: 60)"),
@@ -504,7 +522,7 @@ public class McpServer {
             ),
             List.of("command")));
 
-        tools.add(buildTool("read_ide_log", "Read Ide Log",
+        addIfEnabled.accept(buildTool("read_ide_log", "Read Ide Log",
             Map.of(
                 "lines", Map.of("type", "integer", "description", "Number of recent lines to return (default: 50)"),
                 "filter", Map.of("type", "string", "description", "Only return lines containing this text"),
@@ -512,11 +530,11 @@ public class McpServer {
             ),
             List.of()));
 
-        tools.add(buildTool("get_notifications", "Get Notifications",
+        addIfEnabled.accept(buildTool("get_notifications", "Get Notifications",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("read_run_output", "Read Run Output",
+        addIfEnabled.accept(buildTool("read_run_output", "Read Run Output",
             Map.of(
                 "tab_name", Map.of("type", "string", "description", "Name of the Run tab to read (default: most recent)"),
                 "max_chars", Map.of("type", "integer", "description", "Maximum characters to return (default: 8000)")
@@ -525,41 +543,41 @@ public class McpServer {
 
         // ---- Terminal tools ----
 
-        tools.add(buildTool("run_in_terminal", "Run In Terminal",
+        addIfEnabled.accept(buildTool("run_in_terminal", "Run In Terminal",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("read_terminal_output", "Read Terminal Output",
+        addIfEnabled.accept(buildTool("read_terminal_output", "Read Terminal Output",
             Map.of(
                 "tab_name", Map.of("type", "string", "description", "Name of the terminal tab to read from")
             ),
             List.of()));
 
         // Documentation tools
-        tools.add(buildTool("get_documentation", "Get Documentation",
+        addIfEnabled.accept(buildTool("get_documentation", "Get Documentation",
             Map.of(
                 "symbol", Map.of("type", "string", "description", "Fully qualified symbol name (e.g. java.util.List)")
             ),
             List.of("symbol")));
 
-        tools.add(buildTool("download_sources", "Download Sources",
+        addIfEnabled.accept(buildTool("download_sources", "Download Sources",
             Map.of(
                 "library", Map.of("type", "string", "description", "Optional library name filter (e.g. 'junit')")
             ),
             List.of()));
 
-        tools.add(buildTool("create_scratch_file", "Create Scratch File",
+        addIfEnabled.accept(buildTool("create_scratch_file", "Create Scratch File",
             Map.of(
                 "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'test.py', 'notes.md')"),
                 "content", Map.of("type", "string", "description", "The content to write to the scratch file")
             ),
             List.of("name", "content")));
 
-        tools.add(buildTool("list_scratch_files", "List Scratch Files",
+        addIfEnabled.accept(buildTool("list_scratch_files", "List Scratch Files",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("get_indexing_status", "Get Indexing Status",
+        addIfEnabled.accept(buildTool("get_indexing_status", "Get Indexing Status",
             Map.of(
                 "wait", Map.of("type", "boolean", "description", "If true, blocks until indexing finishes"),
                 "timeout", Map.of("type", "integer", "description", "Max seconds to wait when wait=true (default: 30)")
@@ -567,14 +585,14 @@ public class McpServer {
             List.of()));
 
         // Editor & navigation tools
-        tools.add(buildTool("open_in_editor", "Open In Editor",
+        addIfEnabled.accept(buildTool("open_in_editor", "Open In Editor",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file to open"),
                 "line", Map.of("type", "integer", "description", "Optional: line number to navigate to after opening")
             ),
             List.of("file")));
 
-        tools.add(buildTool("show_diff", "Show Diff",
+        addIfEnabled.accept(buildTool("show_diff", "Show Diff",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the first file"),
                 "file2", Map.of("type", "string", "description", "Optional: path to second file for two-file comparison"),
@@ -583,16 +601,16 @@ public class McpServer {
             ),
             List.of("file")));
 
-        tools.add(buildTool("get_active_file", "Get Active File",
+        addIfEnabled.accept(buildTool("get_active_file", "Get Active File",
             Map.of(),
             List.of()));
 
-        tools.add(buildTool("get_open_editors", "Get Open Editors",
+        addIfEnabled.accept(buildTool("get_open_editors", "Get Open Editors",
             Map.of(),
             List.of()));
 
         // Refactoring & code modification tools
-        tools.add(buildTool("apply_quickfix", "Apply Quickfix",
+        addIfEnabled.accept(buildTool("apply_quickfix", "Apply Quickfix",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file containing the problem"),
                 "line", Map.of("type", "integer", "description", "Line number where the problem is located"),
@@ -601,7 +619,7 @@ public class McpServer {
             ),
             List.of("file", "line", "inspection_id")));
 
-        tools.add(buildTool("refactor", "Refactor code: supports rename, extract_method, inline, and safe_delete operations",
+        addIfEnabled.accept(buildTool("refactor", "Refactor code: supports rename, extract_method, inline, and safe_delete operations",
             Map.of(
                 "operation", Map.of("type", "string", "description", "Refactoring type: 'rename', 'extract_method', 'inline', or 'safe_delete'"),
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
@@ -611,7 +629,7 @@ public class McpServer {
             ),
             List.of("operation", "file", "symbol")));
 
-        tools.add(buildTool("go_to_declaration", "Go To Declaration",
+        addIfEnabled.accept(buildTool("go_to_declaration", "Go To Declaration",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol usage"),
                 "symbol", Map.of("type", "string", "description", "Name of the symbol to look up"),
@@ -619,47 +637,47 @@ public class McpServer {
             ),
             List.of("file", "symbol", "line")));
 
-        tools.add(buildTool("get_type_hierarchy", "Get Type Hierarchy: shows supertypes (superclasses/interfaces) and subtypes (subclasses/implementations)",
+        addIfEnabled.accept(buildTool("get_type_hierarchy", "Get Type Hierarchy: shows supertypes (superclasses/interfaces) and subtypes (subclasses/implementations)",
             Map.of(
                 "symbol", Map.of("type", "string", "description", "Fully qualified or simple class/interface name"),
                 "direction", Map.of("type", "string", "description", "Direction: 'supertypes' (ancestors) or 'subtypes' (descendants). Default: both")
             ),
             List.of("symbol")));
 
-        tools.add(buildTool("create_file", "Create File",
+        addIfEnabled.accept(buildTool("create_file", "Create File",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path for the new file (absolute or project-relative). File must not already exist"),
                 "content", Map.of("type", "string", "description", "Content to write to the file")
             ),
             List.of("path", "content")));
 
-        tools.add(buildTool("delete_file", "Delete File",
+        addIfEnabled.accept(buildTool("delete_file", "Delete File",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path to the file to delete (absolute or project-relative)")
             ),
             List.of("path")));
 
-        tools.add(buildTool("undo", "Undo last edit action(s) on a file. Reverts writes, edits, and auto-format operations using IntelliJ's undo stack",
+        addIfEnabled.accept(buildTool("undo", "Undo last edit action(s) on a file. Reverts writes, edits, and auto-format operations using IntelliJ's undo stack",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path to the file to undo changes on"),
                 "count", Map.of("type", "integer", "description", "Number of undo steps (default: 1). Each write + auto-format counts as 2 steps")
             ),
             List.of("path")));
 
-        tools.add(buildTool("build_project", "Build Project: triggers incremental compilation of the project or a specific module",
+        addIfEnabled.accept(buildTool("build_project", "Build Project: triggers incremental compilation of the project or a specific module",
             Map.of(
                 "module", Map.of("type", "string", "description", "Optional: build only a specific module (e.g., 'plugin-core')")
             ),
             List.of()));
 
-        tools.add(buildTool("mark_directory", "Mark Directory: configure a directory's type in IntelliJ project structure. Can mark as source root, test source root, resource root, test resource root, excluded, or generated sources root. Can also unmark a previously marked directory.",
+        addIfEnabled.accept(buildTool("mark_directory", "Mark Directory: configure a directory's type in IntelliJ project structure. Can mark as source root, test source root, resource root, test resource root, excluded, or generated sources root. Can also unmark a previously marked directory.",
             Map.of(
                 "path", Map.of("type", "string", "description", "Directory path (absolute or project-relative)"),
                 "type", Map.of("type", "string", "description", "Directory type: 'sources', 'test_sources', 'resources', 'test_resources', 'generated_sources', 'excluded', or 'unmark' to remove marking")
             ),
             List.of("path", "type")));
 
-        tools.add(buildTool("get_chat_html", "Get Chat HTML: retrieves the live DOM HTML from the JCEF chat panel for debugging. Returns the full page HTML including all rendered messages and components.",
+        addIfEnabled.accept(buildTool("get_chat_html", "Get Chat HTML: retrieves the live DOM HTML from the JCEF chat panel for debugging. Returns the full page HTML including all rendered messages and components.",
             Map.of(),
             List.of()));
 
