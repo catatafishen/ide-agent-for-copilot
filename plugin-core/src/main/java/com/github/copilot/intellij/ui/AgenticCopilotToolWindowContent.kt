@@ -1526,6 +1526,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val client = service.getClient()
             val sessionId = ensureSessionCreated(client)
 
+            // Wire permission request listener so ASK-mode tools show a bubble in chat
+            client.setPermissionRequestListener { req ->
+                ApplicationManager.getApplication().invokeLater {
+                    consolePanel.showPermissionRequest(
+                        req.reqId.toString(), req.displayName, req.description
+                    ) { allowed -> req.respond(allowed) }
+                }
+            }
+
             addTimelineEvent(
                 EventType.MESSAGE_SENT,
                 "Prompt: ${prompt.take(80)}${if (prompt.length > 80) "..." else ""}"

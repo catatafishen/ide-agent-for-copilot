@@ -141,4 +141,65 @@ public final class CopilotSettings {
     public static void setCommitBeforeEnd(boolean enabled) {
         PropertiesComponent.getInstance().setValue(KEY_COMMIT_BEFORE_END, enabled, false);
     }
+
+    // ── Per-tool permissions ─────────────────────────────────────────────────
+
+    private static final String KEY_TOOL_PERM = "copilot.tool.perm.";
+    private static final String KEY_TOOL_PERM_IN = "copilot.tool.perm.in.";
+    private static final String KEY_TOOL_PERM_OUT = "copilot.tool.perm.out.";
+
+    /**
+     * Built-in CLI tools default to DENY; everything else defaults to ALLOW.
+     */
+    private static ToolPermission defaultPermissionFor(@NotNull String toolId) {
+        return switch (toolId) {
+            case "view", "read", "edit", "create", "grep", "glob", "bash" -> ToolPermission.DENY;
+            default -> ToolPermission.ALLOW;
+        };
+    }
+
+    @NotNull
+    public static ToolPermission getToolPermission(@NotNull String toolId) {
+        String stored = PropertiesComponent.getInstance().getValue(KEY_TOOL_PERM + toolId);
+        if (stored == null) return defaultPermissionFor(toolId);
+        try {
+            return ToolPermission.valueOf(stored);
+        } catch (IllegalArgumentException e) {
+            return defaultPermissionFor(toolId);
+        }
+    }
+
+    public static void setToolPermission(@NotNull String toolId, @NotNull ToolPermission perm) {
+        PropertiesComponent.getInstance().setValue(KEY_TOOL_PERM + toolId, perm.name());
+    }
+
+    @NotNull
+    public static ToolPermission getToolPermissionInsideProject(@NotNull String toolId) {
+        String stored = PropertiesComponent.getInstance().getValue(KEY_TOOL_PERM_IN + toolId);
+        if (stored == null) return getToolPermission(toolId);
+        try {
+            return ToolPermission.valueOf(stored);
+        } catch (IllegalArgumentException e) {
+            return getToolPermission(toolId);
+        }
+    }
+
+    public static void setToolPermissionInsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
+        PropertiesComponent.getInstance().setValue(KEY_TOOL_PERM_IN + toolId, perm.name());
+    }
+
+    @NotNull
+    public static ToolPermission getToolPermissionOutsideProject(@NotNull String toolId) {
+        String stored = PropertiesComponent.getInstance().getValue(KEY_TOOL_PERM_OUT + toolId);
+        if (stored == null) return getToolPermission(toolId);
+        try {
+            return ToolPermission.valueOf(stored);
+        } catch (IllegalArgumentException e) {
+            return getToolPermission(toolId);
+        }
+    }
+
+    public static void setToolPermissionOutsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
+        PropertiesComponent.getInstance().setValue(KEY_TOOL_PERM_OUT + toolId, perm.name());
+    }
 }

@@ -1,6 +1,8 @@
 package com.github.copilot.intellij.bridge;
 
 import com.github.copilot.intellij.services.CopilotSettings;
+import com.github.copilot.intellij.services.ToolPermission;
+import com.github.copilot.intellij.services.ToolRegistry;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -122,6 +124,42 @@ public class CopilotAcpClient implements Closeable {
     private static final Set<String> GIT_WRITE_TOOLS = Set.of(
         "git_commit", "git_stage", "git_unstage", "git_branch", "git_stash"
     );
+
+    // Permission request listener and pending ASK map
+    private volatile java.util.function.Consumer<PermissionRequest> permissionRequestListener;
+    private final ConcurrentHashMap<Long, CompletableFuture<Boolean>> pendingPermissionAsks = new ConcurrentHashMap<>();
+
+    /**
+     * A permission request surfaced to the UI when a tool has ASK permission mode.
+     * Call {@link #respond} with true to allow, false to deny.
+     */
+    public static class PermissionRequest {
+        public final long reqId;
+        public final String toolId;
+        public final String displayName;
+        public final String description;
+        private final java.util.function.Consumer<Boolean> respondFn;
+
+        public PermissionRequest(long reqId, String toolId, String displayName, String description,
+                                 java.util.function.Consumer<Boolean> respondFn) {
+            this.reqId = reqId;
+            this.toolId = toolId;
+            this.displayName = displayName;
+            this.description = description;
+            this.respondFn = respondFn;
+        }
+
+        public void respond(boolean allowed) {
+            respondFn.accept(allowed);
+        }
+    }
+
+    /**
+     * Register a listener that is called when a tool with ASK permission needs user approval.
+     */
+    public void setPermissionRequestListener(java.util.function.Consumer<PermissionRequest> listener) {
+        this.permissionRequestListener = listener;
+    }
 
     // Activity tracking for inactivity-based timeout
     private volatile long lastActivityTimestamp = System.currentTimeMillis();
@@ -1107,9 +1145,13 @@ public class CopilotAcpClient implements Closeable {
             return;
         }
 
-        if (DENIED_PERMISSION_KINDS.contains(permKind)) {
+        // Use per-tool permission settings (DENY / ASK / ALLOW)
+        String toolId = resolveToolId(permKind, toolCall);
+        ToolPermission perm = resolveEffectivePermission(toolId, permKind, toolCall);
+
+        if (perm == ToolPermission.DENY) {
             String rejectOptionId = findRejectOption(reqParams);
-            LOG.info("ACP request_permission: DENYING built-in " + permKind + ", option=" + rejectOptionId);
+            LOG.info("ACP request_permission: DENYING " + permKind + " (tool=" + toolId + "), option=" + rejectOptionId);
 
             // Send guidance BEFORE rejecting so agent sees it while still in turn
             Map<String, Object> retryParams = buildRetryParams(permKind);
@@ -1117,17 +1159,128 @@ public class CopilotAcpClient implements Closeable {
             fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
             sendPromptMessage(retryMessage);
 
-            fireDebugEvent(PERMISSION_DENIED_EVENT, "Built-in " + permKind + " denied",
-                "Will retry with intellij-code-tools- prefix");
+            fireDebugEvent(PERMISSION_DENIED_EVENT, "Denied: " + permKind + " (tool=" + toolId + ")",
+                "Permission mode: DENY");
             builtInActionDeniedDuringTurn = true;
             lastDeniedKind = permKind;
             sendPermissionResponse(reqId, rejectOptionId);
+        } else if (perm == ToolPermission.ASK) {
+            // ASK: fire permission request to UI and block until user responds (60s timeout)
+            var listener = permissionRequestListener;
+            if (listener == null) {
+                // No UI listener registered — fall back to auto-deny for safety
+                LOG.warn("ACP request_permission: ASK for " + toolId + " but no listener — auto-denying");
+                String rejectOptionId = findRejectOption(reqParams);
+                sendPermissionResponse(reqId, rejectOptionId);
+                return;
+            }
+            CompletableFuture<Boolean> future = new CompletableFuture<>();
+            pendingPermissionAsks.put(reqId, future);
+            ToolRegistry.ToolEntry toolEntry = ToolRegistry.findById(toolId);
+            String displayName = toolEntry != null ? toolEntry.displayName : permKind;
+            PermissionRequest req = new PermissionRequest(reqId, toolId, displayName, formattedPermission,
+                future::complete);
+            listener.accept(req);
+            boolean allowed;
+            try {
+                allowed = future.get(60, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) {
+                LOG.info("ACP request_permission: ASK timed out / cancelled for " + toolId + " — denying");
+                allowed = false;
+            } finally {
+                pendingPermissionAsks.remove(reqId);
+            }
+            if (allowed) {
+                String allowOptionId = findAllowOption(reqParams);
+                LOG.info("ACP request_permission: ASK approved by user for " + toolId);
+                fireDebugEvent("PERMISSION_APPROVED", formattedPermission, "user-approved");
+                sendPermissionResponse(reqId, allowOptionId);
+            } else {
+                String rejectOptionId = findRejectOption(reqParams);
+                LOG.info("ACP request_permission: ASK denied by user for " + toolId);
+                fireDebugEvent(PERMISSION_DENIED_EVENT, "ASK denied by user: " + toolId, "");
+                builtInActionDeniedDuringTurn = true;
+                lastDeniedKind = permKind;
+                sendPermissionResponse(reqId, rejectOptionId);
+            }
         } else {
+            // ALLOW
             String allowOptionId = findAllowOption(reqParams);
-            LOG.info("ACP request_permission: auto-approving " + permKind + ", option=" + allowOptionId);
+            LOG.info("ACP request_permission: auto-approving " + permKind + " (tool=" + toolId + "), option=" + allowOptionId);
             fireDebugEvent("PERMISSION_APPROVED", formattedPermission, "");
-            // Premium requests are billed per user turn, not per tool call
             sendPermissionResponse(reqId, allowOptionId);
+        }
+    }
+
+    /**
+     * Strip "intellij-code-tools-" prefix and normalise the tool ID from permKind / toolCall name.
+     */
+    private String resolveToolId(@Nullable String permKind, @Nullable JsonObject toolCall) {
+        String name = "";
+        if (toolCall != null && toolCall.has("name")) {
+            name = toolCall.get("name").getAsString();
+        }
+        if (name.startsWith("intellij-code-tools-")) {
+            name = name.substring("intellij-code-tools-".length());
+        }
+        return name.isEmpty() ? (permKind != null ? permKind : "") : name;
+    }
+
+    /**
+     * Look up the effective ToolPermission for a tool call.
+     * For file tools, checks inside/outside-project sub-permission when a path is present.
+     */
+    private ToolPermission resolveEffectivePermission(String toolId, String permKind, @Nullable JsonObject toolCall) {
+        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
+
+        // Path-based sub-permissions for file tools
+        if (entry != null && entry.supportsPathSubPermissions && toolCall != null) {
+            String path = extractPathFromToolCall(toolCall);
+            if (path != null && !path.isEmpty()) {
+                boolean insideProject = isPathInsideProject(path);
+                return insideProject
+                    ? CopilotSettings.getToolPermissionInsideProject(toolId)
+                    : CopilotSettings.getToolPermissionOutsideProject(toolId);
+            }
+        }
+        return CopilotSettings.getToolPermission(toolId);
+    }
+
+    /**
+     * Extract a file path argument from a tool call JSON (checks common arg names).
+     */
+    private @Nullable String extractPathFromToolCall(@Nullable JsonObject toolCall) {
+        if (toolCall == null) return null;
+        for (String key : new String[]{"path", "file", "file1", "file2"}) {
+            if (toolCall.has(key) && toolCall.get(key).isJsonPrimitive()) {
+                return toolCall.get(key).getAsString();
+            }
+        }
+        // Also check inside a nested "arguments" / "input" object
+        for (String wrapper : new String[]{"arguments", "input", "params"}) {
+            if (toolCall.has(wrapper) && toolCall.get(wrapper).isJsonObject()) {
+                JsonObject inner = toolCall.getAsJsonObject(wrapper);
+                for (String key : new String[]{"path", "file", "file1", "file2"}) {
+                    if (inner.has(key) && inner.get(key).isJsonPrimitive()) {
+                        return inner.get(key).getAsString();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns true if the given absolute-or-relative path falls inside the current project root.
+     */
+    private boolean isPathInsideProject(String path) {
+        if (projectBasePath == null) return true;
+        java.io.File f = new java.io.File(path);
+        if (!f.isAbsolute()) return true; // relative paths assumed in-project
+        try {
+            return f.getCanonicalPath().startsWith(new java.io.File(projectBasePath).getCanonicalPath());
+        } catch (java.io.IOException e) {
+            return true;
         }
     }
 

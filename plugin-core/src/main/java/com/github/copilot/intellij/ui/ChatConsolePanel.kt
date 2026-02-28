@@ -56,10 +56,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var loadMoreBridgeJs = ""
     private var quickReplyBridgeJs = ""
     private var htmlQueryBridgeJs = ""
+    private var permissionResponseBridgeJs = ""
 
     @Volatile
     private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
     private val deferredRestoreJson = mutableListOf<com.google.gson.JsonElement>()
+    private val pendingPermissionCallbacks = java.util.concurrent.ConcurrentHashMap<String, (Boolean) -> Unit>()
 
     // ── Swing fallback ─────────────────────────────────────────────
     private val fallbackArea: JBTextArea?
@@ -142,6 +144,20 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
             Disposer.register(this, htmlQuery)
             htmlQueryBridgeJs = htmlQuery.inject("html")
+
+            val permissionResponseQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            permissionResponseQuery.addHandler { data ->
+                // data format: "reqId:true" or "reqId:false"
+                val colonIdx = data.lastIndexOf(':')
+                if (colonIdx > 0) {
+                    val reqId = data.substring(0, colonIdx)
+                    val allowed = data.substring(colonIdx + 1) == "true"
+                    pendingPermissionCallbacks.remove(reqId)?.invoke(allowed)
+                }
+                null
+            }
+            Disposer.register(this, permissionResponseQuery)
+            permissionResponseBridgeJs = permissionResponseQuery.inject("data")
 
             add(browser.component, BorderLayout.CENTER)
 
@@ -1017,6 +1033,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         browser?.setPageBackgroundColor("rgb(${panelBg.red},${panelBg.green},${panelBg.blue})")
     }
 
+    // ── Permission requests ────────────────────────────────────────
+
+    override fun showPermissionRequest(
+        reqId: String, toolDisplayName: String, description: String, onRespond: (Boolean) -> Unit
+    ) {
+        pendingPermissionCallbacks[reqId] = onRespond
+        val safeId = escJs(reqId)
+        val safeName = escJs(toolDisplayName)
+        val safeDesc = escJs(description)
+        executeJs("window.showPermissionRequest('$safeId','$safeName','$safeDesc');")
+    }
+
     private fun buildInitialPage(): String {
         val cssVars = buildCssVars()
         val fileHandler = openFileQuery!!.inject("href")
@@ -1026,7 +1054,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 openUrl: function(url) { $openUrlBridgeJs },
                 setCursor: function(c) { $cursorBridgeJs },
                 loadMore: function() { $loadMoreBridgeJs },
-                quickReply: function(text) { $quickReplyBridgeJs }
+                quickReply: function(text) { $quickReplyBridgeJs },
+                permissionResponse: function(data) { $permissionResponseBridgeJs }
             };
         """.trimIndent()
         val css = loadResource("/chat/chat.css")

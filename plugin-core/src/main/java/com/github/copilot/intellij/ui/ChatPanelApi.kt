@@ -78,4 +78,12 @@ interface ChatPanelApi : Disposable {
 
     /** Returns the full HTML of the JCEF page (live DOM), or null if unavailable. */
     fun getPageHtml(): String?
+
+    // ── Permission requests ────────────────────────────────────────
+
+    /**
+     * Show a permission request bubble in the chat pane with Allow / Deny buttons.
+     * [reqId] is a unique ID for this request. [onRespond] is called with true=allow, false=deny.
+     */
+    fun showPermissionRequest(reqId: String, toolDisplayName: String, description: String, onRespond: (Boolean) -> Unit)
 }

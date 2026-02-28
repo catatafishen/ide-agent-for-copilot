@@ -336,6 +336,7 @@ internal class DebugPanel(
 
     fun openSettings() {
         val (settingsPanel, saveCallback) = createSettingsTab()
+        val permissionsPanel = PermissionsPanel()
         val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
             init {
                 title = "IDE Agent for Copilot Settings"
@@ -344,14 +345,20 @@ internal class DebugPanel(
             }
 
             override fun createCenterPanel(): JComponent {
+                val tabs = com.intellij.ui.components.JBTabbedPane()
+                val generalWrapper = JBPanel<JBPanel<*>>(BorderLayout())
+                generalWrapper.add(settingsPanel, BorderLayout.CENTER)
+                tabs.addTab("General", generalWrapper)
+                tabs.addTab("Permissions", permissionsPanel.component)
                 val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
-                wrapper.preferredSize = JBUI.size(450, 400)
-                wrapper.add(settingsPanel, BorderLayout.CENTER)
+                wrapper.preferredSize = JBUI.size(700, 580)
+                wrapper.add(tabs, BorderLayout.CENTER)
                 return wrapper
             }
 
             override fun doOKAction() {
                 saveCallback()
+                permissionsPanel.save()
                 super.doOKAction()
             }
         }
