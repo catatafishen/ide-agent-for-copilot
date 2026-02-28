@@ -217,8 +217,12 @@ public final class ToolUtils {
         String cmd = command.toLowerCase().trim();
 
         // Block git — causes IntelliJ editor buffer desync
+        // Also catches env-prefixed (VAR=val git ...), sudo/env/command wrappers
         if (cmd.startsWith("git ") || cmd.equals("git") ||
-            cmd.contains("&& git ") || cmd.contains("; git ") || cmd.contains("| git ")) {
+            cmd.contains("&& git ") || cmd.contains("; git ") || cmd.contains("| git ") ||
+            cmd.matches("(\\w+=\\S*\\s+)+git(\\s.*|$)") ||
+            cmd.matches("(sudo|env|command|nohup)\\s+git(\\s.*|$)") ||
+            cmd.matches("(\\w+=\\S*\\s+)+(sudo|env|command)\\s+git(\\s.*|$)")) {
             return "git";
         }
 
