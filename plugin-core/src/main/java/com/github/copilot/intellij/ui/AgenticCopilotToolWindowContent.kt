@@ -324,8 +324,30 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // lastDiag is stored so Details… always shows the freshest result.
         var lastDiag: String? = null
 
+        // Scheduler used for adaptive polling: 5 s while bridge is down, 30 s while healthy.
+        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "psi-bridge-poll").also { it.isDaemon = true }
+        }
+
+        fun scheduleNext(bridgeWasDown: Boolean) {
+            val delay = if (bridgeWasDown) 5L else 30L
+            scheduler.schedule(
+                {
+                    val diag = psiBridgeDiagnostics()
+                    SwingUtilities.invokeLater {
+                        lastDiag = diag
+                        banner.isVisible = diag != null
+                        recheckButton.isEnabled = true
+                    }
+                    scheduleNext(diag != null)
+                },
+                delay, java.util.concurrent.TimeUnit.SECONDS
+            )
+        }
+
         fun runCheck() {
             recheckButton.isEnabled = false
+            // Run immediately on a pooled thread, then let scheduleNext take over.
             ApplicationManager.getApplication().executeOnPooledThread {
                 val diag = psiBridgeDiagnostics()
                 SwingUtilities.invokeLater {
@@ -333,6 +355,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     banner.isVisible = diag != null
                     recheckButton.isEnabled = true
                 }
+                scheduleNext(diag != null)
             }
         }
 
@@ -346,14 +369,19 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
         recheckButton.addActionListener { runCheck() }
 
-        // Poll every 5 s. First check is immediate (banner starts hidden, so no flicker).
-        // The executor is shut down when the panel is disposed.
-        val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
-            Thread(r, "psi-bridge-poll").also { it.isDaemon = true }
-        }
-        scheduler.scheduleWithFixedDelay(
-            { runCheck() }, 5, 30, java.util.concurrent.TimeUnit.SECONDS
+        // First check after 5 s so the bridge has time to start.
+        scheduler.schedule(
+            {
+                val diag = psiBridgeDiagnostics()
+                SwingUtilities.invokeLater {
+                    lastDiag = diag
+                    banner.isVisible = diag != null
+                }
+                scheduleNext(diag != null)
+            },
+            5, java.util.concurrent.TimeUnit.SECONDS
         )
+
         banner.addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(e: javax.swing.event.AncestorEvent?) = Unit
             override fun ancestorMoved(e: javax.swing.event.AncestorEvent?) = Unit
