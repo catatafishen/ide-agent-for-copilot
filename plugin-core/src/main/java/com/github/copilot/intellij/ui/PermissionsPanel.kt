@@ -5,6 +5,7 @@ import com.github.copilot.intellij.services.ToolPermission
 import com.github.copilot.intellij.services.ToolRegistry
 import com.github.copilot.intellij.services.ToolRegistry.Category
 import com.intellij.ui.JBColor
+import com.intellij.ui.TitledSeparator
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -86,12 +87,9 @@ internal class PermissionsPanel {
             // Category header
             if (tool.category != lastCategory) {
                 lastCategory = tool.category
-                gbc.gridwidth = 4; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
+                gbc.gridx = 0; gbc.gridwidth = 4; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
                 gbc.insets = JBUI.insets(8, 0, 2, 0)
-                val catLabel = JBLabel("<html><b>${tool.category.displayName}</b></html>")
-                catLabel.foreground = JBColor.namedColor("Label.infoForeground", JBColor.GRAY)
-                catLabel.border = JBUI.Borders.emptyTop(4)
-                content.add(catLabel, gbc)
+                content.add(TitledSeparator(tool.category.displayName), gbc)
                 gbc.gridy++
                 gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
                 gbc.insets = JBUI.insets(1, 0)
