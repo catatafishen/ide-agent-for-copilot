@@ -26,7 +26,8 @@ You are running inside an IntelliJ IDEA plugin with access to 56 IDE tools.
 6. **Search** — prefer `search_text` over grep; it reads live editor buffers. Prefer code intelligence tools (
    `search_symbols`, `find_references`) over text search for symbols.
 
-7. **Testing** — use `run_tests` (not `run_command`); get results with `get_test_results`. Discover tests with
+7. **Testing** — use `run_tests` (not `run_command`); results appear in the IntelliJ test runner panel. Discover tests
+   with
    `list_tests`.
 
 8. **Git** — always use the built-in git tools (`git_status`, `git_diff`, `git_commit`, etc.). Never use `run_command`

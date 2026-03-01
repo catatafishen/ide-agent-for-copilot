@@ -271,12 +271,6 @@ public class McpServer {
             ),
             List.of("target")));
 
-        addIfEnabled.accept(buildTool("get_test_results", "Get Test Results",
-            Map.of(
-                "module", Map.of("type", "string", "description", "Optional Gradle module name to get results from", "default", "")
-            ),
-            List.of()));
-
         addIfEnabled.accept(buildTool("get_coverage", "Get Coverage",
             Map.of(
                 "file", Map.of("type", "string", "description", "Optional file or class name to filter coverage results", "default", "")

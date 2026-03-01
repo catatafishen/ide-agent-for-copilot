@@ -377,11 +377,6 @@ Executes JUnit or Gradle tests by fully qualified class name, method name, or wi
 Creates or reuses IntelliJ run configurations via `RunManager` and delegates to the IDE's
 `ExecutionManager`. Parameters: `target` (e.g., `MyTest.testFoo` or `*IntegrationTest*`), `module`.
 
-### `get_test_results`
-
-Retrieves the results of the most recent test execution — pass count, fail count, error messages,
-and individual test statuses. Parses test report XML from the last `run_tests` invocation.
-
 ### `get_coverage`
 
 Extracts code coverage metrics (line coverage, branch coverage) from the most recent instrumented

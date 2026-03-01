@@ -32,7 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Handles test-related tool calls: list_tests, run_tests, get_test_results, get_coverage.
+ * Handles test-related tool calls: list_tests, run_tests, get_coverage.
  */
 @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 class TestTools extends AbstractToolHandler {
@@ -54,7 +54,6 @@ class TestTools extends AbstractToolHandler {
         this.refactoringTools = refactoringTools;
         register("list_tests", this::listTests);
         register("run_tests", this::runTests);
-        register("get_test_results", this::getTestResults);
         register("get_coverage", this::getCoverage);
     }
 
@@ -85,8 +84,7 @@ class TestTools extends AbstractToolHandler {
                 ExecutionManager.getInstance(project).restartRunProfile(env);
                 resultFuture.complete("Started run configuration: " + name
                     + " [" + settings.getType().getDisplayName() + "]"
-                    + "\nResults will appear in the IntelliJ Run panel."
-                    + "\nUse get_test_results to check results after completion.");
+                    + "\nResults will appear in the IntelliJ Run panel.");
             } catch (Exception e) {
                 resultFuture.complete("Error running configuration: " + e.getMessage());
             }
@@ -185,27 +183,6 @@ class TestTools extends AbstractToolHandler {
         if (junitResult != null) return junitResult;
 
         return runTestsViaGradleConfig(target, module);
-    }
-
-    private String getTestResults(JsonObject args) {
-        String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
-        String basePath = project.getBasePath();
-        if (basePath == null) return ERROR_NO_PROJECT_PATH;
-
-        String results = parseJunitXmlResults(basePath, module);
-        if (results.isEmpty()) {
-            return "No test results found."
-                + "\nIf tests were run via IntelliJ's native runner, results are in the Run panel test tree."
-                + "\nXML results are only available when tests are run via Gradle.";
-        }
-
-        // Warn if results are stale (older than 5 minutes)
-        long maxAgeMs = getNewestXmlResultAge(basePath, module);
-        if (maxAgeMs > 5 * 60 * 1000) {
-            long mins = maxAgeMs / 60_000;
-            results += "\n\n⚠️ These results are from ~" + mins + " minutes ago and may be stale.";
-        }
-        return results;
     }
 
     private String getCoverage(JsonObject args) {
@@ -338,7 +315,7 @@ class TestTools extends AbstractToolHandler {
             } catch (Exception e) {
                 connection.disconnect();
                 return "Started tests via IntelliJ JUnit runner: " + configName
-                    + "\nCould not capture process handle. Use get_test_results to check results.";
+                    + "\nCould not capture process handle. Check the Run panel for results.";
             }
 
             if (handler == null) {
@@ -354,8 +331,7 @@ class TestTools extends AbstractToolHandler {
 
             return (exitCode == 0 ? "\u2705 Tests PASSED" : "\u274C Tests FAILED (exit code " + exitCode + ")")
                 + " — " + configName
-                + "\nResults are visible in the IntelliJ test runner panel."
-                + "\nUse get_test_results to retrieve detailed results.";
+                + "\nResults are visible in the IntelliJ test runner panel.";
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             LOG.warn("tryRunJUnitNatively failed", e);
@@ -477,7 +453,7 @@ class TestTools extends AbstractToolHandler {
             } catch (Exception e) {
                 connection.disconnect();
                 return "Started tests via IntelliJ JUnit runner: " + configName
-                    + "\nCould not capture process handle. Use get_test_results to check results.";
+                    + "\nCould not capture process handle. Check the Run panel for results.";
             }
 
             if (handler == null) {
@@ -492,8 +468,7 @@ class TestTools extends AbstractToolHandler {
 
             return (exitCode == 0 ? "\u2705 Tests PASSED" : "\u274C Tests FAILED (exit code " + exitCode + ")")
                 + " \u2014 " + configName
-                + "\nResults are visible in the IntelliJ test runner panel."
-                + "\nUse get_test_results to retrieve detailed results.";
+                + "\nResults are visible in the IntelliJ test runner panel.";
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             LOG.warn("tryRunJUnitPattern failed", e);
@@ -583,7 +558,7 @@ class TestTools extends AbstractToolHandler {
             } catch (Exception e) {
                 connection.disconnect();
                 return "Started tests via Gradle run configuration: " + configName
-                    + "\nCould not capture process handle. Use get_test_results to check results.";
+                    + "\nCould not capture process handle. Check the Run panel for results.";
             }
 
             if (handler == null) {
@@ -853,25 +828,6 @@ class TestTools extends AbstractToolHandler {
             if (Files.isDirectory(dir)) reportDirs.add(dir);
         }
         return reportDirs;
-    }
-
-    /**
-     * Returns the age in milliseconds of the newest XML result file, or Long.MAX_VALUE if none found.
-     */
-    private long getNewestXmlResultAge(String basePath, String module) {
-        List<Path> reportDirs = findTestReportDirs(basePath, module);
-        long newestModified = 0;
-        for (Path dir : reportDirs) {
-            try (var xmlFiles = Files.list(dir)) {
-                for (Path f : xmlFiles.filter(p -> p.toString().endsWith(".xml")).toList()) {
-                    long mod = Files.getLastModifiedTime(f).toMillis();
-                    if (mod > newestModified) newestModified = mod;
-                }
-            } catch (IOException ignored) {
-                // IO errors are non-fatal
-            }
-        }
-        return newestModified == 0 ? Long.MAX_VALUE : System.currentTimeMillis() - newestModified;
     }
 
     private record TestSuiteResult(int tests, int failed, int errors, int skipped,

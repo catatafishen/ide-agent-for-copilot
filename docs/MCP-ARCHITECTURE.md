@@ -220,10 +220,9 @@ The MCP server exposes **60 tools** organized into 11 categories:
 - `list_project_files` - List source files in project
 - `list_tests` - Discover test classes and methods
 
-### 2. Testing & Quality (3 tools)
+### 2. Testing & Quality (2 tools)
 
 - `run_tests` - Execute tests via IntelliJ test runner
-- `get_test_results` - Get last test run results
 - `get_coverage` - Read JaCoCo/IntelliJ coverage data
 
 ### 3. Project Environment (3 tools)

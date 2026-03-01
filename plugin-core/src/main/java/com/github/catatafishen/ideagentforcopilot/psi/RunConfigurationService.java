@@ -99,8 +99,7 @@ public final class RunConfigurationService {
                 ExecutionManager.getInstance(project).restartRunProfile(env);
                 resultFuture.complete("Started run configuration: " + name
                     + " [" + settings.getType().getDisplayName() + "]"
-                    + "\nResults will appear in the IntelliJ Run panel."
-                    + "\nUse get_test_results to check results after completion.");
+                    + "\nResults will appear in the IntelliJ Run panel.");
             } catch (Exception e) {
                 resultFuture.complete("Error running configuration: " + e.getMessage());
             }
@@ -227,7 +226,7 @@ public final class RunConfigurationService {
      * Check program_args for abuse patterns (same detection as run_command).
      * Also blocks Gradle configs with test task args.
      *
-     * @param args the tool arguments
+     * @param args       the tool arguments
      * @param configType the config type (e.g. "gradle"), or null if unknown/edit
      * @return error message if blocked, null if allowed
      */

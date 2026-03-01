@@ -107,7 +107,6 @@ public final class ToolRegistry {
         // ── Build / Run / Test ────────────────────────────────────────────────────
         new ToolEntry("build_project", "Build Project", "Trigger incremental compilation of the project or a specific module", Category.BUILD, false, false, false),
         new ToolEntry("run_tests", "Run Tests", "Run tests by class, method, or wildcard pattern via Gradle", Category.BUILD, false, false, false),
-        new ToolEntry("get_test_results", "Get Test Results", "Retrieve the most recent cached test results", Category.BUILD, false, false, false),
         new ToolEntry("get_coverage", "Get Coverage", "Retrieve code coverage data, optionally filtered by file or class", Category.BUILD, false, false, false),
         new ToolEntry("run_configuration", "Run Configuration", "Execute an existing run configuration by name", Category.BUILD, false, false, false),
         new ToolEntry("create_run_configuration", "Create Run Config", "Create a new run configuration (application, JUnit, or Gradle)", Category.BUILD, false, false, false),
