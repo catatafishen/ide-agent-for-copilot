@@ -551,6 +551,13 @@ thinking-chip .chip-spinner {
     overflow-y: auto;
 }
 
+.tool-runtime {
+    font-size: 0.78em;
+    color: var(--think);
+    margin-top: var(--sp-2);
+    text-align: right;
+}
+
 /* ── Status messages ─────────────────────────────────── */
 .status-row {
     display: block;
