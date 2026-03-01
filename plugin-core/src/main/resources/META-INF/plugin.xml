@@ -83,29 +83,20 @@
     ]]></description>
 
   <change-notes><![CDATA[
-    <h3>0.3.0</h3>
+    <h3>0.3.0 — Initial Public Release</h3>
     <ul>
-        <li>Dynamic tool filtering — only advertises tools the IDE can actually run</li>
-        <li>Context-aware timeout messages — distinguishes permission prompts from slow operations</li>
-        <li>Expanded long-running tool support (run_command, run_tests, build_project, etc.)</li>
-        <li>Clickable git commit SHAs in chat output</li>
-        <li>Local request counter for billing visibility</li>
-        <li>Reload plugin tool for hot-reload without IDE restart</li>
-        <li>Git revert tool and improved run configuration tools</li>
-        <li>Resolved all deprecated and internal API usages flagged by marketplace verifier</li>
-        <li>Requires IntelliJ 2025.3+ (forward-compatible with 2026.1+)</li>
-    </ul>
-    <h3>0.2.0</h3>
-    <ul>
-        <li>Direct ACP integration — removed Go sidecar and SDK dependency</li>
-        <li>Real model listing from Copilot (Claude, GPT, Gemini families)</li>
-        <li>Streaming chat responses via ACP protocol</li>
-        <li>Copilot CLI login flow with auto-detection</li>
-    </ul>
-    <h3>0.1.0</h3>
-    <ul>
-        <li>Initial technical preview release</li>
-        <li>Tool Window with Prompt, Context, Plans, and Timeline views</li>
+        <li><b>Full agentic coding</b> — 65+ tools spanning code intelligence, navigation, refactoring, git, build, test, run configurations, terminal, and more</li>
+        <li><b>Direct ACP integration</b> — communicates with Copilot via the Agent Communication Protocol; no sidecar or SDK dependency</li>
+        <li><b>Streaming chat UI</b> — markdown rendering, syntax-highlighted code blocks, copy buttons, plan trees, and timeline view</li>
+        <li><b>Model selection</b> — choose between Claude, GPT, and Gemini families with real-time usage multiplier display</li>
+        <li><b>Smart tool filtering</b> — only advertises tools the IDE can actually execute based on installed plugins</li>
+        <li><b>Granular permissions</b> — per-tool Allow / Ask / Deny with in-chat approval prompts</li>
+        <li><b>Billing visibility</b> — live premium request counter with model multiplier weighting, monthly usage graph, and cycle tracking</li>
+        <li><b>Full git workflow</b> — status, diff, log, blame, commit, branch, stash, push, revert — all through IntelliJ's VFS</li>
+        <li><b>Code quality</b> — IntelliJ inspections, Qodana, SonarQube, and coverage integration via reflection</li>
+        <li><b>Context attachments</b> — attach files, selections, and code symbols to prompts</li>
+        <li><b>Quick replies &amp; conversation history</b> — suggested follow-ups, session export, and persistence</li>
+        <li><b>Requires IntelliJ 2025.3+</b> (forward-compatible with 2026.1+)</li>
     </ul>
     ]]></change-notes>
 
