@@ -2,7 +2,6 @@ package com.github.catatafishen.ideagentforcopilot.psi;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.intellij.codeInspection.ex.GlobalInspectionContextImpl;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -159,12 +158,11 @@ class CodeQualityTools extends AbstractToolHandler {
 
     // ---- get_highlights ----
 
-    @SuppressWarnings("UnstableApiUsage")
     private String getHighlights(JsonObject args) throws Exception {
         String pathStr = args.has("path") ? args.get("path").getAsString() : null;
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
 
-        if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
+        if (!project.isInitialized()) {
             return ERROR_IDE_INITIALIZING;
         }
 
@@ -277,11 +275,10 @@ class CodeQualityTools extends AbstractToolHandler {
      * Lightweight compilation check — scans open/specified files for ERROR-severity highlights.
      * Much faster than build_project since it uses cached daemon analysis results.
      */
-    @SuppressWarnings("UnstableApiUsage")
     private String getCompilationErrors(JsonObject args) throws Exception {
         String pathStr = args.has("path") ? args.get("path").getAsString() : null;
 
-        if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
+        if (!project.isInitialized()) {
             return ERROR_IDE_INITIALIZING;
         }
 
@@ -352,7 +349,7 @@ class CodeQualityTools extends AbstractToolHandler {
         String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
         String scopePath = args.has(PARAM_SCOPE) ? args.get(PARAM_SCOPE).getAsString() : null;
 
-        if (!com.intellij.diagnostic.LoadingState.COMPONENTS_LOADED.isOccurred()) {
+        if (!project.isInitialized()) {
             return ERROR_IDE_INITIALIZING;
         }
 
@@ -416,8 +413,6 @@ class CodeQualityTools extends AbstractToolHandler {
         try {
             LOG.info("Starting inspection analysis...");
 
-            var inspectionManagerEx = (com.intellij.codeInspection.ex.InspectionManagerEx)
-                com.intellij.codeInspection.InspectionManager.getInstance(project);
             var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
             var currentProfile = profileManager.getCurrentProfile();
 
@@ -429,22 +424,21 @@ class CodeQualityTools extends AbstractToolHandler {
             String basePath = project.getBasePath();
             String profileName = currentProfile.getName();
 
-            GlobalInspectionContextImpl context = new GlobalInspectionContextImpl(
-                project, inspectionManagerEx.getContentManager()) {
+            com.intellij.codeInspection.ex.GlobalInspectionContextBase context =
+                new com.intellij.codeInspection.ex.GlobalInspectionContextBase(project) {
 
-                @Override
-                protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope scope) {
-                    super.notifyInspectionsFinished(scope);
-                    final GlobalInspectionContextImpl ctx = this;
-                    LOG.info("Inspection analysis completed, collecting results...");
-                    LOG.info("Used tools count: " + ctx.getUsedTools().size());
+                    @Override
+                    protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope scope) {
+                        super.notifyInspectionsFinished(scope);
+                        LOG.info("Inspection analysis completed, collecting results...");
+                        LOG.info("Used tools count: " + this.getUsedTools().size());
 
-                    // Use scheduled retries instead of Thread.sleep to allow inspection tool
-                    // presentations to fully populate before collecting results.
-                    scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
-                        new InspectionPageParams(profileName, offset, limit), resultFuture, 0);
-                }
-            };
+                        // Use scheduled retries instead of Thread.sleep to allow inspection tool
+                        // presentations to fully populate before collecting results.
+                        scheduleInspectionCollection(this, severityRank, requiredRank, basePath,
+                            new InspectionPageParams(profileName, offset, limit), resultFuture, 0);
+                    }
+                };
 
             context.setExternalProfile(currentProfile);
             context.doInspections(scope);
@@ -461,7 +455,7 @@ class CodeQualityTools extends AbstractToolHandler {
      * (0ms, 500ms, 1000ms) to allow tool presentations to populate.
      */
     private void scheduleInspectionCollection(
-        GlobalInspectionContextImpl ctx, Map<String, Integer> severityRank, int requiredRank,
+        com.intellij.codeInspection.ex.GlobalInspectionContextBase ctx, Map<String, Integer> severityRank, int requiredRank,
         String basePath, InspectionPageParams pageParams,
         CompletableFuture<String> resultFuture, int attempt) {
 
@@ -561,7 +555,7 @@ class CodeQualityTools extends AbstractToolHandler {
     @SuppressWarnings({"UnstableApiUsage", "java:S2583"})
     // null check is defensive against runtime nulls despite @NotNull
     private InspectionCollectionResult collectInspectionProblems(
-        GlobalInspectionContextImpl ctx, Map<String, Integer> severityRank,
+        com.intellij.codeInspection.ex.GlobalInspectionContextBase ctx, Map<String, Integer> severityRank,
         int requiredRank, String basePath) {
         List<String> allProblems = new ArrayList<>();
         Set<String> filesSet = new HashSet<>();
@@ -569,11 +563,14 @@ class CodeQualityTools extends AbstractToolHandler {
         int skippedNoFile = 0;
         int toolsWithProblems = 0;
 
+        // Cast to Ex to access getPresentation()
+        var ctxEx = (com.intellij.codeInspection.ex.GlobalInspectionContextEx) ctx;
+
         for (var tools : ctx.getUsedTools()) {
             var toolWrapper = tools.getTool();
             String toolId = toolWrapper.getShortName();
 
-            var presentation = ctx.getPresentation(toolWrapper);
+            var presentation = ctxEx.getPresentation(toolWrapper);
             //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
             if (presentation == null) continue;
 
@@ -594,7 +591,7 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private int[] collectProblemsFromTool(
-        com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
+        com.intellij.codeInspection.InspectionToolResultExporter presentation,
         String toolId, InspectionContext inspCtx, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
@@ -651,7 +648,7 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private int[] collectFromExportedResults(
-        com.intellij.codeInspection.ui.InspectionToolPresentation presentation,
+        com.intellij.codeInspection.InspectionToolResultExporter presentation,
         String toolId, InspectionContext inspCtx, List<String> allProblems) {
         var hasProblems = presentation.hasReportedProblems();
         if (hasProblems != com.intellij.util.ThreeState.YES) {
@@ -667,7 +664,7 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private List<org.jdom.Element> exportElements(
-        com.intellij.codeInspection.ui.InspectionToolPresentation presentation) {
+        com.intellij.codeInspection.InspectionToolResultExporter presentation) {
         presentation.updateContent();
         var elements = new ArrayList<org.jdom.Element>();
         presentation.exportResults(elements::add, entity -> true, desc -> true);

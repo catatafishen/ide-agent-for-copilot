@@ -5,11 +5,10 @@ import com.intellij.util.SlowOperations;
 
 /**
  * Utility for safely running operations on the EDT that involve VFS/PSI lookups.
- * Wraps all EDT dispatches with a {@link SlowOperations} section so that
- * tool handlers can resolve files and perform write actions without triggering
- * "Slow operations are prohibited on EDT" assertions.
+ * Wraps all EDT dispatches so that tool handlers can resolve files and perform
+ * write actions without triggering "Slow operations are prohibited on EDT" assertions.
  */
-@SuppressWarnings("UnstableApiUsage")
+@SuppressWarnings({"deprecation", "UnstableApiUsage"})
 public final class EdtUtil {
 
     private EdtUtil() {
@@ -19,11 +18,12 @@ public final class EdtUtil {
      * Dispatch a runnable to the EDT, allowing slow operations (VFS, PSI, etc.).
      */
     public static void invokeLater(Runnable runnable) {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            try (var ignored = SlowOperations.startSection(SlowOperations.ACTION_PERFORM)) {
+        ApplicationManager.getApplication().invokeLater(() ->
+            SlowOperations.allowSlowOperations(() -> {
                 runnable.run();
-            }
-        });
+                return null;
+            })
+        );
     }
 
     /**
@@ -31,10 +31,11 @@ public final class EdtUtil {
      * allowing slow operations inside the EDT block.
      */
     public static void invokeAndWait(Runnable runnable) {
-        ApplicationManager.getApplication().invokeAndWait(() -> {
-            try (var ignored = SlowOperations.startSection(SlowOperations.ACTION_PERFORM)) {
+        ApplicationManager.getApplication().invokeAndWait(() ->
+            SlowOperations.allowSlowOperations(() -> {
                 runnable.run();
-            }
-        });
+                return null;
+            })
+        );
     }
 }

@@ -379,7 +379,8 @@ class ProjectTools extends AbstractToolHandler {
             entry.addSourceFolder(vDir, rootType);
         } else if ("generated_sources".equals(type)) {
             var rootType = org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE;
-            var props = new org.jetbrains.jps.model.java.JavaSourceRootProperties("", true);
+            var props = org.jetbrains.jps.model.java.JpsJavaExtensionService.getInstance()
+                .createSourceRootProperties("", true);
             entry.addSourceFolder(vDir, rootType, props);
         } else if (isTest) {
             entry.addSourceFolder(vDir, org.jetbrains.jps.model.java.JavaSourceRootType.TEST_SOURCE);

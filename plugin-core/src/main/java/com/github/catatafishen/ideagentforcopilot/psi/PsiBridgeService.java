@@ -448,24 +448,11 @@ public final class PsiBridgeService implements Disposable {
 
     /**
      * Wait for the DaemonCodeAnalyzer to finish its current pass.
-     * Polls isRunning() with short intervals instead of subscribing to MessageBus
-     * (MessageBus/MessageBusConnection have IDE resolution issues with Kotlin-compiled platform APIs).
+     * Uses a fixed wait since DaemonCodeAnalyzer.isRunning() is internal API.
      */
     private void waitForDaemonPass() throws InterruptedException {
-        var analyzer = com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project);
-        long deadline = System.currentTimeMillis() + 3000;
-        // Wait for daemon to start (it may not have begun re-analyzing yet)
-        Thread.sleep(200);
-        // Poll until daemon finishes or timeout
-        while (analyzer.isRunning() && System.currentTimeMillis() < deadline) {
-            //noinspection BusyWait
-            Thread.sleep(100);
-        }
-        if (System.currentTimeMillis() < deadline) {
-            LOG.info("Auto-highlights: daemon pass completed, collecting highlights");
-        } else {
-            LOG.info("Auto-highlights: daemon pass wait timed out (3s), using cached highlights");
-        }
+        Thread.sleep(2000);
+        LOG.info("Auto-highlights: daemon pass wait completed (2s fixed), collecting highlights");
     }
 
     public void dispose() {
