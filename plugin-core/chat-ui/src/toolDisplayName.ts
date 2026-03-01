@@ -109,7 +109,6 @@ export function toolDisplayName(rawTitle: string, paramsJson?: string): string {
         'mark_directory': () => 'Marking directory',
         'get_chat_html': () => 'Getting chat HTML',
         'http_request': () => p.url ? `${p.method || 'GET'} ${trunc(p.url, 28)}` : 'HTTP request',
-        'reload_plugin': () => 'Reloading plugin',
 
         // GitHub MCP tools (after prefix stripped to "gh:*")
         'gh:get_file_contents': () => p.path ? `GH: ${shortPath(p.path)}` : 'GH: get file',

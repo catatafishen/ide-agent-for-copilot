@@ -9,6 +9,7 @@ import com.intellij.util.SlowOperations;
  * Wraps all EDT dispatches so that tool handlers can resolve files and perform
  * write actions without triggering "Slow operations are prohibited on EDT" assertions.
  */
+@SuppressWarnings("removal")
 public final class EdtUtil {
 
     private EdtUtil() {
@@ -19,7 +20,7 @@ public final class EdtUtil {
      */
     public static void invokeLater(Runnable runnable) {
         ApplicationManager.getApplication().invokeLater(() -> {
-            try (AccessToken ignore = SlowOperations.startSection("IdeAgentForCopilot")) {
+            try (AccessToken ignore = SlowOperations.allowSlowOperations("IdeAgentForCopilot")) {
                 runnable.run();
             }
         });
@@ -31,7 +32,7 @@ public final class EdtUtil {
      */
     public static void invokeAndWait(Runnable runnable) {
         ApplicationManager.getApplication().invokeAndWait(() -> {
-            try (AccessToken ignore = SlowOperations.startSection("IdeAgentForCopilot")) {
+            try (AccessToken ignore = SlowOperations.allowSlowOperations("IdeAgentForCopilot")) {
                 runnable.run();
             }
         });

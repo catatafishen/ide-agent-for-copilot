@@ -119,7 +119,6 @@ public final class ToolRegistry {
         new ToolEntry("run_in_terminal", "Run in Terminal", "Run a command in IntelliJ's integrated terminal", Category.RUN, false, false, false),
         new ToolEntry("read_run_output", "Read Run Output", "Read output from a recent Run panel tab by name", Category.RUN, false, false, false),
         new ToolEntry("read_terminal_output", "Read Terminal", "Read output from an integrated terminal tab", Category.RUN, false, false, false),
-        new ToolEntry("reload_plugin", "Reload Plugin", "Hot-reload the IDE Agent plugin from the latest build ZIP without restart", Category.RUN, false, false, false),
 
         // ── Git ───────────────────────────────────────────────────────────────────
         new ToolEntry("git_status", "Git Status", "Show the working tree status (staged, unstaged, untracked files)", Category.GIT, false, false, false),

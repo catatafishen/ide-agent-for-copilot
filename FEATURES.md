@@ -14,11 +14,13 @@ Deep integration with IntelliJ's code analysis engine — the agent can navigate
 same way you do.
 
 - **`search_symbols`** — Search classes, methods, and fields by name using IntelliJ's symbol index
-- **`search_text`** — Search text or regex patterns across all project files (reads from editor buffers, always up-to-date)
+- **`search_text`** — Search text or regex patterns across all project files (reads from editor buffers, always
+  up-to-date)
 - **`find_references`** — Find all usages of any symbol across the project
 - **`go_to_declaration`** — Jump to the declaration of a symbol
 - **`get_file_outline`** — Get file structure — classes, methods, fields with line numbers
-- **`get_class_outline`** — Get the full API of any class by fully qualified name (works on project, library, and JDK classes)
+- **`get_class_outline`** — Get the full API of any class by fully qualified name (works on project, library, and JDK
+  classes)
 - **`get_type_hierarchy`** — Show supertypes and subtypes of any class or interface
 
 ---
@@ -47,7 +49,8 @@ All file operations go through IntelliJ's Document API and Virtual File System �
 undoable, auto-formatted, and instantly visible in the editor.
 
 - **`intellij_read_file`** — Read file content from IntelliJ's editor buffer (always reflects unsaved changes)
-- **`intellij_write_file`** — Write or edit files with three modes: full replace, find-and-replace (`old_str`/`new_str`), or line-range replace
+- **`intellij_write_file`** — Write or edit files with three modes: full replace, find-and-replace (`old_str`/
+  `new_str`), or line-range replace
 - **`create_file`** — Create a new file registered in IntelliJ's VFS
 - **`delete_file`** — Delete a file from the project
 - **`reload_from_disk`** — Refresh IntelliJ's VFS to pick up external changes
@@ -158,7 +161,6 @@ Plugin management, HTTP requests, and IDE diagnostics.
 - **`http_request`** — Make HTTP requests (GET, POST, PUT, PATCH, DELETE) to any URL
 - **`read_ide_log`** — Read recent IDE log entries with optional level and text filtering
 - **`get_notifications`** — Get recent IntelliJ balloon notifications
-- **`reload_plugin`** — Hot-reload the IDE Agent plugin from a build ZIP without restarting the IDE
 
 ---
 
@@ -182,7 +184,8 @@ Fine-grained control over what the agent can do.
 
 - **Per-tool permissions** — Allow, Ask, or Deny for each of the 66 tools
 - **Path-based rules** — different permissions for project files vs. files outside the project
-- **Built-in edit interception** — Copilot CLI file edits are redirected through IntelliJ's document API so every change is undoable
+- **Built-in edit interception** — Copilot CLI file edits are redirected through IntelliJ's document API so every change
+  is undoable
 - **Settings panel** — enable/disable individual tools and configure permissions visually
 
 ---

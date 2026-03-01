@@ -573,10 +573,6 @@ public class McpServer {
             ),
             List.of()));
 
-        addIfEnabled.accept(buildTool("reload_plugin", "Hot-reload the IDE Agent plugin from the latest build ZIP without IDE restart. Performs: build check → unload → replace files → reload. Run ':plugin-core:buildPlugin' first.",
-            Map.of(),
-            List.of()));
-
         // ---- Terminal tools ----
 
         addIfEnabled.accept(buildTool("run_in_terminal", "Run In Terminal",
