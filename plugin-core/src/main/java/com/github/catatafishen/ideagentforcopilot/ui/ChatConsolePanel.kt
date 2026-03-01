@@ -45,6 +45,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var turnCounter = 0
     private var currentTurnId = ""
     private var toolJustCompleted = false
+    private val toolCallNames = mutableMapOf<String, String>() // domId → tool baseName
 
     // ── JCEF ───────────────────────────────────────────────────────
     private val browser: JBCefBrowser?
@@ -267,6 +268,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
         val baseName = title.substringAfterLast("-").substringAfterLast("_")
+        toolCallNames[did] = baseName
         val info = TOOL_DISPLAY_INFO[baseName]
         val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
         val short = formatToolSubtitle(baseName, arguments)
@@ -277,13 +279,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     override fun updateToolCall(id: String, status: String, details: String?) {
         val did = domId(id)
-        val resultHtml = if (!details.isNullOrBlank()) {
-            val encoded =
-                b64("<div class='tool-result-label'>Output:</div><pre class='tool-output'><code>${esc(details)}</code></pre>")
-            "b64('$encoded')"
-        } else {
-            if (status == "completed") "'Completed'" else "'<span style=\"color:var(--error)\">✖ Failed</span>'"
-        }
+        val baseName = toolCallNames[did]
+        val resultHtml = renderToolResult(baseName, status, details)
         val failed = if (status == "failed") "failed" else "completed"
         executeJs("(function(){ChatController.updateToolCall('$did','$failed',$resultHtml);})()")
         toolJustCompleted = true
@@ -865,6 +862,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     private fun handleFileLink(href: String) {
+        if (href.startsWith("gitshow://")) {
+            handleGitShowLink(href.removePrefix("gitshow://"))
+            return
+        }
         val pathAndLine = href.removePrefix("openfile://")
         val parts = pathAndLine.split(":")
         val filePath = parts[0]
@@ -872,6 +873,64 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val vf = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return
         SwingUtilities.invokeLater {
             OpenFileDescriptor(project, vf, maxOf(0, line - 1), 0).navigate(true)
+        }
+    }
+
+    private fun handleGitShowLink(hash: String) {
+        SwingUtilities.invokeLater {
+            try {
+                // Open the Git log tool window and select the commit
+                val twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+                val gitTw = twm.getToolWindow("Git") ?: twm.getToolWindow("Version Control")
+                if (gitTw != null) {
+                    gitTw.activate {
+                        // Try to jump to the commit via VcsProjectLog (reflection — Git4Idea is optional)
+                        try {
+                            val vcsProjectLogClass = Class.forName("com.intellij.vcs.log.impl.VcsProjectLog")
+                            val getInstance = vcsProjectLogClass.getMethod("getInstance", Project::class.java)
+                            val vcsProjectLog = getInstance.invoke(null, project) ?: return@activate
+                            val getLogManager = vcsProjectLogClass.getMethod("getLogManager")
+                            val logManager = getLogManager.invoke(vcsProjectLog) ?: return@activate
+
+                            val contentUtilClass = Class.forName("com.intellij.vcs.log.impl.VcsLogContentUtil")
+                            val selectMethod = contentUtilClass.methods.find {
+                                it.name == "openMainLogAndExecute" && it.parameterCount == 2
+                            }
+                            if (selectMethod != null) {
+                                val hashClass = Class.forName("com.intellij.vcs.log.Hash")
+                                val hashImplClass = Class.forName("com.intellij.vcs.log.HashImpl")
+                                val buildHash = hashImplClass.getMethod("build", String::class.java)
+                                val commitHash = buildHash.invoke(null, hash)
+
+                                selectMethod.invoke(null, project, java.util.function.Consumer { ui: Any ->
+                                    try {
+                                        val getVcsLog = ui.javaClass.getMethod("getVcsLog")
+                                        val vcsLog = getVcsLog.invoke(ui)
+                                        val getDataPack = ui.javaClass.getMethod("getDataPack")
+                                        val dataPack = getDataPack.invoke(ui)
+                                        val getLogProviders = dataPack.javaClass.getMethod("getLogProviders")
+
+                                        @Suppress("UNCHECKED_CAST")
+                                        val providers = getLogProviders.invoke(dataPack) as? Map<Any, Any>
+                                        val root = providers?.keys?.firstOrNull() ?: return@Consumer
+                                        val jumpMethod = vcsLog.javaClass.getMethod(
+                                            "jumpToCommit",
+                                            hashClass,
+                                            Class.forName("com.intellij.openapi.vfs.VirtualFile")
+                                        )
+                                        jumpMethod.invoke(vcsLog, commitHash, root)
+                                    } catch (_: Exception) { /* best effort */
+                                    }
+                                })
+                            }
+                        } catch (_: Exception) { /* Git4Idea not available — tool window is already open */
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
+                    .warn("Failed to open git commit $hash", e)
+            }
         }
     }
 
@@ -907,6 +966,147 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         result
     } catch (_: Exception) {
         null
+    }
+
+    // ── Custom tool result renderers ─────────────────────────────
+
+    /**
+     * Dispatch to a custom renderer or fall back to the default pre/code block.
+     * Returns a JS expression that evaluates to an HTML string.
+     */
+    private fun renderToolResult(baseName: String?, status: String, details: String?): String {
+        if (details.isNullOrBlank()) {
+            return if (status == "completed") "'Completed'"
+            else "'<span style=\"color:var(--error)\">✖ Failed</span>'"
+        }
+        if (status == "completed" && baseName != null) {
+            val custom = TOOL_RESULT_RENDERERS[baseName]?.invoke(details)
+            if (custom != null) return "b64('${b64(custom)}')"
+        }
+        val encoded = b64(
+            "<div class='tool-result-label'>Output:</div>" +
+                "<pre class='tool-output'><code>${esc(details)}</code></pre>"
+        )
+        return "b64('$encoded')"
+    }
+
+    /** Per-tool custom result renderers. Return HTML string or null to use default. */
+    private val TOOL_RESULT_RENDERERS: Map<String, (String) -> String?> = mapOf(
+        "git_commit" to ::renderGitCommitResult,
+    )
+
+    /**
+     * Renders a git commit result as a rich card with commit metadata,
+     * message, changed files with stats, and a link to show in IDE git tools.
+     */
+    private fun renderGitCommitResult(output: String): String? {
+        // Parse: [branch hash] message\n N files changed, X insertions(+), Y deletions(-)\n ...
+        val lines = output.trimEnd().lines()
+        if (lines.isEmpty()) return null
+
+        val headerLine = lines[0]
+        // Match "[branch hash] message" pattern
+        val headerMatch = Regex("""\[(\S+)\s+([a-f0-9]+)]\s+(.+)""").find(headerLine) ?: return null
+        val branch = esc(headerMatch.groupValues[1])
+        val shortHash = esc(headerMatch.groupValues[2])
+        val message = esc(headerMatch.groupValues[3])
+
+        // Remaining lines: stats summary and file entries
+        val fileLines = mutableListOf<String>()
+        var summaryLine = ""
+        for (i in 1 until lines.size) {
+            val line = lines[i].trim()
+            if (line.isEmpty()) continue
+            if (line.matches(Regex("""\d+ files? changed.*"""))) {
+                summaryLine = line
+            } else {
+                fileLines.add(line)
+            }
+        }
+
+        val sb = StringBuilder()
+        sb.append("<div class='git-commit-result'>")
+
+        // Header: hash + branch
+        sb.append("<div class='git-commit-header'>")
+        sb.append("<span class='git-commit-hash'>")
+        sb.append("<a href='gitshow://$shortHash' class='git-commit-link' title='Show commit in IDE'>$shortHash</a>")
+        sb.append("</span>")
+        sb.append(" <span class='git-commit-branch'>$branch</span>")
+        sb.append("</div>")
+
+        // Commit message
+        sb.append("<div class='git-commit-message'>$message</div>")
+
+        // Stats summary
+        if (summaryLine.isNotEmpty()) {
+            val statsParts = parseDiffStats(summaryLine)
+            sb.append("<div class='git-commit-stats'>")
+            sb.append("<span class='git-stat-files'>${esc(statsParts.files)}</span>")
+            if (statsParts.insertions.isNotEmpty()) {
+                sb.append(" <span class='git-stat-ins'>+${esc(statsParts.insertions)}</span>")
+            }
+            if (statsParts.deletions.isNotEmpty()) {
+                sb.append(" <span class='git-stat-del'>-${esc(statsParts.deletions)}</span>")
+            }
+            sb.append("</div>")
+        }
+
+        // Changed files
+        if (fileLines.isNotEmpty()) {
+            sb.append("<div class='git-commit-files'>")
+            for (fileLine in fileLines) {
+                val rendered = renderFileEntry(fileLine)
+                sb.append(rendered)
+            }
+            sb.append("</div>")
+        }
+
+        sb.append("</div>")
+        return sb.toString()
+    }
+
+    private data class DiffStats(val files: String, val insertions: String, val deletions: String)
+
+    private fun parseDiffStats(line: String): DiffStats {
+        val filesMatch = Regex("""(\d+ files? changed)""").find(line)
+        val insMatch = Regex("""(\d+) insertions?\(\+\)""").find(line)
+        val delMatch = Regex("""(\d+) deletions?\(-\)""").find(line)
+        return DiffStats(
+            files = filesMatch?.groupValues?.get(1) ?: line,
+            insertions = insMatch?.groupValues?.get(1) ?: "",
+            deletions = delMatch?.groupValues?.get(1) ?: "",
+        )
+    }
+
+    private fun renderFileEntry(line: String): String {
+        // "create mode 100644 path/to/file" or "delete mode 100644 path/to/file" or just path
+        val createMatch = Regex("""create mode \d+ (.+)""").find(line)
+        val deleteMatch = Regex("""delete mode \d+ (.+)""").find(line)
+        val renameMatch = Regex("""rename (.+) => (.+) \((\d+)%\)""").find(line)
+
+        return when {
+            createMatch != null -> {
+                val path = esc(createMatch.groupValues[1].trim())
+                "<div class='git-file-entry'><span class='git-file-badge git-file-add'>A</span> <span class='git-file-path'>$path</span></div>"
+            }
+
+            deleteMatch != null -> {
+                val path = esc(deleteMatch.groupValues[1].trim())
+                "<div class='git-file-entry'><span class='git-file-badge git-file-del'>D</span> <span class='git-file-path'>$path</span></div>"
+            }
+
+            renameMatch != null -> {
+                val from = esc(renameMatch.groupValues[1].trim())
+                val to = esc(renameMatch.groupValues[2].trim())
+                "<div class='git-file-entry'><span class='git-file-badge git-file-rename'>R</span> <span class='git-file-path'>$from → $to</span></div>"
+            }
+
+            else -> {
+                val path = esc(line.trim())
+                "<div class='git-file-entry'><span class='git-file-badge git-file-mod'>M</span> <span class='git-file-path'>$path</span></div>"
+            }
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────

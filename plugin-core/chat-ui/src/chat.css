@@ -906,3 +906,114 @@ permission-request {
         scroll-behavior: auto;
     }
 }
+
+/* ── Git commit result card ──────────────────────────── */
+.git-commit-result {
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.git-commit-header {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-2);
+}
+
+.git-commit-hash {
+    font-family: monospace;
+    font-size: 0.92em;
+    font-weight: 600;
+}
+
+.git-commit-link {
+    color: var(--link);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.git-commit-link:hover {
+    text-decoration: underline;
+}
+
+.git-commit-branch {
+    font-size: 0.82em;
+    background: var(--fg-a08);
+    border-radius: var(--r-sm);
+    padding: 1px var(--sp-3);
+    color: var(--think);
+}
+
+.git-commit-message {
+    font-weight: 500;
+    margin-bottom: var(--sp-3);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.git-commit-stats {
+    font-size: 0.85em;
+    color: var(--think);
+    margin-bottom: var(--sp-3);
+}
+
+.git-stat-ins {
+    color: #5cb85c;
+    font-weight: 600;
+}
+
+.git-stat-del {
+    color: #d9534f;
+    font-weight: 600;
+}
+
+.git-commit-files {
+    border-top: 1px solid var(--fg-a08);
+    padding-top: var(--sp-3);
+}
+
+.git-file-entry {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 1px 0;
+    font-size: 0.88em;
+}
+
+.git-file-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--r-sm);
+    font-size: 0.75em;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.git-file-add {
+    background: rgba(80, 180, 80, 0.15);
+    color: #5cb85c;
+}
+
+.git-file-del {
+    background: rgba(220, 80, 80, 0.15);
+    color: #d9534f;
+}
+
+.git-file-mod {
+    background: rgba(86, 156, 214, 0.15);
+    color: var(--link);
+}
+
+.git-file-rename {
+    background: rgba(240, 173, 78, 0.15);
+    color: #f0ad4e;
+}
+
+.git-file-path {
+    font-family: monospace;
+    font-size: 0.92em;
+    word-break: break-all;
+}

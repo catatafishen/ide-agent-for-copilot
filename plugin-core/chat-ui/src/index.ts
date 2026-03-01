@@ -61,7 +61,7 @@ document.addEventListener('click', (e: MouseEvent) => {
     while (el && el.tagName !== 'A') el = el.parentElement;
     if (!el?.getAttribute('href')) return;
     const href = el.getAttribute('href')!;
-    if (href.startsWith('openfile://')) {
+    if (href.startsWith('openfile://') || href.startsWith('gitshow://')) {
         e.preventDefault();
         globalThis._bridge?.openFile(href);
     } else if (href.startsWith('http://') || href.startsWith('https://')) {
