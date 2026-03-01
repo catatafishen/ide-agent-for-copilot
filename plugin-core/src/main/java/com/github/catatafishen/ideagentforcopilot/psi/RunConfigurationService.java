@@ -113,13 +113,9 @@ public final class RunConfigurationService {
         String name = args.get("name").getAsString();
         String type = args.get("type").getAsString().toLowerCase();
 
-        // Block creating Gradle configs with test arguments — use run_tests instead
-        if ("gradle".equals(type) && args.has("program_args")) {
-            String progArgs = args.get("program_args").getAsString().toLowerCase();
-            if (progArgs.contains("test")) {
-                return "Error: Use the run_tests tool to run tests, not create_run_configuration with Gradle test tasks.";
-            }
-        }
+        // Abuse detection on program_args — same rules as run_command
+        String abuseError = checkProgramArgsAbuse(args, type);
+        if (abuseError != null) return abuseError;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
@@ -165,6 +161,10 @@ public final class RunConfigurationService {
 
     public String editRunConfiguration(JsonObject args) throws Exception {
         String name = args.get("name").getAsString();
+
+        // Abuse detection on program_args — same rules as run_command
+        String abuseError = checkProgramArgsAbuse(args, null);
+        if (abuseError != null) return abuseError;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
@@ -222,6 +222,33 @@ public final class RunConfigurationService {
     }
 
     // ---- Helper Methods ----
+
+    /**
+     * Check program_args for abuse patterns (same detection as run_command).
+     * Also blocks Gradle configs with test task args.
+     *
+     * @param args the tool arguments
+     * @param configType the config type (e.g. "gradle"), or null if unknown/edit
+     * @return error message if blocked, null if allowed
+     */
+    private static String checkProgramArgsAbuse(JsonObject args, String configType) {
+        if (!args.has(PARAM_PROGRAM_ARGS)) return null;
+        String progArgs = args.get(PARAM_PROGRAM_ARGS).getAsString();
+
+        // General abuse detection (git, cat, sed, grep, find, test commands)
+        String abuseType = ToolUtils.detectCommandAbuseType(progArgs);
+        if (abuseType != null) {
+            return ToolUtils.getCommandAbuseMessage(abuseType);
+        }
+
+        // Gradle-specific: block test tasks (bare "test" won't match general patterns)
+        if ("gradle".equals(configType) && progArgs.toLowerCase().contains("test")) {
+            return "Error: Use the run_tests tool to run tests, "
+                + "not create_run_configuration with Gradle test tasks.";
+        }
+
+        return null;
+    }
 
     private com.intellij.execution.configurations.ConfigurationType findConfigurationType(String type) {
         for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
