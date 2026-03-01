@@ -1750,6 +1750,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val title = update["title"]?.asString ?: "tool"
         val status = update["status"]?.asString ?: ""
         val toolCallId = update["toolCallId"]?.asString ?: ""
+        val kind = update["kind"]?.asString ?: "other"
         val arguments = extractJsonArguments(update)
         if (status != "completed" && toolCallId.isNotEmpty()) {
             // Detect sub-agent calls by checking for agent_type in arguments
@@ -1775,7 +1776,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
                 toolCallTitles[toolCallId] = title
                 setResponseStatus("Running: $title")
-                consolePanel.addToolCallEntry(toolCallId, title, arguments)
+                consolePanel.addToolCallEntry(toolCallId, title, arguments, kind)
             }
         }
     }

@@ -189,7 +189,7 @@ const ChatController = {
         this._collapseThinkingFor(ctx);
     },
 
-    addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string): void {
+    addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string): void {
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
         const section = document.createElement('tool-section');
@@ -200,6 +200,7 @@ const ChatController = {
         const chip = document.createElement('tool-chip');
         chip.setAttribute('label', title);
         chip.setAttribute('status', 'running');
+        if (kind) chip.setAttribute('kind', kind);
         (chip as HTMLElement).dataset.chipFor = id;
         (chip as any).linkSection(section);
         ctx.meta!.appendChild(chip);

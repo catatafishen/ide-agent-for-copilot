@@ -30,7 +30,7 @@ interface ChatPanelApi : Disposable {
 
     // ── Tool calls ─────────────────────────────────────────────────
 
-    fun addToolCallEntry(id: String, title: String, arguments: String? = null)
+    fun addToolCallEntry(id: String, title: String, arguments: String? = null, kind: String? = null)
     fun updateToolCall(id: String, status: String, details: String? = null)
 
     // ── Sub-agents ─────────────────────────────────────────────────

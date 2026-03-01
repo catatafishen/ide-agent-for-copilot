@@ -1,9 +1,9 @@
 import {collapseAllChips, escHtml} from '../helpers';
-import {toolCategory, toolDisplayName} from '../toolDisplayName';
+import {toolDisplayName} from '../toolDisplayName';
 
 export default class ToolChip extends HTMLElement {
     static get observedAttributes(): string[] {
-        return ['label', 'status', 'expanded'];
+        return ['label', 'status', 'expanded', 'kind'];
     }
 
     private _init = false;
@@ -33,14 +33,14 @@ export default class ToolChip extends HTMLElement {
     private _render(): void {
         const rawLabel = this.getAttribute('label') || '';
         const status = this.getAttribute('status') || 'running';
+        const kind = this.getAttribute('kind') || 'other';
         this._resolveLink();
         const paramsStr = this._linkedSection?.getAttribute('params') || undefined;
         const display = toolDisplayName(rawLabel, paramsStr);
-        const cat = toolCategory(rawLabel);
         const truncated = display.length > 50 ? display.substring(0, 47) + '\u2026' : display;
-        // Remove any previous category class and apply current one
-        this.className = this.className.replace(/\bcat-\S+/g, '').trim();
-        this.classList.add('turn-chip', 'tool', `cat-${cat}`);
+        // Remove any previous kind class and apply current one
+        this.className = this.className.replace(/\bkind-\S+/g, '').trim();
+        this.classList.add('turn-chip', 'tool', `kind-${kind}`);
         let iconHtml = '';
         if (status === 'running') iconHtml = '<span class="chip-spinner"></span> ';
         else if (status === 'failed') this.classList.add('failed');
@@ -83,6 +83,6 @@ export default class ToolChip extends HTMLElement {
 
     attributeChangedCallback(name: string): void {
         if (!this._init) return;
-        if (name === 'status') this._render();
+        if (name === 'status' || name === 'kind') this._render();
     }
 }

@@ -263,7 +263,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         fallbackArea?.let { SwingUtilities.invokeLater { it.append(text) } }
     }
 
-    override fun addToolCallEntry(id: String, title: String, arguments: String?) {
+    override fun addToolCallEntry(id: String, title: String, arguments: String?, kind: String?) {
         finalizeCurrentText()
         entries.add(EntryData.ToolCall(title, arguments))
         val did = domId(id)
@@ -274,7 +274,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val short = formatToolSubtitle(baseName, arguments)
         val label = if (short != null) "$displayName — $short" else displayName
         val paramsJson = if (!arguments.isNullOrBlank()) escJs(arguments) else ""
-        executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson')")
+        val safeKind = escJs(kind ?: "other")
+        executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind')")
     }
 
     override fun updateToolCall(id: String, status: String, details: String?) {
@@ -599,7 +600,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val short = formatToolSubtitle(baseName, args)
                 val label = if (short != null) "$displayName — $short" else displayName
                 val did = "restored-tool-${entries.size}"
-                executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','${escJs(args ?: "")}');ChatController.updateToolCall('$did','completed','Completed')")
+                executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','${escJs(args ?: "")}','other');ChatController.updateToolCall('$did','completed','Completed')")
             }
 
             "subagent" -> {

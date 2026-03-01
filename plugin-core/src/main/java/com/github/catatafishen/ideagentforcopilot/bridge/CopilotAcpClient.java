@@ -694,33 +694,73 @@ public class CopilotAcpClient implements Closeable {
      * they auto-execute without asking. We can't block them, but we CAN detect them via
      * tool_call notifications and send corrective guidance so the agent uses IntelliJ tools
      * for subsequent calls in the same turn.
+     * <p>
+     * Detection uses a negative check: if the tool is NOT one of our known MCP tools or
+     * Copilot meta-tools, it must be a built-in CLI tool that bypasses IDE buffers.
      */
     private void interceptBuiltInToolCall(JsonObject update) {
         String title = update.has(TITLE_KEY) ? update.get(TITLE_KEY).getAsString() : "";
 
-        String guidance = switch (title.toLowerCase()) {
-            case "view", "read", "read file", "view file" ->
-                BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk (may be stale). " +
-                    "Use 'intellij-code-tools-intellij_read_file' instead — it reads live editor buffers.";
-            case "grep", "search", "ripgrep" ->
-                BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk. " +
-                    "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
-                    "For symbol search, use 'intellij-code-tools-search_symbols'.";
-            case "glob", "find files", "list files" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
-                "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
-            case CREATE_KIND, "create file" -> BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
-                "Use 'intellij-code-tools-create_file' instead — it integrates with IntelliJ's project index.";
-            case "edit", "edit file" ->
-                BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which writes to disk, bypassing the editor. " +
-                    "Use 'intellij-code-tools-intellij_write_file' instead — it writes to live editor buffers.";
-            default -> null;
-        };
+        // Skip our MCP tools and GitHub MCP tools
+        if (title.startsWith("intellij-code-tools-") || title.startsWith("github-mcp-server-")) return;
 
-        if (guidance != null) {
-            LOG.info("interceptBuiltInToolCall: detected built-in tool '" + title +
-                "', sending corrective guidance");
-            sendPromptMessage(guidance);
+        // Skip Copilot meta-tools (these aren't file operations)
+        String kind = update.has("kind") ? update.get("kind").getAsString() : "";
+        if ("think".equals(kind)) return;
+
+        // Everything else is a built-in CLI tool — classify and send guidance
+        String guidance = classifyBuiltInTool(title);
+        LOG.info("interceptBuiltInToolCall: detected built-in tool '" + title +
+            "' (kind=" + kind + "), sending corrective guidance");
+        sendPromptMessage(guidance);
+    }
+
+    /**
+     * Classify a built-in tool call by its title and return corrective guidance.
+     * Copilot CLI uses descriptive titles like "Viewing ...", "Searching for '...'"
+     * rather than simple tool names.
+     */
+    private @NotNull String classifyBuiltInTool(String title) {
+        String lower = title.toLowerCase();
+
+        // View/read: "Viewing ...", "view", "read", "read file", "view file"
+        if (lower.startsWith("viewing ") || lower.equals("view") || lower.equals("read")
+            || lower.equals("read file") || lower.equals("view file")) {
+            return BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk (may be stale). " +
+                "Use 'intellij-code-tools-intellij_read_file' instead — it reads live editor buffers.";
         }
+
+        // Grep/search: "Searching for '...'", "grep", "search", "ripgrep"
+        if (lower.startsWith("searching for ") || lower.equals("grep") || lower.equals("search")
+            || lower.equals("ripgrep")) {
+            return BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which reads from disk. " +
+                "Use 'intellij-code-tools-search_text' instead — it searches live editor buffers. " +
+                "For symbol search, use 'intellij-code-tools-search_symbols'.";
+        }
+
+        // Glob/find: "Finding files matching ...", "glob", "find files", "list files"
+        if (lower.startsWith("finding files ") || lower.equals("glob") || lower.equals("find files")
+            || lower.equals("list files")) {
+            return BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
+                "Use 'intellij-code-tools-list_project_files' instead — it uses IntelliJ's project index.";
+        }
+
+        // Create: "Creating ...", "create", "create file"
+        if (lower.startsWith("creating ") || lower.equals(CREATE_KIND) || lower.equals("create file")) {
+            return BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool. " +
+                "Use 'intellij-code-tools-create_file' instead — it integrates with IntelliJ's project index.";
+        }
+
+        // Edit: "Editing ...", "edit", "edit file"
+        if (lower.startsWith("editing ") || lower.equals("edit") || lower.equals("edit file")) {
+            return BUILT_IN_TOOL_WARNING_PREFIX + title + "' tool which writes to disk, bypassing the editor. " +
+                "Use 'intellij-code-tools-intellij_write_file' instead — it writes to live editor buffers.";
+        }
+
+        // Unknown non-MCP tool — send generic guidance
+        LOG.info("interceptBuiltInToolCall: unknown tool '" + title + "', sending generic guidance");
+        return BUILT_IN_TOOL_WARNING_PREFIX + title + "' (a Copilot CLI built-in tool). " +
+            "Prefer 'intellij-code-tools-*' MCP tools instead — they operate on live editor buffers.";
     }
 
     private JsonObject buildPromptParams(@NotNull String sessionId, @NotNull String prompt,
