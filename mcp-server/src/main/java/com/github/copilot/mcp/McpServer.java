@@ -606,7 +606,8 @@ public class McpServer {
         addIfEnabled.accept(buildTool("open_in_editor", "Open In Editor",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file to open"),
-                "line", Map.of("type", "integer", "description", "Optional: line number to navigate to after opening")
+                "line", Map.of("type", "integer", "description", "Optional: line number to navigate to after opening"),
+                "focus", Map.of("type", "boolean", "description", "Optional: if true (default), the editor gets focus. Set to false to open without stealing focus")
             ),
             List.of("file")));
 

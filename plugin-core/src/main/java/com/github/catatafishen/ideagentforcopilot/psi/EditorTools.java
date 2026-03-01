@@ -48,6 +48,7 @@ class EditorTools extends AbstractToolHandler {
         }
         String pathStr = args.get("file").getAsString();
         int line = args.has("line") ? args.get("line").getAsInt() : -1;
+        boolean focus = !args.has("focus") || args.get("focus").getAsBoolean();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 
@@ -61,10 +62,10 @@ class EditorTools extends AbstractToolHandler {
 
                 if (line > 0) {
                     new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, line - 1, 0)
-                        .navigate(true);
+                        .navigate(focus);
                 } else {
                     com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-                        .openFile(vf, true);
+                        .openFile(vf, focus);
                 }
 
                 // Force DaemonCodeAnalyzer to run on this file
