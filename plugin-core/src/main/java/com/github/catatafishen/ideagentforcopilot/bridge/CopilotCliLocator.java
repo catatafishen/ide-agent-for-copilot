@@ -121,7 +121,6 @@ final class CopilotCliLocator {
      * Find the bundled MCP server JAR in the plugin's lib directory.
      * Returns null if not found (MCP tools will be unavailable).
      */
-    @SuppressWarnings("deprecation") // getPath() deprecated in PluginDescriptor
     @Nullable
     static String findMcpServerJar() {
         // Strategy 1: Use IntelliJ plugin API to find plugin directory

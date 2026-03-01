@@ -105,6 +105,12 @@
   <depends optional="true" config-file="java-features.xml">com.intellij.modules.java</depends>
   <depends optional="true" config-file="git-features.xml">Git4Idea</depends>
   <depends optional="true" config-file="terminal-features.xml">org.jetbrains.plugins.terminal</depends>
+  <!-- Optional plugins accessed via reflection for enhanced tool support -->
+  <depends optional="true">org.jetbrains.plugins.gradle</depends>
+  <depends optional="true">org.jetbrains.idea.maven</depends>
+  <depends optional="true">com.intellij.coverage</depends>
+  <depends optional="true">org.jetbrains.qodana</depends>
+  <depends optional="true">org.sonarlint.idea</depends>
 
   <!-- Extension points and implementations -->
   <extensions defaultExtensionNs="com.intellij">
