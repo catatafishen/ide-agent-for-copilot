@@ -258,6 +258,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         banner.installButton.addActionListener {
             com.intellij.ide.BrowserUtil.browse("https://github.com/github/copilot-cli#installation")
         }
+        // Clear pending auth error on Retry so diagnostics re-verifies from scratch
+        banner.retryButton.addActionListener { authService.clearPendingAuthError() }
         banner.actionButton.addActionListener {
             banner.showSignInPending()
             // Try inline auth first (captures device code from CLI stdout)
@@ -1544,6 +1546,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun executePrompt(prompt: String) {
         try {
+            // Block prompts while signed out — banner must be visible for sign-in
+            if (authService.pendingAuthError != null) {
+                SwingUtilities.invokeLater {
+                    consolePanel.addErrorEntry("Not signed in to Copilot. Use the Sign In button in the banner above.")
+                    copilotBanner?.triggerCheck()
+                }
+                return
+            }
+
             val service = CopilotService.getInstance(project)
             val client = service.getClient()
             val sessionId = ensureSessionCreated(client)

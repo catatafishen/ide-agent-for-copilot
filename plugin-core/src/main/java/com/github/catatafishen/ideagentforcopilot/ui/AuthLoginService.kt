@@ -43,18 +43,24 @@ internal class AuthLoginService(private val project: Project) {
     // ── Diagnostics ──────────────────────────────────────────────────────────
 
     /** Returns null if Copilot CLI is installed and authenticated, or an error description. */
-    fun copilotSetupDiagnostics(): String? = try {
-        val client = CopilotService.getInstance(project).getClient()
-        if (pendingAuthError != null) {
-            // Force a fresh session to pick up new auth tokens after sign-in
-            client.refreshModels()
-            pendingAuthError = null
-        } else {
+    fun copilotSetupDiagnostics(): String? {
+        // If there's a pending auth error (e.g. after logout), return it immediately
+        // without calling getClient() — which would auto-restart the ACP process.
+        // Cleared by the sign-in flow (onAuthComplete) or by clearPendingAuthError().
+        pendingAuthError?.let { return it }
+
+        return try {
+            val client = CopilotService.getInstance(project).getClient()
             client.listModels()
+            null
+        } catch (e: Exception) {
+            e.message ?: "Failed to connect to Copilot CLI"
         }
-        null
-    } catch (e: Exception) {
-        e.message ?: "Failed to connect to Copilot CLI"
+    }
+
+    /** Clear the pending auth error so the next diagnostic check re-verifies from scratch. */
+    fun clearPendingAuthError() {
+        pendingAuthError = null
     }
 
     /** Returns null if GH CLI is installed and authenticated, or an error description. */
