@@ -1,4 +1,4 @@
-rootProject.name = "agentic-copilot-intellij"
+rootProject.name = "ide-agent-for-copilot"
 
 include("plugin-core")
 include("mcp-server")

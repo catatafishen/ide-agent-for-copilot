@@ -148,7 +148,7 @@ These map to IntelliJ Git APIs and respect protected branches & commit checks.
 ## 6) Repository layout
 
 ```
-agentic-copilot-intellij/
+ide-agent-for-copilot/
   build.gradle.kts
   settings.gradle.kts
   gradle/

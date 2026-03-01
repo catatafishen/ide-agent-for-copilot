@@ -396,7 +396,7 @@ $env:Path += ";$env:JAVA_HOME\bin"
 ```bash
 # Build plugin ZIP
 ./gradlew buildPlugin
-# Output: build/distributions/agentic-copilot-intellij-0.1.0-SNAPSHOT.zip
+# Output: build/distributions/ide-agent-for-copilot-0.1.0-SNAPSHOT.zip
 
 # Verify plugin structure
 ./gradlew verifyPlugin
