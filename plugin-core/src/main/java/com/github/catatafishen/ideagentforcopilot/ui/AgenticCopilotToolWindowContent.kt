@@ -547,6 +547,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
         northStack.add(copilotBanner)
         northStack.add(createGhSetupBanner { billing.loadBillingData() })
+        northStack.add(GitWarningBanner(project))
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 
