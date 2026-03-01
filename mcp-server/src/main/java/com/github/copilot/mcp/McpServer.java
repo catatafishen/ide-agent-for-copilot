@@ -589,6 +589,14 @@ public class McpServer {
             Map.of(),
             List.of()));
 
+        addIfEnabled.accept(buildTool("run_scratch_file", "Run Scratch File",
+            Map.of(
+                "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'test.kts', 'script.py')"),
+                "module", Map.of("type", "string", "description", "Optional: module name for classpath (e.g., 'plugin-core')"),
+                "interactive", Map.of("type", "boolean", "description", "Optional: enable interactive/REPL mode (Kotlin scripts)")
+            ),
+            List.of("name")));
+
         addIfEnabled.accept(buildTool("get_indexing_status", "Get Indexing Status",
             Map.of(
                 "wait", Map.of("type", "boolean", "description", "If true, blocks until indexing finishes"),

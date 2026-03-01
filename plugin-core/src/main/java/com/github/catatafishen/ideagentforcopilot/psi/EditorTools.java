@@ -37,6 +37,7 @@ class EditorTools extends AbstractToolHandler {
         register("show_diff", this::showDiff);
         register("create_scratch_file", this::createScratchFile);
         register("list_scratch_files", this::listScratchFiles);
+        register("run_scratch_file", this::runScratchFile);
         register("get_chat_html", this::getChatHtml);
         register("get_active_file", this::getActiveFile);
         register("get_open_editors", this::getOpenEditors);
@@ -358,6 +359,228 @@ class EditorTools extends AbstractToolHandler {
 
         return resultFuture.get(10, TimeUnit.SECONDS);
     }
+
+    /**
+     * Run a scratch file with optional classpath module and interactive mode.
+     * Supports .kts, .kt, .java, .groovy, .py and other runnable file types.
+     */
+    @SuppressWarnings("unused")
+    private String runScratchFile(JsonObject args) throws Exception {
+        if (!args.has("name")) {
+            return "Error: 'name' parameter is required (scratch file name, e.g. 'test.kts')";
+        }
+        String name = args.get("name").getAsString();
+        String moduleName = args.has("module") ? args.get("module").getAsString() : "";
+        boolean interactive = args.has("interactive") && args.get("interactive").getAsBoolean();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        EdtUtil.invokeLater(() -> {
+            try {
+                // 1. Find the scratch file
+                VirtualFile scratchFile = findScratchFile(name);
+                if (scratchFile == null) {
+                    resultFuture.complete("Error: Scratch file not found: '" + name
+                        + "'. Use list_scratch_files to see available files.");
+                    return;
+                }
+
+                // 2. Find appropriate configuration type for this file extension
+                String extension = scratchFile.getExtension();
+                var configType = findScratchConfigType(extension);
+                if (configType == null) {
+                    resultFuture.complete("Error: No run configuration type found for ."
+                        + extension + " files. Available types: " + listAvailableConfigTypes());
+                    return;
+                }
+
+                // 3. Create temporary run configuration
+                var factories = configType.getConfigurationFactories();
+                if (factories.length == 0) {
+                    resultFuture.complete("Error: No configuration factory for " + configType.getDisplayName());
+                    return;
+                }
+
+                var runManager = com.intellij.execution.RunManager.getInstance(project);
+                var settings = runManager.createConfiguration(
+                    "Scratch: " + scratchFile.getName(), factories[0]);
+                var config = settings.getConfiguration();
+
+                // 4. Set script/file path via reflection
+                boolean pathSet = setScriptPath(config, scratchFile.getPath());
+
+                // 5. Set classpath module
+                String moduleStatus = "";
+                if (!moduleName.isEmpty()) {
+                    var module = com.intellij.openapi.module.ModuleManager.getInstance(project)
+                        .findModuleByName(moduleName);
+                    if (module != null) {
+                        trySetModule(config, module);
+                        moduleStatus = "\nClasspath: " + moduleName;
+                    } else {
+                        moduleStatus = "\nWarning: Module '" + moduleName + "' not found";
+                    }
+                }
+
+                // 6. Set interactive mode (primarily for Kotlin scripts)
+                String interactiveStatus = "";
+                if (interactive) {
+                    boolean set = trySetInteractiveMode(config, true);
+                    interactiveStatus = set ? "\nInteractive mode: ON"
+                        : "\nWarning: Interactive mode not supported for this config type";
+                }
+
+                // 7. Execute
+                settings.setTemporary(true);
+                runManager.addConfiguration(settings);
+                runManager.setSelectedConfiguration(settings);
+
+                var executor = com.intellij.execution.executors.DefaultRunExecutor.getRunExecutorInstance();
+                var envBuilder = com.intellij.execution.runners.ExecutionEnvironmentBuilder
+                    .createOrNull(executor, settings);
+                if (envBuilder == null) {
+                    resultFuture.complete("Error: Cannot create execution environment for "
+                        + configType.getDisplayName());
+                    return;
+                }
+
+                com.intellij.execution.ExecutionManager.getInstance(project)
+                    .restartRunProfile(envBuilder.build());
+
+                resultFuture.complete("Started: " + scratchFile.getName()
+                    + " [" + configType.getDisplayName() + "]"
+                    + (pathSet ? "" : "\nWarning: Could not set script path on config")
+                    + moduleStatus + interactiveStatus
+                    + "\nOutput will appear in the Run panel. Use read_run_output to read it.");
+            } catch (Exception e) {
+                LOG.warn("Failed to run scratch file", e);
+                resultFuture.complete("Error running scratch file: " + e.getMessage());
+            }
+        });
+
+        return resultFuture.get(15, TimeUnit.SECONDS);
+    }
+
+    // ---- Scratch File Helpers ----
+
+    private VirtualFile findScratchFile(String name) {
+        // Try as absolute/project-relative path first
+        VirtualFile asPath = resolveVirtualFile(name);
+        if (asPath != null && !asPath.isDirectory()) return asPath;
+
+        // Try finding in scratch root directory
+        try {
+            var scratchRoot = com.intellij.ide.scratch.ScratchRootType.getInstance();
+            // Try exact relative path match
+            VirtualFile file = scratchRoot.findFile(null, name,
+                com.intellij.ide.scratch.ScratchFileService.Option.existing_only);
+            if (file != null && !file.isDirectory()) return file;
+        } catch (Exception ignored) {
+            // Fall through to directory search
+        }
+
+        // Search by filename in scratch root directory
+        try {
+            var scratchService = com.intellij.ide.scratch.ScratchFileService.getInstance();
+            var scratchRoot = com.intellij.ide.scratch.ScratchRootType.getInstance();
+            VirtualFile dir = scratchService.getVirtualFile(scratchRoot);
+            if (dir != null) return findFileByName(dir, name, 0);
+        } catch (Exception ignored) {
+            // Fall through
+        }
+
+        return null;
+    }
+
+    private VirtualFile findFileByName(VirtualFile dir, String name, int depth) {
+        if (depth > 3) return null;
+        for (VirtualFile child : dir.getChildren()) {
+            if (child.isDirectory()) {
+                VirtualFile found = findFileByName(child, name, depth + 1);
+                if (found != null) return found;
+            } else if (child.getName().equals(name)) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private com.intellij.execution.configurations.ConfigurationType findScratchConfigType(String extension) {
+        if (extension == null) return null;
+
+        String searchTerm = switch (extension.toLowerCase()) {
+            case "kts" -> "kotlin script";
+            case "kt" -> "kotlin";
+            case "java" -> "application";
+            case "groovy", "gvy" -> "groovy";
+            case "py" -> "python";
+            case "scala" -> "scala";
+            default -> extension;
+        };
+
+        for (var ct : com.intellij.execution.configurations.ConfigurationType
+            .CONFIGURATION_TYPE_EP.getExtensionList()) {
+            String displayName = ct.getDisplayName().toLowerCase();
+            String id = ct.getId().toLowerCase();
+            if (displayName.contains(searchTerm) || id.contains(searchTerm.replace(" ", ""))) {
+                return ct;
+            }
+        }
+        return null;
+    }
+
+    private String listAvailableConfigTypes() {
+        var types = com.intellij.execution.configurations.ConfigurationType
+            .CONFIGURATION_TYPE_EP.getExtensionList();
+        StringBuilder sb = new StringBuilder();
+        for (var ct : types) {
+            if (!sb.isEmpty()) sb.append(", ");
+            sb.append(ct.getDisplayName());
+        }
+        return sb.toString();
+    }
+
+    @SuppressWarnings("java:S3011") // reflection needed for cross-plugin config API
+    private boolean setScriptPath(com.intellij.execution.configurations.RunConfiguration config, String path) {
+        for (String method : java.util.List.of("setFilePath", "setScriptPath", "setScriptFile",
+            "setMainClassName")) {
+            try {
+                config.getClass().getMethod(method, String.class).invoke(config, path);
+                return true;
+            } catch (Exception ignored) {
+                // Try next method name
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("java:S3011") // reflection needed for cross-plugin config API
+    private void trySetModule(com.intellij.execution.configurations.RunConfiguration config,
+                              com.intellij.openapi.module.Module module) {
+        try {
+            config.getClass().getMethod("setModule", com.intellij.openapi.module.Module.class)
+                .invoke(config, module);
+        } catch (Exception ignored) {
+            // Config type may not support module setting
+        }
+    }
+
+    @SuppressWarnings("java:S3011") // reflection needed for cross-plugin config API
+    private boolean trySetInteractiveMode(com.intellij.execution.configurations.RunConfiguration config,
+                                          boolean interactive) {
+        for (String method : java.util.List.of("setInteractiveMode", "setIsInteractive",
+            "setMakeBeforeRun")) {
+            try {
+                config.getClass().getMethod(method, boolean.class).invoke(config, interactive);
+                return true;
+            } catch (Exception ignored) {
+                // Try next method name
+            }
+        }
+        return false;
+    }
+
+    // ---- End Scratch File Helpers ----
 
     /**
      * Returns all currently open editor tabs with their file paths.
