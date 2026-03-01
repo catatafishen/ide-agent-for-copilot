@@ -83,6 +83,18 @@
     ]]></description>
 
   <change-notes><![CDATA[
+    <h3>0.3.0</h3>
+    <ul>
+        <li>Dynamic tool filtering — only advertises tools the IDE can actually run</li>
+        <li>Context-aware timeout messages — distinguishes permission prompts from slow operations</li>
+        <li>Expanded long-running tool support (run_command, run_tests, build_project, etc.)</li>
+        <li>Clickable git commit SHAs in chat output</li>
+        <li>Local request counter for billing visibility</li>
+        <li>Reload plugin tool for hot-reload without IDE restart</li>
+        <li>Git revert tool and improved run configuration tools</li>
+        <li>Resolved all deprecated and internal API usages flagged by marketplace verifier</li>
+        <li>Requires IntelliJ 2025.3+ (forward-compatible with 2026.1+)</li>
+    </ul>
     <h3>0.2.0</h3>
     <ul>
         <li>Direct ACP integration — removed Go sidecar and SDK dependency</li>
