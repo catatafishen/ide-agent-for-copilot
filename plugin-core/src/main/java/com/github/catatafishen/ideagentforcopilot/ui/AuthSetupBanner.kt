@@ -100,7 +100,7 @@ class AuthSetupBanner(
         }
         add(content, BorderLayout.CENTER)
 
-        retryButton.addActionListener { runCheck() }
+        retryButton.addActionListener { triggerCheck() }
 
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(e: javax.swing.event.AncestorEvent) {
@@ -114,6 +114,11 @@ class AuthSetupBanner(
             override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
         })
     }
+
+    // ── Public API ─────────────────────────────────────────────────────────────
+
+    /** Force an immediate re-check (e.g. after an auth error in a request). */
+    fun triggerCheck() = runCheck()
 
     // ── Polling ───────────────────────────────────────────────────────────────
 

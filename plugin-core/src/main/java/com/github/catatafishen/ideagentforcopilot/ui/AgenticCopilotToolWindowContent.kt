@@ -84,6 +84,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private val authService = AuthLoginService(project)
     private lateinit var consolePanel: ChatPanelApi
     private lateinit var responsePanelContainer: JBPanel<JBPanel<*>>
+    private var copilotBanner: AuthSetupBanner? = null
 
     // Per-turn tracking
     private var turnToolCallCount = 0
@@ -521,7 +522,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         // Setup banners: Copilot CLI / auth, GH CLI / auth
-        northStack.add(createCopilotSetupBanner { loadModels() })
+        copilotBanner = createCopilotSetupBanner { loadModels() }
+        northStack.add(copilotBanner)
         northStack.add(createGhSetupBanner { billing.loadBillingData() })
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
@@ -1825,6 +1827,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         setResponseStatus("Error", loading = false)
         addTimelineEvent(EventType.ERROR, "Error: ${msg.take(80)}")
 
+        // Show the auth banner immediately when an auth error is detected
+        if (authService.isAuthenticationError(msg)) {
+            copilotBanner?.triggerCheck()
+        }
+
         val isRecoverable = e is InterruptedException || e.cause is InterruptedException ||
             (e is com.github.catatafishen.ideagentforcopilot.bridge.CopilotException && e.isRecoverable)
         if (!isRecoverable) {
@@ -2086,6 +2093,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 loadingSpinner.suspend()
                 loadingSpinner.isVisible = false
                 modelsStatusText = "Unavailable"
+                if (authService.isAuthenticationError(errorMsg)) {
+                    copilotBanner?.triggerCheck()
+                }
             }
         }
     }
