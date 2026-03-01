@@ -1506,6 +1506,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     consolePanel.showPermissionRequest(
                         req.reqId.toString(), req.displayName, req.description
                     ) { allowed -> req.respond(allowed) }
+                    notifyPermissionRequestIfUnfocused(req.displayName)
                 }
             }
 
@@ -1899,6 +1900,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         com.intellij.ui.SystemNotifications.getInstance().notify("Copilot Notifications", title, content)
         // Flash the taskbar icon
         com.intellij.ui.AppIcon.getInstance().requestAttention(project, false)
+    }
+
+    private fun notifyPermissionRequestIfUnfocused(toolName: String) {
+        val frame = com.intellij.openapi.wm.WindowManager.getInstance().getFrame(project) ?: return
+        if (frame.isActive) return
+        val title = "Copilot needs approval"
+        val content = "Permission requested for: $toolName"
+        com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+            .notifyByBalloon(
+                "IDE Agent for Copilot",
+                com.intellij.openapi.ui.MessageType.WARNING,
+                "<b>$title</b><br>$content"
+            )
+        com.intellij.ui.SystemNotifications.getInstance().notify("Copilot Notifications", title, content)
+        com.intellij.ui.AppIcon.getInstance().requestAttention(project, true)
     }
 
     private fun saveConversation() {
