@@ -230,10 +230,10 @@ IntelliJ's `PluginInstaller.installFromDisk` (2025.3) contains this logic:
 
 ```java
 Path oldFile = installedPlugin != null && !installedPlugin.isBundled()
-    ? installedPlugin.getPluginPath() : null;
+        ? installedPlugin.getPluginPath() : null;
 boolean isRestartRequired = oldFile != null
-    || !DynamicPlugins.allowLoadUnloadWithoutRestart(pluginDescriptor)
-    || operation.isRestartRequired();
+        || !DynamicPlugins.allowLoadUnloadWithoutRestart(pluginDescriptor)
+        || operation.isRestartRequired();
 ```
 
 The `oldFile != null` check **short-circuits** — when the plugin is already installed (i.e. an
@@ -241,6 +241,7 @@ update), `oldFile` is always non-null, so the platform never even calls
 `allowLoadUnloadWithoutRestart`. Restart is unconditionally required for all disk-based updates.
 
 This means:
+
 - **Fresh install from disk** → can load dynamically (no restart) ✅
 - **Update existing plugin from disk** → always requires restart ❌
 - **Marketplace updates** → use a different code path that supports dynamic updates ✅
@@ -265,7 +266,8 @@ confirming the plugin is dynamic-compatible from the platform's perspective.
 ### Workarounds for development
 
 - **Sandbox IDE**: Use `./gradlew :plugin-core:prepareSandbox` — auto-reload works without restart
-- **Main IDE (CLI deploy)**: Use the `rm -rf` + `unzip` approach from the [Deploy](#deploy-to-main-ide-after-code-changes) section, then restart
+- **Main IDE (CLI deploy)**: Use the `rm -rf` + `unzip` approach from
+  the [Deploy](#deploy-to-main-ide-after-code-changes) section, then restart
 - **Main IDE (UI install)**: Accept the restart — it's a platform limitation for disk-based updates
 
 ## Test Coverage

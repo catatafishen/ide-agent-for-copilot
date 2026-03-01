@@ -1,4 +1,4 @@
-import { escHtml } from '../helpers';
+import {escHtml} from '../helpers';
 
 export default class ToolSection extends HTMLElement {
     private _init = false;
@@ -38,5 +38,6 @@ export default class ToolSection extends HTMLElement {
         el.textContent = `⏱ ${label}`;
     }
 
-    updateStatus(_status: string): void { /* status tracked on chip only */ }
+    updateStatus(_status: string): void { /* status tracked on chip only */
+    }
 }
