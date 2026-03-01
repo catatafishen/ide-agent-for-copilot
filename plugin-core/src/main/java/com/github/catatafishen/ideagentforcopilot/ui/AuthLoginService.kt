@@ -44,7 +44,7 @@ internal class AuthLoginService(private val project: Project) {
 
     /** Returns null if Copilot CLI is installed and authenticated, or an error description. */
     fun copilotSetupDiagnostics(): String? {
-        // If there's a pending auth error (e.g. after logout), return it immediately
+        // If there's a pending auth error, return it immediately
         // without calling getClient() — which would auto-restart the ACP process.
         // Cleared by the sign-in flow (onAuthComplete) or by clearPendingAuthError().
         pendingAuthError?.let { return it }
@@ -78,51 +78,6 @@ internal class AuthLoginService(private val project: Project) {
         return lower.contains("auth") ||
             lower.contains("copilot cli") ||
             lower.contains("authenticated")
-    }
-
-    // ── Logout ─────────────────────────────────────────────────────────────
-
-    /**
-     * Signs out of Copilot by stopping the ACP process and running `copilot auth logout`.
-     * Must be called on a background thread. Returns null on success or an error message.
-     */
-    fun logout(): String? {
-        // Resolve the copilot CLI path before stopping (stop() clears the client)
-        val copilotPath: String? = try {
-            CopilotService.getInstance(project).getClient().copilotCliPath
-        } catch (_: Exception) {
-            null
-        }
-
-        try {
-            // Stop the running ACP subprocess so its cached token is discarded
-            CopilotService.getInstance(project).stop()
-        } catch (e: Exception) {
-            LOG.error("Failed to stop ACP process during logout", e)
-            return e.message ?: "Logout failed"
-        }
-
-        // Best-effort CLI logout using the resolved binary (not just "copilot" from PATH)
-        if (copilotPath != null) {
-            try {
-                val pb = ProcessBuilder(copilotPath, "auth", "logout")
-                pb.redirectErrorStream(true)
-                val proc = pb.start()
-                val output = proc.inputStream.bufferedReader().readText().trim()
-                val exitCode = proc.waitFor()
-                if (exitCode != 0) {
-                    LOG.warn("copilot auth logout exited with code $exitCode: $output")
-                } else {
-                    LOG.info("Copilot auth logout succeeded")
-                }
-            } catch (e: Exception) {
-                LOG.warn("copilot auth logout command failed (non-fatal)", e)
-            }
-        }
-
-        // Mark auth error so the banner shows after logout
-        pendingAuthError = "Signed out of Copilot"
-        return null
     }
 
     // ── Login flows ──────────────────────────────────────────────────────────
