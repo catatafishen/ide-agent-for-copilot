@@ -7,6 +7,9 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 
 class AgenticCopilotToolWindowFactory : ToolWindowFactory, DumbAware {
+
+    override suspend fun isApplicableAsync(project: Project): Boolean = true
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val content = AgenticCopilotToolWindowContent(project)
 

@@ -62,6 +62,7 @@
     <toolWindow id="IDE Agent for Copilot"
                 secondary="false"
                 anchor="right"
+                doNotActivateOnStart="false"
                 icon="/icons/copilot.svg"
                 factoryClass="com.github.catatafishen.ideagentforcopilot.ui.AgenticCopilotToolWindowFactory"/>
 
