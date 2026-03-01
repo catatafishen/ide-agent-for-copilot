@@ -4,8 +4,8 @@
   <circle cx="1.2" cy="11.8" r="1.2" fill="#AFB1B3"/>
   <circle cx="11.8" cy="1.2" r="1.2" fill="#AFB1B3"/>
   <circle cx="11.8" cy="11.8" r="1.2" fill="#AFB1B3"/>
-  <polyline points="1.2,1.2 1.2,4.5 4.8,4.5" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <polyline points="1.2,11.8 1.2,8.5 4.8,8.5" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <polyline points="11.8,1.2 11.8,4.5 8.5,4.5" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <polyline points="11.8,11.8 11.8,8.5 8.5,8.5" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="1.2,1.2 1.2,5 4.8,5" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="1.2,11.8 1.2,8 4.8,8" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="11.8,1.2 11.8,5 8.5,5" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="11.8,11.8 11.8,8 8.5,8" stroke="#AFB1B3" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

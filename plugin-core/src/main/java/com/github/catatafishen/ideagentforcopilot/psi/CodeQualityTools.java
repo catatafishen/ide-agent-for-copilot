@@ -1117,7 +1117,6 @@ class CodeQualityTools extends AbstractToolHandler {
 
     // ---- run_qodana ----
 
-    @SuppressWarnings("OverrideOnly")
     private String runQodana(JsonObject args) throws Exception {
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
 
@@ -1142,7 +1141,7 @@ class CodeQualityTools extends AbstractToolHandler {
                     dataContext, presentation, "QodanaTool",
                     com.intellij.openapi.actionSystem.ActionUiKind.NONE, null);
 
-                qodanaAction.update(event);
+                var updateResult = com.intellij.openapi.actionSystem.ex.ActionUtil.updateAction(qodanaAction, event);
                 if (!event.getPresentation().isEnabled()) {
                     resultFuture.complete("Error: Qodana action is not available. " +
                         "The project may not be fully loaded yet, or Qodana may already be running.");
@@ -1150,7 +1149,7 @@ class CodeQualityTools extends AbstractToolHandler {
                 }
 
                 LOG.info("Triggering Qodana local analysis...");
-                qodanaAction.actionPerformed(event);
+                com.intellij.openapi.actionSystem.ex.ActionUtil.performAction(qodanaAction, event);
 
                 ApplicationManager.getApplication().executeOnPooledThread(() -> {
                     try {
