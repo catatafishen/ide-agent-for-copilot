@@ -102,7 +102,7 @@ class FileTools extends AbstractToolHandler {
             return hint != null ? hint + "\n" + content : content;
         });
 
-        followFileIfEnabled(pathStr, startLine > 0 ? startLine : -1, endLine > 0 ? endLine : -1, HIGHLIGHT_READ);
+        followFileIfEnabled(pathStr, startLine > 0 ? startLine : -1, endLine > 0 ? endLine : -1, HIGHLIGHT_READ, "Agent is reading");
         return result;
     }
 
@@ -145,7 +145,7 @@ class FileTools extends AbstractToolHandler {
      * Scrolls to the middle of [startLine, endLine] and briefly highlights the region.
      */
     private void followFileIfEnabled(String pathStr, int startLine, int endLine,
-                                     java.awt.Color highlightColor) {
+                                     java.awt.Color highlightColor, String actionLabel) {
         if (!CopilotSettings.getFollowAgentFiles()) return;
 
         EdtUtil.invokeLater(() -> {
@@ -160,7 +160,7 @@ class FileTools extends AbstractToolHandler {
                 if (midLine > 0) {
                     new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, midLine - 1, 0)
                         .navigate(false);
-                    scrollAndHighlight(fem, vf, startLine, endLine, midLine, highlightColor);
+                    scrollAndHighlight(fem, vf, startLine, endLine, midLine, highlightColor, actionLabel);
                 } else {
                     fem.openFile(vf, false);
                 }
@@ -172,7 +172,7 @@ class FileTools extends AbstractToolHandler {
 
     private void scrollAndHighlight(FileEditorManager fem, VirtualFile vf,
                                     int startLine, int endLine, int midLine,
-                                    java.awt.Color highlightColor) {
+                                    java.awt.Color highlightColor, String actionLabel) {
         for (com.intellij.openapi.fileEditor.FileEditor fe : fem.getEditors(vf)) {
             if (fe instanceof TextEditor textEditor) {
                 com.intellij.openapi.editor.Editor editor = textEditor.getEditor();
@@ -185,7 +185,7 @@ class FileTools extends AbstractToolHandler {
                 editor.getScrollingModel().scrollToCaret(
                     com.intellij.openapi.editor.ScrollType.CENTER);
 
-                flashLineRange(editor, doc, startLine, endLine, highlightColor, textEditor);
+                flashLineRange(editor, doc, startLine, endLine, highlightColor, actionLabel, textEditor);
                 break;
             }
         }
@@ -193,7 +193,8 @@ class FileTools extends AbstractToolHandler {
 
     private void flashLineRange(com.intellij.openapi.editor.Editor editor, Document doc,
                                 int startLine, int endLine,
-                                java.awt.Color color, TextEditor disposableParent) {
+                                java.awt.Color color, String actionLabel,
+                                TextEditor disposableParent) {
         int lineCount = doc.getLineCount();
         if (startLine <= 0 || endLine <= 0 || startLine > lineCount) return;
 
@@ -209,14 +210,70 @@ class FileTools extends AbstractToolHandler {
             com.intellij.openapi.editor.markup.HighlighterLayer.SELECTION - 1,
             attrs,
             com.intellij.openapi.editor.markup.HighlighterTargetArea.LINES_IN_RANGE);
+
+        // Add an inline label above the highlighted region
+        var inlay = editor.getInlayModel().addBlockElement(
+            hlStart, true, true, 0,
+            new AgentActionRenderer(actionLabel, color));
+
         var alarm = new com.intellij.util.Alarm(
             com.intellij.util.Alarm.ThreadToUse.SWING_THREAD, disposableParent);
         alarm.addRequest(() -> {
             try {
                 markup.removeHighlighter(hl);
+                if (inlay != null) inlay.dispose();
             } catch (Exception ignored) {
             }
         }, 2500);
+    }
+
+    /**
+     * Renders a small label ("Agent is reading" / "Agent is editing") as a block inlay above
+     * the highlighted region. Uses the same tint color as the range highlight.
+     */
+    private static class AgentActionRenderer implements com.intellij.openapi.editor.EditorCustomElementRenderer {
+        private static final String ICON = "\uD83E\uDD16 ";  // 🤖
+        private final String text;
+        private final java.awt.Color bgColor;
+
+        AgentActionRenderer(String text, java.awt.Color bgColor) {
+            this.text = text;
+            this.bgColor = new java.awt.Color(
+                bgColor.getRed(), bgColor.getGreen(), bgColor.getBlue(),
+                Math.min(bgColor.getAlpha() * 3, 255));
+        }
+
+        @Override
+        public int calcWidthInPixels(com.intellij.openapi.editor.Inlay inlay) {
+            var editor = inlay.getEditor();
+            var metrics = editor.getContentComponent().getFontMetrics(
+                editor.getColorsScheme().getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN));
+            return metrics.stringWidth(ICON + text) + 16;
+        }
+
+        @Override
+        public int calcHeightInPixels(com.intellij.openapi.editor.Inlay inlay) {
+            return inlay.getEditor().getLineHeight();
+        }
+
+        @Override
+        public void paint(com.intellij.openapi.editor.Inlay inlay,
+                          java.awt.Graphics g, java.awt.Rectangle targetRegion,
+                          com.intellij.openapi.editor.markup.TextAttributes textAttributes) {
+            var g2 = (java.awt.Graphics2D) g;
+            g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(bgColor);
+            g2.fillRoundRect(targetRegion.x, targetRegion.y,
+                targetRegion.width, targetRegion.height, 6, 6);
+            var editor = inlay.getEditor();
+            g2.setFont(editor.getColorsScheme().getFont(
+                com.intellij.openapi.editor.colors.EditorFontType.PLAIN));
+            g2.setColor(editor.getColorsScheme().getDefaultForeground());
+            var metrics = g2.getFontMetrics();
+            int textY = targetRegion.y + (targetRegion.height + metrics.getAscent() - metrics.getDescent()) / 2;
+            g2.drawString(ICON + text, targetRegion.x + 8, textY);
+        }
     }
 
     private String writeFile(JsonObject args) throws Exception {
@@ -253,7 +310,7 @@ class FileTools extends AbstractToolHandler {
         });
 
         String result = resultFuture.get(15, TimeUnit.SECONDS);
-        followFileIfEnabled(pathStr, followRange[0], followRange[1], HIGHLIGHT_EDIT);
+        followFileIfEnabled(pathStr, followRange[0], followRange[1], HIGHLIGHT_EDIT, "Agent is editing");
         return result;
     }
 
