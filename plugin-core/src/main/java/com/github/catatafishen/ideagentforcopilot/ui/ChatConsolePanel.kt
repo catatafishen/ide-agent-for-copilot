@@ -592,6 +592,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     val encoded = b64(html)
                     executeJs("ChatController.finalizeAgentText('$currentTurnId','main','$encoded')")
                 }
+                // Reset segment so subsequent tool/text entries get a fresh message element,
+                // matching the live flow where newSegment is called between tool results and new text.
+                executeJs("ChatController.newSegment('$currentTurnId','main')")
             }
 
             "thinking" -> {
@@ -900,15 +903,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     return@invokeLater
                 }
                 val hashObj = com.intellij.vcs.log.impl.HashImpl.build(hash)
-                val twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
-                val gitTw = twm.getToolWindow("Git") ?: twm.getToolWindow("Version Control")
-                if (gitTw != null) {
-                    gitTw.activate {
-                        com.intellij.vcs.log.impl.VcsLogNavigationUtil.jumpToRevisionAsync(project, root, hashObj, null)
-                    }
-                } else {
-                    com.intellij.vcs.log.impl.VcsLogNavigationUtil.jumpToRevisionAsync(project, root, hashObj, null)
-                }
+                com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, root, hashObj)
             } catch (e: Exception) {
                 log.warn("Failed to open git commit $hash", e)
             }
