@@ -254,6 +254,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     override fun appendText(text: String) {
         maybeStartNewSegment()
         collapseThinking()
+
+        // ACP framework status messages arrive as regular text chunks — render them
+        // as distinct info/error entries instead of plain agent text.
+        if (text.startsWith("Info: ")) {
+            addInfoEntry(text.removePrefix("Info: ").trimEnd())
+            return
+        }
+        if (text.startsWith("Error: ")) {
+            addErrorEntry(text.removePrefix("Error: ").trimEnd())
+            return
+        }
+
         if (currentTextData == null && text.isBlank()) return
         if (currentTextData == null) {
             currentTextData = EntryData.Text().also { entries.add(it) }
