@@ -13,8 +13,12 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Use the local IDE installation (configured via intellijPlatform.localPath in gradle.properties)
-        local(providers.gradleProperty("intellijPlatform.localPath"))
+        val localPath = providers.gradleProperty("intellijPlatform.localPath").orNull
+        if (localPath != null) {
+            local(localPath)
+        } else {
+            intellijIdeaUltimate("2025.3")
+        }
         instrumentationTools()
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
