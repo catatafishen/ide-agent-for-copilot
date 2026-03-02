@@ -56,7 +56,6 @@ public class CopilotAcpClient implements Closeable {
     private static final String CONTENT = "content";
     private static final String UNKNOWN = "unknown";
     private static final String RUN_COMMAND_ABUSE_PREFIX = "run_command_abuse:";
-    private static final String CLI_TOOL_ABUSE_PREFIX = "cli_tool_abuse:";
     private static final String GIT_WRITE_ABUSE_PREFIX = "git_write_abuse:";
     private static final String USER_HOME = "user.home";
     private static final String TITLE_KEY = "title";
@@ -200,10 +199,37 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * Set whether a sub-agent (Task tool) is currently active.
-     * When active, git write tools (commit, stage, unstage, branch, stash) are blocked.
+     * When active, git write tools are blocked and proactive guidance is sent
+     * so the sub-agent knows to use IntelliJ MCP tools instead of built-in CLI tools.
      */
     public void setSubAgentActive(boolean active) {
         this.subAgentActive = active;
+        if (active) {
+            sendSubAgentGuidance();
+        }
+    }
+
+    /**
+     * Send proactive guidance to a newly-started sub-agent, instructing it to use
+     * IntelliJ MCP tools instead of built-in CLI tools (view, grep, glob, bash, edit, create).
+     * Built-in read-only tools bypass request_permission and auto-execute, so we can't block them;
+     * this upfront instruction is the best way to redirect sub-agents.
+     */
+    private void sendSubAgentGuidance() {
+        String guidance = "⚠ IMPORTANT: You are running inside an IntelliJ IDE plugin. " +
+            "Do NOT use built-in CLI tools (bash, view, edit, create, grep, glob). " +
+            "They read/write from disk and bypass IntelliJ's live editor buffers. " +
+            "Use these IntelliJ MCP tools instead:\n" +
+            "- Read files: intellij-code-tools-intellij_read_file\n" +
+            "- Write/edit files: intellij-code-tools-intellij_write_file\n" +
+            "- Create files: intellij-code-tools-create_file\n" +
+            "- Search code: intellij-code-tools-search_text\n" +
+            "- Find symbols: intellij-code-tools-search_symbols\n" +
+            "- List files: intellij-code-tools-list_project_files\n" +
+            "- Run commands: intellij-code-tools-run_command\n" +
+            "- Git operations: intellij-code-tools-git_status, git_diff, git_log, etc.\n" +
+            "All tools use the 'intellij-code-tools-' prefix. Built-in tools will be denied.";
+        sendPromptMessage(guidance);
     }
 
     /**
@@ -1177,24 +1203,10 @@ public class CopilotAcpClient implements Closeable {
             return;
         }
 
-        // Check if a CLI tool is targeting project files (should use IntelliJ MCP tools instead)
-        String cliToolAbuse = detectCliToolAbuse(toolCall);
-        if (cliToolAbuse != null) {
-            String rejectOptionId = findRejectOption(reqParams);
-            LOG.info("ACP request_permission: DENYING CLI tool abuse: " + cliToolAbuse);
-
-            Map<String, Object> retryParams = buildRetryParams(CLI_TOOL_ABUSE_PREFIX + cliToolAbuse);
-            String retryMessage = (String) retryParams.get(MESSAGE);
-            fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
-            sendPromptMessage(retryMessage);
-
-            fireDebugEvent(PERMISSION_DENIED_EVENT, "CLI tool abuse: " + cliToolAbuse,
-                toolCall.toString());
-            builtInActionDeniedDuringTurn = true;
-            lastDeniedKind = CLI_TOOL_ABUSE_PREFIX + cliToolAbuse;
-            sendPermissionResponse(reqId, rejectOptionId);
-            return;
-        }
+        // Note: Built-in CLI tools (view, grep, glob) bypass request_permission entirely —
+        // they auto-execute without asking. They are handled by interceptBuiltInToolCall() in the
+        // stream handler, which sends corrective guidance. Only kind=execute (bash) comes through
+        // permission, and it's handled by the per-tool permission system + buildRetryParams.
 
         // Check if a sub-agent is trying to use git write tools
         String gitWriteAbuse = detectSubAgentGitWrite(toolCall);
@@ -1385,58 +1397,11 @@ public class CopilotAcpClient implements Closeable {
         return com.github.catatafishen.ideagentforcopilot.psi.ToolUtils.detectCommandAbuseType(command);
     }
 
-    /**
-     * Detect if a CLI tool (view, grep, glob, edit, create) is targeting project files.
-     * These tools read/write from disk and may be stale. IntelliJ MCP tools operate on
-     * live editor buffers and should be used instead.
-     * Returns the tool type (e.g. "view", "grep") if abuse detected, null otherwise.
-     */
-    private String detectCliToolAbuse(JsonObject toolCall) {
-        if (toolCall == null) return null;
+    // Note: detectCliToolAbuse was removed — built-in tools (view, grep, glob, edit, create)
+    // never come through request_permission. They are handled by interceptBuiltInToolCall() instead.
 
-        String toolTitle = toolCall.has(TITLE_KEY) ? toolCall.get(TITLE_KEY).getAsString() : "";
-        String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
-        String tool = !toolTitle.isEmpty() ? toolTitle : toolName;
-
-        return switch (tool) {
-            case "view", "read" -> {
-                String path = extractPathParam(toolCall);
-                yield !path.isEmpty() && isInsideProject(path) ? "view" : null;
-            }
-            case "edit" -> {
-                String path = extractPathParam(toolCall);
-                yield !path.isEmpty() && isInsideProject(path) ? "edit" : null;
-            }
-            case CREATE_KIND -> {
-                String path = extractPathParam(toolCall);
-                yield !path.isEmpty() && isInsideProject(path) ? CREATE_KIND : null;
-            }
-            case "grep" -> {
-                // grep defaults to cwd (project root) when path is omitted
-                String path = extractPathParam(toolCall);
-                yield (path.isEmpty() || isInsideProject(path)) ? "grep" : null;
-            }
-            case "glob" -> {
-                // glob defaults to cwd (project root) when path is omitted
-                String path = extractPathParam(toolCall);
-                yield (path.isEmpty() || isInsideProject(path)) ? "glob" : null;
-            }
-            case "bash" -> "bash";
-            default -> null;
-        };
-    }
-
-    private String extractPathParam(JsonObject toolCall) {
-        if (!toolCall.has(PARAMETERS_KEY)) return "";
-        JsonObject params = toolCall.getAsJsonObject(PARAMETERS_KEY);
-        return params.has("path") ? params.get("path").getAsString() : "";
-    }
-
-    private boolean isInsideProject(String path) {
-        if (projectBasePath == null || projectBasePath.isEmpty()) return false;
-        String normalizedBase = projectBasePath.endsWith("/") ? projectBasePath : projectBasePath + "/";
-        return path.startsWith(normalizedBase) || path.equals(projectBasePath);
-    }
+    // Note: extractPathParam and isInsideProject were removed with detectCliToolAbuse.
+    // Path extraction for per-tool permissions uses extractPathFromToolCall instead.
 
     /**
      * Detect if a git write tool is being called by a sub-agent.
@@ -1479,34 +1444,17 @@ public class CopilotAcpClient implements Closeable {
                     "git_fetch, git_pull, git_merge, git_rebase, git_cherry_pick, git_tag, git_reset.";
                 default -> TOOL_DENIED_DEFAULT_MSG;
             };
-        } else if (deniedKind.startsWith(CLI_TOOL_ABUSE_PREFIX)) {
-            String toolType = deniedKind.substring(CLI_TOOL_ABUSE_PREFIX.length());
-            instruction = switch (toolType) {
-                case "view" -> "⚠ Don't use 'view' for project files — it reads from disk and may be stale. " +
-                    "Use 'intellij-code-tools-intellij_read_file' instead (reads live editor buffer).";
-                case "edit" -> "⚠ Don't use 'edit' for project files — it writes to disk, bypassing the editor. " +
-                    "Use 'intellij-code-tools-intellij_write_file' instead (writes to live editor buffer with undo).";
-                case CREATE_KIND -> "⚠ Don't use 'create' for project files. " +
-                    "Use 'intellij-code-tools-create_file' instead (integrates with IntelliJ's project index).";
-                case "grep" -> "⚠ Don't use 'grep' for project files — it reads from disk and may be stale. " +
-                    "Use 'intellij-code-tools-search_text' instead (searches live editor buffers).";
-                case "glob" -> "⚠ Don't use 'glob' for project files. " +
-                    "Use 'intellij-code-tools-list_project_files' instead (uses IntelliJ's project index).";
-                case "bash" ->
-                    "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
-                        "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
-                        "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
-                default -> TOOL_DENIED_DEFAULT_MSG;
-            };
         } else if (deniedKind.startsWith(GIT_WRITE_ABUSE_PREFIX)) {
             instruction = "⚠ Sub-agents must not use git write commands (git_commit, git_stage, git_unstage, " +
                 "git_branch, git_stash, git_push, git_remote, git_pull, git_merge, git_rebase, " +
                 "git_cherry_pick, git_tag, git_reset). Only the parent agent may perform git writes. " +
                 "Use read-only git tools (git_status, git_diff, git_log, git_show, git_blame, git_fetch) instead.";
-        } else if ("bash".equals(deniedKind)) {
-            instruction = "⚠ Don't use 'bash' — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
-                "Use 'intellij-code-tools-run_command' instead (flushes buffers to disk first). " +
-                "For file operations use intellij_read_file, intellij_write_file, search_text, etc.";
+        } else if ("bash".equals(deniedKind) || "execute".equals(deniedKind)) {
+            instruction = "⚠ Don't use bash/shell execution — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
+                "Use 'intellij-code-tools-run_command' for shell commands (flushes buffers first). " +
+                "For file operations use intellij_read_file, intellij_write_file, search_text, etc. " +
+                "For git use dedicated git tools: git_status, git_diff, git_log, git_commit, git_stage, " +
+                "git_push, git_fetch, git_pull, git_merge, git_rebase, git_cherry_pick, git_tag, git_reset.";
         } else {
             // Generic message for other denials
             instruction = TOOL_DENIED_DEFAULT_MSG;
