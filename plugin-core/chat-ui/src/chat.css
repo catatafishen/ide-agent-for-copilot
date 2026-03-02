@@ -218,6 +218,41 @@ body {
     font-size: inherit;
 }
 
+/* Thinking dots: shown while streaming <pre> is empty, vanishes when text arrives */
+.agent-bubble[streaming] .streaming:empty {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+}
+
+.agent-bubble[streaming] .streaming:empty::after {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 5px;
+    margin-left: 12px;
+    border-radius: 50%;
+    animation: thinking 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking {
+    0%, 100% {
+        background: color-mix(in srgb, var(--agent) 25%, transparent);
+        box-shadow: -12px 0 0 0 var(--agent),
+        12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent);
+    }
+    33% {
+        background: var(--agent);
+        box-shadow: -12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent),
+        12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent);
+    }
+    66% {
+        background: color-mix(in srgb, var(--agent) 25%, transparent);
+        box-shadow: -12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent),
+        12px 0 0 0 var(--agent);
+    }
+}
+
 /* ── Thinking section ─────────────────────────────────── */
 .thinking-section {
     display: block;

@@ -223,6 +223,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.addUserMessage('${escJs(text)}','$ts','$ctxHtml')")
     }
 
+    override fun startStreaming() {
+        if (currentTurnId.isEmpty()) currentTurnId = "t${turnCounter++}"
+        executeJs("ChatController.startAgentResponse('$currentTurnId','main')")
+    }
+
     override fun setPromptStats(modelId: String, multiplier: String) {
         val short = escJs(modelId.substringAfterLast("/").take(30))
         executeJs("ChatController.setPromptStats('$short','${escJs(multiplier)}')")

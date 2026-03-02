@@ -218,6 +218,44 @@ body {
     font-size: inherit;
 }
 
+/* Thinking dots: shown while streaming <pre> is empty, vanishes when text arrives */
+.agent-bubble[streaming] .streaming:empty {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+}
+
+.agent-bubble[streaming] .streaming:empty::after {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 5px;
+    margin-left: 12px;
+    border-radius: 50%;
+    animation: thinking 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking {
+    0%, 100% {
+        background: color-mix(in srgb, var(--agent) 25%, transparent);
+        box-shadow:
+            -12px 0 0 0 var(--agent),
+             12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent);
+    }
+    33% {
+        background: var(--agent);
+        box-shadow:
+            -12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent),
+             12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent);
+    }
+    66% {
+        background: color-mix(in srgb, var(--agent) 25%, transparent);
+        box-shadow:
+            -12px 0 0 0 color-mix(in srgb, var(--agent) 25%, transparent),
+             12px 0 0 0 var(--agent);
+    }
+}
+
 /* ── Thinking section ─────────────────────────────────── */
 .thinking-section {
     display: block;
@@ -243,6 +281,20 @@ body {
     margin: var(--sp-2) 0;
     background: var(--tool-a08);
     border-radius: var(--r-md);
+}
+
+.tool-section-header {
+    font-weight: 600;
+    padding-bottom: var(--sp-2);
+    margin-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--think-a16);
+    cursor: pointer;
+    color: var(--fg);
+    opacity: 0.85;
+}
+
+.tool-section-header:hover {
+    opacity: 1;
 }
 
 /* ── Turn chips (meta pills) ─────────────────────────── */

@@ -718,6 +718,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             } else null
             consolePanel.addPromptEntry(prompt, ctxFiles)
+            consolePanel.startStreaming()
             promptTextArea.text = ""
 
             ApplicationManager.getApplication().executeOnPooledThread {
@@ -1087,7 +1088,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             .findFileByPath("$base/$fileName") ?: return
         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
     }
-
 
     /** Dropdown action for project configuration files: Instructions, TODO, Agent Definitions, MCP Instructions */
     private inner class ProjectFilesDropdownAction : AnAction(
