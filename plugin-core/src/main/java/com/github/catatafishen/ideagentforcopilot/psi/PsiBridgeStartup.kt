@@ -56,19 +56,19 @@ class PsiBridgeStartup : ProjectActivity {
      *
      * As a workaround, we prepend our default startup instructions to the project's
      * copilot-instructions.md on first load (detected by a sentinel comment).
-     * The file may be at the project root or under .github/.
+     * The file may be under .copilot/ or .github/.
      */
     private fun ensureCopilotInstructions(project: Project) {
         val basePath = project.basePath ?: return
 
         try {
-            // Detect existing file location (.github/ takes precedence per Copilot convention)
+            // Detect existing file location (.copilot/ takes precedence, then .github/)
+            val dotCopilotFile = Path.of(basePath, ".copilot", "copilot-instructions.md")
             val dotGithubFile = Path.of(basePath, ".github", "copilot-instructions.md")
-            val rootFile = Path.of(basePath, "copilot-instructions.md")
             val targetFile = when {
+                Files.isRegularFile(dotCopilotFile) -> dotCopilotFile
                 Files.isRegularFile(dotGithubFile) -> dotGithubFile
-                Files.isRegularFile(rootFile) -> rootFile
-                else -> rootFile // will create at root
+                else -> dotCopilotFile // will create in .copilot/
             }
 
             val pluginInstructions = loadPluginInstructions()

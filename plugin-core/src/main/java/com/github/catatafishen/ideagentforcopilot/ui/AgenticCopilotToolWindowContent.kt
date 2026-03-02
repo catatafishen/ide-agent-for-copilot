@@ -1117,13 +1117,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val group = DefaultActionGroup()
             val base = project.basePath
 
-            // Instructions (detect copilot-instructions.md at root or .github/)
+            // Instructions (detect copilot-instructions.md in .copilot/ or .github/)
             val copilotInstructionsFile = if (base != null) {
+                val dotCopilot = java.io.File(base, ".copilot/copilot-instructions.md")
                 val dotGithub = java.io.File(base, ".github/copilot-instructions.md")
-                val root = java.io.File(base, "copilot-instructions.md")
                 when {
+                    dotCopilot.exists() -> dotCopilot
                     dotGithub.exists() -> dotGithub
-                    root.exists() -> root
                     else -> null
                 }
             } else null
