@@ -151,6 +151,16 @@ unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 - **Build**: Gradle 8.x with Kotlin DSL
 - **Testing**: JUnit 5
 
+## Known Copilot Platform Issues
+
+Tracked issues on the Copilot CLI side that affect this plugin. When an issue is resolved upstream, the workaround can
+be removed and the entry marked as ✅.
+
+| # | Issue | Status | Impact | Workaround |
+|---|-------|--------|--------|------------|
+| 1 | [#1486](https://github.com/github/copilot-cli/issues/1486) — MCP `instructions` field ignored | 🔴 Open | Copilot ignores the `instructions` field from the MCP `initialize` response, so the agent never sees our tool-usage guidance. | Plugin prepends instructions to `copilot-instructions.md` on project open ([PsiBridgeStartup.kt](plugin-core/src/main/java/com/github/catatafishen/ideagentforcopilot/psi/PsiBridgeStartup.kt)). |
+| 2 | [#556](https://github.com/github/copilot-cli/issues/556) — Tool filtering not respected | 🔴 Open | `--available-tools` / `--excluded-tools` CLI flags and `tools/remove` MCP capability are all ignored. Built-in tools (`view`, `edit`, `bash`, etc.) cannot be removed. | Permission denial via ACP + redirect messages. See [CLI-BUG-556-WORKAROUND.md](docs/CLI-BUG-556-WORKAROUND.md). |
+
 ## Documentation
 
 - [Development Guide](DEVELOPMENT.md) — Build, deploy, architecture details
