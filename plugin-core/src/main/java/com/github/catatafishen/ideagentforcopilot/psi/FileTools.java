@@ -145,7 +145,7 @@ class FileTools extends AbstractToolHandler {
      * Scrolls to the middle of [startLine, endLine] and briefly highlights the region.
      */
     private void followFileIfEnabled(String pathStr, int startLine, int endLine,
-                                    java.awt.Color highlightColor) {
+                                     java.awt.Color highlightColor) {
         if (!CopilotSettings.getFollowAgentFiles()) return;
 
         EdtUtil.invokeLater(() -> {
@@ -212,7 +212,10 @@ class FileTools extends AbstractToolHandler {
         var alarm = new com.intellij.util.Alarm(
             com.intellij.util.Alarm.ThreadToUse.SWING_THREAD, disposableParent);
         alarm.addRequest(() -> {
-            try { markup.removeHighlighter(hl); } catch (Exception ignored) { }
+            try {
+                markup.removeHighlighter(hl);
+            } catch (Exception ignored) {
+            }
         }, 2500);
     }
 
