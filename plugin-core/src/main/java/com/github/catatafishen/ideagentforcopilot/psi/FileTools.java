@@ -4,7 +4,6 @@ import com.github.catatafishen.ideagentforcopilot.services.CopilotSettings;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.command.undo.UndoManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -12,6 +11,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -39,6 +39,8 @@ class FileTools extends AbstractToolHandler {
     private static final String PARAM_END_LINE = "end_line";
     private static final String PARAM_NEW_STR = "new_str";
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
+    private static final java.awt.Color HIGHLIGHT_EDIT = new java.awt.Color(80, 160, 80, 40);
+    private static final java.awt.Color HIGHLIGHT_READ = new java.awt.Color(80, 120, 200, 35);
 
     // Files modified during the current agent turn that need formatting at turn end
     private final java.util.Set<String> pendingAutoFormat =
@@ -100,7 +102,7 @@ class FileTools extends AbstractToolHandler {
             return hint != null ? hint + "\n" + content : content;
         });
 
-        followFileIfEnabled(pathStr, startLine > 0 ? startLine : -1, -1);
+        followFileIfEnabled(pathStr, startLine > 0 ? startLine : -1, endLine > 0 ? endLine : -1, HIGHLIGHT_READ);
         return result;
     }
 
@@ -140,9 +142,10 @@ class FileTools extends AbstractToolHandler {
 
     /**
      * Opens the file in the editor if "Follow Agent Files" is enabled.
-     * Scrolls to the middle of [startLine, endLine] and briefly highlights the edited region.
+     * Scrolls to the middle of [startLine, endLine] and briefly highlights the region.
      */
-    private void followFileIfEnabled(String pathStr, int startLine, int endLine) {
+    private void followFileIfEnabled(String pathStr, int startLine, int endLine,
+                                    java.awt.Color highlightColor) {
         if (!CopilotSettings.getFollowAgentFiles()) return;
 
         EdtUtil.invokeLater(() -> {
@@ -157,7 +160,7 @@ class FileTools extends AbstractToolHandler {
                 if (midLine > 0) {
                     new com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, midLine - 1, 0)
                         .navigate(false);
-                    scrollAndHighlight(fem, vf, startLine, endLine, midLine);
+                    scrollAndHighlight(fem, vf, startLine, endLine, midLine, highlightColor);
                 } else {
                     fem.openFile(vf, false);
                 }
@@ -168,7 +171,8 @@ class FileTools extends AbstractToolHandler {
     }
 
     private void scrollAndHighlight(FileEditorManager fem, VirtualFile vf,
-                                    int startLine, int endLine, int midLine) {
+                                    int startLine, int endLine, int midLine,
+                                    java.awt.Color highlightColor) {
         for (com.intellij.openapi.fileEditor.FileEditor fe : fem.getEditors(vf)) {
             if (fe instanceof TextEditor textEditor) {
                 com.intellij.openapi.editor.Editor editor = textEditor.getEditor();
@@ -176,37 +180,40 @@ class FileTools extends AbstractToolHandler {
                 int lineCount = doc.getLineCount();
                 if (midLine - 1 >= lineCount) break;
 
-                // Scroll to center of edit
                 int offset = doc.getLineStartOffset(midLine - 1);
                 editor.getCaretModel().moveToOffset(offset);
                 editor.getScrollingModel().scrollToCaret(
                     com.intellij.openapi.editor.ScrollType.CENTER);
 
-                // Highlight the edited region briefly
-                if (startLine > 0 && endLine > 0 && startLine <= lineCount) {
-                    int hlStart = doc.getLineStartOffset(startLine - 1);
-                    int hlEndLine = Math.min(endLine, lineCount);
-                    int hlEnd = doc.getLineEndOffset(hlEndLine - 1);
-                    if (hlEnd > hlStart) {
-                        var attrs = new com.intellij.openapi.editor.markup.TextAttributes();
-                        attrs.setBackgroundColor(new java.awt.Color(80, 160, 80, 40));
-                        var markup = editor.getMarkupModel();
-                        var hl = markup.addRangeHighlighter(
-                            hlStart, hlEnd,
-                            com.intellij.openapi.editor.markup.HighlighterLayer.SELECTION - 1,
-                            attrs,
-                            com.intellij.openapi.editor.markup.HighlighterTargetArea.LINES_IN_RANGE);
-                        // Remove after a short delay
-                        com.intellij.util.Alarm alarm = new com.intellij.util.Alarm(
-                            com.intellij.util.Alarm.ThreadToUse.SWING_THREAD, textEditor);
-                        alarm.addRequest(() -> {
-                            try { markup.removeHighlighter(hl); } catch (Exception ignored) {}
-                        }, 2500);
-                    }
-                }
+                flashLineRange(editor, doc, startLine, endLine, highlightColor, textEditor);
                 break;
             }
         }
+    }
+
+    private void flashLineRange(com.intellij.openapi.editor.Editor editor, Document doc,
+                                int startLine, int endLine,
+                                java.awt.Color color, TextEditor disposableParent) {
+        int lineCount = doc.getLineCount();
+        if (startLine <= 0 || endLine <= 0 || startLine > lineCount) return;
+
+        int hlStart = doc.getLineStartOffset(startLine - 1);
+        int hlEnd = doc.getLineEndOffset(Math.min(endLine, lineCount) - 1);
+        if (hlEnd <= hlStart) return;
+
+        var attrs = new com.intellij.openapi.editor.markup.TextAttributes();
+        attrs.setBackgroundColor(color);
+        var markup = editor.getMarkupModel();
+        var hl = markup.addRangeHighlighter(
+            hlStart, hlEnd,
+            com.intellij.openapi.editor.markup.HighlighterLayer.SELECTION - 1,
+            attrs,
+            com.intellij.openapi.editor.markup.HighlighterTargetArea.LINES_IN_RANGE);
+        var alarm = new com.intellij.util.Alarm(
+            com.intellij.util.Alarm.ThreadToUse.SWING_THREAD, disposableParent);
+        alarm.addRequest(() -> {
+            try { markup.removeHighlighter(hl); } catch (Exception ignored) { }
+        }, 2500);
     }
 
     private String writeFile(JsonObject args) throws Exception {
@@ -243,7 +250,7 @@ class FileTools extends AbstractToolHandler {
         });
 
         String result = resultFuture.get(15, TimeUnit.SECONDS);
-        followFileIfEnabled(pathStr, followRange[0], followRange[1]);
+        followFileIfEnabled(pathStr, followRange[0], followRange[1], HIGHLIGHT_EDIT);
         return result;
     }
 
