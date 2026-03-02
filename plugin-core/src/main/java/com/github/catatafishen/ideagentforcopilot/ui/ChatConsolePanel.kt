@@ -883,13 +883,23 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             return
         }
         val pathAndLine = href.removePrefix("openfile://")
-        val parts = pathAndLine.split(":")
-        val filePath = parts[0]
-        val line = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        val vf = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return
+        val (filePath, line) = parsePathAndLine(pathAndLine)
+        val normalizedPath = filePath.replace('\\', '/')
+        val vf = LocalFileSystem.getInstance().findFileByPath(normalizedPath) ?: return
         SwingUtilities.invokeLater {
             OpenFileDescriptor(project, vf, maxOf(0, line - 1), 0).navigate(true)
         }
+    }
+
+    /** Splits a path-and-optional-line string, handling Windows drive letters (e.g. C:\...:42). */
+    private fun parsePathAndLine(pathAndLine: String): Pair<String, Int> {
+        val lastColon = pathAndLine.lastIndexOf(':')
+        if (lastColon > 0) {
+            val afterColon = pathAndLine.substring(lastColon + 1)
+            val lineNum = afterColon.toIntOrNull()
+            if (lineNum != null) return Pair(pathAndLine.substring(0, lastColon), lineNum)
+        }
+        return Pair(pathAndLine, 0)
     }
 
     private fun handleGitShowLink(hash: String) {
