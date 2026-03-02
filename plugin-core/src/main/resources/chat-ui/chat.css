@@ -749,14 +749,29 @@ b, strong {
     pointer-events: none;
 }
 
-/* ── Copy button ─────────────────────────────────────── */
-.copy-btn {
+/* ── Code action buttons (copy, wrap) ────────────────── */
+.code-actions {
     position: sticky;
     float: right;
     top: var(--sp-2);
     right: var(--sp-2);
     z-index: 1;
+    display: flex;
+    gap: var(--sp-1);
     margin: 0 0 0 var(--sp-3);
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+pre:hover .code-actions {
+    opacity: 0.7;
+}
+
+pre:focus-within .code-actions {
+    opacity: 0.7;
+}
+
+.code-action-btn {
     background: var(--fg-a08);
     color: var(--fg);
     border: none;
@@ -764,29 +779,33 @@ b, strong {
     padding: var(--sp-1);
     line-height: 0;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: background 0.15s;
 }
 
-pre:hover .copy-btn {
-    opacity: 0.7;
-}
-
-pre:focus-within .copy-btn {
-    opacity: 0.7;
-}
-
-.copy-btn:hover {
-    opacity: 1;
+.code-action-btn:hover {
     background: var(--fg-a16);
 }
 
-.copy-btn:focus-visible {
-    opacity: 1;
+.code-action-btn:focus-visible {
     background: var(--fg-a16);
+}
+
+.code-action-btn.active {
+    background: var(--fg-a16);
+    color: var(--agent);
+}
+
+/* Word wrap mode */
+pre.word-wrap {
+    overflow-x: hidden;
+}
+
+pre.word-wrap code {
+    white-space: pre-wrap;
+    word-break: break-all;
 }
 
 /* ── Animations ──────────────────────────────────────── */
@@ -820,7 +839,7 @@ pre:focus-within .copy-btn {
 
 /* ── Keyboard accessibility ──────────────────────────── */
 .turn-chip:focus-visible, .prompt-bubble:focus-visible,
-.quick-reply-btn:focus-visible, .copy-btn:focus-visible,
+.quick-reply-btn:focus-visible, .code-action-btn:focus-visible,
 .load-more-banner:focus-visible {
     outline: 2px solid var(--agent);
     outline-offset: 2px;
