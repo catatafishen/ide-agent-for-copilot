@@ -764,15 +764,15 @@ b, strong {
 }
 
 pre:hover .code-actions {
-    opacity: 0.7;
+    opacity: 1;
 }
 
 pre:focus-within .code-actions {
-    opacity: 0.7;
+    opacity: 1;
 }
 
 .code-action-btn {
-    background: var(--fg-a08);
+    background: var(--code-bg);
     color: var(--fg);
     border: none;
     border-radius: var(--r-sm);
@@ -786,15 +786,15 @@ pre:focus-within .code-actions {
 }
 
 .code-action-btn:hover {
-    background: var(--fg-a16);
+    background: var(--th-bg);
 }
 
 .code-action-btn:focus-visible {
-    background: var(--fg-a16);
+    background: var(--th-bg);
 }
 
 .code-action-btn.active {
-    background: var(--fg-a16);
+    background: var(--th-bg);
     color: var(--agent);
 }
 
