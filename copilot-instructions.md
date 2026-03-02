@@ -185,7 +185,9 @@ public void methodUsedByFramework(Object param) {
 
 ### Clean As You Code
 
-When editing a file, check `--- Highlights (auto) ---` in the write response for **all** issues in that file — not just those caused by your change. If a highlight can be resolved with a straightforward fix (unused import, redundant cast, missing annotation, etc.), fix it in the same edit. This keeps the codebase progressively cleaner with every touch.
+When editing a file, check `--- Highlights (auto) ---` in the write response for **all** issues in that file — not just
+those caused by your change. If a highlight can be resolved with a straightforward fix (unused import, redundant cast,
+missing annotation, etc.), fix it in the same edit. This keeps the codebase progressively cleaner with every touch.
 
 - ✅ Fix pre-existing warnings in files you're already editing
 - ✅ Remove unused imports, dead code, redundant qualifiers
