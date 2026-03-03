@@ -46,6 +46,14 @@ SONARQUBE FOR IDE:
 If available, use run_sonarqube_analysis for additional findings (separate from IntelliJ inspections). \
 Run both for complete coverage.
 
+SUB-AGENT TOOL GUIDANCE:
+Sub-agents do not see these instructions. When launching sub-agents via the Task tool,
+include relevant tool guidance in the prompt you write for them:
+- Explore agents: "Use `intellij_read_file` to read files, `search_text` to search code."
+- Task agents: "Use `run_command` for shell commands. Use `intellij_read_file` to read files."
+- All sub-agents: "Use IDE git tools (git_status, git_diff, git_log, etc.) for reading git state — never shell git."
+- All sub-agents: "Do NOT use git write commands (git_commit, git_stage, etc.) — only the main agent may write."
+
 QUICK-REPLY BUTTONS:
 You may append a `[quick-reply: ...]` tag at the end of your response to render clickable buttons.
 Only use when the options genuinely save the user effort — e.g. confirming a destructive action,
