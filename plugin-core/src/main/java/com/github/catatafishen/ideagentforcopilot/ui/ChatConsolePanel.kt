@@ -95,6 +95,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             JBColor(Color(0xC6, 0x50, 0x50), Color(229, 115, 115)),
             JBColor(Color(0x28, 0x6B, 0xC0), Color(86, 156, 214)),
         )
+
+        // Tool kind chip colors — semantic categories
+        private val KIND_READ_COLOR = JBColor(Color(0x3A, 0x95, 0x95), Color(100, 185, 185))
+        private val KIND_EDIT_COLOR = JBColor(Color(0xA0, 0x7A, 0x3A), Color(205, 155, 95))
+        private val KIND_EXECUTE_COLOR = JBColor(Color(0x4A, 0x90, 0x4A), Color(130, 190, 130))
+        private val KIND_SEARCH_COLOR = JBColor(Color(0x3A, 0x95, 0x95), Color(100, 185, 185))
+        private val KIND_THINK_COLOR = JBColor(Color(0x7A, 0x70, 0xA8), Color(170, 155, 210))
+        private val KIND_OTHER_COLOR = JBColor(Color(0x78, 0x7C, 0x80), Color(160, 165, 170))
     }
 
     // ── Init ───────────────────────────────────────────────────────
@@ -1256,6 +1264,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 };--sa-c$i-a15:${rgba(c, 0.15)};"
             )
         }
+        sb.append("--kind-read:${rgb(KIND_READ_COLOR)};--kind-edit:${rgb(KIND_EDIT_COLOR)};")
+        sb.append("--kind-execute:${rgb(KIND_EXECUTE_COLOR)};--kind-search:${rgb(KIND_SEARCH_COLOR)};")
+        sb.append("--kind-think:${rgb(KIND_THINK_COLOR)};--kind-other:${rgb(KIND_OTHER_COLOR)};")
         return sb.toString()
     }
 

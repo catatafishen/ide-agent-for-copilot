@@ -12,7 +12,7 @@ export default class QuickReplies extends HTMLElement {
     }
 
     /** Valid semantic color suffixes for quick-reply buttons. */
-    private static readonly COLORS = new Set(['danger', 'primary']);
+    private static readonly COLORS = new Set(['danger', 'primary', 'success', 'warning']);
 
     set options(arr: string[]) {
         this.innerHTML = '';
