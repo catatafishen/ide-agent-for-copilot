@@ -346,17 +346,32 @@ final class GitToolHandler {
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("push");
 
+        boolean setUpstream = args.has("set_upstream") && args.get("set_upstream").getAsBoolean();
         if (args.has("force") && args.get("force").getAsBoolean()) {
             gitArgs.add("--force");
         }
-        if (args.has("set_upstream") && args.get("set_upstream").getAsBoolean()) {
+        if (setUpstream) {
             gitArgs.add("--set-upstream");
         }
-        if (args.has("remote")) {
-            gitArgs.add(args.get("remote").getAsString());
+
+        String remote = args.has("remote") ? args.get("remote").getAsString() : null;
+        String branch = args.has(PARAM_BRANCH) ? args.get(PARAM_BRANCH).getAsString() : null;
+
+        // When --set-upstream is used, git requires explicit remote and branch
+        if (setUpstream) {
+            if (remote == null) {
+                remote = "origin";
+            }
+            if (branch == null) {
+                branch = runGit("rev-parse", "--abbrev-ref", "HEAD").trim();
+            }
         }
-        if (args.has(PARAM_BRANCH)) {
-            gitArgs.add(args.get(PARAM_BRANCH).getAsString());
+
+        if (remote != null) {
+            gitArgs.add(remote);
+        }
+        if (branch != null) {
+            gitArgs.add(branch);
         }
         if (args.has("tags") && args.get("tags").getAsBoolean()) {
             gitArgs.add("--tags");
