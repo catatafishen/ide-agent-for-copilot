@@ -1019,97 +1019,19 @@ class CodeQualityTools extends AbstractToolHandler {
             return;
         }
 
-        var target = findSuppressTarget(element);
         String fileName = vf.getName();
 
         if (fileName.endsWith(JAVA_EXTENSION)) {
-            resultFuture.complete(suppressJava(target, inspectionId, document));
+            try {
+                resultFuture.complete(com.github.catatafishen.ideagentforcopilot.psi.java.CodeQualityJavaSupport.suppress(project, element, inspectionId, document));
+            } catch (NoClassDefFoundError e) {
+                resultFuture.complete(suppressWithComment(element, inspectionId, document));
+            }
         } else if (fileName.endsWith(".kt") || fileName.endsWith(".kts")) {
-            resultFuture.complete(suppressKotlin(target, inspectionId, document));
+            resultFuture.complete(suppressKotlin(element, inspectionId, document));
         } else {
-            resultFuture.complete(suppressWithComment(target, inspectionId, document));
+            resultFuture.complete(suppressWithComment(element, inspectionId, document));
         }
-    }
-
-    private com.intellij.psi.PsiElement findSuppressTarget(com.intellij.psi.PsiElement element) {
-        var current = element;
-        while (current != null) {
-            if (current instanceof com.intellij.psi.PsiMethod ||
-                current instanceof com.intellij.psi.PsiField ||
-                current instanceof com.intellij.psi.PsiClass ||
-                current instanceof com.intellij.psi.PsiLocalVariable) {
-                return current;
-            }
-            if (current instanceof com.intellij.psi.PsiStatement) {
-                return current;
-            }
-            current = current.getParent();
-        }
-        return element;
-    }
-
-    private String suppressJava(com.intellij.psi.PsiElement target, String inspectionId,
-                                com.intellij.openapi.editor.Document document) {
-        int targetOffset = target.getTextRange().getStartOffset();
-        int targetLine = document.getLineNumber(targetOffset);
-        int lineStart = document.getLineStartOffset(targetLine);
-
-        String lineText = document.getText(
-            new com.intellij.openapi.util.TextRange(lineStart, document.getLineEndOffset(targetLine)));
-        StringBuilder indent = new StringBuilder();
-        for (char c : lineText.toCharArray()) {
-            if (c == ' ' || c == '\t') indent.append(c);
-            else break;
-        }
-
-        if (target instanceof com.intellij.psi.PsiModifierListOwner modListOwner) {
-            var modList = modListOwner.getModifierList();
-            if (modList != null) {
-                var existing = modList.findAnnotation("java.lang.SuppressWarnings");
-                if (existing != null) {
-                    return addToExistingSuppressWarnings(existing, inspectionId, document);
-                }
-            }
-        }
-
-        String annotation = indent + "@SuppressWarnings(\"" + inspectionId + "\")\n";
-        ApplicationManager.getApplication().runWriteAction(() ->
-            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
-                document.insertString(lineStart, annotation);
-                com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-            }, LABEL_SUPPRESS_INSPECTION, null)
-        );
-
-        return "Added @SuppressWarnings(\"" + inspectionId + "\") at line " + (targetLine + 1);
-    }
-
-    private String addToExistingSuppressWarnings(com.intellij.psi.PsiAnnotation annotation,
-                                                 String inspectionId,
-                                                 com.intellij.openapi.editor.Document document) {
-        String text = annotation.getText();
-        if (text.contains(inspectionId)) {
-            return "Inspection '" + inspectionId + "' is already suppressed at this location";
-        }
-
-        ApplicationManager.getApplication().runWriteAction(() ->
-            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
-                var value = annotation.findAttributeValue("value");
-                if (value != null) {
-                    if (value instanceof com.intellij.psi.PsiArrayInitializerMemberValue) {
-                        int endBrace = value.getTextRange().getEndOffset() - 1;
-                        document.insertString(endBrace, ", \"" + inspectionId + "\"");
-                    } else {
-                        var range = value.getTextRange();
-                        String existing = document.getText(range);
-                        document.replaceString(range.getStartOffset(), range.getEndOffset(),
-                            "{" + existing + ", \"" + inspectionId + "\"}");
-                    }
-                    com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(document);
-                }
-            }, LABEL_SUPPRESS_INSPECTION, null)
-        );
-
-        return "Added '" + inspectionId + "' to existing @SuppressWarnings annotation";
     }
 
     private String suppressKotlin(com.intellij.psi.PsiElement target, String inspectionId,

@@ -31,7 +31,7 @@ public final class ToolUtils {
     private ToolUtils() {
     }
 
-    static String classifyElement(PsiElement element) {
+    public static String classifyElement(PsiElement element) {
         String cls = element.getClass().getSimpleName();
 
         // Java PSI
@@ -100,7 +100,7 @@ public final class ToolUtils {
         return vf;
     }
 
-    static String relativize(String basePath, String filePath) {
+    public static String relativize(String basePath, String filePath) {
         String base = basePath.replace('\\', '/');
         String file = filePath.replace('\\', '/');
         return file.startsWith(base + "/") ? file.substring(base.length() + 1) : file;

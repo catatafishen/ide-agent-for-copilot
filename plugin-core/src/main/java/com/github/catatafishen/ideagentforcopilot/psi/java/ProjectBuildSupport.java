@@ -1,5 +1,6 @@
-package com.github.catatafishen.ideagentforcopilot.psi;
+package com.github.catatafishen.ideagentforcopilot.psi.java;
 
+import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.intellij.compiler.CompilerMessageImpl;
 import com.intellij.openapi.compiler.CompileContext;
 import com.intellij.openapi.compiler.CompileStatusNotification;
@@ -16,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Compiler-related build logic isolated from {@link ProjectTools} so that
+ * Compiler-related build logic isolated from ProjectTools so that
  * the plugin passes verification on non-Java IDEs (PyCharm, WebStorm, GoLand).
  * <p>
  * This class references {@code com.intellij.openapi.compiler.*} which only exists
@@ -24,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * that module is confirmed available, preventing {@link NoClassDefFoundError} in
  * non-Java IDEs.
  */
-class ProjectBuildSupport {
+public class ProjectBuildSupport {
     private static final Logger LOG = Logger.getInstance(ProjectBuildSupport.class);
 
     private ProjectBuildSupport() {
@@ -38,7 +39,7 @@ class ProjectBuildSupport {
      * @param buildInProgress shared flag to prevent concurrent builds
      * @return human-readable build result
      */
-    static String buildProject(Project project, String moduleName, AtomicBoolean buildInProgress) throws Exception {
+    public static String buildProject(Project project, String moduleName, AtomicBoolean buildInProgress) throws Exception {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         long startTime = System.currentTimeMillis();
 
