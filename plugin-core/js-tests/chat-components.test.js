@@ -326,6 +326,36 @@ describe('quick-replies', () => {
         qr.querySelector('.quick-reply-btn').click();
         expect(received).toBe(false);
     });
+
+    it('applies semantic color class from :color suffix', () => {
+        qr.options = ['Keep', 'Delete:danger', 'Details:primary'];
+        const buttons = qr.querySelectorAll('.quick-reply-btn');
+        expect(buttons[0].className).toBe('quick-reply-btn');
+        expect(buttons[0].textContent).toBe('Keep');
+        expect(buttons[1].className).toBe('quick-reply-btn qr-danger');
+        expect(buttons[1].textContent).toBe('Delete');
+        expect(buttons[2].className).toBe('quick-reply-btn qr-primary');
+        expect(buttons[2].textContent).toBe('Details');
+    });
+
+    it('dispatches clean label without color suffix', () => {
+        let received = null;
+        document.addEventListener('quick-reply', e => {
+            received = e.detail.text;
+        }, { once: true });
+        qr.options = ['Force push:danger'];
+        qr.querySelector('.quick-reply-btn').click();
+        expect(received).toBe('Force push');
+    });
+
+    it('preserves colons that are not semantic colors', () => {
+        qr.options = ['Time: 3pm', 'Note:unknown'];
+        const buttons = qr.querySelectorAll('.quick-reply-btn');
+        expect(buttons[0].textContent).toBe('Time: 3pm');
+        expect(buttons[0].className).toBe('quick-reply-btn');
+        expect(buttons[1].textContent).toBe('Note:unknown');
+        expect(buttons[1].className).toBe('quick-reply-btn');
+    });
 });
 
 describe('status-message', () => {

@@ -54,7 +54,8 @@
   The IDE renders these as clickable buttons the user can tap instead of typing. \
   Use them for: presenting choices, confirming destructive actions, multi-step workflows. \
   Format: `[quick-reply: Option A | Option B]` — one tag per response, pipe-separated, max 6 options, short labels (2-4 words). \
-  Examples: `[quick-reply: Yes | No]`  `[quick-reply: Start | Plan only | Skip]`  `[quick-reply: Fix all | Fix critical only | Show me first]`
+  Append `:danger` or `:primary` to a label for semantic coloring (e.g. destructive actions). \
+  Examples: `[quick-reply: Yes | No]`  `[quick-reply: Keep | Delete all:danger]`  `[quick-reply: Fix all | Fix critical only | Show me first]`
 
   > End of auto-generated instructions
 ---

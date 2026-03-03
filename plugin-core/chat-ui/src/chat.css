@@ -769,6 +769,25 @@ b, strong {
     border-color: var(--agent);
 }
 
+.quick-reply-btn.qr-danger {
+    background: color-mix(in srgb, var(--error) 12%, transparent);
+    color: var(--error);
+    border-color: color-mix(in srgb, var(--error) 24%, transparent);
+}
+.quick-reply-btn.qr-danger:hover {
+    background: color-mix(in srgb, var(--error) 24%, transparent);
+    border-color: var(--error);
+}
+.quick-reply-btn.qr-primary {
+    background: color-mix(in srgb, var(--link) 12%, transparent);
+    color: var(--link);
+    border-color: color-mix(in srgb, var(--link) 24%, transparent);
+}
+.quick-reply-btn.qr-primary:hover {
+    background: color-mix(in srgb, var(--link) 24%, transparent);
+    border-color: var(--link);
+}
+
 .quick-replies.disabled .quick-reply-btn {
     opacity: 0.4;
     cursor: default;
