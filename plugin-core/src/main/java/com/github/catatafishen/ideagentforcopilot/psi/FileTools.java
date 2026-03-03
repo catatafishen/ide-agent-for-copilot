@@ -188,10 +188,27 @@ class FileTools extends AbstractToolHandler {
                 int lineCount = doc.getLineCount();
                 if (midLine - 1 >= lineCount) break;
 
-                int offset = doc.getLineStartOffset(midLine - 1);
-                editor.getCaretModel().moveToOffset(offset);
-                editor.getScrollingModel().scrollToCaret(
-                    com.intellij.openapi.editor.ScrollType.CENTER);
+                // If the highlighted range fits in the viewport, center it;
+                // otherwise scroll so the start (with the action label) is visible near the top.
+                int visibleLines = editor.getScrollingModel().getVisibleArea().height
+                    / editor.getLineHeight();
+                int rangeLines = endLine - startLine + 1;
+                boolean fitsInViewport = startLine <= 0 || endLine <= 0
+                    || rangeLines <= visibleLines;
+
+                if (fitsInViewport) {
+                    int offset = doc.getLineStartOffset(Math.max(midLine - 1, 0));
+                    editor.getCaretModel().moveToOffset(offset);
+                    editor.getScrollingModel().scrollToCaret(
+                        com.intellij.openapi.editor.ScrollType.CENTER);
+                } else {
+                    // Place start line a few lines from the top so the inlay label is visible
+                    int topLine = Math.max(startLine - 2, 1);
+                    int offset = doc.getLineStartOffset(Math.max(topLine - 1, 0));
+                    editor.getCaretModel().moveToOffset(offset);
+                    editor.getScrollingModel().scrollToCaret(
+                        com.intellij.openapi.editor.ScrollType.CENTER);
+                }
 
                 flashLineRange(editor, doc, startLine, endLine, highlightColor, actionLabel, textEditor);
                 break;
