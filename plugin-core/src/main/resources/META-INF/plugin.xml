@@ -91,8 +91,6 @@
   <!-- Optional plugins accessed via reflection for enhanced tool support -->
   <depends optional="true" config-file="gradle-features.xml">org.jetbrains.plugins.gradle</depends>
   <depends optional="true" config-file="maven-features.xml">org.jetbrains.idea.maven</depends>
-  <depends optional="true" config-file="coverage-features.xml">com.intellij.coverage</depends>
-  <depends optional="true" config-file="qodana-features.xml">org.jetbrains.qodana</depends>
   <depends optional="true" config-file="sonarlint-features.xml">org.sonarlint.idea</depends>
 
   <!-- Extension points and implementations -->
