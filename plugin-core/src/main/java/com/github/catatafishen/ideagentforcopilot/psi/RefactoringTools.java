@@ -587,14 +587,9 @@ class RefactoringTools extends AbstractToolHandler {
         String symbolName = args.get(PARAM_SYMBOL).getAsString();
         String direction = args.has("direction") ? args.get("direction").getAsString() : "both";
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
-            try {
-                return com.github.catatafishen.ideagentforcopilot.psi.java.RefactoringJavaSupport.getTypeHierarchy(project, symbolName, direction);
-            } catch (NoClassDefFoundError e) {
-                LOG.warn("Java PSI not available for get_type_hierarchy", e);
-                return "Error: get_type_hierarchy requires the Java plugin, which is not available in this IDE.";
-            }
-        });
+        return ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+            com.github.catatafishen.ideagentforcopilot.psi.java.RefactoringJavaSupport.getTypeHierarchy(project, symbolName, direction)
+        );
     }
 
     // ---- Utilities ----

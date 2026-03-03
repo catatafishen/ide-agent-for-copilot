@@ -170,13 +170,7 @@ class ProjectTools extends AbstractToolHandler {
 
         String moduleName = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
 
-        try {
-            return com.github.catatafishen.ideagentforcopilot.psi.java.ProjectBuildSupport.buildProject(project, moduleName, buildInProgress);
-        } catch (NoClassDefFoundError e) {
-            buildInProgress.set(false);
-            return "build_project requires Java support. "
-                + "Use run_command to execute your build tool directly (e.g., npm run build, cargo build, go build).";
-        }
+        return com.github.catatafishen.ideagentforcopilot.psi.java.ProjectBuildSupport.buildProject(project, moduleName, buildInProgress);
     }
 
     // ---- get_indexing_status ----

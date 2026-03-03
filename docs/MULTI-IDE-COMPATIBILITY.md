@@ -94,15 +94,11 @@ if (isPluginInstalled("com.intellij.modules.java")) {
     register("build_project", this::buildProject);
 }
 
-// In the handler method — fully-qualified reference prevents class loading until invocation
+// In the handler method — fully-qualified reference prevents class loading until invocation.
+// No try/catch needed: the constructor guard ensures this code is unreachable without Java.
 private String buildProject(JsonObject args) {
-    try {
-        return com.github.catatafishen.ideagentforcopilot.psi.java
-            .ProjectBuildSupport.buildProject(project, moduleName, buildInProgress);
-    } catch (NoClassDefFoundError e) {
-        // Safety net (should never reach here due to constructor guard)
-        return "build_project requires Java support. Use run_command instead.";
-    }
+    return com.github.catatafishen.ideagentforcopilot.psi.java
+        .ProjectBuildSupport.buildProject(project, moduleName, buildInProgress);
 }
 ```
 
@@ -110,7 +106,7 @@ private String buildProject(JsonObject args) {
 1. The `psi.java` class is referenced via **fully-qualified name** in the method body
 2. There are **no import statements** for `psi.java` classes in the tool handler
 3. The handler method is only reachable if the constructor guard passed
-4. The `NoClassDefFoundError` catch is a safety net, not the primary guard
+4. **No `NoClassDefFoundError` catch** — the constructor guard is the single point of control
 
 ---
 
@@ -324,6 +320,6 @@ is functionally correct and sufficient for marketplace publication.
    return com.github.catatafishen.ideagentforcopilot.psi.java
        .NewJavaSupport.doWork(project, args);
    ```
-5. Wrap in `try/catch (NoClassDefFoundError)` as a safety net
+5. **No `NoClassDefFoundError` catch** — the constructor guard is sufficient
 6. Run `./gradlew :plugin-core:verifyPlugin` — IU should have 0 new problems
 7. PY/WS/GO will show new warnings — add them to the accepted list above

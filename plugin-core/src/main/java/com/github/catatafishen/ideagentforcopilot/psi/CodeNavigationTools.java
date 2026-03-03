@@ -144,13 +144,9 @@ class CodeNavigationTools extends AbstractToolHandler {
         boolean includeInherited = args.has("include_inherited")
             && args.get("include_inherited").getAsBoolean();
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
-            try {
-                return com.github.catatafishen.ideagentforcopilot.psi.java.CodeNavigationJavaSupport.computeClassOutline(project, className, includeInherited);
-            } catch (NoClassDefFoundError e) {
-                return "Error: Java support is not available in this IDE";
-            }
-        });
+        return ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+            com.github.catatafishen.ideagentforcopilot.psi.java.CodeNavigationJavaSupport.computeClassOutline(project, className, includeInherited)
+        );
     }
 
     // ---- search_symbols ----
