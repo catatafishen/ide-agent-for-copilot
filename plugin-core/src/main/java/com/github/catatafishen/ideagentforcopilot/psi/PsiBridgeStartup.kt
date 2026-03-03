@@ -1,9 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.psi
 
+import com.github.catatafishen.ideagentforcopilot.bridge.CopilotInstructionsManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -18,7 +18,12 @@ class PsiBridgeStartup : ProjectActivity {
         LOG.info("Starting PSI Bridge for project: ${project.name}")
 
         createAgentWorkspace(project)
-        ensureCopilotInstructions(project)
+
+        // Ensure copilot-instructions.md exists with plugin instructions.
+        // This is also called from CopilotAcpClient.start() as a safety net
+        // against race conditions (tool window may start CLI before this runs).
+        CopilotInstructionsManager.ensureInstructions(project.basePath)
+        notifyIfNewInstructions(project)
 
         PsiBridgeService.getInstance(project).start()
     }
@@ -48,58 +53,32 @@ class PsiBridgeStartup : ProjectActivity {
     }
 
     /**
-     * One-time prepend of plugin instructions to copilot-instructions.md.
-     *
-     * GitHub Copilot reads copilot-instructions.md and injects it into the model context,
-     * but ignores the MCP `instructions` field from the initialize response.
-     * See: https://github.com/github/copilot-cli/issues/1486
-     *
-     * As a workaround, we prepend our default startup instructions to the project's
-     * copilot-instructions.md on first load (detected by a sentinel comment).
-     * The file may be under .copilot/ or .github/.
+     * Shows a one-time notification when instructions are first added to a project.
+     * The actual file write is handled by [CopilotInstructionsManager.ensureInstructions].
      */
-    private fun ensureCopilotInstructions(project: Project) {
+    private fun notifyIfNewInstructions(project: Project) {
         val basePath = project.basePath ?: return
-
-        try {
-            // Detect existing file location (.copilot/ takes precedence, then .github/)
-            val dotCopilotFile = Path.of(basePath, ".copilot", "copilot-instructions.md")
-            val dotGithubFile = Path.of(basePath, ".github", "copilot-instructions.md")
-            val targetFile = when {
-                Files.isRegularFile(dotCopilotFile) -> dotCopilotFile
-                Files.isRegularFile(dotGithubFile) -> dotGithubFile
-                else -> dotCopilotFile // will create in .copilot/
-            }
-
-            val pluginInstructions = loadPluginInstructions()
-
-            if (Files.isRegularFile(targetFile)) {
-                val existing = Files.readString(targetFile, StandardCharsets.UTF_8)
-                if (existing.contains(INSTRUCTIONS_SENTINEL)) {
-                    return // already prepended
-                }
-                // Prepend plugin instructions to existing user content
-                val merged = pluginInstructions + "\n\n" + existing
-                Files.writeString(targetFile, merged, StandardCharsets.UTF_8)
-                LOG.info("Prepended plugin instructions to existing $targetFile")
-            } else {
-                // Create new file with plugin instructions only
-                targetFile.parent?.let { Files.createDirectories(it) }
-                Files.writeString(targetFile, pluginInstructions, StandardCharsets.UTF_8)
-                LOG.info("Created $targetFile with plugin instructions")
-            }
-
-            notifyInstructionsUpdated(project, targetFile)
-        } catch (e: Exception) {
-            LOG.warn("Failed to ensure copilot-instructions.md", e)
+        val dotCopilotFile = Path.of(basePath, ".copilot", "copilot-instructions.md")
+        val dotGithubFile = Path.of(basePath, ".github", "copilot-instructions.md")
+        val targetFile = when {
+            Files.isRegularFile(dotCopilotFile) -> dotCopilotFile
+            Files.isRegularFile(dotGithubFile) -> dotGithubFile
+            else -> return
         }
-    }
-
-    private fun loadPluginInstructions(): String {
-        val stream = javaClass.getResourceAsStream("/default-startup-instructions.md")
-        val instructions = stream?.bufferedReader()?.use { it.readText() }
-            ?: "You are running inside an IntelliJ IDEA plugin with IDE tools."
-        return "$INSTRUCTIONS_SENTINEL\n\n$instructions\n\n$INSTRUCTIONS_END"
+        try {
+            val content = Files.readString(targetFile)
+            if (content.contains(CopilotInstructionsManager.INSTRUCTIONS_SENTINEL)) {
+                // File exists with our sentinel — check if we should notify
+                // (only on first creation, tracked by agent-work marker)
+                val marker = Path.of(basePath, ".agent-work", ".instructions-notified")
+                if (!Files.exists(marker)) {
+                    notifyInstructionsUpdated(project, targetFile)
+                    Files.writeString(marker, "done")
+                }
+            }
+        } catch (_: Exception) {
+            // Best-effort notification
+        }
     }
 
     private fun notifyInstructionsUpdated(project: Project, file: Path) {
@@ -118,12 +97,6 @@ class PsiBridgeStartup : ProjectActivity {
 
     companion object {
         private val LOG = Logger.getInstance(PsiBridgeStartup::class.java)
-
-        /** Sentinel markers used to detect/delimit plugin-injected instructions in copilot-instructions.md. */
-        private const val INSTRUCTIONS_SENTINEL =
-            "---\n> ⚙️ Auto-generated by IDE Agent for Copilot — do not edit this section"
-        private const val INSTRUCTIONS_END =
-            "> End of auto-generated instructions\n---"
 
         private val PLAN_TEMPLATE = """
             # Agent Work Plan

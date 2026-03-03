@@ -230,6 +230,11 @@ public class CopilotAcpClient implements Closeable {
             currentSessionId = null;
         }
 
+        // Ensure plugin instructions exist before starting the CLI process.
+        // The CLI reads copilot-instructions.md at session creation; without this,
+        // a race with PsiBridgeStartup can leave the file missing on first run.
+        CopilotInstructionsManager.ensureInstructions(projectBasePath);
+
         try {
             String copilotPath = CopilotCliLocator.findCopilotCli();
             resolvedCopilotPath = copilotPath;
@@ -373,11 +378,12 @@ public class CopilotAcpClient implements Closeable {
 
     /**
      * List available models. Creates a session if needed (models come from session/new).
+     * Uses the project path as CWD so the CLI reads copilot-instructions.md correctly.
      */
     @NotNull
     public List<Model> listModels() throws CopilotException {
         if (availableModels == null) {
-            createSession();
+            createSession(projectBasePath);
         }
         return availableModels != null ? availableModels : List.of();
     }
