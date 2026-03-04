@@ -41,6 +41,7 @@ class InfrastructureTools extends AbstractToolHandler {
     private static final String PARAM_MAX_CHARS = "max_chars";
     private static final String JAVA_HOME_ENV = "JAVA_HOME";
     private static final String IDEA_LOG_FILENAME = "idea.log";
+    private static final String METHOD_GET_CONSOLE = "getConsole";
 
     InfrastructureTools(Project project) {
         super(project);
@@ -282,13 +283,25 @@ class InfrastructureTools extends AbstractToolHandler {
     }
 
     /**
-     * Unwrap ConsoleViewWithDelegate wrappers to get the underlying ConsoleView.
-     * IntelliJ Ultimate wraps consoles in profiler/performance widgets.
+     * Unwrap console wrappers to get the underlying ConsoleView.
+     * Handles ConsoleViewWithDelegate (IntelliJ Ultimate profiler widgets)
+     * and getConsole()-style wrappers (Node.js, Python, etc.).
      */
     private com.intellij.execution.ui.ExecutionConsole unwrapConsoleDelegate(
         com.intellij.execution.ui.ExecutionConsole console) {
         if (console instanceof com.intellij.execution.ui.ConsoleViewWithDelegate wrapper) {
             return wrapper.getDelegate();
+        }
+        // Try getConsole() for plugin wrappers (e.g. Node.js BaseConsoleView)
+        try {
+            var getConsole = console.getClass().getMethod(METHOD_GET_CONSOLE);
+            var inner = getConsole.invoke(console);
+            if (inner instanceof com.intellij.execution.ui.ExecutionConsole innerConsole
+                && inner != console) {
+                return innerConsole;
+            }
+        } catch (Exception ignored) {
+            // Not a wrapper with getConsole()
         }
         return console;
     }
@@ -413,7 +426,7 @@ class InfrastructureTools extends AbstractToolHandler {
 
     private void appendTestConsoleOutput(Object console, StringBuilder testOutput) {
         try {
-            var getConsole = console.getClass().getMethod("getConsole");
+            var getConsole = console.getClass().getMethod(METHOD_GET_CONSOLE);
             var innerConsole = getConsole.invoke(console);
             if (innerConsole != null) {
                 String consoleText = extractPlainConsoleText(innerConsole);
@@ -439,7 +452,7 @@ class InfrastructureTools extends AbstractToolHandler {
         }
         // For wrapped consoles (e.g. test runners), try to get the inner console
         try {
-            var getConsole = console.getClass().getMethod("getConsole");
+            var getConsole = console.getClass().getMethod(METHOD_GET_CONSOLE);
             var innerConsole = getConsole.invoke(console);
             if (innerConsole instanceof com.intellij.execution.impl.ConsoleViewImpl inner) {
                 inner.flushDeferredText();
