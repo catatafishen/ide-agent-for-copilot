@@ -225,7 +225,7 @@ public class CopilotAcpClient implements Closeable {
                 LOG.debug("Failed to close writer during restart", e);
             }
             if (process.isAlive()) process.destroyForcibly();
-            pendingRequests.clear();
+            failAllPendingRequests();
             availableModels = null;
             currentSessionId = null;
         }
@@ -867,12 +867,13 @@ public class CopilotAcpClient implements Closeable {
         // Process ended - attempt auto-restart if not intentionally closed
         if (!closed) {
             attemptAutoRestart();
-        } else {
-            failAllPendingRequests();
         }
     }
 
     private void attemptAutoRestart() {
+        // Immediately unblock any callers stuck in pollForPromptCompletion
+        failAllPendingRequests();
+
         if (restartAttempts.get() >= MAX_RESTART_ATTEMPTS) {
             LOG.warn("ACP process terminated after " + MAX_RESTART_ATTEMPTS + " restart attempts");
             showNotification("Copilot Disconnected",
@@ -895,16 +896,19 @@ public class CopilotAcpClient implements Closeable {
         new Thread(() -> {
             try {
                 Thread.sleep(delayMs);
+                if (closed) {
+                    LOG.info("ACP client was closed during restart delay — aborting restart");
+                    return;
+                }
                 start();
                 LOG.info("ACP process successfully restarted");
                 showNotification("Copilot Reconnected",
-                    "Successfully reconnected to Copilot",
+                    "Connection restored — please retry your last message",
                     com.intellij.notification.NotificationType.INFORMATION);
                 restartAttempts.set(0); // Reset counter on successful restart
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 LOG.warn("Restart attempt interrupted", e);
-                failAllPendingRequests();
             } catch (CopilotException e) {
                 LOG.warn("Failed to restart ACP process (attempt " + restartAttempts + ")", e);
                 attemptAutoRestart(); // Try again
@@ -922,7 +926,7 @@ public class CopilotAcpClient implements Closeable {
     private void failAllPendingRequests() {
         for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
             entry.getValue().completeExceptionally(
-                new CopilotException("ACP process terminated", null, false));
+                new CopilotException("Connection lost — please retry your message", null, false));
         }
         pendingRequests.clear();
     }
@@ -1452,6 +1456,7 @@ public class CopilotAcpClient implements Closeable {
     @Override
     public void close() {
         closed = true;
+        failAllPendingRequests();
         if (writer != null) {
             try {
                 writer.close();
