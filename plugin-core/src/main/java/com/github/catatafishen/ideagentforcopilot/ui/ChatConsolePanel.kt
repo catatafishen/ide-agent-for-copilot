@@ -298,7 +298,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
         val short = formatToolSubtitle(baseName, arguments)
         val label = if (short != null) "$displayName — $short" else displayName
-        val paramsJson = if (!arguments.isNullOrBlank()) escJs(arguments) else ""
+        val hasCustomRenderer = baseName in TOOL_RESULT_RENDERERS
+        val paramsJson = if (!arguments.isNullOrBlank() && !hasCustomRenderer) escJs(arguments) else ""
         val safeKind = escJs(resolvedKind)
         executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind')")
     }
@@ -321,7 +322,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
         val short = formatToolSubtitle(baseName, arguments)
         val label = if (short != null) "$displayName — $short" else displayName
-        val paramsJson = if (!arguments.isNullOrBlank()) escJs(arguments) else ""
+        val hasCustomRenderer = baseName in TOOL_RESULT_RENDERERS
+        val paramsJson = if (!arguments.isNullOrBlank() && !hasCustomRenderer) escJs(arguments) else ""
         executeJs("ChatController.addSubAgentToolCall('$saDid','$toolDid','${escJs(label)}','$paramsJson')")
     }
 
@@ -781,7 +783,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                                 val id = "batch-tool-${batchIdCounter++}"
                                 metaChips.append("<tool-chip label='${esc(label)}' status='complete' kind='${esc(kind)}' data-chip-for='$id'></tool-chip>")
                                 detailsContent.append("<tool-section id='$id' title='${esc(label)}'")
-                                if (args != null) detailsContent.append(" params='${esc(args)}'")
+                                if (args != null && baseName !in TOOL_RESULT_RENDERERS) detailsContent.append(
+                                    " params='${
+                                        esc(
+                                            args
+                                        )
+                                    }'"
+                                )
                                 detailsContent.append("><div class='tool-params'></div><div class='tool-result'>Completed</div></tool-section>")
                             }
 
