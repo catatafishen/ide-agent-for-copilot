@@ -34,7 +34,7 @@ internal object MarkdownRenderer {
         for (line in lines) {
             val t = line.trim()
             when {
-                t.startsWith("```") -> handleCodeFence(sb, state)
+                t.startsWith("```") -> handleCodeFence(sb, state, t)
                 state.inCode -> sb.append(escapeHtml(line)).append("\n")
                 processBlockElement(sb, state, t, resolveFileReference, resolveFilePath, isGitCommit) -> { /* handled by helper */
                 }
@@ -51,12 +51,18 @@ internal object MarkdownRenderer {
         return sb.toString()
     }
 
-    private fun handleCodeFence(sb: StringBuilder, state: MarkdownState) {
+    private fun handleCodeFence(sb: StringBuilder, state: MarkdownState, fenceLine: String) {
         if (state.inCode) {
             sb.append("</code></pre>"); state.inCode = false
         } else {
             closeListAndTable(sb, state)
-            sb.append("<pre><code>"); state.inCode = true
+            val lang = fenceLine.trim().removePrefix("```").trim().lowercase()
+            if (lang.isNotEmpty()) {
+                sb.append("<pre><code data-lang=\"").append(escapeHtml(lang)).append("\">")
+            } else {
+                sb.append("<pre><code>")
+            }
+            state.inCode = true
         }
     }
 

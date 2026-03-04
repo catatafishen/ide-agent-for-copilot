@@ -59,6 +59,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var quickReplyBridgeJs = ""
     private var htmlQueryBridgeJs = ""
     private var permissionResponseBridgeJs = ""
+    private var openScratchBridgeJs = ""
 
     @Volatile
     private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
@@ -168,6 +169,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
             Disposer.register(this, permissionResponseQuery)
             permissionResponseBridgeJs = permissionResponseQuery.inject("data")
+
+            val openScratchQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            openScratchQuery.addHandler { data -> handleOpenScratch(data); null }
+            Disposer.register(this, openScratchQuery)
+            openScratchBridgeJs = openScratchQuery.inject("lang + '\\n' + content")
 
             add(browser.component, BorderLayout.CENTER)
 
@@ -1302,6 +1308,85 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("window.showPermissionRequest('$turnId','main','$safeId','$safeName','$safeDesc');")
     }
 
+    // ── Open in scratch file ─────────────────────────────────────────
+
+    private fun handleOpenScratch(data: String) {
+        val newlineIdx = data.indexOf('\n')
+        val lang = if (newlineIdx > 0) data.substring(0, newlineIdx).trim() else ""
+        val content = if (newlineIdx >= 0) data.substring(newlineIdx + 1) else data
+
+        val ext = langToExtension(lang)
+        val name = "snippet.$ext"
+        val log = com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
+
+        ApplicationManager.getApplication().invokeLater {
+            try {
+                val scratchService = com.intellij.ide.scratch.ScratchFileService.getInstance()
+                val scratchRoot = com.intellij.ide.scratch.ScratchRootType.getInstance()
+
+                @Suppress("RedundantCast")
+                val file = ApplicationManager.getApplication().runWriteAction(
+                    com.intellij.openapi.util.Computable<com.intellij.openapi.vfs.VirtualFile?> {
+                        try {
+                            val f = scratchService.findFile(
+                                scratchRoot, name,
+                                com.intellij.ide.scratch.ScratchFileService.Option.create_new_always
+                            )
+                            if (f != null) {
+                                f.getOutputStream(null).use { out ->
+                                    out.write(content.toByteArray(Charsets.UTF_8))
+                                }
+                            }
+                            f
+                        } catch (e: java.io.IOException) {
+                            log.warn("Failed to create scratch file", e)
+                            null
+                        }
+                    }
+                )
+
+                if (file != null) {
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                        .openFile(file, true)
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to open scratch file from chat", e)
+            }
+        }
+    }
+
+    private fun langToExtension(lang: String): String = when (lang.lowercase()) {
+        "java" -> "java"
+        "kotlin", "kt", "kts" -> "kt"
+        "python", "py" -> "py"
+        "javascript", "js" -> "js"
+        "typescript", "ts" -> "ts"
+        "tsx" -> "tsx"
+        "jsx" -> "jsx"
+        "html" -> "html"
+        "css" -> "css"
+        "xml" -> "xml"
+        "json" -> "json"
+        "yaml", "yml" -> "yaml"
+        "sql" -> "sql"
+        "shell", "bash", "sh", "zsh" -> "sh"
+        "groovy" -> "groovy"
+        "scala" -> "scala"
+        "rust", "rs" -> "rs"
+        "go", "golang" -> "go"
+        "c" -> "c"
+        "cpp", "c++" -> "cpp"
+        "ruby", "rb" -> "rb"
+        "swift" -> "swift"
+        "php" -> "php"
+        "r" -> "r"
+        "markdown", "md" -> "md"
+        "toml" -> "toml"
+        "properties" -> "properties"
+        "gradle" -> "gradle"
+        else -> lang.ifEmpty { "txt" }
+    }
+
     private fun buildInitialPage(): String {
         val cssVars = buildCssVars()
         val fileHandler = openFileQuery!!.inject("href")
@@ -1312,7 +1397,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 setCursor: function(c) { $cursorBridgeJs },
                 loadMore: function() { $loadMoreBridgeJs },
                 quickReply: function(text) { $quickReplyBridgeJs },
-                permissionResponse: function(data) { $permissionResponseBridgeJs }
+                permissionResponse: function(data) { $permissionResponseBridgeJs },
+                openScratch: function(lang, content) { $openScratchBridgeJs }
             };
         """.trimIndent()
         val css = loadResource("/chat/chat.css")

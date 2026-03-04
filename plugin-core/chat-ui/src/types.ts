@@ -8,6 +8,8 @@ export interface Bridge {
     loadMore(): void;
 
     quickReply(text: string): void;
+
+    openScratch(lang: string, content: string): void;
 }
 
 export interface TurnContext {

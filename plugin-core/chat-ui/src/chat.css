@@ -850,7 +850,18 @@ b, strong {
     pointer-events: none;
 }
 
-/* ── Code action buttons (copy, wrap) ────────────────── */
+/* ── Code action buttons (copy, wrap, scratch) ───────── */
+
+.code-lang-label {
+    display: block;
+    font-size: 0.75em;
+    color: var(--fg-muted);
+    font-family: var(--font);
+    margin: calc(-1 * var(--sp-2)) 0 var(--sp-2) 0;
+    user-select: none;
+    opacity: 0.7;
+}
+
 .code-actions {
     position: sticky;
     float: right;
