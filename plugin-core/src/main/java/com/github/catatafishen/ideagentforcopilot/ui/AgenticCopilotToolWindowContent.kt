@@ -495,12 +495,13 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         northStack.add(copilotBanner)
         northStack.add(createGhSetupBanner { billing.loadBillingData() })
         northStack.add(GitWarningBanner(project))
-        val sb = StatusBanner()
+        val sb = StatusBanner(project)
         statusBanner = sb
         northStack.add(sb)
         consolePanel.onStatusMessage = { type, message ->
             when (type) {
                 "error" -> sb.showError(message)
+                "warning" -> sb.showWarning(message)
                 else -> sb.showInfo(message)
             }
         }
