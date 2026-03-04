@@ -426,6 +426,9 @@ class EditorTools extends AbstractToolHandler {
                     pathSet = setScriptPath(config, scratchFile.getPath());
                 }
 
+                // 4b. Set working directory (needed by Node.js and other script runners)
+                trySetWorkingDirectory(config, scratchFile.getParent().getPath());
+
                 // 5. Set classpath module (auto-detect for Java if not specified)
                 String moduleStatus = "";
                 if (!moduleName.isEmpty()) {
@@ -598,6 +601,19 @@ class EditorTools extends AbstractToolHandler {
                 .invoke(config, module);
         } catch (Exception ignored) {
             // Config type may not support module setting
+        }
+    }
+
+    @SuppressWarnings("java:S3011") // reflection needed for cross-plugin config API
+    private void trySetWorkingDirectory(com.intellij.execution.configurations.RunConfiguration config,
+                                        String workingDir) {
+        for (String method : java.util.List.of("setWorkingDirectory", "setWorkDir", "setWorkingDir")) {
+            try {
+                config.getClass().getMethod(method, String.class).invoke(config, workingDir);
+                return;
+            } catch (Exception ignored) {
+                // Try next method name
+            }
         }
     }
 
