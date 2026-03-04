@@ -288,22 +288,6 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
-    addError(message: string): void {
-        const el = document.createElement('status-message');
-        el.setAttribute('type', 'error');
-        el.setAttribute('message', message);
-        this._msgs().appendChild(el);
-        this._container()?.scrollIfNeeded();
-    },
-
-    addInfo(message: string): void {
-        const el = document.createElement('status-message');
-        el.setAttribute('type', 'info');
-        el.setAttribute('message', message);
-        this._msgs().appendChild(el);
-        this._container()?.scrollIfNeeded();
-    },
-
     addSessionSeparator(timestamp: string): void {
         const el = document.createElement('session-divider');
         el.setAttribute('timestamp', timestamp);
@@ -430,15 +414,11 @@ const ChatController = {
         const msgs = this._msgs();
         if (!msgs) return;
         const rows = Array.from(msgs.children).filter(
-            c => c.tagName === 'CHAT-MESSAGE' || c.tagName === 'STATUS-MESSAGE'
+            c => c.tagName === 'CHAT-MESSAGE'
         );
         if (rows.length > 80) {
             const trimCount = rows.length - 80;
             for (let i = 0; i < trimCount; i++) rows[i].remove();
-            const notice = document.createElement('status-message');
-            notice.setAttribute('type', 'info');
-            notice.setAttribute('message', `${trimCount} older messages trimmed for performance`);
-            msgs.insertBefore(notice, msgs.firstChild);
         }
     },
 

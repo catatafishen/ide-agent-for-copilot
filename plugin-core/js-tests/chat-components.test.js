@@ -10,7 +10,7 @@ describe('Web Components Registration', () => {
         const tags = [
             'chat-container', 'chat-message', 'message-bubble', 'message-meta',
             'thinking-block', 'tool-section', 'tool-chip', 'thinking-chip',
-            'subagent-chip', 'quick-replies', 'status-message',
+            'subagent-chip', 'quick-replies',
             'session-divider', 'load-more',
         ];
         for (const tag of tags) {
@@ -369,26 +369,6 @@ describe('quick-replies', () => {
         btn.click();
         expect(received).toBe(false);
         expect(qr.hasAttribute('disabled')).toBe(true);
-    });
-});
-
-describe('status-message', () => {
-    it('renders error type', () => {
-        const sm = document.createElement('status-message');
-        sm.setAttribute('type', 'error');
-        sm.setAttribute('message', 'Something went wrong');
-        document.body.appendChild(sm);
-        expect(sm.textContent).toContain('Something went wrong');
-        expect(sm.className).toContain('error');
-    });
-
-    it('renders info type', () => {
-        const sm = document.createElement('status-message');
-        sm.setAttribute('type', 'info');
-        sm.setAttribute('message', 'Info message');
-        document.body.appendChild(sm);
-        expect(sm.textContent).toContain('Info message');
-        expect(sm.className).toContain('info');
     });
 });
 

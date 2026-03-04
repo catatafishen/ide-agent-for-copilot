@@ -85,6 +85,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var consolePanel: ChatPanelApi
     private lateinit var responsePanelContainer: JBPanel<JBPanel<*>>
     private var copilotBanner: AuthSetupBanner? = null
+    private var statusBanner: StatusBanner? = null
     private var inlineAuthProcess: Process? = null
 
     // Per-turn tracking
@@ -494,6 +495,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         northStack.add(copilotBanner)
         northStack.add(createGhSetupBanner { billing.loadBillingData() })
         northStack.add(GitWarningBanner(project))
+        val sb = StatusBanner()
+        statusBanner = sb
+        northStack.add(sb)
+        consolePanel.onStatusMessage = { type, message ->
+            when (type) {
+                "error" -> sb.showError(message)
+                else -> sb.showInfo(message)
+            }
+        }
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 

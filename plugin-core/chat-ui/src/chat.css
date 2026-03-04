@@ -71,11 +71,6 @@
     --error-a06: rgba(199, 34, 34, 0.06);
     --error-a12: rgba(199, 34, 34, 0.12);
     --error-a16: rgba(199, 34, 34, 0.16);
-    --banner-info-bg: rgb(49, 54, 59);
-    --banner-info-border: rgb(96, 175, 255);
-    --banner-error-bg: rgb(59, 41, 41);
-    --banner-error-border: rgb(199, 84, 80);
-    --banner-fg: rgb(187, 187, 187);
     --shadow: rgba(128, 128, 128, 0.25);
     --sa-c0: rgb(38, 166, 154);
     --sa-c0-a06: rgba(38, 166, 154, 0.06);
@@ -626,42 +621,6 @@ thinking-chip.thinking-active .thought-bubble {
     color: var(--think);
     margin-top: var(--sp-2);
     text-align: right;
-}
-
-/* ── Status messages (styled to match IntelliJ InlineBanner) ── */
-.status-row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--sp-3);
-    padding: var(--sp-4) var(--sp-5);
-    border-left: 3px solid;
-    border-radius: 0;
-    margin: var(--sp-2) 0;
-    font-size: 0.88em;
-    color: var(--banner-fg);
-}
-
-.status-row.error {
-    background: var(--banner-error-bg);
-    border-left-color: var(--banner-error-border);
-}
-
-.status-row.info {
-    background: var(--banner-info-bg);
-    border-left-color: var(--banner-info-border);
-}
-
-.status-row .status-icon {
-    flex-shrink: 0;
-    width: 13px;
-    height: 13px;
-    position: relative;
-    top: 1px;
-}
-
-.status-row .status-icon svg {
-    width: 100%;
-    height: 100%;
 }
 
 /* ── Session separator ───────────────────────────────── */

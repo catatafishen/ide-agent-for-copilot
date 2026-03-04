@@ -36,6 +36,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     override val component: JComponent get() = this
     override var onQuickReply: ((String) -> Unit)? = null
+    override var onStatusMessage: ((type: String, message: String) -> Unit)? = null
 
     // ── Data model (same types as V1 for serialization compat) ─────
     private val entries = mutableListOf<EntryData>()
@@ -388,13 +389,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     override fun addErrorEntry(message: String) {
         finalizeCurrentText()
         entries.add(EntryData.Status("❌", message))
-        executeJs("ChatController.addError('${escJs(message)}')")
+        onStatusMessage?.invoke("error", message)
     }
 
     override fun addInfoEntry(message: String) {
         finalizeCurrentText()
         entries.add(EntryData.Status("ℹ", message))
-        executeJs("ChatController.addInfo('${escJs(message)}')")
+        onStatusMessage?.invoke("info", message)
     }
 
     override fun hasContent(): Boolean = entries.isNotEmpty()
@@ -670,10 +671,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
 
             "status" -> {
-                val icon = obj["icon"]?.asString ?: "ℹ"
-                val msg = obj["message"]?.asString ?: ""
-                if (icon == "❌") executeJs("ChatController.addError('${escJs(msg)}')")
-                else executeJs("ChatController.addInfo('${escJs(msg)}')")
+                // Status entries are shown via Swing banner, not in the chat HTML.
+                // During history replay we skip them — they are transient notifications.
             }
 
             "separator" -> {
@@ -735,9 +734,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 }
 
                 "status" -> {
-                    val icon = obj["icon"]?.asString ?: "ℹ"
-                    val type = if (icon == ICON_ERROR) "error" else "info"
-                    sb.append("<status-message type='$type' message='${esc(obj["message"]?.asString ?: "")}'></status-message>")
+                    // Status entries are transient Swing banners — skip in HTML rendering.
                     i++
                 }
 
