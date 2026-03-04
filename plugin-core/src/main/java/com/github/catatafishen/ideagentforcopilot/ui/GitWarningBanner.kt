@@ -15,6 +15,17 @@ import java.util.concurrent.TimeUnit
  */
 class GitWarningBanner(private val project: Project) : InlineBanner("", EditorNotificationPanel.Status.Error) {
 
+    override fun paintComponent(g: java.awt.Graphics) {
+        val g2 = g.create() as java.awt.Graphics2D
+        try {
+            g2.color = background
+            g2.fillRect(0, 0, width, height)
+        } finally {
+            g2.dispose()
+        }
+        paintChildren(g as java.awt.Graphics2D)
+    }
+
     private companion object {
         const val KEY_DISMISSED = "copilot.gitWarningDismissed"
     }
