@@ -1,13 +1,13 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.ui.JBColor
+import com.intellij.ui.EditorNotificationPanel
+import com.intellij.ui.InlineBanner
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
-import java.awt.Color
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
@@ -20,17 +20,18 @@ import javax.swing.SwingUtilities
 /**
  * Reusable warning banner for auth / setup prerequisite checks.
  *
- * Shows a yellow warning strip: [⚠ icon] [text label] [install button] [action button] [retry button]
+ * Uses [InlineBanner] for native JetBrains look and feel, with an optional device-code row
+ * shown during inline auth flows.
  *
  * The banner self-shows/hides by polling [diagnosticsFn].  When the diagnostic clears, [onFixed]
  * is called and the banner hides.  Polling uses [AppExecutorUtil] so no raw executor threads are
  * ever leaked.
  *
- * Callers configure text and button visibility in [onDiagUpdate], which fires on the EDT whenever
- * a new (non-null) diagnostic value arrives.
+ * Callers configure the display state in [onDiagUpdate] via [updateState], which fires on the EDT
+ * whenever a new (non-null) diagnostic value arrives.
  */
 class AuthSetupBanner(
-    retryTooltip: String,
+    @Suppress("UNUSED_PARAMETER") retryTooltip: String,
     private val pollIntervalDown: Long = 30,
     private val pollIntervalUp: Long = 60,
     private val diagnosticsFn: () -> String?,
@@ -39,31 +40,36 @@ class AuthSetupBanner(
     private val onDiagUpdate: AuthSetupBanner.(diag: String) -> Unit,
 ) : JBPanel<JBPanel<*>>(BorderLayout()) {
 
-    // ── Palette — single source of truth for all three colour roles ──────────
-    private companion object {
-        val bannerBorder = JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00))
-        val bannerBg = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
-        val bannerFg = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
-    }
+    private val banner = InlineBanner("", EditorNotificationPanel.Status.Warning)
 
-    // ── Public widgets callers may configure ─────────────────────────────────
-    val textLabel = JBLabel().apply { foreground = bannerFg }
-    val installButton = bannerButton("Install…")
-    val actionButton = bannerButton("Sign In")
-    val retryButton = bannerButton("Retry").apply { toolTipText = retryTooltip }
+    /** Set by callers to handle the "Install…" action click. */
+    var installHandler: (() -> Unit)? = null
+
+    /** Set by callers to handle the "Sign In" action click. */
+    var signInHandler: (() -> Unit)? = null
+
+    /** Set by callers for extra cleanup on retry (runs before [triggerCheck]). */
+    var retryHandler: (() -> Unit)? = null
 
     // ── Device code row (shown when inline auth parses a code + URL) ─────────
     private val deviceCodeRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
         isOpaque = false
         isVisible = false
-        border = JBUI.Borders.emptyLeft(22) // indent to align with text (past icon)
+        border = JBUI.Borders.emptyLeft(22)
     }
     private val codeLabel = JBLabel().apply {
-        foreground = bannerFg
         font = font.deriveFont(Font.BOLD)
     }
-    private val copyButton = bannerButton("\uD83D\uDCCB Copy Code")
-    private val openBrowserButton = bannerButton("\uD83D\uDD17 Open GitHub")
+    private val copyButton = JButton("\uD83D\uDCCB Copy Code").apply {
+        isOpaque = false
+        isBorderPainted = false
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+    }
+    private val openBrowserButton = JButton("\uD83D\uDD17 Open GitHub").apply {
+        isOpaque = false
+        isBorderPainted = false
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+    }
     private var deviceUrl: String? = null
 
     private var scheduledFuture: ScheduledFuture<*>? = null
@@ -71,50 +77,21 @@ class AuthSetupBanner(
 
     init {
         isVisible = false
-        isOpaque = true
-        background = bannerBg
-        border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(bannerBorder, com.intellij.ui.SideBorder.BOTTOM),
-            JBUI.Borders.empty(4, 8),
-        )
+        isOpaque = false
 
-        installButton.isVisible = false
-        actionButton.isVisible = false
-
-        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning).apply {
-            border = JBUI.Borders.emptyRight(6)
-            accessibleContext.accessibleName = "Warning"
-        }
-
-        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-            isOpaque = false
-            add(installButton)
-            add(actionButton)
-            add(retryButton)
-        }
-
-        val topRow = JBPanel<JBPanel<*>>(BorderLayout()).apply {
-            isOpaque = false
-            add(icon, BorderLayout.WEST)
-            add(textLabel, BorderLayout.CENTER)
-            add(buttons, BorderLayout.EAST)
-        }
-
-        // Device code row: [Your code:] [CODE] [Copy] [Open Browser]
-        deviceCodeRow.add(JBLabel("Your code:").apply { foreground = bannerFg })
+        deviceCodeRow.add(JBLabel("Your code:"))
         deviceCodeRow.add(codeLabel)
         deviceCodeRow.add(copyButton)
         deviceCodeRow.add(openBrowserButton)
 
-        val rows = JBPanel<JBPanel<*>>().apply {
+        val stack = JBPanel<JBPanel<*>>().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
-            add(topRow)
+            add(banner)
             add(deviceCodeRow)
         }
-        add(rows, BorderLayout.CENTER)
+        add(stack, BorderLayout.CENTER)
 
-        retryButton.addActionListener { triggerCheck() }
         copyButton.addActionListener {
             val code = codeLabel.text.trim()
             if (code.isNotEmpty()) {
@@ -140,11 +117,24 @@ class AuthSetupBanner(
                 cancelPoll()
             }
 
-            override fun ancestorMoved(e: javax.swing.event.AncestorEvent) {}
+            override fun ancestorMoved(e: javax.swing.event.AncestorEvent) { /* no-op */
+            }
         })
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
+
+    /**
+     * Update the banner display state. Called from [onDiagUpdate] callback.
+     *
+     * @param message     Plain-text message to display.
+     * @param showInstall Whether to show the "Install…" action (triggers [installHandler]).
+     * @param showSignIn  Whether to show the "Sign In" action (triggers [signInHandler]).
+     */
+    fun updateState(message: String, showInstall: Boolean = false, showSignIn: Boolean = false) {
+        banner.setMessage(message)
+        rebuildActions(showInstall, showSignIn)
+    }
 
     /** Force an immediate re-check (e.g. after an auth error in a request). */
     fun triggerCheck() = runCheck()
@@ -156,8 +146,8 @@ class AuthSetupBanner(
     fun showDeviceCode(code: String, url: String) {
         codeLabel.text = " $code "
         deviceUrl = url
-        textLabel.text = "<html><b>Sign in to Copilot</b> \u2014 copy your code, then open GitHub to enter it.</html>"
-        actionButton.isVisible = false
+        banner.setMessage("Sign in to Copilot \u2014 copy your code, then open GitHub to enter it.")
+        rebuildActions(showInstall = false, showSignIn = false)
         deviceCodeRow.isVisible = true
         revalidate()
         repaint()
@@ -167,6 +157,33 @@ class AuthSetupBanner(
     fun hideDeviceCode() {
         deviceCodeRow.isVisible = false
         deviceUrl = null
+    }
+
+    /** Give immediate "signing in" feedback. */
+    fun showSignInPending() {
+        banner.setMessage("Signing in\u2026 waiting for device code from CLI.")
+        rebuildActions(showInstall = false, showSignIn = false)
+        // Re-enable Sign In after a few seconds so the user can retry if nothing happened
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            { SwingUtilities.invokeLater { rebuildActions(showInstall = false, showSignIn = true) } },
+            8L, TimeUnit.SECONDS,
+        )
+    }
+
+    // ── Action management ─────────────────────────────────────────────────────
+
+    private fun rebuildActions(showInstall: Boolean, showSignIn: Boolean) {
+        banner.removeAllActions()
+        if (showInstall) {
+            banner.addAction("Install\u2026") { installHandler?.invoke() }
+        }
+        if (showSignIn) {
+            banner.addAction("Sign In") { signInHandler?.invoke() }
+        }
+        banner.addAction("Retry") {
+            retryHandler?.invoke()
+            triggerCheck()
+        }
     }
 
     // ── Polling ───────────────────────────────────────────────────────────────
@@ -192,13 +209,11 @@ class AuthSetupBanner(
 
     private fun runCheck() {
         cancelPoll()
-        retryButton.isEnabled = false
-        retryButton.text = "Checking\u2026"
+        banner.setMessage("Checking\u2026")
+        rebuildActions(showInstall = false, showSignIn = false)
         ApplicationManager.getApplication().executeOnPooledThread {
             val diag = diagnosticsFn()
             SwingUtilities.invokeLater {
-                retryButton.text = "Retry"
-                retryButton.isEnabled = true
                 applyDiag(diag)
                 scheduleNext(diag != null)
             }
@@ -215,27 +230,5 @@ class AuthSetupBanner(
         isVisible = nowDown
         if (wasDown && !nowDown) onFixed()
         wasDown = nowDown
-    }
-
-    // ── Sign In feedback helpers ──────────────────────────────────────────────
-
-    /** Call inside an [actionButton] ActionListener to give immediate "signing in" feedback. */
-    fun showSignInPending() {
-        actionButton.isEnabled = false
-        textLabel.text = "<html><b>Signing in\u2026</b> waiting for device code from CLI.</html>"
-        // Re-enable after a few seconds so the user can retry if nothing happened
-        AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            { SwingUtilities.invokeLater { actionButton.isEnabled = true } },
-            8L, TimeUnit.SECONDS,
-        )
-    }
-
-    // ── Layout helper ─────────────────────────────────────────────────────────
-
-    private fun bannerButton(label: String) = JButton(label).apply {
-        foreground = bannerFg
-        isOpaque = false
-        isBorderPainted = false
-        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
     }
 }

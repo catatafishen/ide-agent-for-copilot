@@ -237,30 +237,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 isCLINotFound -> {
                     val cmd = if (System.getProperty("os.name").lowercase().contains("win"))
                         "winget install GitHub.Copilot" else "npm install -g @github/copilot-cli"
-                    textLabel.text = "<html><b>Copilot CLI is not installed</b> — install with: <tt>$cmd</tt></html>"
-                    installButton.isVisible = true
-                    actionButton.isVisible = false
+                    updateState("Copilot CLI is not installed \u2014 install with: $cmd", showInstall = true)
                 }
 
-                authService.isAuthenticationError(diag) -> {
-                    textLabel.text = "<html><b>Not signed in to Copilot</b> — click Sign In, then click Retry.</html>"
-                    installButton.isVisible = false
-                    actionButton.isVisible = true
-                }
+                authService.isAuthenticationError(diag) ->
+                    updateState("Not signed in to Copilot \u2014 click Sign In, then click Retry.", showSignIn = true)
 
-                else -> {
-                    textLabel.text = "<html><b>Copilot CLI unavailable</b></html>"
-                    installButton.isVisible = false
-                    actionButton.isVisible = false
-                }
+                else -> updateState("Copilot CLI unavailable")
             }
         }
-        banner.installButton.addActionListener {
+        banner.installHandler = {
             com.intellij.ide.BrowserUtil.browse("https://github.com/github/copilot-cli#installation")
         }
         // Clear pending auth error on Retry so diagnostics re-verifies from scratch
-        banner.retryButton.addActionListener { authService.clearPendingAuthError() }
-        banner.actionButton.addActionListener {
+        banner.retryHandler = { authService.clearPendingAuthError() }
+        banner.signInHandler = {
             banner.showSignInPending()
             // Try inline auth first (captures device code from CLI stdout)
             inlineAuthProcess?.destroy()
@@ -295,25 +286,23 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             onFixed = onFixed,
         ) { diag ->
             when {
-                "not installed" in diag.lowercase() -> {
-                    textLabel.text =
-                        "<html><b>GitHub CLI (gh) is not installed</b> — needed for billing info. Install from <tt>cli.github.com</tt>.</html>"
-                    installButton.isVisible = true
-                    actionButton.isVisible = false
-                }
+                "not installed" in diag.lowercase() ->
+                    updateState(
+                        "GitHub CLI (gh) is not installed \u2014 needed for billing info. Install from cli.github.com.",
+                        showInstall = true
+                    )
 
-                else -> {
-                    textLabel.text =
-                        "<html><b>Not signed in to GitHub CLI (gh)</b> — needed for billing info. Click Sign In.</html>"
-                    installButton.isVisible = false
-                    actionButton.isVisible = true
-                }
+                else ->
+                    updateState(
+                        "Not signed in to GitHub CLI (gh) \u2014 needed for billing info. Click Sign In.",
+                        showSignIn = true
+                    )
             }
         }
-        banner.installButton.addActionListener {
+        banner.installHandler = {
             com.intellij.ide.BrowserUtil.browse("https://cli.github.com")
         }
-        banner.actionButton.addActionListener {
+        banner.signInHandler = {
             banner.showSignInPending()
             authService.startGhLogin()
         }
@@ -321,58 +310,16 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     /** Creates a warning banner shown when the PSI bridge HTTP server is not reachable. Hidden by default. */
-    private fun createPsiBridgeBanner(): JBPanel<JBPanel<*>> {
-        val banner = JBPanel<JBPanel<*>>(BorderLayout())
+    private fun createPsiBridgeBanner(): com.intellij.ui.InlineBanner {
+        val banner = com.intellij.ui.InlineBanner(
+            "IntelliJ code tools unavailable \u2014 PSI bridge is not running. " +
+                "Make sure a project is open and the IDE Agent for Copilot plugin is active, then restart IntelliJ.",
+            com.intellij.ui.EditorNotificationPanel.Status.Warning
+        )
         banner.isVisible = false
-        banner.border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(
-                JBColor(Color(0xE5, 0xA0, 0x00), Color(0x99, 0x75, 0x00)),
-                com.intellij.ui.SideBorder.BOTTOM
-            ),
-            JBUI.Borders.empty(4, 8)
-        )
-        banner.background = JBColor(Color(0xFF, 0xF3, 0xCD), Color(0x3D, 0x36, 0x20))
-        banner.isOpaque = true
-
-        val icon = JBLabel(com.intellij.icons.AllIcons.General.Warning)
-        icon.border = JBUI.Borders.emptyRight(6)
-
-        val text = JBLabel(
-            "<html><b>IntelliJ code tools unavailable</b> — PSI bridge is not running. " +
-                "Make sure a project is open and the IDE Agent for Copilot plugin is active, then restart IntelliJ.</html>"
-        )
-        text.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
-
-        val detailsButton = JButton("Details…")
-        detailsButton.border = JBUI.Borders.emptyLeft(8)
-        detailsButton.isOpaque = false
-        detailsButton.isBorderPainted = false
-        detailsButton.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
-        detailsButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        detailsButton.toolTipText = "Show diagnostic information"
-
-        val recheckButton = JButton("Recheck")
-        recheckButton.border = JBUI.Borders.emptyLeft(4)
-        recheckButton.isOpaque = false
-        recheckButton.isBorderPainted = false
-        recheckButton.foreground = JBColor(Color(0x5C, 0x45, 0x00), Color(0xE0, 0xC0, 0x60))
-        recheckButton.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        recheckButton.toolTipText = "Re-run the PSI bridge check"
-
-        val buttons = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 0, 0))
-        buttons.isOpaque = false
-        buttons.add(detailsButton)
-        buttons.add(recheckButton)
-
-        val content = JBPanel<JBPanel<*>>(BorderLayout())
-        content.isOpaque = false
-        content.add(icon, BorderLayout.WEST)
-        content.add(text, BorderLayout.CENTER)
-        content.add(buttons, BorderLayout.EAST)
-        banner.add(content, BorderLayout.CENTER)
 
         // Runs check on a pooled thread, then updates the banner on the EDT.
-        // lastDiag is stored so Details… always shows the freshest result.
+        // lastDiag is stored so Details\u2026 always shows the freshest result.
         var lastDiag: String? = null
 
         // Scheduler used for adaptive polling: 5 s while bridge is down, 30 s while healthy.
@@ -390,7 +337,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     SwingUtilities.invokeLater {
                         lastDiag = diag
                         banner.isVisible = diag != null
-                        recheckButton.isEnabled = true
                     }
                     scheduleNext(diag != null)
                 },
@@ -399,27 +345,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
 
         fun runCheck() {
-            // Cancel any pending poll so we don't end up with two parallel chains.
             scheduledFuture?.cancel(false)
-            recheckButton.isEnabled = false
             ApplicationManager.getApplication().executeOnPooledThread {
                 val diag = psiBridgeDiagnostics()
                 SwingUtilities.invokeLater {
                     lastDiag = diag
                     banner.isVisible = diag != null
-                    recheckButton.isEnabled = true
                 }
                 scheduleNext(diag != null)
             }
         }
 
-        detailsButton.addActionListener {
-            // Always run a fresh check so the dialog never shows stale data.
-            detailsButton.isEnabled = false
+        banner.addAction("Details\u2026") {
             ApplicationManager.getApplication().executeOnPooledThread {
                 val diag = psiBridgeDiagnostics()
                 SwingUtilities.invokeLater {
-                    detailsButton.isEnabled = true
                     lastDiag = diag
                     banner.isVisible = diag != null
                     com.intellij.openapi.ui.Messages.showMessageDialog(
@@ -432,7 +372,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 }
             }
         }
-        recheckButton.addActionListener { runCheck() }
+        banner.addAction("Recheck") { runCheck() }
 
         // First check after 5 s so the bridge has time to start.
         scheduledFuture = scheduler.schedule(
