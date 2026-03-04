@@ -146,6 +146,10 @@ val buildChatUi by tasks.registering {
     }
 }
 
+tasks.named("processResources") {
+    dependsOn(buildChatUi)
+}
+
 // Also include in the distribution ZIP
 tasks.named<Zip>("buildPlugin") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -215,9 +219,9 @@ intellijPlatform {
         name = "IDE Agent for Copilot"
         version = project.version.toString()
         description = """
-            Copilot Bridge transforms GitHub Copilot from a chat assistant into a true coding agent
+            IDE Agent for Copilot transforms GitHub Copilot from a chat assistant into a coding agent
             inside your JetBrains IDE. Instead of suggesting code in isolation, the agent can plan
-            and execute multi-step tasks using the same IDE features you use every day — navigation,
+            and execute multi-step tasks using the same IDE capabilities you use every day — navigation,
             refactoring, inspections, testing, build tools, and Git — all within a single conversation.
         """.trimIndent()
 
@@ -238,13 +242,15 @@ intellijPlatform {
         // isPluginInstalled("com.intellij.modules.java") + NoClassDefFoundError catch.
         // TODO: Move psi.java classes to a separate Gradle module (separate JAR) so the
         //       verifier only checks them against IDEs with Java support.
-        failureLevel.set(listOf(
-            FailureLevel.INVALID_PLUGIN,
-            FailureLevel.INTERNAL_API_USAGES,
-            FailureLevel.OVERRIDE_ONLY_API_USAGES,
-            FailureLevel.NON_EXTENDABLE_API_USAGES,
-            FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
-        ))
+        failureLevel.set(
+            listOf(
+                FailureLevel.INVALID_PLUGIN,
+                FailureLevel.INTERNAL_API_USAGES,
+                FailureLevel.OVERRIDE_ONLY_API_USAGES,
+                FailureLevel.NON_EXTENDABLE_API_USAGES,
+                FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
+            )
+        )
         ides {
             recommended()
             // Verify against non-Java JetBrains IDEs
