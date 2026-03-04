@@ -50,6 +50,9 @@ interface ChatPanelApi : Disposable {
 
     // ── Status / errors ────────────────────────────────────────────
 
+    /** Callback invoked to display a transient status banner (error/info). */
+    var onStatusMessage: ((type: String, message: String) -> Unit)?
+
     fun addErrorEntry(message: String)
     fun addInfoEntry(message: String)
 

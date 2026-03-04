@@ -116,6 +116,7 @@ public final class PsiBridgeService implements Disposable {
             httpServer.createContext("/tools/list", this::handleToolsList);
             httpServer.createContext("/tools/status", this::handleToolStatus);
             httpServer.createContext("/health", this::handleHealth);
+            httpServer.createContext("/reload-plugin", this::handleReloadPlugin);
             httpServer.setExecutor(Executors.newFixedThreadPool(8));
             httpServer.start();
             port = httpServer.getAddress().getPort();
@@ -220,6 +221,77 @@ public final class PsiBridgeService implements Disposable {
         exchange.sendResponseHeaders(200, resp.length);
         exchange.getResponseBody().write(resp);
         exchange.getResponseBody().close();
+    }
+
+    /**
+     * Handles POST /reload-plugin — dynamically reloads this plugin from a built ZIP file.
+     * Accepts JSON body: {@code {"zipPath": "/path/to/plugin.zip"}}
+     * <p>
+     * Sends the HTTP response immediately, then schedules the actual reload on the EDT.
+     * The plugin (including this HTTP server) will be unloaded and reloaded.
+     */
+    private void handleReloadPlugin(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            return;
+        }
+        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        JsonObject req = JsonParser.parseString(body).getAsJsonObject();
+        String zipPathStr = req.has("zipPath") ? req.get("zipPath").getAsString() : null;
+        if (zipPathStr == null || zipPathStr.isBlank()) {
+            byte[] err = "{\"error\":\"zipPath is required\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
+            exchange.sendResponseHeaders(400, err.length);
+            exchange.getResponseBody().write(err);
+            exchange.getResponseBody().close();
+            return;
+        }
+
+        Path zipPath = Path.of(zipPathStr);
+        if (!Files.exists(zipPath)) {
+            byte[] err = ("{\"error\":\"ZIP not found: " + zipPathStr + "\"}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
+            exchange.sendResponseHeaders(404, err.length);
+            exchange.getResponseBody().write(err);
+            exchange.getResponseBody().close();
+            return;
+        }
+
+        // Send response before scheduling reload (this server will be shut down during reload)
+        byte[] resp = "{\"status\":\"reload_scheduled\"}".getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set(CONTENT_TYPE_HEADER, APPLICATION_JSON);
+        exchange.sendResponseHeaders(200, resp.length);
+        exchange.getResponseBody().write(resp);
+        exchange.getResponseBody().close();
+
+        LOG.info("Reload requested, ZIP: " + zipPath);
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                // Use reflection — PluginDescriptorLoader and IdeaPluginDescriptorImpl are @ApiStatus.Internal
+                var buildNumber = com.intellij.ide.plugins.PluginManagerCore.getBuildNumber();
+                Class<?> loaderClass = Class.forName("com.intellij.ide.plugins.PluginDescriptorLoader");
+                var loadMethod = loaderClass.getMethod("loadDescriptorFromArtifact",
+                    Path.class, com.intellij.openapi.util.BuildNumber.class);
+                Object descriptor = loadMethod.invoke(null, zipPath, buildNumber);
+                if (descriptor == null) {
+                    LOG.error("Failed to load plugin descriptor from: " + zipPath);
+                    return;
+                }
+
+                Class<?> installerClass = Class.forName("com.intellij.ide.plugins.PluginInstaller");
+                Class<?> descriptorImplClass = Class.forName("com.intellij.ide.plugins.IdeaPluginDescriptorImpl");
+                var installMethod = installerClass.getMethod("installAndLoadDynamicPlugin",
+                    Path.class, descriptorImplClass);
+                boolean ok = (boolean) installMethod.invoke(null, zipPath, descriptor);
+                if (ok) {
+                    LOG.info("Plugin reloaded successfully from: " + zipPath);
+                } else {
+                    LOG.warn("Dynamic reload returned false — IDE restart may be required");
+                }
+            } catch (Exception e) {
+                LOG.error("Failed to reload plugin", e);
+            }
+        });
     }
 
     private void handleToolStatus(HttpExchange exchange) throws IOException {
@@ -419,7 +491,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     private static String buildArgSummary(JsonObject args) {
-        if (args.size() == 0) return "No arguments.";
+        if (args.isEmpty()) return "No arguments.";
         StringBuilder sb = new StringBuilder("<table>");
         int count = 0;
         for (Map.Entry<String, JsonElement> e : args.entrySet()) {
@@ -496,7 +568,7 @@ public final class PsiBridgeService implements Disposable {
                 // Normalise slashes in case the key was stored differently
                 registry.remove(projectPath.replace('/', '\\'));
                 registry.remove(projectPath.replace('\\', '/'));
-                if (registry.size() == 0) {
+                if (registry.isEmpty()) {
                     Files.deleteIfExists(bridgeFile);
                 } else {
                     Files.writeString(bridgeFile, GSON.toJson(registry));

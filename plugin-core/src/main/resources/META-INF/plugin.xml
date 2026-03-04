@@ -8,58 +8,53 @@
   <category>AI Assistant</category>
 
   <description><![CDATA[
-    <p><b>IDE Agent for Copilot</b> transforms GitHub Copilot from a chat assistant into a coding agent
-    inside your JetBrains IDE.</p>
+    <p><b>IDE Agent for Copilot</b> gives GitHub Copilot deep integration with your JetBrains IDE.
+    Instead of working through a terminal or generating diffs in isolation, the agent operates through
+    the same tools you use &mdash; IntelliJ inspections, refactorings, the built-in test runner,
+    the Gradle/Maven build system, and the IDE's Git interface.</p>
 
-    <p>Instead of suggesting code in isolation, the agent can plan and execute multi-step tasks using the same
-    IDE capabilities you use every day &mdash; navigation, refactoring, inspections, testing, build tools, and
-    Git &mdash; all within a single conversation.</p>
-
-    <h3>What Makes It Different</h3>
-    <p>Traditional AI assistants generate code snippets. This agent can:</p>
+    <h3>Real IDE Integration, Not Just a Shell</h3>
+    <p>Other coding agents can build, test, and use Git. This plugin does it through native JetBrains
+    platform APIs &mdash; keeping you in the loop with visible, reviewable actions:</p>
     <ul>
-        <li>Navigate your project structure</li>
-        <li>Modify multiple files coherently</li>
-        <li>Run inspections and refactorings</li>
-        <li>Execute tests and builds</li>
-        <li>Diagnose errors and fix them</li>
-        <li>Perform Git operations</li>
-        <li>Iterate until the task is complete</li>
+        <li><b>Inspections &amp; quick-fixes</b> &mdash; the agent sees the same warnings you see and can apply IDE-suggested fixes</li>
+        <li><b>Refactoring</b> &mdash; rename, extract method, inline &mdash; through IntelliJ's refactoring engine, not text replacement</li>
+        <li><b>Test runner</b> &mdash; executes tests in the IDE's Run panel so you can watch results live</li>
+        <li><b>Build tools</b> &mdash; triggers incremental builds through IntelliJ, not a blind <code>gradle build</code></li>
+        <li><b>Git operations</b> &mdash; commits, diffs, and branches through the IDE's VCS layer with full editor buffer awareness</li>
+        <li><b>Code navigation</b> &mdash; go-to-declaration, find references, type hierarchy &mdash; using the IDE's semantic index</li>
     </ul>
-    <p>All actions happen directly through the IDE &mdash; not through simulated edits or external tools.</p>
+    <p>Every action is visible in the IDE. Nothing happens behind your back.</p>
+
+    <h3>Human in the Loop</h3>
+    <p>The agent works <em>with</em> you, not around you. You see every file change in the editor,
+    every test result in the Run panel, every Git operation in the VCS log. You can pause, review,
+    undo, or redirect at any point. It's pair programming with an agent that speaks IntelliJ.</p>
 
     <h3>Works for Tasks of Any Size</h3>
-    <p>Use it as:</p>
     <ul>
-        <li>An everyday coding assistant</li>
-        <li>A tool for repetitive multi-file changes</li>
-        <li>A helper for fixing failing tests or build issues</li>
-        <li>A refactoring assistant</li>
-        <li>A way to explore unfamiliar codebases</li>
-        <li>An autonomous agent for larger end-to-end tasks</li>
+        <li>Fix a failing test or a single inspection warning</li>
+        <li>Refactor across multiple files</li>
+        <li>Explore an unfamiliar codebase using IDE navigation</li>
+        <li>Implement a feature end-to-end with build and test verification</li>
     </ul>
-    <p>Start small or go big &mdash; the agent adapts to the scope of your request.</p>
 
     <h3>Privacy &amp; Local-First Design</h3>
     <ul>
-        <li>No telemetry</li>
-        <li>No data collection</li>
-        <li>No external services (beyond GitHub Copilot)</li>
+        <li>No telemetry or data collection</li>
         <li>All operations executed locally inside your IDE</li>
         <li>Your code never leaves your environment except through Copilot itself</li>
     </ul>
-    <p>Ideal for privacy-sensitive or enterprise environments.</p>
 
     <h3>Requirements</h3>
     <ul>
-        <li>A supported JetBrains IDE</li>
+        <li>A supported JetBrains IDE (IntelliJ IDEA, WebStorm, PyCharm, GoLand, etc.)</li>
         <li>GitHub Copilot plugin installed and authenticated</li>
         <li>An active GitHub Copilot subscription</li>
     </ul>
 
     <h3>Open Source</h3>
-    <p>This plugin is open source under the Apache 2.0 License.<br/>
-    Source code, issues, and contributions:
+    <p>Apache 2.0 License &mdash;
     <a href="https://github.com/catatafishen/ide-agent-for-copilot">github.com/catatafishen/ide-agent-for-copilot</a></p>
 
     <p><em>This plugin is an independent open-source project and is not affiliated with or endorsed by GitHub or JetBrains.</em></p>

@@ -170,40 +170,79 @@ tasks.register("deployToMainIde") {
             ?.maxByOrNull { it.lastModified() }
             ?: error("No ZIP found in $distDir — build failed?")
 
-        // Auto-detect Toolbox plugin directory
-        val base = File(System.getProperty("user.home"), ".local/share/JetBrains/Toolbox/apps")
-        val pluginDirs = if (base.exists()) {
-            base.walkTopDown().maxDepth(3)
-                .filter { it.isDirectory && it.name == "plugins" && File(it, "plugin-core").exists() }
-                .toList()
-        } else emptyList()
-
-        val installDir = if (pluginDirs.isNotEmpty()) {
-            File(pluginDirs.first(), "plugin-core")
-        } else {
-            // Fallback: search in standard config locations
-            val configBase = File(System.getProperty("user.home"), ".config/JetBrains")
-            val found = if (configBase.exists()) {
-                configBase.listFiles()
-                    ?.filter { it.isDirectory && it.name.startsWith("IntelliJIdea") }
-                    ?.sortedByDescending { it.name }
-                    ?.flatMap { it.resolve("plugins").listFiles()?.toList() ?: emptyList() }
-                    ?.firstOrNull { it.name == "plugin-core" }
-            } else null
-            found ?: error("Could not find plugin install directory. Install the plugin first via IDE.")
-        }
-
         logger.lifecycle("📦 ZIP: ${latestZip.name}")
-        logger.lifecycle("📂 Target: $installDir")
 
-        // Remove old version and extract new
-        if (installDir.exists()) installDir.deleteRecursively()
-        project.copy {
-            from(project.zipTree(latestZip))
-            into(installDir.parentFile)
+        // Try dynamic reload via PSI bridge first
+        val bridgeFile = File(System.getProperty("user.home"), ".copilot/psi-bridge.json")
+        var reloaded = false
+        if (bridgeFile.exists()) {
+            try {
+                val registry = com.google.gson.JsonParser.parseString(bridgeFile.readText()).asJsonObject
+                // Find any running bridge instance
+                val port = registry.entrySet().firstOrNull()?.let {
+                    it.value.asJsonObject.get("port")?.asInt
+                }
+                if (port != null) {
+                    logger.lifecycle("🔄 PSI bridge found on port $port — requesting dynamic reload...")
+                    val result = providers.exec {
+                        commandLine("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                            "-X", "POST", "http://127.0.0.1:$port/reload-plugin",
+                            "-H", "Content-Type: application/json",
+                            "-d", """{"zipPath":"${latestZip.absolutePath}"}""",
+                            "--connect-timeout", "3", "--max-time", "5")
+                        isIgnoreExitValue = true
+                    }
+                    val httpCode = result.standardOutput.asText.get().trim()
+                    if (httpCode == "200") {
+                        logger.lifecycle("✅ Reload scheduled — plugin will reload momentarily")
+                        reloaded = true
+                    } else {
+                        logger.warn("⚠️ Reload request failed (HTTP $httpCode)")
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("⚠️ Could not reach PSI bridge: ${e.message}")
+            }
         }
 
-        logger.lifecycle("✅ Files deployed — restart IDE to apply changes")
+        if (!reloaded) {
+            // Fallback: copy files manually
+            logger.lifecycle("📋 Falling back to file copy...")
+
+            // Auto-detect Toolbox plugin directory
+            val base = File(System.getProperty("user.home"), ".local/share/JetBrains/Toolbox/apps")
+            val pluginDirs = if (base.exists()) {
+                base.walkTopDown().maxDepth(3)
+                    .filter { it.isDirectory && it.name == "plugins" && File(it, "plugin-core").exists() }
+                    .toList()
+            } else emptyList()
+
+            val installDir = if (pluginDirs.isNotEmpty()) {
+                File(pluginDirs.first(), "plugin-core")
+            } else {
+                // Fallback: search in standard config locations
+                val configBase = File(System.getProperty("user.home"), ".config/JetBrains")
+                val found = if (configBase.exists()) {
+                    configBase.listFiles()
+                        ?.filter { it.isDirectory && it.name.startsWith("IntelliJIdea") }
+                        ?.sortedByDescending { it.name }
+                        ?.flatMap { it.resolve("plugins").listFiles()?.toList() ?: emptyList() }
+                        ?.firstOrNull { it.name == "plugin-core" }
+                } else null
+                found ?: error("Could not find plugin install directory. Install the plugin first via IDE.")
+            }
+
+            logger.lifecycle("📂 Target: $installDir")
+
+            // Remove old version and extract new
+            if (installDir.exists()) installDir.deleteRecursively()
+            project.copy {
+                from(project.zipTree(latestZip))
+                into(installDir.parentFile)
+            }
+
+            logger.lifecycle("✅ Files deployed — restart IDE to apply changes")
+        }
     }
 }
 

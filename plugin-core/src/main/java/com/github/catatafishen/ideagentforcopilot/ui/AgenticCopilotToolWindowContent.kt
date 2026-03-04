@@ -85,6 +85,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private lateinit var consolePanel: ChatPanelApi
     private lateinit var responsePanelContainer: JBPanel<JBPanel<*>>
     private var copilotBanner: AuthSetupBanner? = null
+    private var statusBanner: StatusBanner? = null
     private var inlineAuthProcess: Process? = null
 
     // Per-turn tracking
@@ -464,7 +465,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        panel.border = JBUI.Borders.customLine(JBColor.border(), 1, 0, 0, 0)
 
         // PSI bridge status banner (shown when bridge is not reachable)
         val psiBridgeBanner = createPsiBridgeBanner()
@@ -491,9 +491,32 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             currentSessionId = null
             loadModels()
         }
-        northStack.add(copilotBanner)
-        northStack.add(createGhSetupBanner { billing.loadBillingData() })
-        northStack.add(GitWarningBanner(project))
+        val cb = copilotBanner!!
+        northStack.add(cb)
+        val ghBanner = createGhSetupBanner { billing.loadBillingData() }
+        northStack.add(ghBanner)
+        val gitBanner = GitWarningBanner(project)
+        northStack.add(gitBanner)
+        val sb = StatusBanner(project)
+        statusBanner = sb
+        northStack.add(sb)
+
+        // Toggle a top border on responsePanelContainer: grey when no banners, none when a banner is showing
+        val allBanners = listOf(psiBridgeBanner, cb, ghBanner, gitBanner, sb)
+        val greyBorder = com.intellij.util.ui.JBUI.Borders.customLine(com.intellij.ui.JBColor.border(), 1, 0, 0, 0)
+        val updateContainerBorder = java.beans.PropertyChangeListener {
+            responsePanelContainer.border = if (allBanners.none { b -> b.isVisible }) greyBorder else null
+        }
+        allBanners.forEach { it.addPropertyChangeListener("visible", updateContainerBorder) }
+        responsePanelContainer.border = if (allBanners.none { it.isVisible }) greyBorder else null
+
+        consolePanel.onStatusMessage = { type, message ->
+            when (type) {
+                "error" -> sb.showError(message)
+                "warning" -> sb.showWarning(message)
+                else -> sb.showInfo(message)
+            }
+        }
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 

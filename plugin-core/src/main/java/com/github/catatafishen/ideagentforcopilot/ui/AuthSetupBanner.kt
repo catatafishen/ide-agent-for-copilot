@@ -1,7 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.ui.EditorNotificationPanel
+import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.InlineBanner
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
@@ -14,7 +16,6 @@ import java.awt.datatransfer.StringSelection
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import javax.swing.BoxLayout
-import javax.swing.JButton
 import javax.swing.SwingUtilities
 
 /**
@@ -42,6 +43,11 @@ class AuthSetupBanner(
 
     private val banner = InlineBanner("", EditorNotificationPanel.Status.Warning)
 
+    // Action links created once, visibility toggled as needed
+    private var installAction: javax.swing.JComponent = javax.swing.JPanel()
+    private var signInAction: javax.swing.JComponent = javax.swing.JPanel()
+    private var retryAction: javax.swing.JComponent = javax.swing.JPanel()
+
     /** Set by callers to handle the "Install…" action click. */
     var installHandler: (() -> Unit)? = null
 
@@ -60,15 +66,11 @@ class AuthSetupBanner(
     private val codeLabel = JBLabel().apply {
         font = font.deriveFont(Font.BOLD)
     }
-    private val copyButton = JButton("\uD83D\uDCCB Copy Code").apply {
-        isOpaque = false
-        isBorderPainted = false
-        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+    private val copyLink = HyperlinkLabel("Copy code").apply {
+        icon = AllIcons.Actions.Copy
     }
-    private val openBrowserButton = JButton("\uD83D\uDD17 Open GitHub").apply {
-        isOpaque = false
-        isBorderPainted = false
-        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+    private val openBrowserLink = HyperlinkLabel("Open GitHub").apply {
+        icon = AllIcons.Ide.External_link_arrow
     }
     private var deviceUrl: String? = null
 
@@ -81,8 +83,8 @@ class AuthSetupBanner(
 
         deviceCodeRow.add(JBLabel("Your code:"))
         deviceCodeRow.add(codeLabel)
-        deviceCodeRow.add(copyButton)
-        deviceCodeRow.add(openBrowserButton)
+        deviceCodeRow.add(copyLink)
+        deviceCodeRow.add(openBrowserLink)
 
         val stack = JBPanel<JBPanel<*>>().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -92,19 +94,29 @@ class AuthSetupBanner(
         }
         add(stack, BorderLayout.CENTER)
 
-        copyButton.addActionListener {
+        // Create action links once — toggle visibility instead of remove/add
+        installAction = banner.addAction("Install\u2026", AllIcons.Actions.Download) { installHandler?.invoke() }
+        signInAction = banner.addAction("Sign In", AllIcons.Actions.Execute) { signInHandler?.invoke() }
+        retryAction = banner.addAction("Retry", AllIcons.Actions.Refresh) {
+            retryHandler?.invoke()
+            triggerCheck()
+        }
+        installAction.isVisible = false
+        signInAction.isVisible = false
+
+        copyLink.addHyperlinkListener {
             val code = codeLabel.text.trim()
             if (code.isNotEmpty()) {
                 java.awt.Toolkit.getDefaultToolkit().systemClipboard
                     .setContents(StringSelection(code), null)
-                copyButton.text = "\u2713 Copied"
+                copyLink.setHyperlinkText("Copied!")
                 AppExecutorUtil.getAppScheduledExecutorService().schedule(
-                    { SwingUtilities.invokeLater { copyButton.text = "\uD83D\uDCCB Copy Code" } },
+                    { SwingUtilities.invokeLater { copyLink.setHyperlinkText("Copy code") } },
                     2L, TimeUnit.SECONDS,
                 )
             }
         }
-        openBrowserButton.addActionListener {
+        openBrowserLink.addHyperlinkListener {
             deviceUrl?.let { com.intellij.ide.BrowserUtil.browse(it) }
         }
 
@@ -173,17 +185,9 @@ class AuthSetupBanner(
     // ── Action management ─────────────────────────────────────────────────────
 
     private fun rebuildActions(showInstall: Boolean, showSignIn: Boolean) {
-        banner.removeAllActions()
-        if (showInstall) {
-            banner.addAction("Install\u2026") { installHandler?.invoke() }
-        }
-        if (showSignIn) {
-            banner.addAction("Sign In") { signInHandler?.invoke() }
-        }
-        banner.addAction("Retry") {
-            retryHandler?.invoke()
-            triggerCheck()
-        }
+        installAction.isVisible = showInstall
+        signInAction.isVisible = showSignIn
+        retryAction.isVisible = true
     }
 
     // ── Polling ───────────────────────────────────────────────────────────────
