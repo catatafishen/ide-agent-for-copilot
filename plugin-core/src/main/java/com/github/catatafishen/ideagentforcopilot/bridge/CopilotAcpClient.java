@@ -234,6 +234,7 @@ public class CopilotAcpClient implements Closeable {
         // The CLI reads copilot-instructions.md at session creation; without this,
         // a race with PsiBridgeStartup can leave the file missing on first run.
         CopilotInstructionsManager.ensureInstructions(projectBasePath);
+        CopilotAgentsManager.ensureAgents(projectBasePath);
 
         try {
             String copilotPath = CopilotCliLocator.findCopilotCli();
