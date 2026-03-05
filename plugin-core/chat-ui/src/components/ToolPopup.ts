@@ -26,6 +26,8 @@ export default class ToolPopup extends HTMLElement {
     private _onClickOutside = (e: MouseEvent) => this._handleClickOutside(e);
     private _onKeyDown = (e: KeyboardEvent) => this._handleKeyDown(e);
     private _onScroll = () => this._reposition();
+    private _onResizeMove: ((e: MouseEvent) => void) | null = null;
+    private _onResizeUp: (() => void) | null = null;
 
     connectedCallback(): void {
         if (this._init) return;
@@ -39,8 +41,39 @@ export default class ToolPopup extends HTMLElement {
             <div class="tool-popup-body">
                 <div class="tool-popup-params"></div>
                 <div class="tool-popup-result"></div>
-            </div>`;
+            </div>
+            <div class="tool-popup-resize"></div>`;
         this.querySelector('.tool-popup-close')!.addEventListener('click', () => this.dismiss());
+        this._initResize();
+    }
+
+    private _initResize(): void {
+        const grip = this.querySelector('.tool-popup-resize')!;
+        grip.addEventListener('mousedown', (e: Event) => {
+            const me = e as MouseEvent;
+            me.preventDefault();
+            me.stopPropagation();
+            const startX = me.clientX;
+            const startY = me.clientY;
+            const startW = this.offsetWidth;
+            const startH = this.offsetHeight;
+
+            this._onResizeMove = (ev: MouseEvent) => {
+                const w = Math.max(220, startW + (ev.clientX - startX));
+                const h = Math.max(120, startH + (ev.clientY - startY));
+                this.style.width = w + 'px';
+                this.style.maxHeight = h + 'px';
+                this.style.height = h + 'px';
+            };
+            this._onResizeUp = () => {
+                if (this._onResizeMove) document.removeEventListener('mousemove', this._onResizeMove);
+                if (this._onResizeUp) document.removeEventListener('mouseup', this._onResizeUp);
+                this._onResizeMove = null;
+                this._onResizeUp = null;
+            };
+            document.addEventListener('mousemove', this._onResizeMove);
+            document.addEventListener('mouseup', this._onResizeUp);
+        });
     }
 
     show(chip: HTMLElement, section: HTMLElement): void {
@@ -68,8 +101,11 @@ export default class ToolPopup extends HTMLElement {
         popupParams.innerHTML = paramsEl?.innerHTML || '';
         popupResult.innerHTML = resultEl?.innerHTML || '';
 
-        // Apply kind color class from chip
+        // Apply kind color class from chip — also reset custom size
         this.className = 'tool-popup';
+        this.style.width = '';
+        this.style.height = '';
+        this.style.maxHeight = '';
         const kindClass = Array.from(chip.classList).find(c => c.startsWith('kind-'));
         if (kindClass) this.classList.add(kindClass);
         if (section.classList.contains('failed')) this.classList.add('failed');

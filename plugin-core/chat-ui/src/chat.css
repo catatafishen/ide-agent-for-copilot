@@ -275,7 +275,6 @@ chat-message.agent-row:last-child:not(:has(message-bubble))::after {
     min-width: 220px;
     min-height: 120px;
     overflow: hidden;
-    resize: both;
     background: var(--bg);
     border: 1px solid var(--think-a25);
     border-radius: var(--r-md, 8px);
@@ -336,6 +335,56 @@ chat-message.agent-row:last-child:not(:has(message-bubble))::after {
 .tool-popup-params:empty,
 .tool-popup-result:empty {
     display: none;
+}
+
+.tool-popup-resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    z-index: 1;
+}
+
+/* JetBrains-style diagonal grip lines */
+.tool-popup-resize::before {
+    content: '';
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 10px;
+    height: 10px;
+    background:
+        linear-gradient(
+            135deg,
+            transparent 30%,
+            var(--think-a25) 30%, var(--think-a25) 35%,
+            transparent 35%,
+            transparent 50%,
+            var(--think-a25) 50%, var(--think-a25) 55%,
+            transparent 55%,
+            transparent 70%,
+            var(--think-a25) 70%, var(--think-a25) 75%,
+            transparent 75%
+        );
+}
+
+.tool-popup-resize:hover::before,
+.tool-popup-resize:active::before {
+    background:
+        linear-gradient(
+            135deg,
+            transparent 30%,
+            var(--fg) 30%, var(--fg) 35%,
+            transparent 35%,
+            transparent 50%,
+            var(--fg) 50%, var(--fg) 55%,
+            transparent 55%,
+            transparent 70%,
+            var(--fg) 70%, var(--fg) 75%,
+            transparent 75%
+        );
 }
 
 @keyframes popupIn {
