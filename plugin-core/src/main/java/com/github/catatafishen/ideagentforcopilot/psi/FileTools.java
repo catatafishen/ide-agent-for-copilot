@@ -42,7 +42,9 @@ class FileTools extends AbstractToolHandler {
     static final java.awt.Color HIGHLIGHT_EDIT = new java.awt.Color(80, 160, 80, 40);
     static final java.awt.Color HIGHLIGHT_READ = new java.awt.Color(80, 120, 200, 35);
 
-    /** Returns a label like "ui-reviewer", "claude-sonnet-4.5", or "Agent" as fallback. */
+    /**
+     * Returns a label like "ui-reviewer", "claude-sonnet-4.5", or "Agent" as fallback.
+     */
     static String agentLabel() {
         String agent = CopilotSettings.getActiveAgentLabel();
         if (agent != null) return agent;
@@ -111,6 +113,7 @@ class FileTools extends AbstractToolHandler {
         });
 
         followFileIfEnabled(project, pathStr, startLine > 0 ? startLine : -1, endLine > 0 ? endLine : -1, HIGHLIGHT_READ, agentLabel() + " is reading");
+        FileAccessTracker.recordRead(project, pathStr);
         return result;
     }
 
@@ -173,15 +176,41 @@ class FileTools extends AbstractToolHandler {
                 } else {
                     fem.openFile(vf, false);
                 }
+
+                // Also select in the Project View so the tree follows along
+                selectInProjectView(project, vf);
             } catch (Exception e) {
                 LOG.debug("Follow agent file failed: " + pathStr, e);
             }
         });
     }
 
+    /**
+     * Cooldown for project view selection to avoid excessive tree jumps.
+     */
+    private static final long PROJECT_VIEW_COOLDOWN_MS = 5_000;
+    private static volatile long lastProjectViewSelectMs;
+
+    /**
+     * Selects the given file in the Project View tree without requesting focus.
+     * Throttled to avoid excessive tree navigation during rapid file access.
+     */
+    private static void selectInProjectView(Project project, VirtualFile vf) {
+        long now = System.currentTimeMillis();
+        if (now - lastProjectViewSelectMs < PROJECT_VIEW_COOLDOWN_MS) return;
+        lastProjectViewSelectMs = now;
+
+        try {
+            var projectView = com.intellij.ide.projectView.ProjectView.getInstance(project);
+            projectView.select(null, vf, false);
+        } catch (Exception e) {
+            LOG.debug("Project view select failed", e);
+        }
+    }
+
     private static void scrollAndHighlight(FileEditorManager fem, VirtualFile vf,
-                                    int startLine, int endLine, int midLine,
-                                    java.awt.Color highlightColor, String actionLabel) {
+                                           int startLine, int endLine, int midLine,
+                                           java.awt.Color highlightColor, String actionLabel) {
         for (com.intellij.openapi.fileEditor.FileEditor fe : fem.getEditors(vf)) {
             if (fe instanceof TextEditor textEditor) {
                 com.intellij.openapi.editor.Editor editor = textEditor.getEditor();
@@ -218,9 +247,9 @@ class FileTools extends AbstractToolHandler {
     }
 
     private static void flashLineRange(com.intellij.openapi.editor.Editor editor, Document doc,
-                                int startLine, int endLine,
-                                java.awt.Color color, String actionLabel,
-                                TextEditor disposableParent) {
+                                       int startLine, int endLine,
+                                       java.awt.Color color, String actionLabel,
+                                       TextEditor disposableParent) {
         int lineCount = doc.getLineCount();
         if (startLine <= 0 || endLine <= 0 || startLine > lineCount) return;
 
@@ -336,6 +365,7 @@ class FileTools extends AbstractToolHandler {
 
         String result = resultFuture.get(15, TimeUnit.SECONDS);
         followFileIfEnabled(project, pathStr, followRange[0], followRange[1], HIGHLIGHT_EDIT, agentLabel() + " is editing");
+        FileAccessTracker.recordWrite(project, pathStr);
         return result;
     }
 
@@ -708,6 +738,7 @@ class FileTools extends AbstractToolHandler {
 
         String result = resultFuture.get(10, TimeUnit.SECONDS);
         followFileIfEnabled(project, pathStr, 1, lineCount, HIGHLIGHT_EDIT, agentLabel() + " created");
+        FileAccessTracker.recordWrite(project, pathStr);
         return result;
     }
 

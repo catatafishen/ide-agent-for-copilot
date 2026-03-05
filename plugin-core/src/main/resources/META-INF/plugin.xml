@@ -116,5 +116,9 @@
 
     <!-- Notification Group for Copilot status messages -->
     <notificationGroup id="Copilot Notifications" displayType="STICKY_BALLOON"/>
+
+    <!-- Project View decorator showing agent file access (read/edited) -->
+    <projectViewNodeDecorator
+      implementation="com.github.catatafishen.ideagentforcopilot.psi.AgentFileDecorator"/>
   </extensions>
 </idea-plugin>
