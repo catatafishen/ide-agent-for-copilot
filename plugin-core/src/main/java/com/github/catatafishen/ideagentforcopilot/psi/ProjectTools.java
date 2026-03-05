@@ -86,6 +86,16 @@ class ProjectTools extends AbstractToolHandler {
         } catch (Exception e) {
             sb.append("IDE: unavailable\n");
         }
+        try {
+            var descriptor = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
+                com.intellij.openapi.extensions.PluginId.getId("com.github.catatafishen.ideagentforcopilot"));
+            if (descriptor != null) {
+                sb.append("Plugin: ").append(descriptor.getName())
+                    .append(" v").append(descriptor.getVersion()).append("\n");
+            }
+        } catch (Exception e) {
+            sb.append("Plugin version: unavailable\n");
+        }
         sb.append("OS: ").append(System.getProperty(OS_NAME_PROPERTY))
             .append(" ").append(System.getProperty("os.version"))
             .append(" (").append(System.getProperty("os.arch")).append(")\n");
