@@ -671,16 +671,31 @@ final class GitToolHandler {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 String fullHash = runGit("rev-parse", "HEAD").trim();
-                if (fullHash.length() == 40) {
-                    ApplicationManager.getApplication().invokeLater(() -> {
-                        try {
-                            var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
-                            com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
-                        } catch (Exception ignored) {
-                            // best-effort UI follow-along
-                        }
-                    });
+                if (fullHash.length() != 40) return;
+
+                // Refresh VFS so IntelliJ detects the new .git state
+                var basePath = project.getBasePath();
+                if (basePath != null) {
+                    var gitDir = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                        .refreshAndFindFileByPath(basePath + "/.git");
+                    if (gitDir != null) {
+                        gitDir.refresh(false, true);
+                    }
                 }
+
+                // Brief delay for the VCS log to index the new commit after VFS refresh
+                Thread.sleep(800);
+
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    try {
+                        var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
+                        com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
+                    } catch (Exception ignored) {
+                        // best-effort UI follow-along
+                    }
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (Exception ignored) {
                 // best-effort — fall back silently
             }
