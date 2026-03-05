@@ -314,23 +314,7 @@ class CodeQualityTools extends AbstractToolHandler {
                 }
 
                 var editor = editors[0];
-                List<String> notifications = new ArrayList<>();
-
-                for (var provider : com.intellij.ui.EditorNotificationProvider.EP_NAME.getExtensions(project)) {
-                    try {
-                        var factory = provider.collectNotificationData(project, vf);
-                        if (factory == null) continue;
-                        var panel = factory.apply(editor);
-                        if (panel instanceof com.intellij.ui.EditorNotificationPanel enp) {
-                            String text = enp.getText();
-                            if (text != null && !text.isEmpty()) {
-                                notifications.add("[BANNER] " + text);
-                            }
-                        }
-                    } catch (Exception e) {
-                        // Skip failing providers silently
-                    }
-                }
+                List<String> notifications = PlatformApiCompat.collectEditorNotificationTexts(project, vf, editor);
 
                 future.complete(notifications);
             } catch (Exception e) {
@@ -638,7 +622,7 @@ class CodeQualityTools extends AbstractToolHandler {
             var toolWrapper = tools.getTool();
             String toolId = toolWrapper.getShortName();
 
-            var presentation = ctx.getPresentation(toolWrapper);
+            var presentation = PlatformApiCompat.getInspectionPresentation(ctx, toolWrapper);
             //noinspection ConstantValue - presentation can be null at runtime despite @NotNull annotation
             if (presentation == null) continue;
 
@@ -1234,7 +1218,7 @@ class CodeQualityTools extends AbstractToolHandler {
 
     private Object getQodanaServiceInstance(Class<?> serviceClass, int limit,
                                             CompletableFuture<String> resultFuture) {
-        Object qodanaService = project.getService(serviceClass);
+        Object qodanaService = PlatformApiCompat.getServiceByRawClass(project, serviceClass);
         if (qodanaService == null) {
             String fallbackResult = tryFindSarifOutput(limit);
             resultFuture.complete(Objects.requireNonNullElse(fallbackResult,
