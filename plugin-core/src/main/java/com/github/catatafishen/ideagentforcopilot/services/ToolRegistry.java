@@ -165,6 +165,7 @@ public final class ToolRegistry {
 
         // ── Other ─────────────────────────────────────────────────────────────────
         new ToolEntry("get_chat_html", "Get Chat HTML", "Retrieve the live DOM HTML of the JCEF chat panel for debugging", Category.OTHER, false, false, false),
+        new ToolEntry("search_conversation_history", "Search Conversation History", "List, read, and search past conversation sessions from the chat history", Category.OTHER, false, false, false),
         new ToolEntry("get_notifications", "Get Notifications", "Get recent IntelliJ balloon notifications", Category.OTHER, false, false, false),
         new ToolEntry("read_ide_log", "Read IDE Log", "Read recent IntelliJ IDE log entries, optionally filtered by level or text", Category.OTHER, false, false, false),
         new ToolEntry("create_scratch_file", "Create Scratch File", "Create a temporary scratch file with the given name and content", Category.OTHER, false, false, false),

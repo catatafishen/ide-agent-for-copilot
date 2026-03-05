@@ -43,6 +43,7 @@ class EditorTools extends AbstractToolHandler {
         register("get_open_editors", this::getOpenEditors);
         register("list_themes", this::listThemes);
         register("set_theme", this::setTheme);
+        register("search_conversation_history", this::searchConversationHistory);
     }
 
     private String openInEditor(JsonObject args) throws Exception {
@@ -329,6 +330,193 @@ class EditorTools extends AbstractToolHandler {
             return "Error: Could not retrieve page HTML. Browser may not be ready.";
         }
         return html;
+    }
+
+    // ---- Conversation History ----
+
+    private String searchConversationHistory(JsonObject args) {
+        String basePath = project.getBasePath();
+        if (basePath == null) return "Error: project base path unavailable";
+
+        java.io.File agentDir = new java.io.File(basePath, ".agent-work");
+        java.io.File archiveDir = new java.io.File(agentDir, "conversations");
+        java.io.File currentFile = new java.io.File(agentDir, "conversation.json");
+
+        String query = args.has("query") ? args.get("query").getAsString() : null;
+        String file = args.has("file") ? args.get("file").getAsString() : null;
+        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
+
+        // List mode: no file selected and no query
+        if (file == null && query == null) {
+            return listConversations(currentFile, archiveDir);
+        }
+
+        // Read specific conversation
+        if (file != null && query == null) {
+            return readConversation(file, currentFile, archiveDir, maxChars);
+        }
+
+        // Search mode
+        return searchConversations(query, file, currentFile, archiveDir, maxChars);
+    }
+
+    private static String listConversations(java.io.File currentFile, java.io.File archiveDir) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Conversations:\n\n");
+        if (currentFile.exists() && currentFile.length() > 10) {
+            sb.append("• current (").append(formatFileSize(currentFile.length())).append(")\n");
+        }
+        if (archiveDir.exists()) {
+            java.io.File[] archives = archiveDir.listFiles((d, n) -> n.endsWith(".json"));
+            if (archives != null && archives.length > 0) {
+                java.util.Arrays.sort(archives, java.util.Comparator.comparing(java.io.File::getName).reversed());
+                for (java.io.File f : archives) {
+                    String name = f.getName().replace("conversation-", "").replace(".json", "");
+                    sb.append("• ").append(name).append(" (").append(formatFileSize(f.length())).append(")\n");
+                }
+            }
+        }
+        if (sb.length() < 20) {
+            return "No conversation history found.";
+        }
+        sb.append("\nUse 'file' parameter to read a specific conversation (e.g., file='current' or file='2026-03-04T15-30-00').");
+        sb.append("\nUse 'query' parameter to search across all conversations.");
+        return sb.toString();
+    }
+
+    private static String readConversation(String file, java.io.File currentFile,
+                                           java.io.File archiveDir, int maxChars) {
+        java.io.File target = resolveConversationFile(file, currentFile, archiveDir);
+        if (target == null || !target.exists()) {
+            return "Error: Conversation file not found: " + file;
+        }
+        return conversationJsonToText(target, null, maxChars);
+    }
+
+    private static String searchConversations(String query, String file, java.io.File currentFile,
+                                              java.io.File archiveDir, int maxChars) {
+        String lowerQuery = query.toLowerCase(java.util.Locale.ROOT);
+        StringBuilder sb = new StringBuilder();
+
+        // Collect files to search
+        java.util.List<java.io.File> files = new java.util.ArrayList<>();
+        if (file != null) {
+            java.io.File target = resolveConversationFile(file, currentFile, archiveDir);
+            if (target != null && target.exists()) files.add(target);
+        } else {
+            if (currentFile.exists() && currentFile.length() > 10) files.add(currentFile);
+            if (archiveDir.exists()) {
+                java.io.File[] archives = archiveDir.listFiles((d, n) -> n.endsWith(".json"));
+                if (archives != null) {
+                    java.util.Arrays.sort(archives, java.util.Comparator.comparing(java.io.File::getName).reversed());
+                    files.addAll(java.util.Arrays.asList(archives));
+                }
+            }
+        }
+
+        int totalMatches = 0;
+        for (java.io.File f : files) {
+            String label = f.equals(currentFile) ? "current" : f.getName().replace("conversation-", "").replace(".json", "");
+            String result = conversationJsonToText(f, lowerQuery, maxChars - sb.length());
+            if (!result.isEmpty()) {
+                long matchCount = result.lines().filter(l -> l.toLowerCase(java.util.Locale.ROOT).contains(lowerQuery)).count();
+                totalMatches += matchCount;
+                sb.append("── ").append(label).append(" (").append(matchCount).append(" matches) ──\n");
+                sb.append(result).append("\n");
+            }
+            if (sb.length() >= maxChars) break;
+        }
+
+        if (totalMatches == 0) return "No matches found for: " + query;
+        return sb.toString().trim();
+    }
+
+    private static java.io.File resolveConversationFile(String name, java.io.File currentFile, java.io.File archiveDir) {
+        if ("current".equalsIgnoreCase(name)) return currentFile;
+        java.io.File direct = new java.io.File(archiveDir, "conversation-" + name + ".json");
+        if (direct.exists()) return direct;
+        // Fuzzy match: find archive containing the name
+        if (archiveDir.exists()) {
+            java.io.File[] archives = archiveDir.listFiles((d, n) -> n.contains(name) && n.endsWith(".json"));
+            if (archives != null && archives.length > 0) return archives[0];
+        }
+        return null;
+    }
+
+    /**
+     * Reads a conversation JSON file and converts to text.
+     * If searchQuery is non-null, only includes entries matching the query (case-insensitive).
+     */
+    private static String conversationJsonToText(java.io.File file, String searchQuery, int maxChars) {
+        try {
+            String json = java.nio.file.Files.readString(file.toPath());
+            var arr = com.google.gson.JsonParser.parseString(json).getAsJsonArray();
+            StringBuilder sb = new StringBuilder();
+
+            for (var el : arr) {
+                if (!el.isJsonObject()) continue;
+                var obj = el.getAsJsonObject();
+                String type = obj.has("type") ? obj.get("type").getAsString() : "";
+                String line = formatConversationEntry(obj, type);
+                if (line == null || line.isEmpty()) continue;
+
+                if (searchQuery != null && !line.toLowerCase(java.util.Locale.ROOT).contains(searchQuery)) {
+                    continue;
+                }
+                sb.append(line).append("\n");
+                if (sb.length() >= maxChars) {
+                    sb.append("...[truncated at ").append(maxChars).append(" chars]\n");
+                    break;
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "Error reading " + file.getName() + ": " + e.getMessage();
+        }
+    }
+
+    private static String formatConversationEntry(JsonObject obj, String type) {
+        return switch (type) {
+            case "prompt" -> {
+                String text = obj.has("text") ? obj.get("text").getAsString() : "";
+                String ts = obj.has("ts") ? " [" + obj.get("ts").getAsString() + "]" : "";
+                yield ">>> " + text + ts;
+            }
+            case "text" -> {
+                String raw = obj.has("raw") ? obj.get("raw").getAsString() : "";
+                yield raw.isEmpty() ? null : raw.trim();
+            }
+            case "thinking" -> {
+                String raw = obj.has("raw") ? obj.get("raw").getAsString() : "";
+                yield raw.isEmpty() ? null : "[thinking] " + raw.trim();
+            }
+            case "tool" -> {
+                String title = obj.has(JSON_TITLE) ? obj.get(JSON_TITLE).getAsString() : "tool";
+                String toolArgs = obj.has("args") ? obj.get("args").getAsString() : "";
+                yield "Tool: " + title + (toolArgs.isEmpty() ? "" : " " + toolArgs);
+            }
+            case "subagent" -> {
+                String agentType = obj.has("agentType") ? obj.get("agentType").getAsString() : "";
+                String desc = obj.has("description") ? obj.get("description").getAsString() : "";
+                yield "SubAgent: " + agentType + " — " + desc;
+            }
+            case "context" -> "Context files attached";
+            case "status" -> {
+                String msg = obj.has("message") ? obj.get("message").getAsString() : "";
+                yield msg.isEmpty() ? null : "Status: " + msg;
+            }
+            case "separator" -> {
+                String ts = obj.has("timestamp") ? obj.get("timestamp").getAsString() : "";
+                yield "--- Session " + ts + " ---";
+            }
+            default -> null;
+        };
+    }
+
+    private static String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
+        return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     /**

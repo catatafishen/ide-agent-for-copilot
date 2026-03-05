@@ -855,6 +855,16 @@ public class McpServer {
             Map.of(),
             List.of()));
 
+        addIfEnabled.accept(buildTool("search_conversation_history", "Search Conversation History: list, read, and search past conversation sessions. "
+                + "Call with no parameters to list all conversations. Use 'file' to read a specific conversation (e.g., 'current' or an archive timestamp). "
+                + "Use 'query' to search across all conversations for matching text. Combine 'query' and 'file' to search within a specific conversation.",
+            Map.of(
+                "query", Map.of("type", "string", "description", "Text to search for across conversations (case-insensitive)"),
+                "file", Map.of("type", "string", "description", "Conversation to read: 'current' for the active session, or an archive timestamp (e.g., '2026-03-04T15-30-00')"),
+                "max_chars", Map.of("type", "integer", "description", "Maximum characters to return (default: 8000)")
+            ),
+            List.of()));
+
         result.add("tools", tools);
         return result;
     }
