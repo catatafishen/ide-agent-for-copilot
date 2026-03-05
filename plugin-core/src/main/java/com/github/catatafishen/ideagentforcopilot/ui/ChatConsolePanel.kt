@@ -1068,7 +1068,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             UIManager.getColor("ToolTip.background") ?: JBColor(Color(0xF7, 0xF7, 0xF7), Color(0x3C, 0x3F, 0x41))
         val sb = StringBuilder()
         sb.append("--font-family:'${font.family}';--font-size:${font.size - 2}pt;--code-font-size:${font.size - 3}pt;")
-        sb.append("--fg:${rgb(fg)};--fg-a08:${rgba(fg, 0.08)};--fg-a16:${rgba(fg, 0.16)};--fg-muted:${rgba(fg, 0.55)};--bg:${rgb(bg)};")
+        sb.append("--fg:${rgb(fg)};--fg-a05:${rgba(fg, 0.05)};--fg-a08:${rgba(fg, 0.08)};--fg-a16:${rgba(fg, 0.16)};--fg-muted:${rgba(fg, 0.55)};--bg:${rgb(bg)};")
         sb.append(
             "--user:${rgb(USER_COLOR)};--user-a06:${rgba(USER_COLOR, 0.06)};--user-a08:${
                 rgba(

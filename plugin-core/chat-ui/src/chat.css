@@ -22,6 +22,7 @@
     --font-size: 11pt;
     --code-font-size: 10pt;
     --fg: rgb(187, 187, 187);
+    --fg-a05: rgba(187, 187, 187, 0.05);
     --fg-a08: rgba(187, 187, 187, 0.08);
     --fg-a16: rgba(187, 187, 187, 0.16);
     --bg: rgb(43, 43, 43);
@@ -105,6 +106,15 @@
     --sa-c7-a06: rgba(86, 156, 214, 0.06);
     --sa-c7-a10: rgba(86, 156, 214, 0.10);
     --sa-c7-a15: rgba(86, 156, 214, 0.15);
+    /* Semantic colors for tool result renderers */
+    --success: #5cb85c;
+    --success-bg: rgba(92, 184, 92, 0.15);
+    --danger: #d9534f;
+    --danger-bg: rgba(217, 83, 79, 0.15);
+    --warning: #f0ad4e;
+    --warning-bg: rgba(240, 173, 78, 0.15);
+    --purple: #9b59b6;
+    --purple-bg: rgba(155, 89, 182, 0.15);
 }
 
 html {
@@ -1068,11 +1078,11 @@ permission-request {
 }
 
 .perm-allowed {
-    color: #5cb85c;
+    color: var(--success);
 }
 
 .perm-denied {
-    color: #d9534f;
+    color: var(--danger);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1085,6 +1095,14 @@ permission-request {
     html {
         scroll-behavior: auto;
     }
+}
+
+/* ── Shared container pattern ────────────────────────── */
+.inspection-result, .search-result, .outline-result,
+.blame-result, .branch-result, .project-info {
+    border-radius: 6px;
+    border: 1px solid var(--fg-a08);
+    overflow: hidden;
 }
 
 /* ── Git commit result card ──────────────────────────── */
@@ -1138,12 +1156,12 @@ permission-request {
 }
 
 .git-stat-ins {
-    color: #5cb85c;
+    color: var(--success);
     font-weight: 600;
 }
 
 .git-stat-del {
-    color: #d9534f;
+    color: var(--danger);
     font-weight: 600;
 }
 
@@ -1174,12 +1192,12 @@ permission-request {
 
 .git-file-add {
     background: rgba(80, 180, 80, 0.15);
-    color: #5cb85c;
+    color: var(--success);
 }
 
 .git-file-del {
     background: rgba(220, 80, 80, 0.15);
-    color: #d9534f;
+    color: var(--danger);
 }
 
 .git-file-mod {
@@ -1188,8 +1206,8 @@ permission-request {
 }
 
 .git-file-rename {
-    background: rgba(240, 173, 78, 0.15);
-    color: #f0ad4e;
+    background: var(--warning-bg);
+    color: var(--warning);
 }
 
 .git-file-path {
@@ -1240,7 +1258,7 @@ permission-request {
 }
 
 .git-status-staged {
-    color: #5cb85c;
+    color: var(--success);
 }
 
 .git-status-unstaged {
@@ -1252,7 +1270,7 @@ permission-request {
 }
 
 .git-status-conflict {
-    color: #d9534f;
+    color: var(--danger);
 }
 
 .git-file-untracked {
@@ -1262,7 +1280,7 @@ permission-request {
 
 .git-file-conflict {
     background: rgba(220, 80, 80, 0.25);
-    color: #d9534f;
+    color: var(--danger);
 }
 
 /* ── Git diff result ────────────────────────────────── */
@@ -1321,12 +1339,12 @@ permission-request {
 
 .git-diff-add {
     background: rgba(80, 180, 80, 0.12);
-    color: #5cb85c;
+    color: var(--success);
 }
 
 .git-diff-del {
     background: rgba(220, 80, 80, 0.12);
-    color: #d9534f;
+    color: var(--danger);
 }
 
 .git-diff-ctx {
@@ -1429,17 +1447,17 @@ permission-request {
 
 .build-success .build-icon,
 .build-success .build-status {
-    color: #5cb85c;
+    color: var(--success);
 }
 
 .build-fail .build-icon,
 .build-fail .build-status {
-    color: #d9534f;
+    color: var(--danger);
 }
 
 .build-abort .build-icon,
 .build-abort .build-status {
-    color: #f0ad4e;
+    color: var(--warning);
 }
 
 .build-status {
@@ -1454,13 +1472,13 @@ permission-request {
 .build-errors {
     font-size: 0.85em;
     font-weight: 600;
-    color: #d9534f;
+    color: var(--danger);
 }
 
 .build-warnings {
     font-size: 0.85em;
     font-weight: 600;
-    color: #f0ad4e;
+    color: var(--warning);
 }
 
 .build-messages {
@@ -1478,11 +1496,11 @@ permission-request {
 }
 
 .build-msg-error {
-    color: #d9534f;
+    color: var(--danger);
 }
 
 .build-msg-warn {
-    color: #f0ad4e;
+    color: var(--warning);
 }
 
 .build-msg-info {
@@ -1490,12 +1508,6 @@ permission-request {
 }
 
 /* ── Inspection / Compilation Results ────────────────────── */
-
-.inspection-result {
-    border-radius: 6px;
-    border: 1px solid var(--fg-a08);
-    overflow: hidden;
-}
 
 .inspection-header {
     display: flex;
@@ -1507,18 +1519,18 @@ permission-request {
 }
 
 .inspection-success {
-    background: rgba(92, 184, 92, 0.12);
-    color: #5cb85c;
+    background: var(--success-bg);
+    color: var(--success);
 }
 
 .inspection-errors {
-    background: rgba(217, 83, 79, 0.12);
-    color: #d9534f;
+    background: var(--danger-bg);
+    color: var(--danger);
 }
 
 .inspection-warnings {
-    background: rgba(240, 173, 78, 0.12);
-    color: #f0ad4e;
+    background: var(--warning-bg);
+    color: var(--warning);
 }
 
 .inspection-icon {
@@ -1582,13 +1594,13 @@ permission-request {
 }
 
 .severity-error {
-    color: #d9534f;
-    background: rgba(217, 83, 79, 0.15);
+    color: var(--danger);
+    background: var(--danger-bg);
 }
 
 .severity-warning {
-    color: #f0ad4e;
-    background: rgba(240, 173, 78, 0.15);
+    color: var(--warning);
+    background: var(--warning-bg);
 }
 
 .severity-weak {
@@ -1617,12 +1629,6 @@ permission-request {
 }
 
 /* ── Search Results ──────────────────────────────────────── */
-
-.search-result {
-    border-radius: 6px;
-    border: 1px solid var(--fg-a08);
-    overflow: hidden;
-}
 
 .search-header {
     display: flex;
@@ -1721,9 +1727,8 @@ permission-request {
     border-radius: 10px;
 }
 
-.test-passed { background: rgba(92, 184, 92, 0.15); color: #5cb85c; }
-.test-failed { background: rgba(217, 83, 79, 0.15); color: #d9534f; }
-.test-errors { background: rgba(217, 83, 79, 0.15); color: #d9534f; }
+.test-passed { background: var(--success-bg); color: var(--success); }
+.test-failed, .test-errors { background: var(--danger-bg); color: var(--danger); }
 .test-skipped { background: var(--fg-a05); color: var(--fg-a08); }
 
 .test-name {
@@ -1731,12 +1736,6 @@ permission-request {
 }
 
 /* ── File Outline ────────────────────────────────────────── */
-
-.outline-result {
-    border-radius: 6px;
-    border: 1px solid var(--fg-a08);
-    overflow: hidden;
-}
 
 .outline-header {
     display: flex;
@@ -1763,18 +1762,12 @@ permission-request {
 }
 
 .outline-badge-class { background: rgba(86, 156, 214, 0.2); color: var(--link); }
-.outline-badge-interface { background: rgba(92, 184, 92, 0.15); color: #5cb85c; }
-.outline-badge-enum { background: rgba(240, 173, 78, 0.15); color: #f0ad4e; }
-.outline-badge-method { background: rgba(155, 89, 182, 0.15); color: #9b59b6; }
+.outline-badge-interface { background: var(--success-bg); color: var(--success); }
+.outline-badge-enum { background: var(--warning-bg); color: var(--warning); }
+.outline-badge-method { background: var(--purple-bg); color: var(--purple); }
 .outline-badge-field { background: var(--fg-a05); color: var(--fg-a08); }
 
 /* ── Git Blame ───────────────────────────────────────────── */
-
-.blame-result {
-    border-radius: 6px;
-    border: 1px solid var(--fg-a08);
-    overflow: hidden;
-}
 
 .blame-header {
     display: flex;
@@ -1835,4 +1828,70 @@ permission-request {
     color: var(--fg-a08);
     font-size: 0.85em;
     padding: 0 var(--sp-4);
+}
+
+/* ── Git Branch ──────────────────────────────────────────── */
+
+.branch-entries {
+    padding: 4px 12px 6px;
+}
+
+.branch-entry {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 0.88em;
+}
+
+.branch-current {
+    font-weight: 600;
+}
+
+.branch-name {
+    font-family: monospace;
+    min-width: 120px;
+}
+
+.branch-msg {
+    color: var(--fg-a08);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Project Info ────────────────────────────────────────── */
+
+.project-info-header {
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 1em;
+}
+
+.project-info-kv {
+    display: flex;
+    gap: 8px;
+    padding: 2px 12px;
+    font-size: 0.88em;
+}
+
+.project-info-key {
+    color: var(--fg-a08);
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+.project-info-value {
+    font-family: monospace;
+    word-break: break-all;
+}
+
+.project-info-section {
+    border-top: 1px solid var(--fg-a05);
+}
+
+.project-info-item {
+    padding: 2px 12px 2px 24px;
+    font-size: 0.88em;
+    font-family: monospace;
 }
