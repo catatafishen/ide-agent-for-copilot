@@ -157,7 +157,7 @@ final class TerminalTools extends AbstractToolHandler {
      */
     private static String resolveInputEscapes(String input) {
         return input
-            .replace("{enter}", "\n")
+            .replace("{enter}", "\r")
             .replace("{tab}", "\t")
             .replace("{ctrl-c}", "\u0003")
             .replace("{ctrl-d}", "\u0004")
