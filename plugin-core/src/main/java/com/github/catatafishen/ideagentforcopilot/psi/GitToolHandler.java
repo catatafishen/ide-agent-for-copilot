@@ -243,7 +243,7 @@ final class GitToolHandler {
         gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
 
         String result = runGit(gitArgs.toArray(new String[0]));
-        activateCommitToolWindow();
+        showNewCommitInLog();
         return result;
     }
 
@@ -665,19 +665,24 @@ final class GitToolHandler {
         java.util.regex.Pattern.compile("^commit ([0-9a-f]{40})$", java.util.regex.Pattern.MULTILINE);
 
     /**
-     * Activates the Commit tool window after a successful commit so the user
-     * can see the result alongside the agent's action.
+     * Opens the Git Log tool window and navigates to the newly created commit (HEAD).
      */
-    private void activateCommitToolWindow() {
-        ApplicationManager.getApplication().invokeLater(() -> {
+    private void showNewCommitInLog() {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
-                var twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
-                var tw = twm.getToolWindow("Commit");
-                if (tw != null) {
-                    tw.activate(null, false);
+                String fullHash = runGit("rev-parse", "HEAD").trim();
+                if (fullHash.length() == 40) {
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        try {
+                            var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
+                            com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
+                        } catch (Exception ignored) {
+                            // best-effort UI follow-along
+                        }
+                    });
                 }
             } catch (Exception ignored) {
-                // best-effort UI follow-along
+                // best-effort — fall back silently
             }
         });
     }
