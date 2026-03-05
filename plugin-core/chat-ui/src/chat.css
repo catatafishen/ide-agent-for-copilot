@@ -1099,7 +1099,8 @@ permission-request {
 
 /* ── Shared container pattern ────────────────────────── */
 .inspection-result, .search-result, .outline-result,
-.blame-result, .branch-result, .project-info {
+.blame-result, .branch-result, .project-info,
+.coverage-result, .http-result {
     border-radius: 6px;
     border: 1px solid var(--fg-a08);
     overflow: hidden;
@@ -1894,4 +1895,150 @@ permission-request {
     padding: 2px 12px 2px 24px;
     font-size: 0.88em;
     font-family: monospace;
+}
+
+/* ── Coverage result ─────────────────────────────────── */
+.coverage-entries {
+    padding: 4px 0;
+}
+
+.coverage-entry {
+    padding: 6px 12px;
+    border-top: 1px solid var(--fg-a05);
+}
+
+.coverage-entry-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.coverage-name {
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.coverage-pct {
+    font-weight: 700;
+    font-size: 0.9em;
+}
+
+.coverage-bar {
+    height: 6px;
+    background: var(--fg-a08);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 2px;
+}
+
+.coverage-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.coverage-detail {
+    font-size: 0.78em;
+    color: var(--fg-a08);
+    text-align: right;
+}
+
+/* ── HTTP request result ─────────────────────────────── */
+.http-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
+}
+
+.http-status-success {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.http-status-warning {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+
+.http-status-danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+
+.http-code {
+    font-size: 1.1em;
+    font-weight: 700;
+}
+
+.http-section {
+    border-top: 1px solid var(--fg-a05);
+}
+
+.http-section-title {
+    padding: 4px 12px;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--fg-a08);
+    background: var(--fg-a05);
+}
+
+.http-headers {
+    padding: 4px 12px;
+}
+
+.http-header {
+    display: flex;
+    gap: 8px;
+    padding: 1px 0;
+    font-size: 0.85em;
+    font-family: monospace;
+}
+
+.http-header-key {
+    color: var(--link);
+    flex-shrink: 0;
+}
+
+.http-header-key::after {
+    content: ':';
+}
+
+.http-header-value {
+    color: var(--fg);
+    word-break: break-all;
+}
+
+.http-body {
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    max-height: 300px;
+    overflow: auto;
+}
+
+/* ── Class outline extras ────────────────────────────── */
+.class-outline-inheritance {
+    padding: 2px 12px 6px;
+    font-size: 0.85em;
+    font-style: italic;
+    color: var(--fg-a08);
+    border-bottom: 1px solid var(--fg-a05);
+}
+
+.outline-section {
+    border-top: 1px solid var(--fg-a05);
+}
+
+.outline-section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    font-weight: 600;
+    font-size: 0.85em;
+    color: var(--fg-a08);
+    background: var(--fg-a05);
 }
