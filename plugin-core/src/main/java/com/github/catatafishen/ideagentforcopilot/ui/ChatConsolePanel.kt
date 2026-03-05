@@ -1,8 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
-import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.application.ApplicationManager
-
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -17,9 +15,6 @@ import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.ui.UIUtil
-import org.cef.browser.CefBrowser
-import org.cef.browser.CefFrame
-import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.BorderLayout
 import java.awt.Color
 import java.io.File
@@ -182,37 +177,24 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             add(browser.component, BorderLayout.CENTER)
 
-            browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
-                override fun onLoadEnd(b: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
-                    if (frame?.isMain == true) {
-                        SwingUtilities.invokeLater {
-                            browserReady = true
-                            pendingJs.forEach { browser.cefBrowser.executeJavaScript(it, "", 0) }
-                            pendingJs.clear()
-                        }
+            browser.jbCefClient.addLoadHandler(
+                com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat.createMainFrameLoadEndHandler {
+                    SwingUtilities.invokeLater {
+                        browserReady = true
+                        pendingJs.forEach { browser.cefBrowser.executeJavaScript(it, "", 0) }
+                        pendingJs.clear()
                     }
-                }
-            }, browser.cefBrowser)
+                }, browser.cefBrowser)
 
-            browser.jbCefClient.addDisplayHandler(object : org.cef.handler.CefDisplayHandlerAdapter() {
-                override fun onConsoleMessage(
-                    b: org.cef.browser.CefBrowser?,
-                    level: org.cef.CefSettings.LogSeverity?,
-                    message: String?,
-                    source: String?,
-                    line: Int
-                ): Boolean {
+            browser.jbCefClient.addDisplayHandler(
+                com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat.createConsoleLogHandler(
                     com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
-                        .info("JCEF Console [$level]: $message")
-                    return false
-                }
-            }, browser.cefBrowser)
+                ), browser.cefBrowser)
 
             browser.loadHTML(buildInitialPage())
             fallbackArea = null
 
-            val conn = ApplicationManager.getApplication().messageBus.connect(this)
-            conn.subscribe(LafManagerListener.TOPIC, LafManagerListener { updateThemeColors() })
+            com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat.subscribeLafChanges(this) { updateThemeColors() }
         } else {
             browser = null; openFileQuery = null
             fallbackArea = JBTextArea().apply { isEditable = false; lineWrap = true; wrapStyleWord = true }
