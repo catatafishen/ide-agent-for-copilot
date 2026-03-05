@@ -704,9 +704,18 @@ public class McpServer {
             Map.of(),
             List.of()));
 
-        addIfEnabled.accept(buildTool("run_scratch_file", "Run Scratch File",
+        addIfEnabled.accept(buildTool("run_scratch_file",
+            "Run Scratch File: executes a scratch file in IntelliJ. "
+                + "Supported languages: Kotlin Script (.kts) works reliably, use interactive=true for REPL mode. "
+                + "Java (.java) requires the filename (without .java) to EXACTLY match the class name, case-sensitive "
+                + "(e.g. 'MyApp.java' must contain 'class MyApp'). "
+                + "Groovy (.groovy/.gvy) works reliably. "
+                + "JavaScript (.js) works reliably via Node.js. "
+                + "TypeScript (.ts) requires Node.js 22.6+ or tsx/ts-node; plain Node.js 20 cannot run .ts files. "
+                + "Kotlin (.kt) may fail to produce a run configuration; prefer .kts for scratch files. "
+                + "Python (.py) requires the Python plugin installed in the IDE.",
             Map.of(
-                "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'test.kts', 'script.py', 'hello.js')"),
+                "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'test.kts', 'MyApp.java', 'hello.js')"),
                 "module", Map.of("type", "string", "description", "Optional: module name for classpath (e.g., 'plugin-core')"),
                 "interactive", Map.of("type", "boolean", "description", "Optional: enable interactive/REPL mode (Kotlin scripts)")
             ),
