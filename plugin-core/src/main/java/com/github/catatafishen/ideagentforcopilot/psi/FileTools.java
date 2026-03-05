@@ -201,6 +201,13 @@ class FileTools extends AbstractToolHandler {
         lastProjectViewSelectMs = now;
 
         try {
+            // Ensure the Project tool window is visible
+            var twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+            var tw = twm.getToolWindow("Project");
+            if (tw != null && !tw.isVisible()) {
+                tw.show();
+            }
+
             var projectView = com.intellij.ide.projectView.ProjectView.getInstance(project);
             projectView.select(null, vf, false);
         } catch (Exception e) {
