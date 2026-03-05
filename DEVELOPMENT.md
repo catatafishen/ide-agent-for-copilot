@@ -180,8 +180,8 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-    CLI["Copilot CLI"] -- stdio --> MCP["MCP Server (JAR)<br/>intellij-code-tools"]
-    MCP -- HTTP --> PSI["PsiBridgeService<br/>(IntelliJ process)"]
+    CLI["Copilot CLI"] -->|stdio| MCP["MCP Server (JAR)\nintelij-code-tools"]
+    MCP -->|HTTP| PSI["PsiBridgeService\n(IntelliJ process)"]
 ```
 
 - **MCP Server** (`mcp-server/`): Standalone JAR, stdio protocol, routes tool calls to PSI bridge

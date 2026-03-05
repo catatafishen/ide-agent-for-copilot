@@ -26,17 +26,17 @@ formatting, test execution, git operations, and file operations.
 
 ```mermaid
 graph TD
-    subgraph IntelliJ IDEA Plugin
-        TW["🖥️ Tool Window<br/>(Swing / JCEF chat)"]
-        ACP["AcpClient<br/>JSON-RPC 2.0 · Permission handler<br/>Streaming · Retry logic"]
-        PSI["PsiBridgeService<br/>(HTTP server)<br/>83 MCP tools"]
-        TW -- "prompts /<br/>context" --> ACP
-        ACP -- "streaming<br/>responses" --> TW
+    subgraph ij["IntelliJ IDEA Plugin"]
+        TW["Tool Window\n(Swing / JCEF chat)"]
+        ACP["AcpClient\nJSON-RPC 2.0\nPermission handler"]
+        PSI["PsiBridgeService\n(HTTP server)\n83 MCP tools"]
+        TW -->|"prompts /\ncontext"| ACP
+        ACP -->|"streaming\nresponses"| TW
     end
 
-    ACP -- "stdin / stdout" <--> CLI["Copilot CLI --acp<br/>Agent reasoning<br/>Tool selection"]
-    CLI -- stdio --> MCP["MCP Server (JAR)<br/>intellij-code-tools"]
-    MCP -- HTTP --> PSI
+    ACP <-->|"stdin / stdout"| CLI["Copilot CLI --acp\nAgent reasoning\nTool selection"]
+    CLI -->|stdio| MCP["MCP Server (JAR)\nintelij-code-tools"]
+    MCP -->|HTTP| PSI
 ```
 
 ### Key Design: IntelliJ-Native File Operations
