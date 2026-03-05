@@ -65,9 +65,9 @@ internal class AuthLoginService(private val project: Project) {
 
     /** Returns null if GH CLI is installed and authenticated, or an error description. */
     internal fun ghSetupDiagnostics(billing: BillingManager): String? {
-        val ghCli = billing.findGhCli()
+        val ghCli = billing.client.findGhCli()
             ?: return "GitHub CLI (gh) is not installed — it is used to display billing and usage information."
-        return if (!billing.isGhAuthenticated(ghCli))
+        return if (!billing.client.isGhAuthenticated(ghCli))
             "Not authenticated with GitHub CLI (gh) — click Sign In in the banner above."
         else null
     }

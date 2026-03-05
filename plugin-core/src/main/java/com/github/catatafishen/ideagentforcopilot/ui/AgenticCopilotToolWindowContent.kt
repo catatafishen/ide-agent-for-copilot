@@ -738,7 +738,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         // Right toolbar: processing indicator + usage graph (always right-aligned)
         val rightGroup = DefaultActionGroup()
         rightGroup.add(ProcessingIndicatorAction())
-        rightGroup.add(billing.UsageGraphAction())
+        rightGroup.add(billing.createUsageGraphAction())
 
         val usageToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotUsage", rightGroup, true
