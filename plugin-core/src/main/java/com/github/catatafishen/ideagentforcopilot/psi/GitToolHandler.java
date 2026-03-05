@@ -202,7 +202,9 @@ final class GitToolHandler {
         if (args.has(PARAM_BRANCH)) {
             gitArgs.add(2, args.get(PARAM_BRANCH).getAsString());
         }
-        return runGit(gitArgs.toArray(new String[0]));
+        String result = runGit(gitArgs.toArray(new String[0]));
+        showFirstCommitInLog(result);
+        return result;
     }
 
     String gitBlame(JsonObject args) throws Exception {
@@ -240,7 +242,9 @@ final class GitToolHandler {
         gitArgs.add("-m");
         gitArgs.add(args.get(PARAM_MESSAGE).getAsString());
 
-        return runGit(gitArgs.toArray(new String[0]));
+        String result = runGit(gitArgs.toArray(new String[0]));
+        activateCommitToolWindow();
+        return result;
     }
 
     String gitStage(JsonObject args) throws Exception {
@@ -648,7 +652,63 @@ final class GitToolHandler {
             gitArgs.add("--");
             gitArgs.add(args.get("path").getAsString());
         }
-        return runGit(gitArgs.toArray(new String[0]));
+        String result = runGit(gitArgs.toArray(new String[0]));
+        showFirstCommitInLog(result);
+        return result;
+    }
+
+    // ---- IDE follow-along helpers ----
+
+    private static final java.util.regex.Pattern FULL_HASH_PATTERN =
+        java.util.regex.Pattern.compile("\\b[0-9a-f]{40}\\b");
+    private static final java.util.regex.Pattern COMMIT_LINE_PATTERN =
+        java.util.regex.Pattern.compile("^commit ([0-9a-f]{40})$", java.util.regex.Pattern.MULTILINE);
+
+    /**
+     * Activates the Commit tool window after a successful commit so the user
+     * can see the result alongside the agent's action.
+     */
+    private void activateCommitToolWindow() {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+                var tw = twm.getToolWindow("Commit");
+                if (tw != null) {
+                    tw.activate(null, false);
+                }
+            } catch (Exception ignored) {
+                // best-effort UI follow-along
+            }
+        });
+    }
+
+    /**
+     * Extracts the first full commit hash from a git-log result and navigates
+     * to it in the VCS Log tab, so the user can follow what the agent is reading.
+     */
+    private void showFirstCommitInLog(String gitOutput) {
+        if (gitOutput == null || gitOutput.isEmpty()) return;
+        // Try "commit <hash>" line first (medium/full format), then any 40-char hex
+        String hash = null;
+        var m = COMMIT_LINE_PATTERN.matcher(gitOutput);
+        if (m.find()) {
+            hash = m.group(1);
+        } else {
+            var m2 = FULL_HASH_PATTERN.matcher(gitOutput);
+            if (m2.find()) {
+                hash = m2.group();
+            }
+        }
+        if (hash == null) return;
+        String finalHash = hash;
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(finalHash);
+                com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
+            } catch (Exception ignored) {
+                // best-effort UI follow-along
+            }
+        });
     }
 
     /**
@@ -686,7 +746,9 @@ final class GitToolHandler {
             Map.entry("tag", git4idea.commands.GitCommand.TAG)
         );
 
-        /** Returns command output, or null to signal fallback to ProcessBuilder. */
+        /**
+         * Returns command output, or null to signal fallback to ProcessBuilder.
+         */
         static String run(Project project, String[] args) {
             if (args.length == 0) return null;
 
