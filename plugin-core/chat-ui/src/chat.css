@@ -272,7 +272,10 @@ chat-message.agent-row:last-child:not(:has(message-bubble))::after {
     z-index: 9999;
     width: min(420px, calc(100vw - 16px));
     max-height: min(340px, 50vh);
-    overflow-y: auto;
+    min-width: 220px;
+    min-height: 120px;
+    overflow: hidden;
+    resize: both;
     background: var(--bg);
     border: 1px solid var(--think-a25);
     border-radius: var(--r-md, 8px);
@@ -321,6 +324,8 @@ chat-message.agent-row:last-child:not(:has(message-bubble))::after {
 
 .tool-popup-body {
     padding: var(--sp-4) var(--sp-5);
+    overflow-y: auto;
+    max-height: calc(100% - 38px);
 }
 
 .tool-popup-params,
