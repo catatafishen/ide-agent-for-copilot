@@ -26,14 +26,16 @@ formatting, test execution, git operations, and file operations.
 
 ```mermaid
 graph TD
-    subgraph IntelliJ IDEA Plugin - Java 21
-        TW["🖥️ Tool Window (Swing)<br/>Chat console · Toolbar · Prompt input"]
-        ACP["AcpClient<br/>JSON-RPC 2.0 over stdin/stdout<br/>Permission handler · Retry logic<br/>Streaming chunk delivery"]
-        PSI["PsiBridgeService (HTTP server)<br/>80 MCP tools<br/>read/write · format · search · test runner"]
+    subgraph IntelliJ IDEA Plugin
+        TW["🖥️ Tool Window<br/>(Swing / JCEF chat)"]
+        ACP["AcpClient<br/>JSON-RPC 2.0 · Permission handler<br/>Streaming · Retry logic"]
+        PSI["PsiBridgeService<br/>(HTTP server)<br/>80 MCP tools"]
+        TW -- "prompts /<br/>context" --> ACP
+        ACP -- "streaming<br/>responses" --> TW
     end
 
-    ACP -- spawns --> CLI["Copilot CLI (--acp)<br/>Agent reasoning · Tool selection<br/>Permission requests"]
-    CLI -- stdio --> MCP["MCP Server (JAR)<br/>intellij-code-tools<br/>stdio bridge"]
+    ACP -- "stdin / stdout" <--> CLI["Copilot CLI --acp<br/>Agent reasoning<br/>Tool selection"]
+    CLI -- stdio --> MCP["MCP Server (JAR)<br/>intellij-code-tools"]
     MCP -- HTTP --> PSI
 ```
 
