@@ -837,14 +837,17 @@ public class McpServer {
             ),
             List.of("path", "type")));
 
-        addIfEnabled.accept(buildTool("edit_project_structure", "Edit Project Structure: view and modify module dependencies, libraries, and project structure. Supports actions: list_modules (overview of all modules), list_dependencies (detailed deps for a module), add_dependency (add a JAR or module dependency), remove_dependency (remove a dependency).",
+        addIfEnabled.accept(buildTool("edit_project_structure", "Edit Project Structure: view and modify module dependencies, libraries, and project structure. Supports actions: list_modules (overview of all modules), list_dependencies (detailed deps for a module), add_dependency (add a JAR or module dependency), remove_dependency (remove a dependency), list_sdks (list all configured SDKs and available SDK types with suggested paths), add_sdk (add an SDK by type and home path), remove_sdk (remove an SDK by name).",
             Map.of(
-                "action", Map.of("type", "string", "description", "Action: 'list_modules', 'list_dependencies', 'add_dependency', 'remove_dependency'"),
+                "action", Map.of("type", "string", "description", "Action: 'list_modules', 'list_dependencies', 'add_dependency', 'remove_dependency', 'list_sdks', 'add_sdk', 'remove_sdk'"),
                 "module", Map.of("type", "string", "description", "Module name (required for list_dependencies, add_dependency, remove_dependency)"),
                 "dependency_name", Map.of("type", "string", "description", "Name of the dependency to add or remove. For module deps, the module name. For library deps, the library display name"),
                 "dependency_type", Map.of("type", "string", "description", "Type of dependency to add: 'library' (default) or 'module'"),
                 "scope", Map.of("type", "string", "description", "Dependency scope: 'COMPILE' (default), 'TEST', 'RUNTIME', 'PROVIDED'"),
-                "jar_path", Map.of("type", "string", "description", "Path to JAR file (absolute or project-relative). Required when adding a library dependency")
+                "jar_path", Map.of("type", "string", "description", "Path to JAR file (absolute or project-relative). Required when adding a library dependency"),
+                "sdk_type", Map.of("type", "string", "description", "SDK type name for add_sdk (e.g., 'Python SDK', 'JavaSDK'). Use list_sdks to see available types"),
+                "sdk_name", Map.of("type", "string", "description", "SDK name for remove_sdk. Use list_sdks to see configured SDK names"),
+                "home_path", Map.of("type", "string", "description", "Home path for add_sdk. Use list_sdks to see suggested paths for each SDK type")
             ),
             List.of("action")));
 

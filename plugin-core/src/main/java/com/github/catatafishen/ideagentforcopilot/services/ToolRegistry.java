@@ -154,7 +154,7 @@ public final class ToolRegistry {
         new ToolEntry("get_project_info", "Get Project Info", "Get project name, SDK, modules, and overall structure", Category.IDE, false, false, false),
         new ToolEntry("list_project_files", "List Project Files", "List files in a project directory, optionally filtered by glob pattern", Category.IDE, false, false, false),
         new ToolEntry("mark_directory", "Mark Directory", "Mark a directory as source root, test root, resources, excluded, etc.", Category.IDE, false, false, false),
-        new ToolEntry("edit_project_structure", "Edit Project Structure", "View and modify module dependencies, libraries, and project structure", Category.IDE, false, false, false),
+        new ToolEntry("edit_project_structure", "Edit Project Structure", "View and modify module dependencies, libraries, SDKs, and project structure", Category.IDE, false, false, false),
         new ToolEntry("get_indexing_status", "Get Indexing Status", "Check whether IntelliJ indexing is in progress; optionally wait until it finishes", Category.IDE, false, false, false),
         new ToolEntry("get_documentation", "Get Documentation", "Get Javadoc or KDoc for a symbol by fully-qualified name", Category.IDE, false, false, false),
         new ToolEntry("download_sources", "Download Sources", "Download library sources to enable source navigation and debugging", Category.IDE, false, false, false),

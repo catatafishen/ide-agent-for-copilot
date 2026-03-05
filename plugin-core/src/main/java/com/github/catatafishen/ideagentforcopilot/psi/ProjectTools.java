@@ -572,8 +572,11 @@ class ProjectTools extends AbstractToolHandler {
             case "list_dependencies" -> listDependencies(args);
             case "add_dependency" -> addDependency(args);
             case "remove_dependency" -> removeDependency(args);
+            case "list_sdks" -> listSdks();
+            case "add_sdk" -> addSdk(args);
+            case "remove_sdk" -> removeSdk(args);
             default -> ToolUtils.ERROR_PREFIX + "Unknown action '" + action
-                + "'. Must be one of: list_modules, list_dependencies, add_dependency, remove_dependency";
+                + "'. Must be one of: list_modules, list_dependencies, add_dependency, remove_dependency, list_sdks, add_sdk, remove_sdk";
         };
     }
 
@@ -928,6 +931,135 @@ class ProjectTools extends AbstractToolHandler {
             }
             return ToolUtils.ERROR_PREFIX + e.getMessage();
         }
+    }
+
+    // ---- SDK management ----
+
+    private static final String PARAM_SDK_NAME = "sdk_name";
+    private static final String PARAM_SDK_TYPE = "sdk_type";
+    private static final String PARAM_HOME_PATH = "home_path";
+
+    private String listSdks() {
+        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+            var jdkTable = com.intellij.openapi.projectRoots.ProjectJdkTable.getInstance();
+            com.intellij.openapi.projectRoots.Sdk[] sdks = jdkTable.getAllJdks();
+
+            StringBuilder sb = new StringBuilder();
+
+            // Show project SDK
+            Sdk projectSdk = ProjectRootManager.getInstance(project).getProjectSdk();
+            sb.append("Project SDK: ");
+            if (projectSdk != null) {
+                sb.append(projectSdk.getName()).append(" (").append(projectSdk.getSdkType().getName()).append(")\n");
+            } else {
+                sb.append("(none)\n");
+            }
+
+            // List all configured SDKs
+            sb.append("\nConfigured SDKs (").append(sdks.length).append("):\n");
+            for (Sdk sdk : sdks) {
+                sb.append("\n• ").append(sdk.getName()).append("\n");
+                sb.append("  Type: ").append(sdk.getSdkType().getName()).append("\n");
+                sb.append("  Home: ").append(sdk.getHomePath() != null ? sdk.getHomePath() : "(not set)").append("\n");
+                String version = sdk.getVersionString();
+                if (version != null) {
+                    sb.append("  Version: ").append(version).append("\n");
+                }
+            }
+
+            // List available SDK types for adding
+            var sdkTypes = com.intellij.openapi.projectRoots.SdkType.EP_NAME.getExtensionList();
+            sb.append("\nAvailable SDK types:\n");
+            for (var sdkType : sdkTypes) {
+                sb.append("  - ").append(sdkType.getName()).append(" (").append(sdkType.getPresentableName()).append(")\n");
+                var entries = sdkType.collectSdkEntries(project);
+                for (var entry : entries) {
+                    sb.append("    suggested: ").append(entry.homePath());
+                    if (entry.versionString() != null) {
+                        sb.append(" (").append(entry.versionString()).append(")");
+                    }
+                    sb.append("\n");
+                }
+            }
+
+            return sb.toString().trim();
+        });
+    }
+
+    private String addSdk(JsonObject args) throws Exception {
+        String sdkTypeName = args.has(PARAM_SDK_TYPE) ? args.get(PARAM_SDK_TYPE).getAsString() : "";
+        String homePath = args.has(PARAM_HOME_PATH) ? args.get(PARAM_HOME_PATH).getAsString() : "";
+
+        if (sdkTypeName.isEmpty()) {
+            return ToolUtils.ERROR_PREFIX + "'sdk_type' parameter is required. Use list_sdks to see available types.";
+        }
+        if (homePath.isEmpty()) {
+            return ToolUtils.ERROR_PREFIX + "'home_path' parameter is required. Use list_sdks to see suggested paths.";
+        }
+
+        // Find SDK type by name (case-insensitive)
+        var sdkTypes = com.intellij.openapi.projectRoots.SdkType.EP_NAME.getExtensionList();
+        com.intellij.openapi.projectRoots.SdkType sdkType = null;
+        for (var type : sdkTypes) {
+            if (type.getName().equalsIgnoreCase(sdkTypeName) || type.getPresentableName().equalsIgnoreCase(sdkTypeName)) {
+                sdkType = type;
+                break;
+            }
+        }
+        if (sdkType == null) {
+            return ToolUtils.ERROR_PREFIX + "SDK type '" + sdkTypeName + "' not found. Use list_sdks to see available types.";
+        }
+
+        // Validate home path
+        String adjustedHome = sdkType.adjustSelectedSdkHome(homePath);
+        if (!sdkType.isValidSdkHome(adjustedHome)) {
+            return ToolUtils.ERROR_PREFIX + "'" + homePath + "' is not a valid home path for SDK type '" + sdkType.getPresentableName() + "'.";
+        }
+
+        // Generate SDK name
+        String sdkName = sdkType.suggestSdkName(null, adjustedHome);
+
+        // Check if an SDK with this name already exists
+        var jdkTable = com.intellij.openapi.projectRoots.ProjectJdkTable.getInstance();
+        if (jdkTable.findJdk(sdkName) != null) {
+            return "SDK '" + sdkName + "' already exists.";
+        }
+
+        // Create and configure the SDK
+        final com.intellij.openapi.projectRoots.SdkType finalSdkType = sdkType;
+        final String finalHome = adjustedHome;
+        final String finalName = sdkName;
+
+        com.intellij.openapi.application.WriteAction.runAndWait(() -> {
+            Sdk sdk = jdkTable.createSdk(finalName, finalSdkType);
+            var modificator = sdk.getSdkModificator();
+            modificator.setHomePath(finalHome);
+            String version = finalSdkType.getVersionString(finalHome);
+            if (version != null) {
+                modificator.setVersionString(version);
+            }
+            modificator.commitChanges();
+            finalSdkType.setupSdkPaths(sdk);
+            jdkTable.addJdk(sdk);
+        });
+
+        return "Added SDK '" + finalName + "' (" + sdkType.getPresentableName() + ") at " + adjustedHome;
+    }
+
+    private String removeSdk(JsonObject args) {
+        String sdkName = args.has(PARAM_SDK_NAME) ? args.get(PARAM_SDK_NAME).getAsString() : "";
+        if (sdkName.isEmpty()) {
+            return ToolUtils.ERROR_PREFIX + "'sdk_name' parameter is required. Use list_sdks to see configured SDKs.";
+        }
+
+        var jdkTable = com.intellij.openapi.projectRoots.ProjectJdkTable.getInstance();
+        Sdk sdk = jdkTable.findJdk(sdkName);
+        if (sdk == null) {
+            return ToolUtils.ERROR_PREFIX + "SDK '" + sdkName + "' not found. Use list_sdks to see configured SDKs.";
+        }
+
+        com.intellij.openapi.application.WriteAction.runAndWait(() -> jdkTable.removeJdk(sdk));
+        return "Removed SDK '" + sdkName + "'.";
     }
 
     private static com.intellij.openapi.roots.DependencyScope parseDependencyScope(String scopeStr) {
