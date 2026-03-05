@@ -672,36 +672,59 @@ final class GitToolHandler {
      * IntelliJ's higher-level commit APIs (GitCheckinEnvironment, ChangeListManager)
      * are UI-coupled and not designed for headless/programmatic commits.
      * <p>
-     * The delay before showing the commit is necessary because the VCS Log indexes
-     * new commits asynchronously via file watchers. Even though runGit already calls
-     * refreshVcsState(), the log's internal DataPack may not have processed the new
-     * commit yet. There is no synchronous public API to wait for log indexing.
+     * The Git Log tool window is opened immediately. Then we poll for the commit
+     * to appear in the log's index (up to 5 attempts at 200ms intervals). The VCS
+     * Log indexes new commits asynchronously via file watchers — even though runGit
+     * already calls refreshVcsState(), the log's internal DataPack may not have
+     * processed the new commit yet. If polling exhausts all attempts, we accept
+     * that the tool window is already open and visible — good enough.
      */
+    private static final int COMMIT_POLL_ATTEMPTS = 5;
+    private static final long COMMIT_POLL_INTERVAL_MS = 200;
+
     private void showNewCommitInLog() {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 String fullHash = runGit("rev-parse", "HEAD").trim();
                 if (fullHash.length() != 40) return;
 
-                // Wait for VCS log to index the new commit. refreshVcsState() (called
-                // by runGit for write commands) triggers VFS + dirty scope refresh, but
-                // the log's DataPack update is asynchronous with no public wait API.
-                Thread.sleep(800);
+                var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
 
+                // Open the Git Log tool window immediately
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    try {
-                        var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
-                        com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
-                    } catch (Exception ignored) {
-                        // best-effort UI follow-along
-                    }
+                    var twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+                    var tw = twm.getToolWindow("Version Control");
+                    if (tw != null) tw.activate(null);
                 });
+
+                // Poll for the commit to appear in the log index
+                pollForCommitInLog(vcsHash);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception ignored) {
                 // best-effort — fall back silently
             }
         });
+    }
+
+    /**
+     * Polls for a commit to appear in the VCS Log index, then navigates to it.
+     * Gives up silently after exhausting all attempts — the Git Log is already open.
+     */
+    private void pollForCommitInLog(com.intellij.vcs.log.Hash vcsHash) throws InterruptedException {
+        for (int attempt = 0; attempt < COMMIT_POLL_ATTEMPTS; attempt++) {
+            Thread.sleep(COMMIT_POLL_INTERVAL_MS);
+            boolean[] found = {false};
+            ApplicationManager.getApplication().invokeAndWait(() -> {
+                try {
+                    com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
+                    found[0] = true;
+                } catch (Exception ignored) {
+                    // commit not yet indexed — retry
+                }
+            });
+            if (found[0]) return;
+        }
     }
 
     /**
