@@ -956,30 +956,40 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val fullHash = resolveFullHash(hash) ?: hash
                 val hashObj = com.intellij.vcs.log.impl.HashImpl.build(fullHash)
 
-                // Refresh VCS log first — after a recent commit the index may be stale.
-                // Listen for the data pack update so we show only after the refresh lands.
+                // Refresh VCS log to pick up recent commits
                 val vcsLog = com.intellij.vcs.log.impl.VcsProjectLog.getInstance(project)
                 val dataManager = vcsLog.dataManager
-                if (dataManager != null) {
-                    val listener = object : com.intellij.vcs.log.data.DataPackChangeListener {
-                        override fun onDataPackChange(dataPack: com.intellij.vcs.log.data.DataPack) {
-                            dataManager.removeDataPackChangeListener(this)
-                            ApplicationManager.getApplication().invokeLater {
-                                com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(
-                                    project, root, hashObj
-                                )
-                            }
-                        }
-                    }
-                    dataManager.addDataPackChangeListener(listener)
-                    dataManager.refresh(listOf(root))
-                } else {
-                    com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, root, hashObj)
-                }
+                dataManager?.refresh(listOf(root))
+
+                // Poll until the commit appears in the VCS log storage, then navigate
+                showRevisionWhenIndexed(root, hashObj, attemptsLeft = 25, delayMs = 200)
             } catch (e: Exception) {
                 log.warn("Failed to open git commit $hash", e)
             }
         }
+    }
+
+    private fun showRevisionWhenIndexed(
+        root: com.intellij.openapi.vfs.VirtualFile,
+        hash: com.intellij.vcs.log.Hash,
+        attemptsLeft: Int,
+        delayMs: Long,
+    ) {
+        val dm = com.intellij.vcs.log.impl.VcsProjectLog.getInstance(project).dataManager
+        val commitId = com.intellij.vcs.log.CommitId(hash, root)
+        val indexed = dm != null && dm.storage.containsCommit(commitId)
+
+        if (indexed || attemptsLeft <= 0) {
+            ApplicationManager.getApplication().invokeLater {
+                com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, root, hash)
+            }
+            return
+        }
+
+        // Commit not yet indexed — retry after delay (total budget ~5 seconds)
+        com.intellij.util.concurrency.AppExecutorUtil.getAppScheduledExecutorService().schedule({
+            showRevisionWhenIndexed(root, hash, attemptsLeft - 1, delayMs)
+        }, delayMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     private fun resolveFullHash(shortHash: String): String? {
