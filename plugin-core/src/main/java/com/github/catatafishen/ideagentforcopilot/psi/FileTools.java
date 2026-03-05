@@ -238,12 +238,39 @@ class FileTools extends AbstractToolHandler {
                     editor.getCaretModel().moveToOffset(offset);
                     editor.getScrollingModel().scrollToCaret(
                         com.intellij.openapi.editor.ScrollType.CENTER);
+
+                    // After a pause, scroll down to the end so the user sees the full range
+                    scheduleScrollToEnd(editor, doc, endLine, textEditor);
                 }
 
                 flashLineRange(editor, doc, startLine, endLine, highlightColor, actionLabel, textEditor);
                 break;
             }
         }
+    }
+
+    /**
+     * After a 1.2 s pause at the top of a long highlight, scrolls down to the
+     * end of the range so the user sees the full extent of the agent's action.
+     */
+    private static void scheduleScrollToEnd(com.intellij.openapi.editor.Editor editor,
+                                            Document doc, int endLine,
+                                            TextEditor disposableParent) {
+        var alarm = new com.intellij.util.Alarm(
+            com.intellij.util.Alarm.ThreadToUse.SWING_THREAD, disposableParent);
+        alarm.addRequest(() -> {
+            try {
+                int lineCount = doc.getLineCount();
+                int targetLine = Math.min(endLine, lineCount);
+                if (targetLine <= 0) return;
+                int offset = doc.getLineStartOffset(targetLine - 1);
+                editor.getCaretModel().moveToOffset(offset);
+                editor.getScrollingModel().scrollToCaret(
+                    com.intellij.openapi.editor.ScrollType.CENTER);
+            } catch (Exception ignored) {
+                // editor may have been disposed
+            }
+        }, 1200);
     }
 
     private static void flashLineRange(com.intellij.openapi.editor.Editor editor, Document doc,
