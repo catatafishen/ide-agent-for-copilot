@@ -28,6 +28,9 @@ export default class ToolPopup extends HTMLElement {
     private _onScroll = () => this._reposition();
     private _onResizeMove: ((e: MouseEvent) => void) | null = null;
     private _onResizeUp: (() => void) | null = null;
+    private _onDragMove: ((e: MouseEvent) => void) | null = null;
+    private _onDragUp: (() => void) | null = null;
+    private _dragged = false;
 
     connectedCallback(): void {
         if (this._init) return;
@@ -44,7 +47,41 @@ export default class ToolPopup extends HTMLElement {
             </div>
             <div class="tool-popup-resize"></div>`;
         this.querySelector('.tool-popup-close')!.addEventListener('click', () => this.dismiss());
+        this._initDrag();
         this._initResize();
+    }
+
+    private _initDrag(): void {
+        const header = this.querySelector('.tool-popup-header')! as HTMLElement;
+        header.addEventListener('mousedown', (e: Event) => {
+            const me = e as MouseEvent;
+            // Don't drag when clicking the close button
+            if ((me.target as HTMLElement).closest('.tool-popup-close')) return;
+            me.preventDefault();
+            me.stopPropagation();
+            const startX = me.clientX;
+            const startY = me.clientY;
+            const startLeft = this.offsetLeft;
+            const startTop = this.offsetTop;
+            this._dragged = true;
+            header.style.cursor = 'grabbing';
+
+            this._onDragMove = (ev: MouseEvent) => {
+                const left = startLeft + (ev.clientX - startX);
+                const top = startTop + (ev.clientY - startY);
+                this.style.left = left + 'px';
+                this.style.top = top + 'px';
+            };
+            this._onDragUp = () => {
+                header.style.cursor = '';
+                if (this._onDragMove) document.removeEventListener('mousemove', this._onDragMove);
+                if (this._onDragUp) document.removeEventListener('mouseup', this._onDragUp);
+                this._onDragMove = null;
+                this._onDragUp = null;
+            };
+            document.addEventListener('mousemove', this._onDragMove);
+            document.addEventListener('mouseup', this._onDragUp);
+        });
     }
 
     private _initResize(): void {
@@ -101,8 +138,9 @@ export default class ToolPopup extends HTMLElement {
         popupParams.innerHTML = paramsEl?.innerHTML || '';
         popupResult.innerHTML = resultEl?.innerHTML || '';
 
-        // Apply kind color class from chip — also reset custom size
+        // Apply kind color class from chip — also reset custom size and drag state
         this.className = 'tool-popup';
+        this._dragged = false;
         this.style.width = '';
         this.style.height = '';
         this.style.maxHeight = '';
@@ -146,6 +184,7 @@ export default class ToolPopup extends HTMLElement {
 
     private _reposition(): void {
         if (!this._activeChip || this.classList.contains('tool-popup-hidden')) return;
+        if (this._dragged) return;
         const chipRect = this._activeChip.getBoundingClientRect();
         const popupHeight = this.offsetHeight;
         const viewportH = window.innerHeight;
