@@ -228,11 +228,7 @@ body {
 
 .agent-bubble .streaming {
     white-space: pre-wrap;
-    margin: 0;
-    background: none;
-    padding: 0;
     font-family: inherit;
-    font-size: inherit;
 }
 
 /* "Working" indicator: last agent message with no text bubble yet */
@@ -689,10 +685,6 @@ thinking-chip.thinking-active .thought-bubble {
 }
 
 /* ── Markdown content ────────────────────────────────── */
-h2, h3, h4, h5 {
-    margin: var(--sp-4) 0 var(--sp-2) 0;
-}
-
 p {
     margin: var(--sp-1) 0;
 }
