@@ -65,6 +65,7 @@
     --tbl-border: rgb(60, 60, 60);
     --th-bg: rgb(50, 50, 50);
     --link: rgb(86, 156, 214);
+    --fg-muted: rgba(187, 187, 187, 0.55);
     --tooltip-bg: rgb(60, 63, 65);
     --error: rgb(199, 34, 34);
     --error-a05: rgba(199, 34, 34, 0.05);
@@ -706,11 +707,13 @@ code {
 
 pre {
     background: var(--code-bg);
-    padding: var(--sp-5) var(--sp-10) var(--sp-5) var(--sp-5);
+    padding: var(--sp-5) var(--sp-10) var(--sp-5) var(--sp-6);
     border-radius: var(--r-sm);
-    margin: var(--sp-3) 0;
+    border-left: 3px solid var(--tbl-border);
+    margin: var(--sp-4) 0;
     overflow-x: auto;
     position: relative;
+    line-height: 1.5;
 }
 
 pre code {
@@ -722,29 +725,35 @@ pre code {
 
 table {
     border-collapse: collapse;
-    margin: var(--sp-3) 0;
+    margin: var(--sp-4) 0;
     display: block;
     max-width: 100%;
     overflow-x: auto;
 }
 
 th, td {
-    border: 1px solid var(--tbl-border);
-    padding: var(--sp-2) var(--sp-5);
+    border: none;
+    border-bottom: 1px solid var(--tbl-border);
+    padding: var(--sp-3) var(--sp-6);
     text-align: left;
 }
 
 th {
-    background: var(--th-bg);
+    background: none;
     font-weight: 600;
+    color: var(--fg-muted);
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 2px solid var(--tbl-border);
 }
 
-tr:nth-child(even) td {
-    background: var(--code-bg);
+tr:last-child td {
+    border-bottom: none;
 }
 
 ul, ol {
-    margin: var(--sp-2) 0;
+    margin: var(--sp-3) 0;
     padding-left: 22px;
 }
 
@@ -761,11 +770,53 @@ ul ul {
 }
 
 li {
-    margin: var(--sp-1) 0;
+    margin: var(--sp-2) 0;
+    line-height: 1.5;
 }
 
 b, strong {
     font-weight: 600;
+}
+
+/* ── Headings ────────────────────────────────────────── */
+
+h2, h3, h4, h5 {
+    margin: var(--sp-6) 0 var(--sp-3) 0;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+h2 {
+    font-size: 1.25em;
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--tbl-border);
+}
+
+h3 { font-size: 1.1em; }
+h4 { font-size: 1.0em; }
+h5 { font-size: 0.95em; color: var(--fg-muted); }
+
+/* ── Blockquotes ─────────────────────────────────────── */
+
+blockquote {
+    border-left: 3px solid var(--tbl-border);
+    background: var(--fg-a08);
+    margin: var(--sp-4) 0;
+    padding: var(--sp-3) var(--sp-5);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    color: var(--fg-muted);
+}
+
+blockquote p {
+    margin: 0;
+}
+
+/* ── Horizontal rules ────────────────────────────────── */
+
+hr {
+    border: none;
+    border-top: 1px solid var(--tbl-border);
+    margin: var(--sp-6) 0;
 }
 
 /* ── Quick replies ───────────────────────────────────── */
