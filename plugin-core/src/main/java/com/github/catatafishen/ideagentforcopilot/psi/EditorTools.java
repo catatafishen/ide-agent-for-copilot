@@ -424,13 +424,6 @@ class EditorTools extends AbstractToolHandler {
                     scratchConfig.setMainClassName(className);
                     pathSet = true;
                     needsModule = true;
-                } else if ("kt".equalsIgnoreCase(extension)) {
-                    // Kotlin .kt files use an application-style runner that needs a main class name.
-                    // Kotlin compiles top-level fun main() in test.kt to class TestKt.
-                    String baseName = scratchFile.getNameWithoutExtension();
-                    String kotlinClassName = Character.toUpperCase(baseName.charAt(0)) + baseName.substring(1) + "Kt";
-                    pathSet = trySetMainClassName(config, kotlinClassName);
-                    needsModule = true;
                 } else {
                     pathSet = setScriptPath(config, scratchFile.getPath());
                 }
@@ -552,7 +545,6 @@ class EditorTools extends AbstractToolHandler {
         // Use exact IDs (prefixed with "id:") when available to avoid ambiguous matches
         String searchTerm = switch (extension.toLowerCase()) {
             case "kts" -> "kotlin script";
-            case "kt" -> "id:JetRunConfigurationType";
             case "groovy", "gvy" -> "groovy";
             case "py" -> "id:PythonConfigurationType";
             case "scala" -> "scala";
@@ -600,25 +592,6 @@ class EditorTools extends AbstractToolHandler {
             }
         }
         return false;
-    }
-
-    @SuppressWarnings("java:S3011") // reflection needed for cross-plugin config API
-    private boolean trySetMainClassName(com.intellij.execution.configurations.RunConfiguration config, String className) {
-        var log = com.intellij.openapi.diagnostic.Logger.getInstance(EditorTools.class);
-        log.info("trySetMainClassName: config class = " + config.getClass().getName() + ", className = " + className);
-        boolean anySuccess = false;
-        // KotlinRunConfiguration has both setMainClassName and setRunClass as separate fields.
-        // The runner checks getRunClass(), so we must call both to ensure the right field is set.
-        for (String method : java.util.List.of("setRunClass", "setMainClassName")) {
-            try {
-                config.getClass().getMethod(method, String.class).invoke(config, className);
-                log.info("trySetMainClassName: SUCCESS via " + method);
-                anySuccess = true;
-            } catch (Exception e) {
-                log.info("trySetMainClassName: " + method + " failed: " + e.getMessage());
-            }
-        }
-        return anySuccess;
     }
 
     @SuppressWarnings("java:S3011") // reflection needed for cross-plugin config API
