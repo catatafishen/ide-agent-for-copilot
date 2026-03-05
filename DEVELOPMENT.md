@@ -203,7 +203,7 @@ This runs inside a single undoable command group on the EDT.
 | File                                                    | Purpose                                     |
 |---------------------------------------------------------|---------------------------------------------|
 | `plugin-core/.../bridge/AcpClient.java`              | ACP client, permission handler, retry logic |
-| `plugin-core/.../psi/PsiBridgeService.java`             | 80 MCP tools via IntelliJ APIs              |
+| `plugin-core/.../psi/PsiBridgeService.java`             | 83 MCP tools via IntelliJ APIs              |
 | `plugin-core/.../services/CopilotService.java`          | Service entry point, starts ACP client      |
 | `plugin-core/.../ui/AgenticCopilotToolWindowContent.kt` | Main UI (Kotlin Swing)                      |
 | `mcp-server/.../mcp/McpServer.java`                     | MCP stdio server, tool registrations        |
