@@ -119,11 +119,11 @@ public final class CopilotSettings {
      * Whether to open files in the editor when the agent reads/writes them.
      */
     public static boolean getFollowAgentFiles() {
-        return PropertiesComponent.getInstance().getBoolean(KEY_FOLLOW_AGENT_FILES, false);
+        return PropertiesComponent.getInstance().getBoolean(KEY_FOLLOW_AGENT_FILES, true);
     }
 
     public static void setFollowAgentFiles(boolean enabled) {
-        PropertiesComponent.getInstance().setValue(KEY_FOLLOW_AGENT_FILES, enabled, false);
+        PropertiesComponent.getInstance().setValue(KEY_FOLLOW_AGENT_FILES, enabled, true);
     }
 
     public static boolean getFormatAfterEdit() {
