@@ -68,6 +68,7 @@ interface ChatPanelApi : Disposable {
     fun finishResponse(toolCallCount: Int = 0, modelId: String = "", multiplier: String = "1x")
     fun showQuickReplies(options: List<String>)
     fun disableQuickReplies()
+    fun cancelAllRunning()
 
     // ── Conversation export / persistence ──────────────────────────
 

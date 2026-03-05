@@ -1421,6 +1421,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
         }
         promptThread?.interrupt()
+        consolePanel.cancelAllRunning()
         consolePanel.addErrorEntry("Stopped by user")
         setResponseStatus("Stopped", loading = false)
         addTimelineEvent(EventType.ERROR, "Prompt cancelled by user")

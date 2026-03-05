@@ -447,6 +447,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.disableQuickReplies()")
     }
 
+    override fun cancelAllRunning() {
+        executeJs("ChatController.cancelAllRunning()")
+    }
+
     // ── Conversation export ────────────────────────────────────────
 
     private val exporter: ConversationExporter get() = ConversationExporter(entries)

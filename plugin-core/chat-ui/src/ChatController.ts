@@ -361,6 +361,14 @@ const ChatController = {
         document.querySelectorAll('quick-replies:not([disabled])').forEach(el => el.setAttribute('disabled', ''));
     },
 
+    cancelAllRunning(): void {
+        document.querySelectorAll('tool-chip[status="running"]').forEach(c => c.setAttribute('status', 'failed'));
+        document.querySelectorAll('thinking-chip[status="running"], thinking-chip[status="thinking"]').forEach(c => c.setAttribute('status', 'complete'));
+        document.querySelectorAll('subagent-chip[status="running"]').forEach(c => c.setAttribute('status', 'failed'));
+        document.querySelectorAll('message-bubble[streaming]').forEach(b => b.removeAttribute('streaming'));
+        document.querySelectorAll('.tool-running-hint').forEach(h => { h.textContent = 'Cancelled'; });
+    },
+
     setPromptStats(model: string, multiplier: string): void {
         const rows = document.querySelectorAll('.prompt-row');
         const row = rows[rows.length - 1];
