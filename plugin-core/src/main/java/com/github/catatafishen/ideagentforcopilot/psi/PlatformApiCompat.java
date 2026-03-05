@@ -115,13 +115,16 @@ public final class PlatformApiCompat {
      * this throws {@code NoSuchMethodException} wrapped in {@code RuntimeException}.</p>
      *
      * <p>This wrapper catches the reflection failure and returns null, allowing the caller
-     * to skip the incompatible tool gracefully instead of aborting the entire inspection run.</p>
+     * to skip the incompatible tool gracefully instead of aborting the entire inspection run.
+     * We catch {@code Exception} (not just {@code RuntimeException}) because
+     * {@code NoSuchMethodException} is a checked exception that can propagate unchecked
+     * from Kotlin-compiled platform code.</p>
      */
     static @Nullable InspectionToolResultExporter getInspectionPresentation(
         @NotNull GlobalInspectionContextEx ctx, @NotNull InspectionToolWrapper<?, ?> toolWrapper) {
         try {
             return ctx.getPresentation(toolWrapper);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             // Constructor mismatch in a third-party inspection plugin's presentation class.
             // Common with DuplicateInspectionPresentation when IDE version != target platform.
             LOG.debug("Skipping inspection tool '" + toolWrapper.getShortName()
