@@ -1305,8 +1305,21 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val baseName = toolCallNames[toolDomId]
         val info = if (baseName != null) TOOL_DISPLAY_INFO[baseName] else null
         val displayTitle = info?.displayName ?: baseName ?: toolDomId
+        val resultHtml = renderToolResultHtml(baseName, entry?.status, entry?.result)
+        val paramsHtml = if (!entry?.arguments.isNullOrBlank()) {
+            "<pre class='tool-params-code'><code>${esc(prettyJson(entry!!.arguments!!))}</code></pre>"
+        } else null
         SwingUtilities.invokeLater {
-            ToolCallPopup.show(project, displayTitle, entry?.arguments, entry?.result, entry?.status)
+            ToolCallPopup.show(project, displayTitle, paramsHtml, resultHtml)
+        }
+    }
+
+    private fun prettyJson(json: String): String {
+        return try {
+            val el = com.google.gson.JsonParser.parseString(json)
+            com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(el)
+        } catch (_: Exception) {
+            json
         }
     }
 
