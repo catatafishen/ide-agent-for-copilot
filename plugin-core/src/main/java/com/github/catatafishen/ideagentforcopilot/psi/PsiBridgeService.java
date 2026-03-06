@@ -138,6 +138,21 @@ public final class PsiBridgeService implements Disposable {
         return java.util.Collections.unmodifiableSet(toolRegistry.keySet());
     }
 
+    /**
+     * Dynamically registers a tool at runtime. Used by MacroToolRegistrar to add
+     * user-recorded macros as MCP tools.
+     */
+    public void registerTool(String id, ToolHandler handler) {
+        toolRegistry.put(id, handler);
+    }
+
+    /**
+     * Removes a dynamically registered tool. Returns true if the tool existed.
+     */
+    public boolean unregisterTool(String id) {
+        return toolRegistry.remove(id) != null;
+    }
+
     public synchronized void start() {
         if (httpServer != null) return;
         try {

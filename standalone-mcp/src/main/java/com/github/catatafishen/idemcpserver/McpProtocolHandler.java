@@ -80,7 +80,7 @@ public final class McpProtocolHandler {
 
     private JsonObject handleToolsList() {
         McpServerSettings settings = McpServerSettings.getInstance(project);
-        List<ToolRegistry.ToolEntry> enabledTools = McpToolFilter.getEnabledTools(settings);
+        List<ToolRegistry.ToolEntry> enabledTools = McpToolFilter.getEnabledTools(settings, project);
 
         JsonArray tools = new JsonArray();
         for (ToolRegistry.ToolEntry entry : enabledTools) {

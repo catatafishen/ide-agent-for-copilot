@@ -163,6 +163,17 @@
     <!-- Project Services -->
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolSettings"/>
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolRegistrar"/>
+
+    <!-- Settings: Macro Tools -->
+    <projectConfigurable
+      parentId="tools"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.MacroToolConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.macroTools"
+      displayName="Macro Tools"/>
 
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity
