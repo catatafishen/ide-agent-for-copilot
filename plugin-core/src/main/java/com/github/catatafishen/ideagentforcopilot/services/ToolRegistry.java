@@ -20,7 +20,8 @@ public final class ToolRegistry {
         REFACTOR("Refactoring"),
         IDE("IDE & Project"),
         SHELL("Shell (built-in)"),
-        OTHER("Other");
+        OTHER("Other"),
+        MACRO("Recorded Macros");
 
         public final String displayName;
 

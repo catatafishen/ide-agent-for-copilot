@@ -467,19 +467,20 @@ git show 49e40b8^ -- \
   plugin-core/src/main/java/com/github/catatafishen/ideagentforcopilot/services/MacroToolSettings.java
 ```
 
-**Unofficial builds:** For personal use or distribution outside the JetBrains Marketplace,
-the macro feature can be maintained on a separate branch (e.g. `feat/macro-tools-unofficial`).
-The Marketplace verifier only runs on the official publication pipeline, so unofficial ZIPs
-built from that branch would work fine. The build could be gated with a Gradle property:
+**Unofficial builds:** The macro feature is available in the `plugin-experimental` module.
+This module produces a separate ZIP (`ide-agent-for-copilot-experimental-*.zip`) that includes
+all standard plugin-core functionality plus the macro tools. It is:
+- **Built on master merge** via `release.yml` and attached to GitHub releases
+- **Not built during PR CI** (to avoid internal API verification failures blocking PRs)
+- **Not published to JetBrains Marketplace** (would fail the verifier)
 
-```kotlin
-// build.gradle.kts
-val includeInternalMacroTools = findProperty("includeMacroTools")?.toString()?.toBoolean() ?: false
-```
+The experimental module works by:
+1. Repackaging `plugin-core.jar` without its `plugin.xml`
+2. Generating a merged `plugin.xml` from plugin-core's descriptor + macro extension entries
+3. Compiling the 4 macro source files against plugin-core (via `compileOnly`)
+4. Allowing `INTERNAL_API_USAGES` in its `verifyPlugin` configuration
 
-Then conditionally include the source set and plugin.xml registrations so the official
-`./gradlew buildPlugin` stays clean while `./gradlew buildPlugin -PincludeMacroTools=true`
-produces the extended build.
+To build locally: `./gradlew :plugin-experimental:buildPlugin`
 
 **JetBrains YouTrack:** If you'd like this API made public, file a feature request at
 https://youtrack.jetbrains.com/issues/IJPL requesting public API access for macro
