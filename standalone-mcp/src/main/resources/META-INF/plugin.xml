@@ -77,9 +77,23 @@
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolRegistrar"/>
 
-    <!-- Settings: Macro Tools -->
+    <!-- Settings: IDE MCP Server (parent group) -->
     <projectConfigurable
       parentId="tools"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.settings"
+      displayName="IDE Agent for Copilot"/>
+
+    <!-- Settings: MCP Server -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.idemcpserver.settings.McpServerConfigurable"
+      id="com.github.catatafishen.idemcpserver.settings"
+      displayName="MCP Server"/>
+
+    <!-- Settings: Macro Tools -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
       instance="com.github.catatafishen.ideagentforcopilot.settings.MacroToolConfigurable"
       id="com.github.catatafishen.idemcpserver.macroTools"
       displayName="Macro Tools"/>
@@ -87,13 +101,6 @@
     <!-- Project service: MCP HTTP server -->
     <projectService
       serviceImplementation="com.github.catatafishen.idemcpserver.McpHttpServer"/>
-
-    <!-- Settings page: Tools > IDE MCP Server -->
-    <projectConfigurable
-      parentId="tools"
-      instance="com.github.catatafishen.idemcpserver.settings.McpServerConfigurable"
-      id="com.github.catatafishen.idemcpserver.settings"
-      displayName="IDE MCP Server"/>
 
     <!-- Persistent settings state -->
     <projectService

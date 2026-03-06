@@ -371,6 +371,21 @@ internal class PermissionsPanel {
 
     // ── Persist ───────────────────────────────────────────────────────────────
 
+    /**
+     * Returns true if any UI value differs from the persisted setting.
+     * Conservative: returns true to ensure Apply is always available.
+     */
+    fun isModified(): Boolean = true
+
+    /** Rebuilds the panel from persisted settings. */
+    fun reload() {
+        rows.clear()
+        buildAllRows()
+        rightContent.removeAll()
+        rightContent.revalidate()
+        rightContent.repaint()
+    }
+
     fun save() {
         for (row in rows) {
             val id = row.tool.id

@@ -1071,13 +1071,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
     }
 
-    /** Toolbar button that opens the tool permissions dialog. */
+    /** Toolbar button that opens the plugin settings. */
     private inner class SettingsAction : AnAction(
-        "Tool Permissions", "View and configure tool permissions",
+        "Settings", "Open IDE Agent for Copilot settings",
         AllIcons.General.Settings
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) = debugPanel.openSettings()
+        override fun actionPerformed(e: AnActionEvent) {
+            com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable.open(project)
+        }
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
@@ -2288,7 +2290,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Debug/Timeline/Settings tabs extracted to DebugPanel.kt
     fun getComponent(): JComponent = mainPanel
-    fun openSettings() = debugPanel.openSettings()
+    fun openSettings() = com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable.open(project)
     fun openDebug() = debugPanel.openDebug()
     fun openSessionFiles() = debugPanel.openSessionFiles()
 

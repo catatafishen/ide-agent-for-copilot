@@ -285,34 +285,7 @@ internal class DebugPanel(
     }
 
     fun openSettings() {
-        val permissionsPanel = PermissionsPanel()
-        val dialog = object : com.intellij.openapi.ui.DialogWrapper(project, true) {
-            init {
-                title = "Tool Permissions"
-                isResizable = true
-                init()
-            }
-
-            override fun createCenterPanel(): JComponent = permissionsPanel.component.also {
-                it.preferredSize = JBUI.size(740, 560)
-                it.minimumSize = JBUI.size(500, 340)
-            }
-
-            override fun createActions(): Array<javax.swing.Action> {
-                val applyAction = object : DialogWrapperAction("Apply") {
-                    override fun doAction(e: java.awt.event.ActionEvent) = permissionsPanel.save()
-                }
-                return arrayOf(okAction, applyAction, cancelAction)
-            }
-
-            override fun doOKAction() {
-                permissionsPanel.save()
-                super.doOKAction()
-            }
-
-            override fun getDimensionServiceKey() = "CopilotToolPermissions"
-        }
-        dialog.show()
+        com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable.open(project)
     }
 
     fun openDebug() {

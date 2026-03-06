@@ -15,13 +15,8 @@ import com.intellij.ui.content.ContentFactory;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
-import javax.swing.BoxLayout;
-import javax.swing.JButton;
-import javax.swing.JPanel;
-import javax.swing.Timer;
-import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.Toolkit;
+import javax.swing.*;
+import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 
 /**
@@ -83,7 +78,7 @@ public final class McpServerToolWindowFactory implements ToolWindowFactory, Dumb
             JButton settingsButton = new JButton("Settings…");
             settingsButton.addActionListener(e ->
                 ShowSettingsUtil.getInstance().showSettingsDialog(
-                    project, "IDE MCP Server"));
+                    project, "IDE Agent for Copilot"));
             buttonPanel.add(settingsButton);
 
             add(buttonPanel, BorderLayout.CENTER);
