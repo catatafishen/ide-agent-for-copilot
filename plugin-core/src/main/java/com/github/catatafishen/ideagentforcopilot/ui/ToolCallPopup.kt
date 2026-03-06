@@ -98,6 +98,9 @@ internal object ToolCallPopup {
             panel.add(paramsPanel)
         }
 
+        // Absorb extra vertical space at the bottom so rows keep their preferred height
+        panel.add(Box.createVerticalGlue())
+
         return panel
     }
 
