@@ -33,11 +33,8 @@ class SymbolEditingTools extends AbstractToolHandler {
     private static final String PARAM_CONTENT = "content";
     private static final String PARAM_LINE = "line";
 
-    private final FileTools fileTools;
-
-    SymbolEditingTools(Project project, FileTools fileTools) {
+    SymbolEditingTools(Project project) {
         super(project);
-        this.fileTools = fileTools;
         register("replace_symbol_body", this::replaceSymbolBody);
         register("insert_before_symbol", this::insertBeforeSymbol);
         register("insert_after_symbol", this::insertAfterSymbol);
@@ -103,8 +100,11 @@ class SymbolEditingTools extends AbstractToolHandler {
                         "Replace Symbol Body", null)
                 );
 
-                // Commit PSI so subsequent symbol lookups see the updated tree
+                // Commit PSI, then format inline — symbol tools resolve by name so
+                // formatting won't break subsequent edits (unlike edit_text which needs
+                // exact text matching and therefore defers formatting).
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(doc);
+                formatInline(vf);
                 FileDocumentManager.getInstance().saveDocument(doc);
 
                 int replacedLines = loc.endLine - loc.startLine + 1;
@@ -119,7 +119,6 @@ class SymbolEditingTools extends AbstractToolHandler {
         String resultStr = result.get(15, TimeUnit.SECONDS);
         if (!resultStr.startsWith(ToolUtils.ERROR_PREFIX) && !resultStr.startsWith("Symbol '")) {
             int newLineCount = (int) newBody.chars().filter(c -> c == '\n').count() + 1;
-            fileTools.queueAutoFormat(pathStr);
             FileTools.followFileIfEnabled(project, pathStr, lineRange[0], lineRange[0] + newLineCount - 1,
                 FileTools.HIGHLIGHT_EDIT, "replacing " + symbolType[0] + " " + symbolName);
             FileAccessTracker.recordWrite(project, pathStr);
@@ -176,6 +175,7 @@ class SymbolEditingTools extends AbstractToolHandler {
                 );
 
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(doc);
+                formatInline(vf);
                 FileDocumentManager.getInstance().saveDocument(doc);
 
                 int newLineCount = (int) fContent.chars().filter(c -> c == '\n').count();
@@ -188,7 +188,6 @@ class SymbolEditingTools extends AbstractToolHandler {
         String resultStr = result.get(15, TimeUnit.SECONDS);
         if (!resultStr.startsWith(ToolUtils.ERROR_PREFIX) && !resultStr.startsWith("Symbol '")) {
             int insertedLines = (int) content.chars().filter(c -> c == '\n').count() + 1;
-            fileTools.queueAutoFormat(pathStr);
             FileTools.followFileIfEnabled(project, pathStr, anchorLine[0], anchorLine[0] + insertedLines - 1,
                 FileTools.HIGHLIGHT_EDIT, "inserting before " + symbolName);
             FileAccessTracker.recordWrite(project, pathStr);
@@ -248,6 +247,7 @@ class SymbolEditingTools extends AbstractToolHandler {
                 );
 
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitDocument(doc);
+                formatInline(vf);
                 FileDocumentManager.getInstance().saveDocument(doc);
 
                 int newLineCount = (int) fContent.chars().filter(c -> c == '\n').count();
@@ -261,7 +261,6 @@ class SymbolEditingTools extends AbstractToolHandler {
         if (!resultStr.startsWith(ToolUtils.ERROR_PREFIX) && !resultStr.startsWith("Symbol '")) {
             int insertedLines = (int) content.chars().filter(c -> c == '\n').count() + 1;
             int insertStart = endLine[0] + 1;
-            fileTools.queueAutoFormat(pathStr);
             FileTools.followFileIfEnabled(project, pathStr, insertStart, insertStart + insertedLines - 1,
                 FileTools.HIGHLIGHT_EDIT, "inserting after " + symbolName);
             FileAccessTracker.recordWrite(project, pathStr);
@@ -272,6 +271,26 @@ class SymbolEditingTools extends AbstractToolHandler {
     // ---- Symbol resolution ----
 
     private record SymbolLocation(int startLine, int endLine, String type, String name) {
+    }
+
+    /**
+     * Format and optimize imports immediately on the EDT.
+     * Unlike edit_text (which defers formatting because old_str matching is
+     * position-sensitive), symbol tools resolve by name so formatting the file
+     * between edits is safe and prevents stale formatting changes leaking
+     * across commits.
+     */
+    private void formatInline(VirtualFile vf) {
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return;
+        ApplicationManager.getApplication().runWriteAction(() ->
+            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+                new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, psiFile).run();
+                new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();
+                com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
+            }, "Auto-Format (Symbol Edit)", null)
+        );
     }
 
     @Nullable
