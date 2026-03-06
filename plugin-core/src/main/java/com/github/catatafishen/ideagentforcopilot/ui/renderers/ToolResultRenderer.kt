@@ -154,6 +154,8 @@ internal object ToolRenderers {
         "edit_project_structure" to IdeInfoRenderer,
         "get_chat_html" to IdeInfoRenderer,
         "search_conversation_history" to IdeInfoRenderer,
+        // Agent meta
+        "update_todo" to TodoRenderer,
     )
 
     fun get(toolName: String): ToolResultRenderer? = registry[toolName]
