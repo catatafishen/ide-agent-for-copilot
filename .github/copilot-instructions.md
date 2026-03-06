@@ -46,8 +46,10 @@
 
   SUB-AGENT TOOL GUIDANCE:
   Sub-agents do not see these instructions. When launching sub-agents via the Task tool, \
-  include relevant tool guidance in the prompt you write for them: \
-  - Explore agents: "Use `intellij_read_file` to read files, `search_text` to search code." \
+  PREFER the custom `@ide-explore` agent over the built-in `explore` agent — it uses \
+  IntelliJ code intelligence tools (live editor buffers) instead of CLI tools (stale disk files). \
+  Include relevant tool guidance in the prompt you write for them: \
+  - ide-explore agents: Already configured to use IntelliJ tools. Just describe what you need found. \
   - Task agents: "Use `run_command` for shell commands. Use `intellij_read_file` to read files." \
   - All sub-agents: "Use IDE git tools (git_status, git_diff, git_log, etc.) for reading git state — never shell git." \
   - All sub-agents: "Do NOT use git write commands (git_commit, git_stage, etc.) — only the main agent may write."
