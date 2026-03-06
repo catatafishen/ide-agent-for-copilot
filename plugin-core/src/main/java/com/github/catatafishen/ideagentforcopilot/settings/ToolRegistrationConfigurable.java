@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
+import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
+import com.github.catatafishen.ideagentforcopilot.services.CopilotSettings;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -23,7 +25,7 @@ import java.util.Map;
 
 /**
  * Settings page: Settings → Tools → IDE Agent for Copilot → Tool Registration.
- * MCP server config (port, auto-start, follow mode) and tool enable/disable checkboxes.
+ * MCP server config (port, auto-start) and tool enable/disable checkboxes.
  */
 public final class ToolRegistrationConfigurable implements Configurable {
 
@@ -54,8 +56,8 @@ public final class ToolRegistrationConfigurable implements Configurable {
             settings.getPort(), 1024, 65535, 1));
         autoStartCheckbox = new JBCheckBox("Start MCP server automatically when project opens",
             settings.isAutoStart());
-        followModeCheckbox = new JBCheckBox("Follow mode — include active editor context in tool responses",
-            settings.isFollowMode());
+        followModeCheckbox = new JBCheckBox("Follow Agent — open files and highlight regions as the agent reads or edits them",
+            CopilotSettings.getFollowAgentFiles(project));
 
         JButton restartButton = new JButton("Restart MCP Server");
         restartButton.setToolTipText("Stop and restart the MCP server to pick up tool registration changes");
@@ -116,7 +118,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         if ((Integer) portSpinner.getValue() != settings.getPort()) return true;
         if (autoStartCheckbox.isSelected() != settings.isAutoStart()) return true;
-        if (followModeCheckbox.isSelected() != settings.isFollowMode()) return true;
+        if (followModeCheckbox.isSelected() != CopilotSettings.getFollowAgentFiles(project)) return true;
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             if (entry.getValue().isSelected() != settings.isToolEnabled(entry.getKey())) return true;
         }
@@ -128,7 +130,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         settings.setPort((Integer) portSpinner.getValue());
         settings.setAutoStart(autoStartCheckbox.isSelected());
-        settings.setFollowMode(followModeCheckbox.isSelected());
+        CopilotSettings.setFollowAgentFiles(project, followModeCheckbox.isSelected());
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             settings.setToolEnabled(entry.getKey(), entry.getValue().isSelected());
         }
@@ -139,7 +141,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         portSpinner.setValue(settings.getPort());
         autoStartCheckbox.setSelected(settings.isAutoStart());
-        followModeCheckbox.setSelected(settings.isFollowMode());
+        followModeCheckbox.setSelected(CopilotSettings.getFollowAgentFiles(project));
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             entry.getValue().setSelected(settings.isToolEnabled(entry.getKey()));
         }
@@ -177,10 +179,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
             try {
                 Class<?> serverClass = Class.forName(
                     "com.github.catatafishen.idemcpserver.McpHttpServer");
-                // Cast needed: Class.forName returns Class<?> but getService requires Class<T>
-                @SuppressWarnings("unchecked")
-                Class<Object> castedClass = (Class<Object>) serverClass;
-                Object server = project.getService(castedClass);
+                Object server = PlatformApiCompat.getServiceByRawClass(project, serverClass);
                 if (server == null) {
                     LOG.warn("McpHttpServer service not found");
                     return;

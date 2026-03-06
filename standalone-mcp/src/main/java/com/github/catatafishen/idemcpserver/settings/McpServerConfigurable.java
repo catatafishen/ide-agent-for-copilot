@@ -31,10 +31,10 @@ public final class McpServerConfigurable implements Configurable {
     public @Nullable JComponent createComponent() {
         JPanel panel = new JPanel(new BorderLayout());
         JBLabel label = new JBLabel(
-                "<html><b>MCP Server</b><br><br>"
-                        + "Configure the MCP server using the sub-pages:<br>"
-                        + "• <b>General</b> — port, auto-start, follow mode, server controls<br>"
-                        + "• <b>Tools</b> — enable/disable individual MCP tools</html>");
+            "<html><b>MCP Server</b><br><br>"
+                + "Configure the MCP server using the sub-pages:<br>"
+                + "• <b>General</b> — port, auto-start, follow agent, server controls<br>"
+                + "• <b>Tools</b> — enable/disable individual MCP tools</html>");
         label.setBorder(JBUI.Borders.empty(12));
         panel.add(label, BorderLayout.NORTH);
         return panel;

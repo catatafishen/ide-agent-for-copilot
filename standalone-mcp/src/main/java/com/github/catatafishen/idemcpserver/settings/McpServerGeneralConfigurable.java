@@ -19,7 +19,7 @@ import java.awt.datatransfer.StringSelection;
 
 /**
  * Settings page: Settings → Tools → IDE Agent for Copilot → MCP Server → General.
- * Port, auto-start, follow mode, restart and copy config buttons.
+ * Port, auto-start, follow agent, restart and copy config buttons.
  */
 public final class McpServerGeneralConfigurable implements Configurable {
 
@@ -44,13 +44,11 @@ public final class McpServerGeneralConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
 
         portSpinner = new JSpinner(new SpinnerNumberModel(
-                settings.getPort(), 1024, 65535, 1));
+            settings.getPort(), 1024, 65535, 1));
         autoStartCheckbox = new JBCheckBox("Start MCP server automatically when project opens",
-                settings.isAutoStart());
-        followModeCheckbox = new JBCheckBox("Follow agent actions in the editor",
-                CopilotSettings.getFollowAgentFiles(project));
-        followModeCheckbox.setToolTipText(
-                "Open files and highlight regions as the agent reads or edits them");
+            settings.isAutoStart());
+        followModeCheckbox = new JBCheckBox("Follow Agent — open files and highlight regions as the agent reads or edits them",
+            CopilotSettings.getFollowAgentFiles(project));
 
         JButton restartButton = new JButton("Restart Server");
         restartButton.setToolTipText("Stop and restart the MCP server");
@@ -65,12 +63,12 @@ public final class McpServerGeneralConfigurable implements Configurable {
         buttonPanel.add(copyConfigButton);
 
         return FormBuilder.createFormBuilder()
-                .addLabeledComponent("MCP server port:", portSpinner)
-                .addComponent(autoStartCheckbox)
-                .addComponent(followModeCheckbox)
-                .addComponent(buttonPanel)
-                .addComponentFillVertically(new JPanel(), 0)
-                .getPanel();
+            .addLabeledComponent("MCP server port:", portSpinner)
+            .addComponent(autoStartCheckbox)
+            .addComponent(followModeCheckbox)
+            .addComponent(buttonPanel)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
     }
 
     @Override
@@ -122,14 +120,14 @@ public final class McpServerGeneralConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         int port = settings.getPort();
         String config = "{\n"
-                + "  \"mcpServers\": {\n"
-                + "    \"ide-mcp-server\": {\n"
-                + "      \"url\": \"http://127.0.0.1:" + port + "/mcp\"\n"
-                + "    }\n"
-                + "  }\n"
-                + "}";
+            + "  \"mcpServers\": {\n"
+            + "    \"ide-mcp-server\": {\n"
+            + "      \"url\": \"http://127.0.0.1:" + port + "/mcp\"\n"
+            + "    }\n"
+            + "  }\n"
+            + "}";
         Toolkit.getDefaultToolkit().getSystemClipboard()
-                .setContents(new StringSelection(config), null);
+            .setContents(new StringSelection(config), null);
         button.setText("Copied!");
         Timer reset = new Timer(2000, e -> button.setText("Copy MCP Config"));
         reset.setRepeats(false);

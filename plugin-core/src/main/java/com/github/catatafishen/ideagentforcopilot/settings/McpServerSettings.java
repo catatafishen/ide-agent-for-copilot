@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
+import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.State;
@@ -22,7 +23,7 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
     private State myState = new State();
 
     public static McpServerSettings getInstance(@NotNull Project project) {
-        return project.getService(McpServerSettings.class);
+        return PlatformApiCompat.getService(project, McpServerSettings.class);
     }
 
     public int getPort() {
@@ -39,14 +40,6 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
 
     public void setAutoStart(boolean autoStart) {
         myState.autoStart = autoStart;
-    }
-
-    public boolean isFollowMode() {
-        return myState.followMode;
-    }
-
-    public void setFollowMode(boolean followMode) {
-        myState.followMode = followMode;
     }
 
     public Set<String> getDisabledToolIds() {
@@ -82,7 +75,6 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
     public static class State {
         public int port = DEFAULT_PORT;
         public boolean autoStart = false;
-        public boolean followMode = false;
         public Set<String> disabledToolIds = new LinkedHashSet<>();
     }
 }

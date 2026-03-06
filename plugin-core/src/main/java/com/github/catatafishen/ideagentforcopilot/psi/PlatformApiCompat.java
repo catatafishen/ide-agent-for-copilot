@@ -187,7 +187,7 @@ public final class PlatformApiCompat {
      * at compile time and must be loaded by name.</p>
      */
     @SuppressWarnings("unchecked")
-    static @Nullable Object getServiceByRawClass(@NotNull Project project, @NotNull Class<?> serviceClass) {
+    public static @Nullable Object getServiceByRawClass(@NotNull Project project, @NotNull Class<?> serviceClass) {
         // Cast to Class<Object> satisfies the generic bound; safe because we only use the result as Object.
         return project.getService((Class<Object>) serviceClass);
     }
