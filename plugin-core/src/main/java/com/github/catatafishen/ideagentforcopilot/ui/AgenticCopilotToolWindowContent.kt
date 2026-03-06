@@ -670,6 +670,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val prompt = promptTextArea.text.trim()
             if (prompt.isEmpty()) return
             consolePanel.disableQuickReplies()
+            statusBanner?.dismissCurrent()
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
 
@@ -1723,6 +1724,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun sendPromptDirectly(prompt: String) {
         val trimmed = prompt.trim()
         if (trimmed.isEmpty()) return
+        statusBanner?.dismissCurrent()
         setSendingState(true)
         setResponseStatus(MSG_THINKING)
 

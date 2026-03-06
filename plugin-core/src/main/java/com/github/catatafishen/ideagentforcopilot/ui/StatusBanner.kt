@@ -72,6 +72,19 @@ class StatusBanner(parentDisposable: Disposable) :
 
     fun showInfo(message: String) = show(message, EditorNotificationPanel.Status.Info)
 
+    /**
+     * Dismisses the current banner if one is showing.
+     * Safe to call from any thread — dispatches to EDT if needed.
+     */
+    fun dismissCurrent() {
+        if (currentBanner == null) return
+        if (SwingUtilities.isEventDispatchThread()) {
+            dismiss()
+        } else {
+            SwingUtilities.invokeLater { dismiss() }
+        }
+    }
+
     private fun show(message: String, status: EditorNotificationPanel.Status) {
         SwingUtilities.invokeLater {
             dismiss()
