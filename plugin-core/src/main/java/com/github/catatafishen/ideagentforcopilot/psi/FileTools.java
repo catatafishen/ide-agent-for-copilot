@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -160,6 +161,13 @@ class FileTools extends AbstractToolHandler {
     }
 
     /**
+     * Guard against reentrant navigate() calls. IntelliJ's navigate() pumps EDT events
+     * while waiting for tab creation, which can dispatch another followFileIfEnabled.
+     * Two overlapping tab insertions race inside JBTabsImpl.updateText() causing NPE.
+     */
+    private static final AtomicBoolean navigating = new AtomicBoolean(false);
+
+    /**
      * Opens the file in the editor if "Follow Agent Files" is enabled.
      * Scrolls to the middle of [startLine, endLine] and briefly highlights the region.
      * Package-private so other tool handlers can reuse it.
@@ -169,6 +177,7 @@ class FileTools extends AbstractToolHandler {
         if (!CopilotSettings.getFollowAgentFiles(project)) return;
 
         EdtUtil.invokeLater(() -> {
+            if (!navigating.compareAndSet(false, true)) return;
             try {
                 VirtualFile vf = ToolUtils.resolveVirtualFile(project, pathStr);
                 if (vf == null) return;
@@ -189,6 +198,8 @@ class FileTools extends AbstractToolHandler {
                 selectInProjectView(project, vf);
             } catch (Exception e) {
                 LOG.debug("Follow agent file failed: " + pathStr, e);
+            } finally {
+                navigating.set(false);
             }
         });
     }
