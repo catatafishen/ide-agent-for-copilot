@@ -16,13 +16,14 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Settings page: Settings → Tools → IDE Agent for Copilot → Tool Registration.
- * MCP server config (port, auto-start) and tool enable/disable checkboxes.
+ * MCP server config (port, auto-start, follow mode) and tool enable/disable checkboxes.
  */
 public final class ToolRegistrationConfigurable implements Configurable {
 
@@ -31,6 +32,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
     private final Project project;
     private JSpinner portSpinner;
     private JBCheckBox autoStartCheckbox;
+    private JBCheckBox followModeCheckbox;
     private final Map<String, JBCheckBox> toolCheckboxes = new LinkedHashMap<>();
 
     public ToolRegistrationConfigurable(@NotNull Project project) {
@@ -52,15 +54,26 @@ public final class ToolRegistrationConfigurable implements Configurable {
             settings.getPort(), 1024, 65535, 1));
         autoStartCheckbox = new JBCheckBox("Start MCP server automatically when project opens",
             settings.isAutoStart());
+        followModeCheckbox = new JBCheckBox("Follow mode — include active editor context in tool responses",
+            settings.isFollowMode());
 
         JButton restartButton = new JButton("Restart MCP Server");
         restartButton.setToolTipText("Stop and restart the MCP server to pick up tool registration changes");
         restartButton.addActionListener(e -> restartMcpServer(restartButton));
 
+        JButton copyConfigButton = new JButton("Copy MCP Config");
+        copyConfigButton.setToolTipText("Copy JSON config for Claude Desktop, Cursor, etc.");
+        copyConfigButton.addActionListener(e -> copyMcpConfig(copyConfigButton));
+
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        buttonRow.add(restartButton);
+        buttonRow.add(copyConfigButton);
+
         JPanel serverPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent("MCP server port:", portSpinner)
             .addComponent(autoStartCheckbox)
-            .addComponent(restartButton)
+            .addComponent(followModeCheckbox)
+            .addComponent(buttonRow)
             .getPanel();
 
         JPanel toolsPanel = new JPanel();
@@ -103,6 +116,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         if ((Integer) portSpinner.getValue() != settings.getPort()) return true;
         if (autoStartCheckbox.isSelected() != settings.isAutoStart()) return true;
+        if (followModeCheckbox.isSelected() != settings.isFollowMode()) return true;
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             if (entry.getValue().isSelected() != settings.isToolEnabled(entry.getKey())) return true;
         }
@@ -114,6 +128,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         settings.setPort((Integer) portSpinner.getValue());
         settings.setAutoStart(autoStartCheckbox.isSelected());
+        settings.setFollowMode(followModeCheckbox.isSelected());
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             settings.setToolEnabled(entry.getKey(), entry.getValue().isSelected());
         }
@@ -124,9 +139,29 @@ public final class ToolRegistrationConfigurable implements Configurable {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         portSpinner.setValue(settings.getPort());
         autoStartCheckbox.setSelected(settings.isAutoStart());
+        followModeCheckbox.setSelected(settings.isFollowMode());
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             entry.getValue().setSelected(settings.isToolEnabled(entry.getKey()));
         }
+    }
+
+    private void copyMcpConfig(JButton button) {
+        McpServerSettings settings = McpServerSettings.getInstance(project);
+        int port = settings.getPort();
+        String config = "{\n"
+            + "  \"mcpServers\": {\n"
+            + "    \"ide-mcp-server\": {\n"
+            + "      \"url\": \"http://127.0.0.1:" + port + "/mcp\"\n"
+            + "    }\n"
+            + "  }\n"
+            + "}";
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+            .setContents(new StringSelection(config), null);
+        String original = button.getText();
+        button.setText("Copied!");
+        Timer reset = new Timer(2000, e -> button.setText(original));
+        reset.setRepeats(false);
+        reset.start();
     }
 
     /**

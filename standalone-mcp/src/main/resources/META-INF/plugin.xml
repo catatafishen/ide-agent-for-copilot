@@ -93,13 +93,6 @@
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>
 
-    <!-- Tool Window -->
-    <toolWindow id="MCP Server"
-                secondary="false"
-                anchor="right"
-                icon="/icons/mcp-server.svg"
-                factoryClass="com.github.catatafishen.idemcpserver.ui.McpServerToolWindowFactory"/>
-
     <!-- Start PSI Bridge + MCP server on project open -->
     <postStartupActivity
       implementation="com.github.catatafishen.idemcpserver.McpServerStartup"/>
@@ -109,4 +102,14 @@
     <!-- Copilot Notifications group needed by PsiBridgeService error handling -->
     <notificationGroup id="Copilot Notifications" displayType="STICKY_BALLOON"/>
   </extensions>
+
+  <actions>
+    <action id="McpServer.Toggle"
+            class="com.github.catatafishen.idemcpserver.McpServerToggleAction"
+            text="MCP Server"
+            description="Start/stop the MCP HTTP server"
+            icon="/icons/mcp-server.svg">
+      <add-to-group group-id="MainToolbarRight" anchor="first"/>
+    </action>
+  </actions>
 </idea-plugin>

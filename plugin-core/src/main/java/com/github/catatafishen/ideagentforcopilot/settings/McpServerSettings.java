@@ -41,6 +41,14 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         myState.autoStart = autoStart;
     }
 
+    public boolean isFollowMode() {
+        return myState.followMode;
+    }
+
+    public void setFollowMode(boolean followMode) {
+        myState.followMode = followMode;
+    }
+
     public Set<String> getDisabledToolIds() {
         return myState.disabledToolIds;
     }
@@ -74,6 +82,7 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
     public static class State {
         public int port = DEFAULT_PORT;
         public boolean autoStart = false;
+        public boolean followMode = false;
         public Set<String> disabledToolIds = new LinkedHashSet<>();
     }
 }
