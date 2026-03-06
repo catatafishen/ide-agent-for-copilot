@@ -31,7 +31,7 @@ public final class PluginSettingsConfigurable implements Configurable {
      * Opens this settings page programmatically.
      */
     public static void open(@NotNull Project project) {
-        ShowSettingsUtil.getInstance().showSettingsDialog(project, DISPLAY_NAME);
+        ShowSettingsUtil.getInstance().showSettingsDialog(project, PluginSettingsConfigurable.class);
     }
 
     @Override
