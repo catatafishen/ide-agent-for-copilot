@@ -173,17 +173,31 @@ internal object ToolRenderers {
     /**
      * Creates a vertical list panel with standard spacing.
      */
-    fun listPanel(): JPanel = JPanel().apply {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        isOpaque = false
+    fun listPanel(): JPanel = object : JPanel() {
+        init {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+        }
+
+        override fun getMaximumSize(): java.awt.Dimension {
+            val pref = preferredSize
+            return java.awt.Dimension(Int.MAX_VALUE, pref.height)
+        }
     }
 
     /**
      * Creates a horizontal row panel for list items.
      */
-    fun rowPanel(): JPanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, JBUI.scale(4), 1)).apply {
-        isOpaque = false
-        alignmentX = JComponent.LEFT_ALIGNMENT
+    fun rowPanel(): JPanel = object : JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, JBUI.scale(4), 1)) {
+        init {
+            isOpaque = false
+            alignmentX = LEFT_ALIGNMENT
+        }
+
+        override fun getMaximumSize(): java.awt.Dimension {
+            val pref = preferredSize
+            return java.awt.Dimension(Int.MAX_VALUE, pref.height)
+        }
     }
 
     /**
