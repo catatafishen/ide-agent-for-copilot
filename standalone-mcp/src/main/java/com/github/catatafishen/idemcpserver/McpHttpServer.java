@@ -1,6 +1,6 @@
 package com.github.catatafishen.idemcpserver;
 
-import com.github.catatafishen.idemcpserver.settings.McpServerSettings;
+import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;

@@ -1,8 +1,8 @@
 package com.github.catatafishen.idemcpserver.ui;
 
 import com.github.catatafishen.idemcpserver.McpHttpServer;
-import com.github.catatafishen.idemcpserver.McpToolFilter;
-import com.github.catatafishen.idemcpserver.settings.McpServerSettings;
+import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
+import com.github.catatafishen.ideagentforcopilot.settings.McpToolFilter;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.DumbAware;

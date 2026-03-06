@@ -1,4 +1,4 @@
-package com.github.catatafishen.idemcpserver.settings;
+package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.Service;
@@ -11,7 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * Persistent project-level settings for the MCP server.
+ * Persistent project-level settings for MCP server and tool registration.
  */
 @Service(Service.Level.PROJECT)
 @State(name = "McpServerSettings", storages = @Storage("mcpServer.xml"))

@@ -84,12 +84,12 @@
       id="com.github.catatafishen.ideagentforcopilot.settings"
       displayName="IDE Agent for Copilot"/>
 
-    <!-- Settings: MCP Server -->
+    <!-- Settings: Tool Registration -->
     <projectConfigurable
       parentId="com.github.catatafishen.ideagentforcopilot.settings"
-      instance="com.github.catatafishen.idemcpserver.settings.McpServerConfigurable"
-      id="com.github.catatafishen.idemcpserver.settings"
-      displayName="MCP Server"/>
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ToolRegistrationConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.toolRegistration"
+      displayName="Tool Registration"/>
 
     <!-- Settings: Macro Tools -->
     <projectConfigurable
@@ -102,9 +102,9 @@
     <projectService
       serviceImplementation="com.github.catatafishen.idemcpserver.McpHttpServer"/>
 
-    <!-- Persistent settings state -->
+    <!-- Persistent settings state (shared from plugin-core) -->
     <projectService
-      serviceImplementation="com.github.catatafishen.idemcpserver.settings.McpServerSettings"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>
 
     <!-- Tool Window -->
     <toolWindow id="MCP Server"

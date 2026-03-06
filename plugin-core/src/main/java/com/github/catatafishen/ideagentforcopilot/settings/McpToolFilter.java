@@ -1,9 +1,8 @@
-package com.github.catatafishen.idemcpserver;
+package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.services.MacroToolRegistrar;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.ToolEntry;
-import com.github.catatafishen.idemcpserver.settings.McpServerSettings;
 import com.intellij.openapi.project.Project;
 
 import java.util.ArrayList;
@@ -11,8 +10,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Filters tools for the standalone MCP server. Hides chat-specific tools
- * that have no meaning without the Copilot chat UI, and respects user's
+ * Filters tools for the MCP server and tool registration UI. Hides chat-specific
+ * tools that have no meaning without the Copilot chat UI, and respects user's
  * enable/disable settings.
  */
 public final class McpToolFilter {
@@ -60,7 +59,7 @@ public final class McpToolFilter {
     }
 
     /**
-     * Returns tool IDs that are enabled for the MCP server, including macro tools.
+     * Returns tool IDs that are enabled, including macro tools.
      */
     public static List<ToolEntry> getEnabledTools(McpServerSettings settings, Project project) {
         return getConfigurableTools(project).stream()
@@ -69,7 +68,7 @@ public final class McpToolFilter {
     }
 
     /**
-     * Returns tool IDs that are enabled for the MCP server.
+     * Returns tool IDs that are enabled.
      */
     public static List<ToolEntry> getEnabledTools(McpServerSettings settings) {
         return getConfigurableTools().stream()

@@ -1,7 +1,6 @@
-package com.github.catatafishen.idemcpserver.settings;
+package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
-import com.github.catatafishen.idemcpserver.McpToolFilter;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBCheckBox;
@@ -21,29 +20,30 @@ import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 import java.awt.BorderLayout;
+import java.awt.Font;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Settings page: Settings → Tools → IDE MCP Server.
- * Port number, auto-start toggle, and tool enable/disable checkboxes.
+ * Settings page: Settings → Tools → IDE Agent for Copilot → Tool Registration.
+ * MCP server config (port, auto-start) and tool enable/disable checkboxes.
  */
-public final class McpServerConfigurable implements Configurable {
+public final class ToolRegistrationConfigurable implements Configurable {
 
     private final Project project;
     private JSpinner portSpinner;
     private JBCheckBox autoStartCheckbox;
     private final Map<String, JBCheckBox> toolCheckboxes = new LinkedHashMap<>();
 
-    public McpServerConfigurable(@NotNull Project project) {
+    public ToolRegistrationConfigurable(@NotNull Project project) {
         this.project = project;
     }
 
     @Nls
     @Override
     public String getDisplayName() {
-        return "IDE MCP Server";
+        return "Tool Registration";
     }
 
     @Nullable
@@ -53,10 +53,9 @@ public final class McpServerConfigurable implements Configurable {
 
         portSpinner = new JSpinner(new SpinnerNumberModel(
             settings.getPort(), 1024, 65535, 1));
-        autoStartCheckbox = new JBCheckBox("Start server automatically when project opens",
+        autoStartCheckbox = new JBCheckBox("Start MCP server automatically when project opens",
             settings.isAutoStart());
 
-        // Tool list grouped by category
         JPanel toolsPanel = new JPanel();
         toolsPanel.setLayout(new BoxLayout(toolsPanel, BoxLayout.Y_AXIS));
 
@@ -67,7 +66,7 @@ public final class McpServerConfigurable implements Configurable {
             if (tool.category != currentCategory) {
                 currentCategory = tool.category;
                 JBLabel categoryLabel = new JBLabel(currentCategory.displayName);
-                categoryLabel.setFont(categoryLabel.getFont().deriveFont(java.awt.Font.BOLD));
+                categoryLabel.setFont(categoryLabel.getFont().deriveFont(Font.BOLD));
                 categoryLabel.setBorder(JBUI.Borders.empty(8, 0, 4, 0));
                 toolsPanel.add(categoryLabel);
             }
@@ -87,7 +86,7 @@ public final class McpServerConfigurable implements Configurable {
 
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.add(FormBuilder.createFormBuilder()
-            .addLabeledComponent("Port:", portSpinner)
+            .addLabeledComponent("MCP Server Port:", portSpinner)
             .addComponent(autoStartCheckbox)
             .getPanel(), BorderLayout.NORTH);
         mainPanel.add(scrollPane, BorderLayout.CENTER);

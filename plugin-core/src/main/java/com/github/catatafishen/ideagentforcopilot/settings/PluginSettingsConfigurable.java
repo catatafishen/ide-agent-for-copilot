@@ -45,7 +45,8 @@ public final class PluginSettingsConfigurable implements Configurable {
         JBLabel label = new JBLabel(
             "<html><b>" + DISPLAY_NAME + "</b><br><br>"
                 + "Configure the plugin using the sub-pages in the tree on the left:<br>"
-                + "• <b>Tool Permissions</b> — enable/disable tools and set permission levels<br>"
+                + "• <b>Tool Permissions</b> — set permission levels (allow/ask/deny) per tool<br>"
+                + "• <b>Tool Registration</b> — enable/disable tools and configure MCP server<br>"
                 + "• <b>Macro Tools</b> — register recorded macros as MCP tools</html>");
         label.setBorder(JBUI.Borders.empty(12));
         panel.add(label, BorderLayout.NORTH);

@@ -167,6 +167,8 @@
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolSettings"/>
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolRegistrar"/>
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>
 
     <!-- Settings: IDE Agent for Copilot (parent group) -->
     <projectConfigurable
@@ -181,6 +183,13 @@
       instance="com.github.catatafishen.ideagentforcopilot.settings.ToolPermissionsConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.toolPermissions"
       displayName="Tool Permissions"/>
+
+    <!-- Settings: Tool Registration -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ToolRegistrationConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.toolRegistration"
+      displayName="Tool Registration"/>
 
     <!-- Settings: Macro Tools -->
     <projectConfigurable
