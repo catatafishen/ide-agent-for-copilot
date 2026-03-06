@@ -1,24 +1,25 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers.esc
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.Color
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
  * Renders list_project_files output as a compact file listing grouped by directory,
  * with type badges and a count header.
- *
- * Input format:
- * ```
- * 42 files:
- * src/main/java/Main.java [java]
- * build/generated/Stub.java [generated java]
- * src/test/java/MyTest.java [test java]
- * ```
  */
 internal object ListProjectFilesRenderer : ToolResultRenderer {
 
     private val COUNT_HEADER = Regex("""^(\d+)\s+files?:?\s*$""")
-    private val FILE_ENTRY = Regex("""^(.+?)\s+\[([^\]]+)]$""")
+    private val FILE_ENTRY = Regex("""^(.+?)\s+\[([^]]+)]$""")
+
+    private val TEST_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50))
+    private val GENERATED_COLOR = JBColor(Color(0x6E, 0x77, 0x81), Color(0x8B, 0x94, 0x9E))
+    private val EXCLUDED_COLOR = JBColor(Color(0xCF, 0x22, 0x2E), Color(0xF8, 0x53, 0x49))
 
     override fun render(output: String): JComponent? {
         val lines = output.trimEnd().lines()
@@ -32,32 +33,34 @@ internal object ListProjectFilesRenderer : ToolResultRenderer {
 
         val grouped = entries.groupBy { it.dir }
 
-        val sb = StringBuilder("<div class='file-list-result'>")
-        sb.append("<div class='file-list-header'>")
-        sb.append("<span class='file-list-count'>$fileCount</span>")
-        sb.append("<span class='file-list-label'>files</span>")
-        sb.append("</div>")
+        val panel = ToolRenderers.listPanel()
+        panel.add(ToolRenderers.headerPanel("📁", fileCount, "files"))
 
-        sb.append("<div class='file-list-entries'>")
         for ((dir, files) in grouped) {
             if (dir.isNotEmpty()) {
-                sb.append("<div class='file-list-dir'>")
-                sb.append("<span class='file-list-dir-name'>${esc(dir)}/</span>")
-                sb.append("<span class='inspection-file-count'>${files.size}</span>")
-                sb.append("</div>")
+                val dirRow = ToolRenderers.rowPanel()
+                dirRow.border = JBUI.Borders.emptyTop(4)
+                dirRow.add(ToolRenderers.monoLabel("$dir/").apply {
+                    font = font.deriveFont(Font.BOLD)
+                })
+                dirRow.add(ToolRenderers.mutedLabel("${files.size}"))
+                panel.add(dirRow)
             }
             for (f in files) {
-                sb.append("<div class='file-list-entry'>")
-                sb.append("<span class='git-file-path'>${esc(f.name)}</span>")
+                val row = ToolRenderers.rowPanel()
+                row.border = JBUI.Borders.emptyLeft(if (dir.isNotEmpty()) 12 else 0)
+                row.add(ToolRenderers.monoLabel(f.name))
                 for (tag in f.tags) {
-                    val cls = tagClass(tag)
-                    sb.append(" <span class='file-list-tag $cls'>${esc(tag)}</span>")
+                    row.add(JBLabel(tag).apply {
+                        font = UIUtil.getLabelFont().deriveFont(UIUtil.getLabelFont().size2D - 2f)
+                        foreground = tagColor(tag)
+                    })
                 }
-                sb.append("</div>")
+                panel.add(row)
             }
         }
-        sb.append("</div></div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+
+        return panel
     }
 
     private data class FileEntry(val dir: String, val name: String, val tags: List<String>)
@@ -80,10 +83,10 @@ internal object ListProjectFilesRenderer : ToolResultRenderer {
         return FileEntry(dir, name, tags)
     }
 
-    private fun tagClass(tag: String): String = when (tag.lowercase()) {
-        "test" -> "file-tag-test"
-        "generated" -> "file-tag-generated"
-        "excluded" -> "file-tag-excluded"
-        else -> "file-tag-type"
+    private fun tagColor(tag: String): Color = when (tag.lowercase()) {
+        "test" -> TEST_COLOR
+        "generated" -> GENERATED_COLOR
+        "excluded" -> EXCLUDED_COLOR
+        else -> UIUtil.getLabelForeground()
     }
 }

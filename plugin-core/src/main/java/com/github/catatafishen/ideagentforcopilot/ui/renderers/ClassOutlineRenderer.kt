@@ -1,5 +1,11 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.Color
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
@@ -11,6 +17,11 @@ internal object ClassOutlineRenderer : ToolResultRenderer {
     private val HEADER = Regex("""^(class|interface|enum|record|annotation)\s+(\S+)(.*)""")
     private val SECTION = Regex("""^(Constructors|Methods|Fields|Inner classes):$""")
 
+    private val CLASS_COLOR = JBColor(Color(0x08, 0x69, 0xDA), Color(0x58, 0xA6, 0xFF))
+    private val INTERFACE_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50))
+    private val METHOD_COLOR = JBColor(Color(0x9A, 0x6D, 0x00), Color(0xD2, 0x9B, 0x22))
+    private val FIELD_COLOR = JBColor(Color(0x8E, 0x44, 0xAD), Color(0xBB, 0x6B, 0xD9))
+
     override fun render(output: String): JComponent? {
         val lines = output.lines()
         val headerMatch = lines.firstOrNull()?.let { HEADER.find(it.trim()) } ?: return null
@@ -21,36 +32,22 @@ internal object ClassOutlineRenderer : ToolResultRenderer {
         val simpleName = qName.substringAfterLast('.')
         val packageName = if (qName.contains('.')) qName.substringBeforeLast('.') else ""
 
-        val e = ToolRenderers::esc
-        val sb = StringBuilder()
-        sb.append("<div class='outline-result'>")
+        val panel = ToolRenderers.listPanel()
 
         // Header
-        val badge = when (kind) {
-            "class" -> "C"
-            "interface" -> "I"
-            "enum" -> "E"
-            "record" -> "R"
-            "annotation" -> "@"
-            else -> kind.first().uppercaseChar().toString()
-        }
-        val badgeClass = when (kind) {
-            "class" -> "badge-class"
-            "interface" -> "badge-interface"
-            "enum" -> "badge-enum"
-            else -> "badge-method"
-        }
-        sb.append("<div class='outline-header'>")
-        sb.append("<span class='git-file-badge $badgeClass'>$badge</span> ")
-        sb.append("<strong>${e(simpleName)}</strong>")
-        if (packageName.isNotEmpty()) {
-            sb.append(" <span class='inspection-file-count'>${e(packageName)}</span>")
-        }
-        sb.append("</div>")
+        val (badge, color) = kindBadge(kind)
+        val headerRow = ToolRenderers.rowPanel()
+        headerRow.add(ToolRenderers.badgeLabel(badge, color))
+        headerRow.add(JBLabel(simpleName).apply {
+            font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+        })
+        if (packageName.isNotEmpty()) headerRow.add(ToolRenderers.mutedLabel(packageName))
+        panel.add(headerRow)
 
-        // Inheritance
         if (rest.isNotEmpty()) {
-            sb.append("<div class='class-outline-inheritance'>${e(rest)}</div>")
+            panel.add(ToolRenderers.mutedLabel(rest).apply {
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            })
         }
 
         // Sections
@@ -59,22 +56,7 @@ internal object ClassOutlineRenderer : ToolResultRenderer {
 
         fun flushSection() {
             if (currentSection.isNotEmpty() && sectionItems.isNotEmpty()) {
-                sb.append("<div class='outline-section'>")
-                sb.append("<div class='outline-section-title'>${e(currentSection)}")
-                sb.append(" <span class='inspection-file-count'>${sectionItems.size}</span>")
-                sb.append("</div>")
-                sb.append("<div class='outline-section-items'>")
-                for (item in sectionItems) {
-                    val sectionBadge = when (currentSection) {
-                        "Constructors" -> "<span class='git-file-badge badge-method'>⊕</span>"
-                        "Methods" -> "<span class='git-file-badge badge-method'>M</span>"
-                        "Fields" -> "<span class='git-file-badge badge-field'>F</span>"
-                        "Inner classes" -> "<span class='git-file-badge badge-class'>C</span>"
-                        else -> ""
-                    }
-                    sb.append("<div class='outline-item'>$sectionBadge <code>${e(item)}</code></div>")
-                }
-                sb.append("</div></div>")
+                addSection(panel, currentSection, sectionItems.toList())
             }
             sectionItems.clear()
         }
@@ -86,13 +68,52 @@ internal object ClassOutlineRenderer : ToolResultRenderer {
             if (sectionMatch != null) {
                 flushSection()
                 currentSection = sectionMatch.groupValues[1]
-            } else if (currentSection.isNotEmpty() && trimmed.isNotEmpty()) {
+            } else if (currentSection.isNotEmpty()) {
                 sectionItems.add(trimmed)
             }
         }
         flushSection()
 
-        sb.append("</div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+        return panel
+    }
+
+    private fun addSection(panel: javax.swing.JPanel, sectionName: String, items: List<String>) {
+        val section = ToolRenderers.listPanel().apply {
+            border = JBUI.Borders.emptyTop(6)
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        }
+        val sectionHeader = ToolRenderers.rowPanel()
+        sectionHeader.add(JBLabel(sectionName).apply {
+            font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+        })
+        sectionHeader.add(ToolRenderers.mutedLabel("${items.size}"))
+        section.add(sectionHeader)
+
+        val (sectionBadge, sectionColor) = sectionBadge(sectionName)
+        for (item in items) {
+            val row = ToolRenderers.rowPanel()
+            row.border = JBUI.Borders.emptyLeft(8)
+            row.add(ToolRenderers.badgeLabel(sectionBadge, sectionColor))
+            row.add(ToolRenderers.monoLabel(item))
+            section.add(row)
+        }
+        panel.add(section)
+    }
+
+    private fun kindBadge(kind: String): Pair<String, Color> = when (kind) {
+        "class" -> "C" to CLASS_COLOR
+        "interface" -> "I" to INTERFACE_COLOR
+        "enum" -> "E" to CLASS_COLOR
+        "record" -> "R" to CLASS_COLOR
+        "annotation" -> "@" to METHOD_COLOR
+        else -> kind.first().uppercaseChar().toString() to UIUtil.getLabelForeground()
+    }
+
+    private fun sectionBadge(section: String): Pair<String, Color> = when (section) {
+        "Constructors" -> "⊕" to METHOD_COLOR
+        "Methods" -> "M" to METHOD_COLOR
+        "Fields" -> "F" to FIELD_COLOR
+        "Inner classes" -> "C" to CLASS_COLOR
+        else -> "•" to UIUtil.getLabelForeground()
     }
 }

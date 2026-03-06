@@ -1,22 +1,30 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers.esc
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.Color
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
- * Renders git blame output as a compact table with author coloring,
+ * Renders git blame output as a compact listing with author coloring,
  * line numbers, and code content.
- *
- * Input format (raw git blame):
- * ```
- * abc123d (John Doe 2024-01-15 10:30:45 -0500  1) public class MyClass {
- * def456a (Jane Smith 2024-01-14 14:22:10 -0500  2)   private String name;
- * ```
  */
 internal object GitBlameRenderer : ToolResultRenderer {
 
     private val BLAME_LINE = Regex(
         """^([a-f0-9]+)\s+\((.+?)\s+(\d{4}-\d{2}-\d{2})\s+[\d:]+\s+[+-]\d{4}\s+(\d+)\)\s?(.*)$"""
+    )
+
+    private val PALETTE = listOf(
+        JBColor(Color(0x08, 0x69, 0xDA), Color(0x58, 0xA6, 0xFF)),
+        JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50)),
+        JBColor(Color(0x9A, 0x6D, 0x00), Color(0xD2, 0x9B, 0x22)),
+        JBColor(Color(0xCF, 0x22, 0x2E), Color(0xF8, 0x53, 0x49)),
+        JBColor(Color(0x8E, 0x44, 0xAD), Color(0xBB, 0x6B, 0xD9)),
+        JBColor(Color(0x16, 0xA0, 0x85), Color(0x39, 0xD3, 0x53)),
     )
 
     override fun render(output: String): JComponent? {
@@ -25,62 +33,53 @@ internal object GitBlameRenderer : ToolResultRenderer {
         if (entries.size < 2) return null
 
         val authors = entries.map { it.author }.distinct()
-        val authorColors = assignAuthorColors(authors)
+        val panel = ToolRenderers.listPanel()
 
-        val sb = StringBuilder("<div class='blame-result'>")
-        sb.append("<div class='blame-header'>")
-        sb.append("<span class='blame-count'>${entries.size} lines</span>")
-        sb.append("<span class='blame-authors'>${authors.size} authors</span>")
-        sb.append("</div>")
+        val headerRow = ToolRenderers.rowPanel()
+        headerRow.add(ToolRenderers.mutedLabel("${entries.size} lines"))
+        headerRow.add(ToolRenderers.mutedLabel("${authors.size} authors"))
+        panel.add(headerRow)
 
-        sb.append("<div class='blame-lines'>")
-        var prevAuthor = ""
-        for (entry in entries) {
-            val showAuthor = entry.author != prevAuthor
-            val colorVar = authorColors[entry.author] ?: "var(--fg)"
-            sb.append("<div class='blame-line${if (showAuthor) " blame-group-start" else ""}'>")
-            if (showAuthor) {
-                sb.append("<span class='blame-author' style='color:$colorVar'>${esc(abbreviateAuthor(entry.author))}</span>")
-            } else {
-                sb.append("<span class='blame-author'></span>")
-            }
-            sb.append("<span class='blame-date'>${esc(entry.date)}</span>")
-            sb.append("<span class='inspection-line'>${entry.lineNum}</span>")
-            sb.append("<span class='blame-code'>${esc(entry.content)}</span>")
-            sb.append("</div>")
-            prevAuthor = entry.author
+        panel.add(ToolRenderers.codeBlock(buildBlameText(entries)))
+
+        if (authors.size > 1) {
+            panel.add(buildAuthorLegend(authors))
         }
-        sb.append("</div></div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+
+        return panel
     }
 
-    private data class BlameEntry(
-        val hash: String,
-        val author: String,
-        val date: String,
-        val lineNum: String,
-        val content: String,
-    )
+    private fun buildBlameText(entries: List<BlameEntry>): String {
+        val sb = StringBuilder()
+        var prevAuthor = ""
+        for (entry in entries) {
+            val authorTag = if (entry.author != prevAuthor) abbreviateAuthor(entry.author).padEnd(14) else " ".repeat(14)
+            sb.appendLine("$authorTag ${entry.date} ${entry.lineNum.padStart(4)}: ${entry.content}")
+            prevAuthor = entry.author
+        }
+        return sb.toString().trimEnd()
+    }
+
+    private fun buildAuthorLegend(authors: List<String>): JComponent {
+        val authorColors = authors.withIndex().associate { (i, a) -> a to PALETTE[i % PALETTE.size] }
+        val legendRow = ToolRenderers.rowPanel()
+        legendRow.border = JBUI.Borders.emptyTop(4)
+        for (author in authors) {
+            legendRow.add(JBLabel(abbreviateAuthor(author)).apply {
+                font = UIUtil.getLabelFont().deriveFont(Font.BOLD, UIUtil.getLabelFont().size2D - 1f)
+                foreground = authorColors[author] ?: UIUtil.getLabelForeground()
+            })
+        }
+        return legendRow
+    }
+
+    private data class BlameEntry(val hash: String, val author: String, val date: String, val lineNum: String, val content: String)
 
     private fun parseBlameLine(line: String): BlameEntry? {
         val match = BLAME_LINE.matchEntire(line) ?: return null
-        return BlameEntry(
-            hash = match.groupValues[1],
-            author = match.groupValues[2].trim(),
-            date = match.groupValues[3],
-            lineNum = match.groupValues[4],
-            content = match.groupValues[5],
-        )
+        return BlameEntry(match.groupValues[1], match.groupValues[2].trim(), match.groupValues[3], match.groupValues[4], match.groupValues[5])
     }
 
-    private val AUTHOR_PALETTE = listOf(
-        "var(--link)", "#5cb85c", "#f0ad4e", "#d9534f",
-        "#9b59b6", "#1abc9c", "#e67e22", "#3498db",
-    )
-
-    private fun assignAuthorColors(authors: List<String>): Map<String, String> =
-        authors.withIndex().associate { (i, author) -> author to AUTHOR_PALETTE[i % AUTHOR_PALETTE.size] }
-
     private fun abbreviateAuthor(name: String): String =
-        if (name.length <= 14) name else name.take(12) + "…"
+        if (name.length <= 12) name else name.take(10) + "…"
 }

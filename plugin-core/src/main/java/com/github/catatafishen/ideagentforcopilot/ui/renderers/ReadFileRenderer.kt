@@ -1,16 +1,14 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers.esc
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
- * Renders intellij_read_file output as a compact code block with line numbers,
- * a file-info header (line count), and automatic truncation for very large files.
- *
- * Input formats:
- * - Full file content (raw text, no line numbers)
- * - Line-range read with numbered lines: `42: code here\n43: more code\n`
- * - Error: `File not found: path`
+ * Renders intellij_read_file output as a code block with line numbers
+ * and automatic truncation for very large files.
  */
 internal object ReadFileRenderer : ToolResultRenderer {
 
@@ -21,53 +19,57 @@ internal object ReadFileRenderer : ToolResultRenderer {
         if (output.startsWith("Error") || output.startsWith("File not found")) return null
 
         val raw = output.trimEnd()
-        if (raw.isEmpty()) return ToolRenderers.htmlPanel("<span class='file-empty'>Empty file</span>")
+        if (raw.isEmpty()) {
+            val panel = ToolRenderers.listPanel()
+            panel.add(ToolRenderers.mutedLabel("Empty file").apply {
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            })
+            return panel
+        }
 
         val lines = raw.lines()
         val isNumbered = lines.firstOrNull()?.let { NUMBERED_LINE.matches(it) } == true
 
-        val sb = StringBuilder("<div class='file-read-result'>")
+        val panel = ToolRenderers.listPanel()
 
-        // Header with line count
-        val totalLines = lines.size
-        sb.append("<div class='file-read-header'>")
+        // Header with line range
+        val headerRow = ToolRenderers.rowPanel()
+        headerRow.border = JBUI.Borders.emptyBottom(4)
         if (isNumbered) {
             val firstNum = NUMBERED_LINE.find(lines.first())?.groupValues?.get(1) ?: "?"
             val lastNum = NUMBERED_LINE.find(lines.last())?.groupValues?.get(1) ?: "?"
-            sb.append("<span class='file-read-range'>Lines $firstNum–$lastNum</span>")
+            headerRow.add(JBLabel("Lines $firstNum–$lastNum").apply {
+                font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+            })
         } else {
-            sb.append("<span class='file-read-range'>$totalLines lines</span>")
+            headerRow.add(JBLabel("${lines.size} lines").apply {
+                font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+            })
         }
-        sb.append("</div>")
+        panel.add(headerRow)
 
-        // Code block with line numbers
-        val truncated = totalLines > MAX_DISPLAY_LINES
+        // Code content
+        val truncated = lines.size > MAX_DISPLAY_LINES
         val displayLines = if (truncated) lines.take(MAX_DISPLAY_LINES) else lines
-
-        sb.append("<div class='file-read-code'>")
-        for (line in displayLines) {
-            val numMatch = NUMBERED_LINE.find(line)
-            if (numMatch != null) {
-                val num = numMatch.groupValues[1]
-                val code = numMatch.groupValues[2]
-                sb.append("<div class='file-line'>")
-                sb.append("<span class='file-line-num'>${esc(num)}</span>")
-                sb.append("<span class='file-line-code'>${esc(code)}</span>")
-                sb.append("</div>")
-            } else {
-                sb.append("<div class='file-line'>")
-                sb.append("<span class='file-line-code'>${esc(line)}</span>")
-                sb.append("</div>")
+        val codeText = if (isNumbered) {
+            displayLines.joinToString("\n") { line ->
+                val m = NUMBERED_LINE.find(line)
+                if (m != null) "${m.groupValues[1].padStart(4)}: ${m.groupValues[2]}" else line
             }
+        } else {
+            displayLines.joinToString("\n")
         }
-        sb.append("</div>")
+
+        panel.add(ToolRenderers.codeBlock(codeText))
 
         if (truncated) {
-            val remaining = totalLines - MAX_DISPLAY_LINES
-            sb.append("<div class='file-read-truncated'>⋯ $remaining more lines</div>")
+            val remaining = lines.size - MAX_DISPLAY_LINES
+            panel.add(ToolRenderers.mutedLabel("⋯ $remaining more lines").apply {
+                alignmentX = JComponent.LEFT_ALIGNMENT
+                border = JBUI.Borders.emptyTop(4)
+            })
         }
 
-        sb.append("</div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+        return panel
     }
 }

@@ -1,5 +1,11 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.Color
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
@@ -10,19 +16,21 @@ internal object HttpRequestRenderer : ToolResultRenderer {
 
     private val STATUS_LINE = Regex("""^HTTP\s+(\d+)\s+(.*)""")
 
+    private val SUCCESS_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50))
+    private val WARN_COLOR = JBColor(Color(0x9A, 0x6D, 0x00), Color(0xD2, 0x9B, 0x22))
+    private val FAIL_COLOR = JBColor(Color(0xCF, 0x22, 0x2E), Color(0xF8, 0x53, 0x49))
+
     override fun render(output: String): JComponent? {
         val statusMatch = output.lines().firstOrNull()?.let { STATUS_LINE.find(it.trim()) } ?: return null
-
         val code = statusMatch.groupValues[1].toIntOrNull() ?: return null
         val message = statusMatch.groupValues[2]
 
-        val statusClass = when {
-            code in 200..299 -> "success"
-            code in 300..399 -> "warning"
-            else -> "danger"
+        val statusColor = when (code) {
+            in 200..299 -> SUCCESS_COLOR
+            in 300..399 -> WARN_COLOR
+            else -> FAIL_COLOR
         }
 
-        // Split sections
         val headersStart = output.indexOf("--- Headers ---")
         val bodyStart = output.indexOf("--- Body ---")
 
@@ -32,53 +40,60 @@ internal object HttpRequestRenderer : ToolResultRenderer {
                 .trim().lines().filter { it.isNotBlank() }
         } else emptyList()
 
-        val body = if (bodyStart >= 0) {
-            output.substring(bodyStart + "--- Body ---".length).trim()
-        } else ""
+        val body = if (bodyStart >= 0) output.substring(bodyStart + "--- Body ---".length).trim() else ""
 
-        val e = ToolRenderers::esc
-        val sb = StringBuilder()
-        sb.append("<div class='http-result'>")
+        val panel = ToolRenderers.listPanel()
 
         // Status header
-        sb.append("<div class='http-status http-status-$statusClass'>")
-        sb.append("<span class='http-method'>HTTP</span> ")
-        sb.append("<span class='http-code'>$code</span> ")
-        sb.append("<span class='http-message'>${e(message)}</span>")
-        sb.append("</div>")
+        val statusRow = ToolRenderers.rowPanel()
+        statusRow.add(JBLabel("HTTP $code $message").apply {
+            font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+            foreground = statusColor
+        })
+        panel.add(statusRow)
 
         // Headers
         if (headers.isNotEmpty()) {
-            sb.append("<div class='http-section'>")
-            sb.append("<div class='http-section-title'>Headers")
-            sb.append(" <span class='inspection-file-count'>${headers.size}</span>")
-            sb.append("</div>")
-            sb.append("<div class='http-headers'>")
+            val section = ToolRenderers.listPanel().apply {
+                border = JBUI.Borders.emptyTop(6)
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            }
+            val sectionHeader = ToolRenderers.rowPanel()
+            sectionHeader.add(JBLabel("Headers").apply {
+                font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+            })
+            sectionHeader.add(ToolRenderers.mutedLabel("${headers.size}"))
+            section.add(sectionHeader)
+
             for (h in headers) {
                 val colonIdx = h.indexOf(':')
+                val row = ToolRenderers.rowPanel()
+                row.border = JBUI.Borders.emptyLeft(8)
                 if (colonIdx > 0) {
-                    val key = h.substring(0, colonIdx).trim()
-                    val value = h.substring(colonIdx + 1).trim()
-                    sb.append("<div class='http-header'>")
-                    sb.append("<span class='http-header-key'>${e(key)}</span>")
-                    sb.append("<span class='http-header-value'>${e(value)}</span>")
-                    sb.append("</div>")
+                    row.add(ToolRenderers.mutedLabel(h.substring(0, colonIdx).trim() + ":"))
+                    row.add(ToolRenderers.monoLabel(h.substring(colonIdx + 1).trim()))
                 } else {
-                    sb.append("<div class='http-header'>${e(h)}</div>")
+                    row.add(ToolRenderers.monoLabel(h))
                 }
+                section.add(row)
             }
-            sb.append("</div></div>")
+            panel.add(section)
         }
 
         // Body
         if (body.isNotEmpty()) {
-            sb.append("<div class='http-section'>")
-            sb.append("<div class='http-section-title'>Body</div>")
-            sb.append("<pre class='http-body'><code>${e(body)}</code></pre>")
-            sb.append("</div>")
+            val bodySection = ToolRenderers.listPanel().apply {
+                border = JBUI.Borders.emptyTop(6)
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            }
+            bodySection.add(JBLabel("Body").apply {
+                font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            })
+            bodySection.add(ToolRenderers.codeBlock(body))
+            panel.add(bodySection)
         }
 
-        sb.append("</div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+        return panel
     }
 }

@@ -1,24 +1,16 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers.esc
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.Color
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
- * Renders get_type_hierarchy output as a visual class hierarchy tree
- * with supertypes above and subtypes below.
- *
- * Input format:
- * ```
- * Type hierarchy for: com.example.MyClass (class)
- *
- * Supertypes:
- *   class Object
- *   interface Serializable
- *
- * Subtypes:
- *   class ChildA [path/ChildA.java]
- *   class ChildB [path/ChildB.java]
- * ```
+ * Renders get_type_hierarchy output as a visual class hierarchy with
+ * supertypes above and subtypes below the queried type.
  */
 internal object TypeHierarchyRenderer : ToolResultRenderer {
 
@@ -27,6 +19,9 @@ internal object TypeHierarchyRenderer : ToolResultRenderer {
     private val TYPE_ENTRY = Regex("""^\s+(class|interface|enum|annotation)\s+(\S+)(?:\s+\[(.+)])?""")
     private val NONE_FOUND = Regex("""^\s+\(none found""")
 
+    private val CLASS_COLOR = JBColor(Color(0x08, 0x69, 0xDA), Color(0x58, 0xA6, 0xFF))
+    private val INTERFACE_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50))
+
     override fun render(output: String): JComponent? {
         val lines = output.trimEnd().lines()
         if (lines.isEmpty()) return null
@@ -34,7 +29,6 @@ internal object TypeHierarchyRenderer : ToolResultRenderer {
         val headerMatch = HEADER.find(lines.first().trim()) ?: return null
         val typeName = headerMatch.groupValues[1]
         val typeKind = headerMatch.groupValues[2]
-
         val shortName = typeName.substringAfterLast('.')
 
         var currentSection = ""
@@ -43,19 +37,10 @@ internal object TypeHierarchyRenderer : ToolResultRenderer {
 
         for (line in lines.drop(1)) {
             val sectionMatch = SECTION_HEADER.find(line.trim())
-            if (sectionMatch != null) {
-                currentSection = sectionMatch.groupValues[1]
-                continue
-            }
+            if (sectionMatch != null) { currentSection = sectionMatch.groupValues[1]; continue }
             if (NONE_FOUND.containsMatchIn(line)) continue
-
             val typeMatch = TYPE_ENTRY.find(line) ?: continue
-            val entry = TypeEntry(
-                kind = typeMatch.groupValues[1],
-                name = typeMatch.groupValues[2],
-                location = typeMatch.groupValues.getOrNull(3)?.takeIf { it.isNotEmpty() }
-            )
-
+            val entry = TypeEntry(typeMatch.groupValues[1], typeMatch.groupValues[2], typeMatch.groupValues.getOrNull(3)?.takeIf { it.isNotEmpty() })
             when (currentSection) {
                 "Supertypes" -> supertypes.add(entry)
                 "Subtypes", "Implementations" -> subtypes.add(entry)
@@ -64,57 +49,53 @@ internal object TypeHierarchyRenderer : ToolResultRenderer {
 
         if (supertypes.isEmpty() && subtypes.isEmpty()) return null
 
-        val sb = StringBuilder("<div class='hierarchy-result'>")
+        val panel = ToolRenderers.listPanel()
+        if (supertypes.isNotEmpty()) addTypeSection(panel, "Supertypes", supertypes)
 
-        if (supertypes.isNotEmpty()) {
-            sb.append("<div class='hierarchy-section'>")
-            sb.append("<div class='outline-header'><span style='font-weight:600'>Supertypes</span>")
-            sb.append("<span class='inspection-file-count'>${supertypes.size}</span></div>")
-            sb.append("<div class='hierarchy-entries'>")
-            for (t in supertypes) appendEntry(sb, t)
-            sb.append("</div></div>")
-        }
+        // Center node
+        val centerRow = ToolRenderers.rowPanel()
+        centerRow.border = JBUI.Borders.empty(4, 0)
+        centerRow.add(ToolRenderers.badgeLabel(typeKind[0].uppercaseChar().toString(), kindColor(typeKind)))
+        centerRow.add(JBLabel(shortName).apply {
+            font = UIUtil.getLabelFont().deriveFont(Font.BOLD, UIUtil.getLabelFont().size2D + 1f)
+        })
+        panel.add(centerRow)
 
-        // Center node (the queried type)
-        sb.append("<div class='hierarchy-center'>")
-        val kindBadge = kindClass(typeKind)
-        sb.append("<span class='hierarchy-kind $kindBadge'>${typeKind[0].uppercaseChar()}</span>")
-        sb.append("<span class='hierarchy-name'>${esc(shortName)}</span>")
-        sb.append("</div>")
-
-        if (subtypes.isNotEmpty()) {
-            sb.append("<div class='hierarchy-section'>")
-            sb.append("<div class='outline-header'><span style='font-weight:600'>Subtypes</span>")
-            sb.append("<span class='inspection-file-count'>${subtypes.size}</span></div>")
-            sb.append("<div class='hierarchy-entries'>")
-            for (t in subtypes) appendEntry(sb, t)
-            sb.append("</div></div>")
-        }
-
-        sb.append("</div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+        if (subtypes.isNotEmpty()) addTypeSection(panel, "Subtypes", subtypes)
+        return panel
     }
 
     private data class TypeEntry(val kind: String, val name: String, val location: String?)
 
-    private fun appendEntry(sb: StringBuilder, entry: TypeEntry) {
-        val shortName = entry.name.substringAfterLast('.')
-        val kindBadge = kindClass(entry.kind)
-        sb.append("<div class='hierarchy-entry'>")
-        sb.append("<span class='hierarchy-kind $kindBadge'>${entry.kind[0].uppercaseChar()}</span>")
-        sb.append("<span class='hierarchy-type-name'>${esc(shortName)}</span>")
-        if (entry.location != null) {
-            val fileName = entry.location.substringAfterLast('/')
-            sb.append("<span class='hierarchy-location'>${esc(fileName)}</span>")
+    private fun addTypeSection(panel: javax.swing.JPanel, label: String, entries: List<TypeEntry>) {
+        val section = ToolRenderers.listPanel().apply {
+            border = JBUI.Borders.emptyTop(4)
+            alignmentX = JComponent.LEFT_ALIGNMENT
         }
-        sb.append("</div>")
+        val sectionHeader = ToolRenderers.rowPanel()
+        sectionHeader.add(JBLabel(label).apply {
+            font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+        })
+        sectionHeader.add(ToolRenderers.mutedLabel("${entries.size}"))
+        section.add(sectionHeader)
+
+        for (entry in entries) {
+            val row = ToolRenderers.rowPanel()
+            row.border = JBUI.Borders.emptyLeft(8)
+            row.add(ToolRenderers.badgeLabel(entry.kind[0].uppercaseChar().toString(), kindColor(entry.kind)))
+            row.add(JBLabel(entry.name.substringAfterLast('.')))
+            if (entry.location != null) {
+                row.add(ToolRenderers.mutedLabel(entry.location.substringAfterLast('/')))
+            }
+            section.add(row)
+        }
+        panel.add(section)
     }
 
-    private fun kindClass(kind: String): String = when (kind.lowercase()) {
-        "class" -> "kind-class"
-        "interface" -> "kind-interface"
-        "enum" -> "kind-enum"
-        "annotation" -> "kind-annotation"
-        else -> "kind-class"
+    private fun kindColor(kind: String): Color = when (kind.lowercase()) {
+        "class" -> CLASS_COLOR
+        "interface" -> INTERFACE_COLOR
+        "enum" -> CLASS_COLOR
+        else -> UIUtil.getLabelForeground()
     }
 }

@@ -1,25 +1,25 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers.esc
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.UIUtil
+import java.awt.Color
+import java.awt.Font
 import javax.swing.JComponent
 
 /**
  * Renders file outline results as a structured list with type badges
- * (C=class, I=interface, E=enum, M=method, F=field, ƒ=function)
  * and line numbers.
- *
- * Output format:
- * ```
- * Outline of path/to/File.java:
- *   5: class MyClass
- *   8: method main
- *   12: field count
- * ```
  */
 internal object FileOutlineRenderer : ToolResultRenderer {
 
     private val ENTRY_PATTERN = Regex("""^\s*(\d+):\s+(\w+)\s+(.+)$""")
     private val HEADER_PATTERN = Regex("""^Outline of (.+):$""")
+
+    private val CLASS_COLOR = JBColor(Color(0x08, 0x69, 0xDA), Color(0x58, 0xA6, 0xFF))
+    private val INTERFACE_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50))
+    private val METHOD_COLOR = JBColor(Color(0x9A, 0x6D, 0x00), Color(0xD2, 0x9B, 0x22))
+    private val FIELD_COLOR = JBColor(Color(0x8E, 0x44, 0xAD), Color(0xBB, 0x6B, 0xD9))
 
     override fun render(output: String): JComponent? {
         val lines = output.trimEnd().lines()
@@ -32,37 +32,38 @@ internal object FileOutlineRenderer : ToolResultRenderer {
         val entries = lines.drop(1).mapNotNull { ENTRY_PATTERN.find(it.trim()) }
         if (entries.isEmpty()) return null
 
-        val sb = StringBuilder("<div class='outline-result'>")
+        val panel = ToolRenderers.listPanel()
 
-        sb.append("<div class='outline-header'>")
-        sb.append("<span class='git-file-path' title='${esc(filePath)}'>${esc(fileName)}</span>")
-        sb.append("<span class='inspection-file-count'>${entries.size}</span>")
-        sb.append("</div>")
+        val headerRow = ToolRenderers.rowPanel()
+        headerRow.add(ToolRenderers.monoLabel(fileName).apply {
+            font = font.deriveFont(Font.BOLD)
+            toolTipText = filePath
+        })
+        headerRow.add(ToolRenderers.mutedLabel("${entries.size}"))
+        panel.add(headerRow)
 
-        sb.append("<div class='outline-entries'>")
         for (entry in entries) {
-            val line = entry.groupValues[1]
+            val lineNum = entry.groupValues[1]
             val type = entry.groupValues[2]
             val name = entry.groupValues[3]
-            val badgeInfo = typeBadge(type)
-            sb.append("<div class='outline-entry'>")
-            sb.append("<span class='git-file-badge ${badgeInfo.second}'>${badgeInfo.first}</span>")
-            sb.append("<span class='outline-name'>${esc(name)}</span>")
-            sb.append("<span class='inspection-line'>:$line</span>")
-            sb.append("</div>")
+            val (badge, color) = typeBadge(type)
+
+            val row = ToolRenderers.rowPanel()
+            row.add(ToolRenderers.badgeLabel(badge, color))
+            row.add(JBLabel(name))
+            row.add(ToolRenderers.mutedLabel(":$lineNum"))
+            panel.add(row)
         }
-        sb.append("</div></div>")
-        return ToolRenderers.htmlPanel(sb.toString())
+
+        return panel
     }
 
-    private fun typeBadge(type: String): Pair<String, String> = when (type.lowercase()) {
-        "class" -> "C" to "outline-badge-class"
-        "interface" -> "I" to "outline-badge-interface"
-        "enum" -> "E" to "outline-badge-enum"
-        "method" -> "M" to "outline-badge-method"
-        "function" -> "ƒ" to "outline-badge-method"
-        "field" -> "F" to "outline-badge-field"
-        "property" -> "P" to "outline-badge-field"
-        else -> type.take(1).uppercase() to "outline-badge-class"
+    private fun typeBadge(type: String): Pair<String, Color> = when (type.lowercase()) {
+        "class" -> "C" to CLASS_COLOR
+        "interface" -> "I" to INTERFACE_COLOR
+        "enum" -> "E" to CLASS_COLOR
+        "method", "function" -> "M" to METHOD_COLOR
+        "field", "property" -> "F" to FIELD_COLOR
+        else -> type.take(1).uppercase() to UIUtil.getLabelForeground()
     }
 }
