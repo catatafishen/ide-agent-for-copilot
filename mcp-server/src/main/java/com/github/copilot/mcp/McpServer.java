@@ -859,6 +859,27 @@ public class McpServer {
             ),
             List.of("path")));
 
+        addIfEnabled.accept(buildTool("rename_file", "Rename a file. Updates the file name in place without moving it to a different directory.",
+            Map.of(
+                "path", Map.of("type", "string", "description", "Path to the file to rename (absolute or project-relative)"),
+                "new_name", Map.of("type", "string", "description", "New file name (just the filename, not a full path)")
+            ),
+            List.of("path", "new_name")));
+
+        addIfEnabled.accept(buildTool("move_file", "Move a file to a different directory. The file keeps its current name.",
+            Map.of(
+                "path", Map.of("type", "string", "description", "Path to the file to move (absolute or project-relative)"),
+                "destination", Map.of("type", "string", "description", "Destination directory path (absolute or project-relative)")
+            ),
+            List.of("path", "destination")));
+
+        addIfEnabled.accept(buildTool("get_file_history", "Get the git commit history for a specific file, including renames. Returns commit hashes, dates, authors, and messages.",
+            Map.of(
+                "path", Map.of("type", "string", "description", "Path to the file to get history for (absolute or project-relative)"),
+                "max_count", Map.of("type", "integer", "description", "Maximum number of commits to show (default: 20)")
+            ),
+            List.of("path")));
+
         addIfEnabled.accept(buildTool("undo", "Undo last edit action(s) on a file. Reverts writes, edits, and auto-format operations using IntelliJ's undo stack",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path to the file to undo changes on"),

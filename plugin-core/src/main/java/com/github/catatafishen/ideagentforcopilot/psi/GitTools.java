@@ -29,5 +29,6 @@ class GitTools extends AbstractToolHandler {
         register("git_cherry_pick", gitToolHandler::gitCherryPick);
         register("git_tag", gitToolHandler::gitTag);
         register("git_reset", gitToolHandler::gitReset);
+        register("get_file_history", gitToolHandler::getFileHistory);
     }
 }

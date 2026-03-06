@@ -95,6 +95,8 @@ class FileTools extends AbstractToolHandler {
         register("edit_text", this::writeFile);
         register("create_file", this::createFile);
         register("delete_file", this::deleteFile);
+        register("rename_file", this::renameFile);
+        register("move_file", this::moveFile);
         register("undo", this::undo);
         register("reload_from_disk", this::reloadFromDisk);
     }
@@ -821,6 +823,105 @@ class FileTools extends AbstractToolHandler {
                 }
             })
         );
+    }
+
+    private String renameFile(JsonObject args) throws Exception {
+        if (!args.has("path") || !args.has("new_name"))
+            return ToolUtils.ERROR_PREFIX + "'path' and 'new_name' parameters are required";
+        String pathStr = args.get("path").getAsString();
+        String newName = args.get("new_name").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ReadAction.nonBlocking(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete(ToolUtils.ERROR_PREFIX + ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
+                    return null;
+                }
+                String oldName = vf.getName();
+                EdtUtil.invokeLater(() ->
+                    ApplicationManager.getApplication().runWriteAction(() -> {
+                        try {
+                            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                project,
+                                () -> {
+                                    try {
+                                        vf.rename(FileTools.this, newName);
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                },
+                                "Rename File: " + oldName + " to " + newName,
+                                null
+                            );
+                            resultFuture.complete("Renamed " + oldName + " to " + newName);
+                        } catch (Exception e) {
+                            resultFuture.complete("Error renaming file: " + e.getMessage());
+                        }
+                    })
+                );
+                return null;
+            } catch (Exception e) {
+                resultFuture.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
+                return null;
+            }
+        }).inSmartMode(project).submit(AppExecutorUtil.getAppExecutorService());
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
+    }
+
+    private String moveFile(JsonObject args) throws Exception {
+        if (!args.has("path") || !args.has("destination"))
+            return ToolUtils.ERROR_PREFIX + "'path' and 'destination' parameters are required";
+        String pathStr = args.get("path").getAsString();
+        String destStr = args.get("destination").getAsString();
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        ReadAction.nonBlocking(() -> {
+            try {
+                VirtualFile vf = resolveVirtualFile(pathStr);
+                if (vf == null) {
+                    resultFuture.complete(ToolUtils.ERROR_PREFIX + ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
+                    return null;
+                }
+                VirtualFile destDir = resolveVirtualFile(destStr);
+                if (destDir == null || !destDir.isDirectory()) {
+                    resultFuture.complete(ToolUtils.ERROR_PREFIX + "Destination directory not found: " + destStr);
+                    return null;
+                }
+                String oldPath = vf.getPath();
+                EdtUtil.invokeLater(() ->
+                    ApplicationManager.getApplication().runWriteAction(() -> {
+                        try {
+                            com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
+                                project,
+                                () -> {
+                                    try {
+                                        vf.move(FileTools.this, destDir);
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                },
+                                "Move File: " + vf.getName(),
+                                null
+                            );
+                            resultFuture.complete("Moved " + oldPath + " to " + destDir.getPath() + "/" + vf.getName());
+                        } catch (Exception e) {
+                            resultFuture.complete("Error moving file: " + e.getMessage());
+                        }
+                    })
+                );
+                return null;
+            } catch (Exception e) {
+                resultFuture.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
+                return null;
+            }
+        }).inSmartMode(project).submit(AppExecutorUtil.getAppExecutorService());
+
+        return resultFuture.get(10, TimeUnit.SECONDS);
     }
 
     /**

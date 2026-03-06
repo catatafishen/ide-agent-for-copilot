@@ -678,6 +678,13 @@ final class GitToolHandler {
         return result;
     }
 
+    String getFileHistory(JsonObject args) throws Exception {
+        if (!args.has("path")) return ERROR_PATH_REQUIRED;
+        String path = args.get("path").getAsString();
+        int maxCount = args.has("max_count") ? args.get("max_count").getAsInt() : 20;
+        return runGit("log", "--follow", "--format=%H %ai %an%n  %s", "-n", String.valueOf(maxCount), "--", path);
+    }
+
     // ---- IDE follow-along helpers ----
 
     private static final java.util.regex.Pattern FULL_HASH_PATTERN =

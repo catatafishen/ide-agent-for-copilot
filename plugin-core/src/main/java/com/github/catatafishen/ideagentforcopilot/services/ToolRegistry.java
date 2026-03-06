@@ -85,6 +85,8 @@ public final class ToolRegistry {
         new ToolEntry("edit_text", "Edit Text", "Surgical find-and-replace edit within a file — for small changes inside methods, imports, or config", Category.FILE, false, false, true),
         new ToolEntry("create_file", "Create File", "Create a new file and register it in IntelliJ's VFS", Category.FILE, false, false, true),
         new ToolEntry("delete_file", "Delete File", "Delete a file from the project via IntelliJ", Category.FILE, false, false, true),
+        new ToolEntry("rename_file", "Rename File", "Rename a file in place without moving it to a different directory", Category.FILE, false, false, true),
+        new ToolEntry("move_file", "Move File", "Move a file to a different directory", Category.FILE, false, false, true),
         new ToolEntry("reload_from_disk", "Reload from Disk", "Force IntelliJ to refresh a file or directory from disk, picking up changes made by external tools", Category.FILE, false, false, true),
         new ToolEntry("open_in_editor", "Open in Editor", "Open a file in the editor, optionally navigating to a specific line", Category.FILE, false, false, true),
         new ToolEntry("show_diff", "Show Diff", "Show a diff viewer comparing a file to proposed content or another file", Category.FILE, false, false, false),
@@ -144,6 +146,7 @@ public final class ToolRegistry {
         new ToolEntry("git_cherry_pick", "Git Cherry Pick", "Apply specific commits from another branch onto the current branch", Category.GIT, false, false, false),
         new ToolEntry("git_tag", "Git Tag", "List, create, or delete tags", Category.GIT, false, false, false),
         new ToolEntry("git_reset", "Git Reset", "Reset HEAD to a specific commit (soft, mixed, or hard)", Category.GIT, false, false, false),
+        new ToolEntry("get_file_history", "Get File History", "Get the git commit history for a specific file, including renames", Category.GIT, false, false, false),
 
         // ── Refactoring ───────────────────────────────────────────────────────────
         new ToolEntry("refactor", "Refactor", "Rename, extract method, inline, or safe-delete a symbol using IntelliJ's refactoring engine", Category.REFACTOR, false, false, false),
