@@ -2,7 +2,8 @@ package com.github.catatafishen.idemcpserver;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
-import com.github.catatafishen.idemcpserver.settings.McpServerSettings;
+import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
+import com.github.catatafishen.ideagentforcopilot.settings.McpToolFilter;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -80,7 +81,7 @@ public final class McpProtocolHandler {
 
     private JsonObject handleToolsList() {
         McpServerSettings settings = McpServerSettings.getInstance(project);
-        List<ToolRegistry.ToolEntry> enabledTools = McpToolFilter.getEnabledTools(settings);
+        List<ToolRegistry.ToolEntry> enabledTools = McpToolFilter.getEnabledTools(settings, project);
 
         JsonArray tools = new JsonArray();
         for (ToolRegistry.ToolEntry entry : enabledTools) {

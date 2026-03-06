@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.ui
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpClient
 import com.github.catatafishen.ideagentforcopilot.services.CopilotService
 import com.github.catatafishen.ideagentforcopilot.services.CopilotSettings
+import com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
@@ -669,6 +670,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val prompt = promptTextArea.text.trim()
             if (prompt.isEmpty()) return
             consolePanel.disableQuickReplies()
+            statusBanner?.dismissCurrent()
             setSendingState(true)
             setResponseStatus(MSG_THINKING)
 
@@ -1071,13 +1073,15 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
     }
 
-    /** Toolbar button that opens the tool permissions dialog. */
+    /** Toolbar button that opens the plugin settings. */
     private inner class SettingsAction : AnAction(
-        "Tool Permissions", "View and configure tool permissions",
+        "Settings", "Open IDE Agent for Copilot settings",
         AllIcons.General.Settings
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) = debugPanel.openSettings()
+        override fun actionPerformed(e: AnActionEvent) {
+            com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable.open(project)
+        }
     }
 
     private inner class FollowAgentFilesToggleAction : ToggleAction(
@@ -1135,69 +1139,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val group = DefaultActionGroup()
             val base = project.basePath
 
-            // Instructions (detect copilot-instructions.md in .copilot/ or .github/)
-            val copilotInstructionsFile = if (base != null) {
-                val dotCopilot = java.io.File(base, ".copilot/copilot-instructions.md")
-                val dotGithub = java.io.File(base, ".github/copilot-instructions.md")
-                when {
-                    dotCopilot.exists() -> dotCopilot
-                    dotGithub.exists() -> dotGithub
-                    else -> null
+            // Build menu from configured project file entries
+            val entries = ProjectFilesSettings.getInstance().entries
+            for (entry in entries) {
+                if (entry.isGlob) {
+                    addGlobEntries(group, base, entry)
+                } else {
+                    addFileEntry(group, base, entry)
                 }
-            } else null
-            group.add(object : AnAction(
-                "Instructions",
-                copilotInstructionsFile?.let { "Open ${it.relativeTo(java.io.File(base!!))}" }
-                    ?: "No copilot-instructions.md found",
-                com.intellij.icons.AllIcons.Actions.IntentionBulb
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                override fun update(e: AnActionEvent) {
-                    e.presentation.isEnabled = copilotInstructionsFile != null
-                }
-
-                override fun actionPerformed(e: AnActionEvent) {
-                    val relPath = copilotInstructionsFile?.relativeTo(java.io.File(base!!))?.path ?: return
-                    openProjectFile(relPath)
-                }
-            })
-
-            // TODO
-            group.add(object : AnAction("TODO", "Open TODO.md", com.intellij.icons.AllIcons.General.TodoDefault) {
-                override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                override fun update(e: AnActionEvent) {
-                    e.presentation.isEnabled = base != null && java.io.File(base, "TODO.md").exists()
-                }
-
-                override fun actionPerformed(e: AnActionEvent) = openProjectFile("TODO.md")
-            })
-
-            group.addSeparator("Agent Definitions")
-
-            // Agent definition files from .github/agents/
-            val agentsDir = if (base != null) java.io.File(base, ".github/agents") else null
-            val agentFiles = agentsDir?.listFiles { f -> f.isFile && f.extension == "md" }
-                ?.sortedBy { it.name } ?: emptyList()
-            if (agentFiles.isNotEmpty()) {
-                for (agentFile in agentFiles) {
-                    val name = agentFile.nameWithoutExtension
-                    group.add(object :
-                        AnAction(name, "Open ${agentFile.name}", com.intellij.icons.AllIcons.General.User) {
-                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                        override fun actionPerformed(e: AnActionEvent) =
-                            openProjectFile(".github/agents/${agentFile.name}")
-                    })
-                }
-            } else {
-                group.add(object : AnAction("No agents defined", null, null) {
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                    override fun update(e: AnActionEvent) {
-                        e.presentation.isEnabled = false
-                    }
-
-                    override fun actionPerformed(e: AnActionEvent) { /* no-op: placeholder for disabled menu item */
-                    }
-                })
             }
 
             group.addSeparator("MCP Server")
@@ -1241,6 +1190,61 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     true
                 )
             popup.showUnderneathOf(owner)
+        }
+
+        private fun addFileEntry(group: DefaultActionGroup, base: String?, entry: ProjectFilesSettings.FileEntry) {
+            val file = if (base != null) java.io.File(base, entry.path) else null
+            val exists = file?.exists() == true
+            group.add(object : AnAction(
+                entry.label,
+                if (exists) "Open ${entry.path}" else "${entry.path} not found",
+                if (exists) AllIcons.FileTypes.Text else AllIcons.Actions.IntentionBulbGrey
+            ) {
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabled = exists
+                }
+
+                override fun actionPerformed(e: AnActionEvent) = openProjectFile(entry.path)
+            })
+        }
+
+        private fun addGlobEntries(group: DefaultActionGroup, base: String?, entry: ProjectFilesSettings.FileEntry) {
+            group.addSeparator(entry.label)
+            if (base == null) return
+
+            val globPath = entry.path
+            val lastSlash = globPath.lastIndexOf('/')
+            val dirPart = if (lastSlash >= 0) globPath.substring(0, lastSlash) else ""
+            val patternPart = if (lastSlash >= 0) globPath.substring(lastSlash + 1) else globPath
+            val regex = Regex("^" + patternPart.replace(".", "\\.").replace("*", ".*") + "$")
+
+            val dir = java.io.File(base, dirPart)
+            val matched = dir.listFiles { f -> f.isFile && regex.matches(f.name) }
+                ?.sortedBy { it.name } ?: emptyList()
+
+            if (matched.isNotEmpty()) {
+                for (file in matched) {
+                    val relPath = if (dirPart.isNotEmpty()) "$dirPart/${file.name}" else file.name
+                    group.add(object : AnAction(
+                        file.nameWithoutExtension,
+                        "Open ${file.name}",
+                        AllIcons.General.User
+                    ) {
+                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                        override fun actionPerformed(e: AnActionEvent) = openProjectFile(relPath)
+                    })
+                }
+            } else {
+                group.add(object : AnAction("None found", null, null) {
+                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.isEnabled = false
+                    }
+
+                    override fun actionPerformed(e: AnActionEvent) {}
+                })
+            }
         }
     }
 
@@ -1720,6 +1724,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun sendPromptDirectly(prompt: String) {
         val trimmed = prompt.trim()
         if (trimmed.isEmpty()) return
+        statusBanner?.dismissCurrent()
         setSendingState(true)
         setResponseStatus(MSG_THINKING)
 
@@ -2224,27 +2229,29 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun handleCreateScratch(e: AnActionEvent) {
-        val languages = listOf(
-            "Java" to "java", "Kotlin" to "kt", "Python" to "py",
-            "JavaScript" to "js", "TypeScript" to "ts",
-            "Go" to "go", "Rust" to "rs", "C" to "c", "C++" to "cpp",
-            "Ruby" to "rb", "Shell" to "sh",
-            "HTML" to "html", "CSS" to "css", "SQL" to "sql",
-            "JSON" to "json", "YAML" to "yaml", "XML" to "xml",
-            "Markdown" to "md", "Plain Text" to "txt"
-        )
-        val group = DefaultActionGroup()
-        for ((label, ext) in languages) {
-            group.add(object : AnAction(label) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = createAndAttachScratch(ext)
-            })
+        val settings = com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings.getInstance()
+        val enabledLanguages = settings.enabledLanguages
+
+        if (enabledLanguages.isEmpty()) {
+            com.intellij.openapi.ui.Messages.showInfoMessage(
+                project,
+                "No languages are enabled. Configure them in Settings → Tools → Scratch File Types.",
+                "No Scratch Languages"
+            )
+            return
         }
-        val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance().createActionGroupPopup(
-            "Select File Type", group, e.dataContext,
-            com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false
-        )
-        popup.showCenteredInCurrentWindow(project)
+
+        com.intellij.ide.scratch.LRUPopupBuilder
+            .languagePopupBuilder(project, "New Scratch File") { lang ->
+                lang.associatedFileType?.icon ?: com.intellij.icons.AllIcons.FileTypes.Any_type
+            }
+            .forValues(enabledLanguages)
+            .onChosen { lang ->
+                val ext = lang.associatedFileType?.defaultExtension ?: return@onChosen
+                createAndAttachScratch(ext)
+            }
+            .buildPopup()
+            .showCenteredInCurrentWindow(project)
     }
 
     private fun createAndAttachScratch(ext: String) {
@@ -2288,7 +2295,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     // Debug/Timeline/Settings tabs extracted to DebugPanel.kt
     fun getComponent(): JComponent = mainPanel
-    fun openSettings() = debugPanel.openSettings()
+    fun openSettings() = com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable.open(project)
     fun openDebug() = debugPanel.openDebug()
     fun openSessionFiles() = debugPanel.openSessionFiles()
 
@@ -2381,7 +2388,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val isSelection: Boolean
     )
 
-    // TimelineEvent and EventType extracted to DebugPanel.kt
+// TimelineEvent and EventType extracted to DebugPanel.kt
 
     /** Tree node that holds file content and path for the Plans tab. */
     private class FileTreeNode(

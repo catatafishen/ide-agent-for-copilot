@@ -2,6 +2,7 @@ import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLeve
 
 plugins {
     id("java")
+    id("org.jetbrains.kotlin.jvm") version "2.3.10"
     id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
@@ -20,8 +21,6 @@ dependencies {
         } else {
             intellijIdeaUltimate("2025.3")
         }
-        instrumentationTools()
-        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
         bundledPlugin("org.jetbrains.plugins.terminal")
@@ -30,15 +29,12 @@ dependencies {
     // Compile against plugin-core to reuse PsiBridgeService, ToolRegistry, etc.
     compileOnly(project(":plugin-core"))
 
-    // JSON processing (Gson)
+    // Runtime dependencies that plugin-core needs (not pulled transitively from compileOnly)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+
     // Force annotations version to match the platform
     implementation("org.jetbrains:annotations:26.0.2")
-
-    testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
-    testImplementation("junit:junit:${providers.gradleProperty("junit4Version").get()}")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:${providers.gradleProperty("junitVersion").get()}")
 }
 
 configurations.all {
@@ -46,8 +42,7 @@ configurations.all {
 }
 
 // Repackage plugin-core without its plugin.xml descriptor.
-// standalone-mcp has its own plugin.xml; including plugin-core's would cause
-// "multiple plugin descriptors" errors during verifyPlugin.
+// This module has its own generated plugin.xml (superset of plugin-core's).
 val repackagePluginCore by tasks.registering(Jar::class) {
     archiveBaseName.set("plugin-core-classes")
     dependsOn(project(":plugin-core").tasks.named("jar"))
@@ -58,7 +53,48 @@ val repackagePluginCore by tasks.registering(Jar::class) {
     }
 }
 
-// Include plugin-core classes in the standalone plugin
+// Generate plugin.xml by merging plugin-core's descriptor with macro extensions
+val generatePluginXml by tasks.registering {
+    val corePluginXml = project(":plugin-core").file("src/main/resources/META-INF/plugin.xml")
+    val macroExtras = file("src/main/resources/META-INF/macro-extensions.xml")
+    val outputDir = layout.buildDirectory.dir("generated/plugin-xml/META-INF")
+
+    inputs.file(corePluginXml)
+    inputs.file(macroExtras)
+    outputs.dir(outputDir)
+
+    doLast {
+        var xml = corePluginXml.readText()
+        val extras = macroExtras.readText()
+
+        // Insert macro extensions before closing </extensions>
+        xml = xml.replace("  </extensions>", "$extras\n  </extensions>")
+
+        // Append "(Experimental)" to the plugin name
+        xml = xml.replace(
+            "<name>IDE Agent for Copilot</name>",
+            "<name>IDE Agent for Copilot (Experimental)</name>"
+        )
+
+        val outputFile = outputDir.get().file("plugin.xml").asFile
+        outputFile.parentFile.mkdirs()
+        outputFile.writeText(xml)
+    }
+}
+
+sourceSets {
+    main {
+        resources.srcDir(layout.buildDirectory.dir("generated/plugin-xml"))
+    }
+}
+
+tasks.named<ProcessResources>("processResources") {
+    dependsOn(generatePluginXml)
+    // Exclude the template file — only the generated plugin.xml should be in the JAR
+    exclude("META-INF/macro-extensions.xml")
+}
+
+// Include plugin-core classes in the sandbox
 tasks.named("prepareSandbox") {
     dependsOn(repackagePluginCore)
     doLast {
@@ -68,7 +104,7 @@ tasks.named("prepareSandbox") {
             "idea-sandbox"
         ).listFiles { f -> f.isDirectory && f.name.startsWith("IU-") }
         ideDirs?.forEach { ideDir ->
-            val sandboxLib = File(ideDir, "plugins/standalone-mcp/lib")
+            val sandboxLib = File(ideDir, "plugins/plugin-experimental/lib")
             sandboxLib.mkdirs()
             coreJar.copyTo(File(sandboxLib, "plugin-core.jar"), overwrite = true)
         }
@@ -76,7 +112,7 @@ tasks.named("prepareSandbox") {
 }
 
 tasks.named<Zip>("buildPlugin") {
-    archiveBaseName.set("ide-mcp-server")
+    archiveBaseName.set("ide-agent-for-copilot-experimental")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     dependsOn(repackagePluginCore)
     from(repackagePluginCore) {
@@ -93,8 +129,8 @@ tasks.named<Zip>("buildPlugin") {
 
 intellijPlatform {
     pluginConfiguration {
-        id = "com.github.catatafishen.idemcpserver"
-        name = "IDE MCP Server"
+        id = "com.github.catatafishen.ideagentforcopilot"
+        name = "IDE Agent for Copilot (Experimental)"
         version = project.version.toString()
 
         ideaVersion {
@@ -104,10 +140,10 @@ intellijPlatform {
     }
 
     pluginVerification {
+        // Experimental variant allows INTERNAL_API_USAGES (macro tools use internal APIs)
         failureLevel.set(
             listOf(
                 FailureLevel.INVALID_PLUGIN,
-                FailureLevel.INTERNAL_API_USAGES,
                 FailureLevel.OVERRIDE_ONLY_API_USAGES,
                 FailureLevel.NON_EXTENDABLE_API_USAGES,
                 FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
@@ -126,9 +162,5 @@ tasks {
 
     withType<JavaCompile> {
         options.compilerArgs.add("-Xlint:deprecation")
-    }
-
-    test {
-        useJUnitPlatform()
     }
 }

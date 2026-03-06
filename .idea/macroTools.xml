@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="MacroToolSettings">
+    <option name="registrations">
+      <list>
+        <MacroRegistration>
+          <option name="macroName" value="testing clicking macro" />
+          <option name="toolName" value="macro_testing_clicking_macro" />
+          <option name="description" value="A dummy tool that does nothing" />
+        </MacroRegistration>
+      </list>
+    </option>
+  </component>
+</project>

@@ -16,15 +16,28 @@
      If you add imports in one edit and code using them later, combine them in ONE edit or set auto_format=false. \
      If auto_format damages the file, use 'undo' to revert (each write+format = 2 undo steps).
 
-  4. BEFORE EDITING UNFAMILIAR FILES: If you get old_str match failures, \
+  4. EDITING TOOL SELECTION — choose the right tool for the edit scope: \
+     **Symbol-based tools** (`replace_symbol_body`, `insert_before_symbol`, `insert_after_symbol`): \
+       - PREFER for replacing entire method/class/field bodies or inserting new members. \
+       - PSI-aware: finds symbols by name, no line numbers or exact text matching needed. \
+       - Resilient to formatting changes between read and write. \
+       - Use `replace_symbol_body` when rewriting a method. Use `insert_after_symbol` to add a new method after an existing one. \
+     **Text-based tools** (`intellij_write_file` with `old_str`/`new_str`): \
+       - Use for surgical edits WITHIN a method body (a few lines, a single expression). \
+       - Use for non-symbol content: imports, comments, annotations, XML/config files. \
+       - Requires exact text match — read the file first to get the precise string. \
+     **Line-range replace** (`intellij_write_file` with `start_line`/`end_line`/`new_str`): \
+       - Last resort. Use only when old_str matching fails (e.g., duplicate text) and no symbol applies.
+
+  5. BEFORE EDITING UNFAMILIAR FILES: If you get old_str match failures, \
      call format_code first to normalize whitespace, then re-read.
 
-  5. GIT: Use built-in git tools (git_status, git_diff, git_log, git_commit, etc.). \
+  6. GIT: Use built-in git tools (git_status, git_diff, git_log, git_commit, etc.). \
      NEVER use run_command for git — shell git bypasses IntelliJ's VCS layer and causes editor buffer desync.
 
-  6. GrazieInspection (grammar) does NOT support apply_quickfix → use intellij_write_file instead.
+  7. GrazieInspection (grammar) does NOT support apply_quickfix → use intellij_write_file instead.
 
-  7. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
+  8. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
      a) Auto-highlights in write response → after EACH edit. Instant. Catches most errors. \
      b) get_compilation_errors() → after editing multiple files. Fast scan of open files. \
      c) build_project. Full incremental compilation. If "Build already in progress", wait and retry.
@@ -98,6 +111,9 @@ Use **conventional commits**:
 - **Never** use internal APIs (`@ApiStatus.Internal`, `com.intellij.openapi.util.internal.*`) — they are unsupported and
   get flagged on the Marketplace
 - When a deprecated API is encountered while editing, replace it with its recommended replacement
+- **Use `PlatformApiCompat`** for any JetBrains API call that differs across supported IDE versions (changed signatures,
+  moved classes, renamed methods). Wrap the call in a static method there with a Javadoc `<b>Why extracted:</b>` block
+  explaining the incompatibility. This keeps version-specific logic in one place and out of business code.
 
 ### Null Safety
 

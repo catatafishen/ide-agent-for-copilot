@@ -159,10 +159,51 @@
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgenticCopilotService"/>
     <applicationService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.CopilotService"/>
+    <applicationService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings"/>
+    <applicationService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings"/>
 
     <!-- Project Services -->
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>
+
+    <!-- Settings: IDE Agent for Copilot (parent group) -->
+    <projectConfigurable
+      parentId="tools"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.settings"
+      displayName="IDE Agent for Copilot"/>
+
+    <!-- Settings: Tool Permissions -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ToolPermissionsConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.toolPermissions"
+      displayName="Tool Permissions"/>
+
+    <!-- Settings: Tool Registration -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ToolRegistrationConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.toolRegistration"
+      displayName="Tool Registration"/>
+
+    <!-- Settings: Scratch File Types -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.scratchTypes"
+      displayName="Scratch File Types"/>
+
+    <!-- Settings: Project Files -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.projectFiles"
+      displayName="Project Files"/>
 
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity

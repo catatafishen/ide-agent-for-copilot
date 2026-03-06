@@ -721,8 +721,9 @@ public class McpServer {
                 + "Java (.java) requires the filename (without .java) to EXACTLY match the class name, case-sensitive "
                 + "(e.g. 'MyApp.java' must contain 'class MyApp'). "
                 + "Groovy (.groovy/.gvy) works reliably. "
-                + "JavaScript (.js) works reliably via Node.js. "
-                + "TypeScript (.ts) requires Node.js 22.6+ or tsx/ts-node; plain Node.js 20 cannot run .ts files. "
+                + "JavaScript (.js/.mjs) works reliably via Node.js. "
+                + "TypeScript (.ts/.mts) requires Node.js 22.6+ or tsx/ts-node; plain Node.js 20 cannot run .ts files. "
+                + "Scala (.scala) works if the Scala plugin is installed. "
                 + "Python (.py) requires the Python plugin installed in the IDE.",
             Map.of(
                 "name", Map.of("type", "string", "description", "Scratch file name with extension (e.g., 'test.kts', 'MyApp.java', 'hello.js')"),

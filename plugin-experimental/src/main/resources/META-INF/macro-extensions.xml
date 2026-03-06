@@ -1,0 +1,12 @@
+    <!-- === Experimental: Macro Tool Integration === -->
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolSettings"/>
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.MacroToolRegistrar"/>
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.MacroToolConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.macroTools"
+      displayName="Macro Tools"/>
+    <postStartupActivity
+      implementation="com.github.catatafishen.ideagentforcopilot.experimental.MacroStartupActivity"/>

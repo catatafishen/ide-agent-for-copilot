@@ -1,7 +1,7 @@
 package com.github.catatafishen.idemcpserver;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
-import com.github.catatafishen.idemcpserver.settings.McpServerSettings;
+import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.ProjectActivity;

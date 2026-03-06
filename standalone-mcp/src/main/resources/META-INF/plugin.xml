@@ -71,20 +71,27 @@
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
 
+    <!-- Settings: IDE MCP Server (parent group) -->
+    <projectConfigurable
+      parentId="tools"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.settings"
+      displayName="IDE Agent for Copilot"/>
+
+    <!-- Settings: Tool Registration -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ToolRegistrationConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.toolRegistration"
+      displayName="Tool Registration"/>
+
     <!-- Project service: MCP HTTP server -->
     <projectService
       serviceImplementation="com.github.catatafishen.idemcpserver.McpHttpServer"/>
 
-    <!-- Settings page: Tools > IDE MCP Server -->
-    <projectConfigurable
-      parentId="tools"
-      instance="com.github.catatafishen.idemcpserver.settings.McpServerConfigurable"
-      id="com.github.catatafishen.idemcpserver.settings"
-      displayName="IDE MCP Server"/>
-
-    <!-- Persistent settings state -->
+    <!-- Persistent settings state (shared from plugin-core) -->
     <projectService
-      serviceImplementation="com.github.catatafishen.idemcpserver.settings.McpServerSettings"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>
 
     <!-- Tool Window -->
     <toolWindow id="MCP Server"
