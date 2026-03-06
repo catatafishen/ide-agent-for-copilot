@@ -159,6 +159,10 @@
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgenticCopilotService"/>
     <applicationService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.CopilotService"/>
+    <applicationService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings"/>
+    <applicationService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings"/>
 
     <!-- Project Services -->
     <projectService
@@ -197,6 +201,20 @@
       instance="com.github.catatafishen.ideagentforcopilot.settings.MacroToolConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.macroTools"
       displayName="Macro Tools"/>
+
+    <!-- Settings: Scratch File Types -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.scratchTypes"
+      displayName="Scratch File Types"/>
+
+    <!-- Settings: Project Files -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.projectFiles"
+      displayName="Project Files"/>
 
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity

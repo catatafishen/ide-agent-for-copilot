@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -1286,37 +1287,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
-    private fun langToExtension(lang: String): String = when (lang.lowercase()) {
-        "java" -> "java"
-        "kotlin", "kt", "kts" -> "kt"
-        "python", "py" -> "py"
-        "javascript", "js" -> "js"
-        "typescript", "ts" -> "ts"
-        "tsx" -> "tsx"
-        "jsx" -> "jsx"
-        "html" -> "html"
-        "css" -> "css"
-        "xml" -> "xml"
-        "json" -> "json"
-        "yaml", "yml" -> "yaml"
-        "sql" -> "sql"
-        "shell", "bash", "sh", "zsh" -> "sh"
-        "groovy" -> "groovy"
-        "scala" -> "scala"
-        "rust", "rs" -> "rs"
-        "go", "golang" -> "go"
-        "c" -> "c"
-        "cpp", "c++" -> "cpp"
-        "ruby", "rb" -> "rb"
-        "swift" -> "swift"
-        "php" -> "php"
-        "r" -> "r"
-        "markdown", "md" -> "md"
-        "toml" -> "toml"
-        "properties" -> "properties"
-        "gradle" -> "gradle"
-        else -> lang.ifEmpty { "txt" }
-    }
+    private fun langToExtension(lang: String): String =
+        ScratchTypeSettings.getInstance().resolve(lang)
 
     private fun buildInitialPage(): String {
         val cssVars = buildCssVars()
