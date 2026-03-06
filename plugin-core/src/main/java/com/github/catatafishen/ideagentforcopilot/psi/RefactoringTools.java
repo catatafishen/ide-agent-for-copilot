@@ -362,7 +362,7 @@ class RefactoringTools extends AbstractToolHandler {
         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
         FileDocumentManager.getInstance().saveAllDocuments();
 
-        return "✅ Renamed '" + symbolName + "' to '" + newName + "'\n" +
+        return "Renamed '" + symbolName + "' to '" + newName + "'\n" +
             "  Updated " + refCount + " references across the project.\n" +
             "  File: " + pathStr;
     }
@@ -383,7 +383,7 @@ class RefactoringTools extends AbstractToolHandler {
         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
         FileDocumentManager.getInstance().saveAllDocuments();
 
-        return "✅ Safely deleted '" + symbolName + "' (no usages found).\n  File: " + pathStr;
+        return "Safely deleted '" + symbolName + "' (no usages found).\n  File: " + pathStr;
     }
 
     private String formatUsageReport(String symbolName, Collection<PsiReference> refs) {

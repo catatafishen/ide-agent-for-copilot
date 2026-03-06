@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
+import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -17,6 +18,21 @@ internal fun interface ToolResultRenderer {
      * to a default monospace text area.
      */
     fun render(output: String): JComponent?
+}
+
+/**
+ * Standard icons for tool-result status indicators.
+ */
+internal object ToolIcons {
+    val SUCCESS: Icon = AllIcons.RunConfigurations.TestPassed
+    val FAILURE: Icon = AllIcons.RunConfigurations.TestFailed
+    val WARNING: Icon = AllIcons.General.Warning
+    val SEARCH: Icon = AllIcons.Actions.Find
+    val TIMEOUT: Icon = AllIcons.Actions.StopWatch
+    val EXECUTE: Icon = AllIcons.Actions.Execute
+    val COVERAGE: Icon = AllIcons.RunConfigurations.TrackCoverage
+    val STASH: Icon = AllIcons.Vcs.ShelveSilent
+    val FOLDER: Icon = AllIcons.Nodes.Folder
 }
 
 /**
@@ -86,10 +102,11 @@ internal object ToolRenderers {
     private const val MONO_FONT = "JetBrains Mono"
 
     /**
-     * Creates a header panel with icon, count, and label (e.g., "🏷 5 tags").
+     * Creates a header panel with icon, count, and label (e.g., search icon + "5 results").
      */
-    fun headerPanel(icon: String, count: Int, label: String): JPanel {
-        val header = JBLabel("$icon $count $label").apply {
+    fun headerPanel(icon: Icon, count: Int, label: String): JPanel {
+        val header = JBLabel("$count $label").apply {
+            this.icon = icon
             font = UIUtil.getLabelFont().deriveFont(java.awt.Font.BOLD)
             border = JBUI.Borders.emptyBottom(4)
             alignmentX = JComponent.LEFT_ALIGNMENT

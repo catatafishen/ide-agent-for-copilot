@@ -24,13 +24,14 @@ internal object BuildResultRenderer : ToolResultRenderer {
         if (lines.isEmpty()) return null
 
         val firstLine = lines.first()
-        val (icon, label, color) = classifyStatus(firstLine) ?: return null
+        val (statusIcon, label, color) = classifyStatus(firstLine) ?: return null
 
         val panel = ToolRenderers.listPanel()
 
         // Status header
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("$icon $label").apply {
+        headerRow.add(JBLabel(label).apply {
+            icon = statusIcon
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = color
         })
@@ -64,10 +65,10 @@ internal object BuildResultRenderer : ToolResultRenderer {
         return panel
     }
 
-    private fun classifyStatus(line: String): Triple<String, String, Color>? = when {
-        line.startsWith("✓") -> Triple("✓", "Build succeeded", SUCCESS_COLOR)
-        line.startsWith("✗") -> Triple("✗", "Build failed", FAIL_COLOR)
-        line.startsWith("Build aborted") -> Triple("⚠", "Build aborted", WARN_COLOR)
+    private fun classifyStatus(line: String): Triple<javax.swing.Icon, String, Color>? = when {
+        line.startsWith("✓") -> Triple(ToolIcons.SUCCESS, "Build succeeded", SUCCESS_COLOR)
+        line.startsWith("✗") -> Triple(ToolIcons.FAILURE, "Build failed", FAIL_COLOR)
+        line.startsWith("Build aborted") -> Triple(ToolIcons.WARNING, "Build aborted", WARN_COLOR)
         else -> null
     }
 }

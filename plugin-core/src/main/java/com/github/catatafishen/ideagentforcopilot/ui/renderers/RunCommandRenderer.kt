@@ -13,8 +13,8 @@ import javax.swing.JComponent
  */
 internal object RunCommandRenderer : ToolResultRenderer {
 
-    private val SUCCESS_HEADER = Regex("""^✅\s*Command succeeded""")
-    private val FAIL_HEADER = Regex("""^❌\s*Command failed\s*\(exit code (\d+)\)""")
+    private val SUCCESS_HEADER = Regex("""^Command succeeded""")
+    private val FAIL_HEADER = Regex("""^Command failed\s*\(exit code (\d+)\)""")
     private val TIMEOUT_HEADER = Regex("""^Command timed out after (\d+) seconds""")
     private val PAGINATION_NOTE = Regex("""\(showing last \d+ chars.*\)""")
 
@@ -38,20 +38,23 @@ internal object RunCommandRenderer : ToolResultRenderer {
         val headerRow = ToolRenderers.rowPanel()
         when {
             successMatch != null -> {
-                headerRow.add(JBLabel("✓ Command succeeded").apply {
+                headerRow.add(JBLabel("Command succeeded").apply {
+                    icon = ToolIcons.SUCCESS
                     font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
                     foreground = SUCCESS_COLOR
                 })
             }
             failMatch != null -> {
-                headerRow.add(JBLabel("✗ Command failed").apply {
+                headerRow.add(JBLabel("Command failed").apply {
+                    icon = ToolIcons.FAILURE
                     font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
                     foreground = FAIL_COLOR
                 })
                 headerRow.add(ToolRenderers.mutedLabel("exit code ${failMatch.groupValues[1]}"))
             }
             timeoutMatch != null -> {
-                headerRow.add(JBLabel("⏱ Timed out").apply {
+                headerRow.add(JBLabel("Timed out").apply {
+                    icon = ToolIcons.TIMEOUT
                     font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
                     foreground = WARN_COLOR
                 })

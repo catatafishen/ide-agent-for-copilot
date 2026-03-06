@@ -30,7 +30,7 @@ internal object CoverageRenderer : ToolResultRenderer {
         val panel = ToolRenderers.listPanel()
         panel.add(
             ToolRenderers.headerPanel(
-                "📊", entries.size,
+                ToolIcons.COVERAGE, entries.size,
                 "${if (entries.size == 1) "class" else "classes"} — ${String.format("%.1f", overallPct)}% overall"
             )
         )

@@ -151,8 +151,8 @@ class InfrastructureTools extends AbstractToolHandler {
             effectiveOffset = fullOutput.length() - maxChars;
         }
         String header = failed
-            ? "❌ Command failed (exit code " + result.exitCode() + ")"
-            : "✅ Command succeeded";
+            ? "Command failed (exit code " + result.exitCode() + ")"
+            : "Command succeeded";
         if (failed && effectiveOffset > 0) {
             header += "\n(showing last " + maxChars + " chars — use offset=0 for beginning)";
         }
@@ -394,11 +394,11 @@ class InfrastructureTools extends AbstractToolHandler {
         boolean defect = (boolean) isDefect.invoke(test);
         String status;
         if (passed) {
-            status = "\u2705 PASSED";
+            status = "PASSED";
         } else if (defect) {
-            status = "\u274C FAILED";
+            status = "FAILED";
         } else {
-            status = "\u26A0 UNKNOWN";
+            status = "UNKNOWN";
         }
         testOutput.append("  ").append(status).append(" ").append(name).append("\n");
 

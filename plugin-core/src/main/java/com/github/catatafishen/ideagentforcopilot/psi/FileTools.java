@@ -700,7 +700,7 @@ class FileTools extends AbstractToolHandler {
 
             if (errors.isEmpty()) return "";
             int count = Math.min(errors.size(), 5);
-            String summary = "\n\n\u26A0\uFE0F WARNING: " + errors.size() + " syntax error(s) after write:\n"
+            String summary = "\n\nWARNING: " + errors.size() + " syntax error(s) after write:\n"
                 + String.join("\n", errors.subList(0, count));
             if (errors.size() > count) summary += "\n  ... and " + (errors.size() - count) + " more";
             return summary;
@@ -814,7 +814,7 @@ class FileTools extends AbstractToolHandler {
                         "Delete File: " + vf.getName(),
                         null
                     );
-                    resultFuture.complete("✅ Deleted file: " + pathStr);
+                    resultFuture.complete("Deleted file: " + pathStr);
                 } catch (Exception e) {
                     resultFuture.complete("Error deleting file: " + e.getMessage());
                 }

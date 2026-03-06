@@ -34,7 +34,7 @@ internal object ListProjectFilesRenderer : ToolResultRenderer {
         val grouped = entries.groupBy { it.dir }
 
         val panel = ToolRenderers.listPanel()
-        panel.add(ToolRenderers.headerPanel("📁", fileCount, "files"))
+        panel.add(ToolRenderers.headerPanel(ToolIcons.FOLDER, fileCount, "files"))
 
         for ((dir, files) in grouped) {
             if (dir.isNotEmpty()) {

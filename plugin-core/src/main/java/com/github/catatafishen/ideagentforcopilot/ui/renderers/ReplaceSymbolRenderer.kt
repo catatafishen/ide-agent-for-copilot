@@ -41,7 +41,8 @@ internal object ReplaceSymbolRenderer : ToolResultRenderer {
         val panel = ToolRenderers.listPanel()
 
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("✓ Replaced").apply {
+        headerRow.add(JBLabel("Replaced").apply {
+            icon = ToolIcons.SUCCESS
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = SUCCESS_COLOR
         })
@@ -70,7 +71,8 @@ internal object ReplaceSymbolRenderer : ToolResultRenderer {
         val panel = ToolRenderers.listPanel()
 
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("✓ Inserted").apply {
+        headerRow.add(JBLabel("Inserted").apply {
+            icon = ToolIcons.SUCCESS
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = SUCCESS_COLOR
         })

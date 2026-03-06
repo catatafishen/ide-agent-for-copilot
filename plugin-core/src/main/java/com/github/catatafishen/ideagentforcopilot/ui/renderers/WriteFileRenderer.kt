@@ -18,7 +18,7 @@ internal object WriteFileRenderer : ToolResultRenderer {
     private val EDITED_CHARS = Regex("""^Edited:\s+(.+?)\s+\(replaced\s+(\d+)\s+chars\s+with\s+(\d+)\s+chars\)""")
     private val EDITED_LINES = Regex("""^Edited:\s+(.+?)\s+\(replaced\s+lines\s+(\d+)-(\d+)\s+\((\d+)\s+lines?\)\s+with\s+(\d+)\s+chars\)""")
     private val CONTEXT_LINE = Regex("""^(\d+): (.*)$""")
-    private val SYNTAX_WARNING = Regex("""⚠.*$""", RegexOption.DOT_MATCHES_ALL)
+    private val SYNTAX_WARNING = Regex("""WARNING:.*$""", RegexOption.DOT_MATCHES_ALL)
     private val SUCCESS_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x3F, 0xB9, 0x50))
     private val WARN_COLOR = JBColor(Color(0x9A, 0x6D, 0x00), Color(0xD2, 0x9B, 0x22))
 
@@ -92,7 +92,8 @@ internal object WriteFileRenderer : ToolResultRenderer {
 
     private fun addStatusHeader(panel: javax.swing.JPanel, action: String, fileName: String, fullPath: String) {
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("✓ $action").apply {
+        headerRow.add(JBLabel(action).apply {
+            icon = ToolIcons.SUCCESS
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = SUCCESS_COLOR
         })
@@ -109,7 +110,10 @@ internal object WriteFileRenderer : ToolResultRenderer {
     private fun addSyntaxWarning(panel: javax.swing.JPanel, text: String) {
         val warning = SYNTAX_WARNING.find(text)?.value ?: return
         val row = ToolRenderers.rowPanel()
-        row.add(JBLabel(warning).apply { foreground = WARN_COLOR })
+        row.add(JBLabel(warning).apply {
+            icon = ToolIcons.WARNING
+            foreground = WARN_COLOR
+        })
         panel.add(row)
     }
 

@@ -19,7 +19,7 @@ internal object GitStashRenderer : ToolResultRenderer {
         if (stashes.isEmpty()) return null
 
         val panel = ToolRenderers.listPanel()
-        val header = ToolRenderers.headerPanel("📦", stashes.size, if (stashes.size == 1) "stash" else "stashes")
+        val header = ToolRenderers.headerPanel(ToolIcons.STASH, stashes.size, if (stashes.size == 1) "stash" else "stashes")
         panel.add(header)
 
         for (m in stashes) {

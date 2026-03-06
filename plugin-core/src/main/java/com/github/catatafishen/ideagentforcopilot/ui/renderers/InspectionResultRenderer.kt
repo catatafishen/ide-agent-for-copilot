@@ -16,7 +16,7 @@ internal object InspectionResultRenderer : ToolResultRenderer {
 
     private val FINDING_PATTERN = Regex("""^(.+?):(\d+)\s+\[([^]]+)]\s+(.+)$""")
     private val SUMMARY_PATTERN = Regex("""Found\s+(\d+)\s+(?:total\s+)?(?:problems?|compilation errors?)""")
-    private val SUCCESS_PATTERN = Regex("""^[✅✓]\s+No\s+(?:compilation errors|inspection problems)""")
+    private val SUCCESS_PATTERN = Regex("""^No\s+(?:compilation errors|inspection problems)""")
 
     private val ERROR_COLOR = JBColor(Color(0xCF, 0x22, 0x2E), Color(0xF8, 0x53, 0x49))
     private val WARN_COLOR = JBColor(Color(0x9A, 0x6D, 0x00), Color(0xD2, 0x9B, 0x22))
@@ -75,7 +75,8 @@ internal object InspectionResultRenderer : ToolResultRenderer {
 
     private fun renderSuccess(line: String): JComponent {
         val panel = ToolRenderers.listPanel()
-        panel.add(JBLabel("✓ ${line.removePrefix("✅").removePrefix("✓").trim()}").apply {
+        panel.add(JBLabel(line.removePrefix("✅").removePrefix("✓").trim()).apply {
+            icon = ToolIcons.SUCCESS
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = SUCCESS_COLOR
             alignmentX = JComponent.LEFT_ALIGNMENT
@@ -88,11 +89,12 @@ internal object InspectionResultRenderer : ToolResultRenderer {
         val count = summaryMatch?.groupValues?.get(1)?.toIntOrNull() ?: totalFindings
         val hasErrors = headerLines.any { "error" in it.lowercase() }
         val color = if (hasErrors) ERROR_COLOR else WARN_COLOR
-        val icon = if (hasErrors) "✗" else "⚠"
+        val statusIcon = if (hasErrors) ToolIcons.FAILURE else ToolIcons.WARNING
         val label = if (hasErrors) "problems" else "findings"
 
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("$icon $count $label").apply {
+        headerRow.add(JBLabel("$count $label").apply {
+            icon = statusIcon
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = color
         })

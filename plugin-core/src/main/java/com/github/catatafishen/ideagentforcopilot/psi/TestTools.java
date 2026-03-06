@@ -324,7 +324,7 @@ class TestTools extends AbstractToolHandler {
 
             int exitCode = handler.getExitCode() != null ? handler.getExitCode() : -1;
 
-            String summary = (exitCode == 0 ? "\u2705 Tests PASSED" : "\u274C Tests FAILED (exit code " + exitCode + ")")
+            String summary = (exitCode == 0 ? "Tests PASSED" : "Tests FAILED (exit code " + exitCode + ")")
                 + " — " + configName;
 
             String testOutput = collectTestRunOutput(configName);
@@ -463,8 +463,8 @@ class TestTools extends AbstractToolHandler {
 
             int exitCode = handler.getExitCode() != null ? handler.getExitCode() : -1;
 
-            String summary = (exitCode == 0 ? "\u2705 Tests PASSED" : "\u274C Tests FAILED (exit code " + exitCode + ")")
-                + " \u2014 " + configName;
+            String summary = (exitCode == 0 ? "Tests PASSED" : "Tests FAILED (exit code " + exitCode + ")")
+                + " — " + configName;
 
             String testOutput = collectTestRunOutput(configName);
             return testOutput.isEmpty() ? summary + "\nResults are visible in the IntelliJ test runner panel." : summary + "\n" + testOutput;
@@ -560,7 +560,7 @@ class TestTools extends AbstractToolHandler {
         String name = (String) getName.invoke(test);
         boolean passed = (boolean) isPassed.invoke(test);
         boolean defect = (boolean) isDefect.invoke(test);
-        String status = passed ? "\u2705 PASSED" : defect ? "\u274C FAILED" : "\u26A0 UNKNOWN";
+        String status = passed ? "PASSED" : defect ? "FAILED" : "UNKNOWN";
         sb.append("  ").append(status).append(" ").append(name).append("\n");
 
         if (defect) {
@@ -657,8 +657,8 @@ class TestTools extends AbstractToolHandler {
                 if (!xmlResults.isEmpty()) return xmlResults;
             }
 
-            String summary = (exitCode == 0 ? "\u2705 Tests PASSED" : "\u274C Tests FAILED (exit code " + exitCode + ")")
-                + " \u2014 " + configName;
+            String summary = (exitCode == 0 ? "Tests PASSED" : "Tests FAILED (exit code " + exitCode + ")")
+                + " — " + configName;
 
             String testOutput = collectTestRunOutput(configName);
             return testOutput.isEmpty() ? summary : summary + "\n" + testOutput;
@@ -953,7 +953,7 @@ class TestTools extends AbstractToolHandler {
                 String tcName = tc.getAttributes().getNamedItem("name").getNodeValue();
                 String cls = tc.getAttributes().getNamedItem("classname").getNodeValue();
                 String msg = failNodes.item(0).getAttributes().getNamedItem(PARAM_MESSAGE).getNodeValue();
-                failures.add(String.format("  \u274C %s.%s: %s", cls, tcName, msg));
+                failures.add(String.format("  %s.%s: %s", cls, tcName, msg));
             }
         }
     }

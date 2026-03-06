@@ -73,7 +73,7 @@ internal object SearchResultRenderer : ToolResultRenderer {
         val match = headerLine?.let { COUNT_HEADER.find(it) }
         val displayCount = match?.groupValues?.get(1)?.toIntOrNull() ?: count
         val kind = match?.groupValues?.get(2) ?: "results"
-        panel.add(ToolRenderers.headerPanel("🔍", displayCount, kind))
+        panel.add(ToolRenderers.headerPanel(ToolIcons.SEARCH, displayCount, kind))
     }
 
     private fun addGroupedResults(panel: javax.swing.JPanel, results: List<SearchResult>) {

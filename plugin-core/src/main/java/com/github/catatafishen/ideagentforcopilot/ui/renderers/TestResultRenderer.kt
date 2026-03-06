@@ -41,8 +41,9 @@ internal object TestResultRenderer : ToolResultRenderer {
         // Status header
         val headerRow = ToolRenderers.rowPanel()
         val statusColor = if (allPassed) SUCCESS_COLOR else FAIL_COLOR
-        val icon = if (allPassed) "✓" else "✗"
-        headerRow.add(JBLabel("$icon $total tests").apply {
+        val statusIcon = if (allPassed) ToolIcons.SUCCESS else ToolIcons.FAILURE
+        headerRow.add(JBLabel("$total tests").apply {
+            icon = statusIcon
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = statusColor
         })
@@ -57,8 +58,13 @@ internal object TestResultRenderer : ToolResultRenderer {
         if (skipped > 0) statsRow.add(JBLabel("$skipped skipped").apply { foreground = SKIP_COLOR })
         panel.add(statsRow)
 
-        // Failures
-        val failures = lines.drop(1).filter { it.trim().startsWith("❌") || it.trim().startsWith("\u274C") }
+        // Failures — look for "Failures:" section or legacy ❌-prefixed lines
+        val failIdx = lines.indexOfFirst { it.trim() == "Failures:" }
+        val failures = if (failIdx >= 0) {
+            lines.subList(failIdx + 1, lines.size).filter { it.trim().isNotEmpty() }
+        } else {
+            lines.drop(1).filter { it.trim().startsWith("❌") || it.trim().startsWith("\u274C") }
+        }
         for (failure in failures) {
             val trimmed = failure.trim().removePrefix("❌").removePrefix("\u274C").trim()
             val row = ToolRenderers.rowPanel()

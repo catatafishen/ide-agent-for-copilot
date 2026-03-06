@@ -77,6 +77,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     companion object {
         private const val SA_COLOR_COUNT = 8
         private val QUICK_REPLY_TAG_REGEX = Regex("\\[quick-reply:\\s*([^]]+)]")
+        private const val FILE_ICON_SVG =
+            "<svg width=\\'12\\' height=\\'12\\' viewBox=\\'0 0 16 16\\' fill=\\'currentColor\\' " +
+                    "style=\\'vertical-align:-2px\\'><path d=\\'M3.5 1A1.5 1.5 0 0 0 2 2.5v11A1.5 1.5 0 0 0 " +
+                    "3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V6.621a1.5 1.5 0 0 0-.44-1.06L9.94 1.94A1.5 1.5 0 0 0 " +
+                    "8.879 1.5H3.5z\\'/></svg>"
 
         /** Active panels keyed by project — used by MCP tool to retrieve page HTML. */
         private val instances = java.util.concurrent.ConcurrentHashMap<Project, ChatConsolePanel>()
@@ -229,7 +234,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val ctxHtml = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
-                "<a class=\\'prompt-ctx-chip\\' href=\\'$href\\' title=\\'${escJs(path)}${if (line > 0) ":$line" else ""}\\'>📄 ${
+                "<a class=\\'prompt-ctx-chip\\' href=\\'$href\\' title=\\'${escJs(path)}${if (line > 0) ":$line" else ""}\\'>$FILE_ICON_SVG ${
                     escJs(
                         name
                     )

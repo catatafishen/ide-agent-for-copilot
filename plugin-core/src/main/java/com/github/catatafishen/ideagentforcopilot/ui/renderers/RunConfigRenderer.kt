@@ -22,7 +22,7 @@ internal object RunConfigRenderer : ToolResultRenderer {
         val panel = ToolRenderers.listPanel()
         panel.add(
             ToolRenderers.headerPanel(
-                "▶", configs.size,
+                ToolIcons.EXECUTE, configs.size,
                 if (configs.size == 1) "run configuration" else "run configurations"
             )
         )

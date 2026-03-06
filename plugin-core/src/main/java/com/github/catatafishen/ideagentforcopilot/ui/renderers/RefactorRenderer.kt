@@ -14,10 +14,10 @@ import javax.swing.JComponent
  */
 internal object RefactorRenderer : ToolResultRenderer {
 
-    private val RENAME = Regex("""^✅\s*Renamed '(.+)' to '(.+)'""")
-    private val DELETE_OK = Regex("""^✅\s*Safely deleted '(.+)'""")
-    private val EXTRACT = Regex("""^✅\s*Extracted method '(.+)'""")
-    private val INLINE = Regex("""^✅\s*Inlined '(.+)'""")
+    private val RENAME = Regex("""^Renamed '(.+)' to '(.+)'""")
+    private val DELETE_OK = Regex("""^Safely deleted '(.+)'""")
+    private val EXTRACT = Regex("""^Extracted method '(.+)'""")
+    private val INLINE = Regex("""^Inlined '(.+)'""")
     private val DELETE_FAIL = Regex("""^Cannot safely delete '(.+)' — it has (\d+) usages?:""")
     private val REF_COUNT = Regex("""Updated (\d+) references?""")
     private val FILE_LINE = Regex("""^\s*File:\s+(.+)$""")
@@ -93,7 +93,8 @@ internal object RefactorRenderer : ToolResultRenderer {
         val panel = ToolRenderers.listPanel()
 
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("✗ Cannot delete").apply {
+        headerRow.add(JBLabel("Cannot delete").apply {
+            icon = ToolIcons.FAILURE
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = FAIL_COLOR
         })
@@ -122,7 +123,8 @@ internal object RefactorRenderer : ToolResultRenderer {
 
     private fun addSuccessHeader(panel: javax.swing.JPanel, action: String) {
         val headerRow = ToolRenderers.rowPanel()
-        headerRow.add(JBLabel("✓ $action").apply {
+        headerRow.add(JBLabel(action).apply {
+            icon = ToolIcons.SUCCESS
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
             foreground = SUCCESS_COLOR
         })
