@@ -846,6 +846,22 @@ public class McpServer {
             ),
             List.of("symbol")));
 
+        addIfEnabled.accept(buildTool("find_implementations", "Find all implementations of a class/interface or all overrides of a method. For classes, finds all implementing/extending classes. For methods, finds all overriding methods in the project.",
+            Map.of(
+                "symbol", Map.of("type", "string", "description", "Class, interface, or method name to find implementations for"),
+                "file", Map.of("type", "string", "description", "Optional: file path for method context (required when searching for method overrides)"),
+                "line", Map.of("type", "integer", "description", "Optional: line number to disambiguate the method (required when searching for method overrides)")
+            ),
+            List.of("symbol")));
+
+        addIfEnabled.accept(buildTool("get_call_hierarchy", "Get Call Hierarchy: find all locations that call a specific method. Returns a list of callers with file paths, line numbers, and containing method/class context.",
+            Map.of(
+                "symbol", Map.of("type", "string", "description", "Method name to find callers for"),
+                "file", Map.of("type", "string", "description", "Path to the file containing the method definition"),
+                "line", Map.of("type", "integer", "description", "Line number where the method is defined")
+            ),
+            List.of("symbol", "file", "line")));
+
         addIfEnabled.accept(buildTool("create_file", "Create a new file with content. Fails if the file already exists (use intellij_write_file to overwrite). Creates parent directories as needed.",
             Map.of(
                 "path", Map.of("type", "string", "description", "Path for the new file (absolute or project-relative). File must not already exist"),

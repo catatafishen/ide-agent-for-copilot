@@ -1,14 +1,29 @@
 package com.github.catatafishen.ideagentforcopilot.psi.java;
 
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiModifier;
+import com.intellij.psi.PsiRecursiveElementWalkingVisitor;
+import com.intellij.psi.PsiReference;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiShortNamesCache;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
+import com.intellij.psi.search.searches.MethodReferencesSearch;
+import com.intellij.psi.search.searches.OverridingMethodsSearch;
+import com.intellij.psi.util.PsiTreeUtil;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -117,6 +132,208 @@ public class RefactoringJavaSupport {
                 .append(file).append("\n");
             appendSupertypes(iface, sb, basePath, indent + "  ", visited, depth + 1);
         }
+    }
+
+    /**
+     * Finds all implementations of a class/interface or overrides of a method.
+     *
+     * @param project    current project
+     * @param symbolName class, interface, or method name
+     * @param filePath   optional file path for method context
+     * @param line       optional line number to disambiguate the method
+     * @return formatted list of implementations, or an error/empty message
+     */
+    public static String findImplementations(Project project, String symbolName,
+                                             @Nullable String filePath, int line) {
+        PsiClass psiClass = resolveClassByName(project, symbolName);
+        if (psiClass != null && (psiClass.isInterface()
+            || psiClass.hasModifierProperty(PsiModifier.ABSTRACT))) {
+            return findClassImplementations(project, psiClass);
+        }
+
+        if (filePath != null && line > 0) {
+            String methodResult = findMethodOverrides(project, symbolName, filePath, line);
+            if (methodResult != null) return methodResult;
+        }
+
+        if (psiClass != null) {
+            return findClassImplementations(project, psiClass);
+        }
+
+        return "No implementations found for: " + symbolName;
+    }
+
+    private static String findClassImplementations(Project project, PsiClass psiClass) {
+        var inheritors = ClassInheritorsSearch.search(
+            psiClass, GlobalSearchScope.projectScope(project), true).findAll();
+        if (inheritors.isEmpty()) {
+            String name = psiClass.getQualifiedName();
+            return "No implementations found for: " + (name != null ? name : psiClass.getName());
+        }
+        String basePath = project.getBasePath();
+        StringBuilder sb = new StringBuilder();
+        String qName = psiClass.getQualifiedName();
+        sb.append("Implementations of ").append(qName != null ? qName : psiClass.getName()).append(":\n\n");
+        for (PsiClass inheritor : inheritors) {
+            appendClassLocation(sb, inheritor, basePath);
+        }
+        return sb.toString();
+    }
+
+    private static @Nullable String findMethodOverrides(Project project, String methodName,
+                                                        String filePath, int line) {
+        PsiMethod method = resolveMethodAtLocation(project, filePath, line, methodName);
+        if (method == null) return null;
+
+        var overrides = OverridingMethodsSearch.search(method,
+            GlobalSearchScope.projectScope(project), true).findAll();
+        if (overrides.isEmpty()) {
+            return "No overriding methods found for: " + methodName;
+        }
+
+        String basePath = project.getBasePath();
+        StringBuilder sb = new StringBuilder();
+        sb.append("Overrides of ").append(formatMethodSignature(method)).append(":\n\n");
+        for (PsiMethod override : overrides) {
+            appendMethodLocation(sb, override, basePath);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Builds a call hierarchy for the given method, listing all callers.
+     *
+     * @param project    current project
+     * @param methodName method name to search for
+     * @param filePath   file containing the method
+     * @param line       line number where the method is defined
+     * @return formatted list of callers, or an error message
+     */
+    public static String getCallHierarchy(Project project, String methodName,
+                                          String filePath, int line) {
+        PsiMethod method = resolveMethodAtLocation(project, filePath, line, methodName);
+        if (method == null) {
+            return "Error: Could not find method '" + methodName + "' at "
+                + filePath + ":" + line;
+        }
+
+        Collection<PsiReference> references = MethodReferencesSearch.search(
+            method, GlobalSearchScope.projectScope(project), true).findAll();
+        if (references.isEmpty()) {
+            return "No callers found for: " + formatMethodSignature(method);
+        }
+
+        String basePath = project.getBasePath();
+        StringBuilder sb = new StringBuilder();
+        sb.append("Callers of ").append(formatMethodSignature(method)).append(":\n\n");
+        for (PsiReference ref : references) {
+            appendCallerInfo(sb, ref, basePath);
+        }
+        return sb.toString();
+    }
+
+    private static @Nullable PsiMethod resolveMethodAtLocation(Project project, String filePath,
+                                                               int line, String methodName) {
+        VirtualFile vf = ToolUtils.resolveVirtualFile(project, filePath);
+        if (vf == null) return null;
+
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return null;
+
+        Document document = FileDocumentManager.getInstance().getDocument(vf);
+        if (document == null || line < 1 || line > document.getLineCount()) return null;
+
+        int lineStart = document.getLineStartOffset(line - 1);
+        int lineEnd = document.getLineEndOffset(line - 1);
+
+        PsiMethod[] found = {null};
+        psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
+            @Override
+            public void visitElement(@NotNull PsiElement element) {
+                if (element instanceof PsiMethod m && methodName.equals(m.getName())) {
+                    int offset = m.getTextOffset();
+                    if (offset >= lineStart && offset <= lineEnd) {
+                        found[0] = m;
+                        stopWalking();
+                        return;
+                    }
+                }
+                super.visitElement(element);
+            }
+        });
+        return found[0];
+    }
+
+    private static void appendClassLocation(StringBuilder sb, PsiClass cls, String basePath) {
+        String name = cls.getQualifiedName();
+        sb.append("  ").append(cls.isInterface() ? "interface " : "class ")
+            .append(name != null ? name : cls.getName());
+        PsiFile file = cls.getContainingFile();
+        if (file != null && file.getVirtualFile() != null && basePath != null) {
+            String path = file.getVirtualFile().getPath();
+            if (!path.contains(".jar!")) {
+                sb.append(" (").append(ToolUtils.relativize(basePath, path));
+                Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
+                if (doc != null) {
+                    int lineNum = doc.getLineNumber(cls.getTextOffset()) + 1;
+                    sb.append(":").append(lineNum);
+                }
+                sb.append(")");
+            }
+        }
+        sb.append("\n");
+    }
+
+    private static void appendMethodLocation(StringBuilder sb, PsiMethod method, String basePath) {
+        PsiClass containingClass = method.getContainingClass();
+        String className = containingClass != null ? containingClass.getQualifiedName() : null;
+        sb.append("  ");
+        if (className != null) sb.append(className).append(".");
+        sb.append(method.getName()).append("()");
+        appendFileLocation(sb, method, basePath);
+        sb.append("\n");
+    }
+
+    private static void appendCallerInfo(StringBuilder sb, PsiReference ref, String basePath) {
+        PsiElement element = ref.getElement();
+        PsiMethod containingMethod = PsiTreeUtil.getParentOfType(element, PsiMethod.class);
+        PsiClass containingClass = PsiTreeUtil.getParentOfType(element, PsiClass.class);
+
+        sb.append("  ");
+        if (containingClass != null) {
+            String className = containingClass.getQualifiedName();
+            sb.append(className != null ? className : containingClass.getName());
+            if (containingMethod != null) {
+                sb.append(".").append(containingMethod.getName()).append("()");
+            }
+        } else {
+            sb.append("(unknown context)");
+        }
+        appendFileLocation(sb, element, basePath);
+        sb.append("\n");
+    }
+
+    private static void appendFileLocation(StringBuilder sb, PsiElement element, String basePath) {
+        PsiFile file = element.getContainingFile();
+        if (file == null || file.getVirtualFile() == null || basePath == null) return;
+        String path = file.getVirtualFile().getPath();
+        if (path.contains(".jar!")) return;
+        sb.append(" (").append(ToolUtils.relativize(basePath, path));
+        Document doc = FileDocumentManager.getInstance().getDocument(file.getVirtualFile());
+        if (doc != null) {
+            int lineNum = doc.getLineNumber(element.getTextOffset()) + 1;
+            sb.append(":").append(lineNum);
+        }
+        sb.append(")");
+    }
+
+    private static String formatMethodSignature(PsiMethod method) {
+        PsiClass containingClass = method.getContainingClass();
+        String className = containingClass != null ? containingClass.getQualifiedName() : null;
+        if (className != null) {
+            return className + "." + method.getName() + "()";
+        }
+        return method.getName() + "()";
     }
 
     private static String getClassFile(PsiClass cls, String basePath) {

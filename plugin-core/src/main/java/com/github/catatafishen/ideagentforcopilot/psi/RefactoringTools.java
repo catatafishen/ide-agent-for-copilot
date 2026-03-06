@@ -60,6 +60,8 @@ class RefactoringTools extends AbstractToolHandler {
         register("go_to_declaration", this::goToDeclaration);
         if (isPluginInstalled("com.intellij.modules.java")) {
             register("get_type_hierarchy", this::getTypeHierarchyWrapper);
+            register("find_implementations", this::findImplementationsWrapper);
+            register("get_call_hierarchy", this::getCallHierarchyWrapper);
         }
         register("get_documentation", this::getDocumentation);
     }
@@ -622,6 +624,34 @@ class RefactoringTools extends AbstractToolHandler {
     }
 
     // ---- Utilities ----
+
+    private String findImplementationsWrapper(JsonObject args) {
+        if (!args.has(PARAM_SYMBOL)) return "Error: 'symbol' parameter is required";
+        String symbolName = args.get(PARAM_SYMBOL).getAsString();
+        String filePath = args.has("file") ? args.get("file").getAsString() : null;
+        int line = args.has("line") ? args.get("line").getAsInt() : 0;
+
+        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+            com.github.catatafishen.ideagentforcopilot.psi.java.RefactoringJavaSupport
+                .findImplementations(project, symbolName, filePath, line)
+        );
+        return truncateOutput(result);
+    }
+
+    private String getCallHierarchyWrapper(JsonObject args) {
+        if (!args.has(PARAM_SYMBOL) || !args.has("file") || !args.has("line")) {
+            return "Error: 'symbol', 'file', and 'line' parameters are required";
+        }
+        String methodName = args.get(PARAM_SYMBOL).getAsString();
+        String filePath = args.get("file").getAsString();
+        int line = args.get("line").getAsInt();
+
+        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+            com.github.catatafishen.ideagentforcopilot.psi.java.RefactoringJavaSupport
+                .getCallHierarchy(project, methodName, filePath, line)
+        );
+        return truncateOutput(result);
+    }
 
     private static String truncateOutput(String output) {
         if (output.length() <= 8000) return output;

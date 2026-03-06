@@ -99,6 +99,8 @@ public final class ToolRegistry {
         new ToolEntry("get_file_outline", "Get File Outline", "Get the structure of a file — classes, methods, and fields with line numbers", Category.SEARCH, false, false, false),
         new ToolEntry("get_class_outline", "Get Class Outline", "Get the full API of any class by fully-qualified name, including library and JDK classes", Category.SEARCH, false, false, false),
         new ToolEntry("get_type_hierarchy", "Get Type Hierarchy", "Show supertypes and/or subtypes of a class or interface", Category.SEARCH, false, false, false),
+        new ToolEntry("find_implementations", "Find Implementations", "Find all implementations of a class/interface or overrides of a method", Category.SEARCH, false, false, false),
+        new ToolEntry("get_call_hierarchy", "Get Call Hierarchy", "Find all callers of a method with file paths and line numbers", Category.SEARCH, false, false, false),
 
         // ── Code quality ─────────────────────────────────────────────────────────
         new ToolEntry("run_inspections", "Run Inspections", "Run IntelliJ's full inspection engine on the project or a specific scope", Category.CODE_QUALITY, false, false, false),
