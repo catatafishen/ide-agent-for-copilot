@@ -111,6 +111,9 @@ Use **conventional commits**:
 - **Never** use internal APIs (`@ApiStatus.Internal`, `com.intellij.openapi.util.internal.*`) — they are unsupported and
   get flagged on the Marketplace
 - When a deprecated API is encountered while editing, replace it with its recommended replacement
+- **Use `PlatformApiCompat`** for any JetBrains API call that differs across supported IDE versions (changed signatures,
+  moved classes, renamed methods). Wrap the call in a static method there with a Javadoc `<b>Why extracted:</b>` block
+  explaining the incompatibility. This keeps version-specific logic in one place and out of business code.
 
 ### Null Safety
 
