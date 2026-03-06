@@ -3,7 +3,8 @@ package com.github.catatafishen.ideagentforcopilot.ui
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -11,45 +12,55 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Dimension
-import javax.swing.Action
+import java.awt.Point
+import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ScrollPaneConstants
 
 /**
- * Non-modal floating dialog that shows tool call details (name, parameters, result).
- * Opens when the user clicks a tool chip in the chat panel.
- * Uses native Swing components so it can be moved freely across the entire IDE.
+ * Lightweight floating popup that shows tool call details (parameters and result).
+ * Uses [JBPopupFactory] — movable, resizable, closable via Escape or click-away.
+ * No bottom button bar; much lighter than DialogWrapper.
  */
-internal class ToolCallPopup private constructor(
-    project: Project,
-    private val toolTitle: String,
-    private val arguments: String?,
-    private val result: String?,
-    private val status: String?
-) : DialogWrapper(project, false) {
+internal object ToolCallPopup {
 
-    companion object {
-        private var current: ToolCallPopup? = null
+    private var currentPopup: com.intellij.openapi.ui.popup.JBPopup? = null
 
-        fun show(project: Project, title: String, arguments: String?, result: String?, status: String?) {
-            current?.close(CLOSE_EXIT_CODE)
-            current = ToolCallPopup(project, title, arguments, result, status).also { it.show() }
+    fun show(project: Project, title: String, arguments: String?, result: String?, status: String?) {
+        currentPopup?.cancel()
+        val content = buildContent(arguments, result, status)
+        val popup = JBPopupFactory.getInstance()
+            .createComponentPopupBuilder(content, null)
+            .setTitle(title)
+            .setMovable(true)
+            .setResizable(true)
+            .setRequestFocus(true)
+            .setCancelOnClickOutside(false)
+            .setCancelOnOtherWindowOpen(false)
+            .setCancelKeyEnabled(true)
+            .setMinSize(Dimension(JBUI.scale(300), JBUI.scale(150)))
+            .createPopup()
+        currentPopup = popup
+
+        val frame = WindowManager.getInstance().getFrame(project)
+        if (frame != null) {
+            val center = Point(
+                frame.x + (frame.width - JBUI.scale(520)) / 2,
+                frame.y + (frame.height - JBUI.scale(400)) / 2
+            )
+            popup.showInScreenCoordinates(frame.rootPane, center)
+        } else {
+            popup.showInFocusCenter()
         }
     }
 
-    init {
-        this.title = toolTitle
-        isModal = false
-        init()
-    }
-
-    override fun createCenterPanel(): JComponent {
-        val panel = JPanel(BorderLayout(0, JBUI.scale(8)))
+    private fun buildContent(arguments: String?, result: String?, status: String?): JComponent {
+        val panel = JPanel(BorderLayout())
         panel.preferredSize = Dimension(JBUI.scale(520), JBUI.scale(400))
 
         val content = JPanel().apply {
-            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(8)
         }
 
@@ -101,20 +112,6 @@ internal class ToolCallPopup private constructor(
         scroll.maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(300))
         section.add(scroll, BorderLayout.CENTER)
         return section
-    }
-
-    override fun createActions(): Array<Action> = arrayOf(okAction)
-
-    override fun getOKAction(): Action = super.getOKAction().apply { putValue(Action.NAME, "Close") }
-
-    override fun doCancelAction() {
-        current = null
-        super.doCancelAction()
-    }
-
-    override fun doOKAction() {
-        current = null
-        super.doOKAction()
     }
 
     private fun prettyJson(json: String): String {

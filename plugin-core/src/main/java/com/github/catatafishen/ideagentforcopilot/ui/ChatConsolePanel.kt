@@ -655,6 +655,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val kind = obj["kind"]?.asString ?: "other"
                 val result = obj["result"]?.asString
                 val status = obj["status"]?.asString ?: "completed"
+                toolCallNames[did] = baseName
+                toolCallEntries[did] = EntryData.ToolCall(title, args, kind, result, status)
                 val hasCustomRenderer = ToolRenderers.hasRenderer(baseName)
                 val paramsJson = if (!args.isNullOrBlank() && !hasCustomRenderer) escJs(args) else ""
                 val resultHtml = renderToolResult(baseName, status, result)
@@ -802,6 +804,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                                 val id = "batch-tool-${batchIdCounter++}"
                                 val result = e["result"]?.asString
                                 val status = e["status"]?.asString ?: "completed"
+                                toolCallNames[id] = baseName
+                                toolCallEntries[id] = EntryData.ToolCall(title, args, kind, result, status)
                                 val resultHtml = renderToolResultHtml(baseName, status, result)
                                 metaChips.append("<tool-chip label='${esc(label)}' status='complete' kind='${esc(kind)}' data-chip-for='$id'></tool-chip>")
                                 detailsContent.append("<tool-section id='$id' title='${esc(label)}'")
