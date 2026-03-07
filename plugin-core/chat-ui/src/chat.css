@@ -182,24 +182,28 @@ body {
 }
 
 .prompt-ctx-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1);
-    background: var(--user-a12);
-    border: 1px solid var(--user-a16);
-    border-radius: var(--r-sm);
-    padding: 1px var(--sp-4);
-    font-size: 0.82em;
-    font-weight: 500;
-    color: var(--user);
+    display: inline;
+    color: var(--link);
     text-decoration: none;
-    white-space: nowrap;
+    cursor: pointer;
+}
+
+.prompt-ctx-chip code {
+    background: var(--code-bg);
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-sm);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: var(--code-font-size);
 }
 
 .prompt-ctx-chip:hover {
-    text-decoration: none;
-    background: var(--user-a18);
-    border-color: var(--user-a25);
+    text-decoration: underline;
+}
+
+.prompt-ctx-chip .file-icon {
+    vertical-align: -2px;
+    opacity: 0.7;
+    margin-right: 2px;
 }
 
 

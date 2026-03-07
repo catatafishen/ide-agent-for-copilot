@@ -9,29 +9,21 @@ import java.awt.*
 import java.awt.geom.RoundRectangle2D
 import javax.swing.UIManager
 
-/**
- * Renders a file-reference chip inline in the editor via [Inlay].
- *
- * Each chip is painted as a rounded rectangle with an icon character and the file name.
- * The associated [ContextItemData] is carried on the renderer so it can be collected at send time.
- */
 class ContextChipRenderer(val contextData: ContextItemData) : EditorCustomElementRenderer {
 
     private companion object {
-        private const val H_PAD = 6
+        private const val H_PAD = 4
         private const val ICON_GAP = 3
-        private const val ARC = 8
-        private const val SELECTION_ICON = "\u2702"
-        private const val FILE_ICON = "\uD83D\uDCC4"
+        private const val ARC = 6
+        private const val ICON_SIZE = 10
     }
 
-    private val icon: String = if (contextData.isSelection) SELECTION_ICON else FILE_ICON
     private val label: String = contextData.name
 
     override fun calcWidthInPixels(inlay: Inlay<*>): Int {
         val editor = inlay.editor
         val metrics = editor.contentComponent.getFontMetrics(chipFont(editor))
-        return H_PAD + metrics.stringWidth(icon) + ICON_GAP + metrics.stringWidth(label) + H_PAD
+        return H_PAD + ICON_SIZE + ICON_GAP + metrics.stringWidth(label) + H_PAD
     }
 
     override fun calcHeightInPixels(inlay: Inlay<*>): Int {
@@ -44,13 +36,16 @@ class ContextChipRenderer(val contextData: ContextItemData) : EditorCustomElemen
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
 
-            val bg = UIManager.getColor("ActionButton.hoverBackground")
-                ?: JBColor(Color(0xDF, 0xE1, 0xE5), Color(0x35, 0x3B, 0x48))
-            val fg = UIManager.getColor("Label.foreground") ?: JBColor.foreground()
+            val linkColor = UIManager.getColor("Link.activeForeground")
+                ?: UIManager.getColor("link.foreground")
+                ?: JBColor(Color(0x58, 0x9D, 0xF6), Color(0x58, 0x9D, 0xF6))
+            val codeBg = UIManager.getColor("EditorPane.background")
+                ?: JBColor(Color(0xF2, 0xF2, 0xF2), Color(0x2B, 0x2B, 0x2B))
 
             val y = targetRegion.y + 1
             val h = targetRegion.height - 2
-            g2.color = bg
+            val bgColor = Color(codeBg.red, codeBg.green, codeBg.blue, 40)
+            g2.color = bgColor
             g2.fill(
                 RoundRectangle2D.Float(
                     targetRegion.x.toFloat(), y.toFloat(),
@@ -61,13 +56,19 @@ class ContextChipRenderer(val contextData: ContextItemData) : EditorCustomElemen
 
             val font = chipFont(inlay.editor)
             g2.font = font
-            g2.color = fg
             val metrics = g2.fontMetrics
             val textY = y + (h + metrics.ascent - metrics.descent) / 2
 
             var x = targetRegion.x + H_PAD
-            g2.drawString(icon, x, textY)
-            x += metrics.stringWidth(icon) + ICON_GAP
+
+            // Draw file icon in link color
+            val iconColor = Color(linkColor.red, linkColor.green, linkColor.blue, 180)
+            g2.color = iconColor
+            drawFileIcon(g2, x, y + (h - ICON_SIZE) / 2, ICON_SIZE)
+            x += ICON_SIZE + ICON_GAP
+
+            // Draw filename in link color
+            g2.color = linkColor
             g2.drawString(label, x, textY)
         } finally {
             g2.dispose()
@@ -77,6 +78,23 @@ class ContextChipRenderer(val contextData: ContextItemData) : EditorCustomElemen
     private fun chipFont(editor: com.intellij.openapi.editor.Editor): Font {
         val editorFont = editor.colorsScheme.getFont(EditorFontType.PLAIN)
         return editorFont.deriveFont(editorFont.size2D * 0.85f)
+    }
+
+    /** Draws a small document icon (page with folded corner) at the given position. */
+    private fun drawFileIcon(g2: Graphics2D, x: Int, y: Int, size: Int) {
+        val fold = size / 3
+        val xPoints = intArrayOf(x, x + size - fold, x + size, x + size, x)
+        val yPoints = intArrayOf(y, y, y + fold, y + size, y + size)
+        g2.fillPolygon(xPoints, yPoints, 5)
+        // Folded corner
+        val prevColor = g2.color
+        g2.color = Color(prevColor.red, prevColor.green, prevColor.blue, 100)
+        g2.fillPolygon(
+            intArrayOf(x + size - fold, x + size - fold, x + size),
+            intArrayOf(y, y + fold, y + fold),
+            3
+        )
+        g2.color = prevColor
     }
 }
 

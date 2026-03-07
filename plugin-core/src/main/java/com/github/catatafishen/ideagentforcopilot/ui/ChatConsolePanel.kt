@@ -860,8 +860,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun buildPromptRefsHtml(ctxFiles: com.google.gson.JsonArray?): String {
         if (ctxFiles == null || ctxFiles.isEmpty) return ""
-        val iconSvg = "<svg width='12' height='12' viewBox='0 0 16 16' fill='currentColor' " +
-            "style='vertical-align:-2px'><path d='M3.5 1A1.5 1.5 0 0 0 2 2.5v11A1.5 1.5 0 0 0 " +
+        val iconSvg = "<svg class='file-icon' width='12' height='12' viewBox='0 0 16 16' fill='currentColor'>" +
+            "<path d='M3.5 1A1.5 1.5 0 0 0 2 2.5v11A1.5 1.5 0 0 0 " +
             "3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V6.621a1.5 1.5 0 0 0-.44-1.06L9.94 1.94A1.5 1.5 0 0 0 " +
             "8.879 1.5H3.5z'/></svg>"
         return ctxFiles.joinToString("") { f ->
@@ -870,11 +870,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val path = fo["path"]?.asString ?: ""
             val line = fo["line"]?.asInt ?: 0
             val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
-            "<a class='prompt-ctx-chip' href='$href' title='${esc(path)}${if (line > 0) ":$line" else ""}'>$iconSvg ${
+            "<a class='prompt-ctx-chip' href='$href' title='${esc(path)}${if (line > 0) ":$line" else ""}'>${iconSvg}<code>${
                 esc(
                     name
                 )
-            }</a>"
+            }</code></a>"
         }
     }
 
