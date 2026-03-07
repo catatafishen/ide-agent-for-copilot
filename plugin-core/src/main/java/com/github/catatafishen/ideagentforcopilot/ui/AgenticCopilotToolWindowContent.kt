@@ -1415,7 +1415,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 } else {
                     val handler = com.intellij.openapi.editor.actionSystem.EditorActionManager.getInstance()
                         .getActionHandler(IdeActions.ACTION_EDITOR_PASTE)
-                    handler.execute(editor, null, e.dataContext)
+                    com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+                        handler.execute(editor, null, e.dataContext)
+                    }
                 }
             }
         }.registerCustomShortcutSet(
