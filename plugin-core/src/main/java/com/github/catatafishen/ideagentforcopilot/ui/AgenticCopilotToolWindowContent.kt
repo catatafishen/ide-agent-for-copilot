@@ -2335,34 +2335,31 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             return
         }
 
-        // Auto-detect language from content; skip the picker if confident
+        // Build ordered list: detected language first, then Plain Text, then the rest
         val detected = com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat
             .detectLanguageFromContent(text)
-        if (detected != null) {
-            val match = enabledLanguages.find { it.id == detected.id }
-            if (match != null) {
-                val ext = match.associatedFileType?.defaultExtension
-                if (ext != null) {
-                    createAndAttachScratch(ext, text)
-                    return
-                }
+        val detectedMatch = if (detected != null) enabledLanguages.find { it.id == detected.id } else null
+        val plainText = enabledLanguages.find { it.id == com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE.id }
+
+        val orderedLanguages = buildList {
+            if (detectedMatch != null) add(detectedMatch)
+            if (plainText != null && plainText != detectedMatch) add(plainText)
+            for (lang in enabledLanguages) {
+                if (lang != detectedMatch && lang != plainText) add(lang)
             }
         }
 
-        // Fallback: show the language picker
         val popup = com.intellij.ide.scratch.LRUPopupBuilder
             .languagePopupBuilder(project, "Paste as Scratch File (paste again to skip)") { lang ->
                 lang.associatedFileType?.icon ?: com.intellij.icons.AllIcons.FileTypes.Any_type
             }
-            .forValues(enabledLanguages)
+            .forValues(orderedLanguages)
             .onChosen { lang ->
                 val ext = lang.associatedFileType?.defaultExtension ?: return@onChosen
                 createAndAttachScratch(ext, text)
             }
             .buildPopup()
 
-        // Register paste shortcuts on the popup so pressing paste again skips the
-        // scratch and inserts the text directly into the prompt editor.
         registerPasteToSkip(popup, text)
 
         popup.showCenteredInCurrentWindow(project)
