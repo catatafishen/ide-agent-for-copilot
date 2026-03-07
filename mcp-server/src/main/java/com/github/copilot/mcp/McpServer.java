@@ -417,7 +417,7 @@ public class McpServer {
             ),
             List.of("path")));
 
-        addIfEnabled.accept(buildTool("intellij_write_file", "Write full file content or create a new file. Operates on the IntelliJ editor buffer. For surgical edits (a few lines), use edit_text instead. For replacing entire methods/classes/fields, use replace_symbol_body instead.",
+        addIfEnabled.accept(buildTool("intellij_write_file", "Write full file content or create a new file. Operates on the IntelliJ editor buffer. For surgical edits (a few lines), use edit_text instead. For replacing entire methods/classes/fields, you MUST use replace_symbol_body instead — it is safer and auto-formats.",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to write or create"),
                 "content", Map.of("type", "string", "description", "Full file content to write (replaces entire file). Creates the file if it doesn't exist"),
@@ -425,7 +425,7 @@ public class McpServer {
             ),
             List.of("path", "content")));
 
-        addIfEnabled.accept(buildTool("edit_text", "Make a surgical text edit: find old_str and replace with new_str. Use ONLY for small edits within a method body, imports, comments, annotations, or config files. To replace entire methods/classes/fields, you MUST use replace_symbol_body instead — it is more reliable. Operates on the IntelliJ editor buffer with normalized Unicode matching.",
+        addIfEnabled.accept(buildTool("edit_text", "Make a surgical text edit: find old_str and replace with new_str. Use ONLY for small edits within a method body, imports, comments, annotations, or config files. To replace entire methods/classes/fields, you MUST use replace_symbol_body instead — it is more reliable. ⚠️ Requires exact text match — fragile if file was reformatted since last read. Operates on the IntelliJ editor buffer.",
             Map.of(
                 "path", Map.of("type", "string", "description", "Absolute or project-relative path to the file to edit"),
                 "old_str", Map.of("type", "string", "description", "Exact string to find and replace. Must match exactly one location in the file"),
@@ -804,7 +804,7 @@ public class McpServer {
             ),
             List.of("operation", "file", "symbol")));
 
-        addIfEnabled.accept(buildTool("replace_symbol_body", "PREFERRED tool for editing code. Replaces an entire method, class, function, or field by name using IntelliJ's PSI — no line numbers or exact text matching needed. More reliable than text-based editing. Always use this instead of edit_text when changing a whole method or class.",
+        addIfEnabled.accept(buildTool("replace_symbol_body", "PREFERRED tool for editing code — use this FIRST for any method, class, function, or field change. Finds the symbol by name via IntelliJ PSI and replaces it entirely. No line numbers or exact text matching needed — immune to formatting changes. Auto-formats and optimizes imports. Only fall back to edit_text for small within-method edits or non-code files.",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
                 "symbol", Map.of("type", "string", "description", "Name of the symbol to replace (method, class, function, or field)"),
@@ -813,7 +813,7 @@ public class McpServer {
             ),
             List.of("file", "symbol", "new_body")));
 
-        addIfEnabled.accept(buildTool("insert_before_symbol", "Insert content before a symbol definition (method, class, field). Use to add new methods, fields, annotations, or comments before an existing symbol. Resolves by name via PSI — no line numbers needed.",
+        addIfEnabled.accept(buildTool("insert_before_symbol", "Insert content before a symbol definition (method, class, field). Use to add new methods, fields, annotations, or comments before an existing symbol. Resolves by name via PSI — no line numbers needed. Auto-formats and optimizes imports.",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
                 "symbol", Map.of("type", "string", "description", "Name of the symbol to insert before"),
@@ -822,7 +822,7 @@ public class McpServer {
             ),
             List.of("file", "symbol", "content")));
 
-        addIfEnabled.accept(buildTool("insert_after_symbol", "Insert content after a symbol definition (method, class, field). Use to add new methods, fields, or classes after an existing symbol. Resolves by name via PSI — no line numbers needed.",
+        addIfEnabled.accept(buildTool("insert_after_symbol", "Insert content after a symbol definition (method, class, field). Use to add new methods, fields, or classes after an existing symbol. Resolves by name via PSI — no line numbers needed. Auto-formats and optimizes imports.",
             Map.of(
                 "file", Map.of("type", "string", "description", "Path to the file containing the symbol"),
                 "symbol", Map.of("type", "string", "description", "Name of the symbol to insert after"),

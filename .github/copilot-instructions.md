@@ -18,14 +18,15 @@
 
   4. EDITING TOOL SELECTION — choose the right tool for the edit scope: \
      **Symbol-based tools** (`replace_symbol_body`, `insert_before_symbol`, `insert_after_symbol`): \
-       - You MUST use these for replacing entire method/class/field bodies or inserting new members. \
+       - **DEFAULT CHOICE for code edits.** Use these FIRST whenever you are changing a method, class, field, or function. \
        - PSI-aware: finds symbols by name, no line numbers or exact text matching needed. \
-       - Resilient to formatting changes between read and write. \
+       - Immune to formatting/whitespace changes — never fails due to reformatted code. \
+       - Auto-formats and optimizes imports on every call — no manual format_code needed. \
        - Use `replace_symbol_body` when rewriting a method. Use `insert_after_symbol` to add a new method after an existing one. \
      **`edit_text`** (surgical find-and-replace with `old_str`/`new_str`): \
-       - Use ONLY for small edits within a method body (a few lines, a single expression). \
-       - Use for non-symbol content: imports, comments, annotations, XML/config files. \
-       - Requires exact text match — read the file first to get the precise string. \
+       - Use ONLY when symbol tools cannot apply: small edits within a method body (a few lines, a single expression), \
+         imports, comments, annotations, XML/config files. \
+       - Requires exact text match — fragile if the file was reformatted since last read. \
        - NEVER use `edit_text` to replace an entire method — use `replace_symbol_body` instead. \
      **`intellij_write_file`** (full file write with `content`): \
        - Use ONLY when writing an entire file from scratch or replacing all content. \
