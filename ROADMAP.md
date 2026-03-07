@@ -74,6 +74,10 @@ Currently only Copilot CLI is implemented (`CopilotAgentConfig`), but the archit
 - [ ] Create `<Agent>AgentConfig` implementing `AgentConfig` (binary discovery, auth, process builder)
 - [ ] Add agent selection UI (Settings tab or Tool Window dropdown)
 - [ ] Agent-specific instructions/context management
+- [ ] **Verify context reference handling** — Copilot ignores `ResourceReference` content (see
+  `buildEffectivePromptWithContent()` workaround in `AgenticCopilotToolWindowContent.kt` and
+  "Known ACP Limitations" in DEVELOPMENT.md). Each new agent must be tested to determine whether
+  it surfaces resource-reference content natively or needs the same text-duplication workaround.
 - [ ] Test suite per agent backend
 
 **Architecture:**

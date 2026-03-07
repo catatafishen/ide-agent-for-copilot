@@ -224,6 +224,23 @@ sequenceDiagram
     P->>C: session/cancel
 ```
 
+### Known ACP Limitations
+
+#### ResourceReference Content Not Inlined (Copilot-specific)
+
+The ACP `session/prompt` request supports a `prompt` array containing both `type: "resource"` blocks
+(with URI, MIME type, and text content) and `type: "text"` blocks. However, GitHub Copilot surfaces
+the resource references only as tagged-file metadata — the agent sees the file path and line count but
+**not** the actual content.
+
+**Current workaround:** `buildEffectivePromptWithContent()` appends the referenced file content as
+plain text after the user's message. The `ResourceReference` objects are still sent in parallel so that
+agents which honour structured references get typed metadata.
+
+**Multi-agent impact:** When implementing new `AgentConfig` backends, test whether the agent surfaces
+resource-reference content natively. If it does, skip the text duplication to avoid wasting context
+window tokens. This check should be part of each agent's `AgentConfig` implementation.
+
 ### Permission Deny + Retry Flow
 
 Built-in Copilot file operations are **denied** so all writes go through IntelliJ's Document API:

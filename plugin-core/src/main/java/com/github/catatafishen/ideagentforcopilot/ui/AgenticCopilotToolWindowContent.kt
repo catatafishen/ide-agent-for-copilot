@@ -1583,8 +1583,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     /**
      * Build the prompt sent to the agent, including referenced file content inline.
-     * ACP ResourceReference objects may be ignored by Copilot, so we embed
-     * the content directly in the prompt text to guarantee the agent sees it.
+     *
+     * <b>Copilot-specific workaround:</b> ACP {@code ResourceReference} objects are sent
+     * as structured content blocks in the prompt array, but GitHub Copilot surfaces them
+     * only as tagged-file metadata (path + line count) without inlining the actual content
+     * for the agent. To guarantee the agent sees the referenced code, we also append it
+     * as plain text after the user's message.
+     *
+     * <p>The {@code ResourceReference} objects are still sent in parallel (belt-and-suspenders)
+     * so that agents that <em>do</em> honour structured references get the benefit of typed
+     * MIME metadata and {@code file://} URIs. When adding support for other agent backends,
+     * verify whether they surface resource-reference content natively; if so, the text
+     * duplication here can be skipped for those backends via {@code AgentConfig}.
      */
     private fun buildEffectivePromptWithContent(
         prompt: String,
