@@ -44,11 +44,25 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: plugin-core/chat-ui/package-lock.json
+          cache-dependency-path: |
+            plugin-core/chat-ui/package-lock.json
+            plugin-core/js-tests/package-lock.json
 
       - name: Install chat-ui dependencies
         run: npm ci
         working-directory: plugin-core/chat-ui
+
+      - name: Install JS test dependencies
+        run: npm ci
+        working-directory: plugin-core/js-tests
+
+      - name: Build chat-ui
+        run: npm run build
+        working-directory: plugin-core/chat-ui
+
+      - name: Run chat-ui tests
+        run: npm test
+        working-directory: plugin-core/js-tests
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

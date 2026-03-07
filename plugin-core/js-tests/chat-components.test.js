@@ -6,12 +6,12 @@ function flush() {
 }
 
 describe('Web Components Registration', () => {
-    it('all 16 custom elements are defined', () => {
+    it('all custom elements are defined', () => {
         const tags = [
             'chat-container', 'chat-message', 'message-bubble', 'message-meta',
-            'thinking-block', 'tool-section', 'tool-chip', 'tool-popup', 'thinking-chip',
+            'thinking-block', 'tool-chip', 'thinking-chip',
             'subagent-chip', 'quick-replies',
-            'session-divider', 'load-more',
+            'session-divider', 'load-more', 'turn-details', 'permission-request',
         ];
         for (const tag of tags) {
             expect(customElements.get(tag), `${tag} should be registered`).toBeDefined();
@@ -138,46 +138,6 @@ describe('thinking-block', () => {
     });
 });
 
-describe('tool-section', () => {
-    let section;
-
-    beforeEach(() => {
-        document.body.innerHTML = '';
-        section = document.createElement('tool-section');
-        section.setAttribute('title', 'Read File');
-        document.body.appendChild(section);
-    });
-
-    it('renders params and result containers', () => {
-        expect(section.querySelector('.tool-params')).not.toBeNull();
-        expect(section.querySelector('.tool-result')).not.toBeNull();
-    });
-
-    it('setting params renders JSON', () => {
-        section.params = '{"path": "/foo/bar.txt"}';
-        expect(section.querySelector('.tool-params')).not.toBeNull();
-        expect(section.textContent).toContain('/foo/bar.txt');
-    });
-
-    it('setting result renders HTML', () => {
-        section.result = '<div>Output here</div>';
-        expect(section.querySelector('.tool-result')).not.toBeNull();
-        expect(section.innerHTML).toContain('Output here');
-    });
-
-    it('renders title in header', () => {
-        const header = section.querySelector('.tool-section-header');
-        expect(header).not.toBeNull();
-        expect(header.textContent).toBe('Read File');
-    });
-
-    it('updateStatus is a no-op (status tracked on chip)', () => {
-        section.updateStatus('completed');
-        section.updateStatus('failed');
-        // no error thrown
-    });
-});
-
 describe('tool-chip', () => {
     let chip;
 
@@ -210,17 +170,6 @@ describe('tool-chip', () => {
         expect(chip.classList.contains('failed')).toBe(true);
     });
 
-    it('linkSection connects chip to section and opens popup on click', () => {
-        const section = document.createElement('tool-section');
-        section.setAttribute('title', 'Read File');
-        document.body.appendChild(section);
-        chip.linkSection(section);
-        // Clicking chip should open the floating popup
-        chip.click();
-        const popup = document.querySelector('tool-popup');
-        expect(popup).not.toBeNull();
-        expect(popup.classList.contains('tool-popup-hidden')).toBe(false);
-    });
 });
 
 describe('thinking-chip', () => {

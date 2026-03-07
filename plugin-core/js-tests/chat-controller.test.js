@@ -201,12 +201,12 @@ describe('ChatController', () => {
             if (bubble) expect(bubble.querySelector('.agent-pending')).toBeNull();
         });
 
-        it('adds stats chip when model provided', () => {
+        it('finalizeTurn is a no-op for stats (multiplier shown on prompt only)', () => {
             CC().appendAgentText('t0', 'main', 'Response');
             CC().finalizeTurn('t0', {model: 'claude-opus-4.6', mult: '1x'});
+            // No stats chip added — model multiplier is shown on user prompt, not agent response
             const stats = getMessages().querySelector('.turn-chip.stats');
-            expect(stats).not.toBeNull();
-            expect(stats.textContent).toBe('1x');
+            expect(stats).toBeNull();
         });
 
         it('resets agent state for next turn', () => {
@@ -240,7 +240,6 @@ describe('ChatController', () => {
             const messages = getMessages();
             expect(messages.querySelectorAll('chat-message[type="user"]').length).toBe(1);
             expect(messages.querySelectorAll('thinking-block').length).toBe(1);
-            expect(messages.querySelectorAll('tool-section').length).toBe(1);
             expect(messages.querySelectorAll('chat-message[type="agent"]').length).toBeGreaterThanOrEqual(1);
             expect(messages.querySelectorAll('tool-chip').length).toBe(1);
             expect(messages.querySelectorAll('thinking-chip').length).toBe(1);
@@ -314,14 +313,12 @@ describe('ChatController', () => {
             const agentMsgs = getMessages().querySelectorAll('chat-message[type="agent"]');
             expect(agentMsgs.length).toBe(2);
 
-            // First message has thinking + tool + text
+            // First message has thinking + tool chip + text
             expect(agentMsgs[0].querySelectorAll('thinking-block').length).toBe(1);
-            expect(agentMsgs[0].querySelectorAll('tool-section').length).toBe(1);
             expect(agentMsgs[0].querySelectorAll('message-bubble').length).toBe(1);
 
-            // Second message has thinking + tool + text
+            // Second message has thinking + tool chip + text
             expect(agentMsgs[1].querySelectorAll('thinking-block').length).toBe(1);
-            expect(agentMsgs[1].querySelectorAll('tool-section').length).toBe(1);
             expect(agentMsgs[1].querySelectorAll('message-bubble').length).toBe(1);
         });
     });
@@ -340,12 +337,6 @@ describe('ChatController', () => {
             expect(chips.length).toBe(2);
             expect(chips[0].getAttribute('label')).toBe('Glob — *.kt');
             expect(chips[1].getAttribute('label')).toBe('Grep — foo');
-
-            // Tool sections before result bubble
-            const sections = saMsg.querySelectorAll('tool-section');
-            expect(sections.length).toBe(2);
-            const resultBubble = saMsg.querySelector('.subagent-result');
-            expect(sections[1].compareDocumentPosition(resultBubble) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         });
 
         it('updateToolCall works for sub-agent internal tools', () => {
