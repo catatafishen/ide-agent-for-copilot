@@ -231,7 +231,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         collapseThinking()
         currentTurnId = "t${turnCounter++}"
         val ts = timestamp()
-        entries.add(EntryData.Prompt(text, ts))
+        entries.add(EntryData.Prompt(text, ts, contextFiles))
         val refsHtml = if (!contextFiles.isNullOrEmpty()) {
             contextFiles.joinToString("") { (name, path, line) ->
                 val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
@@ -470,6 +470,17 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 is EntryData.Prompt -> {
                     obj.addProperty("type", "prompt"); obj.addProperty("text", e.text)
                     if (e.timestamp.isNotEmpty()) obj.addProperty("ts", e.timestamp)
+                    if (!e.contextFiles.isNullOrEmpty()) {
+                        val fa = com.google.gson.JsonArray()
+                        e.contextFiles.forEach { (name, path, line) ->
+                            val fo = com.google.gson.JsonObject()
+                            fo.addProperty("name", name)
+                            fo.addProperty("path", path)
+                            fo.addProperty("line", line)
+                            fa.add(fo)
+                        }
+                        obj.add("ctxFiles", fa)
+                    }
                 }
 
                 is EntryData.Text -> {
@@ -561,7 +572,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private fun addEntryFromJson(obj: com.google.gson.JsonObject) {
         when (obj["type"]?.asString) {
-            "prompt" -> entries.add(EntryData.Prompt(obj["text"]?.asString ?: "", obj["ts"]?.asString ?: ""))
+            "prompt" -> {
+                val ctxFiles = obj["ctxFiles"]?.asJsonArray?.map { f ->
+                    val fo = f.asJsonObject
+                    Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
+                }
+                entries.add(EntryData.Prompt(obj["text"]?.asString ?: "", obj["ts"]?.asString ?: "", ctxFiles))
+            }
+
             "text" -> entries.add(EntryData.Text(StringBuilder(obj["raw"]?.asString ?: "")))
             "thinking" -> entries.add(EntryData.Thinking(StringBuilder(obj["raw"]?.asString ?: "")))
             "tool" -> entries.add(
@@ -740,9 +758,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 "prompt" -> {
                     val text = obj["text"]?.asString ?: ""
                     val ts = obj["ts"]?.asString ?: ""
+                    val refsHtml = buildPromptRefsHtml(obj["ctxFiles"]?.asJsonArray)
                     sb.append("<chat-message type='user'>")
                     sb.append("<message-meta><span class='ts'>${esc(ts)}</span></message-meta>")
-                    sb.append("<message-bubble type='user'>${esc(text)}</message-bubble>")
+                    sb.append("<message-bubble type='user'>")
+                    if (refsHtml.isNotEmpty()) {
+                        sb.append("<span class='inline-refs'>$refsHtml</span>")
+                    }
+                    sb.append("${esc(text)}</message-bubble>")
                     sb.append("</chat-message>")
                     i++
                 }
@@ -840,6 +863,22 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
         }
         return sb.toString()
+    }
+
+    private fun buildPromptRefsHtml(ctxFiles: com.google.gson.JsonArray?): String {
+        if (ctxFiles == null || ctxFiles.isEmpty) return ""
+        return ctxFiles.joinToString("") { f ->
+            val fo = f.asJsonObject
+            val name = fo["name"]?.asString ?: ""
+            val path = fo["path"]?.asString ?: ""
+            val line = fo["line"]?.asInt ?: 0
+            val href = if (line > 0) "openfile://$path:$line" else "openfile://$path"
+            "<a class='prompt-ctx-chip' href='$href' title='${esc(path)}${if (line > 0) ":$line" else ""}'>$FILE_ICON_SVG ${
+                esc(
+                    name
+                )
+            }</a>"
+        }
     }
 
     override fun getPageHtml(): String? {

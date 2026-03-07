@@ -228,10 +228,10 @@ class PromptContextManager(
 
     // ── Reference building ────────────────────────────────────────────
 
-    fun buildContextReferences(): List<AcpClient.ResourceReference> {
-        val items = collectInlineContextItems()
+    fun buildContextReferences(items: List<ContextItemData>? = null): List<AcpClient.ResourceReference> {
+        val contextItems = items ?: collectInlineContextItems()
         val references = mutableListOf<AcpClient.ResourceReference>()
-        for (item in items) {
+        for (item in contextItems) {
             try {
                 val ref = buildSingleReference(item)
                 if (ref != null) references.add(ref)
@@ -242,14 +242,10 @@ class PromptContextManager(
         return references
     }
 
-    /**
-     * Build short inline reference markers so the agent knows which files/selections are attached.
-     * Full content is already in the ResourceReference — no need to duplicate it in the prompt text.
-     */
-    fun buildReferenceMarkers(): String {
-        val items = collectInlineContextItems()
+    fun buildReferenceMarkers(items: List<ContextItemData>? = null): String {
+        val contextItems = items ?: collectInlineContextItems()
         val parts = mutableListOf<String>()
-        for (item in items) {
+        for (item in contextItems) {
             val fileName = item.path.substringAfterLast("/")
             if (item.isSelection && item.startLine > 0) {
                 parts.add("`$fileName:${item.startLine}-${item.endLine}`")

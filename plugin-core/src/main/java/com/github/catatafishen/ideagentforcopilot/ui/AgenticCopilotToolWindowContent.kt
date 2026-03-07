@@ -642,7 +642,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 consolePanel.addSessionSeparator(ts)
             }
 
-            // Collect context items from inline inlays and strip ORC placeholders from prompt
+            // Collect context items from inline inlays BEFORE clearing the editor
             val contextItems = contextManager.collectInlineContextItems()
             val prompt = rawText.replace(PromptContextManager.ORC.toString(), "").trim()
             val ctxFiles = if (contextItems.isNotEmpty()) {
@@ -655,7 +655,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             ApplicationManager.getApplication().executeOnPooledThread {
                 currentPromptThread = Thread.currentThread()
-                executePrompt(prompt)
+                executePrompt(prompt, contextItems)
                 currentPromptThread = null
             }
         }
@@ -1524,8 +1524,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return currentSessionId!!
     }
 
-    private fun buildEffectivePrompt(prompt: String): String {
-        val refMarkers = contextManager.buildReferenceMarkers()
+    private fun buildEffectivePrompt(prompt: String, contextItems: List<ContextItemData> = emptyList()): String {
+        val refMarkers = contextManager.buildReferenceMarkers(contextItems.ifEmpty { null })
         var effective = if (refMarkers.isNotEmpty()) "$prompt\n\n$refMarkers" else prompt
 
         if (CopilotSettings.getSessionMode() == "plan") {
@@ -1569,7 +1569,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun executePrompt(prompt: String) {
+    private fun executePrompt(prompt: String, contextItems: List<ContextItemData> = emptyList()) {
         try {
             if (isBlockedByAuth()) return
 
@@ -1582,9 +1582,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             val modelId = prepareModelAndTurnState()
 
-            val references = contextManager.buildContextReferences()
-            val effectivePrompt = buildEffectivePrompt(prompt)
-            addContextEntries(references)
+            val references = contextManager.buildContextReferences(contextItems.ifEmpty { null })
+            val effectivePrompt = buildEffectivePrompt(prompt, contextItems)
+            addContextEntries(references, contextItems)
 
             dispatchPromptWithRetry(client, sessionId, effectivePrompt, modelId, references)
 
@@ -1650,10 +1650,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return modelId
     }
 
-    private fun addContextEntries(references: List<AcpClient.ResourceReference>) {
-        if (references.isNotEmpty()) {
-            val items = contextManager.collectInlineContextItems()
-            val contextFiles = items.map { Pair(it.name, it.path) }
+    private fun addContextEntries(references: List<AcpClient.ResourceReference>, contextItems: List<ContextItemData>) {
+        if (references.isNotEmpty() && contextItems.isNotEmpty()) {
+            val contextFiles = contextItems.map { Pair(it.name, it.path) }
             consolePanel.addContextFilesEntry(contextFiles)
         }
     }

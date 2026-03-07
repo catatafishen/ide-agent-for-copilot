@@ -34,7 +34,11 @@ internal val QUICK_REPLY_TAG_REGEX = Regex("""\[quick-reply:\s*([^\]]+)]""", Reg
 // ── Data model ────────────────────────────────────────────────────────────────
 
 internal sealed class EntryData {
-    class Prompt(val text: String, val timestamp: String = "") : EntryData()
+    class Prompt(
+        val text: String,
+        val timestamp: String = "",
+        val contextFiles: List<Triple<String, String, Int>>? = null
+    ) : EntryData()
     class Text(val raw: StringBuilder = StringBuilder()) : EntryData()
     class Thinking(val raw: StringBuilder = StringBuilder()) : EntryData()
     class ToolCall(

@@ -177,6 +177,14 @@ body {
     overflow-wrap: anywhere;
 }
 
+.prompt-bubble .inline-refs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+    white-space: normal;
+}
+
 .prompt-bubble:hover {
     background: var(--user-a18);
 }
