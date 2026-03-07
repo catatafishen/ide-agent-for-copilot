@@ -14,7 +14,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
-import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -523,19 +522,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 
-        // Input row (bottom of splitter — resizable)
+        panel.add(topPanel, BorderLayout.CENTER)
+
+        // Bottom section: input row (fixed 3-line height) + controls footer
+        val bottomPanel = JBPanel<JBPanel<*>>()
+        bottomPanel.layout = BoxLayout(bottomPanel, BoxLayout.Y_AXIS)
         val inputRow = createInputRow()
-
-        // Splitter between output and input only (85% chat, 15% input ≈ 3 lines)
-        val splitter = OnePixelSplitter(true, 0.85f)
-        splitter.firstComponent = topPanel
-        splitter.secondComponent = inputRow
-        splitter.setHonorComponentsMinimumSize(true)
-        panel.add(splitter, BorderLayout.CENTER)
-
-        // Fixed footer: controls + usage (not resized by splitter)
+        inputRow.alignmentX = Component.LEFT_ALIGNMENT
+        bottomPanel.add(inputRow)
         val fixedFooter = createFixedFooter()
-        panel.add(fixedFooter, BorderLayout.SOUTH)
+        fixedFooter.alignmentX = Component.LEFT_ALIGNMENT
+        bottomPanel.add(fixedFooter)
+        panel.add(bottomPanel, BorderLayout.SOUTH)
 
         billing.loadBillingData()
         loadModels()
@@ -561,7 +559,11 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun createInputRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
-        row.minimumSize = JBUI.size(100, 40)
+        // 3-line height: ~20px/line * 3 + 8px content padding + 4px outer padding
+        val threeLineHeight = JBUI.scale(72)
+        row.preferredSize = java.awt.Dimension(Int.MAX_VALUE, threeLineHeight)
+        row.minimumSize = JBUI.size(100, threeLineHeight)
+        row.maximumSize = java.awt.Dimension(Int.MAX_VALUE, threeLineHeight)
 
         // Use EditorTextFieldProvider for PsiFile-backed document (enables spell checking)
         val editorCustomizations = mutableListOf<com.intellij.ui.EditorCustomization>()
