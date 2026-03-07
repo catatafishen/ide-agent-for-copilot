@@ -41,9 +41,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         const val PROMPT_PLACEHOLDER = "Ask Copilot... (Shift+Enter for new line)"
         const val AGENT_WORK_DIR = ".agent-work"
 
-        /** Unicode Object Replacement Character — used as a placeholder for inline context chips. */
-        private const val ORC = '\uFFFC'
-
         /** Theme-aware error color — uses IDE's error foreground or a sensible red fallback. */
         private const val OS_NAME_PROPERTY = "os.name"
         private val ERROR_COLOR: JBColor
@@ -98,6 +95,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private var lastIncrementalSaveMs = 0L
 
     private var conversationSummaryInjected = false
+    private lateinit var contextManager: PromptContextManager
 
     init {
         setupUI()
@@ -578,6 +576,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             .getEditorField(com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE, project, editorCustomizations)
         promptTextArea.setOneLineMode(false)
         promptTextArea.border = null
+        contextManager = PromptContextManager(project, promptTextArea) { text -> appendResponse(text) }
 
         // Drag-drop works on the EditorTextField wrapper (no editor needed)
         setupPromptDragDrop(promptTextArea)
@@ -644,8 +643,8 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             }
 
             // Collect context items from inline inlays and strip ORC placeholders from prompt
-            val contextItems = collectInlineContextItems()
-            val prompt = rawText.replace(ORC.toString(), "").trim()
+            val contextItems = contextManager.collectInlineContextItems()
+            val prompt = rawText.replace(PromptContextManager.ORC.toString(), "").trim()
             val ctxFiles = if (contextItems.isNotEmpty()) {
                 contextItems.map { item ->
                     Triple(item.name, item.path, if (item.isSelection) item.startLine else 0)
@@ -917,7 +916,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 com.intellij.icons.AllIcons.Actions.AddFile
             ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = handleAddCurrentFile()
+                override fun actionPerformed(e: AnActionEvent) = contextManager.handleAddCurrentFile()
             })
             group.add(object : AnAction(
                 "Editor Selection",
@@ -925,7 +924,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 com.intellij.icons.AllIcons.Actions.AddMulticaret
             ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = handleAddSelection()
+                override fun actionPerformed(e: AnActionEvent) = contextManager.handleAddSelection()
             })
             group.addSeparator()
             group.add(object : AnAction(
@@ -934,7 +933,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 AllIcons.Actions.Search
             ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = openFileSearchPopup()
+                override fun actionPerformed(e: AnActionEvent) = contextManager.openFileSearchPopup()
             })
             group.add(object : AnAction(
                 "New Scratch File\u2026",
@@ -1355,12 +1354,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         )
         object : AnAction() {
             override fun actionPerformed(e: AnActionEvent) {
-                val clipText = getClipboardText()
+                val clipText = contextManager.getClipboardText()
                 if (clipText != null && (clipText.lines().size > 3 || clipText.length > 500)) {
                     // If the text was copied from a project file, attach as inline chip
-                    val projectSource = findClipboardSourceInProject(clipText)
+                    val projectSource = contextManager.findClipboardSourceInProject(clipText)
                     if (projectSource != null) {
-                        insertInlineChip(editor, projectSource)
+                        contextManager.insertInlineChip(editor, projectSource)
                     } else {
                         handlePasteToScratch(clipText)
                     }
@@ -1396,7 +1395,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
                         editor.document.deleteString(offset, offset + trigger.length)
                     }
-                    openFileSearchPopup()
+                    contextManager.openFileSearchPopup()
                 }
             }
         }, project)
@@ -1415,18 +1414,18 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             // Attach actions
             add(object : AnAction("Attach Current File", null, com.intellij.icons.AllIcons.Actions.AddFile) {
-                override fun actionPerformed(e: AnActionEvent) = handleAddCurrentFile()
+                override fun actionPerformed(e: AnActionEvent) = contextManager.handleAddCurrentFile()
             })
             add(object : AnAction("Attach Editor Selection", null, com.intellij.icons.AllIcons.Actions.AddMulticaret) {
-                override fun actionPerformed(e: AnActionEvent) = handleAddSelection()
+                override fun actionPerformed(e: AnActionEvent) = contextManager.handleAddSelection()
             })
             add(object : AnAction("Clear Attachments", null, com.intellij.icons.AllIcons.Actions.GC) {
                 override fun actionPerformed(e: AnActionEvent) {
-                    clearInlineChips(editor)
+                    contextManager.clearInlineChips(editor)
                 }
 
                 override fun update(e: AnActionEvent) {
-                    e.presentation.isEnabled = collectInlineContextItems().isNotEmpty()
+                    e.presentation.isEnabled = contextManager.collectInlineContextItems().isNotEmpty()
                 }
             })
 
@@ -1470,14 +1469,14 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                                 val doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
                                     .getDocument(vf) ?: continue
                                 if (editor != null) {
-                                    val existing = collectInlineContextItems().any { it.path == vf.path }
+                                    val existing = contextManager.collectInlineContextItems().any { it.path == vf.path }
                                     if (!existing) {
                                         val data = ContextItemData(
                                             path = vf.path, name = vf.name,
                                             startLine = 1, endLine = doc.lineCount,
                                             fileTypeName = vf.fileType.name, isSelection = false
                                         )
-                                        insertInlineChip(editor, data)
+                                        contextManager.insertInlineChip(editor, data)
                                     }
                                 }
                             }
@@ -1526,7 +1525,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun buildEffectivePrompt(prompt: String): String {
-        val refMarkers = buildReferenceMarkers()
+        val refMarkers = contextManager.buildReferenceMarkers()
         var effective = if (refMarkers.isNotEmpty()) "$prompt\n\n$refMarkers" else prompt
 
         if (CopilotSettings.getSessionMode() == "plan") {
@@ -1583,7 +1582,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
             val modelId = prepareModelAndTurnState()
 
-            val references = buildContextReferences()
+            val references = contextManager.buildContextReferences()
             val effectivePrompt = buildEffectivePrompt(prompt)
             addContextEntries(references)
 
@@ -1653,7 +1652,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     private fun addContextEntries(references: List<AcpClient.ResourceReference>) {
         if (references.isNotEmpty()) {
-            val items = collectInlineContextItems()
+            val items = contextManager.collectInlineContextItems()
             val contextFiles = items.map { Pair(it.name, it.path) }
             consolePanel.addContextFilesEntry(contextFiles)
         }
@@ -1698,20 +1697,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun buildContextReferences(): List<AcpClient.ResourceReference> {
-        val items = collectInlineContextItems()
-        val references = mutableListOf<AcpClient.ResourceReference>()
-        for (item in items) {
-            try {
-                val ref = buildSingleReference(item)
-                if (ref != null) references.add(ref)
-            } catch (_: Exception) {
-                appendResponse("\u26a0 Could not read context: ${item.name}\n")
-            }
-        }
-        return references
-    }
-
     /** Send a quick-reply directly without touching the user's input field. */
     private fun sendQuickReply(text: String) {
         if (isSending) return
@@ -1748,74 +1733,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun detectQuickReplies(responseText: String): List<String> {
         val match = QUICK_REPLY_TAG_REGEX.findAll(responseText).lastOrNull() ?: return emptyList()
         return match.groupValues[1].split("|").map { it.trim() }.filter { it.isNotEmpty() }
-    }
-
-    /** Build short inline reference markers so the agent knows which files/selections are attached.
-     *  Full content is already in the ResourceReference — no need to duplicate it in the prompt text. */
-    private fun buildReferenceMarkers(): String {
-        val items = collectInlineContextItems()
-        val parts = mutableListOf<String>()
-        for (item in items) {
-            val fileName = item.path.substringAfterLast("/")
-            if (item.isSelection && item.startLine > 0) {
-                parts.add("`$fileName:${item.startLine}-${item.endLine}`")
-            } else {
-                parts.add("`$fileName`")
-            }
-        }
-        if (parts.isEmpty()) return ""
-        return "Referenced: " + parts.joinToString(", ")
-    }
-
-    private fun buildSingleReference(item: ContextItemData): AcpClient.ResourceReference? {
-        val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
-            ?: return null
-        var doc: com.intellij.openapi.editor.Document? = null
-        com.intellij.openapi.application.ApplicationManager.getApplication().runReadAction {
-            doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)
-        }
-        val document = doc ?: return null
-
-        var text = ""
-        com.intellij.openapi.application.ApplicationManager.getApplication().runReadAction {
-            if (item.isSelection && item.startLine > 0) {
-                val startOffset = document.getLineStartOffset((item.startLine - 1).coerceIn(0, document.lineCount - 1))
-                val endOffset = document.getLineEndOffset((item.endLine - 1).coerceIn(0, document.lineCount - 1))
-                val snippet = document.getText(com.intellij.openapi.util.TextRange(startOffset, endOffset))
-                val fileName = item.path.substringAfterLast("/")
-                text = "// Selected lines ${item.startLine}-${item.endLine} of $fileName\n$snippet"
-            } else {
-                text = document.text
-            }
-        }
-
-        val uri = buildString {
-            append("file://")
-            append(item.path.replace("\\", "/"))
-            if (item.isSelection && item.startLine > 0) {
-                append("#L${item.startLine}-L${item.endLine}")
-            }
-        }
-        val mimeType = getMimeTypeForFileType(file.fileType.name.lowercase())
-        val contextLog = com.intellij.openapi.diagnostic.Logger.getInstance("ContextSnippet")
-        contextLog.info(
-            "Context ref: uri=$uri, isSelection=${item.isSelection}, " +
-                "lines=${item.startLine}-${item.endLine}, textLength=${text.length}, " +
-                "textPreview=${text.take(100)}"
-        )
-        return AcpClient.ResourceReference(uri, mimeType, text)
-    }
-
-    private fun getMimeTypeForFileType(fileTypeName: String): String {
-        return when (fileTypeName) {
-            "java" -> "text/x-java"
-            "kotlin" -> "text/x-kotlin"
-            "python" -> "text/x-python"
-            "javascript" -> "text/javascript"
-            "typescript" -> "text/typescript"
-            "xml", "html" -> "text/$fileTypeName"
-            else -> "text/plain"
-        }
     }
 
     private fun handlePromptStreamingUpdate(update: com.google.gson.JsonObject, receivedContent: Boolean) {
@@ -2118,146 +2035,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    private fun handleAddCurrentFile() {
-        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-        val currentFile = fileEditorManager.selectedFiles.firstOrNull()
-
-        if (currentFile == null) {
-            Messages.showWarningDialog(project, "No file is currently open in the editor", "No File")
-            return
-        }
-
-        val path = currentFile.path
-        val lineCount = try {
-            fileEditorManager.selectedTextEditor?.document?.lineCount ?: 0
-        } catch (_: Exception) {
-            0
-        }
-
-        val exists = collectInlineContextItems().any { it.path == path }
-        if (exists) {
-            Messages.showInfoMessage(project, "File already in context: ${currentFile.name}", "Duplicate File")
-            return
-        }
-
-        val promptEditor = promptTextArea.editor as? EditorEx ?: return
-        insertInlineChip(
-            promptEditor,
-            ContextItemData(
-                path = path, name = currentFile.name, startLine = 1, endLine = lineCount,
-                fileTypeName = currentFile.fileType.name, isSelection = false
-            )
-        )
-    }
-
-    private fun handleAddSelection() {
-        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-        val editor = fileEditorManager.selectedTextEditor
-        val currentFile = fileEditorManager.selectedFiles.firstOrNull()
-
-        if (editor == null || currentFile == null) {
-            Messages.showWarningDialog(project, "No editor is currently open", "No Editor")
-            return
-        }
-
-        val selectionModel = editor.selectionModel
-        if (!selectionModel.hasSelection()) {
-            Messages.showWarningDialog(project, "No text is selected. Select some code first.", "No Selection")
-            return
-        }
-
-        val document = editor.document
-        val startLine = document.getLineNumber(selectionModel.selectionStart) + 1
-        val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
-
-        val promptEditor = promptTextArea.editor as? EditorEx ?: return
-        insertInlineChip(
-            promptEditor,
-            ContextItemData(
-                path = currentFile.path, name = "${currentFile.name}:$startLine-$endLine",
-                startLine = startLine, endLine = endLine,
-                fileTypeName = currentFile.fileType.name, isSelection = true
-            )
-        )
-    }
-
-    private fun openFileSearchPopup() {
-        val model = com.intellij.ide.util.gotoByName.GotoFileModel(project)
-        val popup = com.intellij.ide.util.gotoByName.ChooseByNamePopup.createPopup(
-            project,
-            model,
-            null as com.intellij.psi.PsiElement?
-        )
-        popup.invoke(object : com.intellij.ide.util.gotoByName.ChooseByNamePopupComponent.Callback() {
-            override fun elementChosen(element: Any?) {
-                val psiFile = element as? com.intellij.psi.PsiFile ?: return
-                val vf = psiFile.virtualFile ?: return
-                val path = vf.path
-                val exists = collectInlineContextItems().any { it.path == path }
-                if (exists) return
-
-                val lineCount = try {
-                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf)?.lineCount ?: 0
-                } catch (_: Exception) {
-                    0
-                }
-
-                val promptEditor = promptTextArea.editor as? EditorEx ?: return
-                insertInlineChip(
-                    promptEditor,
-                    ContextItemData(
-                        path = path, name = vf.name, startLine = 1, endLine = lineCount,
-                        fileTypeName = vf.fileType.name, isSelection = false
-                    )
-                )
-            }
-        }, com.intellij.openapi.application.ModalityState.current(), false)
-    }
-
-    private fun getClipboardText(): String? {
-        return try {
-            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Checks whether the clipboard text matches the current editor's selection.
-     * Returns a [ContextItemData] referencing the source file + line range if found,
-     * or null if the active editor doesn't have a matching selection.
-     */
-    private fun findClipboardSourceInProject(clipText: String): ContextItemData? {
-        val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-        val selectedEditor = fileEditorManager.selectedTextEditor ?: return null
-        val selectedFile = fileEditorManager.selectedFiles.firstOrNull() ?: return null
-
-        if (!com.intellij.openapi.roots.ProjectFileIndex.getInstance(project).isInContent(selectedFile)) return null
-
-        return matchEditorSelection(selectedEditor, selectedFile, clipText)
-    }
-
-    private fun matchEditorSelection(
-        editor: com.intellij.openapi.editor.Editor,
-        file: com.intellij.openapi.vfs.VirtualFile,
-        clipText: String
-    ): ContextItemData? {
-        val selModel = editor.selectionModel
-        if (!selModel.hasSelection() || selModel.selectedText != clipText) return null
-        val doc = editor.document
-        val startLine = doc.getLineNumber(selModel.selectionStart) + 1
-        val endLine = doc.getLineNumber(selModel.selectionEnd) + 1
-        return ContextItemData(
-            path = file.path,
-            name = "${file.name}:$startLine-$endLine",
-            startLine = startLine,
-            endLine = endLine,
-            fileTypeName = file.fileType.name,
-            isSelection = true
-        )
-    }
-
     private fun handlePasteToScratch(text: String) {
         val settings = com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings.getInstance()
         val enabledLanguages = settings.enabledLanguages
@@ -2392,7 +2169,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                         .openFile(file, true)
                     val promptEditor = promptTextArea.editor as? EditorEx
                     if (promptEditor != null) {
-                        insertInlineChip(
+                        contextManager.insertInlineChip(
                             promptEditor,
                             ContextItemData(
                                 path = file.path, name = file.name,
@@ -2489,43 +2266,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     authService.markAuthError(errorMsg)
                     copilotBanner?.triggerCheck()
                 }
-            }
-        }
-    }
-
-    /** Insert a U+FFFC placeholder at the caret and attach an inlay chip for the given context item. */
-    private fun insertInlineChip(editor: EditorEx, data: ContextItemData) {
-        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
-            val offset = editor.caretModel.offset
-            editor.document.insertString(offset, ORC.toString())
-            editor.caretModel.moveToOffset(offset + 1)
-        }
-        val inlayOffset = editor.caretModel.offset - 1
-        editor.inlayModel.addInlineElement(inlayOffset, true, ContextChipRenderer(data))
-    }
-
-    /** Collect all context items from active inline inlays in the prompt editor. */
-    private fun collectInlineContextItems(): List<ContextItemData> {
-        val editor = promptTextArea.editor ?: return emptyList()
-        val docLength = editor.document.textLength
-        return editor.inlayModel
-            .getInlineElementsInRange(0, docLength, ContextChipRenderer::class.java)
-            .map { it.renderer.contextData }
-    }
-
-    /** Remove all inline context chips and their ORC placeholders from the prompt editor. */
-    private fun clearInlineChips(editor: EditorEx) {
-        val inlays = editor.inlayModel
-            .getInlineElementsInRange(0, editor.document.textLength, ContextChipRenderer::class.java)
-        if (inlays.isEmpty()) return
-        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
-            // Remove ORC characters in reverse order so offsets stay valid
-            for (inlay in inlays.sortedByDescending { it.offset }) {
-                val off = inlay.offset
-                if (off < editor.document.textLength && editor.document.charsSequence[off] == ORC) {
-                    editor.document.deleteString(off, off + 1)
-                }
-                com.intellij.openapi.util.Disposer.dispose(inlay)
             }
         }
     }
