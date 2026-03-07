@@ -88,7 +88,7 @@ public final class ToolUtils {
         return ELEMENT_TYPE_CLASS;
     }
 
-    static VirtualFile resolveVirtualFile(Project project, String path) {
+    public static VirtualFile resolveVirtualFile(Project project, String path) {
         String normalized = path.replace('\\', '/');
         VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(normalized);
         if (vf != null) return vf;
