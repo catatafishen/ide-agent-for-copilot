@@ -718,6 +718,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         leftGroup.addSeparator()
         leftGroup.add(AttachContextDropdownAction())
         leftGroup.addSeparator()
+        leftGroup.add(AgentSelectorAction())
         leftGroup.add(ModelSelectorAction())
         leftGroup.add(ModeSelectorAction())
         leftGroup.addSeparator()
@@ -1246,6 +1247,34 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                     override fun actionPerformed(e: AnActionEvent) {}
                 })
             }
+        }
+    }
+
+    /**
+     * Toolbar dropdown for switching between installed agents (Copilot, Claude).
+     * Resets the session and reloads models on switch.
+     */
+    private inner class AgentSelectorAction : ComboBoxAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
+            val group = DefaultActionGroup()
+            for (type in ActiveAgentManager.AgentType.entries) {
+                group.add(object : AnAction(type.displayName()) {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        if (agentManager.activeType == type) return
+                        switchToAgent(type)
+                    }
+
+                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                })
+            }
+            return group
+        }
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.text = agentManager.activeType.displayName()
+            e.presentation.description = "Switch AI agent"
         }
     }
 
@@ -2283,6 +2312,25 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
         addTimelineEvent(EventType.SESSION_START, "New session started (history kept)")
         updateSessionInfo()
+    }
+
+    /**
+     * Switch to a different AI agent. Resets the session, reloads models,
+     * and updates the toolbar to reflect the new agent.
+     */
+    private fun switchToAgent(type: ActiveAgentManager.AgentType) {
+        val previous = agentManager.activeType
+        agentManager.switchAgent(type)
+
+        resetSession()
+        consolePanel.showPlaceholder("Switched to ${type.displayName()}.")
+
+        loadModelsAsync { models ->
+            loadedModels = models
+            restoreModelSelection(models)
+        }
+
+        LOG.info("Agent switched from ${previous.displayName()} to ${type.displayName()}")
     }
 
     private fun restoreModelSelection(models: List<Model>) {

@@ -40,17 +40,23 @@ public final class ActiveAgentManager {
     // ── Agent type ───────────────────────────────────────────────────────────
 
     public enum AgentType {
-        COPILOT("copilot"),
-        CLAUDE("claude");
+        COPILOT("copilot", "GitHub Copilot"),
+        CLAUDE("claude", "Claude Code");
 
         private final String id;
+        private final String displayName;
 
-        AgentType(String id) {
+        AgentType(String id, String displayName) {
             this.id = id;
+            this.displayName = displayName;
         }
 
         public String id() {
             return id;
+        }
+
+        public String displayName() {
+            return displayName;
         }
 
         @NotNull
@@ -62,6 +68,20 @@ public final class ActiveAgentManager {
         }
     }
 
+    private final java.util.List<Runnable> switchListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
+     * Register a callback invoked after the active agent changes.
+     * Typically used by the UI to reset sessions and reload models.
+     */
+    public void addSwitchListener(@NotNull Runnable listener) {
+        switchListeners.add(listener);
+    }
+
+    public void removeSwitchListener(@NotNull Runnable listener) {
+        switchListeners.remove(listener);
+    }
+
     @NotNull
     public AgentType getActiveType() {
         String stored = PropertiesComponent.getInstance(project).getValue(KEY_ACTIVE_AGENT);
@@ -69,8 +89,19 @@ public final class ActiveAgentManager {
     }
 
     public void switchAgent(@NotNull AgentType type) {
-        LOG.info("Switching active agent to: " + type.id());
+        AgentType previous = getActiveType();
+        if (previous == type) return;
+
+        LOG.info("Switching active agent from " + previous.id() + " to " + type.id());
         PropertiesComponent.getInstance(project).setValue(KEY_ACTIVE_AGENT, type.id());
+
+        for (Runnable listener : switchListeners) {
+            try {
+                listener.run();
+            } catch (Exception e) {
+                LOG.warn("Agent switch listener failed", e);
+            }
+        }
     }
 
     // ── Active service shortcuts ─────────────────────────────────────────────
