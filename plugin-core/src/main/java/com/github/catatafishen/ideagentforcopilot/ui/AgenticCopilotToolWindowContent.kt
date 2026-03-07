@@ -1409,7 +1409,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
                 } else {
                     val handler = com.intellij.openapi.editor.actionSystem.EditorActionManager.getInstance()
                         .getActionHandler(IdeActions.ACTION_EDITOR_PASTE)
-                    handler.execute(editor, editor.caretModel.currentCaret, e.dataContext)
+                    handler.execute(editor, null, e.dataContext)
                 }
             }
         }.registerCustomShortcutSet(
