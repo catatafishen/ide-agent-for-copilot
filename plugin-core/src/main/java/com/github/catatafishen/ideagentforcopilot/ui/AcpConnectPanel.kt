@@ -62,10 +62,13 @@ class AcpConnectPanel(
     init {
         isOpaque = false
 
-        val scrollContent = JBPanel<JBPanel<*>>().apply {
+        val maxContentWidth = JBUI.scale(480)
+
+        val innerContent = JBPanel<JBPanel<*>>().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
             border = JBUI.Borders.empty(20, 24)
+            maximumSize = Dimension(maxContentWidth, Int.MAX_VALUE)
 
             add(createMcpSection())
             add(Box.createVerticalStrut(JBUI.scale(12)))
@@ -73,6 +76,17 @@ class AcpConnectPanel(
             add(Box.createVerticalStrut(JBUI.scale(16)))
             add(createAcpSection().also { acpSection = it })
             add(Box.createVerticalGlue())
+        }
+
+        // Center the inner content horizontally with a max width
+        val scrollContent = JBPanel<JBPanel<*>>(GridBagLayout()).apply {
+            isOpaque = false
+            add(innerContent, GridBagConstraints().apply {
+                anchor = GridBagConstraints.NORTH
+                fill = GridBagConstraints.VERTICAL
+                weightx = 1.0
+                weighty = 1.0
+            })
         }
 
         val scrollPane = JBScrollPane(scrollContent).apply {
@@ -96,11 +110,13 @@ class AcpConnectPanel(
             alignmentX = LEFT_ALIGNMENT
         }
 
-        section.add(createSectionHeader(
-            step = 1,
-            title = "Start tool server",
-            description = "MCP bridge \u2014 exposes IDE tools to agents"
-        ))
+        section.add(
+            createSectionHeader(
+                step = 1,
+                title = "Start tool server",
+                description = "MCP bridge \u2014 exposes IDE tools to agents"
+            )
+        )
         section.add(Box.createVerticalStrut(JBUI.scale(12)))
 
         // Status pill
@@ -183,11 +199,13 @@ class AcpConnectPanel(
             alignmentX = LEFT_ALIGNMENT
         }
 
-        section.add(createSectionHeader(
-            step = 2,
-            title = "Connect agent",
-            description = "ACP \u2014 launch and connect an AI coding agent"
-        ))
+        section.add(
+            createSectionHeader(
+                step = 2,
+                title = "Connect agent",
+                description = "ACP \u2014 launch and connect an AI coding agent"
+            )
+        )
         section.add(Box.createVerticalStrut(JBUI.scale(8)))
 
         // Hint shown when MCP is not running
@@ -264,13 +282,14 @@ class AcpConnectPanel(
         }
 
         panel.add(JBLabel("\u2460\u2461"[step - 1].toString() + "  " + title).apply {
-            font = JBUI.Fonts.label(14f).asBold()
+            font = JBUI.Fonts.label(16f).asBold()
             alignmentX = LEFT_ALIGNMENT
+            border = JBUI.Borders.empty(4, 0)
         })
-        panel.add(Box.createVerticalStrut(JBUI.scale(2)))
+        panel.add(Box.createVerticalStrut(JBUI.scale(4)))
         panel.add(JBLabel(description).apply {
             foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
-            font = JBUI.Fonts.smallFont()
+            font = JBUI.Fonts.label()
             alignmentX = LEFT_ALIGNMENT
         })
 
