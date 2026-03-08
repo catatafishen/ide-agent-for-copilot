@@ -826,7 +826,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         return row
     }
 
-    /** Toolbar action showing MCP server status — hidden when the standalone-mcp plugin isn't installed */
+    /** Toolbar action showing the PSI Bridge (MCP tool server) port */
     private inner class McpStatusIndicatorAction : AnAction(), CustomComponentAction {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) { /* display-only */
@@ -836,22 +836,20 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
             val label = JBLabel()
             label.font = label.font.deriveFont(10f)
             label.border = JBUI.Borders.empty(0, 4)
-            label.toolTipText = "MCP server status"
+            label.toolTipText = "MCP tool server status"
 
             val timer = Timer(5000) {
-                val mcpPluginInstalled = com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat
-                    .getPluginClassLoader("com.github.catatafishen.idemcpserver") != null
-                if (!mcpPluginInstalled) {
-                    label.isVisible = false
-                    return@Timer
+                val bridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                val port = bridge.port
+                if (port > 0) {
+                    label.isVisible = true
+                    label.text = "MCP:$port"
+                    label.foreground = com.intellij.util.ui.UIUtil.getLabelInfoForeground()
+                } else {
+                    label.isVisible = true
+                    label.text = "MCP:off"
+                    label.foreground = JBColor.GRAY
                 }
-                val running = McpServerProbe.isRunning(project)
-                val port =
-                    com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings.getInstance(project).port
-                label.isVisible = true
-                label.text = if (running) "MCP:$port" else "MCP:off"
-                label.foreground =
-                    if (running) com.intellij.util.ui.UIUtil.getLabelInfoForeground() else JBColor.GRAY
             }
             timer.isRepeats = true
             timer.initialDelay = 0
