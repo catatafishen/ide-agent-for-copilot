@@ -105,7 +105,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
 
     init {
         setupUI()
-        restoreConversation()
     }
 
     private fun setupUI() {
