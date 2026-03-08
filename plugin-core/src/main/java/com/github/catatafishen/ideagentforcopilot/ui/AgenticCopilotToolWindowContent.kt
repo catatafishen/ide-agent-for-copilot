@@ -1777,11 +1777,12 @@ class AgenticCopilotToolWindowContent(
         val onUpdate = java.util.function.Consumer<com.google.gson.JsonObject> { update ->
             handlePromptStreamingUpdate(update, receivedContent)
         }
-        var sessionId = initialSessionId
-        val sendPromptCall: () -> Unit = {
-            client.sendPrompt(sessionId, effectivePrompt, modelId, refs, onChunk, onUpdate, null)
+        // Pass the session ID as a parameter so the retry uses the freshly created session,
+        // not the stale ID captured in the closure.
+        val sendPromptCall: (String) -> Unit = { sid ->
+            client.sendPrompt(sid, effectivePrompt, modelId, refs, onChunk, onUpdate, null)
         }
-        sessionId = sendWithSessionRetry(client, sessionId, sendPromptCall) { receivedContent = false }
+        sendWithSessionRetry(client, initialSessionId, sendPromptCall) { receivedContent = false }
     }
 
     private fun isBlockedByAuth(): Boolean {
@@ -1838,18 +1839,18 @@ class AgenticCopilotToolWindowContent(
     }
 
     /**
-     * Attempts to call [sendCall]. If it fails with a "not found" session error,
+     * Attempts to call [sendCall] with [initialSessionId]. If it fails with a "not found" session error,
      * invalidates the current session, creates a fresh one, resets state via [onRetry],
-     * and retries once. Returns the (possibly new) session ID.
+     * and retries once with the new session ID. Returns the (possibly new) session ID.
      */
     private fun sendWithSessionRetry(
         client: AcpClient,
         initialSessionId: String,
-        sendCall: () -> Unit,
+        sendCall: (String) -> Unit,
         onRetry: () -> Unit
     ): String {
         try {
-            sendCall()
+            sendCall(initialSessionId)
             return initialSessionId
         } catch (e: AcpException) {
             if (e.message != null && e.message!!.contains("not found", ignoreCase = true)) {
@@ -1857,7 +1858,7 @@ class AgenticCopilotToolWindowContent(
                 currentSessionId = null
                 val newSessionId = ensureSessionCreated(client)
                 onRetry()
-                sendCall()
+                sendCall(newSessionId)
                 return newSessionId
             }
             throw e

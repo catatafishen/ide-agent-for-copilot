@@ -12,6 +12,8 @@
             <option value="$PROJECT_DIR$/integration-tests" />
             <option value="$PROJECT_DIR$/mcp-server" />
             <option value="$PROJECT_DIR$/plugin-core" />
+            <option value="$PROJECT_DIR$/plugin-experimental" />
+            <option value="$PROJECT_DIR$/standalone-mcp" />
           </set>
         </option>
         <option name="resolveExternalAnnotations" value="true" />

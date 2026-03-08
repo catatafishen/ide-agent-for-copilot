@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="CompilerConfiguration">
-    <bytecodeTargetLevel target="21"/>
+    <bytecodeTargetLevel target="21" />
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
-      <module name="ide-agent-for-copilot.integration-tests" options="-parameters"/>
-      <module name="ide-agent-for-copilot.integration-tests.main" options="-parameters"/>
-      <module name="ide-agent-for-copilot.integration-tests.test" options="-parameters"/>
-      <module name="ide-agent-for-copilot.mcp-server" options="-parameters"/>
-      <module name="ide-agent-for-copilot.mcp-server.main" options="-parameters"/>
-      <module name="ide-agent-for-copilot.mcp-server.test" options="-parameters"/>
-      <module name="ide-agent-for-copilot.plugin-core" options="-parameters -Xlint:deprecation"/>
-      <module name="ide-agent-for-copilot.plugin-core.main" options="-parameters -Xlint:deprecation"/>
-      <module name="ide-agent-for-copilot.plugin-core.test" options="-parameters -Xlint:deprecation"/>
+      <module name="ide-agent-for-copilot.integration-tests" options="-parameters" />
+      <module name="ide-agent-for-copilot.integration-tests.main" options="-parameters" />
+      <module name="ide-agent-for-copilot.integration-tests.test" options="-parameters" />
+      <module name="ide-agent-for-copilot.mcp-server" options="-parameters" />
+      <module name="ide-agent-for-copilot.mcp-server.main" options="-parameters" />
+      <module name="ide-agent-for-copilot.mcp-server.test" options="-parameters" />
+      <module name="ide-agent-for-copilot.plugin-core" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.plugin-core.main" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.plugin-core.test" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.plugin-experimental" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.plugin-experimental.main" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.plugin-experimental.test" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.standalone-mcp" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.standalone-mcp.main" options="-parameters -Xlint:deprecation" />
+      <module name="ide-agent-for-copilot.standalone-mcp.test" options="-parameters -Xlint:deprecation" />
     </option>
   </component>
 </project>
