@@ -17,9 +17,9 @@ public final class AgenticCopilotToolWindowFactory implements ToolWindowFactory,
 
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
-        AgenticCopilotToolWindowContent content = new AgenticCopilotToolWindowContent(project);
+        AgenticCopilotToolWindowContent content = new AgenticCopilotToolWindowContent(project, toolWindow);
         Content toolWindowContent = ContentFactory.getInstance().createContent(
-                content.getComponent(), "", false
+            content.getComponent(), "", false
         );
         toolWindow.getContentManager().addContent(toolWindowContent);
     }

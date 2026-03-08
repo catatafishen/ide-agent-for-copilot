@@ -163,6 +163,32 @@ public final class CopilotSettings {
     private static final String KEY_ATTACH_TRIGGER = "copilot.attachTriggerChar";
     private static final String DEFAULT_ATTACH_TRIGGER = "#";
 
+    private static final String KEY_MCP_AUTO_START = "copilot.mcpAutoStart";
+    private static final String KEY_MCP_PORT = "copilot.mcpPort";
+
+    /**
+     * Whether the MCP tool server should start automatically when the IDE opens.
+     * Defaults to true (current behavior).
+     */
+    public static boolean getMcpAutoStart() {
+        return PropertiesComponent.getInstance().getBoolean(KEY_MCP_AUTO_START, true);
+    }
+
+    public static void setMcpAutoStart(boolean autoStart) {
+        PropertiesComponent.getInstance().setValue(KEY_MCP_AUTO_START, autoStart, true);
+    }
+
+    /**
+     * Preferred MCP server port. 0 means auto-assign (OS picks a random available port).
+     */
+    public static int getMcpPort() {
+        return PropertiesComponent.getInstance().getInt(KEY_MCP_PORT, 0);
+    }
+
+    public static void setMcpPort(int port) {
+        PropertiesComponent.getInstance().setValue(KEY_MCP_PORT, port, 0);
+    }
+
     /**
      * Trigger character for file search in chat input.
      * "#" (VS Code Copilot style, default), "@" (JetBrains AI Assistant style), or "" (disabled).

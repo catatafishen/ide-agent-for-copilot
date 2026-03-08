@@ -30,7 +30,10 @@ import javax.swing.*
  * Main content for the IDE Agent for Copilot tool window.
  * Uses Kotlin UI DSL for cleaner, more maintainable UI code.
  */
-class AgenticCopilotToolWindowContent(private val project: Project) {
+class AgenticCopilotToolWindowContent(
+    private val project: Project,
+    private val toolWindow: com.intellij.openapi.wm.ToolWindow
+) {
 
     private companion object {
         private val LOG =
@@ -108,6 +111,9 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     }
 
     private fun setupUI() {
+        // Title bar actions (always visible regardless of ACP connection)
+        setupTitleBarActions()
+
         // Connect panel — always created
         connectPanel = AcpConnectPanel(project) { agentType, customCommand ->
             connectToAgent(agentType, customCommand)
@@ -120,6 +126,21 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         } else {
             cardLayout.show(mainPanel, CARD_CONNECT)
         }
+    }
+
+    private fun setupTitleBarActions() {
+        val actions = listOf<AnAction>(
+            ProcessingIndicatorAction(),
+            Separator.create(),
+            FollowAgentFilesToggleAction(),
+            Separator.create(),
+            ProjectFilesDropdownAction(),
+            Separator.create(),
+            CopyConversationAction(),
+            SettingsAction(),
+            HelpAction(project)
+        )
+        toolWindow.setTitleActions(actions)
     }
 
     private fun buildAndShowChatPanel() {
@@ -538,10 +559,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
     private fun createPromptTab(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // Top toolbar (general/status — always visible)
-        val topToolbar = createTopToolbar()
-        topToolbar.alignmentX = Component.LEFT_ALIGNMENT
-
         // PSI bridge status banner (shown when bridge is not reachable)
         val psiBridgeBanner = createPsiBridgeBanner()
 
@@ -552,7 +569,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
         val northStack = JBPanel<JBPanel<*>>()
         northStack.layout = BoxLayout(northStack, BoxLayout.Y_AXIS)
-        northStack.add(topToolbar)
         northStack.add(psiBridgeBanner)
 
         // Load models
@@ -777,7 +793,7 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         }
     }
 
-    /** Bottom toolbar: ACP-specific actions (send, attach, model, mode, restart, disconnect, billing). */
+    /** Bottom toolbar: ACP-specific actions (send, attach, model, mode, restart, disconnect, agent name, billing). */
     private fun createControlsRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
 
@@ -800,10 +816,12 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         controlsToolbar.setReservePlaceAutoPopupIcon(false)
 
         val rightGroup = DefaultActionGroup()
+        rightGroup.add(AgentSelectorAction())
+        rightGroup.addSeparator()
         rightGroup.add(billing.createUsageGraphAction())
 
         val rightToolbar = ActionManager.getInstance().createActionToolbar(
-            "CopilotBilling", rightGroup, true
+            "CopilotRight", rightGroup, true
         )
         rightToolbar.targetComponent = row
         rightToolbar.setReservePlaceAutoPopupIcon(false)
@@ -812,85 +830,6 @@ class AgenticCopilotToolWindowContent(private val project: Project) {
         row.add(rightToolbar.component, BorderLayout.EAST)
 
         return row
-    }
-
-    /** Top toolbar: general status and navigation (MCP, agent, processing, files, settings). */
-    private fun createTopToolbar(): JComponent {
-        val row = JBPanel<JBPanel<*>>(BorderLayout())
-
-        val leftGroup = DefaultActionGroup()
-        leftGroup.add(McpStatusIndicatorAction())
-        leftGroup.addSeparator()
-        leftGroup.add(AgentSelectorAction())
-        leftGroup.addSeparator()
-        leftGroup.add(ProcessingIndicatorAction())
-
-        val leftToolbar = ActionManager.getInstance().createActionToolbar(
-            "CopilotTopLeft", leftGroup, true
-        )
-        leftToolbar.targetComponent = row
-        leftToolbar.setReservePlaceAutoPopupIcon(false)
-
-        val rightGroup = DefaultActionGroup()
-        rightGroup.add(FollowAgentFilesToggleAction())
-        rightGroup.addSeparator()
-        rightGroup.add(ProjectFilesDropdownAction())
-        rightGroup.addSeparator()
-        rightGroup.add(CopyConversationAction())
-        rightGroup.add(SettingsAction())
-        rightGroup.add(HelpAction(project))
-
-        val rightToolbar = ActionManager.getInstance().createActionToolbar(
-            "CopilotTopRight", rightGroup, true
-        )
-        rightToolbar.targetComponent = row
-        rightToolbar.setReservePlaceAutoPopupIcon(false)
-
-        row.add(leftToolbar.component, BorderLayout.CENTER)
-        row.add(rightToolbar.component, BorderLayout.EAST)
-
-        row.border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(JBColor.border(), com.intellij.ui.SideBorder.BOTTOM),
-            JBUI.Borders.empty(0, 0, 2, 0)
-        )
-
-        return row
-    }
-
-    /** Toolbar action showing the PSI Bridge (MCP tool server) port, updated via message bus. */
-    private inner class McpStatusIndicatorAction : AnAction(), CustomComponentAction {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) { /* display-only */
-        }
-
-        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
-            val label = JBLabel()
-            label.font = label.font.deriveFont(10f)
-            label.border = JBUI.Borders.empty(0, 4)
-            label.toolTipText = "MCP tool server status"
-
-            fun refresh(port: Int) {
-                if (port > 0) {
-                    label.text = "MCP:$port"
-                    label.foreground = com.intellij.util.ui.UIUtil.getLabelInfoForeground()
-                } else {
-                    label.text = "MCP:starting"
-                    label.foreground = JBColor.GRAY
-                }
-            }
-
-            // Initial state
-            refresh(com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project).port)
-
-            // Subscribe to bridge start events for instant updates
-            project.messageBus.connect().subscribe(
-                com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.STATUS_TOPIC,
-                com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.StatusListener { port ->
-                    SwingUtilities.invokeLater { refresh(port) }
-                })
-
-            return label
-        }
     }
 
     /** Toolbar action: disconnect from the current ACP agent */

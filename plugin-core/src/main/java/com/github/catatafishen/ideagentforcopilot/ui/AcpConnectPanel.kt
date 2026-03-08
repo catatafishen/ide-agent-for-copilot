@@ -3,20 +3,24 @@ package com.github.catatafishen.ideagentforcopilot.ui
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager.AgentType
+import com.github.catatafishen.ideagentforcopilot.services.CopilotSettings
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.*
+import java.text.SimpleDateFormat
+import java.util.*
 import javax.swing.*
 
 /**
- * Pre-connection landing panel shown before ACP is established.
- * Displays PSI bridge (MCP tool server) status, agent selector dropdown,
- * optional custom command input, a Connect button, and an auto-connect checkbox.
+ * Pre-connection landing panel with two sections:
+ * 1. ACP — agent connection (agent selector, custom command, connect button)
+ * 2. MCP — tool server controls (start/stop, port, auto-start, real-time tool call log)
  */
 class AcpConnectPanel(
     private val project: Project,
@@ -24,39 +28,61 @@ class AcpConnectPanel(
 ) : JBPanel<AcpConnectPanel>(BorderLayout()) {
 
     private val agentManager = ActiveAgentManager.getInstance(project)
-    private val agentCombo: JComboBox<AgentType>
+    private lateinit var agentCombo: JComboBox<AgentType>
     private val customCommandField = JBTextField()
     private val customCommandLabel = JBLabel("Start command:")
     private val connectButton = JButton("Connect")
     private val autoConnectCheckbox = JCheckBox("Auto-connect on startup")
-    private val mcpStatusLabel = JBLabel()
     private val statusBanner = StatusBanner(project)
 
+    // MCP section
+    private val mcpStartStopButton = JButton("Start")
+    private val mcpPortField = JBTextField(6)
+    private val mcpAutoStartCheckbox = JCheckBox("Auto-start on IDE open")
+    private val toolCallLogModel = DefaultListModel<String>()
+    private val toolCallList = JList(toolCallLogModel)
+
     init {
-        border = JBUI.Borders.empty(20, 40)
+        border = JBUI.Borders.empty(12, 24)
 
-        val centerBox = JBPanel<JBPanel<*>>()
-        centerBox.layout = BoxLayout(centerBox, BoxLayout.Y_AXIS)
-        centerBox.isOpaque = false
+        val mainBox = JBPanel<JBPanel<*>>()
+        mainBox.layout = BoxLayout(mainBox, BoxLayout.Y_AXIS)
+        mainBox.isOpaque = false
 
-        // Title
-        val titleLabel = JBLabel("Connect to an AI Agent")
-        titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 16f)
-        titleLabel.alignmentX = Component.LEFT_ALIGNMENT
-        centerBox.add(titleLabel)
-        centerBox.add(Box.createVerticalStrut(12))
+        mainBox.add(createAcpSection())
+        mainBox.add(Box.createVerticalStrut(20))
+        mainBox.add(createMcpSection())
 
-        // MCP tool server status
-        mcpStatusLabel.alignmentX = Component.LEFT_ALIGNMENT
-        mcpStatusLabel.font = mcpStatusLabel.font.deriveFont(11f)
-        centerBox.add(mcpStatusLabel)
-        centerBox.add(Box.createVerticalStrut(16))
+        val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+        wrapper.isOpaque = false
+        wrapper.add(mainBox, BorderLayout.NORTH)
+
+        val scrollPane = JBScrollPane(wrapper)
+        scrollPane.border = null
+        scrollPane.horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+        add(scrollPane, BorderLayout.CENTER)
+
+        subscribeToBridgeEvents()
+        refreshMcpState()
+    }
+
+    private fun createAcpSection(): JComponent {
+        val section = JBPanel<JBPanel<*>>()
+        section.layout = BoxLayout(section, BoxLayout.Y_AXIS)
+        section.isOpaque = false
+        section.alignmentX = LEFT_ALIGNMENT
+
+        val titleLabel = JBLabel("ACP \u2014 Agent connection")
+        titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 14f)
+        titleLabel.alignmentX = LEFT_ALIGNMENT
+        section.add(titleLabel)
+        section.add(Box.createVerticalStrut(8))
 
         // Agent selector
         val agentLabel = JBLabel("Agent:")
-        agentLabel.alignmentX = Component.LEFT_ALIGNMENT
-        centerBox.add(agentLabel)
-        centerBox.add(Box.createVerticalStrut(4))
+        agentLabel.alignmentX = LEFT_ALIGNMENT
+        section.add(agentLabel)
+        section.add(Box.createVerticalStrut(4))
 
         agentCombo = JComboBox(AgentType.entries.toTypedArray())
         agentCombo.renderer = object : DefaultListCellRenderer() {
@@ -70,58 +96,164 @@ class AcpConnectPanel(
         }
         agentCombo.selectedItem = agentManager.activeType
         agentCombo.maximumSize = Dimension(300, agentCombo.preferredSize.height)
-        agentCombo.alignmentX = Component.LEFT_ALIGNMENT
+        agentCombo.alignmentX = LEFT_ALIGNMENT
         agentCombo.addActionListener { updateCustomCommandVisibility() }
-        centerBox.add(agentCombo)
-        centerBox.add(Box.createVerticalStrut(8))
+        section.add(agentCombo)
+        section.add(Box.createVerticalStrut(8))
 
-        // Custom command field (only visible for GENERIC)
-        customCommandLabel.alignmentX = Component.LEFT_ALIGNMENT
-        centerBox.add(customCommandLabel)
-        centerBox.add(Box.createVerticalStrut(4))
+        // Custom command field
+        customCommandLabel.alignmentX = LEFT_ALIGNMENT
+        section.add(customCommandLabel)
+        section.add(Box.createVerticalStrut(4))
 
         customCommandField.text = agentManager.getCustomAcpCommandFor(agentManager.activeType)
         customCommandField.maximumSize = Dimension(400, customCommandField.preferredSize.height)
-        customCommandField.alignmentX = Component.LEFT_ALIGNMENT
-        centerBox.add(customCommandField)
-        centerBox.add(Box.createVerticalStrut(16))
+        customCommandField.alignmentX = LEFT_ALIGNMENT
+        section.add(customCommandField)
+        section.add(Box.createVerticalStrut(12))
 
         // Connect button
-        connectButton.alignmentX = Component.LEFT_ALIGNMENT
+        connectButton.alignmentX = LEFT_ALIGNMENT
         connectButton.addActionListener { doConnect() }
-        centerBox.add(connectButton)
-        centerBox.add(Box.createVerticalStrut(12))
+        section.add(connectButton)
+        section.add(Box.createVerticalStrut(8))
 
         // Auto-connect checkbox
         autoConnectCheckbox.isSelected = agentManager.isAutoConnect
-        autoConnectCheckbox.alignmentX = Component.LEFT_ALIGNMENT
+        autoConnectCheckbox.alignmentX = LEFT_ALIGNMENT
         autoConnectCheckbox.addActionListener {
-            agentManager.setAutoConnect(autoConnectCheckbox.isSelected)
+            agentManager.isAutoConnect = autoConnectCheckbox.isSelected
         }
-        centerBox.add(autoConnectCheckbox)
-        centerBox.add(Box.createVerticalStrut(8))
+        section.add(autoConnectCheckbox)
+        section.add(Box.createVerticalStrut(4))
 
-        // Status banner for connect errors
-        statusBanner.alignmentX = Component.LEFT_ALIGNMENT
-        centerBox.add(statusBanner)
-
-        // Wrap in a vertically centered layout
-        val wrapper = JBPanel<JBPanel<*>>(GridBagLayout())
-        wrapper.isOpaque = false
-        wrapper.add(centerBox)
-
-        add(wrapper, BorderLayout.CENTER)
+        // Status banner
+        statusBanner.alignmentX = LEFT_ALIGNMENT
+        section.add(statusBanner)
 
         updateCustomCommandVisibility()
-        refreshMcpStatus()
+        return section
+    }
 
-        // Subscribe to PSI bridge status changes so the label updates when the server starts
-        project.messageBus.connect().subscribe(
+    private fun createMcpSection(): JComponent {
+        val section = JBPanel<JBPanel<*>>()
+        section.layout = BoxLayout(section, BoxLayout.Y_AXIS)
+        section.isOpaque = false
+        section.alignmentX = LEFT_ALIGNMENT
+
+        val titleLabel = JBLabel("MCP \u2014 Tool server")
+        titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 14f)
+        titleLabel.alignmentX = LEFT_ALIGNMENT
+        section.add(titleLabel)
+        section.add(Box.createVerticalStrut(8))
+
+        // Port + Start/Stop row
+        val controlRow = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 6, 0))
+        controlRow.isOpaque = false
+        controlRow.alignmentX = LEFT_ALIGNMENT
+
+        controlRow.add(JBLabel("Port:"))
+        mcpPortField.text = formatPort(CopilotSettings.getMcpPort())
+        mcpPortField.toolTipText = "0 or empty = auto-assign random port"
+        controlRow.add(mcpPortField)
+        controlRow.add(mcpStartStopButton)
+
+        mcpStartStopButton.addActionListener { toggleMcpServer() }
+        section.add(controlRow)
+        section.add(Box.createVerticalStrut(6))
+
+        // Auto-start checkbox
+        mcpAutoStartCheckbox.isSelected = CopilotSettings.getMcpAutoStart()
+        mcpAutoStartCheckbox.alignmentX = LEFT_ALIGNMENT
+        mcpAutoStartCheckbox.addActionListener {
+            CopilotSettings.setMcpAutoStart(mcpAutoStartCheckbox.isSelected)
+        }
+        section.add(mcpAutoStartCheckbox)
+        section.add(Box.createVerticalStrut(10))
+
+        // Tool call log
+        val logLabel = JBLabel("Recent tool calls:")
+        logLabel.font = logLabel.font.deriveFont(Font.PLAIN, 11f)
+        logLabel.foreground = UIUtil.getLabelInfoForeground()
+        logLabel.alignmentX = LEFT_ALIGNMENT
+        section.add(logLabel)
+        section.add(Box.createVerticalStrut(4))
+
+        toolCallList.font = Font(Font.MONOSPACED, Font.PLAIN, 11)
+        toolCallList.visibleRowCount = 8
+        toolCallList.cellRenderer = ToolCallCellRenderer()
+        val scrollPane = JBScrollPane(toolCallList)
+        scrollPane.alignmentX = LEFT_ALIGNMENT
+        scrollPane.preferredSize = Dimension(Int.MAX_VALUE, JBUI.scale(140))
+        scrollPane.maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(300))
+        section.add(scrollPane)
+
+        return section
+    }
+
+    private fun subscribeToBridgeEvents() {
+        val connection = project.messageBus.connect()
+
+        connection.subscribe(
             PsiBridgeService.STATUS_TOPIC,
-            PsiBridgeService.StatusListener { port ->
-                SwingUtilities.invokeLater { updateMcpLabel(port) }
+            PsiBridgeService.StatusListener { _ ->
+                SwingUtilities.invokeLater { refreshMcpState() }
+            })
+
+        connection.subscribe(
+            PsiBridgeService.TOOL_CALL_TOPIC,
+            PsiBridgeService.ToolCallListener { toolName, durationMs, success ->
+                SwingUtilities.invokeLater { addToolCallEntry(toolName, durationMs, success) }
             })
     }
+
+    private fun refreshMcpState() {
+        val bridge = PsiBridgeService.getInstance(project)
+        val running = bridge.isRunning
+        val port = bridge.port
+
+        mcpStartStopButton.text = if (running) "Stop" else "Start"
+        if (running && port > 0) {
+            mcpPortField.text = port.toString()
+            mcpPortField.isEnabled = false
+        } else {
+            mcpPortField.isEnabled = true
+            if (mcpPortField.text.isBlank() || mcpPortField.text == "0") {
+                mcpPortField.text = formatPort(CopilotSettings.getMcpPort())
+            }
+        }
+    }
+
+    private fun toggleMcpServer() {
+        val bridge = PsiBridgeService.getInstance(project)
+        if (bridge.isRunning) {
+            bridge.stop()
+        } else {
+            val portText = mcpPortField.text.trim()
+            val port = portText.toIntOrNull() ?: 0
+            CopilotSettings.setMcpPort(port)
+            bridge.start(port)
+        }
+        refreshMcpState()
+    }
+
+    private fun addToolCallEntry(toolName: String, durationMs: Long, success: Boolean) {
+        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        val status = if (success) "\u2713" else "\u2717"
+        val entry = "$time  $status  $toolName  (${durationMs}ms)"
+
+        toolCallLogModel.addElement(entry)
+
+        // Keep last 200 entries
+        while (toolCallLogModel.size() > 200) {
+            toolCallLogModel.removeElementAt(0)
+        }
+
+        // Auto-scroll to bottom
+        toolCallList.ensureIndexIsVisible(toolCallLogModel.size() - 1)
+    }
+
+    private fun formatPort(port: Int): String = if (port == 0) "0" else port.toString()
 
     private fun updateCustomCommandVisibility() {
         val selectedType = agentCombo.selectedItem as? AgentType ?: return
@@ -171,7 +303,6 @@ class AcpConnectPanel(
         }
     }
 
-    /** Resets the connect button to its default state (enabled, "Connect" label). */
     fun resetConnectButton() {
         SwingUtilities.invokeLater {
             connectButton.isEnabled = true
@@ -180,18 +311,23 @@ class AcpConnectPanel(
     }
 
     fun refreshMcpStatus() {
-        val bridge = PsiBridgeService.getInstance(project)
-        val port = bridge.port
-        updateMcpLabel(port)
+        refreshMcpState()
     }
 
-    private fun updateMcpLabel(port: Int) {
-        if (port > 0) {
-            mcpStatusLabel.text = "MCP Tool Server: running on port $port"
-            mcpStatusLabel.foreground = UIUtil.getLabelInfoForeground()
-        } else {
-            mcpStatusLabel.text = "MCP Tool Server: starting..."
-            mcpStatusLabel.foreground = JBColor.GRAY
+    /**
+     * Custom cell renderer that colors failed tool calls in red.
+     */
+    private class ToolCallCellRenderer : DefaultListCellRenderer() {
+        override fun getListCellRendererComponent(
+            list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
+        ): Component {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+            val text = value?.toString() ?: ""
+            if (!isSelected && text.contains("  \u2717  ")) {
+                foreground = JBColor.RED
+            }
+            font = Font(Font.MONOSPACED, Font.PLAIN, 11)
+            return this
         }
     }
 }

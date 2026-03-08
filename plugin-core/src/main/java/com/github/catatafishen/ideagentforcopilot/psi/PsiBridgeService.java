@@ -57,10 +57,23 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
+     * Listener notified after each MCP tool call completes.
+     */
+    public interface ToolCallListener {
+        void toolCalled(String toolName, long durationMs, boolean success);
+    }
+
+    /**
      * Project-level message bus topic for PSI bridge status changes.
      */
     public static final Topic<StatusListener> STATUS_TOPIC =
         Topic.create("PsiBridgeService.Status", StatusListener.class);
+
+    /**
+     * Project-level message bus topic for tool call events (fire-and-forget notifications).
+     */
+    public static final Topic<ToolCallListener> TOOL_CALL_TOPIC =
+        Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
 
     private final Project project;
     private final RunConfigurationService runConfigService;
@@ -168,9 +181,16 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public synchronized void start() {
+        start(0);
+    }
+
+    /**
+     * Starts the PSI bridge HTTP server on the given port (0 = OS-assigned random port).
+     */
+    public synchronized void start(int requestedPort) {
         if (httpServer != null) return;
         try {
-            httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", requestedPort), 0);
             httpServer.createContext("/tools/call", this::handleToolCall);
             httpServer.createContext("/tools/list", this::handleToolsList);
             httpServer.createContext("/tools/status", this::handleToolStatus);
@@ -196,6 +216,36 @@ public final class PsiBridgeService implements Disposable {
                 "Open IDE Log", () -> com.intellij.ide.actions.RevealFileAction.openFile(
                     new java.io.File(com.intellij.openapi.application.PathManager.getLogPath(), "idea.log"))));
             notification.notify(project);
+        }
+    }
+
+    /**
+     * Stops the PSI bridge HTTP server. Can be restarted with {@link #start(int)}.
+     */
+    public synchronized void stop() {
+        if (httpServer != null) {
+            httpServer.stop(0);
+            httpServer = null;
+            port = 0;
+            LOG.info("PSI Bridge stopped for project: " + project.getBasePath());
+            project.getMessageBus().syncPublisher(STATUS_TOPIC).bridgeStarted(0);
+        }
+    }
+
+    /**
+     * Returns true if the server is currently running.
+     */
+    public synchronized boolean isRunning() {
+        return httpServer != null;
+    }
+
+    private void fireToolCallEvent(String toolName, long startTimeMs, boolean success) {
+        long duration = System.currentTimeMillis() - startTimeMs;
+        try {
+            project.getMessageBus().syncPublisher(TOOL_CALL_TOPIC)
+                .toolCalled(toolName, duration, success);
+        } catch (Exception e) {
+            LOG.debug("Failed to fire tool call event", e);
         }
     }
 
@@ -374,6 +424,7 @@ public final class PsiBridgeService implements Disposable {
             ? request.getAsJsonObject("arguments") : new JsonObject();
 
         LOG.info("PSI Bridge tool call: " + toolName + " args=" + arguments);
+        long toolCallStart = System.currentTimeMillis();
 
         // Enforce per-tool permissions (DENY / ASK / ALLOW)
         String denied = checkPluginToolPermission(toolName, arguments);
@@ -385,18 +436,22 @@ public final class PsiBridgeService implements Disposable {
             exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.getResponseBody().close();
+            fireToolCallEvent(toolName, toolCallStart, false);
             return;
         }
 
         String result;
+        boolean success = true;
         try {
             ToolHandler handler = toolRegistry.get(toolName);
             result = handler != null ? handler.handle(arguments) : "Unknown tool: " + toolName;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
             result = "Error: IDE is busy, please retry. " + e.getMessage();
+            success = false;
         } catch (Exception e) {
             LOG.warn("PSI tool error: " + toolName, e);
             result = "Error: " + e.getMessage();
+            success = false;
         }
 
         // Piggyback highlights after successful write operations
@@ -420,6 +475,7 @@ public final class PsiBridgeService implements Disposable {
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.getResponseBody().close();
+        fireToolCallEvent(toolName, toolCallStart, success);
     }
 
     /**
@@ -602,11 +658,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public void dispose() {
-        if (httpServer != null) {
-            httpServer.stop(0);
-            httpServer = null;
-            LOG.info("PSI Bridge stopped");
-        }
+        stop();
         if (ApplicationManager.getApplication().isUnitTestMode()) return;
         String projectPath = project.getBasePath();
         if (projectPath == null) return;
