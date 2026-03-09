@@ -11,8 +11,13 @@ const ChatController = {
         return document.querySelector('#messages')!;
     },
 
-    _container(): HTMLElement & { scrollIfNeeded(): void; forceScroll(): void } | null {
+    _container(): HTMLElement & { scrollIfNeeded(): void; forceScroll(): void; workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void } } | null {
         return document.querySelector('chat-container') as any;
+    },
+
+    _resetWorkingTimer(): void {
+        const wi = this._container()?.workingIndicator;
+        if (wi && !wi.hidden) wi.resetTimer();
     },
 
     _thinkingCounter: 0,
@@ -121,6 +126,7 @@ const ChatController = {
 
     appendAgentText(turnId: string, agentId: string, text: string): void {
         try {
+            this._resetWorkingTimer();
             const ctx = this._getCtx(turnId, agentId);
             this._collapseThinkingFor(ctx);
             if (!ctx.textBubble) {
@@ -167,6 +173,7 @@ const ChatController = {
     },
 
     addThinkingText(turnId: string, agentId: string, text: string): void {
+        this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId);
         if (!ctx.thinkingBlock) {
             this._thinkingCounter++;
@@ -194,6 +201,7 @@ const ChatController = {
     },
 
     addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string): void {
+        this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
         const chip = document.createElement('tool-chip');
@@ -208,11 +216,13 @@ const ChatController = {
     },
 
     updateToolCall(id: string, status: string, resultHtml?: string): void {
+        this._resetWorkingTimer();
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
         if (chip) chip.setAttribute('status', status === 'failed' ? 'failed' : 'complete');
     },
 
     addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptText?: string): void {
+        this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
         ctx.textBubble = null;
@@ -288,6 +298,7 @@ const ChatController = {
     },
 
     clear(): void {
+        this.hideWorkingIndicator();
         this._msgs().innerHTML = '';
         this._ctx = {};
         this._thinkingCounter = 0;
@@ -297,6 +308,7 @@ const ChatController = {
     },
 
     finalizeTurn(turnId: string, statsJson?: string): void {
+        this.hideWorkingIndicator();
         const ctx = this._ctx[turnId + '-main'];
         if (ctx?.textBubble && !ctx.textBubble.textContent?.trim()) {
             ctx.textBubble.remove();
@@ -350,6 +362,7 @@ const ChatController = {
     },
 
     cancelAllRunning(): void {
+        this.hideWorkingIndicator();
         document.querySelectorAll('tool-chip[status="running"]').forEach(c => c.setAttribute('status', 'failed'));
         document.querySelectorAll('thinking-chip[status="running"], thinking-chip[status="thinking"]').forEach(c => c.setAttribute('status', 'complete'));
         document.querySelectorAll('subagent-chip[status="running"]').forEach(c => c.setAttribute('status', 'failed'));
@@ -403,6 +416,15 @@ const ChatController = {
 
     removeLoadMore(): void {
         document.querySelector('load-more')?.remove();
+    },
+
+    showWorkingIndicator(): void {
+        this._container()?.workingIndicator?.show();
+        this._container()?.scrollIfNeeded();
+    },
+
+    hideWorkingIndicator(): void {
+        this._container()?.workingIndicator?.hide();
     },
 
     _trimMessages(): void {

@@ -24,6 +24,7 @@ import TurnDetails from './components/TurnDetails';
 import ChatController from './ChatController';
 
 import PermissionRequest from './components/PermissionRequest';
+import WorkingIndicator from './components/WorkingIndicator';
 
 // ── Register custom elements ──────────────────────────
 
@@ -40,6 +41,7 @@ customElements.define('session-divider', SessionDivider);
 customElements.define('load-more', LoadMore);
 customElements.define('turn-details', TurnDetails);
 customElements.define('permission-request', PermissionRequest);
+customElements.define('working-indicator', WorkingIndicator);
 
 // ── Expose controller to Kotlin bridge ────────────────
 

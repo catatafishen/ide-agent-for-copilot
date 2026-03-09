@@ -2,6 +2,7 @@ export default class ChatContainer extends HTMLElement {
     private _init = false;
     private _autoScroll = true;
     private _messages!: HTMLDivElement;
+    private _workingIndicator!: HTMLElement;
     private _scrollRAF: number | null = null;
     private _observer!: MutationObserver;
     private _copyObs!: MutationObserver;
@@ -17,6 +18,9 @@ export default class ChatContainer extends HTMLElement {
         this._messages = document.createElement('div');
         this._messages.id = 'messages';
         this.appendChild(this._messages);
+
+        this._workingIndicator = document.createElement('working-indicator');
+        this.appendChild(this._workingIndicator);
 
         this._onScroll = () => {
             // Ignore scroll events caused by our own scrollTo calls
@@ -127,6 +131,10 @@ export default class ChatContainer extends HTMLElement {
 
     get messages(): HTMLDivElement {
         return this._messages;
+    }
+
+    get workingIndicator(): HTMLElement {
+        return this._workingIndicator;
     }
 
     scrollIfNeeded(): void {

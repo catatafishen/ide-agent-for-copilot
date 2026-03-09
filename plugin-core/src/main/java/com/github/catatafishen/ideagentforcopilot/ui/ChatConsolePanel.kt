@@ -228,7 +228,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val ts = timestamp()
         entries.add(EntryData.Prompt(text, ts, contextFiles))
         val encodedBubble = if (bubbleHtml != null) b64(bubbleHtml) else ""
-        executeJs("ChatController.addUserMessage('${escJs(text)}','$ts','$encodedBubble')")
+        executeJs("ChatController.addUserMessage('${escJs(text)}','$ts','$encodedBubble');ChatController.showWorkingIndicator()")
     }
 
     override fun startStreaming() {
