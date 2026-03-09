@@ -41,6 +41,16 @@ class AcpConnectPanel(
     private val mcpDropdownButton = JButton(AllIcons.General.ArrowDown)
     private val mcpPortField = JBTextField(6)
     private val mcpStatusLabel = JBLabel("Stopped")
+    private val mcpUrlCopyButton = JButton(AllIcons.Actions.Copy).apply {
+        toolTipText = "Copy MCP URL"
+        isBorderPainted = false
+        isContentAreaFilled = false
+        isFocusable = false
+        isVisible = false
+        preferredSize = JBUI.size(22, 22)
+        maximumSize = JBUI.size(22, 22)
+    }
+    private var mcpRunningUrl = ""
     private val toolCallLink = HyperlinkLabel("0 calls")
     private val toolCallEntries = mutableListOf<String>()
     private lateinit var statusPill: JBPanel<JBPanel<*>>
@@ -78,9 +88,9 @@ class AcpConnectPanel(
             maximumSize = Dimension(maxContentWidth, Int.MAX_VALUE)
 
             add(createMcpSection())
-            add(Box.createVerticalStrut(JBUI.scale(12)))
+            add(Box.createVerticalStrut(JBUI.scale(24)))
             add(createSeparator())
-            add(Box.createVerticalStrut(JBUI.scale(16)))
+            add(Box.createVerticalStrut(JBUI.scale(24)))
             add(createAcpSection().also { acpSection = it })
             add(Box.createVerticalGlue())
         }
@@ -171,10 +181,21 @@ class AcpConnectPanel(
         mcpStatusLabel.font = JBUI.Fonts.label()
         pill.add(mcpStatusLabel, BorderLayout.WEST)
 
+        mcpUrlCopyButton.addActionListener {
+            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+            clipboard.setContents(java.awt.datatransfer.StringSelection(mcpRunningUrl), null)
+        }
+
+        val eastPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            isOpaque = false
+        }
+        eastPanel.add(mcpUrlCopyButton, BorderLayout.WEST)
+        eastPanel.add(toolCallLink, BorderLayout.EAST)
+
         toolCallLink.font = JBUI.Fonts.smallFont()
         toolCallLink.setToolTipText("Click to view recent tool calls")
         toolCallLink.addHyperlinkListener { showToolCallPopup() }
-        pill.add(toolCallLink, BorderLayout.EAST)
+        pill.add(eastPanel, BorderLayout.EAST)
 
         statusPill = pill
         return pill
@@ -305,9 +326,13 @@ class AcpConnectPanel(
             detailsToggle.setHyperlinkText(
                 if (detailsExpanded) "\u25BE Runtime arguments" else "\u25B8 Runtime arguments"
             )
+            // Constrain height when collapsed so BoxLayout doesn't expand the wrapper
+            wrapper.maximumSize = Dimension(Int.MAX_VALUE, if (detailsExpanded) Int.MAX_VALUE else JBUI.scale(24))
             wrapper.revalidate()
         }
         wrapper.add(detailsToggle)
+        // Collapsed by default — constrain to just the toggle link height
+        wrapper.maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(24))
 
         // Collapsible content
         detailsContent = JBPanel<JBPanel<*>>().apply {
@@ -542,8 +567,10 @@ class AcpConnectPanel(
         if (running && port > 0) {
             mcpPortField.text = port.toString()
             mcpPortField.isEnabled = false
-            mcpStatusLabel.text = "Running \u2014 http://127.0.0.1:$port/mcp"
+            mcpRunningUrl = "http://127.0.0.1:$port/mcp"
+            mcpStatusLabel.text = "Running \u2014 $mcpRunningUrl"
             mcpStatusLabel.icon = AllIcons.General.InspectionsOK
+            mcpUrlCopyButton.isVisible = true
             statusPill.background = JBColor(
                 Color(0xE8, 0xF5, 0xE9),
                 Color(0x2E, 0x3B, 0x2E)
@@ -553,8 +580,10 @@ class AcpConnectPanel(
             if (mcpPortField.text.isBlank()) {
                 mcpPortField.text = McpServerSettings.getInstance(project).port.toString()
             }
+            mcpRunningUrl = ""
             mcpStatusLabel.text = "Stopped"
             mcpStatusLabel.icon = AllIcons.General.InspectionsOKEmpty
+            mcpUrlCopyButton.isVisible = false
             statusPill.background = JBColor(
                 Color(0xF0, 0xF0, 0xF0),
                 Color(0x3C, 0x3C, 0x3C)
