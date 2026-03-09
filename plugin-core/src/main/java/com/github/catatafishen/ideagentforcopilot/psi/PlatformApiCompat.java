@@ -648,6 +648,9 @@ public final class PlatformApiCompat {
                     var seq = desired > 0 && desired < bytes.length ? prefixSeq : byteSeq;
                     var ft = detector.detect(null, seq, text);
                     if (ft instanceof com.intellij.openapi.fileTypes.LanguageFileType lft) {
+                        // Skip PlainText — it's a catch-all fallback, not a real detection.
+                        // Returning it would suppress pattern-based detection (e.g. JSON).
+                        if (lft.getLanguage() == com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE) continue;
                         return lft.getLanguage();
                     }
                 } catch (Exception ignored) {

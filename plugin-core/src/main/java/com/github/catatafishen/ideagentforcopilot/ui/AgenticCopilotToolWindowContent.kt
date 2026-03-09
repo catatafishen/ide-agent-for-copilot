@@ -2226,13 +2226,16 @@ class AgenticCopilotToolWindowContent(
         com.intellij.ide.IdeEventQueue.getInstance().addPreprocessor(
             com.intellij.ide.IdeEventQueue.EventDispatcher { event ->
                 if (event !is java.awt.event.KeyEvent) return@EventDispatcher false
-                if (!popup.isVisible) return@EventDispatcher false
 
-                // After consuming a KEY_PRESSED paste, swallow KEY_TYPED and KEY_RELEASED
+                // Must check swallowFollowUp BEFORE popup.isVisible: popup.cancel() makes
+                // isVisible false immediately, so KEY_TYPED/KEY_RELEASED would slip through
+                // and trigger a second paste in the editor.
                 if (swallowFollowUp && event.id != java.awt.event.KeyEvent.KEY_PRESSED) {
                     if (event.id == java.awt.event.KeyEvent.KEY_RELEASED) swallowFollowUp = false
                     return@EventDispatcher true
                 }
+
+                if (!popup.isVisible) return@EventDispatcher false
 
                 if (event.id != java.awt.event.KeyEvent.KEY_PRESSED) return@EventDispatcher false
                 val stroke = javax.swing.KeyStroke.getKeyStrokeForEvent(event)
@@ -2245,6 +2248,10 @@ class AgenticCopilotToolWindowContent(
                     val offset = editor.caretModel.offset
                     editor.document.insertString(offset, text)
                     editor.caretModel.moveToOffset(offset + text.length)
+                }
+                // Return focus to prompt so user can keep typing
+                ApplicationManager.getApplication().invokeLater {
+                    promptTextArea.editor?.contentComponent?.requestFocusInWindow()
                 }
                 true
             },
@@ -2324,8 +2331,11 @@ class AgenticCopilotToolWindowContent(
                             )
                         )
                     }
-                    // Return focus to the chat input after scratch file creation
-                    promptTextArea.requestFocusInWindow()
+                    // openFile(focus=true) steals focus; schedule a second invokeLater so
+                    // this runs after the file editor has finished grabbing focus.
+                    ApplicationManager.getApplication().invokeLater {
+                        promptTextArea.editor?.contentComponent?.requestFocusInWindow()
+                    }
                 }
             } catch (e: Exception) {
                 LOG.warn("Failed to create scratch file from attach menu", e)
