@@ -57,6 +57,7 @@ public final class AgentProfilesConfigurable implements Configurable {
     private JBCheckBox ensureCopilotInstructionsCb;
     private JBCheckBox ensureCopilotAgentsCb;
     private JBCheckBox ensureClaudeInstructionsCb;
+    private JBCheckBox usePluginPermissionsCb;
 
     private List<AgentProfile> workingCopies;
     private int currentIndex = -1;
@@ -162,6 +163,9 @@ public final class AgentProfilesConfigurable implements Configurable {
         ensureCopilotAgentsCb = new JBCheckBox("Ensure Copilot agents config on launch");
         ensureClaudeInstructionsCb = new JBCheckBox("Ensure Claude instruction files on launch");
 
+        var usePluginPermissionsCb = new JBCheckBox("Use plugin-level tool permissions");
+        this.usePluginPermissionsCb = usePluginPermissionsCb;
+
         editorCards = new CardLayout();
         editorPanel = new JPanel(editorCards);
 
@@ -202,6 +206,10 @@ public final class AgentProfilesConfigurable implements Configurable {
             .addTooltip("JSON field name in model metadata for usage info (e.g., \"copilotUsage\")")
             .addLabeledComponent("Supported modes (id:label;...):", supportedModesField)
             .addTooltip("Session modes like \"agent:Agent;plan:Plan\". Leave empty for no mode selector.")
+            .addSeparator()
+            .addComponent(new JBLabel("<html><b>Permissions</b></html>"))
+            .addComponent(usePluginPermissionsCb)
+            .addTooltip("When enabled, tool calls go through plugin's per-tool permission system (allow/ask/deny). When disabled, the agent handles its own permissions.")
             .addSeparator()
             .addComponent(new JBLabel("<html><b>Pre-launch Hooks</b></html>"))
             .addComponent(ensureCopilotInstructionsCb)
@@ -323,6 +331,7 @@ public final class AgentProfilesConfigurable implements Configurable {
             ensureCopilotInstructionsCb.setSelected(p.isEnsureCopilotInstructions());
             ensureCopilotAgentsCb.setSelected(p.isEnsureCopilotAgents());
             ensureClaudeInstructionsCb.setSelected(p.isEnsureClaudeInstructions());
+            usePluginPermissionsCb.setSelected(p.isUsePluginPermissions());
         } finally {
             loading = false;
         }
@@ -350,6 +359,7 @@ public final class AgentProfilesConfigurable implements Configurable {
         p.setEnsureCopilotInstructions(ensureCopilotInstructionsCb.isSelected());
         p.setEnsureCopilotAgents(ensureCopilotAgentsCb.isSelected());
         p.setEnsureClaudeInstructions(ensureClaudeInstructionsCb.isSelected());
+        p.setUsePluginPermissions(usePluginPermissionsCb.isSelected());
 
         // Update list display name
         if (currentIndex < listModel.size()) {
@@ -446,7 +456,8 @@ public final class AgentProfilesConfigurable implements Configurable {
             && a.getSupportedModes().equals(b.getSupportedModes())
             && a.isEnsureCopilotInstructions() == b.isEnsureCopilotInstructions()
             && a.isEnsureCopilotAgents() == b.isEnsureCopilotAgents()
-            && a.isEnsureClaudeInstructions() == b.isEnsureClaudeInstructions();
+            && a.isEnsureClaudeInstructions() == b.isEnsureClaudeInstructions()
+            && a.isUsePluginPermissions() == b.isUsePluginPermissions();
     }
 
     @NotNull

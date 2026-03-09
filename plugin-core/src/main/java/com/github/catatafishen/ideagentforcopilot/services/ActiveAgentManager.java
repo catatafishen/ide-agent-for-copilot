@@ -38,7 +38,6 @@ public final class ActiveAgentManager implements Disposable {
     private static final String KEY_FOLLOW_AGENT_FILES = "agent.followAgentFiles";
     private static final String KEY_AUTO_CONNECT = "agent.autoConnect";
     private static final String KEY_CUSTOM_ACP_COMMAND = "agent.customAcpCommand";
-    private static final String KEY_AUTO_APPROVE = "agent.autoApprovePermissions";
 
     private final Project project;
     private volatile boolean acpConnected;
@@ -363,16 +362,6 @@ public final class ActiveAgentManager implements Disposable {
         String value = command.equals(defaultCommand) ? "" : command;
         PropertiesComponent.getInstance(project)
             .setValue(KEY_CUSTOM_ACP_COMMAND + "." + profileId, value, "");
-    }
-
-    // ── Auto-approve permissions ─────────────────────────────────────────────
-
-    public boolean isAutoApprovePermissions() {
-        return PropertiesComponent.getInstance(project).getBoolean(KEY_AUTO_APPROVE, false);
-    }
-
-    public void setAutoApprovePermissions(boolean enabled) {
-        PropertiesComponent.getInstance(project).setValue(KEY_AUTO_APPROVE, enabled, false);
     }
 
     // ── Backwards compatibility ──────────────────────────────────────────────

@@ -270,6 +270,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         public boolean ensureCopilotInstructions;
         public boolean ensureCopilotAgents;
         public boolean ensureClaudeInstructions;
+        public boolean usePluginPermissions = true;
 
         @NotNull
         static ProfileEntry fromProfile(@NotNull AgentProfile p) {
@@ -294,6 +295,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             e.ensureCopilotInstructions = p.isEnsureCopilotInstructions();
             e.ensureCopilotAgents = p.isEnsureCopilotAgents();
             e.ensureClaudeInstructions = p.isEnsureClaudeInstructions();
+            e.usePluginPermissions = p.isUsePluginPermissions();
             return e;
         }
 
@@ -324,6 +326,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             p.setEnsureCopilotInstructions(ensureCopilotInstructions);
             p.setEnsureCopilotAgents(ensureCopilotAgents);
             p.setEnsureClaudeInstructions(ensureClaudeInstructions);
+            p.setUsePluginPermissions(usePluginPermissions);
             return p;
         }
 

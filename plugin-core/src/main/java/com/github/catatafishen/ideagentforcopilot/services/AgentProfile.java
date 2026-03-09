@@ -56,6 +56,10 @@ public final class AgentProfile {
 
     // ── Pre-launch hooks ─────────────────────────────────────────────────────
 
+    // ── Permissions ────────────────────────────────────────────────────────
+
+    private boolean usePluginPermissions = true;
+
     private boolean ensureCopilotInstructions;
     private boolean ensureCopilotAgents;
     private boolean ensureClaudeInstructions;
@@ -102,6 +106,7 @@ public final class AgentProfile {
         copy.requiresResourceDuplication = requiresResourceDuplication;
         copy.modelUsageField = modelUsageField;
         copy.supportedModes = new ArrayList<>(supportedModes);
+        copy.usePluginPermissions = usePluginPermissions;
         copy.ensureCopilotInstructions = ensureCopilotInstructions;
         copy.ensureCopilotAgents = ensureCopilotAgents;
         copy.ensureClaudeInstructions = ensureClaudeInstructions;
@@ -127,6 +132,7 @@ public final class AgentProfile {
         this.requiresResourceDuplication = other.requiresResourceDuplication;
         this.modelUsageField = other.modelUsageField;
         this.supportedModes = new ArrayList<>(other.supportedModes);
+        this.usePluginPermissions = other.usePluginPermissions;
         this.ensureCopilotInstructions = other.ensureCopilotInstructions;
         this.ensureCopilotAgents = other.ensureCopilotAgents;
         this.ensureClaudeInstructions = other.ensureClaudeInstructions;
@@ -280,6 +286,14 @@ public final class AgentProfile {
 
     public void setSupportedModes(@NotNull List<AgentMode> supportedModes) {
         this.supportedModes = new ArrayList<>(supportedModes);
+    }
+
+    public boolean isUsePluginPermissions() {
+        return usePluginPermissions;
+    }
+
+    public void setUsePluginPermissions(boolean usePluginPermissions) {
+        this.usePluginPermissions = usePluginPermissions;
     }
 
     public boolean isEnsureCopilotInstructions() {

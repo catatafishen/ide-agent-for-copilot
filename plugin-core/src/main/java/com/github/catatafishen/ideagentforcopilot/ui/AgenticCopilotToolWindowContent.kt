@@ -130,8 +130,6 @@ class AgenticCopilotToolWindowContent(
 
     private fun setupTitleBarActions() {
         val actions = listOf<AnAction>(
-            PermissionsToggleAction(),
-            Separator.create(),
             FollowAgentFilesToggleAction(),
             Separator.create(),
             ProjectFilesDropdownAction(),
@@ -1394,36 +1392,6 @@ class AgenticCopilotToolWindowContent(
             val display = modes.firstOrNull { it.id() == currentId }?.displayName()
                 ?: modes.first().displayName()
             e.presentation.text = display
-        }
-    }
-
-    private inner class PermissionsToggleAction :
-        ToggleAction(
-            "Plugin Permissions",
-            "Auto-approve plugin permission requests (ASK → ALLOW)",
-            AllIcons.CodeWithMe.CwmPermissionsDenied
-        ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun isSelected(e: AnActionEvent): Boolean {
-            return agentManager.isAutoApprovePermissions
-        }
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            agentManager.isAutoApprovePermissions = state
-        }
-
-        override fun update(e: AnActionEvent) {
-            super.update(e)
-            if (agentManager.isAutoApprovePermissions) {
-                e.presentation.icon = AllIcons.CodeWithMe.CwmPermissionsGranted
-                e.presentation.text = "Permissions Granted"
-                e.presentation.description = "Plugin permissions auto-approved — click to disable"
-            } else {
-                e.presentation.icon = AllIcons.CodeWithMe.CwmPermissionsDenied
-                e.presentation.text = "Permissions Denied"
-                e.presentation.description = "Plugin permissions require approval — click to auto-approve"
-            }
         }
     }
 

@@ -14,9 +14,9 @@ public interface AgentSettings {
 
     /**
      * Whether permission requests flagged as ASK should be auto-approved.
-     * This is a plugin-level feature (not agent-specific) that promotes ASK → ALLOW
-     * while preserving DENY decisions. Implementations typically delegate to
-     * {@link com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager#isAutoApprovePermissions()}.
+     * Determined by the active agent profile's {@code usePluginPermissions} setting.
+     * When the profile disables plugin permissions, ASK is promoted to ALLOW
+     * while DENY decisions are preserved for tool routing.
      */
     default boolean isAutoApprovePermissions() {
         return false;
