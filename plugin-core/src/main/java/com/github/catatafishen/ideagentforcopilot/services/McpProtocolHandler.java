@@ -60,6 +60,15 @@ public final class McpProtocolHandler {
         }
     }
 
+    /**
+     * Handles the MCP initialize request.
+     *
+     * <p>The {@code instructions} field in the result is the MCP-spec mechanism for servers to
+     * inject context into the client's system prompt. Agents that properly implement MCP (e.g.
+     * OpenCode, Goose, Continue) will incorporate this into the model context automatically —
+     * no project-file mutation needed. Copilot ignores this field (known bug), so it relies on
+     * the separate {@code CopilotInstructionsManager} file-injection workaround instead.</p>
+     */
     private JsonObject handleInitialize(JsonObject msg) {
         JsonObject serverInfo = new JsonObject();
         serverInfo.addProperty("name", SERVER_NAME);
@@ -75,7 +84,23 @@ public final class McpProtocolHandler {
         result.add("capabilities", capabilities);
         result.add("serverInfo", serverInfo);
 
+        String instructions = loadInstructions();
+        if (instructions != null) {
+            result.addProperty("instructions", instructions);
+        }
+
         return respondResult(msg, result);
+    }
+
+    private static String loadInstructions() {
+        try (java.io.InputStream is = McpProtocolHandler.class.getResourceAsStream("/default-startup-instructions.md")) {
+            if (is != null) {
+                return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } catch (java.io.IOException e) {
+            LOG.warn("Failed to load default-startup-instructions.md for MCP initialize", e);
+        }
+        return null;
     }
 
     private JsonObject handleToolsList(JsonObject msg) {
