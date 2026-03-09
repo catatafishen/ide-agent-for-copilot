@@ -87,10 +87,11 @@ class AcpConnectPanel(
             border = JBUI.Borders.empty(20, 24)
             maximumSize = Dimension(maxContentWidth, Int.MAX_VALUE)
 
+            add(Box.createVerticalGlue())
             add(createMcpSection())
-            add(Box.createVerticalStrut(JBUI.scale(24)))
+            add(Box.createVerticalStrut(JBUI.scale(32)))
             add(createSeparator())
-            add(Box.createVerticalStrut(JBUI.scale(24)))
+            add(Box.createVerticalStrut(JBUI.scale(32)))
             add(createAcpSection().also { acpSection = it })
             add(Box.createVerticalGlue())
         }
