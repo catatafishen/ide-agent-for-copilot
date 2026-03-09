@@ -585,18 +585,17 @@ class AgenticCopilotToolWindowContent(
         topPanel.add(northStack, BorderLayout.NORTH)
         topPanel.add(responsePanelContainer, BorderLayout.CENTER)
 
-        panel.add(topPanel, BorderLayout.CENTER)
-
-        // Bottom section: input row (fixed 3-line height) + controls footer
-        val bottomPanel = JBPanel<JBPanel<*>>()
-        bottomPanel.layout = BoxLayout(bottomPanel, BoxLayout.Y_AXIS)
+        // Splitter between chat area (top) and resizable input box (bottom).
+        // OnePixelSplitter gives the thin, IDE-native 1px divider; proportion is persisted.
         val inputRow = createInputRow()
-        inputRow.alignmentX = Component.LEFT_ALIGNMENT
-        bottomPanel.add(inputRow)
+        val splitter = com.intellij.ui.OnePixelSplitter(false, "IdeAgent.InputSplitter", 0.78f)
+        splitter.firstComponent = topPanel
+        splitter.secondComponent = inputRow
+        panel.add(splitter, BorderLayout.CENTER)
+
+        // Fixed footer (toolbar) always stays at the very bottom
         val fixedFooter = createFixedFooter()
-        fixedFooter.alignmentX = Component.LEFT_ALIGNMENT
-        bottomPanel.add(fixedFooter)
-        panel.add(bottomPanel, BorderLayout.SOUTH)
+        panel.add(fixedFooter, BorderLayout.SOUTH)
 
         billing.loadBillingData()
 
@@ -621,12 +620,9 @@ class AgenticCopilotToolWindowContent(
 
     private fun createInputRow(): JBPanel<JBPanel<*>> {
         val row = JBPanel<JBPanel<*>>(BorderLayout())
-        // 3-line height: ~20px/line * 3 + 8px content padding + 4px outer padding
-        val threeLineHeight = JBUI.scale(72)
-        row.preferredSize = java.awt.Dimension(Int.MAX_VALUE, threeLineHeight)
-        row.minimumSize = JBUI.size(100, threeLineHeight)
-        row.maximumSize = java.awt.Dimension(Int.MAX_VALUE, threeLineHeight)
-
+        val minHeight = JBUI.scale(48)
+        row.minimumSize = JBUI.size(100, minHeight)
+        // No maximumSize — the OnePixelSplitter controls the height
         // Use EditorTextFieldProvider for PsiFile-backed document (enables spell checking)
         val editorCustomizations = mutableListOf<com.intellij.ui.EditorCustomization>()
         try {
