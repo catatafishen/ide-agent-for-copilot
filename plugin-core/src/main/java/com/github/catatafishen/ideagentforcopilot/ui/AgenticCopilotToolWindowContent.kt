@@ -779,8 +779,7 @@ class AgenticCopilotToolWindowContent(
         leftGroup.add(ModeSelectorAction())
         leftGroup.addSeparator()
         leftGroup.add(RestartSessionGroup())
-        leftGroup.add(AgentSelectorAction())
-        leftGroup.add(DisconnectAction())
+        leftGroup.add(AgentConnectionDropdown())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -804,16 +803,32 @@ class AgenticCopilotToolWindowContent(
         return row
     }
 
-    /** Toolbar action: disconnect from the current ACP agent */
-    private inner class DisconnectAction :
-        AnAction("Disconnect", "Disconnect from ACP agent", AllIcons.Actions.CloseDarkGrey) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-        override fun actionPerformed(e: AnActionEvent) {
-            disconnectFromAgent()
+    /**
+     * Dropdown button showing the active agent name.
+     * Clicking opens a small popup with connection management options (Disconnect).
+     * Matches the visual language of the Model and Mode selectors.
+     */
+    private inner class AgentConnectionDropdown : ComboBoxAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
+            val group = DefaultActionGroup()
+            val agentName = agentManager.activeType.displayName()
+            group.add(object : AnAction(
+                "Disconnect from $agentName",
+                "Stop the ACP process and return to the connection screen",
+                AllIcons.Actions.Cancel
+            ) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
+            })
+            return group
         }
 
         override fun update(e: AnActionEvent) {
+            e.presentation.text = agentManager.activeType.displayName()
             e.presentation.isEnabled = agentManager.isAcpConnected
+            e.presentation.description = "Active agent — click to disconnect"
         }
     }
 
@@ -1296,29 +1311,6 @@ class AgenticCopilotToolWindowContent(
                     override fun actionPerformed(e: AnActionEvent) {}
                 })
             }
-        }
-    }
-
-    /**
-     * Read-only label showing the active agent name.
-     * The agent is selected in [AcpConnectPanel] before the chat loads,
-     * so no dropdown is needed here — just an indicator.
-     */
-    private inner class AgentSelectorAction : AnAction(), CustomComponentAction {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) { /* display-only */
-        }
-
-        override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
-            val label = JBLabel(agentManager.activeType.displayName())
-            label.font = label.font.deriveFont(Font.BOLD, 11f)
-            label.border = JBUI.Borders.empty(0, 4)
-            label.toolTipText = "Active agent (change in Connect screen)"
-            return label
-        }
-
-        override fun update(e: AnActionEvent) {
-            e.presentation.text = agentManager.activeType.displayName()
         }
     }
 
