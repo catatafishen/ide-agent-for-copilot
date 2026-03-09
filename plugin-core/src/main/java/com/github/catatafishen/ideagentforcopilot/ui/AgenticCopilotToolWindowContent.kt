@@ -41,7 +41,6 @@ class AgenticCopilotToolWindowContent(
         const val MSG_LOADING = "Loading..."
         const val MSG_THINKING = "Thinking..."
         const val MSG_UNKNOWN_ERROR = "Unknown error"
-        const val PROMPT_PLACEHOLDER = "Ask Copilot... (Shift+Enter for new line)"
         const val AGENT_WORK_DIR = ".agent-work"
         const val CARD_CONNECT = "connect"
         const val CARD_CHAT = "chat"
@@ -154,6 +153,7 @@ class AgenticCopilotToolWindowContent(
         }
         cardLayout.show(mainPanel, CARD_CHAT)
         agentManager.setAcpConnected(true)
+        updatePromptPlaceholder()
 
         // If called from auto-connect, kick off model loading
         if (loadedModels.isEmpty() && modelsStatusText == MSG_LOADING) {
@@ -185,6 +185,16 @@ class AgenticCopilotToolWindowContent(
             restoreModelSelection(models)
             statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
         }
+    }
+
+    private fun promptPlaceholder(): String {
+        val name = agentManager.activeProfile.displayName
+        return "Ask $name... (Shift+Enter for new line)"
+    }
+
+    private fun updatePromptPlaceholder() {
+        val editor = promptTextArea.editor as? com.intellij.openapi.editor.ex.EditorEx ?: return
+        editor.setPlaceholder(promptPlaceholder())
     }
 
     fun disconnectFromAgent() {
@@ -650,7 +660,7 @@ class AgenticCopilotToolWindowContent(
             setupPromptKeyBindings(promptTextArea, editor)
             setupPromptContextMenu(editor)
             // Use EditorEx built-in placeholder (visual-only, doesn't set actual text)
-            editor.setPlaceholder(PROMPT_PLACEHOLDER)
+            editor.setPlaceholder(promptPlaceholder())
             editor.setShowPlaceholderWhenFocused(true)
             editor.settings.isUseSoftWraps = true
             editor.contentComponent.border = JBUI.Borders.empty(4, 6)
@@ -781,7 +791,6 @@ class AgenticCopilotToolWindowContent(
         leftGroup.add(ModeSelectorAction())
         leftGroup.addSeparator()
         leftGroup.add(RestartSessionGroup())
-        leftGroup.add(AgentConnectionDropdown())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "CopilotControls", leftGroup, true
@@ -803,35 +812,6 @@ class AgenticCopilotToolWindowContent(
         row.add(rightToolbar.component, BorderLayout.EAST)
 
         return row
-    }
-
-    /**
-     * Dropdown button showing the active agent name.
-     * Clicking opens a small popup with connection management options (Disconnect).
-     * Matches the visual language of the Model and Mode selectors.
-     */
-    private inner class AgentConnectionDropdown : ComboBoxAction() {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
-            val group = DefaultActionGroup()
-            val agentName = agentManager.activeProfile.displayName
-            group.add(object : AnAction(
-                "Disconnect from $agentName",
-                "Stop the ACP process and return to the connection screen",
-                AllIcons.Actions.Cancel
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
-            })
-            return group
-        }
-
-        override fun update(e: AnActionEvent) {
-            e.presentation.text = agentManager.activeProfile.displayName
-            e.presentation.isEnabled = agentManager.isAcpConnected
-            e.presentation.description = "Active agent — click to disconnect"
-        }
     }
 
     /** Toolbar action showing a native processing timer while the agent works */
@@ -1123,7 +1103,7 @@ class AgenticCopilotToolWindowContent(
         }
     }
 
-    /** Dropdown toolbar button with two restart options: keep history or clear everything. */
+    /** Dropdown toolbar button with restart and disconnect options. */
     private inner class RestartSessionGroup : DefaultActionGroup(
         "Restart Session", true
     ) {
@@ -1148,6 +1128,17 @@ class AgenticCopilotToolWindowContent(
             ) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) = resetSession()
+            })
+
+            addSeparator()
+
+            add(object : AnAction(
+                "Disconnect",
+                "Stop the ACP process and return to the connection screen",
+                AllIcons.Actions.Cancel
+            ) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
             })
         }
 
