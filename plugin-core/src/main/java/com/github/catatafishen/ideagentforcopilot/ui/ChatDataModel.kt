@@ -61,7 +61,7 @@ internal sealed class EntryData {
 
     class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
     class Status(val icon: String, val message: String) : EntryData()
-    class SessionSeparator(val timestamp: String) : EntryData()
+    class SessionSeparator(val timestamp: String, val agent: String = "") : EntryData()
 }
 
 // ── Tool / sub-agent metadata ─────────────────────────────────────────────────

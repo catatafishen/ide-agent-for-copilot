@@ -2,7 +2,7 @@ import {escHtml} from '../helpers';
 
 export default class SessionDivider extends HTMLElement {
     static get observedAttributes(): string[] {
-        return ['timestamp'];
+        return ['timestamp', 'agent'];
     }
 
     private _init = false;
@@ -17,8 +17,10 @@ export default class SessionDivider extends HTMLElement {
 
     private _render(): void {
         const ts = this.getAttribute('timestamp') || '';
-        this.setAttribute('aria-label', 'New session started ' + ts);
-        this.innerHTML = `<span class="session-sep-line"></span><span class="session-sep-label"><span aria-hidden="true">📅 </span>New session — ${escHtml(ts)}</span><span class="session-sep-line"></span>`;
+        const agent = this.getAttribute('agent') || '';
+        const label = agent ? `New session — ${escHtml(ts)} · ${escHtml(agent)}` : `New session — ${escHtml(ts)}`;
+        this.setAttribute('aria-label', label);
+        this.innerHTML = `<span class="session-sep-line"></span><span class="session-sep-label">${label}</span><span class="session-sep-line"></span>`;
     }
 
     attributeChangedCallback(): void {

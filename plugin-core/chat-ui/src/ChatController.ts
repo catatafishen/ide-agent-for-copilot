@@ -275,9 +275,10 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
-    addSessionSeparator(timestamp: string): void {
+    addSessionSeparator(timestamp: string, agent: string = ''): void {
         const el = document.createElement('session-divider');
         el.setAttribute('timestamp', timestamp);
+        if (agent) el.setAttribute('agent', agent);
         this._msgs().appendChild(el);
     },
 

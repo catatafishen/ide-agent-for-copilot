@@ -393,10 +393,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     override fun hasContent(): Boolean = entries.isNotEmpty()
 
-    override fun addSessionSeparator(timestamp: String) {
+    override fun addSessionSeparator(timestamp: String, agent: String) {
         finalizeCurrentText()
-        entries.add(EntryData.SessionSeparator(timestamp))
-        executeJs("ChatController.addSessionSeparator('${escJs(timestamp)}')")
+        entries.add(EntryData.SessionSeparator(timestamp, agent))
+        executeJs("ChatController.addSessionSeparator('${escJs(timestamp)}', '${escJs(agent)}')")
     }
 
     override fun showPlaceholder(text: String) {
@@ -516,7 +516,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 }
 
                 is EntryData.SessionSeparator -> {
-                    obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp)
+                    obj.addProperty("type", "separator"); obj.addProperty("timestamp", e.timestamp); obj.addProperty("agent", e.agent)
                 }
             }
             arr.add(obj)
@@ -609,7 +609,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 )
             )
 
-            "separator" -> entries.add(EntryData.SessionSeparator(obj["timestamp"]?.asString ?: ""))
+            "separator" -> entries.add(EntryData.SessionSeparator(obj["timestamp"]?.asString ?: "", obj["agent"]?.asString ?: ""))
         }
     }
 
@@ -708,7 +708,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             "separator" -> {
                 currentTurnId = ""
                 val ts = obj["timestamp"]?.asString ?: ""
-                executeJs("ChatController.addSessionSeparator('${escJs(ts)}')")
+                val ag = obj["agent"]?.asString ?: ""
+                executeJs("ChatController.addSessionSeparator('${escJs(ts)}', '${escJs(ag)}')")
             }
         }
     }
@@ -781,7 +782,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 }
 
                 "separator" -> {
-                    sb.append("<session-divider timestamp='${esc(obj["timestamp"]?.asString ?: "")}'></session-divider>")
+                    sb.append("<session-divider timestamp='${esc(obj["timestamp"]?.asString ?: "")}' agent='${esc(obj["agent"]?.asString ?: "")}'></session-divider>")
                     i++
                 }
 

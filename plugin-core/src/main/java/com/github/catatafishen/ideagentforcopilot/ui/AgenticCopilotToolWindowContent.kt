@@ -705,7 +705,7 @@ class AgenticCopilotToolWindowContent(
 
             if (currentSessionId == null && consolePanel.hasContent()) {
                 val ts = java.text.SimpleDateFormat("MMM d, yyyy h:mm a").format(java.util.Date())
-                consolePanel.addSessionSeparator(ts)
+                consolePanel.addSessionSeparator(ts, agentManager.activeType.displayName())
             }
 
             // Collect context items from inline inlays BEFORE clearing the editor
@@ -1575,7 +1575,8 @@ class AgenticCopilotToolWindowContent(
                 override fun actionPerformed(e: AnActionEvent) {
                     currentSessionId = null
                     consolePanel.addSessionSeparator(
-                        java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                        java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+                        agentManager.activeType.displayName()
                     )
                     updateSessionInfo()
                 }
@@ -1877,7 +1878,7 @@ class AgenticCopilotToolWindowContent(
 
         if (currentSessionId == null && consolePanel.hasContent()) {
             val ts = java.text.SimpleDateFormat("MMM d, yyyy h:mm a").format(java.util.Date())
-            consolePanel.addSessionSeparator(ts)
+            consolePanel.addSessionSeparator(ts, agentManager.activeType.displayName())
         }
 
         // Quick-replies don't carry context items
@@ -2414,7 +2415,7 @@ class AgenticCopilotToolWindowContent(
         // Visual divider so the user sees where the new agent context starts
         if (consolePanel.hasContent()) {
             val ts = java.text.SimpleDateFormat("MMM d, yyyy h:mm a").format(java.util.Date())
-            consolePanel.addSessionSeparator(ts)
+            consolePanel.addSessionSeparator(ts, type.displayName())
         }
 
         loadModelsAsync { models ->

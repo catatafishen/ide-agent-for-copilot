@@ -59,7 +59,7 @@ interface ChatPanelApi : Disposable {
     // ── Session management ─────────────────────────────────────────
 
     fun hasContent(): Boolean
-    fun addSessionSeparator(timestamp: String)
+    fun addSessionSeparator(timestamp: String, agent: String = "")
     fun showPlaceholder(text: String)
     fun clear()
 
