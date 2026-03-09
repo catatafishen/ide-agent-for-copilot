@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
+import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +55,10 @@ class CopilotFreeModelIntegrationTest {
     @BeforeEach
     void setUp() throws Exception {
         Assumptions.assumeTrue(copilotAvailable(), "Copilot CLI not available");
-        client = new AcpClient(new CopilotAgentConfig(), new CopilotAgentSettings(), null, 0);
+        client = new AcpClient(
+            new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile()),
+            new GenericAgentSettings(new GenericSettings("copilot"), null),
+            null, 0);
         client.start();
         sessionId = client.createSession();
 
@@ -144,7 +149,10 @@ class CopilotFreeModelIntegrationTest {
         assertFalse(client.isHealthy());
 
         // Create new client
-        client = new AcpClient(new CopilotAgentConfig(), new CopilotAgentSettings(), null, 0);
+        client = new AcpClient(
+            new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile()),
+            new GenericAgentSettings(new GenericSettings("copilot"), null),
+            null, 0);
         client.start();
         assertTrue(client.isHealthy());
 

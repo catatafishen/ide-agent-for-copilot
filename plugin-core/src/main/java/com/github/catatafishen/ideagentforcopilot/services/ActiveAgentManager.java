@@ -1,27 +1,38 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
+import com.github.catatafishen.ideagentforcopilot.bridge.AgentSettings;
+import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
+import com.github.catatafishen.ideagentforcopilot.bridge.ProfileBasedAgentConfig;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
- * Project service that manages which ACP agent is currently active.
- * The UI layer uses this instead of referencing concrete agent services directly,
- * keeping it agent-agnostic.
+ * Project service that manages which ACP agent profile is currently active,
+ * and owns the ACP client lifecycle for that agent.
+ *
+ * <p>Replaces the old per-agent service classes (CopilotService, ClaudeService, etc.)
+ * with a single profile-driven service. The active profile is looked up from
+ * {@link AgentProfileManager}.</p>
  *
  * <p>Also hosts shared UI preferences that apply regardless of which agent is active
  * (attach trigger character, follow-agent-files).</p>
  */
 @Service(Service.Level.PROJECT)
-public final class ActiveAgentManager {
+public final class ActiveAgentManager implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(ActiveAgentManager.class);
 
-    private static final String KEY_ACTIVE_AGENT = "agent.activeType";
+    private static final String KEY_ACTIVE_PROFILE = "agent.activeProfileId";
     private static final String KEY_ATTACH_TRIGGER = "agent.attachTriggerChar";
     private static final String DEFAULT_ATTACH_TRIGGER = "#";
     private static final String KEY_FOLLOW_AGENT_FILES = "agent.followAgentFiles";
@@ -32,8 +43,15 @@ public final class ActiveAgentManager {
     private final Project project;
     private volatile boolean acpConnected;
 
+    private AcpClient acpClient;
+    private AgentConfig cachedConfig;
+    private GenericSettings cachedSettings;
+    private GenericAgentUiSettings cachedUiSettings;
+    private volatile boolean started;
+
     public ActiveAgentManager(@NotNull Project project) {
         this.project = project;
+        LOG.info("ActiveAgentManager initialised for project: " + project.getName());
     }
 
     @NotNull
@@ -41,59 +59,10 @@ public final class ActiveAgentManager {
         return PlatformApiCompat.getService(project, ActiveAgentManager.class);
     }
 
-    // ── Agent type ───────────────────────────────────────────────────────────
-
-    public enum AgentType {
-        COPILOT("copilot", "GitHub Copilot", "copilot-cli --acp --stdio"),
-        CLAUDE("claude", "Claude Code", "claude --acp --stdio"),
-        KIRO("kiro", "Kiro", "kiro-cli acp"),
-        GEMINI("gemini", "Gemini", "gemini --experimental-acp"),
-        OPENCODE("opencode", "OpenCode", "opencode acp"),
-        CLINE("cline", "Cline", "cline --acp"),
-        GENERIC("generic", "Generic ACP", "");
-
-        private final String id;
-        private final String displayName;
-        private final String defaultStartCommand;
-
-        AgentType(String id, String displayName, String defaultStartCommand) {
-            this.id = id;
-            this.displayName = displayName;
-            this.defaultStartCommand = defaultStartCommand;
-        }
-
-        public String id() {
-            return id;
-        }
-
-        public String displayName() {
-            return displayName;
-        }
-
-        /**
-         * Default CLI command for starting this agent in ACP mode.
-         * Shown in the connect panel as a prefilled hint the user can edit.
-         * Empty for GENERIC (user must supply their own).
-         */
-        public String defaultStartCommand() {
-            return defaultStartCommand;
-        }
-
-        @NotNull
-        static AgentType fromId(@NotNull String id) {
-            for (AgentType t : values()) {
-                if (t.id.equals(id)) return t;
-            }
-            return COPILOT;
-        }
-    }
+    // ── Active profile ───────────────────────────────────────────────────────
 
     private final java.util.List<Runnable> switchListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    /**
-     * Register a callback invoked after the active agent changes.
-     * Typically used by the UI to reset sessions and reload models.
-     */
     public void addSwitchListener(@NotNull Runnable listener) {
         switchListeners.add(listener);
     }
@@ -102,18 +71,44 @@ public final class ActiveAgentManager {
         switchListeners.remove(listener);
     }
 
+    /**
+     * Returns the ID of the currently active agent profile.
+     */
     @NotNull
-    public AgentType getActiveType() {
-        String stored = PropertiesComponent.getInstance(project).getValue(KEY_ACTIVE_AGENT);
-        return stored != null ? AgentType.fromId(stored) : AgentType.COPILOT;
+    public String getActiveProfileId() {
+        String stored = PropertiesComponent.getInstance(project).getValue(KEY_ACTIVE_PROFILE);
+        if (stored != null && !stored.isEmpty()) {
+            // Verify the profile still exists
+            if (AgentProfileManager.getInstance().getProfile(stored) != null) {
+                return stored;
+            }
+        }
+        return AgentProfileManager.COPILOT_PROFILE_ID;
     }
 
-    public void switchAgent(@NotNull AgentType type) {
-        AgentType previous = getActiveType();
-        if (previous == type) return;
+    /**
+     * Returns the currently active agent profile.
+     */
+    @NotNull
+    public AgentProfile getActiveProfile() {
+        String id = getActiveProfileId();
+        AgentProfile profile = AgentProfileManager.getInstance().getProfile(id);
+        if (profile != null) return profile;
+        // Shouldn't happen, but fall back to Copilot
+        return AgentProfileManager.getInstance().getProfile(AgentProfileManager.COPILOT_PROFILE_ID);
+    }
 
-        LOG.info("Switching active agent from " + previous.id() + " to " + type.id());
-        PropertiesComponent.getInstance(project).setValue(KEY_ACTIVE_AGENT, type.id());
+    /**
+     * Switches the active agent profile. Stops the current connection if running.
+     */
+    public void switchAgent(@NotNull String profileId) {
+        String previousId = getActiveProfileId();
+        if (previousId.equals(profileId)) return;
+
+        LOG.info("Switching active agent from " + previousId + " to " + profileId);
+        stop();
+        clearCachedConfig();
+        PropertiesComponent.getInstance(project).setValue(KEY_ACTIVE_PROFILE, profileId);
 
         for (Runnable listener : switchListeners) {
             try {
@@ -124,37 +119,175 @@ public final class ActiveAgentManager {
         }
     }
 
-    // ── Active service shortcuts ─────────────────────────────────────────────
+    // ── Agent lifecycle (absorbed from AgentService) ─────────────────────────
 
+    /**
+     * Returns the agent configuration for the active profile.
+     */
     @NotNull
-    public AgentService getService() {
-        return switch (getActiveType()) {
-            case CLAUDE -> ClaudeService.getInstance(project);
-            case KIRO -> KiroService.getInstance(project);
-            case GEMINI -> GeminiService.getInstance(project);
-            case OPENCODE -> OpenCodeService.getInstance(project);
-            case CLINE -> ClineService.getInstance(project);
-            case GENERIC -> GenericCustomService.getInstance(project);
-            default -> CopilotService.getInstance(project);
-        };
+    public AgentConfig getConfig() {
+        if (cachedConfig == null) {
+            cachedConfig = new ProfileBasedAgentConfig(getActiveProfile());
+        }
+        return cachedConfig;
     }
 
-    @NotNull
-    public AcpClient getClient() {
-        return getService().getClient();
-    }
-
+    /**
+     * Returns the UI settings for the active profile.
+     */
     @NotNull
     public AgentUiSettings getSettings() {
-        return getService().getUiSettings();
+        ensureSettingsForActiveProfile();
+        return cachedUiSettings;
+    }
+
+    /**
+     * Returns the ACP client, starting it if necessary.
+     */
+    @NotNull
+    public AcpClient getClient() {
+        if (!started || acpClient == null || !acpClient.isHealthy()) {
+            start();
+        }
+        return acpClient;
+    }
+
+    /**
+     * Start the ACP process for the active profile.
+     */
+    public synchronized void start() {
+        if (started && acpClient != null && acpClient.isHealthy()) {
+            LOG.debug("ACP client already running for " + getActiveProfile().getDisplayName());
+            return;
+        }
+
+        try {
+            AgentProfile profile = getActiveProfile();
+            LOG.info("Starting " + profile.getDisplayName() + " ACP client for project: " + project.getName());
+
+            if (acpClient != null) {
+                acpClient.close();
+            }
+
+            clearCachedConfig();
+            String projectPath = project.getBasePath();
+            int mcpPort = resolveMcpPort();
+
+            AgentConfig config = resolveStartConfig();
+            AgentSettings agentSettings = createAgentSettings();
+
+            acpClient = new AcpClient(config, agentSettings, projectPath, mcpPort);
+            acpClient.start();
+            started = true;
+
+            LOG.info(profile.getDisplayName() + " ACP client started");
+        } catch (Exception e) {
+            LOG.error("Failed to start ACP client", e);
+            throw new RuntimeException("Failed to start ACP client", e);
+        }
+    }
+
+    /**
+     * Stop the ACP client.
+     */
+    public synchronized void stop() {
+        if (!started) return;
+        try {
+            LOG.info("Stopping ACP client...");
+            if (acpClient != null) {
+                acpClient.close();
+            }
+            started = false;
+            acpClient = null;
+        } catch (Exception e) {
+            LOG.error("Failed to stop ACP client", e);
+        }
+    }
+
+    /**
+     * Restart the agent process.
+     */
+    public synchronized void restart() {
+        LOG.info("Restarting ACP client");
+        stop();
+        clearCachedConfig();
+        start();
+    }
+
+    @Override
+    public void dispose() {
+        LOG.info("ActiveAgentManager disposed");
+        stop();
+    }
+
+    // ── MCP port resolution ──────────────────────────────────────────────────
+
+    private int resolveMcpPort() {
+        McpServerControl mcpServer = McpServerControl.getInstance(project);
+        if (mcpServer != null) {
+            if (mcpServer.isRunning() && mcpServer.getPort() > 0) {
+                LOG.info("MCP server already running on port " + mcpServer.getPort());
+                return mcpServer.getPort();
+            }
+            try {
+                mcpServer.start();
+                if (mcpServer.isRunning() && mcpServer.getPort() > 0) {
+                    LOG.info("Auto-started MCP server on port " + mcpServer.getPort());
+                    return mcpServer.getPort();
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to auto-start MCP server: " + e.getMessage());
+            }
+        }
+        LOG.warn("No MCP server available — IntelliJ code tools will be unavailable for this session.");
+        return 0;
+    }
+
+    /**
+     * Returns the config to use for starting the ACP process.
+     * If the user has customised the start command, wraps it as a command override.
+     */
+    @NotNull
+    private AgentConfig resolveStartConfig() {
+        AgentProfile profile = getActiveProfile();
+        String storedCommand = getCustomAcpCommand();
+        String defaultCommand = profile.getDefaultStartCommand();
+
+        if (storedCommand.isEmpty() || storedCommand.equals(defaultCommand)) {
+            AgentConfig config = new ProfileBasedAgentConfig(profile);
+            cachedConfig = config;
+            return config;
+        }
+
+        // User has customised the command — use CommandOverrideAgentConfig
+        LOG.info("Using custom start command for " + profile.getDisplayName() + ": " + storedCommand);
+        AgentConfig realConfig = new ProfileBasedAgentConfig(profile);
+        cachedConfig = realConfig;
+        return new CommandOverrideAgentConfig(realConfig, storedCommand);
+    }
+
+    @NotNull
+    private AgentSettings createAgentSettings() {
+        ensureSettingsForActiveProfile();
+        return new GenericAgentSettings(cachedSettings, project);
+    }
+
+    private void ensureSettingsForActiveProfile() {
+        String profileId = getActiveProfileId();
+        if (cachedSettings == null || !cachedSettings.getPrefix().equals(profileId + ".")) {
+            cachedSettings = new GenericSettings(profileId);
+            cachedUiSettings = new GenericAgentUiSettings(cachedSettings);
+        }
+    }
+
+    private void clearCachedConfig() {
+        cachedConfig = null;
+        cachedSettings = null;
+        cachedUiSettings = null;
     }
 
     // ── Shared UI preferences (agent-agnostic) ──────────────────────────────
 
-    /**
-     * Trigger character for file search in chat input.
-     * "#" (VS Code Copilot style, default), "@" (JetBrains AI style), or "" (disabled).
-     */
     @NotNull
     public static String getAttachTriggerChar() {
         return PropertiesComponent.getInstance().getValue(KEY_ATTACH_TRIGGER, DEFAULT_ATTACH_TRIGGER);
@@ -164,10 +297,6 @@ public final class ActiveAgentManager {
         PropertiesComponent.getInstance().setValue(KEY_ATTACH_TRIGGER, trigger, DEFAULT_ATTACH_TRIGGER);
     }
 
-    /**
-     * Whether to open files in the editor when the agent reads/writes them.
-     * Project-scoped so each open project can have its own setting.
-     */
     public static boolean getFollowAgentFiles(@NotNull Project project) {
         return PropertiesComponent.getInstance(project).getBoolean(KEY_FOLLOW_AGENT_FILES, true);
     }
@@ -196,77 +325,64 @@ public final class ActiveAgentManager {
         PropertiesComponent.getInstance(project).setValue(KEY_AUTO_CONNECT, enabled, false);
     }
 
-    // ── Generic ACP custom command ───────────────────────────────────────────
+    // ── Custom ACP command (per-profile) ─────────────────────────────────────
 
-    /**
-     * Returns the user-customized ACP start command for the currently active agent.
-     * Falls back to the agent type's default if the user hasn't overridden it.
-     */
     @NotNull
     public String getCustomAcpCommand() {
-        AgentType type = getActiveType();
+        String profileId = getActiveProfileId();
         String stored = PropertiesComponent.getInstance(project)
-            .getValue(KEY_CUSTOM_ACP_COMMAND + "." + type.id());
+            .getValue(KEY_CUSTOM_ACP_COMMAND + "." + profileId);
         if (stored != null && !stored.isEmpty()) {
             return stored;
         }
-        // Legacy fallback: check the old unqualified key (for GENERIC before per-agent storage)
-        String legacy = PropertiesComponent.getInstance(project).getValue(KEY_CUSTOM_ACP_COMMAND, "");
-        if (!legacy.isEmpty() && type == AgentType.GENERIC) {
-            return legacy;
-        }
-        return type.defaultStartCommand();
+        return getActiveProfile().getDefaultStartCommand();
     }
 
-    /**
-     * Stores a user-customized ACP start command for the currently active agent.
-     * If the command matches the agent's default, it's cleared (so future default changes take effect).
-     */
     public void setCustomAcpCommand(@NotNull String command) {
-        AgentType type = getActiveType();
-        String value = command.equals(type.defaultStartCommand()) ? "" : command;
+        String profileId = getActiveProfileId();
+        String defaultCommand = getActiveProfile().getDefaultStartCommand();
+        String value = command.equals(defaultCommand) ? "" : command;
         PropertiesComponent.getInstance(project)
-            .setValue(KEY_CUSTOM_ACP_COMMAND + "." + type.id(), value, "");
+            .setValue(KEY_CUSTOM_ACP_COMMAND + "." + profileId, value, "");
     }
 
-    /**
-     * Returns the user-customized ACP start command for a specific agent type.
-     * Falls back to the agent type's default if the user hasn't overridden it.
-     */
     @NotNull
-    public String getCustomAcpCommandFor(@NotNull AgentType type) {
+    public String getCustomAcpCommandFor(@NotNull String profileId) {
         String stored = PropertiesComponent.getInstance(project)
-            .getValue(KEY_CUSTOM_ACP_COMMAND + "." + type.id());
+            .getValue(KEY_CUSTOM_ACP_COMMAND + "." + profileId);
         if (stored != null && !stored.isEmpty()) {
             return stored;
         }
-        String legacy = PropertiesComponent.getInstance(project).getValue(KEY_CUSTOM_ACP_COMMAND, "");
-        if (!legacy.isEmpty() && type == AgentType.GENERIC) {
-            return legacy;
-        }
-        return type.defaultStartCommand();
+        AgentProfile profile = AgentProfileManager.getInstance().getProfile(profileId);
+        return profile != null ? profile.getDefaultStartCommand() : "";
     }
 
-    /**
-     * Stores a user-customized ACP start command for a specific agent type.
-     */
-    public void setCustomAcpCommandFor(@NotNull AgentType type, @NotNull String command) {
-        String value = command.equals(type.defaultStartCommand()) ? "" : command;
+    public void setCustomAcpCommandFor(@NotNull String profileId, @NotNull String command) {
+        AgentProfile profile = AgentProfileManager.getInstance().getProfile(profileId);
+        String defaultCommand = profile != null ? profile.getDefaultStartCommand() : "";
+        String value = command.equals(defaultCommand) ? "" : command;
         PropertiesComponent.getInstance(project)
-            .setValue(KEY_CUSTOM_ACP_COMMAND + "." + type.id(), value, "");
+            .setValue(KEY_CUSTOM_ACP_COMMAND + "." + profileId, value, "");
     }
 
-    // ── Auto-approve permissions (plugin-level, applies to all agents) ──────
+    // ── Auto-approve permissions ─────────────────────────────────────────────
 
-    /**
-     * When enabled, all ASK permission requests are automatically approved (DENY is still respected).
-     * This is a plugin-level feature, not an agent-specific mode.
-     */
     public boolean isAutoApprovePermissions() {
         return PropertiesComponent.getInstance(project).getBoolean(KEY_AUTO_APPROVE, false);
     }
 
     public void setAutoApprovePermissions(boolean enabled) {
         PropertiesComponent.getInstance(project).setValue(KEY_AUTO_APPROVE, enabled, false);
+    }
+
+    // ── Backwards compatibility ──────────────────────────────────────────────
+
+    /**
+     * Returns a list of all available profile IDs and display names, for use
+     * by UI components that need to show an agent selector.
+     */
+    @NotNull
+    public List<AgentProfile> getAvailableProfiles() {
+        return AgentProfileManager.getInstance().getAllProfiles();
     }
 }

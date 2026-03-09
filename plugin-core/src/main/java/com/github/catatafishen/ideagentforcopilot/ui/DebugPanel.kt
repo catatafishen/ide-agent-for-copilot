@@ -200,9 +200,9 @@ internal class DebugPanel(
                 list.ensureIndexIsVisible(debugModel.size() - 1)
             }
         }
-        val agentService = ActiveAgentManager.getInstance(project).service
+        val agentManager = ActiveAgentManager.getInstance(project)
         try {
-            val client = agentService.client
+            val client = agentManager.client
             client.addDebugListener(listener)
         } catch (_: Exception) {
             // Client not started yet — will add listener when it starts

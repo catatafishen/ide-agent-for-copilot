@@ -38,7 +38,7 @@ public final class AgentSettingsConfigurable implements Configurable {
     @Override
     public @Nullable JComponent createComponent() {
         var agentManager = ActiveAgentManager.getInstance(project);
-        String agentName = agentManager.getActiveType().displayName();
+        String agentName = agentManager.getActiveProfile().getDisplayName();
 
         timeoutSpinner = new JSpinner(new SpinnerNumberModel(300, 30, 3600, 10));
         maxToolCallsSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 500, 1));

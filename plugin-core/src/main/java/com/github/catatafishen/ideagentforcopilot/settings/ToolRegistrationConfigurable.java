@@ -1,7 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
-import com.github.catatafishen.ideagentforcopilot.services.CopilotSettings;
+import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -75,7 +75,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         autoStartCheckbox = new JBCheckBox("Start MCP server automatically when project opens",
             settings.isAutoStart());
         followModeCheckbox = new JBCheckBox("Follow Agent — open files and highlight regions as the agent reads or edits them",
-            CopilotSettings.getFollowAgentFiles(project));
+            ActiveAgentManager.getFollowAgentFiles(project));
 
         bridgePortSpinner = new JSpinner(new SpinnerNumberModel(
             settings.getBridgePort(), 0, 65535, 1));
@@ -148,7 +148,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         if ((Integer) portSpinner.getValue() != settings.getPort()) return true;
         if (transportModeCombo.getSelectedItem() != settings.getTransportMode()) return true;
         if (autoStartCheckbox.isSelected() != settings.isAutoStart()) return true;
-        if (followModeCheckbox.isSelected() != CopilotSettings.getFollowAgentFiles(project)) return true;
+        if (followModeCheckbox.isSelected() != ActiveAgentManager.getFollowAgentFiles(project)) return true;
         if ((Integer) bridgePortSpinner.getValue() != settings.getBridgePort()) return true;
         if (bridgeAutoStartCheckbox.isSelected() != settings.isBridgeAutoStart()) return true;
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
@@ -163,7 +163,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         settings.setPort((Integer) portSpinner.getValue());
         settings.setTransportMode((TransportMode) transportModeCombo.getSelectedItem());
         settings.setAutoStart(autoStartCheckbox.isSelected());
-        CopilotSettings.setFollowAgentFiles(project, followModeCheckbox.isSelected());
+        ActiveAgentManager.setFollowAgentFiles(project, followModeCheckbox.isSelected());
         settings.setBridgePort((Integer) bridgePortSpinner.getValue());
         settings.setBridgeAutoStart(bridgeAutoStartCheckbox.isSelected());
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
@@ -177,7 +177,7 @@ public final class ToolRegistrationConfigurable implements Configurable {
         portSpinner.setValue(settings.getPort());
         transportModeCombo.setSelectedItem(settings.getTransportMode());
         autoStartCheckbox.setSelected(settings.isAutoStart());
-        followModeCheckbox.setSelected(CopilotSettings.getFollowAgentFiles(project));
+        followModeCheckbox.setSelected(ActiveAgentManager.getFollowAgentFiles(project));
         bridgePortSpinner.setValue(settings.getBridgePort());
         bridgeAutoStartCheckbox.setSelected(settings.isBridgeAutoStart());
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {

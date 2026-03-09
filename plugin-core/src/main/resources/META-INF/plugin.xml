@@ -158,19 +158,7 @@
     <applicationService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgenticCopilotService"/>
     <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.CopilotService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ClaudeService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.KiroService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.GeminiService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.OpenCodeService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ClineService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.GenericCustomService"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager"/>
     <applicationService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings"/>
     <applicationService
@@ -212,6 +200,13 @@
       instance="com.github.catatafishen.ideagentforcopilot.settings.AgentSettingsConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.agentSettings"
       displayName="Agent Settings"/>
+
+    <!-- Settings: Agent Profiles -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.AgentProfilesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.agentProfiles"
+      displayName="Agent Profiles"/>
 
     <!-- Settings: Tool Registration -->
     <projectConfigurable

@@ -1,5 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
+import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * - Integration tests using real copilot CLI (require copilot installed + authenticated)
  */
 class CopilotAcpClientTest {
+
+    private static AgentConfig copilotConfig() {
+        AgentProfile profile = AgentProfileManager.createDefaultCopilotProfile();
+        return new ProfileBasedAgentConfig(profile);
+    }
+
+    private static AgentSettings copilotSettings() {
+        return new GenericAgentSettings(new GenericSettings("copilot"), null);
+    }
 
     // ========================
     // Unit tests
@@ -74,14 +86,14 @@ class CopilotAcpClientTest {
 
     @Test
     void testClientIsNotHealthyBeforeStart() {
-        try (AcpClient client = new AcpClient(new CopilotAgentConfig(), new CopilotAgentSettings(), null, 0)) {
+        try (AcpClient client = new AcpClient(copilotConfig(), copilotSettings(), null, 0)) {
             assertFalse(client.isHealthy(), "Client should not be healthy before start");
         }
     }
 
     @Test
     void testCloseIdempotent() {
-        try (AcpClient client = new AcpClient(new CopilotAgentConfig(), new CopilotAgentSettings(), null, 0)) {
+        try (AcpClient client = new AcpClient(copilotConfig(), copilotSettings(), null, 0)) {
             // Should not throw even if never started
             assertDoesNotThrow(client::close);
             assertDoesNotThrow(client::close);
@@ -110,7 +122,7 @@ class CopilotAcpClientTest {
         @BeforeEach
         void setUp() throws Exception {
             Assumptions.assumeTrue(copilotAvailable(), "Copilot CLI not available, skipping integration tests");
-            client = new AcpClient(new CopilotAgentConfig(), new CopilotAgentSettings(), null, 0);
+            client = new AcpClient(copilotConfig(), copilotSettings(), null, 0);
             client.start();
         }
 
@@ -218,7 +230,7 @@ class CopilotAcpClientTest {
             assertFalse(client.isHealthy());
 
             // Create a new client
-            client = new AcpClient(new CopilotAgentConfig(), new CopilotAgentSettings(), null, 0);
+            client = new AcpClient(copilotConfig(), copilotSettings(), null, 0);
             client.start();
             assertTrue(client.isHealthy());
         }

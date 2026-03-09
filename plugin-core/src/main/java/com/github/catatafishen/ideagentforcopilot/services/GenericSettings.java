@@ -20,11 +20,19 @@ public final class GenericSettings {
     private volatile String activeAgentLabel;
 
     /**
-     * @param prefix settings key prefix (e.g., "kiro", "gemini", "opencode", "cline").
+     * @param prefix settings key prefix (e.g., "copilot", "opencode").
      *               Keys are stored as {@code prefix.selectedModel}, {@code prefix.sessionMode}, etc.
      */
     public GenericSettings(@NotNull String prefix) {
         this.prefix = prefix + ".";
+    }
+
+    /**
+     * Returns the full prefix (including trailing dot) used for key generation.
+     */
+    @NotNull
+    public String getPrefix() {
+        return prefix;
     }
 
     private String key(@NotNull String suffix) {

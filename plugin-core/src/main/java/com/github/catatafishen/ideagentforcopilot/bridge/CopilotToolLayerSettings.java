@@ -1,19 +1,19 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings;
-import com.github.catatafishen.ideagentforcopilot.services.CopilotSettings;
+import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
+import com.github.catatafishen.ideagentforcopilot.services.AgentUiSettings;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Copilot-specific implementation of {@link ToolLayerSettings}.
- * Delegates to {@link CopilotSettings} for all values.
+ * Profile-aware implementation of {@link ToolLayerSettings}.
+ * Delegates to the active agent's settings via {@link ActiveAgentManager}.
  *
- * <p>Registered as a project service in plugin-core's {@code plugin.xml}
- * so the MCP tool layer gets Copilot's settings without importing
- * {@code CopilotSettings} directly.</p>
+ * <p>Registered as a project service in plugin.xml so the MCP tool layer
+ * gets the active agent's settings without importing any agent-specific class.</p>
  */
 public final class CopilotToolLayerSettings implements ToolLayerSettings {
 
@@ -25,26 +25,36 @@ public final class CopilotToolLayerSettings implements ToolLayerSettings {
 
     @Override
     public boolean getFollowAgentFiles() {
-        return CopilotSettings.getFollowAgentFiles(project);
+        return ActiveAgentManager.getFollowAgentFiles(project);
     }
 
     @Override
     public @Nullable String getActiveAgentLabel() {
-        return CopilotSettings.getActiveAgentLabel();
+        return ActiveAgentManager.getInstance(project).getSettings().getActiveAgentLabel();
     }
 
     @Override
     public @Nullable String getSelectedModel() {
-        return CopilotSettings.getSelectedModel();
+        return ActiveAgentManager.getInstance(project).getSettings().getSelectedModel();
     }
 
     @Override
     public @NotNull ToolPermission resolveEffectivePermission(@NotNull String toolId, boolean insideProject) {
-        return CopilotSettings.resolveEffectivePermission(toolId, insideProject);
+        AgentUiSettings settings = ActiveAgentManager.getInstance(project).getSettings();
+        ToolPermission top = settings.getToolPermission(toolId);
+        if (top != ToolPermission.ALLOW) return top;
+
+        com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.ToolEntry entry =
+            com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.findById(toolId);
+        if (entry == null || !entry.supportsPathSubPermissions) return top;
+
+        return insideProject
+            ? settings.getToolPermissionInsideProject(toolId)
+            : settings.getToolPermissionOutsideProject(toolId);
     }
 
     @Override
     public @NotNull ToolPermission getToolPermission(@NotNull String toolId) {
-        return CopilotSettings.getToolPermission(toolId);
+        return ActiveAgentManager.getInstance(project).getSettings().getToolPermission(toolId);
     }
 }

@@ -115,8 +115,8 @@ class AgenticCopilotToolWindowContent(
         setupTitleBarActions()
 
         // Connect panel — always created
-        connectPanel = AcpConnectPanel(project) { agentType, customCommand ->
-            connectToAgent(agentType, customCommand)
+        connectPanel = AcpConnectPanel(project) { profileId, customCommand ->
+            connectToAgent(profileId, customCommand)
         }
         mainPanel.add(connectPanel, CARD_CONNECT)
 
@@ -145,7 +145,7 @@ class AgenticCopilotToolWindowContent(
     private fun buildAndShowChatPanel() {
         val addSeparatorNow = {
             val ts = java.text.SimpleDateFormat("MMM d, yyyy h:mm a").format(java.util.Date())
-            consolePanel.addSessionSeparator(ts, agentManager.activeType.displayName())
+            consolePanel.addSessionSeparator(ts, agentManager.activeProfile.displayName)
         }
         if (chatPanel == null) {
             chatPanel = createPromptTab()
@@ -162,7 +162,7 @@ class AgenticCopilotToolWindowContent(
             loadModelsAsync { models ->
                 loadedModels = models
                 restoreModelSelection(models)
-                val agentName = agentManager.activeType.displayName()
+                val agentName = agentManager.activeProfile.displayName
                 statusBanner?.showInfo("Connected to $agentName")
             }
         }
@@ -172,12 +172,12 @@ class AgenticCopilotToolWindowContent(
      * Called from AcpConnectPanel when the user clicks Connect.
      * Switches the active agent, builds the chat panel, and loads models.
      */
-    private fun connectToAgent(type: ActiveAgentManager.AgentType, customCommand: String?) {
+    private fun connectToAgent(profileId: String, customCommand: String?) {
         if (customCommand != null) {
             agentManager.setCustomAcpCommand(customCommand)
         }
-        if (agentManager.activeType != type) {
-            agentManager.switchAgent(type)
+        if (agentManager.activeProfileId != profileId) {
+            agentManager.switchAgent(profileId)
         }
         buildAndShowChatPanel()
 
@@ -185,13 +185,13 @@ class AgenticCopilotToolWindowContent(
         loadModelsAsync { models ->
             loadedModels = models
             restoreModelSelection(models)
-            statusBanner?.showInfo("Connected to ${type.displayName()}")
+            statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
         }
     }
 
     fun disconnectFromAgent() {
         try {
-            agentManager.service.stop()
+            agentManager.stop()
         } catch (e: Exception) {
             LOG.warn("Error stopping agent", e)
         }
@@ -817,7 +817,7 @@ class AgenticCopilotToolWindowContent(
 
         override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
             val group = DefaultActionGroup()
-            val agentName = agentManager.activeType.displayName()
+            val agentName = agentManager.activeProfile.displayName
             group.add(object : AnAction(
                 "Disconnect from $agentName",
                 "Stop the ACP process and return to the connection screen",
@@ -830,7 +830,7 @@ class AgenticCopilotToolWindowContent(
         }
 
         override fun update(e: AnActionEvent) {
-            e.presentation.text = agentManager.activeType.displayName()
+            e.presentation.text = agentManager.activeProfile.displayName
             e.presentation.isEnabled = agentManager.isAcpConnected
             e.presentation.description = "Active agent — click to disconnect"
         }
@@ -1370,7 +1370,7 @@ class AgenticCopilotToolWindowContent(
 
         override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
             val group = DefaultActionGroup()
-            val modes = agentManager.service.config.supportedModes
+            val modes = agentManager.config.supportedModes
             for (mode in modes) {
                 group.add(object : AnAction(mode.displayName()) {
                     override fun actionPerformed(e: AnActionEvent) {
@@ -1384,7 +1384,7 @@ class AgenticCopilotToolWindowContent(
         }
 
         override fun update(e: AnActionEvent) {
-            val modes = agentManager.service.config.supportedModes
+            val modes = agentManager.config.supportedModes
             if (modes.isEmpty()) {
                 e.presentation.isVisible = false
                 return
@@ -1577,7 +1577,7 @@ class AgenticCopilotToolWindowContent(
                     currentSessionId = null
                     consolePanel.addSessionSeparator(
                         java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
-                        agentManager.activeType.displayName()
+                        agentManager.activeProfile.displayName
                     )
                     updateSessionInfo()
                 }
@@ -2397,9 +2397,10 @@ class AgenticCopilotToolWindowContent(
      * Switch to a different AI agent. Preserves chat history, shows a session separator
      * and an auto-dismissing banner to confirm the switch, then reloads available models.
      */
-    private fun switchToAgent(type: ActiveAgentManager.AgentType) {
-        val previous = agentManager.activeType
-        agentManager.switchAgent(type)
+    private fun switchToAgent(profileId: String) {
+        val previousName = agentManager.activeProfile.displayName
+        agentManager.switchAgent(profileId)
+        val newProfile = agentManager.activeProfile
 
         // Archive old conversation before resetting, then keep chat visible
         archiveConversation()
@@ -2408,17 +2409,17 @@ class AgenticCopilotToolWindowContent(
         // Visual divider so the user sees where the new agent context starts
         if (consolePanel.hasContent()) {
             val ts = java.text.SimpleDateFormat("MMM d, yyyy h:mm a").format(java.util.Date())
-            consolePanel.addSessionSeparator(ts, type.displayName())
+            consolePanel.addSessionSeparator(ts, newProfile.displayName)
         }
 
         loadModelsAsync { models ->
             loadedModels = models
             restoreModelSelection(models)
             // Banner after models load so the user knows the switch succeeded
-            statusBanner?.showInfo("Connected to ${type.displayName()}")
+            statusBanner?.showInfo("Connected to ${newProfile.displayName}")
         }
 
-        LOG.info("Agent switched from ${previous.displayName()} to ${type.displayName()}")
+        LOG.info("Agent switched from $previousName to ${newProfile.displayName}")
     }
 
     private fun restoreModelSelection(models: List<Model>) {
