@@ -2,11 +2,13 @@ package com.github.catatafishen.ideagentforcopilot.ui
 
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfile
 import com.github.catatafishen.ideagentforcopilot.services.McpServerControl
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
@@ -69,6 +71,7 @@ class AcpConnectPanel(
 
     // ACP controls
     private var acpSection: JComponent = JBPanel<JBPanel<*>>()
+    private val profileCombo = ComboBox<AgentProfile>()
     private val connectButton = JButton("Connect")
     private val connectDropdownButton = JButton(AllIcons.General.ArrowDown)
     private val acpHintLabel = JBLabel("Start the tool server above first").apply {
@@ -228,6 +231,10 @@ class AcpConnectPanel(
         )
         section.add(Box.createVerticalStrut(JBUI.scale(8)))
 
+        // Agent profile selector
+        section.add(createProfileSelector())
+        section.add(Box.createVerticalStrut(JBUI.scale(8)))
+
         // Hint shown when MCP is not running
         section.add(acpHintLabel)
         section.add(Box.createVerticalStrut(JBUI.scale(12)))
@@ -260,6 +267,45 @@ class AcpConnectPanel(
         panel.add(connectDropdownButton, BorderLayout.EAST)
 
         return panel
+    }
+
+    private fun createProfileSelector(): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            isOpaque = false
+            alignmentX = LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(32))
+        }
+
+        refreshProfileCombo()
+        profileCombo.renderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
+            ): Component {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                text = (value as? AgentProfile)?.displayName ?: ""
+                return this
+            }
+        }
+
+        panel.add(JBLabel("Agent:").apply {
+            border = JBUI.Borders.emptyRight(8)
+        }, BorderLayout.WEST)
+        panel.add(profileCombo, BorderLayout.CENTER)
+
+        return panel
+    }
+
+    private fun refreshProfileCombo() {
+        val profiles = agentManager.availableProfiles
+        val activeId = agentManager.activeProfileId
+        profileCombo.removeAllItems()
+        for (p in profiles) {
+            profileCombo.addItem(p)
+        }
+        val active = profiles.find { it.id == activeId }
+        if (active != null) {
+            profileCombo.selectedItem = active
+        }
     }
 
     // ── Shared UI helpers ──
@@ -481,20 +527,20 @@ class AcpConnectPanel(
     }
 
     private fun doConnect() {
-        val profileId = agentManager.activeProfileId
-        val profile = agentManager.activeProfile
-        if (profile == null) {
+        val selectedProfile = profileCombo.selectedItem as? AgentProfile
+        if (selectedProfile == null) {
             statusBanner.showError("No agent profile selected — configure one in Settings.")
             return
         }
 
+        val profileId = selectedProfile.id
         val cmd = agentManager.getCustomAcpCommandFor(profileId)
         if (cmd.isNullOrBlank()) {
-            statusBanner.showError("No start command configured for ${profile.displayName} — check Settings.")
+            statusBanner.showError("No start command configured for ${selectedProfile.displayName} — check Settings.")
             return
         }
 
-        val customCommand = if (cmd != profile.defaultStartCommand) cmd else null
+        val customCommand = if (cmd != selectedProfile.defaultStartCommand) cmd else null
 
         statusBanner.dismissCurrent()
         connectButton.isEnabled = false
@@ -516,6 +562,7 @@ class AcpConnectPanel(
         SwingUtilities.invokeLater {
             connectButton.isEnabled = true
             connectButton.text = "Connect"
+            refreshProfileCombo()
         }
     }
 
