@@ -136,7 +136,6 @@ class AgenticCopilotToolWindowContent(
             Separator.create(),
             ProjectFilesDropdownAction(),
             Separator.create(),
-            CopyConversationAction(),
             SettingsAction(),
             HelpAction(project)
         )
