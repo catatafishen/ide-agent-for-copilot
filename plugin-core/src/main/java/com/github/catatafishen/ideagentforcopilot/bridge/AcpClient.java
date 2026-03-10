@@ -1191,7 +1191,8 @@ public class AcpClient implements Closeable {
         if (name.startsWith(effectiveMcpPrefix)) {
             name = name.substring(effectiveMcpPrefix.length());
         }
-        return name.isEmpty() ? (permKind != null ? permKind : "") : name;
+        String fallback = permKind != null ? permKind : "";
+        return name.isEmpty() ? fallback : name;
     }
 
     /**

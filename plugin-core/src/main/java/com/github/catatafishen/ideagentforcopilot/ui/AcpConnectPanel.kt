@@ -190,8 +190,8 @@ class AcpConnectPanel(
         pill.add(mcpStatusLabel, BorderLayout.WEST)
 
         mcpUrlCopyButton.addActionListener {
-            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            clipboard.setContents(java.awt.datatransfer.StringSelection(mcpRunningUrl), null)
+            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+            clipboard.setContents(StringSelection(mcpRunningUrl), null)
         }
 
         val eastPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
@@ -307,7 +307,7 @@ class AcpConnectPanel(
     }
 
     private fun refreshProfileCombo() {
-        val profiles = agentManager.availableProfiles
+        val profiles = agentManager.availableProfiles.toList()
         val activeId = agentManager.activeProfileId
         profileCombo.removeAllItems()
         for (p in profiles) {
@@ -513,7 +513,7 @@ class AcpConnectPanel(
 
         val profileId = selectedProfile.id
         val cmd = agentManager.getCustomAcpCommandFor(profileId)
-        if (cmd.isNullOrBlank()) {
+        if (cmd.isBlank()) {
             statusBanner.showError("No start command configured for ${selectedProfile.displayName} — check Settings.")
             return
         }

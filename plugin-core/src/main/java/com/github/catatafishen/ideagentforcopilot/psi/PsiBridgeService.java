@@ -29,7 +29,6 @@ import java.util.Map;
 public final class PsiBridgeService implements Disposable {
     private static final Logger LOG = Logger.getInstance(PsiBridgeService.class);
 
-
     /**
      * Listener notified after each MCP tool call completes.
      */
@@ -266,17 +265,21 @@ public final class PsiBridgeService implements Disposable {
                 : com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY;
         }
 
-        if (response == com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_SESSION) {
-            sessionAllowedTools.add(toolName);
-            LOG.info("PSI Bridge: ASK approved for session for " + toolName);
-            return null;
-        } else if (response == com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE) {
-            LOG.info("PSI Bridge: ASK approved (once) for " + toolName);
-            return null;
-        } else {
-            LOG.info("PSI Bridge: ASK denied by user for " + toolName);
-            return "Permission denied by user for tool '" + toolName + "'.";
-        }
+        return switch (response) {
+            case ALLOW_SESSION -> {
+                sessionAllowedTools.add(toolName);
+                LOG.info("PSI Bridge: ASK approved for session for " + toolName);
+                yield null;
+            }
+            case ALLOW_ONCE -> {
+                LOG.info("PSI Bridge: ASK approved (once) for " + toolName);
+                yield null;
+            }
+            default -> {
+                LOG.info("PSI Bridge: ASK denied by user for " + toolName);
+                yield "Permission denied by user for tool '" + toolName + "'.";
+            }
+        };
     }
 
     private ToolPermission resolvePluginPermission(String toolName, JsonObject arguments) {
