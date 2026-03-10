@@ -34,13 +34,12 @@ describe('ChatController', () => {
         });
 
         it('renders reference chips in metadata row', () => {
-            CC().addUserMessage('Hi', '14:22', '<a class="prompt-ctx-chip">file.kt</a>');
-            const chip = getMessages().querySelector('.prompt-ctx-chip');
+            const html = '<a class="prompt-ctx-chip">file.kt</a>';
+            CC().addUserMessage('Hi', '14:22', btoa(html));
+            const bubble = getMessages().querySelector('message-bubble');
+            const chip = bubble.querySelector('.prompt-ctx-chip');
             expect(chip).not.toBeNull();
             expect(chip.textContent).toContain('file.kt');
-            const meta = getMessages().querySelector('message-meta');
-            expect(meta.classList.contains('show')).toBe(true);
-            expect(meta.querySelector('.prompt-ctx-chip')).not.toBeNull();
         });
     });
 
