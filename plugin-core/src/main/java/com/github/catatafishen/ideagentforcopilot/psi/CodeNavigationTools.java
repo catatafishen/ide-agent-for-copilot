@@ -53,6 +53,20 @@ class CodeNavigationTools extends AbstractToolHandler {
 
     // ---- list_project_files ----
 
+    /**
+     * Shows a transient message in IntelliJ's status bar when follow-agent mode is active.
+     * Used to give visual feedback during search operations.
+     */
+    private void showSearchFeedback(String message) {
+        if (!ToolLayerSettings.getInstance(project).getFollowAgentFiles()) return;
+        EdtUtil.invokeLater(() -> {
+            var statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
+            if (statusBar != null) {
+                statusBar.setInfo(message);
+            }
+        });
+    }
+
     String listProjectFiles(JsonObject args) {
         String dir = args.has("directory") ? args.get("directory").getAsString() : "";
         String pattern = args.has("pattern") ? args.get("pattern").getAsString() : "";
@@ -155,12 +169,15 @@ class CodeNavigationTools extends AbstractToolHandler {
         String query = args.has(PARAM_QUERY) ? args.get(PARAM_QUERY).getAsString() : "";
         String typeFilter = args.has("type") ? args.get("type").getAsString() : "";
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        showSearchFeedback("🔍 Searching symbols: " + query);
+        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
             if (query.isEmpty() || "*".equals(query)) {
                 return searchSymbolsWildcard(typeFilter);
             }
             return searchSymbolsExact(query, typeFilter);
         });
+        showSearchFeedback("✓ Symbol search complete: " + query);
+        return result;
     }
 
     String searchSymbolsWildcard(String typeFilter) {
@@ -267,19 +284,18 @@ class CodeNavigationTools extends AbstractToolHandler {
         String symbol = args.get(PARAM_SYMBOL).getAsString();
         String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        showSearchFeedback("🔍 Finding references: " + symbol);
+        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
             List<String> results = new ArrayList<>();
             String basePath = project.getBasePath();
             GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
 
-            // Try to find the definition first for accurate ReferencesSearch
             PsiElement definition = findDefinition(symbol, scope);
 
             if (definition != null) {
                 collectPsiReferences(definition, scope, filePattern, basePath, results);
             }
 
-            // Fall back to word search if no PSI references found
             if (results.isEmpty()) {
                 collectWordReferences(symbol, scope, filePattern, basePath, results);
             }
@@ -287,6 +303,8 @@ class CodeNavigationTools extends AbstractToolHandler {
             if (results.isEmpty()) return "No references found for '" + symbol + "'";
             return results.size() + " references found:\n" + String.join("\n", results);
         });
+        showSearchFeedback("✓ Reference search complete: " + symbol);
+        return result;
     }
 
     void collectPsiReferences(PsiElement definition, GlobalSearchScope scope,
@@ -380,10 +398,6 @@ class CodeNavigationTools extends AbstractToolHandler {
         }
     }
 
-    /**
-     * Full-text regex/literal search across project files, reading from IntelliJ buffers
-     * (not disk). This replaces the need for external grep/ripgrep tools.
-     */
     String searchText(JsonObject args) {
         if (!args.has(PARAM_QUERY) || args.get(PARAM_QUERY).isJsonNull())
             return "Error: 'query' parameter is required";
@@ -393,7 +407,11 @@ class CodeNavigationTools extends AbstractToolHandler {
         boolean caseSensitive = !args.has("case_sensitive") || args.get("case_sensitive").getAsBoolean();
         int maxResults = args.has("max_results") ? args.get("max_results").getAsInt() : 100;
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> performSearch(query, filePattern, isRegex, caseSensitive, maxResults));
+        showSearchFeedback("🔍 Searching text: " + query);
+        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+            performSearch(query, filePattern, isRegex, caseSensitive, maxResults));
+        showSearchFeedback("✓ Text search complete: " + query);
+        return result;
     }
 
     private String performSearch(String query, String filePattern, boolean isRegex, boolean caseSensitive, int maxResults) {
