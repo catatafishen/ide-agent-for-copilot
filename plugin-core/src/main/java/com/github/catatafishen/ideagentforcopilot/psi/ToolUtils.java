@@ -220,11 +220,11 @@ public final class ToolUtils {
         // Also catches env-prefixed (VAR=val git ...), sudo/env/command wrappers
         if (cmd.startsWith("git ") || cmd.equals("git") ||
             cmd.contains("&& git ") || cmd.contains("; git ") || cmd.contains("| git ") ||
-            cmd.matches("(\\w+=\\S*\\s+)+git(\\s.*|$)") ||
+            cmd.matches("(\\w+=\\S*+\\s++)++git(\\s.*|$)") ||
             cmd.matches("(sudo|env|command|nohup)\\s+git(\\s.*|$)") ||
-            cmd.matches("(\\w+=\\S*\\s+)+(sudo|env|command)\\s+git(\\s.*|$)") ||
+            cmd.matches("(\\w+=\\S*+\\s++)++(?:sudo|env|command)\\s+git(\\s.*|$)") ||
             // env with VAR=val arguments before git (e.g. env GIT_DIR=/tmp git status)
-            cmd.matches("env\\s+(\\S+=\\S*\\s+)*git(\\s.*|$)")) {
+            cmd.matches("env\\s+(\\S+=\\S*+\\s++)*+git(\\s.*|$)")) {
             return "git";
         }
 

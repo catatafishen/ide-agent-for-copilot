@@ -39,7 +39,7 @@ public class McpStdioProxy {
         }
 
         String mcpUrl = "http://127.0.0.1:" + port + "/mcp";
-        LOG.info("MCP stdio proxy starting, forwarding to " + mcpUrl);
+        LOG.log(Level.INFO, "MCP stdio proxy starting, forwarding to {0}", mcpUrl);
 
         waitForServer(port);
 
@@ -51,20 +51,25 @@ public class McpStdioProxy {
                 line = line.trim();
                 if (line.isEmpty()) continue;
 
-                try {
-                    String response = forwardToServer(mcpUrl, line);
-                    if (response != null && !response.isEmpty()) {
-                        System.out.write(response.getBytes(StandardCharsets.UTF_8));
-                        System.out.write('\n');
-                        System.out.flush();
-                    }
-                } catch (Exception e) {
-                    LOG.log(Level.WARNING, "Failed to forward MCP message", e);
-                    writeErrorResponse(line, e.getMessage());
-                }
+                processMessage(mcpUrl, line);
             }
         } catch (IOException e) {
             LOG.log(Level.SEVERE, "Stdin read error", e);
+        }
+    }
+
+    @SuppressWarnings("java:S106") // System.out is intentional — MCP protocol requires stdout
+    private static void processMessage(String mcpUrl, String line) {
+        try {
+            String response = forwardToServer(mcpUrl, line);
+            if (response != null && !response.isEmpty()) {
+                System.out.write(response.getBytes(StandardCharsets.UTF_8));
+                System.out.write('\n');
+                System.out.flush();
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to forward MCP message", e);
+            writeErrorResponse(line, e.getMessage());
         }
     }
 
@@ -89,7 +94,7 @@ public class McpStdioProxy {
                 conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
                 conn.setReadTimeout(3000);
                 if (conn.getResponseCode() == 200) {
-                    LOG.info("MCP server is ready on port " + port);
+                    LOG.log(Level.INFO, "MCP server is ready on port {0}", port);
                     return;
                 }
             } catch (IOException ignored) {
@@ -102,7 +107,8 @@ public class McpStdioProxy {
                 return;
             }
         }
-        LOG.warning("MCP server not reachable on port " + port + " after " + MAX_RETRIES + " retries");
+        LOG.log(Level.WARNING, "MCP server not reachable on port {0} after {1} retries",
+            new Object[]{port, MAX_RETRIES});
     }
 
     private static String forwardToServer(String mcpUrl, String jsonBody) throws IOException {

@@ -31,6 +31,8 @@ import java.util.List;
  */
 public final class AgentProfilesConfigurable implements Configurable {
 
+    private static final String EMPTY_CARD = "empty";
+
     private final Project project;
 
     private JPanel mainPanel;
@@ -163,18 +165,16 @@ public final class AgentProfilesConfigurable implements Configurable {
 
         ensureCopilotAgentsCb = new JBCheckBox("Ensure Copilot agents config on launch");
 
-        var usePluginPermissionsCb = new JBCheckBox("Use plugin-level tool permissions");
-        this.usePluginPermissionsCb = usePluginPermissionsCb;
+        this.usePluginPermissionsCb = new JBCheckBox("Use plugin-level tool permissions");
 
-        var excludeAgentBuiltInToolsCb = new JBCheckBox("Exclude agent's built-in tools at session start");
-        this.excludeAgentBuiltInToolsCb = excludeAgentBuiltInToolsCb;
+        this.excludeAgentBuiltInToolsCb = new JBCheckBox("Exclude agent's built-in tools at session start");
 
         editorCards = new CardLayout();
         editorPanel = new JPanel(editorCards);
 
         JPanel emptyPanel = new JPanel(new BorderLayout());
         emptyPanel.add(new JBLabel("Select a profile to edit"), BorderLayout.CENTER);
-        editorPanel.add(emptyPanel, "empty");
+        editorPanel.add(emptyPanel, EMPTY_CARD);
 
         JPanel form = FormBuilder.createFormBuilder()
             .addLabeledComponent("Display name:", nameField)
@@ -227,7 +227,7 @@ public final class AgentProfilesConfigurable implements Configurable {
         formScroll.setBorder(JBUI.Borders.empty());
         editorPanel.add(formScroll, "editor");
 
-        editorCards.show(editorPanel, "empty");
+        editorCards.show(editorPanel, EMPTY_CARD);
         return editorPanel;
     }
 
@@ -311,7 +311,7 @@ public final class AgentProfilesConfigurable implements Configurable {
             editorCards.show(editorPanel, "editor");
         } else {
             currentIndex = -1;
-            editorCards.show(editorPanel, "empty");
+            editorCards.show(editorPanel, EMPTY_CARD);
         }
     }
 
