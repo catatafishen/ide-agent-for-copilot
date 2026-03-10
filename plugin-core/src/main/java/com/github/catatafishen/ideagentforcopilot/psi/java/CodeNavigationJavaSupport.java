@@ -27,44 +27,50 @@ public class CodeNavigationJavaSupport {
     private CodeNavigationJavaSupport() {
     }
 
+    @Nullable
+    private static PsiClass resolveClass(Project project, String className) {
+        var facade = JavaPsiFacade.getInstance(project);
+        var scope = GlobalSearchScope.allScope(project);
+        var psiClass = facade.findClass(className, scope);
+        if (psiClass != null) return psiClass;
+
+        var cache = PsiShortNamesCache.getInstance(project);
+        var shortName = className.contains(".") ? className.substring(className.lastIndexOf('.') + 1) : className;
+        var classes = cache.getClassesByName(shortName, scope);
+        return classes.length > 0 ? classes[0] : null;
+    }
+
+    private static void appendClassHeader(PsiClass psiClass, String className, StringBuilder sb) {
+        String kind = ToolUtils.classifyElement(psiClass);
+        String qName = psiClass.getQualifiedName();
+        sb.append(kind != null ? kind : "class").append(" ").append(qName != null ? qName : className);
+
+        var superClass = psiClass.getSuperClass();
+        if (superClass != null && !"java.lang.Object".equals(superClass.getQualifiedName())) {
+            sb.append(" extends ").append(superClass.getQualifiedName());
+        }
+        var interfaces = psiClass.getInterfaces();
+        if (interfaces.length > 0) {
+            sb.append(" implements ");
+            for (int i = 0; i < interfaces.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(interfaces[i].getQualifiedName());
+            }
+        }
+        sb.append("\n\n");
+    }
+
     /**
      * Computes a structured outline of a Java class by fully qualified name.
      * Must be called inside a read action.
      */
     public static String computeClassOutline(Project project, String className, boolean includeInherited) {
         try {
-            var facade = JavaPsiFacade.getInstance(project);
-            var scope = GlobalSearchScope.allScope(project);
-            var psiClass = facade.findClass(className, scope);
-
-            if (psiClass == null) {
-                var cache = PsiShortNamesCache.getInstance(project);
-                var classes = cache.getClassesByName(
-                        className.contains(".") ? className.substring(className.lastIndexOf('.') + 1) : className,
-                        scope);
-                if (classes.length == 0) return "Class not found: " + className;
-                psiClass = classes[0];
-            }
+            var psiClass = resolveClass(project, className);
+            if (psiClass == null) return "Class not found: " + className;
 
             StringBuilder sb = new StringBuilder();
-            String kind = ToolUtils.classifyElement(psiClass);
-            String qName = psiClass.getQualifiedName();
-            sb.append(kind != null ? kind : "class").append(" ").append(qName != null ? qName : className);
-
-            var superClass = psiClass.getSuperClass();
-            if (superClass != null && !"java.lang.Object".equals(superClass.getQualifiedName())) {
-                sb.append(" extends ").append(superClass.getQualifiedName());
-            }
-            var interfaces = psiClass.getInterfaces();
-            if (interfaces.length > 0) {
-                sb.append(" implements ");
-                for (int i = 0; i < interfaces.length; i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(interfaces[i].getQualifiedName());
-                }
-            }
-            sb.append("\n\n");
-
+            appendClassHeader(psiClass, className, sb);
             appendConstructors(psiClass, sb);
             appendMethods(psiClass, sb, includeInherited);
             appendFields(psiClass, sb, includeInherited);
