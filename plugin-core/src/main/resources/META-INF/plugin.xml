@@ -190,6 +190,7 @@
     <!-- ── MCP section ── -->
     <projectConfigurable
       parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.McpGroupConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.mcp"
       displayName="MCP"/>
 
