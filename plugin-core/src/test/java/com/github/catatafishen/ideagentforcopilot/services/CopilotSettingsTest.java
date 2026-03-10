@@ -40,13 +40,13 @@ public class CopilotSettingsTest extends BasePlatformTestCase {
         assertEquals("claude-sonnet-4.5", settings.getSelectedModel());
     }
 
-    public void testSessionModeDefaultAgent() {
-        assertEquals("agent", settings.getSessionMode());
+    public void testSelectedAgentDefault() {
+        assertEquals("", settings.getSelectedAgent());
     }
 
-    public void testSetAndGetSessionMode() {
-        settings.setSessionMode("plan");
-        assertEquals("plan", settings.getSessionMode());
+    public void testSetAndGetSelectedAgent() {
+        settings.setSelectedAgent("ide-explore");
+        assertEquals("ide-explore", settings.getSelectedAgent());
     }
 
     public void testMonthlyRequestsDefault() {
