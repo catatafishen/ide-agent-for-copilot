@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AgentMode;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
@@ -55,7 +54,7 @@ public final class AgentProfilesConfigurable implements Configurable {
     private JBCheckBox supportsMcpConfigFlagCb;
     private JBCheckBox requiresResourceDuplicationCb;
     private JBTextField modelUsageFieldField;
-    private JBTextField supportedModesField;
+    private JBTextField agentsDirectoryField;
     private JBTextField prependInstructionsToField;
     private JBCheckBox ensureCopilotAgentsCb;
     private JBCheckBox usePluginPermissionsCb;
@@ -159,7 +158,7 @@ public final class AgentProfilesConfigurable implements Configurable {
         supportsMcpConfigFlagCb = new JBCheckBox("Supports --additional-mcp-config flag");
         requiresResourceDuplicationCb = new JBCheckBox("Requires resource content duplication");
         modelUsageFieldField = new JBTextField();
-        supportedModesField = new JBTextField();
+        agentsDirectoryField = new JBTextField();
 
         prependInstructionsToField = new JBTextField();
 
@@ -207,8 +206,8 @@ public final class AgentProfilesConfigurable implements Configurable {
             .addComponent(requiresResourceDuplicationCb)
             .addLabeledComponent("Model usage field:", modelUsageFieldField)
             .addTooltip("JSON field name in model metadata for usage info (e.g., \"copilotUsage\")")
-            .addLabeledComponent("Supported modes (id:label;...):", supportedModesField)
-            .addTooltip("Session modes like \"agent:Agent;plan:Plan\". Leave empty for no mode selector.")
+            .addLabeledComponent("Agents directory (relative path):", agentsDirectoryField)
+            .addTooltip("Relative path from project root to a directory of agent definition files (*.md). Leave empty for no agent selector.")
             .addSeparator()
             .addComponent(new JBLabel("<html><b>Permissions</b></html>"))
             .addComponent(usePluginPermissionsCb)
@@ -332,7 +331,7 @@ public final class AgentProfilesConfigurable implements Configurable {
             supportsMcpConfigFlagCb.setSelected(p.isSupportsMcpConfigFlag());
             requiresResourceDuplicationCb.setSelected(p.isRequiresResourceDuplication());
             modelUsageFieldField.setText(p.getModelUsageField() != null ? p.getModelUsageField() : "");
-            supportedModesField.setText(serializeModes(p.getSupportedModes()));
+            agentsDirectoryField.setText(p.getAgentsDirectory() != null ? p.getAgentsDirectory() : "");
             prependInstructionsToField.setText(p.getPrependInstructionsTo() != null ? p.getPrependInstructionsTo() : "");
             ensureCopilotAgentsCb.setSelected(p.isEnsureCopilotAgents());
             usePluginPermissionsCb.setSelected(p.isUsePluginPermissions());
@@ -360,7 +359,8 @@ public final class AgentProfilesConfigurable implements Configurable {
         p.setRequiresResourceDuplication(requiresResourceDuplicationCb.isSelected());
         String modelField = modelUsageFieldField.getText().trim();
         p.setModelUsageField(modelField.isEmpty() ? null : modelField);
-        p.setSupportedModes(deserializeModes(supportedModesField.getText()));
+        String agentsDir = agentsDirectoryField.getText().trim();
+        p.setAgentsDirectory(agentsDir.isEmpty() ? null : agentsDir);
         String prependTarget = prependInstructionsToField.getText().trim();
         p.setPrependInstructionsTo(prependTarget.isEmpty() ? null : prependTarget);
         p.setEnsureCopilotAgents(ensureCopilotAgentsCb.isSelected());
@@ -459,7 +459,7 @@ public final class AgentProfilesConfigurable implements Configurable {
             && a.isSupportsMcpConfigFlag() == b.isSupportsMcpConfigFlag()
             && a.isRequiresResourceDuplication() == b.isRequiresResourceDuplication()
             && java.util.Objects.equals(a.getModelUsageField(), b.getModelUsageField())
-            && a.getSupportedModes().equals(b.getSupportedModes())
+            && java.util.Objects.equals(a.getAgentsDirectory(), b.getAgentsDirectory())
             && java.util.Objects.equals(a.getPrependInstructionsTo(), b.getPrependInstructionsTo())
             && a.isEnsureCopilotAgents() == b.isEnsureCopilotAgents()
             && a.isUsePluginPermissions() == b.isUsePluginPermissions()
@@ -482,29 +482,6 @@ public final class AgentProfilesConfigurable implements Configurable {
         for (String part : s.split("\\s+")) {
             String trimmed = part.trim();
             if (!trimmed.isEmpty()) result.add(trimmed);
-        }
-        return result;
-    }
-
-    @NotNull
-    private static String serializeModes(@NotNull List<AgentMode> modes) {
-        StringBuilder sb = new StringBuilder();
-        for (AgentMode m : modes) {
-            if (!sb.isEmpty()) sb.append(';');
-            sb.append(m.id()).append(':').append(m.displayName());
-        }
-        return sb.toString();
-    }
-
-    @NotNull
-    private static List<AgentMode> deserializeModes(@NotNull String s) {
-        if (s.trim().isEmpty()) return new ArrayList<>();
-        List<AgentMode> result = new ArrayList<>();
-        for (String entry : s.split(";")) {
-            String[] parts = entry.split(":", 2);
-            if (parts.length == 2 && !parts[0].trim().isEmpty()) {
-                result.add(new AgentMode(parts[0].trim(), parts[1].trim()));
-            }
         }
         return result;
     }

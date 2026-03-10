@@ -749,7 +749,7 @@ class AgenticCopilotToolWindowContent(
         leftGroup.add(AttachContextDropdownAction())
         leftGroup.addSeparator()
         leftGroup.add(ModelSelectorAction())
-        leftGroup.add(ModeSelectorAction())
+        leftGroup.add(AgentSelectorAction())
         leftGroup.addSeparator()
         leftGroup.add(RestartSessionGroup())
 
@@ -1324,16 +1324,22 @@ class AgenticCopilotToolWindowContent(
         }
     }
 
-    private inner class ModeSelectorAction : ComboBoxAction() {
+    private inner class AgentSelectorAction : ComboBoxAction() {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
         override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
             val group = DefaultActionGroup()
-            val modes = agentManager.config.supportedModes
-            for (mode in modes) {
-                group.add(object : AnAction(mode.displayName()) {
+            group.add(object : AnAction("Default") {
+                override fun actionPerformed(e: AnActionEvent) {
+                    agentManager.settings.setSelectedAgent("")
+                }
+
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            })
+            for (agentName in discoverAgentNames()) {
+                group.add(object : AnAction(agentName) {
                     override fun actionPerformed(e: AnActionEvent) {
-                        agentManager.settings.setSessionMode(mode.id())
+                        agentManager.settings.setSelectedAgent(agentName)
                     }
 
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -1343,16 +1349,25 @@ class AgenticCopilotToolWindowContent(
         }
 
         override fun update(e: AnActionEvent) {
-            val modes = agentManager.config.supportedModes
-            if (modes.isEmpty()) {
+            val agentsDir = agentManager.config.agentsDirectory
+            if (agentsDir.isNullOrBlank()) {
                 e.presentation.isVisible = false
                 return
             }
             e.presentation.isVisible = true
-            val currentId = agentManager.settings.sessionMode
-            val display = modes.firstOrNull { it.id() == currentId }?.displayName()
-                ?: modes.first().displayName()
-            e.presentation.text = display
+            val selected = agentManager.settings.selectedAgent
+            e.presentation.text = if (selected.isEmpty()) "Default" else selected
+        }
+
+        private fun discoverAgentNames(): List<String> {
+            val agentsDir = agentManager.config.agentsDirectory ?: return emptyList()
+            val basePath = project.basePath ?: return emptyList()
+            val dir = java.io.File(basePath, agentsDir)
+            if (!dir.isDirectory) return emptyList()
+            return dir.listFiles { f -> f.isFile && f.extension == "md" }
+                ?.map { it.nameWithoutExtension }
+                ?.sorted()
+                ?: emptyList()
         }
     }
 
@@ -1597,8 +1612,9 @@ class AgenticCopilotToolWindowContent(
     private fun buildEffectivePrompt(prompt: String): String {
         var effective = prompt
 
-        if (agentManager.settings.sessionMode == "plan") {
-            effective = "[[PLAN]] $effective"
+        val selectedAgent = agentManager.settings.selectedAgent
+        if (selectedAgent.isNotEmpty()) {
+            effective = "@$selectedAgent $effective"
         }
 
         if (!conversationSummaryInjected) {

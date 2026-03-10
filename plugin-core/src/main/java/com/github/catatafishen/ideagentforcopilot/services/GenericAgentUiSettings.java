@@ -27,13 +27,13 @@ final class GenericAgentUiSettings implements AgentUiSettings {
     }
 
     @Override
-    public @NotNull String getSessionMode() {
-        return settings.getSessionMode();
+    public @NotNull String getSelectedAgent() {
+        return settings.getSelectedAgent();
     }
 
     @Override
-    public void setSessionMode(@NotNull String mode) {
-        settings.setSessionMode(mode);
+    public void setSelectedAgent(@NotNull String agentName) {
+        settings.setSelectedAgent(agentName);
     }
 
     @Override

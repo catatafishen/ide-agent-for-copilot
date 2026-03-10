@@ -85,13 +85,13 @@ public interface AgentConfig {
     String getAgentBinaryPath();
 
     /**
-     * Returns the session modes this agent supports (e.g., "agent", "plan").
-     * The first entry is the default. An empty list means the agent has no mode concept
-     * and no mode selector should be shown.
+     * Returns the path (relative to project root) where agent definition files ({@code *.md}) live.
+     * When non-null, an agent selector dropdown is shown; selecting an agent prepends
+     * {@code @agent-name } to the prompt. {@code null} = no dropdown shown.
      */
-    @NotNull
-    default java.util.List<AgentMode> getSupportedModes() {
-        return java.util.List.of();
+    @Nullable
+    default String getAgentsDirectory() {
+        return null;
     }
 
     /**

@@ -21,12 +21,15 @@ public interface AgentUiSettings {
 
     void setSelectedModel(@NotNull String modelId);
 
-    // ── Session mode ─────────────────────────────────────────────────────────
+    // ── Agent selection ──────────────────────────────────────────────────────
 
+    /**
+     * Returns the selected agent name (e.g. "ide-explore"), or empty string for "Default".
+     */
     @NotNull
-    String getSessionMode();
+    String getSelectedAgent();
 
-    void setSessionMode(@NotNull String mode);
+    void setSelectedAgent(@NotNull String agentName);
 
     // ── Active sub-agent label (runtime-only) ────────────────────────────────
 

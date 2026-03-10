@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AgentMode;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.Service;
@@ -151,7 +150,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         stored.setSupportsMcpConfigFlag(defaults.isSupportsMcpConfigFlag());
         stored.setSupportsModelFlag(defaults.isSupportsModelFlag());
         stored.setSupportsConfigDir(defaults.isSupportsConfigDir());
-        stored.setSupportedModes(defaults.getSupportedModes());
+        stored.setAgentsDirectory(defaults.getAgentsDirectory());
         stored.setRequiresResourceDuplication(defaults.isRequiresResourceDuplication());
         stored.setExcludeAgentBuiltInTools(defaults.isExcludeAgentBuiltInTools());
         stored.setUsePluginPermissions(defaults.isUsePluginPermissions());
@@ -205,10 +204,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         p.setSupportsConfigDir(true);
         p.setRequiresResourceDuplication(true);
         p.setModelUsageField("copilotUsage");
-        p.setSupportedModes(List.of(
-            new AgentMode("agent", "Agent"),
-            new AgentMode("plan", "Plan")
-        ));
+        p.setAgentsDirectory(".github/agents");
         p.setEnsureCopilotAgents(true);
         p.setPrependInstructionsTo(".copilot/copilot-instructions.md");
         p.setPermissionInjectionMethod(PermissionInjectionMethod.CLI_FLAGS);
@@ -271,7 +267,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         public boolean supportsMcpConfigFlag = true;
         public boolean requiresResourceDuplication;
         public String modelUsageField = "";
-        public String supportedModes = "";
+        public String agentsDirectory = "";
         public boolean ensureCopilotAgents;
         public String prependInstructionsTo = "";
         public boolean usePluginPermissions = true;
@@ -297,7 +293,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             e.supportsMcpConfigFlag = p.isSupportsMcpConfigFlag();
             e.requiresResourceDuplication = p.isRequiresResourceDuplication();
             e.modelUsageField = p.getModelUsageField() != null ? p.getModelUsageField() : "";
-            e.supportedModes = serializeModes(p.getSupportedModes());
+            e.agentsDirectory = p.getAgentsDirectory() != null ? p.getAgentsDirectory() : "";
             e.ensureCopilotAgents = p.isEnsureCopilotAgents();
             e.prependInstructionsTo = p.getPrependInstructionsTo() != null ? p.getPrependInstructionsTo() : "";
             e.usePluginPermissions = p.isUsePluginPermissions();
@@ -329,7 +325,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             p.setSupportsMcpConfigFlag(supportsMcpConfigFlag);
             p.setRequiresResourceDuplication(requiresResourceDuplication);
             p.setModelUsageField(modelUsageField);
-            p.setSupportedModes(deserializeModes(supportedModes));
+            p.setAgentsDirectory(agentsDirectory.isEmpty() ? null : agentsDirectory);
             p.setEnsureCopilotAgents(ensureCopilotAgents);
             p.setPrependInstructionsTo(prependInstructionsTo.isEmpty() ? null : prependInstructionsTo);
             p.setUsePluginPermissions(usePluginPermissions);
@@ -364,27 +360,5 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             return result;
         }
 
-        @NotNull
-        private static String serializeModes(@NotNull List<AgentMode> modes) {
-            StringBuilder sb = new StringBuilder();
-            for (AgentMode m : modes) {
-                if (!sb.isEmpty()) sb.append(';');
-                sb.append(m.id()).append(':').append(m.displayName());
-            }
-            return sb.toString();
-        }
-
-        @NotNull
-        private static List<AgentMode> deserializeModes(@NotNull String s) {
-            if (s.isEmpty()) return new ArrayList<>();
-            List<AgentMode> result = new ArrayList<>();
-            for (String entry : s.split(";")) {
-                String[] parts = entry.split(":", 2);
-                if (parts.length == 2 && !parts[0].isEmpty()) {
-                    result.add(new AgentMode(parts[0].trim(), parts[1].trim()));
-                }
-            }
-            return result;
-        }
     }
 }

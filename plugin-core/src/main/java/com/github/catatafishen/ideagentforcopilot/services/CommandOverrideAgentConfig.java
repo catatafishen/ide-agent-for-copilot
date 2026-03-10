@@ -2,7 +2,6 @@ package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpException;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
-import com.github.catatafishen.ideagentforcopilot.bridge.AgentMode;
 import com.github.catatafishen.ideagentforcopilot.bridge.AuthMethod;
 import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
@@ -93,8 +92,8 @@ final class CommandOverrideAgentConfig implements AgentConfig {
     }
 
     @Override
-    public @NotNull List<AgentMode> getSupportedModes() {
-        return delegate.getSupportedModes();
+    public @Nullable String getAgentsDirectory() {
+        return delegate.getAgentsDirectory();
     }
 
     @Override

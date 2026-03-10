@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AgentMode;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -52,7 +51,14 @@ public final class AgentProfile {
 
     // ── Modes ────────────────────────────────────────────────────────────────
 
-    private List<AgentMode> supportedModes;
+    // ── Agent dropdown ───────────────────────────────────────────────────────
+
+    /**
+     * Path relative to the project root where agent definition files ({@code *.md}) live.
+     * When set, an agent selector dropdown is shown and the selected agent's name is
+     * prepended as {@code @agent-name } to each prompt. Null/empty = no dropdown.
+     */
+    private String agentsDirectory;
 
     // ── Pre-launch hooks ─────────────────────────────────────────────────────
 
@@ -86,7 +92,7 @@ public final class AgentProfile {
         this.supportsMcpConfigFlag = true;
         this.requiresResourceDuplication = false;
         this.modelUsageField = "";
-        this.supportedModes = new ArrayList<>();
+        this.agentsDirectory = null;
     }
 
     /**
@@ -111,7 +117,7 @@ public final class AgentProfile {
         copy.supportsMcpConfigFlag = supportsMcpConfigFlag;
         copy.requiresResourceDuplication = requiresResourceDuplication;
         copy.modelUsageField = modelUsageField;
-        copy.supportedModes = new ArrayList<>(supportedModes);
+        copy.agentsDirectory = agentsDirectory;
         copy.usePluginPermissions = usePluginPermissions;
         copy.excludeAgentBuiltInTools = excludeAgentBuiltInTools;
         copy.permissionInjectionMethod = permissionInjectionMethod;
@@ -138,7 +144,7 @@ public final class AgentProfile {
         this.supportsMcpConfigFlag = other.supportsMcpConfigFlag;
         this.requiresResourceDuplication = other.requiresResourceDuplication;
         this.modelUsageField = other.modelUsageField;
-        this.supportedModes = new ArrayList<>(other.supportedModes);
+        this.agentsDirectory = other.agentsDirectory;
         this.usePluginPermissions = other.usePluginPermissions;
         this.excludeAgentBuiltInTools = other.excludeAgentBuiltInTools;
         this.permissionInjectionMethod = other.permissionInjectionMethod;
@@ -287,13 +293,13 @@ public final class AgentProfile {
         this.modelUsageField = modelUsageField != null ? modelUsageField : "";
     }
 
-    @NotNull
-    public List<AgentMode> getSupportedModes() {
-        return supportedModes;
+    @Nullable
+    public String getAgentsDirectory() {
+        return agentsDirectory;
     }
 
-    public void setSupportedModes(@NotNull List<AgentMode> supportedModes) {
-        this.supportedModes = new ArrayList<>(supportedModes);
+    public void setAgentsDirectory(@Nullable String agentsDirectory) {
+        this.agentsDirectory = agentsDirectory;
     }
 
     public boolean isUsePluginPermissions() {

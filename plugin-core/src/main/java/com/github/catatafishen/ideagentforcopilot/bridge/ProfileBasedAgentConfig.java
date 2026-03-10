@@ -190,8 +190,8 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
     }
 
     @Override
-    public @NotNull List<AgentMode> getSupportedModes() {
-        return profile.getSupportedModes();
+    public @Nullable String getAgentsDirectory() {
+        return profile.getAgentsDirectory();
     }
 
     @Override

@@ -52,15 +52,18 @@ public final class GenericSettings {
         PropertiesComponent.getInstance().setValue(key("selectedModel"), modelId);
     }
 
-    // ── Session mode ─────────────────────────────────────────────────────────
+    // ── Agent selection ──────────────────────────────────────────────────────
 
+    /**
+     * Returns the selected agent name (e.g. "ide-explore"), or empty string for "Default".
+     */
     @NotNull
-    public String getSessionMode() {
-        return PropertiesComponent.getInstance().getValue(key("sessionMode"), "agent");
+    public String getSelectedAgent() {
+        return PropertiesComponent.getInstance().getValue(key("selectedAgent"), "");
     }
 
-    public void setSessionMode(@NotNull String mode) {
-        PropertiesComponent.getInstance().setValue(key("sessionMode"), mode);
+    public void setSelectedAgent(@NotNull String agentName) {
+        PropertiesComponent.getInstance().setValue(key("selectedAgent"), agentName, "");
     }
 
     // ── Active agent label (runtime-only) ────────────────────────────────────
