@@ -8,6 +8,7 @@ import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -579,111 +580,7 @@ class EditorTools extends AbstractToolHandler {
 
         EdtUtil.invokeLater(() -> {
             try {
-                // 1. Find the scratch file
-                VirtualFile scratchFile = findScratchFile(name);
-                if (scratchFile == null) {
-                    resultFuture.complete("Error: Scratch file not found: '" + name
-                        + "'. Use list_scratch_files to see available files.");
-                    return;
-                }
-
-                // 1b. Open the scratch in the editor so the user can follow along
-                com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-                    .openFile(scratchFile, false);
-
-                // 2. Find appropriate configuration type for this file extension
-                String extension = scratchFile.getExtension();
-                var configType = findScratchConfigType(extension);
-                if (configType == null) {
-                    resultFuture.complete("Error: No run configuration type found for ."
-                        + extension + " files. Available types: " + listAvailableConfigTypes());
-                    return;
-                }
-
-                // 3. Create temporary run configuration
-                var factories = configType.getConfigurationFactories();
-                if (factories.length == 0) {
-                    resultFuture.complete("Error: No configuration factory for " + configType.getDisplayName());
-                    return;
-                }
-
-                var runManager = com.intellij.execution.RunManager.getInstance(project);
-                var settings = runManager.createConfiguration(
-                    "Scratch: " + scratchFile.getName(), factories[0]);
-                var config = settings.getConfiguration();
-
-                // 4. Set script/file path via reflection
-                boolean pathSet;
-                boolean needsModule = false;
-                if (config instanceof com.intellij.execution.scratch.JavaScratchConfiguration scratchConfig) {
-                    scratchConfig.setScratchFileUrl(scratchFile.getUrl());
-                    // Main class name must match the public class in the scratch file
-                    String className = scratchFile.getNameWithoutExtension();
-                    scratchConfig.setMainClassName(className);
-                    pathSet = true;
-                    needsModule = true;
-                } else {
-                    pathSet = setScriptPath(config, scratchFile.getPath());
-                }
-
-                // 4b. For Python configs, set the SDK home from the global SDK table
-                if ("py".equalsIgnoreCase(extension)) {
-                    trySetPythonSdkHome(config);
-                }
-
-                // 4c. Set working directory (needed by Node.js and other script runners)
-                trySetWorkingDirectory(config, scratchFile.getParent().getPath());
-
-                // 5. Set classpath module (auto-detect for Java/Kotlin if not specified)
-                String moduleStatus = "";
-                if (!moduleName.isEmpty()) {
-                    var module = com.intellij.openapi.module.ModuleManager.getInstance(project)
-                        .findModuleByName(moduleName);
-                    if (module != null) {
-                        trySetModule(config, module);
-                        moduleStatus = "\nClasspath: " + moduleName;
-                    } else {
-                        moduleStatus = "\nWarning: Module '" + moduleName + "' not found";
-                    }
-                } else if (needsModule) {
-                    var modules = com.intellij.openapi.module.ModuleManager.getInstance(project).getModules();
-                    if (modules.length > 0) {
-                        trySetModule(config, modules[0]);
-                        moduleStatus = "\nClasspath: " + modules[0].getName() + " (auto-detected)";
-                    }
-                }
-
-                // 6. Set interactive mode (primarily for Kotlin scripts)
-                String interactiveStatus = "";
-                if (interactive) {
-                    boolean set = trySetInteractiveMode(config, true);
-                    interactiveStatus = set ? "\nInteractive mode: ON"
-                        : "\nWarning: Interactive mode not supported for this config type";
-                }
-
-                // 7. Execute
-                settings.setTemporary(true);
-                settings.setEditBeforeRun(false);
-                runManager.addConfiguration(settings);
-                runManager.setSelectedConfiguration(settings);
-
-                var executor = com.intellij.execution.executors.DefaultRunExecutor.getRunExecutorInstance();
-                var envBuilder = com.intellij.execution.runners.ExecutionEnvironmentBuilder
-                    .createOrNull(executor, settings);
-                if (envBuilder == null) {
-                    resultFuture.complete("Error: Cannot create execution environment for "
-                        + configType.getDisplayName());
-                    return;
-                }
-
-                com.intellij.execution.ExecutionManager.getInstance(project)
-                    .restartRunProfile(envBuilder.build());
-
-                resultFuture.complete("Started: " + scratchFile.getName()
-                    + " [" + configType.getDisplayName() + "]"
-                    + (pathSet ? "" : "\nWarning: Could not set script path on config")
-                    + moduleStatus + interactiveStatus
-                    + "\nOutput will appear in the Run panel. Use read_run_output to read it.");
+                executeScratchFile(name, moduleName, interactive, resultFuture);
             } catch (Exception e) {
                 LOG.warn("Failed to run scratch file", e);
                 resultFuture.complete("Error running scratch file: " + e.getMessage());
@@ -691,6 +588,122 @@ class EditorTools extends AbstractToolHandler {
         });
 
         return resultFuture.get(15, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Core scratch file execution logic, called on EDT.
+     */
+    private void executeScratchFile(String name, String moduleName, boolean interactive,
+                                    CompletableFuture<String> resultFuture) {
+        VirtualFile scratchFile = findScratchFile(name);
+        if (scratchFile == null) {
+            resultFuture.complete("Error: Scratch file not found: '" + name
+                + "'. Use list_scratch_files to see available files.");
+            return;
+        }
+
+        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+            .openFile(scratchFile, false);
+
+        String extension = scratchFile.getExtension();
+        var configType = findScratchConfigType(extension);
+        if (configType == null) {
+            resultFuture.complete("Error: No run configuration type found for ."
+                + extension + " files. Available types: " + listAvailableConfigTypes());
+            return;
+        }
+
+        var factories = configType.getConfigurationFactories();
+        if (factories.length == 0) {
+            resultFuture.complete("Error: No configuration factory for " + configType.getDisplayName());
+            return;
+        }
+
+        var runManager = com.intellij.execution.RunManager.getInstance(project);
+        var settings = runManager.createConfiguration("Scratch: " + scratchFile.getName(), factories[0]);
+        var config = settings.getConfiguration();
+
+        boolean pathSet = configureScratchPath(config, scratchFile);
+        boolean needsModule = config instanceof com.intellij.execution.scratch.JavaScratchConfiguration;
+
+        if ("py".equalsIgnoreCase(extension)) {
+            trySetPythonSdkHome(config);
+        }
+        trySetWorkingDirectory(config, scratchFile.getParent().getPath());
+
+        String moduleStatus = configureScratchModule(config, moduleName, needsModule);
+        String interactiveStatus = configureScratchInteractive(config, interactive);
+
+        String launchResult = launchScratchConfig(settings, configType, runManager);
+        if (launchResult != null) {
+            resultFuture.complete(launchResult);
+            return;
+        }
+
+        resultFuture.complete("Started: " + scratchFile.getName()
+            + " [" + configType.getDisplayName() + "]"
+            + (pathSet ? "" : "\nWarning: Could not set script path on config")
+            + moduleStatus + interactiveStatus
+            + "\nOutput will appear in the Run panel. Use read_run_output to read it.");
+    }
+
+    private boolean configureScratchPath(com.intellij.execution.configurations.RunConfiguration config,
+                                         VirtualFile scratchFile) {
+        if (config instanceof com.intellij.execution.scratch.JavaScratchConfiguration scratchConfig) {
+            scratchConfig.setScratchFileUrl(scratchFile.getUrl());
+            scratchConfig.setMainClassName(scratchFile.getNameWithoutExtension());
+            return true;
+        }
+        return setScriptPath(config, scratchFile.getPath());
+    }
+
+    private String configureScratchModule(com.intellij.execution.configurations.RunConfiguration config,
+                                          String moduleName, boolean needsModule) {
+        if (!moduleName.isEmpty()) {
+            var module = com.intellij.openapi.module.ModuleManager.getInstance(project)
+                .findModuleByName(moduleName);
+            if (module != null) {
+                trySetModule(config, module);
+                return "\nClasspath: " + moduleName;
+            }
+            return "\nWarning: Module '" + moduleName + "' not found";
+        }
+        if (needsModule) {
+            var modules = com.intellij.openapi.module.ModuleManager.getInstance(project).getModules();
+            if (modules.length > 0) {
+                trySetModule(config, modules[0]);
+                return "\nClasspath: " + modules[0].getName() + " (auto-detected)";
+            }
+        }
+        return "";
+    }
+
+    private String configureScratchInteractive(com.intellij.execution.configurations.RunConfiguration config,
+                                               boolean interactive) {
+        if (!interactive) return "";
+        boolean set = trySetInteractiveMode(config, true);
+        return set ? "\nInteractive mode: ON"
+            : "\nWarning: Interactive mode not supported for this config type";
+    }
+
+    @Nullable
+    private String launchScratchConfig(com.intellij.execution.RunnerAndConfigurationSettings settings,
+                                       com.intellij.execution.configurations.ConfigurationType configType,
+                                       com.intellij.execution.RunManager runManager) {
+        settings.setTemporary(true);
+        settings.setEditBeforeRun(false);
+        runManager.addConfiguration(settings);
+        runManager.setSelectedConfiguration(settings);
+
+        var executor = com.intellij.execution.executors.DefaultRunExecutor.getRunExecutorInstance();
+        var envBuilder = com.intellij.execution.runners.ExecutionEnvironmentBuilder
+            .createOrNull(executor, settings);
+        if (envBuilder == null) {
+            return "Error: Cannot create execution environment for " + configType.getDisplayName();
+        }
+        com.intellij.execution.ExecutionManager.getInstance(project)
+            .restartRunProfile(envBuilder.build());
+        return null;
     }
 
     // ---- Scratch File Helpers ----
