@@ -56,9 +56,9 @@ public final class ToolSchemas {
     private static final String PARAM_ABORT = "abort";
     private static final String PARAM_FILE_PATTERN = "file_pattern";
     private static final String PARAM_INSPECTION_ID = "inspection_id";
-    private static final String DESC_FILE_WITH_SYMBOL = DESC_FILE_WITH_SYMBOL;
-    private static final String DESC_LINE_HINT = DESC_LINE_HINT;
-    private static final String DESC_REMOTE_ORIGIN = DESC_REMOTE_ORIGIN;
+    private static final String DESC_FILE_WITH_SYMBOL = "Absolute or project-relative path to the file containing the symbol";
+    private static final String DESC_LINE_HINT = "Optional: line number hint to disambiguate if multiple symbols share the same name";
+    private static final String DESC_REMOTE_ORIGIN = "Remote name (default: origin)";
 
     private ToolSchemas() {
     }
