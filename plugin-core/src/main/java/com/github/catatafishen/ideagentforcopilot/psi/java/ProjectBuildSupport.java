@@ -31,25 +31,22 @@ public class ProjectBuildSupport {
     private ProjectBuildSupport() {
     }
 
-    /**
-     * Runs an incremental build (or module-scoped build) using the IntelliJ compiler API.
-     *
-     * @param project         the current project
-     * @param moduleName      optional module name; empty string for whole-project build
-     * @param buildInProgress shared flag to prevent concurrent builds
-     * @return human-readable build result
-     */
     public static String buildProject(Project project, String moduleName, AtomicBoolean buildInProgress) throws Exception {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         long startTime = System.currentTimeMillis();
 
         EdtUtil.invokeLater(() -> {
             try {
+                // Capture the active editor before the build so we can restore focus
+                // if "Follow Agent" is disabled (the compiler always activates the Build window)
+                var activeEditor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedEditor();
+
                 CompilerManager compilerManager = CompilerManager.getInstance(project);
 
                 CompileStatusNotification callback =
                     (aborted, errorCount, warningCount, context) -> {
                         buildInProgress.set(false);
+                        restoreFocusIfNeeded(project, activeEditor);
                         resultFuture.complete(formatBuildResult(aborted, errorCount, warningCount, context, startTime));
                     };
 
@@ -77,6 +74,21 @@ public class ProjectBuildSupport {
             buildInProgress.set(false);
             throw e;
         }
+    }
+
+    /**
+     * If "Follow Agent" is disabled, re-select the editor that was active before the build
+     * so the Build tool window doesn't steal keyboard focus from the user.
+     */
+    private static void restoreFocusIfNeeded(Project project, com.intellij.openapi.fileEditor.FileEditor previousEditor) {
+        if (com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings.getInstance(project).getFollowAgentFiles()) {
+            return;
+        }
+        if (previousEditor == null || previousEditor.getFile() == null) return;
+        EdtUtil.invokeLater(() -> {
+            var fem = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+            fem.openFile(previousEditor.getFile(), true);
+        });
     }
 
     private static String formatBuildResult(boolean aborted, int errorCount, int warningCount,
