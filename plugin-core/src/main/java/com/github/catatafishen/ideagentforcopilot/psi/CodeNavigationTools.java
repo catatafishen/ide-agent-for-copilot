@@ -21,7 +21,7 @@ import com.intellij.psi.search.searches.ReferencesSearch;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -70,14 +70,24 @@ class CodeNavigationTools extends AbstractToolHandler {
     String listProjectFiles(JsonObject args) {
         String dir = args.has("directory") ? args.get("directory").getAsString() : "";
         String pattern = args.has("pattern") ? args.get("pattern").getAsString() : "";
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> computeProjectFilesList(dir, pattern));
+        String sort = args.has("sort") ? args.get("sort").getAsString() : "name";
+        long minSize = args.has("min_size") ? args.get("min_size").getAsLong() : -1;
+        long maxSize = args.has("max_size") ? args.get("max_size").getAsLong() : -1;
+        long modifiedAfter = args.has("modified_after") ? ToolUtils.parseDateParam(args.get("modified_after").getAsString()) : -1;
+        long modifiedBefore = args.has("modified_before") ? ToolUtils.parseDateParam(args.get("modified_before").getAsString()) : -1;
+        return ApplicationManager.getApplication().runReadAction(
+            (Computable<String>) () -> computeProjectFilesList(dir, pattern, sort, minSize, maxSize, modifiedAfter, modifiedBefore));
     }
 
-    String computeProjectFilesList(String dir, String pattern) {
+    String computeProjectFilesList(String dir, String pattern, String sort,
+                                   long minSize, long maxSize, long modifiedAfter, long modifiedBefore) {
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
-        List<String> files = new ArrayList<>();
+        record FileEntry(String relPath, String tag, String typeName, long size, long timestamp) {
+        }
+
+        List<FileEntry> entries = new ArrayList<>();
         ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
         fileIndex.iterateContent(vf -> {
             if (vf.isDirectory()) return true;
@@ -85,26 +95,47 @@ class CodeNavigationTools extends AbstractToolHandler {
             if (relPath == null) return true;
             if (!dir.isEmpty() && !relPath.startsWith(dir)) return true;
             if (!pattern.isEmpty() && ToolUtils.doesNotMatchGlob(relPath, pattern)) return true;
-            String tag;
-            if (fileIndex.isExcluded(vf)) {
-                tag = "excluded ";
-            } else if (fileIndex.isInGeneratedSources(vf)) {
-                tag = "generated ";
-            } else if (fileIndex.isInTestSourceContent(vf)) {
-                tag = "test ";
-            } else {
-                tag = "";
-            }
-            files.add(String.format("%s [%s%s, %s, %s]",
-                relPath, tag, ToolUtils.fileType(vf.getName()),
-                ToolUtils.formatFileSize(vf.getLength()),
-                ToolUtils.formatFileTimestamp(vf.getTimeStamp())));
-            return files.size() < 500;
+            long size = vf.getLength();
+            long ts = vf.getTimeStamp();
+            if (!matchesSizeAndDateFilters(size, ts, minSize, maxSize, modifiedAfter, modifiedBefore)) return true;
+            String tag = resolveTag(fileIndex, vf);
+            entries.add(new FileEntry(relPath, tag, ToolUtils.fileType(vf.getName()), size, ts));
+            return entries.size() < 500;
         });
 
-        if (files.isEmpty()) return "No files found";
-        Collections.sort(files);
-        return files.size() + " files:\n" + String.join("\n", files);
+        if (entries.isEmpty()) return "No files found";
+
+        Comparator<FileEntry> comparator = switch (sort) {
+            case "size" -> Comparator.comparingLong(FileEntry::size).reversed();
+            case "modified" -> Comparator.comparingLong(FileEntry::timestamp).reversed();
+            default -> Comparator.comparing(FileEntry::relPath);
+        };
+        entries.sort(comparator);
+
+        List<String> lines = new ArrayList<>(entries.size());
+        for (FileEntry e : entries) {
+            lines.add(String.format("%s [%s%s, %s, %s]",
+                e.relPath(), e.tag(), e.typeName(),
+                ToolUtils.formatFileSize(e.size()),
+                ToolUtils.formatFileTimestamp(e.timestamp())));
+        }
+        return entries.size() + " files:\n" + String.join("\n", lines);
+    }
+
+    private static boolean matchesSizeAndDateFilters(long size, long ts,
+                                                     long minSize, long maxSize,
+                                                     long modifiedAfter, long modifiedBefore) {
+        if (minSize >= 0 && size < minSize) return false;
+        if (maxSize >= 0 && size > maxSize) return false;
+        return (modifiedAfter < 0 || ts >= modifiedAfter)
+            && (modifiedBefore < 0 || ts <= modifiedBefore);
+    }
+
+    private static String resolveTag(ProjectFileIndex fileIndex, VirtualFile vf) {
+        if (fileIndex.isExcluded(vf)) return "excluded ";
+        if (fileIndex.isInGeneratedSources(vf)) return "generated ";
+        if (fileIndex.isInTestSourceContent(vf)) return "test ";
+        return "";
     }
 
     // ---- get_file_outline ----

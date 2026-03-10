@@ -198,6 +198,21 @@ public final class ToolUtils {
     }
 
     /**
+     * Parses a date string like "2026-01-15" into epoch milliseconds (start of day UTC).
+     * Returns -1 if blank or unparseable.
+     */
+    static long parseDateParam(String date) {
+        if (date == null || date.isBlank()) return -1;
+        try {
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            return sdf.parse(date).getTime();
+        } catch (java.text.ParseException e) {
+            return -1;
+        }
+    }
+
+    /**
      * Normalize text for fuzzy matching: replace common Unicode variants with ASCII equivalents.
      * This handles em-dashes, smart quotes, non-breaking spaces, emoji, etc. that LLMs often can't reproduce exactly.
      * Uses codepoint iteration to correctly handle surrogate pairs (e.g. 4-byte emoji).
