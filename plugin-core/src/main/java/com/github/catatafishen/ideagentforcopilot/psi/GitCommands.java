@@ -519,25 +519,28 @@ final class GitCommands {
         List<String> gitArgs = new ArrayList<>();
         gitArgs.add("reset");
 
-        String mode = args.has("mode") ? args.get("mode").getAsString() : "mixed";
-        switch (mode) {
-            case "soft" -> gitArgs.add("--soft");
-            case "hard" -> gitArgs.add("--hard");
-            case "mixed" -> gitArgs.add("--mixed");
-            default -> {
-                return "Error: unknown mode '" + mode + "'. Use: soft, mixed, hard";
-            }
-        }
-
-        if (args.has(PARAM_COMMIT)) {
-            gitArgs.add(args.get(PARAM_COMMIT).getAsString());
-        }
-
         if (args.has("path")) {
-            gitArgs.clear();
-            gitArgs.add("reset");
+            // Path-based reset: git reset [<commit>] -- <path>
+            // Mode flags (--soft/--hard) are not valid with pathspec
+            if (args.has(PARAM_COMMIT)) {
+                gitArgs.add(args.get(PARAM_COMMIT).getAsString());
+            }
             gitArgs.add("--");
             gitArgs.add(args.get("path").getAsString());
+        } else {
+            // Commit-based reset: git reset --<mode> [<commit>]
+            String mode = args.has("mode") ? args.get("mode").getAsString() : "mixed";
+            switch (mode) {
+                case "soft" -> gitArgs.add("--soft");
+                case "hard" -> gitArgs.add("--hard");
+                case "mixed" -> gitArgs.add("--mixed");
+                default -> {
+                    return "Error: unknown mode '" + mode + "'. Use: soft, mixed, hard";
+                }
+            }
+            if (args.has(PARAM_COMMIT)) {
+                gitArgs.add(args.get(PARAM_COMMIT).getAsString());
+            }
         }
 
         String result = handler.runGit(gitArgs.toArray(new String[0]));
