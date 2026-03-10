@@ -19,6 +19,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import java.awt.*
+import java.awt.datatransfer.StringSelection
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.swing.*

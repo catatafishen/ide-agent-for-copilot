@@ -8,7 +8,6 @@ import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiShortNamesCache;
-
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
