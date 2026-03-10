@@ -157,6 +157,9 @@ own internal context within the CLI. They do **not** receive:
   `request_permission`, and our denial forces retry with MCP tools ✅
 - **Sub-agent git write blocking** — `detectSubAgentGitWrite()` prevents destructive git
   operations from sub-agents ✅
+- **Sub-agent built-in write blocking** — `detectSubAgentWriteTool()` denies ALL built-in
+  write/execute tools (`edit`, `create`, `bash`, `write`, `execute`, `runInTerminal`) when
+  a sub-agent is active, regardless of per-tool permission settings ✅
 
 ### What Cannot Be Intercepted
 
@@ -189,6 +192,49 @@ Once fixed:
 2. **Update:** Switch from permission denial to proper filtering
 3. **Keep:** Still deny `execute`/`runInTerminal` (non-existent tools)
 4. **Remove:** This documentation file
+
+## Revalidation: CLI v1.0.3 GA (Mar 10, 2026)
+
+### Motivation
+
+A GitHub collaborator commented on the issue (Jan 3, 2026): *"I cannot repro this as of 0.0.374"*.
+The CLI has since reached v1.0.3 GA. We retested all four tool filtering mechanisms.
+
+### Test Results
+
+| Mechanism | How tested | Result |
+|-----------|-----------|--------|
+| `excludedTools` in `session/new` params | Sent `["view","edit","create","bash","grep","glob"]` | ❌ **IGNORED** — all 6 tools still present |
+| `--excluded-tools` CLI flag | `copilot --acp --stdio --excluded-tools view edit create bash grep glob` | ❌ **IGNORED** — all 6 tools still present |
+| `--available-tools` CLI flag (whitelist) | `copilot --acp --stdio --available-tools task web_fetch report_intent update_todo` | ❌ **IGNORED** — all 105 tools still present |
+| `--agent` with `allowed-tools` frontmatter | `.github/agents/ide-task.md` with `allowed-tools: [Intellij-*]` | ❌ **IGNORED** — all 105 tools still present |
+
+### Conclusion
+
+Bug #556 is **NOT fixed in ACP mode** as of CLI v1.0.3 GA. The collaborator's "cannot repro"
+comment likely referred to interactive CLI mode (`copilot --agent`), not ACP mode (`copilot --acp`).
+
+All tool filtering mechanisms — session params, CLI flags, and agent definition frontmatter — are
+still completely ignored when running in ACP mode. Our permission-denial workaround remains the
+only viable approach.
+
+### New Mitigation: Sub-Agent Write Blocking
+
+Added `detectSubAgentWriteTool()` which unconditionally denies ALL built-in write/execute tools
+(`edit`, `create`, `bash`, `write`, `execute`, `runInTerminal`) when `subAgentActive` is true.
+This prevents sub-agents from writing through the CLI's built-in tools (which bypass IntelliJ's
+editor buffer), forcing them to use MCP tools or fail gracefully.
+
+Combined with the existing `detectSubAgentGitWrite()`, sub-agents are now blocked from:
+- All file write operations via built-in tools ✅
+- All git write operations via MCP tools ✅
+- Read-only built-in tools (`view`, `grep`, `glob`) — still unblockable ❌
+
+### Forward Compatibility: Agent Definitions
+
+When bug #556 is eventually fixed for ACP mode, the `.github/agents/` definitions will
+automatically take effect. Prepare agent definition files with `allowed-tools` restrictions
+so they activate without code changes once the CLI respects them.
 
 ## References
 

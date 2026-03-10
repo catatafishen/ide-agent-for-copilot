@@ -114,6 +114,17 @@ public class AcpClient implements Closeable {
         "git_pull", "git_merge", "git_rebase", "git_cherry_pick", "git_tag", "git_reset"
     );
 
+    /**
+     * Built-in write/execute tools that sub-agents must not use.
+     * These go through request_permission, so we can deny them.
+     * Read-only built-ins (view, grep, glob) auto-execute without permission — unblockable.
+     */
+    private static final Set<String> BUILTIN_WRITE_TOOLS = Set.of(
+        "edit", "create", "bash", "write", "execute", "runInTerminal"
+    );
+
+    private static final String SUBAGENT_WRITE_ABUSE_PREFIX = "subagent_write_abuse:";
+
     // Permission request listener and pending ASK map
     private volatile java.util.function.Consumer<PermissionRequest> permissionRequestListener;
     private final ConcurrentHashMap<Long, CompletableFuture<PermissionResponse>> pendingPermissionAsks = new ConcurrentHashMap<>();
@@ -1094,6 +1105,27 @@ public class AcpClient implements Closeable {
             return;
         }
 
+        // Check if a sub-agent is trying to use built-in write/execute tools
+        // (edit, create, bash, etc.) — these bypass IntelliJ's editor buffer.
+        // Sub-agents can't receive session/message guidance, so denial is the only signal.
+        String writeAbuse = detectSubAgentWriteTool(toolCall);
+        if (writeAbuse != null) {
+            String rejectOptionId = findRejectOption(reqParams);
+            LOG.info("ACP request_permission: DENYING sub-agent built-in write tool: " + writeAbuse);
+
+            Map<String, Object> retryParams = buildRetryParams(SUBAGENT_WRITE_ABUSE_PREFIX + writeAbuse);
+            String retryMessage = (String) retryParams.get(MESSAGE);
+            fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
+            sendPromptMessage(retryMessage);
+
+            fireDebugEvent(PERMISSION_DENIED_EVENT, "Sub-agent write tool: " + writeAbuse,
+                toolCall != null ? toolCall.toString() : "");
+            builtInActionDeniedDuringTurn = true;
+            lastDeniedKind = SUBAGENT_WRITE_ABUSE_PREFIX + writeAbuse;
+            sendPermissionResponse(reqId, rejectOptionId);
+            return;
+        }
+
         // Use per-tool permission settings (DENY / ASK / ALLOW)
         String toolId = resolveToolId(permKind, toolCall);
         ToolPermission perm = resolveEffectivePermission(toolId, toolCall);
@@ -1305,6 +1337,22 @@ public class AcpClient implements Closeable {
     }
 
     /**
+     * Detect if a sub-agent is trying to use a built-in write/execute tool.
+     * Returns the tool kind (e.g. "edit", "bash") if blocked, null otherwise.
+     * <p>
+     * Built-in write tools bypass IntelliJ's editor buffer, causing desync.
+     * Sub-agents can't receive guidance via session/message (CLI limitation),
+     * so we must deny unconditionally — the denial itself is the only signal
+     * the sub-agent receives.
+     */
+    private String detectSubAgentWriteTool(JsonObject toolCall) {
+        if (!subAgentActive || toolCall == null) return null;
+
+        String kind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
+        return BUILTIN_WRITE_TOOLS.contains(kind) ? kind : null;
+    }
+
+    /**
      * Build guidance message for denied actions.
      * Returns a map with "message" key containing the instruction text.
      */
@@ -1338,6 +1386,15 @@ public class AcpClient implements Closeable {
                 "git_branch, git_stash, git_push, git_remote, git_pull, git_merge, git_rebase, " +
                 "git_cherry_pick, git_tag, git_reset). Only the parent agent may perform git writes. " +
                 "Use read-only git tools (git_status, git_diff, git_log, git_show, git_blame, git_fetch) instead.";
+        } else if (deniedKind.startsWith(SUBAGENT_WRITE_ABUSE_PREFIX)) {
+            String tool = deniedKind.substring(SUBAGENT_WRITE_ABUSE_PREFIX.length());
+            instruction = "⚠ Sub-agents must not use built-in '" + tool + "' — it writes to disk, bypassing " +
+                "IntelliJ's editor buffer. Use '" + p + "' prefixed tools instead: " +
+                "'" + p + "intellij_write_file' to write files, " +
+                "'" + p + "edit_text' for surgical edits, " +
+                "'" + p + "create_file' to create files, " +
+                "'" + p + "run_command' for shell commands. " +
+                "These tools write through IntelliJ's Document API (undo/redo, live buffers, no desync).";
         } else if ("bash".equals(deniedKind) || "execute".equals(deniedKind)) {
             instruction = "⚠ Don't use bash/shell execution — it reads/writes disk directly, bypassing IntelliJ editor buffers. " +
                 "Use '" + p + "run_command' for shell commands (flushes buffers first). " +
