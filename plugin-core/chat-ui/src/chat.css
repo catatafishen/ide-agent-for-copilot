@@ -568,6 +568,10 @@ thinking-chip.thinking-active .thought-bubble {
     opacity: 0.85;
 }
 
+.subagent-indent .agent-name {
+    color: var(--sa-color, var(--think));
+}
+
 .subagent-c0 {
     --sa-color: var(--sa-c0);
     --sa-a06: var(--sa-c0-a06);

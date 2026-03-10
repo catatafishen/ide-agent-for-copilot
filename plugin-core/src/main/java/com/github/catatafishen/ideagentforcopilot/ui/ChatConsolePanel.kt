@@ -249,8 +249,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.setCurrentModel('${escJs(modelId)}')")
     }
 
-    override fun setCurrentProfile(profileId: String, profileName: String) {
-        executeJs("ChatController.setCurrentProfile('${escJs(profileId)}', '${escJs(profileName)}')")
+    override fun setCurrentProfile(profileId: String) {
+        executeJs("ChatController.setCurrentProfile('${escJs(profileId)}')")
     }
 
     override fun addContextFilesEntry(files: List<Pair<String, String>>) {
