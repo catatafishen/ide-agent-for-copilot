@@ -35,8 +35,6 @@ public final class ToolRegistrationConfigurable implements Configurable {
     private JSpinner portSpinner;
     private JComboBox<TransportMode> transportModeCombo;
     private JBCheckBox autoStartCheckbox;
-    private JSpinner bridgePortSpinner;
-    private JBCheckBox bridgeAutoStartCheckbox;
     private JBCheckBox followModeCheckbox;
     private final Map<String, JBCheckBox> toolCheckboxes = new LinkedHashMap<>();
 
@@ -75,12 +73,6 @@ public final class ToolRegistrationConfigurable implements Configurable {
         autoStartCheckbox = new JBCheckBox("Start MCP server automatically when project opens",
             settings.isAutoStart());
 
-        bridgePortSpinner = new JSpinner(new SpinnerNumberModel(
-            settings.getBridgePort(), 0, 65535, 1));
-        bridgePortSpinner.setToolTipText("0 = auto-assign random port");
-        bridgeAutoStartCheckbox = new JBCheckBox("Start PSI Bridge automatically when project opens",
-            settings.isBridgeAutoStart());
-
         followModeCheckbox = new JBCheckBox(
             "Follow Agent — open files and highlight regions as the agent reads or edits them",
             ActiveAgentManager.getFollowAgentFiles(project));
@@ -99,15 +91,12 @@ public final class ToolRegistrationConfigurable implements Configurable {
 
         JPanel serverPanel = FormBuilder.createFormBuilder()
             .addComponent(new JBLabel(
-                "<html>Configure the MCP (Model Context Protocol) server and PSI Bridge "
-                    + "that expose IDE tools to external agents.</html>"))
+                "<html>Configure the MCP (Model Context Protocol) server "
+                    + "that exposes IDE tools to external agents.</html>"))
             .addSeparator()
             .addLabeledComponent("MCP server port:", portSpinner)
             .addLabeledComponent("Transport mode:", transportModeCombo)
             .addComponent(autoStartCheckbox)
-            .addSeparator()
-            .addLabeledComponent("PSI Bridge port (0 = auto):", bridgePortSpinner)
-            .addComponent(bridgeAutoStartCheckbox)
             .addSeparator()
             .addComponent(followModeCheckbox)
             .addSeparator()
@@ -155,8 +144,6 @@ public final class ToolRegistrationConfigurable implements Configurable {
         if ((Integer) portSpinner.getValue() != settings.getPort()) return true;
         if (transportModeCombo.getSelectedItem() != settings.getTransportMode()) return true;
         if (autoStartCheckbox.isSelected() != settings.isAutoStart()) return true;
-        if ((Integer) bridgePortSpinner.getValue() != settings.getBridgePort()) return true;
-        if (bridgeAutoStartCheckbox.isSelected() != settings.isBridgeAutoStart()) return true;
         if (followModeCheckbox.isSelected() != ActiveAgentManager.getFollowAgentFiles(project)) return true;
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             if (entry.getValue().isSelected() != settings.isToolEnabled(entry.getKey())) return true;
@@ -170,8 +157,6 @@ public final class ToolRegistrationConfigurable implements Configurable {
         settings.setPort((Integer) portSpinner.getValue());
         settings.setTransportMode((TransportMode) transportModeCombo.getSelectedItem());
         settings.setAutoStart(autoStartCheckbox.isSelected());
-        settings.setBridgePort((Integer) bridgePortSpinner.getValue());
-        settings.setBridgeAutoStart(bridgeAutoStartCheckbox.isSelected());
         ActiveAgentManager.setFollowAgentFiles(project, followModeCheckbox.isSelected());
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             settings.setToolEnabled(entry.getKey(), entry.getValue().isSelected());
@@ -184,8 +169,6 @@ public final class ToolRegistrationConfigurable implements Configurable {
         portSpinner.setValue(settings.getPort());
         transportModeCombo.setSelectedItem(settings.getTransportMode());
         autoStartCheckbox.setSelected(settings.isAutoStart());
-        bridgePortSpinner.setValue(settings.getBridgePort());
-        bridgeAutoStartCheckbox.setSelected(settings.isBridgeAutoStart());
         followModeCheckbox.setSelected(ActiveAgentManager.getFollowAgentFiles(project));
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             entry.getValue().setSelected(settings.isToolEnabled(entry.getKey()));

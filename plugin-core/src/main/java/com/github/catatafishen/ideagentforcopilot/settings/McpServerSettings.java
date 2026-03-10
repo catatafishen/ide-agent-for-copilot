@@ -70,22 +70,6 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         myState.transportMode = mode;
     }
 
-    public boolean isBridgeAutoStart() {
-        return myState.bridgeAutoStart;
-    }
-
-    public void setBridgeAutoStart(boolean autoStart) {
-        myState.bridgeAutoStart = autoStart;
-    }
-
-    public int getBridgePort() {
-        return myState.bridgePort;
-    }
-
-    public void setBridgePort(int port) {
-        myState.bridgePort = port;
-    }
-
     @Override
     public @NotNull State getState() {
         return myState;
@@ -101,13 +85,5 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         public boolean autoStart = false;
         public TransportMode transportMode = TransportMode.STREAMABLE_HTTP;
         public Set<String> disabledToolIds = new LinkedHashSet<>();
-        /**
-         * Whether the PSI Bridge (internal tool server) starts on project open.
-         */
-        public boolean bridgeAutoStart = true;
-        /**
-         * Port for the PSI Bridge (0 = auto-assign random port).
-         */
-        public int bridgePort = 0;
     }
 }
