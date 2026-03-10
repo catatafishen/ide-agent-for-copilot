@@ -186,6 +186,17 @@ public final class ToolUtils {
         return "Other";
     }
 
+    static String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        return String.format("%.1f MB", bytes / (1024.0 * 1024));
+    }
+
+    static String formatFileTimestamp(long epochMs) {
+        if (epochMs == 0) return "unknown";
+        return new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date(epochMs));
+    }
+
     /**
      * Normalize text for fuzzy matching: replace common Unicode variants with ASCII equivalents.
      * This handles em-dashes, smart quotes, non-breaking spaces, emoji, etc. that LLMs often can't reproduce exactly.

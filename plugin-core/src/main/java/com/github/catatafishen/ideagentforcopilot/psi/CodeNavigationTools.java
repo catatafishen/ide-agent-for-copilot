@@ -95,7 +95,10 @@ class CodeNavigationTools extends AbstractToolHandler {
             } else {
                 tag = "";
             }
-            files.add(String.format("%s [%s%s]", relPath, tag, ToolUtils.fileType(vf.getName())));
+            files.add(String.format("%s [%s%s, %s, %s]",
+                relPath, tag, ToolUtils.fileType(vf.getName()),
+                ToolUtils.formatFileSize(vf.getLength()),
+                ToolUtils.formatFileTimestamp(vf.getTimeStamp())));
             return files.size() < 500;
         });
 
