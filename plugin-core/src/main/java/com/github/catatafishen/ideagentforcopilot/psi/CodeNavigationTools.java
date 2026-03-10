@@ -135,6 +135,7 @@ class CodeNavigationTools extends AbstractToolHandler {
         if (fileIndex.isExcluded(vf)) return "excluded ";
         if (fileIndex.isInGeneratedSources(vf)) return "generated ";
         if (fileIndex.isInTestSourceContent(vf)) return "test ";
+        if (fileIndex.isInSourceContent(vf)) return "source ";
         return "";
     }
 

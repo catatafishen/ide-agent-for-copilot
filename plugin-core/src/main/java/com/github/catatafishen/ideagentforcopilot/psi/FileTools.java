@@ -153,6 +153,12 @@ class FileTools extends AbstractToolHandler {
         if (fileIndex.isInGeneratedSources(vf)) {
             return "[generated – this file is auto-generated; prefer editing the source instead]";
         }
+        if (fileIndex.isInTestSourceContent(vf)) {
+            return "[test]";
+        }
+        if (fileIndex.isInSourceContent(vf)) {
+            return "[source]";
+        }
         return null;
     }
 
