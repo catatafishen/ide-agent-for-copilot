@@ -87,8 +87,8 @@ public final class ToolRegistry {
 
         // -- File operations --------------------------------------------------------------
         new ToolEntry("intellij_read_file", "Read File", "Read a file via IntelliJ's editor buffer -- always returns the current in-memory content", Category.FILE, false, false, true),
-        new ToolEntry("intellij_write_file", "Write File", "Write full file content or create a new file through IntelliJ's editor buffer", Category.FILE, false, false, true),
-        new ToolEntry("edit_text", "Edit Text", "Surgical find-and-replace edit within a file -- for small changes inside methods, imports, or config", Category.FILE, false, false, true),
+        new ToolEntry("intellij_write_file", "Write File", "Write full file content or create a new file through IntelliJ's editor buffer. Auto-format and import optimization is deferred until turn end (controlled by auto_format_and_optimize_imports param)", Category.FILE, false, false, true),
+        new ToolEntry("edit_text", "Edit Text", "Surgical find-and-replace edit within a file -- for small changes inside methods, imports, or config. Auto-format and import optimization is deferred until turn end (controlled by auto_format_and_optimize_imports param)", Category.FILE, false, false, true),
         new ToolEntry("create_file", "Create File", "Create a new file and register it in IntelliJ's VFS", Category.FILE, false, false, true),
         new ToolEntry("delete_file", "Delete File", "Delete a file from the project via IntelliJ", Category.FILE, false, false, true),
         new ToolEntry("rename_file", "Rename File", "Rename a file in place without moving it to a different directory", Category.FILE, false, false, true),
@@ -161,11 +161,11 @@ public final class ToolRegistry {
 
         // -- Refactoring ------------------------------------------------------------------
         new ToolEntry("refactor", "Refactor", "Rename, extract method, inline, or safe-delete a symbol using IntelliJ's refactoring engine", Category.REFACTOR, false, false, false),
-        new ToolEntry("replace_symbol_body", "Replace Symbol Body", "Replace the entire definition of a symbol (method, class, field) by name -- no line numbers needed", Category.REFACTOR, false, false, true),
-        new ToolEntry("insert_before_symbol", "Insert Before Symbol", "Insert content before a symbol definition", Category.REFACTOR, false, false, true),
-        new ToolEntry("insert_after_symbol", "Insert After Symbol", "Insert content after a symbol definition", Category.REFACTOR, false, false, true),
-        new ToolEntry("optimize_imports", "Optimize Imports", "Remove unused imports and organize them according to code style", Category.REFACTOR, false, false, false),
-        new ToolEntry("format_code", "Format Code", "Format a file using IntelliJ's configured code style", Category.REFACTOR, false, false, false),
+        new ToolEntry("replace_symbol_body", "Replace Symbol Body", "Replace the entire definition of a symbol (method, class, field) by name -- no line numbers needed. Auto-formats and optimizes imports immediately on every call", Category.REFACTOR, false, false, true),
+        new ToolEntry("insert_before_symbol", "Insert Before Symbol", "Insert content before a symbol definition. Auto-formats and optimizes imports immediately on every call", Category.REFACTOR, false, false, true),
+        new ToolEntry("insert_after_symbol", "Insert After Symbol", "Insert content after a symbol definition. Auto-formats and optimizes imports immediately on every call", Category.REFACTOR, false, false, true),
+        new ToolEntry("optimize_imports", "Optimize Imports", "Manually remove unused imports and organize them according to code style. Use when auto_format_and_optimize_imports was set to false during edits", Category.REFACTOR, false, false, false),
+        new ToolEntry("format_code", "Format Code", "Manually format a file using IntelliJ's configured code style. Use when auto_format_and_optimize_imports was set to false during edits", Category.REFACTOR, false, false, false),
         new ToolEntry("suppress_inspection", "Suppress Inspection", "Insert a suppress annotation or comment for a specific inspection at a given line", Category.REFACTOR, false, false, false),
         new ToolEntry("apply_quickfix", "Apply Quickfix", "Apply an IntelliJ quick-fix at a specific file and line", Category.REFACTOR, false, false, false),
         new ToolEntry("add_to_dictionary", "Add to Dictionary", "Add a word to the project spell-check dictionary", Category.REFACTOR, false, false, false),

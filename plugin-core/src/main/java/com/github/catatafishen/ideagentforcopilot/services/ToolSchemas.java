@@ -274,14 +274,14 @@ public final class ToolSchemas {
         m.put("intellij_write_file", schema(new Object[][]{
             {PARAM_PATH, TYPE_STRING, "Absolute or project-relative path to the file to write or create"},
             {PARAM_CONTENT, TYPE_STRING, "Full file content to write (replaces entire file). Creates the file if it doesn't exist"},
-            {"auto_format_and_optimize_imports", TYPE_BOOLEAN, "Auto-format code AND optimize imports after writing (default: true). \u26a0\ufe0f Import optimization REMOVES imports it considers unused \u2014 if you add imports in one edit and reference them in a later edit, set this to false or combine both changes in one edit"}
+            {"auto_format_and_optimize_imports", TYPE_BOOLEAN, "Auto-format code AND optimize imports after writing (default: true). Formatting is DEFERRED until the end of the current turn or before git commit — safe for multi-step edits within a single turn. \u26a0\ufe0f Import optimization REMOVES imports it considers unused \u2014 if you add imports in one edit and reference them in a later edit, set this to false or combine both changes in one edit"}
         }, PARAM_PATH, PARAM_CONTENT));
 
         m.put("edit_text", schema(new Object[][]{
             {PARAM_PATH, TYPE_STRING, "Absolute or project-relative path to the file to edit"},
             {"old_str", TYPE_STRING, "Exact string to find and replace. Must match exactly one location in the file"},
             {"new_str", TYPE_STRING, "Replacement string"},
-            {"auto_format_and_optimize_imports", TYPE_BOOLEAN, "Auto-format code AND optimize imports after editing (default: true). \u26a0\ufe0f Import optimization REMOVES imports it considers unused \u2014 if you add imports in one edit and reference them in a later edit, set this to false or combine both changes in one edit"}
+            {"auto_format_and_optimize_imports", TYPE_BOOLEAN, "Auto-format code AND optimize imports after editing (default: true). Formatting is DEFERRED until the end of the current turn or before git commit — safe for multi-step edits within a single turn. \u26a0\ufe0f Import optimization REMOVES imports it considers unused \u2014 if you add imports in one edit and reference them in a later edit, set this to false or combine both changes in one edit"}
         }, PARAM_PATH, "old_str", "new_str"));
 
         m.put("create_file", schema(new Object[][]{
