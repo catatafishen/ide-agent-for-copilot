@@ -13,6 +13,8 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
+import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -50,13 +52,12 @@ class AcpConnectPanel(
         isVisible = false
         toolTipText = "Working…"
     }
-    private val mcpAutoStartCheckbox = JCheckBox("Auto-start on IDE open")
+    private val mcpAutoStartCheckbox = JBCheckBox("Auto-start on IDE open")
     private val mcpStatusLabel = JBLabel("Stopped")
     private val mcpUrlCopyButton = JButton(AllIcons.Actions.Copy).apply {
         toolTipText = "Copy MCP URL"
         isBorderPainted = false
         isContentAreaFilled = false
-        isFocusable = false
         isVisible = false
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         preferredSize = JBUI.size(22, 22)
@@ -82,7 +83,7 @@ class AcpConnectPanel(
     private var acpSection: JComponent = JBPanel<JBPanel<*>>()
     private val profileCombo = ComboBox<AgentProfile>()
     private val connectButton = JButton("Connect")
-    private val acpAutoConnectCheckbox = JCheckBox("Auto-connect on startup")
+    private val acpAutoConnectCheckbox = JBCheckBox("Auto-connect on startup")
     private val acpHintLabel = JBLabel("Start the tool server above first").apply {
         foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
         font = JBUI.Fonts.smallFont()
@@ -134,7 +135,7 @@ class AcpConnectPanel(
         ).apply {
             foreground = JBUI.CurrentTheme.Label.disabledForeground()
             font = JBUI.Fonts.smallFont()
-            horizontalAlignment = javax.swing.SwingConstants.CENTER
+            horizontalAlignment = SwingConstants.CENTER
             border = JBUI.Borders.empty(4, 0, 8, 0)
         }
         add(versionLabel, BorderLayout.SOUTH)
@@ -313,14 +314,8 @@ class AcpConnectPanel(
 
     private fun createProfileSelector(): JComponent {
         refreshProfileCombo()
-        profileCombo.renderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                text = (value as? AgentProfile)?.displayName ?: ""
-                return this
-            }
+        profileCombo.renderer = SimpleListCellRenderer.create { label, value, _ ->
+            label.text = value?.displayName ?: ""
         }
         profileCombo.alignmentX = LEFT_ALIGNMENT
         profileCombo.maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(32))
@@ -372,13 +367,13 @@ class AcpConnectPanel(
         connection.subscribe(
             McpHttpServer.STATUS_TOPIC,
             McpHttpServer.StatusListener {
-                SwingUtilities.invokeLater { refreshMcpState() }
+                ApplicationManager.getApplication().invokeLater { refreshMcpState() }
             })
 
         connection.subscribe(
             PsiBridgeService.TOOL_CALL_TOPIC,
             PsiBridgeService.ToolCallListener { toolName, durationMs, success ->
-                SwingUtilities.invokeLater { addToolCallEntry(toolName, durationMs, success) }
+                ApplicationManager.getApplication().invokeLater { addToolCallEntry(toolName, durationMs, success) }
             })
     }
 
@@ -469,9 +464,9 @@ class AcpConnectPanel(
                     mcpServer.start(port)
                 }
             } catch (e: Exception) {
-                SwingUtilities.invokeLater { showError("MCP server error: ${e.message}") }
+                ApplicationManager.getApplication().invokeLater { showError("MCP server error: ${e.message}") }
             } finally {
-                SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     refreshMcpState()
                 }
             }
@@ -489,7 +484,7 @@ class AcpConnectPanel(
         mcpSpinner.isVisible = true
         mcpSpinner.resume()
         AppExecutorUtil.getAppScheduledExecutorService().schedule({
-            SwingUtilities.invokeLater {
+            ApplicationManager.getApplication().invokeLater {
                 if (mcpSpinner.isVisible) {
                     refreshMcpState()
                 }
@@ -519,18 +514,12 @@ class AcpConnectPanel(
         val list = JList(listModel)
         list.font = JBUI.Fonts.create(Font.MONOSPACED, 11)
         list.visibleRowCount = minOf(toolCallEntries.size, 15)
-        list.cellRenderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                jList: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                super.getListCellRendererComponent(jList, value, index, isSelected, cellHasFocus)
-                val text = value?.toString() ?: ""
-                if (!isSelected && text.contains("  \u2717  ")) {
-                    foreground = JBColor.RED
-                }
-                font = JBUI.Fonts.create(Font.MONOSPACED, 11)
-                return this
+        list.cellRenderer = SimpleListCellRenderer.create { label, value, _ ->
+            label.text = value ?: ""
+            if (label.text.contains("  \u2717  ")) {
+                label.foreground = JBColor.RED
             }
+            label.font = JBUI.Fonts.create(Font.MONOSPACED, 11)
         }
 
         val scrollPane = JBScrollPane(list)
@@ -571,7 +560,7 @@ class AcpConnectPanel(
     // ── Public API for AgenticCopilotToolWindowContent ──
 
     fun showError(message: String) {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             connectButton.isEnabled = true
             connectButton.text = "Connect"
             statusBanner.showError(message)
@@ -579,7 +568,7 @@ class AcpConnectPanel(
     }
 
     fun resetConnectButton() {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             connectButton.isEnabled = true
             connectButton.text = "Connect"
             refreshProfileCombo()

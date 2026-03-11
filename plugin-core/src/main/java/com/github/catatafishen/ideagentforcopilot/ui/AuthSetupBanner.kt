@@ -10,12 +10,10 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
-import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import javax.swing.BoxLayout
-import javax.swing.SwingUtilities
 
 /**
  * Reusable warning banner for auth / setup prerequisite checks.
@@ -63,7 +61,7 @@ class AuthSetupBanner(
         border = JBUI.Borders.emptyLeft(22)
     }
     private val codeLabel = JBLabel().apply {
-        font = font.deriveFont(Font.BOLD)
+        font = JBUI.Fonts.label().asBold()
     }
     private val copyLink = HyperlinkLabel("Copy code").apply {
         icon = AllIcons.Actions.Copy
@@ -113,7 +111,7 @@ class AuthSetupBanner(
                     .setContents(StringSelection(code), null)
                 copyLink.setHyperlinkText("Copied!")
                 AppExecutorUtil.getAppScheduledExecutorService().schedule(
-                    { SwingUtilities.invokeLater { copyLink.setHyperlinkText("Copy code") } },
+                    { ApplicationManager.getApplication().invokeLater { copyLink.setHyperlinkText("Copy code") } },
                     2L, TimeUnit.SECONDS,
                 )
             }
@@ -179,7 +177,10 @@ class AuthSetupBanner(
         rebuildActions(showInstall = false, showSignIn = false)
         // Re-enable Sign In after a few seconds so the user can retry if nothing happened
         pendingSignInFuture = AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            { SwingUtilities.invokeLater { rebuildActions(showInstall = false, showSignIn = true) } },
+            {
+                ApplicationManager.getApplication()
+                    .invokeLater { rebuildActions(showInstall = false, showSignIn = true) }
+            },
             8L, TimeUnit.SECONDS,
         )
     }
@@ -199,7 +200,7 @@ class AuthSetupBanner(
         scheduledFuture = AppExecutorUtil.getAppScheduledExecutorService().schedule(
             {
                 val diag = diagnosticsFn()
-                SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     applyDiag(diag)
                     scheduleNext(diag != null)
                 }
@@ -221,7 +222,7 @@ class AuthSetupBanner(
         rebuildActions(showInstall = false, showSignIn = false)
         ApplicationManager.getApplication().executeOnPooledThread {
             val diag = diagnosticsFn()
-            SwingUtilities.invokeLater {
+            ApplicationManager.getApplication().invokeLater {
                 applyDiag(diag)
                 scheduleNext(diag != null)
             }

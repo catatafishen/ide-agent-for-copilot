@@ -117,7 +117,7 @@ internal object ToolCallPopup {
     private fun sectionLabel(text: String): JBLabel {
         return JBLabel(text).apply {
             foreground = UIUtil.getContextHelpForeground()
-            font = UIUtil.getLabelFont().deriveFont(java.awt.Font.BOLD, UIUtil.getLabelFont().size2D - 1f)
+            font = JBUI.Fonts.smallFont().asBold()
             border = JBUI.Borders.empty(4, 0, 6, 0)
             alignmentX = JComponent.LEFT_ALIGNMENT
         }

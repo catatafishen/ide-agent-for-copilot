@@ -16,7 +16,6 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import javax.swing.JComponent
-import javax.swing.SwingUtilities
 import javax.swing.UIManager
 
 /**
@@ -92,7 +91,7 @@ internal class BillingManager {
         val estimated = estimatedUsed()
         val shouldAnimate = previousUsedCount >= 0 && estimated > previousUsedCount
         previousUsedCount = estimated
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             refreshUsageDisplay()
             updateUsageGraph(estimated, lastBillingEntitlement, lastBillingUnlimited, lastBillingResetDate)
             if (shouldAnimate) animateUsageChange()
@@ -148,7 +147,7 @@ internal class BillingManager {
     }
 
     private fun updateUsageUi(text: String, tooltip: String, cost: String = "") {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             usageLabel.text = text
             usageLabel.toolTipText = tooltip
             costLabel.text = cost
@@ -170,7 +169,7 @@ internal class BillingManager {
         val shouldAnimate = previousUsedCount >= 0 && estimated > previousUsedCount
         previousUsedCount = estimated
 
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             refreshUsageDisplay()
             updateUsageGraph(estimated, snapshot.entitlement, snapshot.unlimited, snapshot.resetDate)
             if (shouldAnimate) animateUsageChange()

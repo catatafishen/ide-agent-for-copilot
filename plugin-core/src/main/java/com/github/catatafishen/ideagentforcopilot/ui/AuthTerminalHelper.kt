@@ -3,7 +3,6 @@ package com.github.catatafishen.ideagentforcopilot.ui
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import javax.swing.SwingUtilities
 
 private val LOG = Logger.getInstance("AuthTerminalHelper")
 
@@ -45,12 +44,12 @@ fun runAuthInEmbeddedTerminal(
 
             widget.javaClass.getMethod("executeCommand", String::class.java)
                 .invoke(widget, command)
-        } catch (e: ClassNotFoundException) {
+        } catch (_: ClassNotFoundException) {
             LOG.info("Terminal plugin not available, falling back to external terminal")
-            SwingUtilities.invokeLater { onTerminalUnavailable() }
+            ApplicationManager.getApplication().invokeLater { onTerminalUnavailable() }
         } catch (e: Exception) {
             LOG.warn("Failed to run auth command in embedded terminal", e)
-            SwingUtilities.invokeLater { onTerminalUnavailable() }
+            ApplicationManager.getApplication().invokeLater { onTerminalUnavailable() }
         }
     }
 }

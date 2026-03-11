@@ -20,6 +20,7 @@ import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -41,7 +42,7 @@ public final class AgentProfilesConfigurable implements Configurable {
 
     private final Project project;
 
-    private JPanel mainPanel;
+    private JBPanel<?> mainPanel;
     private DefaultListModel<ProfileListEntry> listModel;
     private JBList<ProfileListEntry> profileList;
     private JPanel editorPanel;
@@ -166,8 +167,9 @@ public final class AgentProfilesConfigurable implements Configurable {
         descriptionArea.setLineWrap(true);
         descriptionArea.setWrapStyleWord(true);
         descriptionArea.setEditable(false);
-        descriptionArea.setBackground(null);
-        descriptionArea.setFont(com.intellij.util.ui.UIUtil.getLabelFont());
+        descriptionArea.setOpaque(false);
+        descriptionArea.setBackground(UIUtil.getPanelBackground());
+        descriptionArea.setFont(UIUtil.getLabelFont());
         binaryNameField = new JBTextField();
         alternateNamesField = new JBTextField();
         installHintField = new JBTextField();
@@ -176,8 +178,7 @@ public final class AgentProfilesConfigurable implements Configurable {
 
         mcpMethodCombo = new ComboBox<>(McpInjectionMethod.values());
         mcpConfigTemplateArea = new JBTextArea(6, 40);
-        mcpConfigTemplateArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN,
-            mcpConfigTemplateArea.getFont().getSize()));
+        mcpConfigTemplateArea.setFont(JBUI.Fonts.create(Font.MONOSPACED, mcpConfigTemplateArea.getFont().getSize()));
         mcpConfigTemplateArea.setLineWrap(true);
         mcpConfigTemplateArea.setWrapStyleWord(false);
         mcpEnvVarNameField = new JBTextField();

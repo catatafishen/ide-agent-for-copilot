@@ -675,6 +675,7 @@ class AgenticCopilotToolWindowContent(
 
         override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
             processingTimerPanel = ProcessingTimerPanel()
+            com.intellij.openapi.util.Disposer.register(project, processingTimerPanel)
             return processingTimerPanel
         }
     }
@@ -685,7 +686,7 @@ class AgenticCopilotToolWindowContent(
      * On [stop], spinner changes to checkmark and stats remain visible until next [start].
      * Click to toggle between per-turn and session-wide stats.
      */
-    private inner class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>() {
+    private inner class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(), com.intellij.openapi.Disposable {
         private val spinner = AsyncProcessIcon("CopilotProcessing")
         private val doneIcon = JBLabel(AllIcons.Actions.Checked)
         private val timerLabel = JBLabel("")
@@ -778,6 +779,11 @@ class AgenticCopilotToolWindowContent(
             sessionTotalToolCalls = 0
             sessionTurnCount = 0
             displayMode = modeTurn
+        }
+
+        override fun dispose() {
+            ticker.stop()
+            com.intellij.openapi.util.Disposer.dispose(spinner)
         }
 
         fun incrementToolCalls() {
