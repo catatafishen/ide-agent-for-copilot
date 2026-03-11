@@ -129,10 +129,14 @@ public final class PsiBridgeService implements Disposable {
         com.intellij.openapi.vfs.VirtualFile vfForHighlights = filePathForHighlights != null
             ? ToolUtils.resolveVirtualFile(project, filePathForHighlights) : null;
 
+        // Record the document stamp NOW (before the write) so DaemonWaiter can reject
+        // any in-flight daemon pass that analyzed the pre-edit document.
+        long preWriteStamp = getDocumentStamp(vfForHighlights);
+
         // try-with-resources ensures the waiter is always disconnected.
         // appendAutoHighlights may close and re-subscribe internally; disconnect() is idempotent.
         try (DaemonWaiter daemonWaiter = filePathForHighlights != null
-            ? new DaemonWaiter(project, vfForHighlights) : null) {
+            ? new DaemonWaiter(project, vfForHighlights, preWriteStamp) : null) {
             String denied = checkPluginToolPermission(toolName, arguments);
             if (denied != null) {
                 fireToolCallEvent(toolName, startMs, false);
@@ -359,6 +363,18 @@ public final class PsiBridgeService implements Disposable {
         return null;
     }
 
+    /**
+     * Returns the document's current modification stamp for the given file,
+     * or -1 if the document is not loaded or the file is null.
+     * Safe to call from any thread.
+     */
+    private static long getDocumentStamp(@Nullable com.intellij.openapi.vfs.VirtualFile vf) {
+        if (vf == null) return -1L;
+        com.intellij.openapi.editor.Document doc =
+            com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf);
+        return doc != null ? doc.getModificationStamp() : -1L;
+    }
+
     private String appendAutoHighlights(String writeResult, String path, DaemonWaiter preWriteWaiter) {
         com.intellij.openapi.vfs.VirtualFile vf = ToolUtils.resolveVirtualFile(project, path);
         try (DaemonWaiter activeWaiter = resolveActiveWaiter(preWriteWaiter, vf, path)) {
@@ -383,13 +399,6 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    /**
-     * Returns the appropriate waiter to use for the highlight await.
-     * If the file is already open in an editor, returns {@code preWriteWaiter} as-is.
-     * Otherwise, closes it (the pre-write pass can't include a not-yet-open file),
-     * subscribes a fresh file-specific waiter, and opens the file silently to trigger
-     * a new daemon pass that includes the target file.
-     */
     private DaemonWaiter resolveActiveWaiter(
         DaemonWaiter preWriteWaiter,
         @Nullable com.intellij.openapi.vfs.VirtualFile vf,
@@ -398,8 +407,10 @@ public final class PsiBridgeService implements Disposable {
             && com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(vf);
         if (alreadyOpen) return preWriteWaiter;
         // Subscribe a file-specific waiter BEFORE opening so we can't miss the new daemon pass.
+        // Use preWriteStamp = -1: the write already happened before this waiter is created, so
+        // any daemon pass that includes this file is necessarily post-write.
         preWriteWaiter.close();
-        DaemonWaiter fresh = new DaemonWaiter(project, vf);
+        DaemonWaiter fresh = new DaemonWaiter(project, vf, -1L);
         openFileSilently(vf, path);
         return fresh;
     }
@@ -433,15 +444,35 @@ public final class PsiBridgeService implements Disposable {
             new java.util.concurrent.CountDownLatch(1);
         private final Runnable disconnect;
 
-        DaemonWaiter(Project proj, @Nullable com.intellij.openapi.vfs.VirtualFile targetFile) {
+        /**
+         * @param preWriteStamp the document modificationStamp recorded BEFORE the write, or -1 to
+         *                      accept any daemon pass (e.g., for freshly created files where the write
+         *                      has already happened before this waiter is constructed).
+         */
+        DaemonWaiter(Project proj, @Nullable com.intellij.openapi.vfs.VirtualFile targetFile,
+                     long preWriteStamp) {
             disconnect = PlatformApiCompat.subscribeDaemonListener(proj,
                 new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
                     @Override
                     public void daemonFinished(@NotNull java.util.Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
-                        if (targetFile == null
-                            || fileEditors.stream().anyMatch(fe -> targetFile.equals(fe.getFile()))) {
+                        if (targetFile == null) {
                             latch.countDown();
+                            return;
                         }
+                        boolean included = fileEditors.stream().anyMatch(fe -> targetFile.equals(fe.getFile()));
+                        if (!included) return;
+
+                        // Reject pre-write in-flight passes: only accept a daemon pass that
+                        // analyzed a version of the document AFTER the write was applied.
+                        if (preWriteStamp >= 0) {
+                            long currentStamp = getDocumentStamp(targetFile);
+                            if (currentStamp <= preWriteStamp) {
+                                LOG.info("Auto-highlights: ignoring pre-write daemon pass (stamp "
+                                    + currentStamp + " <= " + preWriteStamp + ")");
+                                return;
+                            }
+                        }
+                        latch.countDown();
                     }
 
                     @Override
