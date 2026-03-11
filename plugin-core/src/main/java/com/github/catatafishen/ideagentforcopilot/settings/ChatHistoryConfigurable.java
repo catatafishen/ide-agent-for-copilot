@@ -27,7 +27,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -86,7 +85,7 @@ public final class ChatHistoryConfigurable implements Configurable {
     }
 
     @Override
-    public @Nullable JComponent createComponent() {
+    public @NotNull JComponent createComponent() {
         summaryLabel = new JBLabel();
         summaryLabel.setBorder(JBUI.Borders.empty(0, 0, 4, 0));
 
@@ -105,11 +104,16 @@ public final class ChatHistoryConfigurable implements Configurable {
         table.getColumnModel().getColumn(3).setPreferredWidth(JBUI.scale(160));
 
         table.getColumnModel().getColumn(0).setCellRenderer(new ConversationNameRenderer());
-
-        DefaultTableCellRenderer rightAligned = new DefaultTableCellRenderer();
-        rightAligned.setHorizontalAlignment(SwingConstants.RIGHT);
         table.getColumnModel().getColumn(1).setCellRenderer(new MessageCountRenderer());
-        table.getColumnModel().getColumn(2).setCellRenderer(rightAligned);
+
+        table.getColumnModel().getColumn(2).setCellRenderer(new ColoredTableCellRenderer() {
+            @Override
+            protected void customizeCellRenderer(@NotNull JTable table, @Nullable Object value,
+                                                 boolean selected, boolean hasFocus, int row, int column) {
+                if (value != null) append(value.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES);
+                setTextAlign(SwingConstants.RIGHT);
+            }
+        });
 
         JPanel decorated = ToolbarDecorator.createDecorator(table)
             .disableAddAction()
@@ -282,7 +286,7 @@ public final class ChatHistoryConfigurable implements Configurable {
     private void loadConversations() {
         if (tableModel == null) return;
 
-        table.getEmptyText().setText("Loading\u2026");
+        table.getEmptyText().setText("Loading…");
         tableModel.setEntries(List.of());
         updateSummary(List.of());
 
@@ -290,7 +294,7 @@ public final class ChatHistoryConfigurable implements Configurable {
             List<ConversationEntry> entries = scanConversations();
             entries.sort(Comparator.comparing(ConversationEntry::dateMillis).reversed());
 
-            SwingUtilities.invokeLater(() -> {
+            ApplicationManager.getApplication().invokeLater(() -> {
                 if (tableModel == null) return;
                 tableModel.setEntries(entries);
                 updateSummary(entries);
@@ -413,7 +417,7 @@ public final class ChatHistoryConfigurable implements Configurable {
     }
 
     static String formatDateMillis(long millis) {
-        if (millis <= 0) return "\u2014";
+        if (millis <= 0) return "—";
         LocalDateTime dateTime = LocalDateTime.ofInstant(
             Instant.ofEpochMilli(millis), ZoneId.systemDefault());
         return dateTime.format(DISPLAY_FORMATTER);
@@ -457,16 +461,11 @@ public final class ChatHistoryConfigurable implements Configurable {
             ConversationEntry entry = entries.get(rowIndex);
             return switch (columnIndex) {
                 case 0 -> entry.displayName();
-                case 1 -> entry.messageCount() >= 0 ? String.valueOf(entry.messageCount()) : "\u2014";
+                case 1 -> entry.messageCount() >= 0 ? String.valueOf(entry.messageCount()) : "—";
                 case 2 -> formatFileSize(entry.size());
                 case 3 -> formatDateMillis(entry.dateMillis());
                 default -> "";
             };
-        }
-
-        @Override
-        public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return false;
         }
 
         ConversationEntry getEntryAt(int row) {
@@ -493,7 +492,7 @@ public final class ChatHistoryConfigurable implements Configurable {
             boolean selected, boolean hasFocus, int row, int column
         ) {
             if (value == null) return;
-            ConversationTableModel model = (ConversationTableModel) ((JBTable) table).getModel();
+            ConversationTableModel model = (ConversationTableModel) table.getModel();
             ConversationEntry entry = model.getEntryAt(row);
 
             if (entry.isCurrentSession()) {
@@ -516,7 +515,7 @@ public final class ChatHistoryConfigurable implements Configurable {
             setTextAlign(SwingConstants.RIGHT);
             if (value == null) return;
             String text = value.toString();
-            if ("\u2014".equals(text)) {
+            if ("—".equals(text)) {
                 append(text, SimpleTextAttributes.GRAYED_ATTRIBUTES);
                 setToolTipText("Unable to read message count from file");
             } else {

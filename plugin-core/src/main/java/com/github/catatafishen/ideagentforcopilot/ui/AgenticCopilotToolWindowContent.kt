@@ -495,6 +495,8 @@ class AgenticCopilotToolWindowContent(
         }
         promptTextArea = com.intellij.ui.EditorTextFieldProvider.getInstance()
             .getEditorField(com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE, project, editorCustomizations)
+        // Property access forbidden: isOneLineMode getter is protected in EditorTextField
+        @Suppress("UsePropertyAccessSyntax")
         promptTextArea.setOneLineMode(false)
         promptTextArea.border = null
         contextManager = PromptContextManager(project, promptTextArea) { text -> appendResponse(text) }
@@ -720,15 +722,14 @@ class AgenticCopilotToolWindowContent(
                 smallGray; toolsLabel.isVisible = false
             requestsLabel.foreground = JBUI.CurrentTheme.Label.disabledForeground(); requestsLabel.font =
                 smallGray; requestsLabel.isVisible = false
-            add(Box.createHorizontalGlue())
             add(spinner)
-            add(Box.createHorizontalStrut(4))
+            add(Box.createHorizontalStrut(JBUI.scale(4)))
             add(doneIcon)
-            add(Box.createHorizontalStrut(4))
+            add(Box.createHorizontalStrut(JBUI.scale(4)))
             add(timerLabel)
-            add(Box.createHorizontalStrut(4))
+            add(Box.createHorizontalStrut(JBUI.scale(4)))
             add(toolsLabel)
-            add(Box.createHorizontalStrut(4))
+            add(Box.createHorizontalStrut(JBUI.scale(4)))
             add(requestsLabel)
             isVisible = false
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -792,13 +793,11 @@ class AgenticCopilotToolWindowContent(
         }
 
         private fun refreshDisplay() {
-            ApplicationManager.getApplication().invokeLater {
-                when (displayMode) {
-                    modeTurn -> refreshTurnMode()
-                    modeSession -> refreshSessionMode()
-                }
-                revalidate(); repaint()
+            when (displayMode) {
+                modeTurn -> refreshTurnMode()
+                modeSession -> refreshSessionMode()
             }
+            revalidate(); repaint()
         }
 
         private fun refreshTurnMode() {
@@ -1009,7 +1008,7 @@ class AgenticCopilotToolWindowContent(
         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
     }
 
-    /** Dropdown action for project configuration files: Instructions, Todo.md, Agent Definitions, MCP Instructions */
+    /** Dropdown action for project configuration files: Instructions, TODO.md, Agent Definitions, MCP Instructions */
     private inner class ProjectFilesDropdownAction : AnAction(
         "Project Files", "Open project configuration files",
         AllIcons.Nodes.Folder
@@ -1036,41 +1035,6 @@ class AgenticCopilotToolWindowContent(
             }
 
             group.addSeparator("MCP Server")
-
-            // Startup Instructions — disabled because Copilot ignores MCP initialize instructions.
-            // See: https://github.com/github/copilot-cli/issues/1486
-            // Plugin instructions are now prepended to copilot-instructions.md instead.
-            group.add(object : AnAction(
-                "Startup Instructions",
-                "Disabled: Copilot ignores MCP instructions. Use copilot-instructions.md instead. " +
-                    "See github.com/github/copilot-cli/issues/1486",
-                AllIcons.Actions.IntentionBulbGrey
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                override fun update(e: AnActionEvent) {
-                    e.presentation.isEnabled = false
-                }
-
-                override fun actionPerformed(e: AnActionEvent) { /* disabled — no-op */
-                }
-            })
-
-            // Restore default — also disabled for the same reason
-            group.add(object : AnAction(
-                "Restore Default Instructions",
-                "Disabled: Copilot ignores MCP instructions. Use copilot-instructions.md instead. " +
-                    "See github.com/github/copilot-cli/issues/1486",
-                AllIcons.Actions.Rollback
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                override fun update(e: AnActionEvent) {
-                    e.presentation.isEnabled = false
-                }
-
-                override fun actionPerformed(e: AnActionEvent) { /* disabled — no-op */
-                }
-            })
-
             val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
                 .createActionGroupPopup(
                     null, group, com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project),

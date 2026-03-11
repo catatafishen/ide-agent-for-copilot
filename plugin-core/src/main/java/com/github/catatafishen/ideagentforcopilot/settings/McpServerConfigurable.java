@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.Configurable;
@@ -71,11 +72,11 @@ public final class McpServerConfigurable implements Configurable {
             "Works independently of the connected agent — any external agent accessing "
                 + "the MCP server will trigger follow-mode when this is enabled.");
 
-        JButton restartButton = new JButton("Restart MCP Server");
+        JButton restartButton = new JButton("Restart MCP Server", AllIcons.Actions.Restart);
         restartButton.setToolTipText("Stop and restart the MCP server to pick up tool registration changes");
         restartButton.addActionListener(e -> restartMcpServer(restartButton));
 
-        JButton copyConfigButton = new JButton("Copy MCP Config");
+        JButton copyConfigButton = new JButton("Copy MCP Config", AllIcons.Actions.Copy);
         copyConfigButton.setToolTipText("Copy JSON config for Claude Desktop, Cursor, etc.");
         copyConfigButton.addActionListener(e -> copyMcpConfig(copyConfigButton));
 

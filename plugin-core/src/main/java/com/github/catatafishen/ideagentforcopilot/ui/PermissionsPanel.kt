@@ -10,9 +10,13 @@ import com.intellij.ui.*
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import java.awt.*
+import java.awt.BorderLayout
+import java.awt.Component
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import javax.swing.JComponent
 import javax.swing.JTree
 import javax.swing.ScrollPaneConstants
@@ -191,7 +195,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
         for (cat in pluginCats) pluginRoot.add(DefaultMutableTreeNode(NavNode.Cat(cat, isBuiltIn = false)))
         root.add(pluginRoot)
 
-        val tree = JTree(DefaultTreeModel(root))
+        val tree = Tree(DefaultTreeModel(root))
         tree.isRootVisible = false
         tree.showsRootHandles = false
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
@@ -223,8 +227,8 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
 
         val treeScroll = JBScrollPane(tree)
         treeScroll.border = JBUI.Borders.empty()
-        treeScroll.preferredSize = Dimension(JBUI.scale(200), 0)
-        treeScroll.minimumSize = Dimension(JBUI.scale(150), 0)
+        treeScroll.preferredSize = JBUI.size(200, 0)
+        treeScroll.minimumSize = JBUI.size(150, 0)
         treeScroll.viewport.background = UIUtil.SIDE_PANEL_BACKGROUND
 
         return OnePixelSplitter(false, "CopilotPermissionsPanel.splitter", 0.28f).also { splitter ->
@@ -296,8 +300,8 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
             gbc.gridy++
 
             if (row.inProjectCombo != null && row.outProjectCombo != null) {
-                addSubPermRow(content, gbc, "   ▸ Inside project:", row.inProjectCombo)
-                addSubPermRow(content, gbc, "   ▸ Outside project:", row.outProjectCombo)
+                addSubPermRow(content, gbc, "▸ Inside project:", row.inProjectCombo)
+                addSubPermRow(content, gbc, "▸ Outside project:", row.outProjectCombo)
             }
         }
 

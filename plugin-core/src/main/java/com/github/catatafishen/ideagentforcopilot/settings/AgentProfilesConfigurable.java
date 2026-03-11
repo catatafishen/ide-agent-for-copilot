@@ -12,6 +12,7 @@ import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.JBSplitter;
+import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBCheckBox;
@@ -68,7 +69,7 @@ public final class AgentProfilesConfigurable implements Configurable {
     private JBTextArea mcpConfigTemplateArea;
     private JBTextField mcpEnvVarNameField;
 
-    // ── Feature Flags tab ──
+    // ── Advanced tab ──
     private JBCheckBox supportsModelFlagCb;
     private JBCheckBox supportsConfigDirCb;
     private JBCheckBox supportsMcpConfigFlagCb;
@@ -103,6 +104,10 @@ public final class AgentProfilesConfigurable implements Configurable {
 
         profileList = new JBList<>(listModel);
         profileList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        profileList.setCellRenderer(SimpleListCellRenderer.create((label, entry, index) -> {
+            label.setText(entry.toString());
+            label.setIcon(entry.builtIn() ? AllIcons.Nodes.Plugin : AllIcons.Nodes.Function);
+        }));
         profileList.addListSelectionListener(this::onSelectionChanged);
 
         JPanel listPanel = buildListPanel();
@@ -162,6 +167,7 @@ public final class AgentProfilesConfigurable implements Configurable {
     @NotNull
     private JPanel buildEditorPanel() {
         nameField = new JBTextField();
+        nameField.getEmptyText().setText("Profile display name");
         descriptionArea = new JBTextArea(3, 0);
         descriptionArea.setLineWrap(true);
         descriptionArea.setWrapStyleWord(true);
@@ -170,10 +176,15 @@ public final class AgentProfilesConfigurable implements Configurable {
         descriptionArea.setBackground(UIUtil.getPanelBackground());
         descriptionArea.setFont(UIUtil.getLabelFont());
         binaryNameField = new JBTextField();
+        binaryNameField.getEmptyText().setText("e.g. copilot");
         alternateNamesField = new JBTextField();
+        alternateNamesField.getEmptyText().setText("Comma-separated, e.g. gh, github-copilot");
         installHintField = new JBTextField();
+        installHintField.getEmptyText().setText("Shown when binary is not found");
         customBinaryPathField = new JBTextField();
+        customBinaryPathField.getEmptyText().setText("Absolute path (overrides auto-discovery)");
         acpArgsField = new JBTextField();
+        acpArgsField.getEmptyText().setText("e.g. --acp --stdio");
 
         mcpMethodCombo = new ComboBox<>(McpInjectionMethod.values());
         mcpConfigTemplateArea = new JBTextArea(6, 40);
@@ -181,15 +192,19 @@ public final class AgentProfilesConfigurable implements Configurable {
         mcpConfigTemplateArea.setLineWrap(true);
         mcpConfigTemplateArea.setWrapStyleWord(false);
         mcpEnvVarNameField = new JBTextField();
+        mcpEnvVarNameField.getEmptyText().setText("e.g. COPILOT_MCP_CONFIG");
 
         supportsModelFlagCb = new JBCheckBox("Supports --model flag");
         supportsConfigDirCb = new JBCheckBox("Supports --config-dir flag");
         supportsMcpConfigFlagCb = new JBCheckBox("Supports --additional-mcp-config flag");
         requiresResourceDuplicationCb = new JBCheckBox("Requires resource content duplication");
         modelUsageFieldField = new JBTextField();
+        modelUsageFieldField.getEmptyText().setText("e.g. copilotUsage");
         agentsDirectoryField = new JBTextField();
+        agentsDirectoryField.getEmptyText().setText("Relative path, e.g. .agents");
 
         prependInstructionsToField = new JBTextField();
+        prependInstructionsToField.getEmptyText().setText("e.g. .copilot/copilot-instructions.md");
         ensureCopilotAgentsCb = new JBCheckBox("Ensure Copilot agents config on launch");
 
         usePluginPermissionsCb = new JBCheckBox("Use plugin-level tool permissions");
@@ -209,7 +224,7 @@ public final class AgentProfilesConfigurable implements Configurable {
         tabs.addTab("General", scrollTab(buildGeneralTab()));
         tabs.addTab("ACP & Launch", scrollTab(buildAcpTab()));
         tabs.addTab("MCP", scrollTab(buildMcpTab()));
-        tabs.addTab("Feature Flags", scrollTab(buildFlagsTab()));
+        tabs.addTab("Advanced", scrollTab(buildFlagsTab()));
         tabs.addTab("Permissions", scrollTab(buildPermissionsTab()));
 
         editorPanel.add(tabs, "editor");

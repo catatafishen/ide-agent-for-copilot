@@ -13,6 +13,7 @@ import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import javax.swing.Box
 import javax.swing.BoxLayout
 
 /**
@@ -82,8 +83,11 @@ class AuthSetupBanner(
         isOpaque = false
 
         deviceCodeRow.add(JBLabel("Your code:"))
+        deviceCodeRow.add(Box.createHorizontalStrut(JBUI.scale(6)))
         deviceCodeRow.add(codeLabel)
+        deviceCodeRow.add(Box.createHorizontalStrut(JBUI.scale(8)))
         deviceCodeRow.add(copyLink)
+        deviceCodeRow.add(Box.createHorizontalStrut(JBUI.scale(8)))
         deviceCodeRow.add(openBrowserLink)
 
         // Use BorderLayout so banner fills width and deviceCodeRow sits below without alignment issues

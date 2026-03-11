@@ -16,7 +16,6 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import javax.swing.JComponent
-import javax.swing.UIManager
 
 /**
  * Orchestrates Copilot billing/usage display in the tool window toolbar.
@@ -27,7 +26,10 @@ import javax.swing.UIManager
  */
 internal class BillingManager {
 
-    val usageLabel: JBLabel = JBLabel("")
+    val usageLabel: JBLabel = JBLabel("").apply {
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        toolTipText = "Click to toggle session/monthly view"
+    }
     val costLabel: JBLabel = JBLabel("")
 
     var billingCycleStartUsed = -1
@@ -67,9 +69,8 @@ internal class BillingManager {
 
     private companion object {
         private val LOG = Logger.getInstance(BillingManager::class.java)
-        private val ERROR_COLOR: JBColor
-            get() = UIManager.getColor("Label.errorForeground") as? JBColor
-                ?: JBColor(Color(0xC7, 0x22, 0x22), Color(0xE0, 0x60, 0x60))
+        private val ERROR_COLOR: Color
+            get() = JBUI.CurrentTheme.Label.errorForeground()
 
         private fun errorHex(): String {
             val c = ERROR_COLOR

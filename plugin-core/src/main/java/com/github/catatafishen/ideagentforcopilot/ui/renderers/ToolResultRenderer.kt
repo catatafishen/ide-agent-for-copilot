@@ -8,10 +8,15 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBPanel
+import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
-import javax.swing.*
+import javax.swing.BoxLayout
+import javax.swing.Icon
+import javax.swing.JComponent
+import javax.swing.JPanel
 
 /**
  * Interface for custom tool-result renderers in the tool-call popup.
@@ -184,27 +189,21 @@ internal object ToolRenderers {
 
     private const val MONO_FONT = "JetBrains Mono"
 
-    /**
-     * Creates a header panel with icon, count, and label (e.g., search icon + "5 results").
-     */
-    fun headerPanel(icon: Icon, count: Int, label: String): JPanel {
+    fun headerPanel(icon: Icon, count: Int, label: String): JBPanel<*> {
         val header = JBLabel("$count $label").apply {
             this.icon = icon
             font = UIUtil.getLabelFont().deriveFont(java.awt.Font.BOLD)
             border = JBUI.Borders.emptyBottom(4)
             alignmentX = JComponent.LEFT_ALIGNMENT
         }
-        return JPanel().apply {
+        return JBPanel<JBPanel<*>>().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
             add(header)
         }
     }
 
-    /**
-     * Creates a vertical list panel with standard spacing.
-     */
-    fun listPanel(): JPanel = object : JPanel() {
+    fun listPanel(): JBPanel<*> = object : JBPanel<JBPanel<*>>() {
         init {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
@@ -216,11 +215,8 @@ internal object ToolRenderers {
         }
     }
 
-    /**
-     * Creates a horizontal row panel for list items.
-     */
-    fun rowPanel(): JPanel =
-        object : JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, JBUI.scale(4), JBUI.scale(1))) {
+    fun rowPanel(): JBPanel<*> =
+        object : JBPanel<JBPanel<*>>(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, JBUI.scale(4), JBUI.scale(1))) {
             init {
                 isOpaque = false
                 alignmentX = LEFT_ALIGNMENT
@@ -232,11 +228,7 @@ internal object ToolRenderers {
             }
         }
 
-    /**
-     * Creates a section panel with a bold header and item count — the standard
-     * pattern used by grouped-list renderers (search results, branches, etc.).
-     */
-    fun sectionPanel(label: String, count: Int, topGap: Int = 4): JPanel {
+    fun sectionPanel(label: String, count: Int, topGap: Int = 4): JBPanel<*> {
         val section = listPanel().apply {
             border = JBUI.Borders.emptyTop(topGap)
             alignmentX = JComponent.LEFT_ALIGNMENT
@@ -250,11 +242,7 @@ internal object ToolRenderers {
         return section
     }
 
-    /**
-     * Creates a status header row with icon, bold label, and semantic color —
-     * the standard pattern for success/failure/warning headers.
-     */
-    fun statusHeader(icon: Icon, text: String, color: Color): JPanel {
+    fun statusHeader(icon: Icon, text: String, color: Color): JBPanel<*> {
         return rowPanel().also { row ->
             row.add(JBLabel(text).apply {
                 this.icon = icon
@@ -271,12 +259,9 @@ internal object ToolRenderers {
         font = JBUI.Fonts.create(MONO_FONT, UIUtil.getLabelFont().size)
     }
 
-    /**
-     * Creates a muted-color JBLabel for secondary information.
-     */
     fun mutedLabel(text: String): JBLabel = JBLabel(text).apply {
         foreground = UIUtil.getContextHelpForeground()
-        font = UIUtil.getLabelFont().deriveFont(UIUtil.getLabelFont().size2D - 1f)
+        font = JBUI.Fonts.smallFont()
     }
 
     /**
@@ -327,13 +312,9 @@ internal object ToolRenderers {
         }
     }
 
-    /**
-     * Creates a read-only code block with monospace font and editor-matching colors.
-     * Overrides getMaximumSize to prevent unbounded horizontal expansion in BoxLayout.
-     */
-    fun codeBlock(text: String): JTextArea {
+    fun codeBlock(text: String): JBTextArea {
         val scheme = EditorColorsManager.getInstance().globalScheme
-        return object : JTextArea(text) {
+        return object : JBTextArea(text) {
             override fun getMaximumSize(): java.awt.Dimension {
                 val pref = preferredSize
                 return java.awt.Dimension(Int.MAX_VALUE, pref.height)
@@ -349,12 +330,9 @@ internal object ToolRenderers {
         }
     }
 
-    /**
-     * Creates a read-only monospace text area for displaying plain text output.
-     */
     fun codePanel(text: String): JComponent {
         val scheme = EditorColorsManager.getInstance().globalScheme
-        return JTextArea(text).apply {
+        return JBTextArea(text).apply {
             isEditable = false
             lineWrap = true
             wrapStyleWord = true
