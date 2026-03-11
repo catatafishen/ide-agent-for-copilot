@@ -284,21 +284,6 @@ class PromptContextManager(
         return references
     }
 
-    fun buildReferenceMarkers(items: List<ContextItemData>? = null): String {
-        val contextItems = items ?: collectInlineContextItems()
-        val parts = mutableListOf<String>()
-        for (item in contextItems) {
-            val fileName = item.path.substringAfterLast("/")
-            if (item.isSelection && item.startLine > 0) {
-                parts.add("`$fileName:${item.startLine}-${item.endLine}`")
-            } else {
-                parts.add("`$fileName`")
-            }
-        }
-        if (parts.isEmpty()) return ""
-        return "Referenced: " + parts.joinToString(", ")
-    }
-
     private fun buildSingleReference(item: ContextItemData): ResourceReference? {
         val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(item.path)
             ?: return null

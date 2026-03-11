@@ -1,7 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -68,7 +66,7 @@ public final class ToolRegistry {
         }
     }
 
-    private static final List<ToolEntry> ALL_TOOLS = Collections.unmodifiableList(Arrays.asList(
+    private static final List<ToolEntry> ALL_TOOLS = List.of(
         // -- Built-in agent tools ---------------------------------------------------------
         // Copilot CLI: view/read/grep/glob run silently -- no permission hook (hasDenyControl=false)
         // OpenCode:    read/grep/glob/list run silently -- no permission hook (hasDenyControl=false)
@@ -191,7 +189,7 @@ public final class ToolRegistry {
         new ToolEntry("create_scratch_file", "Create Scratch File", "Create a temporary scratch file with the given name and content", Category.OTHER, false, false, false),
         new ToolEntry("list_scratch_files", "List Scratch Files", "List existing scratch files in the IDE scratch directory", Category.OTHER, false, false, false),
         new ToolEntry("http_request", "HTTP Request", "Make an HTTP request (GET/POST/PUT/PATCH/DELETE) to a URL", Category.OTHER, false, false, false)
-    ));
+    );
 
     // Tools that only read data and never modify state
     private static final java.util.Set<String> READ_ONLY_TOOLS = java.util.Set.of(

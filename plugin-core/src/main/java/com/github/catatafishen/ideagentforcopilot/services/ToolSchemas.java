@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * Single source of truth for MCP tool input schemas (JSON Schema objects).
  * Ported from the duplicated schema definitions in the mcp-server module.
- * Used by {@link com.github.catatafishen.idemcpserver.McpProtocolHandler} to serve
+ * Used by {@link com.github.catatafishen.ideagentforcopilot.services.McpProtocolHandler} to serve
  * complete tool schemas to any MCP client.
  */
 public final class ToolSchemas {

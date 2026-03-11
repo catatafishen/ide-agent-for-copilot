@@ -7,6 +7,8 @@
       <w>alnum</w>
       <w>appname</w>
       <w>autoload</w>
+      <w>bunx</w>
+      <w>catatafishen</w>
       <w>cdpath</w>
       <w>classname</w>
       <w>claude</w>
@@ -25,6 +27,7 @@
       <w>endlocal</w>
       <w>envs</w>
       <w>errorlevel</w>
+      <w>expui</w>
       <w>failsafe</w>
       <w>github</w>
       <w>gitignored</w>
@@ -57,7 +60,9 @@
       <w>noop</w>
       <w>nosonar</w>
       <w>oneline</w>
+      <w>opencode</w>
       <w>openfile</w>
+      <w>pnpx</w>
       <w>psi</w>
       <w>pwsh</w>
       <w>qname</w>

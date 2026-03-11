@@ -73,7 +73,6 @@ internal data class ToolInfo(val displayName: String, val description: String)
 internal data class SubAgentInfo(val displayName: String)
 
 internal const val AGENT_TYPE_GENERAL = "general-purpose"
-internal const val SA_COLOR_COUNT = 8
 
 internal val SUB_AGENT_INFO = mapOf(
     "explore" to SubAgentInfo("Explore Agent"),
