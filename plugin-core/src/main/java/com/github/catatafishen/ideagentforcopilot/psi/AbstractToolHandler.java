@@ -38,6 +38,37 @@ abstract class AbstractToolHandler {
         return tools;
     }
 
+    /**
+     * Returns tool definitions for this handler group using the new
+     * {@link com.github.catatafishen.ideagentforcopilot.services.ToolDefinition} interface.
+     * <p>
+     * Subclasses should override this to provide full metadata (schema, category,
+     * permission template, flags). The default wraps each registered handler as
+     * a minimal definition looked up from the legacy
+     * {@link com.github.catatafishen.ideagentforcopilot.services.ToolRegistry}.
+     */
+    java.util.List<com.github.catatafishen.ideagentforcopilot.services.ToolDefinition> getDefinitions() {
+        var defs = new java.util.ArrayList<com.github.catatafishen.ideagentforcopilot.services.ToolDefinition>();
+        for (var entry : tools.entrySet()) {
+            String id = entry.getKey();
+            ToolHandler handler = entry.getValue();
+            // Look up legacy metadata from ToolRegistry
+            var legacyEntry = com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.findById(id);
+            var builder = com.github.catatafishen.ideagentforcopilot.services.ToolBuilder.create(
+                id,
+                legacyEntry != null ? legacyEntry.displayName : id,
+                legacyEntry != null ? legacyEntry.description : "",
+                legacyEntry != null ? legacyEntry.category
+                    : com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.Category.OTHER
+            ).handler(handler);
+            // Carry over legacy schema
+            var schema = com.github.catatafishen.ideagentforcopilot.services.ToolSchemas.getInputSchema(id);
+            if (schema != null) builder.schema(schema);
+            defs.add(builder.build());
+        }
+        return defs;
+    }
+
     // Convenience delegates to ToolUtils
     protected VirtualFile resolveVirtualFile(String path) {
         return ToolUtils.resolveVirtualFile(project, path);

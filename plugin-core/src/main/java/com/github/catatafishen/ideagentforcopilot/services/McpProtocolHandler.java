@@ -111,7 +111,10 @@ public final class McpProtocolHandler {
             JsonObject tool = new JsonObject();
             tool.addProperty("name", entry.id);
             tool.addProperty("description", entry.description);
-            tool.add("inputSchema", ToolSchemas.getInputSchema(entry.id));
+            // Prefer schema from ToolDefinition (new OO registry), fall back to legacy ToolSchemas
+            ToolDefinition def = ToolRegistry.findDefinition(entry.id);
+            JsonObject schema = def != null ? def.inputSchema() : null;
+            tool.add("inputSchema", schema != null ? schema : ToolSchemas.getInputSchema(entry.id));
             tool.add("annotations", ToolRegistry.getMcpAnnotations(entry.id));
             tools.add(tool);
         }

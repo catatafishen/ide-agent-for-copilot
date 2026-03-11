@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonElement;
@@ -60,7 +61,7 @@ public final class PsiBridgeService implements Disposable {
         this.runConfigService = new RunConfigurationService(project, refactoringTools::resolveClass);
 
         // Register all tools from handler groups
-        for (AbstractToolHandler handler : List.of(
+        var handlerGroups = List.of(
             new CodeNavigationTools(project),
             fileTools,
             new CodeQualityTools(project),
@@ -72,8 +73,11 @@ public final class PsiBridgeService implements Disposable {
             new InfrastructureTools(project),
             new TerminalTools(project),
             new EditorTools(project)
-        )) {
+        );
+        for (AbstractToolHandler handler : handlerGroups) {
             toolRegistry.putAll(handler.getTools());
+            // Also register as ToolDefinition for the new OO registry
+            ToolRegistry.registerAll(handler.getDefinitions());
         }
 
         // RunConfigurationService tools (not an AbstractToolHandler)
@@ -112,7 +116,14 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public String callTool(String toolName, JsonObject arguments) {
+        // Check new-style ToolDefinition first, then legacy handler map
         ToolHandler handler = toolRegistry.get(toolName);
+        if (handler == null) {
+            ToolDefinition def = ToolRegistry.findDefinition(toolName);
+            if (def != null && def.hasExecutionHandler()) {
+                handler = def::execute;
+            }
+        }
         if (handler == null) {
             fireToolCallEvent(toolName, System.currentTimeMillis(), false);
             return "Unknown tool: " + toolName;
