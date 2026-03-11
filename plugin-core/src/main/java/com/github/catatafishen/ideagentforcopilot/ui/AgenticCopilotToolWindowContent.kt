@@ -138,6 +138,8 @@ class AgenticCopilotToolWindowContent(
             val panel = createPromptTab()
             chatPanel = panel
             mainPanel.add(panel, CARD_CHAT)
+            // Archive the previous session on first connect so each IDE launch gets its own entry.
+            archiveConversation()
             restoreConversation(onComplete = addSeparatorNow)
         } else {
             addSeparatorNow()
@@ -2054,8 +2056,17 @@ class AgenticCopilotToolWindowContent(
     private fun restoreConversation(onComplete: () -> Unit = {}) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val file = conversationFile()
-                if (!file.exists() || file.length() < 10) {
+                // Primary: current session file. Fallback: most recent archive (e.g. after startup archive).
+                val file = conversationFile().takeIf { it.exists() && it.length() >= 10 }
+                    ?: run {
+                        val archiveDir = java.io.File(
+                            java.io.File(project.basePath ?: return@executeOnPooledThread, AGENT_WORK_DIR),
+                            "conversations"
+                        )
+                        archiveDir.listFiles { _, n -> n.startsWith("conversation-") && n.endsWith(".json") }
+                            ?.maxByOrNull { it.name }
+                    }
+                if (file == null) {
                     SwingUtilities.invokeLater { onComplete() }
                     return@executeOnPooledThread
                 }
