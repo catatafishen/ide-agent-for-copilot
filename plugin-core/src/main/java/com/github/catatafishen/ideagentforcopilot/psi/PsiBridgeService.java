@@ -18,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Executes MCP tool calls inside IntelliJ, providing PSI/AST-backed code intelligence.
@@ -40,16 +41,16 @@ public final class PsiBridgeService implements Disposable {
      * Project-level message bus topic for tool call events (fire-and-forget notifications).
      */
     public static final Topic<ToolCallListener> TOOL_CALL_TOPIC =
-            Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
+        Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
 
     private final Project project;
     private final RunConfigurationService runConfigService;
     private final Map<String, ToolHandler> toolRegistry = new LinkedHashMap<>();
     private final FileTools fileTools;
     private final java.util.concurrent.atomic.AtomicBoolean permissionPending =
-            new java.util.concurrent.atomic.AtomicBoolean(false);
+        new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.Set<String> sessionAllowedTools =
-            java.util.concurrent.ConcurrentHashMap.newKeySet();
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
@@ -62,17 +63,17 @@ public final class PsiBridgeService implements Disposable {
 
         // Register all tools from handler groups
         for (AbstractToolHandler handler : List.of(
-                new CodeNavigationTools(project),
-                fileTools,
-                new CodeQualityTools(project),
-                refactoringTools,
-                new SymbolEditingTools(project),
-                new TestTools(project, refactoringTools),
-                new ProjectTools(project),
-                new GitTools(project, gitToolHandler),
-                new InfrastructureTools(project),
-                new TerminalTools(project),
-                new EditorTools(project)
+            new CodeNavigationTools(project),
+            fileTools,
+            new CodeQualityTools(project),
+            refactoringTools,
+            new SymbolEditingTools(project),
+            new TestTools(project, refactoringTools),
+            new ProjectTools(project),
+            new GitTools(project, gitToolHandler),
+            new InfrastructureTools(project),
+            new TerminalTools(project),
+            new EditorTools(project)
         )) {
             toolRegistry.putAll(handler.getTools());
         }
@@ -185,7 +186,7 @@ public final class PsiBridgeService implements Disposable {
         long duration = System.currentTimeMillis() - startTimeMs;
         try {
             project.getMessageBus().syncPublisher(TOOL_CALL_TOPIC)
-                    .toolCalled(toolName, duration, success);
+                .toolCalled(toolName, duration, success);
         } catch (Exception e) {
             LOG.debug("Failed to fire tool call event", e);
         }
@@ -230,17 +231,17 @@ public final class PsiBridgeService implements Disposable {
         String reqId = java.util.UUID.randomUUID().toString();
 
         com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel chatPanel =
-                com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel.Companion.getInstance(project);
+            com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel.Companion.getInstance(project);
 
         com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse response;
         if (chatPanel != null) {
             java.util.concurrent.CompletableFuture<com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse> future =
-                    new java.util.concurrent.CompletableFuture<>();
+                new java.util.concurrent.CompletableFuture<>();
             EdtUtil.invokeLater(() ->
-                    chatPanel.showPermissionRequest(reqId, displayName, argsJson, result -> {
-                        future.complete(result);
-                        return kotlin.Unit.INSTANCE;
-                    })
+                chatPanel.showPermissionRequest(reqId, displayName, argsJson, result -> {
+                    future.complete(result);
+                    return kotlin.Unit.INSTANCE;
+                })
             );
             try {
                 response = future.get(120, java.util.concurrent.TimeUnit.SECONDS);
@@ -256,16 +257,16 @@ public final class PsiBridgeService implements Disposable {
             boolean[] result = {false};
             EdtUtil.invokeAndWait(() -> {
                 String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
-                        + buildArgSummary(arguments) + "</html>";
+                    + buildArgSummary(arguments) + "</html>";
                 int choice = Messages.showYesNoDialog(
-                        project, message, "Tool Permission Request",
-                        "Allow", "Deny", Messages.getQuestionIcon()
+                    project, message, "Tool Permission Request",
+                    "Allow", "Deny", Messages.getQuestionIcon()
                 );
                 result[0] = choice == Messages.YES;
             });
             response = result[0]
-                    ? com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE
-                    : com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY;
+                ? com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE
+                : com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY;
         }
 
         return switch (response) {
@@ -330,17 +331,19 @@ public final class PsiBridgeService implements Disposable {
                 break;
             }
             String val = e.getValue().isJsonPrimitive()
-                    ? e.getValue().getAsString() : e.getValue().toString();
+                ? e.getValue().getAsString() : e.getValue().toString();
             if (val.length() > 100) val = val.substring(0, 97) + "…";
             sb.append("<tr><td><b>").append(StringUtil.escapeXmlEntities(e.getKey()))
-                    .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
-                    .append("</td></tr>");
+                .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
+                .append("</td></tr>");
         }
         sb.append("</table>");
         return sb.toString();
     }
 
-    /** Returns true if the tool name is a write operation that should get auto-highlights. */
+    /**
+     * Returns true if the tool name is a write operation that should get auto-highlights.
+     */
     private static boolean isWriteToolName(String toolName) {
         return switch (toolName) {
             case "write_file", "intellij_write_file", "edit_text",
@@ -353,7 +356,7 @@ public final class PsiBridgeService implements Disposable {
     private static boolean isSuccessfulWrite(String toolName, String result) {
         return switch (toolName) {
             case "write_file", "intellij_write_file", "edit_text" ->
-                    result.startsWith("Edited:") || result.startsWith("Written:");
+                result.startsWith("Edited:") || result.startsWith("Written:");
             case "create_file" -> result.startsWith("\u2713 Created file:");
             case "replace_symbol_body" -> result.startsWith("Replaced lines ");
             case "insert_before_symbol" -> result.startsWith("Inserted ") && result.contains(" before ");
@@ -370,14 +373,34 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Auto-run get_highlights on the edited file and append results to the write response.
-     * The {@link DaemonWaiter} was subscribed BEFORE the write to avoid the race condition
-     * where a fast daemon could finish and fire {@code daemonFinished()} between the write
-     * returning and us subscribing.
+     * Auto-run get_highlights on the written file and append results to the write response.
+     *
+     * <p>The daemon only analyzes files that are open in an editor. Two cases:</p>
+     * <ul>
+     *   <li><b>File already open:</b> the write triggers an automatic daemon re-pass on that
+     *       document. The {@link DaemonWaiter} (subscribed before the write) catches it.</li>
+     *   <li><b>File not open</b> (new file, or edit to a closed file): the pre-write waiter may
+     *       have already fired on an unrelated daemon pass for other open files. We close it,
+     *       subscribe a fresh waiter, then silently open the file in the editor (no focus steal)
+     *       to trigger a daemon pass that actually includes the target file.</li>
+     * </ul>
      */
-    private String appendAutoHighlights(String writeResult, String path, DaemonWaiter waiter) {
+    private String appendAutoHighlights(String writeResult, String path, DaemonWaiter preWriteWaiter) {
+        DaemonWaiter activeWaiter = preWriteWaiter;
         try {
-            waiter.await();
+            com.intellij.openapi.vfs.VirtualFile vf =
+                ToolUtils.resolveVirtualFile(project, path);
+            boolean alreadyOpen = vf != null
+                && com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(vf);
+
+            if (!alreadyOpen) {
+                // Pre-write waiter may have fired on other open files, not on this one.
+                // Subscribe fresh BEFORE opening so we can't miss the new daemon pass.
+                preWriteWaiter.close();
+                activeWaiter = new DaemonWaiter(project);
+                openFileSilently(vf, path);
+            }
+            activeWaiter.await();
 
             ToolHandler highlightHandler = toolRegistry.get("get_highlights");
             if (highlightHandler == null) return writeResult;
@@ -396,7 +419,33 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("Auto-highlights after write failed: " + e.getMessage());
             return writeResult;
         } finally {
-            waiter.close();
+            activeWaiter.close();
+        }
+    }
+
+    /**
+     * Opens {@code vf} in the editor without stealing focus, so the daemon will include it
+     * in its next pass. Blocks until the EDT open call completes (max 5s).
+     * Falls back to path-based resolution if {@code vf} is null.
+     */
+    private void openFileSilently(@Nullable com.intellij.openapi.vfs.VirtualFile vf, String path) {
+        CompletableFuture<Void> opened = new CompletableFuture<>();
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                com.intellij.openapi.vfs.VirtualFile target = vf != null
+                    ? vf : ToolUtils.resolveVirtualFile(project, path);
+                if (target != null) {
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                        .openFile(target, false);
+                }
+            } finally {
+                opened.complete(null);
+            }
+        });
+        try {
+            opened.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            LOG.info("openFileSilently timed out or failed for " + path + ": " + e.getMessage());
         }
     }
 
@@ -407,19 +456,19 @@ public final class PsiBridgeService implements Disposable {
      */
     private final class DaemonWaiter implements AutoCloseable {
         private final java.util.concurrent.CountDownLatch latch =
-                new java.util.concurrent.CountDownLatch(1);
+            new java.util.concurrent.CountDownLatch(1);
         private final com.intellij.util.messages.MessageBusConnection connection;
 
         DaemonWaiter(Project proj) {
             connection = proj.getMessageBus().connect();
             connection.subscribe(
-                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
-                    new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
-                        @Override
-                        public void daemonFinished() {
-                            latch.countDown();
-                        }
+                com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
+                new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
+                    @Override
+                    public void daemonFinished() {
+                        latch.countDown();
                     }
+                }
             );
         }
 

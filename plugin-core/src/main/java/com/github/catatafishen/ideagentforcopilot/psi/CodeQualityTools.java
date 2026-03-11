@@ -184,7 +184,7 @@ class CodeQualityTools extends AbstractToolHandler {
         ApplicationManager.getApplication().runReadAction(() -> {
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> allFiles =
-                    collectFilesForHighlightAnalysis(pathStr, includeUnindexed, fileIndex, resultFuture);
+                collectFilesForHighlightAnalysis(pathStr, includeUnindexed, fileIndex, resultFuture);
             if (resultFuture.isDone()) return;
 
             LOG.info("Analyzing " + allFiles.size() + " files for highlights (cached mode)");
