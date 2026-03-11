@@ -40,16 +40,16 @@ public final class PsiBridgeService implements Disposable {
      * Project-level message bus topic for tool call events (fire-and-forget notifications).
      */
     public static final Topic<ToolCallListener> TOOL_CALL_TOPIC =
-        Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
+            Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
 
     private final Project project;
     private final RunConfigurationService runConfigService;
     private final Map<String, ToolHandler> toolRegistry = new LinkedHashMap<>();
     private final FileTools fileTools;
     private final java.util.concurrent.atomic.AtomicBoolean permissionPending =
-        new java.util.concurrent.atomic.AtomicBoolean(false);
+            new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.Set<String> sessionAllowedTools =
-        java.util.concurrent.ConcurrentHashMap.newKeySet();
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
@@ -62,17 +62,17 @@ public final class PsiBridgeService implements Disposable {
 
         // Register all tools from handler groups
         for (AbstractToolHandler handler : List.of(
-            new CodeNavigationTools(project),
-            fileTools,
-            new CodeQualityTools(project),
-            refactoringTools,
-            new SymbolEditingTools(project),
-            new TestTools(project, refactoringTools),
-            new ProjectTools(project),
-            new GitTools(project, gitToolHandler),
-            new InfrastructureTools(project),
-            new TerminalTools(project),
-            new EditorTools(project)
+                new CodeNavigationTools(project),
+                fileTools,
+                new CodeQualityTools(project),
+                refactoringTools,
+                new SymbolEditingTools(project),
+                new TestTools(project, refactoringTools),
+                new ProjectTools(project),
+                new GitTools(project, gitToolHandler),
+                new InfrastructureTools(project),
+                new TerminalTools(project),
+                new EditorTools(project)
         )) {
             toolRegistry.putAll(handler.getTools());
         }
@@ -182,7 +182,7 @@ public final class PsiBridgeService implements Disposable {
         long duration = System.currentTimeMillis() - startTimeMs;
         try {
             project.getMessageBus().syncPublisher(TOOL_CALL_TOPIC)
-                .toolCalled(toolName, duration, success);
+                    .toolCalled(toolName, duration, success);
         } catch (Exception e) {
             LOG.debug("Failed to fire tool call event", e);
         }
@@ -227,17 +227,17 @@ public final class PsiBridgeService implements Disposable {
         String reqId = java.util.UUID.randomUUID().toString();
 
         com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel chatPanel =
-            com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel.Companion.getInstance(project);
+                com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel.Companion.getInstance(project);
 
         com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse response;
         if (chatPanel != null) {
             java.util.concurrent.CompletableFuture<com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse> future =
-                new java.util.concurrent.CompletableFuture<>();
+                    new java.util.concurrent.CompletableFuture<>();
             EdtUtil.invokeLater(() ->
-                chatPanel.showPermissionRequest(reqId, displayName, argsJson, result -> {
-                    future.complete(result);
-                    return kotlin.Unit.INSTANCE;
-                })
+                    chatPanel.showPermissionRequest(reqId, displayName, argsJson, result -> {
+                        future.complete(result);
+                        return kotlin.Unit.INSTANCE;
+                    })
             );
             try {
                 response = future.get(120, java.util.concurrent.TimeUnit.SECONDS);
@@ -253,16 +253,16 @@ public final class PsiBridgeService implements Disposable {
             boolean[] result = {false};
             EdtUtil.invokeAndWait(() -> {
                 String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
-                    + buildArgSummary(arguments) + "</html>";
+                        + buildArgSummary(arguments) + "</html>";
                 int choice = Messages.showYesNoDialog(
-                    project, message, "Tool Permission Request",
-                    "Allow", "Deny", Messages.getQuestionIcon()
+                        project, message, "Tool Permission Request",
+                        "Allow", "Deny", Messages.getQuestionIcon()
                 );
                 result[0] = choice == Messages.YES;
             });
             response = result[0]
-                ? com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE
-                : com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY;
+                    ? com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE
+                    : com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY;
         }
 
         return switch (response) {
@@ -327,11 +327,11 @@ public final class PsiBridgeService implements Disposable {
                 break;
             }
             String val = e.getValue().isJsonPrimitive()
-                ? e.getValue().getAsString() : e.getValue().toString();
+                    ? e.getValue().getAsString() : e.getValue().toString();
             if (val.length() > 100) val = val.substring(0, 97) + "…";
             sb.append("<tr><td><b>").append(StringUtil.escapeXmlEntities(e.getKey()))
-                .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
-                .append("</td></tr>");
+                    .append(":</b>&nbsp;</td><td>").append(StringUtil.escapeXmlEntities(val))
+                    .append("</td></tr>");
         }
         sb.append("</table>");
         return sb.toString();
@@ -340,7 +340,8 @@ public final class PsiBridgeService implements Disposable {
     private static boolean isSuccessfulWrite(String toolName, String result) {
         return switch (toolName) {
             case "write_file", "intellij_write_file", "edit_text" ->
-                result.startsWith("Edited:") || result.startsWith("Written:");
+                    result.startsWith("Edited:") || result.startsWith("Written:");
+            case "create_file" -> result.startsWith("\u2713 Created file:");
             case "replace_symbol_body" -> result.startsWith("Replaced lines ");
             case "insert_before_symbol" -> result.startsWith("Inserted ") && result.contains(" before ");
             case "insert_after_symbol" -> result.startsWith("Inserted ") && result.contains(" after ");
@@ -376,12 +377,31 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Wait for the DaemonCodeAnalyzer to finish its current pass.
-     * Uses a fixed wait since DaemonCodeAnalyzer.isRunning() is internal API.
+     * Wait for the DaemonCodeAnalyzer to finish its current pass using the public
+     * {@link com.intellij.codeInsight.daemon.DaemonCodeAnalyzer#DAEMON_EVENT_TOPIC}.
+     * Returns as soon as any daemon pass completes, or after 5 s timeout.
      */
     private void waitForDaemonPass() throws InterruptedException {
-        Thread.sleep(2000);
-        LOG.info("Auto-highlights: daemon pass wait completed (2s fixed), collecting highlights");
+        var latch = new java.util.concurrent.CountDownLatch(1);
+        var connection = project.getMessageBus().connect();
+        try {
+            connection.subscribe(
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
+                    new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
+                        @Override
+                        public void daemonFinished() {
+                            latch.countDown();
+                        }
+                    }
+            );
+            if (latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                LOG.info("Auto-highlights: daemon pass completed (event-driven), collecting highlights");
+            } else {
+                LOG.info("Auto-highlights: daemon wait timed out (5s), collecting available highlights");
+            }
+        } finally {
+            connection.disconnect();
+        }
     }
 
     @Override
