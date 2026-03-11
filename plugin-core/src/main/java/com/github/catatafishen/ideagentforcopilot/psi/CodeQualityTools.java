@@ -617,9 +617,9 @@ class CodeQualityTools extends AbstractToolHandler {
             var presentation = PlatformApiCompat.getInspectionPresentation(ctx, toolWrapper);
             if (presentation == null) continue;
 
-            var inspCtx = new InspectionContext(basePath, filesSet, severityRank, requiredRank);
+            var context = new InspectionContext(basePath, filesSet, severityRank, requiredRank);
             int beforeSize = allProblems.size();
-            int[] skipped = collectProblemsFromTool(presentation, toolId, inspCtx, allProblems);
+            int[] skipped = collectProblemsFromTool(presentation, toolId, context, allProblems);
             skippedNoDescription += skipped[0];
             skippedNoFile += skipped[1];
             if (allProblems.size() > beforeSize) {
@@ -635,25 +635,25 @@ class CodeQualityTools extends AbstractToolHandler {
 
     private int[] collectProblemsFromTool(
         com.intellij.codeInspection.InspectionToolResultExporter presentation,
-        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        String toolId, InspectionContext context, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
 
         // getProblemElements returns SynchronizedBidiMultiMap<RefEntity, CommonProblemDescriptor>
         var problemElements = presentation.getProblemElements();
         if (!problemElements.isEmpty()) {
-            return collectFromProblemElements(problemElements, toolId, inspCtx, allProblems);
+            return collectFromProblemElements(problemElements, toolId, context, allProblems);
         }
 
         // Try getProblemDescriptors() for tools that don't use RefEntity
         var flatDescriptors = presentation.getProblemDescriptors();
-        int[] flatSkipped = collectFromFlatDescriptors(flatDescriptors, toolId, inspCtx, allProblems);
+        int[] flatSkipped = collectFromFlatDescriptors(flatDescriptors, toolId, context, allProblems);
         skippedNoDescription += flatSkipped[0];
         skippedNoFile += flatSkipped[1];
 
         // Fallback: for tools like UnusedDeclarationPresentation that store results
         // in the reference graph, use exportResults() to extract XML and parse it
-        int[] exportSkipped = collectFromExportedResults(presentation, toolId, inspCtx, allProblems);
+        int[] exportSkipped = collectFromExportedResults(presentation, toolId, context, allProblems);
         skippedNoDescription += exportSkipped[0];
         skippedNoFile += exportSkipped[1];
 
@@ -662,14 +662,14 @@ class CodeQualityTools extends AbstractToolHandler {
 
     private int[] collectFromProblemElements(
         com.intellij.codeInspection.ui.util.SynchronizedBidiMultiMap<com.intellij.codeInspection.reference.RefEntity, com.intellij.codeInspection.CommonProblemDescriptor> problemElements,
-        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        String toolId, InspectionContext context, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
         for (var refEntity : problemElements.keys()) {
             var descriptors = problemElements.get(refEntity);
             if (descriptors == null) continue;
             for (var descriptor : descriptors) {
-                int result = processInspectionDescriptor(descriptor, refEntity, toolId, inspCtx, allProblems);
+                int result = processInspectionDescriptor(descriptor, refEntity, toolId, context, allProblems);
                 if (result == 1) skippedNoDescription++;
                 else if (result == 2) skippedNoFile++;
             }
@@ -679,11 +679,11 @@ class CodeQualityTools extends AbstractToolHandler {
 
     private int[] collectFromFlatDescriptors(
         java.util.Collection<com.intellij.codeInspection.CommonProblemDescriptor> flatDescriptors,
-        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        String toolId, InspectionContext context, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
         for (var descriptor : flatDescriptors) {
-            int result = processInspectionDescriptor(descriptor, null, toolId, inspCtx, allProblems);
+            int result = processInspectionDescriptor(descriptor, null, toolId, context, allProblems);
             if (result == 1) skippedNoDescription++;
             else if (result == 2) skippedNoFile++;
         }
@@ -692,14 +692,14 @@ class CodeQualityTools extends AbstractToolHandler {
 
     private int[] collectFromExportedResults(
         com.intellij.codeInspection.InspectionToolResultExporter presentation,
-        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        String toolId, InspectionContext context, List<String> allProblems) {
         var hasProblems = presentation.hasReportedProblems();
         if (hasProblems != com.intellij.util.ThreeState.YES) {
             return new int[]{0, 0};
         }
         try {
             var elements = exportElements(presentation);
-            return tallyExportedElements(elements, toolId, inspCtx, allProblems);
+            return tallyExportedElements(elements, toolId, context, allProblems);
         } catch (Exception e) {
             LOG.warn("Failed to export results for tool '" + toolId + "': " + e.getMessage());
         }
@@ -725,14 +725,14 @@ class CodeQualityTools extends AbstractToolHandler {
     }
 
     private int[] tallyExportedElements(List<org.jdom.Element> elements, String toolId,
-                                        InspectionContext inspCtx, List<String> allProblems) {
+                                        InspectionContext context, List<String> allProblems) {
         int skippedNoDescription = 0;
         int skippedNoFile = 0;
         for (var element : elements) {
             String formatted = formatExportedElement(element, toolId,
-                inspCtx.basePath, inspCtx.filesSet);
+                context.basePath(), context.filesSet());
             if (formatted != null && !formatted.isEmpty()) {
-                if (shouldFilterBySeverity(element, inspCtx)) continue;
+                if (shouldFilterBySeverity(element, context)) continue;
                 allProblems.add(formatted);
             } else if (formatted == null) {
                 skippedNoDescription++;
@@ -743,11 +743,11 @@ class CodeQualityTools extends AbstractToolHandler {
         return new int[]{skippedNoDescription, skippedNoFile};
     }
 
-    private boolean shouldFilterBySeverity(org.jdom.Element element, InspectionContext inspCtx) {
-        if (inspCtx.requiredRank <= 0) return false;
+    private boolean shouldFilterBySeverity(org.jdom.Element element, InspectionContext context) {
+        if (context.requiredRank() <= 0) return false;
         String severity = extractSeverityFromElement(element);
-        int rank = inspCtx.severityRank.getOrDefault(severity.toUpperCase(), 0);
-        return rank < inspCtx.requiredRank;
+        int rank = context.severityRank().getOrDefault(severity.toUpperCase(), 0);
+        return rank < context.requiredRank();
     }
 
     /**
@@ -809,17 +809,17 @@ class CodeQualityTools extends AbstractToolHandler {
     private int processInspectionDescriptor(
         com.intellij.codeInspection.CommonProblemDescriptor descriptor,
         com.intellij.codeInspection.reference.RefEntity refEntity,
-        String toolId, InspectionContext inspCtx, List<String> allProblems) {
+        String toolId, InspectionContext context, List<String> allProblems) {
         String formatted = formatInspectionDescriptor(
-            descriptor, refEntity, toolId, inspCtx.basePath, inspCtx.filesSet);
+            descriptor, refEntity, toolId, context.basePath(), context.filesSet());
         if (formatted == null) return 1;
         if (formatted.isEmpty()) return 2;
 
         String severity = (descriptor instanceof com.intellij.codeInspection.ProblemDescriptor pd)
             ? pd.getHighlightType().toString() : SEVERITY_WARNING;
-        if (inspCtx.requiredRank > 0) {
-            int rank = inspCtx.severityRank.getOrDefault(severity.toUpperCase(), 0);
-            if (rank < inspCtx.requiredRank) return 3;
+        if (context.requiredRank() > 0) {
+            int rank = context.severityRank().getOrDefault(severity.toUpperCase(), 0);
+            if (rank < context.requiredRank()) return 3;
         }
 
         allProblems.add(formatted);

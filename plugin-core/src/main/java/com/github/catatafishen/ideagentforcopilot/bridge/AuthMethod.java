@@ -3,7 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
 import java.util.List;
 
 /**
- * Authentication method descriptor returned by the ACP agent during initialisation.
+ * Authentication method descriptor returned by the ACP agent during initialization.
  */
 public class AuthMethod {
     private String id;

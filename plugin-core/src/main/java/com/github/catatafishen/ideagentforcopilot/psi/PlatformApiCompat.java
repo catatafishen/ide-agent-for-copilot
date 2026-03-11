@@ -176,9 +176,9 @@ public final class PlatformApiCompat {
             return true;
         }
         try {
-            ClassLoader classLoader = ep.getPluginDescriptor() != null
-                ? ep.getPluginDescriptor().getClassLoader()
-                : ep.getClass().getClassLoader();
+            // ep was loaded by its own plugin's classloader — same as getPluginDescriptor().getClassLoader()
+            // which is both deprecated and experimental in newer IDE versions.
+            ClassLoader classLoader = ep.getClass().getClassLoader();
             Class<?> presClass = Class.forName(presentationClassName, false, classLoader);
             presClass.getConstructor(InspectionToolWrapper.class, GlobalInspectionContextEx.class);
             return true;
@@ -811,18 +811,16 @@ public final class PlatformApiCompat {
     }
 
     /**
-     * Launches a full IDE inspection run ({@code GlobalInspectionContextImpl}) against the given
-     * scope and profile, opens the IDE Inspection Results tool window, and invokes {@code onFinished}
-     * with the populated context once analysis is complete.
+     * Launches a full IDE inspection run against the given scope and profile, and invokes
+     * {@code onFinished} with the populated context once analysis is complete.
      *
-     * <p><b>Why extracted:</b> {@code GlobalInspectionContextEx} is the offline/export context
-     * whose {@code launchInspections} and {@code runTools} are no-ops — calling {@code doInspections}
-     * on it completes instantly with 0 results and never shows the IDE window.
-     * {@code GlobalInspectionContextImpl} is the full UI context, but it and several of its
-     * collaborating methods ({@code InspectionManagerEx.getContentManager()},
-     * {@code setExternalProfile()}, {@code doInspections()}) are {@code @ApiStatus.Internal} or
-     * produce false-positive "cannot resolve" errors in the IDE daemon.
-     * All such calls are centralised here.</p>
+     * <p><b>Why extracted:</b> The inspection infrastructure requires subclassing
+     * {@code GlobalInspectionContextEx} (rather than using a plain instance) to intercept
+     * {@code notifyInspectionsFinished}, which is the only reliable callback for when all
+     * tool analysis has completed. {@code setExternalProfile()} and {@code doInspections()}
+     * are inherited from {@code GlobalInspectionContextBase} (both public). The analysis runs
+     * without opening the IDE Inspection Results tool window, which is intentional for
+     * programmatic MCP use.</p>
      *
      * @param project    the current project
      * @param scope      the analysis scope to inspect
@@ -835,10 +833,8 @@ public final class PlatformApiCompat {
         @NotNull com.intellij.analysis.AnalysisScope scope,
         @NotNull com.intellij.codeInspection.ex.InspectionProfileImpl profile,
         @NotNull java.util.function.Consumer<com.intellij.codeInspection.ex.GlobalInspectionContextEx> onFinished) {
-        com.intellij.codeInspection.ex.InspectionManagerEx manager =
-            (com.intellij.codeInspection.ex.InspectionManagerEx) com.intellij.codeInspection.InspectionManager.getInstance(project);
-        com.intellij.codeInspection.ex.GlobalInspectionContextImpl context =
-            new com.intellij.codeInspection.ex.GlobalInspectionContextImpl(project, manager.getContentManager()) {
+        com.intellij.codeInspection.ex.GlobalInspectionContextEx context =
+            new com.intellij.codeInspection.ex.GlobalInspectionContextEx(project) {
                 @Override
                 protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope finishedScope) {
                     super.notifyInspectionsFinished(finishedScope);
