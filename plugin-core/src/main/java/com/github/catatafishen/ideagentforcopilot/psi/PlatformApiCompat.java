@@ -780,4 +780,33 @@ public final class PlatformApiCompat {
         connection.subscribe(com.intellij.execution.ExecutionManager.EXECUTION_TOPIC, listener);
         return connection::disconnect;
     }
+
+    /**
+     * Returns a publisher for the given topic on the project message bus.
+     *
+     * <p><b>Why extracted:</b> {@code MessageBus.syncPublisher(Topic<T>)} cannot be resolved in the
+     * IDE daemon because the generic bounds on {@code MessageBus} differ between the dev IDE and the
+     * target SDK. Gradle compiles cleanly.</p>
+     */
+    public static <T> T syncPublisher(@NotNull Project project, @NotNull com.intellij.util.messages.Topic<T> topic) {
+        return project.getMessageBus().syncPublisher(topic);
+    }
+
+    /**
+     * Subscribes a {@link com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener} to
+     * daemon events on the project message bus, and returns a {@link Runnable} that disconnects
+     * the subscription.
+     *
+     * <p><b>Why extracted:</b> {@code project.getMessageBus().connect()} cannot be resolved in the
+     * IDE daemon because the generic bounds on {@code MessageBus.connect()} differ between the dev
+     * IDE and the target SDK. Cascading: {@code connection.subscribe()} and
+     * {@code connection.disconnect()} also fail. The Gradle build compiles without errors.</p>
+     */
+    static @NotNull Runnable subscribeDaemonListener(
+        @NotNull Project project,
+        @NotNull com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener listener) {
+        var connection = project.getMessageBus().connect();
+        connection.subscribe(com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC, listener);
+        return connection::disconnect;
+    }
 }

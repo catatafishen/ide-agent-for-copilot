@@ -47,8 +47,6 @@ public final class PsiBridgeService implements Disposable {
     private final RunConfigurationService runConfigService;
     private final Map<String, ToolHandler> toolRegistry = new LinkedHashMap<>();
     private final FileTools fileTools;
-    private final java.util.concurrent.atomic.AtomicBoolean permissionPending =
-        new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.Set<String> sessionAllowedTools =
         java.util.concurrent.ConcurrentHashMap.newKeySet();
 
@@ -124,20 +122,20 @@ public final class PsiBridgeService implements Disposable {
 
         // Subscribe to daemon events BEFORE the write to avoid the race where
         // the daemon finishes before we subscribe and we miss the event entirely.
-        // For existing files, we can resolve the VirtualFile now and make the waiter file-specific.
+        // For existing files, we resolve the VirtualFile now and make the waiter file-specific.
         // For new files (create_file), vfForHighlights is null; the fresh waiter in appendAutoHighlights
         // will be created after the file exists and will be file-specific.
         String filePathForHighlights = isWriteToolName(toolName) ? extractFilePath(arguments) : null;
         com.intellij.openapi.vfs.VirtualFile vfForHighlights = filePathForHighlights != null
             ? ToolUtils.resolveVirtualFile(project, filePathForHighlights) : null;
-        DaemonWaiter daemonWaiter = filePathForHighlights != null
-            ? new DaemonWaiter(project, vfForHighlights) : null;
 
-        try {
+        // try-with-resources ensures the waiter is always disconnected.
+        // appendAutoHighlights may close and re-subscribe internally; disconnect() is idempotent.
+        try (DaemonWaiter daemonWaiter = filePathForHighlights != null
+            ? new DaemonWaiter(project, vfForHighlights) : null) {
             String denied = checkPluginToolPermission(toolName, arguments);
             if (denied != null) {
                 fireToolCallEvent(toolName, startMs, false);
-                if (daemonWaiter != null) daemonWaiter.close();
                 return denied;
             }
 
@@ -147,30 +145,18 @@ public final class PsiBridgeService implements Disposable {
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {
                 LOG.info("Auto-highlights: piggybacking on write to " + filePathForHighlights);
                 result = appendAutoHighlights(result, filePathForHighlights, daemonWaiter);
-            } else if (daemonWaiter != null) {
-                daemonWaiter.close();
             }
             return result;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
             success = false;
-            if (daemonWaiter != null) daemonWaiter.close();
             return "Error: IDE is busy, please retry. " + e.getMessage();
         } catch (Exception e) {
             LOG.warn("Tool call error: " + toolName, e);
             success = false;
-            if (daemonWaiter != null) daemonWaiter.close();
             return "Error: " + e.getMessage();
         } finally {
             fireToolCallEvent(toolName, startMs, success);
         }
-    }
-
-    /**
-     * Returns the set of registered tool names (built-in + dynamically registered).
-     * Used by MacroToolRegistrar in the experimental plugin variant.
-     */
-    public java.util.Set<String> getRegisteredToolNames() {
-        return java.util.Collections.unmodifiableSet(toolRegistry.keySet());
     }
 
     /**
@@ -182,16 +168,16 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Removes a dynamically registered tool. Returns true if the tool existed.
+     * Removes a dynamically registered tool.
      */
-    public boolean unregisterTool(String id) {
-        return toolRegistry.remove(id) != null;
+    public void unregisterTool(String id) {
+        toolRegistry.remove(id);
     }
 
     private void fireToolCallEvent(String toolName, long startTimeMs, boolean success) {
         long duration = System.currentTimeMillis() - startTimeMs;
         try {
-            project.getMessageBus().syncPublisher(TOOL_CALL_TOPIC)
+            PlatformApiCompat.syncPublisher(project, TOOL_CALL_TOPIC)
                 .toolCalled(toolName, duration, success);
         } catch (Exception e) {
             LOG.debug("Failed to fire tool call event", e);
@@ -221,12 +207,7 @@ public final class PsiBridgeService implements Disposable {
         }
 
         // ASK: show a permission bubble in the chat panel and block until user responds
-        permissionPending.set(true);
-        try {
-            return askUserPermission(toolName, arguments);
-        } finally {
-            permissionPending.set(false);
-        }
+        return askUserPermission(toolName, arguments);
     }
 
     @Nullable
@@ -363,7 +344,7 @@ public final class PsiBridgeService implements Disposable {
         return switch (toolName) {
             case "write_file", "intellij_write_file", "edit_text" ->
                 result.startsWith("Edited:") || result.startsWith("Written:");
-            case "create_file" -> result.startsWith("\u2713 Created file:");
+            case "create_file" -> result.startsWith("✓ Created file:");
             case "replace_symbol_body" -> result.startsWith("Replaced lines ");
             case "insert_before_symbol" -> result.startsWith("Inserted ") && result.contains(" before ");
             case "insert_after_symbol" -> result.startsWith("Inserted ") && result.contains(" after ");
@@ -378,34 +359,9 @@ public final class PsiBridgeService implements Disposable {
         return null;
     }
 
-    /**
-     * Auto-run get_highlights on the written file and append results to the write response.
-     *
-     * <p>The daemon only analyzes files that are open in an editor. Two cases:</p>
-     * <ul>
-     *   <li><b>File already open:</b> the write triggers an automatic daemon re-pass on that
-     *       document. The {@link DaemonWaiter} (subscribed before the write) catches it.</li>
-     *   <li><b>File not open</b> (new file, or edit to a closed file): the pre-write waiter may
-     *       have already fired on an unrelated daemon pass for other open files. We close it,
-     *       subscribe a fresh waiter, then silently open the file in the editor (no focus steal)
-     *       to trigger a daemon pass that actually includes the target file.</li>
-     * </ul>
-     */
     private String appendAutoHighlights(String writeResult, String path, DaemonWaiter preWriteWaiter) {
-        DaemonWaiter activeWaiter = preWriteWaiter;
-        try {
-            com.intellij.openapi.vfs.VirtualFile vf =
-                ToolUtils.resolveVirtualFile(project, path);
-            boolean alreadyOpen = vf != null
-                && com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(vf);
-
-            if (!alreadyOpen) {
-                // Pre-write waiter may have fired on other open files, not on this one.
-                // Subscribe a file-specific waiter BEFORE opening so we can't miss the new daemon pass.
-                preWriteWaiter.close();
-                activeWaiter = new DaemonWaiter(project, vf);
-                openFileSilently(vf, path);
-            }
+        com.intellij.openapi.vfs.VirtualFile vf = ToolUtils.resolveVirtualFile(project, path);
+        try (DaemonWaiter activeWaiter = resolveActiveWaiter(preWriteWaiter, vf, path)) {
             activeWaiter.await();
 
             ToolHandler highlightHandler = toolRegistry.get("get_highlights");
@@ -424,16 +380,30 @@ public final class PsiBridgeService implements Disposable {
         } catch (Exception e) {
             LOG.info("Auto-highlights after write failed: " + e.getMessage());
             return writeResult;
-        } finally {
-            activeWaiter.close();
         }
     }
 
     /**
-     * Opens {@code vf} in the editor without stealing focus, so the daemon will include it
-     * in its next pass. Blocks until the EDT open call completes (max 5s).
-     * Falls back to path-based resolution if {@code vf} is null.
+     * Returns the appropriate waiter to use for the highlight await.
+     * If the file is already open in an editor, returns {@code preWriteWaiter} as-is.
+     * Otherwise, closes it (the pre-write pass can't include a not-yet-open file),
+     * subscribes a fresh file-specific waiter, and opens the file silently to trigger
+     * a new daemon pass that includes the target file.
      */
+    private DaemonWaiter resolveActiveWaiter(
+        DaemonWaiter preWriteWaiter,
+        @Nullable com.intellij.openapi.vfs.VirtualFile vf,
+        String path) {
+        boolean alreadyOpen = vf != null
+            && com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(vf);
+        if (alreadyOpen) return preWriteWaiter;
+        // Subscribe a file-specific waiter BEFORE opening so we can't miss the new daemon pass.
+        preWriteWaiter.close();
+        DaemonWaiter fresh = new DaemonWaiter(project, vf);
+        openFileSilently(vf, path);
+        return fresh;
+    }
+
     private void openFileSilently(@Nullable com.intellij.openapi.vfs.VirtualFile vf, String path) {
         CompletableFuture<Void> opened = new CompletableFuture<>();
         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
@@ -450,36 +420,24 @@ public final class PsiBridgeService implements Disposable {
         });
         try {
             opened.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.info("openFileSilently interrupted for " + path);
         } catch (Exception e) {
             LOG.info("openFileSilently timed out or failed for " + path + ": " + e.getMessage());
         }
     }
 
-    /**
-     * Subscribes to {@link com.intellij.codeInsight.daemon.DaemonCodeAnalyzer#DAEMON_EVENT_TOPIC}
-     * immediately on construction so no daemon pass can be missed.
-     * <p>
-     * When {@code targetFile} is non-null, the latch counts down only when that specific file
-     * is included in the finished daemon pass — preventing unrelated passes from triggering early.
-     * When {@code targetFile} is null, any daemon pass counts down the latch.
-     * </p>
-     * Call {@link #await()} to block until the daemon finishes, then {@link #close()} to disconnect.
-     */
     private static final class DaemonWaiter implements AutoCloseable {
         private final java.util.concurrent.CountDownLatch latch =
             new java.util.concurrent.CountDownLatch(1);
-        private final com.intellij.util.messages.MessageBusConnection connection;
-        @Nullable
-        private final com.intellij.openapi.vfs.VirtualFile targetFile;
+        private final Runnable disconnect;
 
         DaemonWaiter(Project proj, @Nullable com.intellij.openapi.vfs.VirtualFile targetFile) {
-            this.targetFile = targetFile;
-            connection = proj.getMessageBus().connect();
-            connection.subscribe(
-                com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
+            disconnect = PlatformApiCompat.subscribeDaemonListener(proj,
                 new com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener() {
                     @Override
-                    public void daemonFinished(java.util.Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
+                    public void daemonFinished(@NotNull java.util.Collection<? extends com.intellij.openapi.fileEditor.FileEditor> fileEditors) {
                         if (targetFile == null
                             || fileEditors.stream().anyMatch(fe -> targetFile.equals(fe.getFile()))) {
                             latch.countDown();
@@ -493,8 +451,7 @@ public final class PsiBridgeService implements Disposable {
                             latch.countDown();
                         }
                     }
-                }
-            );
+                });
         }
 
         void await() throws InterruptedException {
@@ -507,7 +464,7 @@ public final class PsiBridgeService implements Disposable {
 
         @Override
         public void close() {
-            connection.disconnect();
+            disconnect.run();
         }
     }
 
