@@ -28,6 +28,7 @@ public final class QualityToolFactory {
         tools.add(new GetAvailableActionsTool(project));
         tools.add(new RunInspectionsTool(project));
         tools.add(new ApplyQuickfixTool(project));
+        tools.add(new ApplyActionTool(project));
         tools.add(new SuppressInspectionTool(project));
         tools.add(new OptimizeImportsTool(project));
         tools.add(new FormatCodeTool(project));
