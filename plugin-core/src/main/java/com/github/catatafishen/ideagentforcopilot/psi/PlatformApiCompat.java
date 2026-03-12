@@ -547,7 +547,7 @@ public final class PlatformApiCompat {
      * cannot be resolved because the extension point generic differs between IDE versions.
      * Cascading: {@code getDisplayName()} fails on the unresolved type.</p>
      */
-    static @NotNull java.util.List<String> listConfigurationTypeNames() {
+    public static @NotNull java.util.List<String> listConfigurationTypeNames() {
         var result = new java.util.ArrayList<String>();
         for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
             result.add(ct.getDisplayName());
@@ -612,7 +612,7 @@ public final class PlatformApiCompat {
      * @param idOrNameSubstring case-insensitive substring to match against ID or display name
      * @return the matching ConfigurationType, or null if not found
      */
-    static com.intellij.execution.configurations.ConfigurationType findConfigurationTypeBySearch(
+    public static com.intellij.execution.configurations.ConfigurationType findConfigurationTypeBySearch(
         String idOrNameSubstring) {
         String lowerSearch = idOrNameSubstring.toLowerCase();
         for (var ct : com.intellij.execution.configurations.ConfigurationType

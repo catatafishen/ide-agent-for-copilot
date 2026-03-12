@@ -1,22 +1,17 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 
-import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.Tool;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Abstract base for editor tools. Provides access to the shared
- * {@link EditorTools} for editor operations.
+ * Abstract base for editor tools.
  */
 public abstract class EditorTool extends Tool {
 
-    protected final EditorTools editorTools;
-
-    protected EditorTool(Project project, EditorTools editorTools) {
+    protected EditorTool(Project project) {
         super(project);
-        this.editorTools = editorTools;
     }
 
     @Override
