@@ -269,7 +269,7 @@ public final class ToolUtils {
      * @param offset   character offset to start from (0 = beginning)
      * @return the page of output, with pagination hint if more data exists
      */
-    static String truncateOutput(String output, int maxChars, int offset) {
+    public static String truncateOutput(String output, int maxChars, int offset) {
         if (output == null || output.isEmpty()) return output;
         if (offset >= output.length()) return "(offset beyond end of output, total length: " + output.length() + ")";
         String remaining = output.substring(offset);
@@ -287,7 +287,7 @@ public final class ToolUtils {
     /**
      * Detect if a shell command is an abuse pattern that should use a dedicated IntelliJ tool.
      * Shared between the ACP permission flow (AcpClient) and the MCP tool execution
-     * flow (InfrastructureTools) to ensure consistent blocking regardless of call path.
+     * flow (RunCommandTool) to ensure consistent blocking regardless of call path.
      *
      * @param command the shell command string (will be lowercased and trimmed)
      * @return the abuse type ("git", "sed", "grep", "find", "test") or null if allowed

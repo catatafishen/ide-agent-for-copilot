@@ -1,20 +1,28 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure;
 
-import com.github.catatafishen.ideagentforcopilot.psi.InfrastructureTools;
+import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Computable;
 import org.jetbrains.annotations.NotNull;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.TerminalOutputRenderer;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
 /**
  * Reads output from a recent Run panel tab by name.
  */
-@SuppressWarnings("java:S112")
 public final class ReadRunOutputTool extends InfrastructureTool {
 
-    public ReadRunOutputTool(Project project, InfrastructureTools infraTools) {
-        super(project, infraTools);
+    private static final String PARAM_MAX_CHARS = "max_chars";
+    private static final String JSON_TAB_NAME = "tab_name";
+
+    public ReadRunOutputTool(Project project) {
+        super(project);
     }
 
     @Override
@@ -40,18 +48,77 @@ public final class ReadRunOutputTool extends InfrastructureTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"tab_name", TYPE_STRING, "Name of the Run tab to read (default: most recent)"},
-            {"max_chars", TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
+            {JSON_TAB_NAME, TYPE_STRING, "Name of the Run tab to read (default: most recent)"},
+            {PARAM_MAX_CHARS, TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        return infraTools.readRunOutput(args);
+    public @Nullable String execute(@NotNull JsonObject args) {
+        int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
+        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
+
+        try {
+            //noinspection RedundantCast — needed for Computable vs ThrowableComputable overload resolution
+            var findResult = ApplicationManager.getApplication()
+                .runReadAction((Computable<Object>) () -> {
+                    var descriptors = collectRunDescriptors();
+                    if (descriptors.isEmpty()) return "No Run or Debug panel tabs available.";
+                    return findTargetRunDescriptor(descriptors, tabName);
+                });
+
+            if (findResult instanceof String errorMsg) return errorMsg;
+
+            var target = (com.intellij.execution.ui.RunContentDescriptor) findResult;
+            var console = target.getExecutionConsole();
+            if (console == null) {
+                return "Tab '" + target.getDisplayName() + "' has no console.";
+            }
+
+            var textRef = new AtomicReference<String>();
+            EdtUtil.invokeAndWait(() ->
+                textRef.set(readConsoleTextOnEdt(console)));
+
+            String text = textRef.get();
+            if (text == null || text.isEmpty()) {
+                var consoleClass = target.getExecutionConsole() != null
+                    ? target.getExecutionConsole().getClass().getName() : "null";
+                return "Tab '" + target.getDisplayName()
+                    + "' has no text content (console type: " + consoleClass
+                    + "). The run may still be in progress or the console type is unsupported.";
+            }
+            return formatRunOutput(target.getDisplayName(), text, maxChars);
+        } catch (Exception e) {
+            return "Error reading Run output: " + e.getMessage();
+        }
     }
 
     @Override
     public @NotNull Object resultRenderer() {
         return TerminalOutputRenderer.INSTANCE;
+    }
+
+    private List<com.intellij.execution.ui.RunContentDescriptor> collectRunDescriptors() {
+        var manager = com.intellij.execution.ui.RunContentManager.getInstance(project);
+        return new ArrayList<>(manager.getAllDescriptors());
+    }
+
+    private Object findTargetRunDescriptor(List<com.intellij.execution.ui.RunContentDescriptor> descriptors,
+                                           String tabName) {
+        if (tabName == null) {
+            return descriptors.getLast();
+        }
+
+        for (var d : descriptors) {
+            if (d.getDisplayName() != null && d.getDisplayName().contains(tabName)) {
+                return d;
+            }
+        }
+
+        StringBuilder available = new StringBuilder("No tab matching '").append(tabName).append("'. Available tabs:\n");
+        for (var d : descriptors) {
+            available.append("  - ").append(d.getDisplayName()).append("\n");
+        }
+        return available.toString();
     }
 }

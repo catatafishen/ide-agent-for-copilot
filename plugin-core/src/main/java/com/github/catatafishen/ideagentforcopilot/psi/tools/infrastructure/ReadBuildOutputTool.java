@@ -1,20 +1,26 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure;
 
-import com.github.catatafishen.ideagentforcopilot.psi.InfrastructureTools;
+import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.TerminalOutputRenderer;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 /**
  * Reads output from a tab in the Build tool window.
  */
-@SuppressWarnings("java:S112")
 public final class ReadBuildOutputTool extends InfrastructureTool {
 
-    public ReadBuildOutputTool(Project project, InfrastructureTools infraTools) {
-        super(project, infraTools);
+    private static final Logger LOG = Logger.getInstance(ReadBuildOutputTool.class);
+    private static final String PARAM_MAX_CHARS = "max_chars";
+    private static final String JSON_TAB_NAME = "tab_name";
+
+    public ReadBuildOutputTool(Project project) {
+        super(project);
     }
 
     @Override
@@ -40,18 +46,104 @@ public final class ReadBuildOutputTool extends InfrastructureTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"tab_name", TYPE_STRING, "Name of the Build tab to read (default: currently selected or most recent). Use tab names shown in IntelliJ's Build tool window."},
-            {"max_chars", TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
+            {JSON_TAB_NAME, TYPE_STRING, "Name of the Build tab to read (default: currently selected or most recent). Use tab names shown in IntelliJ's Build tool window."},
+            {PARAM_MAX_CHARS, TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        return infraTools.readBuildOutput(args);
+    public @Nullable String execute(@NotNull JsonObject args) {
+        int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
+        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
+
+        try {
+            var textRef = new AtomicReference<String>();
+            EdtUtil.invokeAndWait(() -> textRef.set(readBuildOutputOnEdt(tabName, maxChars)));
+            return textRef.get();
+        } catch (Exception e) {
+            LOG.warn("Failed to read Build output", e);
+            return "Error reading Build output: " + e.getMessage();
+        }
     }
 
     @Override
     public @NotNull Object resultRenderer() {
         return TerminalOutputRenderer.INSTANCE;
+    }
+
+    private String readBuildOutputOnEdt(String tabName, int maxChars) {
+        var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+            .getToolWindow("Build");
+        if (toolWindow == null) {
+            return "Build tool window is not available (no Java/Kotlin project, or no build has run yet).";
+        }
+
+        var contentManager = toolWindow.getContentManager();
+        var contents = contentManager.getContents();
+        if (contents.length == 0) {
+            return "Build tool window is empty — no build has been run yet.";
+        }
+
+        com.intellij.ui.content.Content target;
+        if (tabName != null) {
+            target = findBuildContentByName(contents, tabName);
+            if (target == null) {
+                StringBuilder available = new StringBuilder(
+                    "No Build tab matching '").append(tabName).append("'. Available tabs:\n");
+                for (var c : contents) available.append("  - ").append(c.getDisplayName()).append("\n");
+                return available.toString();
+            }
+        } else {
+            var selected = contentManager.getSelectedContent();
+            target = selected != null ? selected : contents[contents.length - 1];
+        }
+
+        String displayName = target.getDisplayName() != null ? target.getDisplayName() : "Build";
+        String text = extractBuildTabText(target);
+        if (text == null || text.isBlank()) {
+            StringBuilder msg = new StringBuilder("Build tab '").append(displayName)
+                .append("' has no text content yet (build may still be running).\n");
+            if (contents.length > 1) {
+                msg.append("Other available tabs:\n");
+                for (var c : contents) {
+                    if (c != target) msg.append("  - ").append(c.getDisplayName()).append("\n");
+                }
+            }
+            return msg.toString();
+        }
+        return formatRunOutput(displayName, text, maxChars);
+    }
+
+    private static @Nullable com.intellij.ui.content.Content findBuildContentByName(
+        com.intellij.ui.content.Content[] contents, String tabName) {
+        for (var c : contents) {
+            if (c.getDisplayName() != null && c.getDisplayName().contains(tabName)) return c;
+        }
+        return null;
+    }
+
+    private String extractBuildTabText(com.intellij.ui.content.Content content) {
+        var component = content.getComponent();
+        if (component == null) return null;
+
+        try {
+            var getConsoleView = component.getClass().getMethod("getConsoleView");
+            var consoleView = getConsoleView.invoke(component);
+            if (consoleView != null) {
+                flushConsoleOutput(consoleView);
+                String text = extractPlainConsoleText(consoleView);
+                if (text != null && !text.isEmpty()) return text;
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Not a BuildView
+        } catch (Exception e) {
+            LOG.debug("getConsoleView() failed for Build tab", e);
+        }
+
+        flushConsoleOutput(component);
+        String text = extractPlainConsoleText(component);
+        if (text != null && !text.isEmpty()) return text;
+
+        return findConsoleTextInComponentTree(component, 8);
     }
 }
