@@ -5,16 +5,13 @@ import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx;
-import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocumentManager;
@@ -30,16 +27,21 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Invokes a named IDE quick-fix or intention action at a specific file and line.
- * Action names come from {@code get_highlights} or {@code get_available_actions} output
- * (the values listed after "→ Quick fixes:").
+ * Action names come from {@code get_highlights} or {@code get_available_actions} output.
  *
- * <p>Unlike {@code apply_quickfix} (which requires an inspection ID and re-runs the inspection),
- * this tool uses the cached daemon highlight data and invokes the action directly via IntelliJ's
- * {@link IntentionAction} API — the same path the IDE takes when the user clicks the light-bulb.</p>
+ * <p>For highlight-based quick-fixes, the action is looked up in the cached daemon highlight data.
+ * For intention actions (refactoring, conversions, etc.), an optional {@code column} positions the
+ * caret precisely so that only actions relevant to that symbol are considered.</p>
+ *
+ * <p>Unlike {@code apply_quickfix} (which requires an inspection ID), this tool invokes the action
+ * directly via IntelliJ's {@link IntentionAction} API — the same path as clicking the light-bulb.</p>
  */
 public final class ApplyActionTool extends QualityTool {
 
     private static final Logger LOG = Logger.getInstance(ApplyActionTool.class);
+    private static final String PARAM_COLUMN = "column";
+    private static final String PARAM_ACTION_NAME = "action_name";
+    private static final String LINE_LABEL = " line ";
 
     public ApplyActionTool(Project project) {
         super(project);
@@ -58,33 +60,37 @@ public final class ApplyActionTool extends QualityTool {
     @Override
     public @NotNull String description() {
         return "Invoke a named IDE quick-fix or intention action at a specific file and line. "
-            + "Action names come from get_highlights or get_available_actions output "
-            + "(values listed after '→ Quick fixes:'). "
+            + "Action names come from get_highlights or get_available_actions output. "
+            + "Provide 'column' when applying an intention action to ensure the caret is positioned "
+            + "at the correct symbol (required for refactoring intentions). "
             + "Tip: use optimize_imports to fix all missing imports at once.";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Path to the file"},
             {"line", TYPE_INTEGER, "Line number (1-based)"},
-            {"action_name", TYPE_STRING, "Exact action name from get_highlights / get_available_actions output"}
-        }, "file", "line", "action_name");
+            {PARAM_ACTION_NAME, TYPE_STRING, "Exact action name from get_highlights / get_available_actions output"},
+            {PARAM_COLUMN, TYPE_INTEGER, "Column number (1-based, optional). Required when applying "
+                + "intention actions to position the caret at the correct symbol."}
+        }, "file", "line", PARAM_ACTION_NAME);
     }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        if (!args.has("file") || !args.has("line") || !args.has("action_name")) {
+        if (!args.has("file") || !args.has("line") || !args.has(PARAM_ACTION_NAME)) {
             return "Error: 'file', 'line', and 'action_name' parameters are required";
         }
         String pathStr = args.get("file").getAsString();
         int targetLine = args.get("line").getAsInt();
-        String actionName = args.get("action_name").getAsString();
+        String actionName = args.get(PARAM_ACTION_NAME).getAsString();
+        Integer targetCol = args.has(PARAM_COLUMN) ? args.get(PARAM_COLUMN).getAsInt() : null;
 
         CompletableFuture<String> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {
-                future.complete(invokeAction(pathStr, targetLine, actionName));
+                future.complete(invokeAction(pathStr, targetLine, actionName, targetCol));
             } catch (Exception e) {
                 LOG.warn("Error invoking action '" + actionName + "' at " + pathStr + ":" + targetLine, e);
                 future.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
@@ -106,7 +112,7 @@ public final class ApplyActionTool extends QualityTool {
 
     // ── Private helpers ──────────────────────────────────────
 
-    private String invokeAction(String pathStr, int targetLine, String actionName) {
+    private String invokeAction(String pathStr, int targetLine, String actionName, @Nullable Integer targetCol) {
         VirtualFile vf = resolveVirtualFile(pathStr);
         if (vf == null) return ToolUtils.ERROR_PREFIX + ToolUtils.ERROR_FILE_NOT_FOUND + pathStr;
 
@@ -117,87 +123,70 @@ public final class ApplyActionTool extends QualityTool {
             return "Error: Line " + targetLine + " is out of bounds (file has " + doc.getLineCount() + FORMAT_LINES_SUFFIX;
         }
 
-        int lineStart = doc.getLineStartOffset(targetLine - 1);
-        int lineEnd = doc.getLineEndOffset(targetLine - 1);
-
         PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
         if (psiFile == null) return ToolUtils.ERROR_PREFIX + ToolUtils.ERROR_CANNOT_PARSE + pathStr;
 
-        // Collect all highlights at the target line
-        List<HighlightInfo> highlights = new ArrayList<>();
-        DaemonCodeAnalyzerEx.processHighlights(doc, project, null, 0, doc.getTextLength(), h -> {
-            if (h.getStartOffset() <= lineEnd && h.getEndOffset() >= lineStart) {
-                highlights.add(h);
-            }
-            return true;
-        });
-
-        if (highlights.isEmpty()) {
-            return "No highlights found at " + pathStr + " line " + targetLine
-                + ". Open the file in the editor first, or call get_highlights to trigger analysis.";
+        Editor editor = getOrOpenEditor(vf);
+        if (editor == null) {
+            return "Error: Could not open editor for " + pathStr + ". Ensure the file is open in the IDE.";
         }
 
-        // Find the named action across all highlights on the line
-        MatchedAction match = findAction(highlights, actionName);
-        if (match == null) {
-            List<String> available = new ArrayList<>();
-            for (var h : highlights) available.addAll(collectQuickFixNames(h));
+        // Position caret — use column if provided, otherwise start of line
+        int caretCol = (targetCol != null) ? Math.max(0, targetCol - 1) : 0;
+        editor.getCaretModel().moveToLogicalPosition(new LogicalPosition(targetLine - 1, caretCol));
+
+        IntentionAction action = findActionToApply(doc, targetLine, actionName, editor, psiFile);
+        if (action == null) {
+            List<String> available = collectAvailableActionNames(doc, targetLine, editor, psiFile);
             String hint = available.isEmpty() ? "none" : String.join(", ", available);
-            return "Action '" + actionName + "' not found at " + pathStr + " line " + targetLine
+            return "Action '" + actionName + "' not found at " + pathStr + LINE_LABEL + targetLine
                 + ". Available: [" + hint + "]";
         }
 
-        // Ensure an editor is open for the file (required by IntentionAction.invoke)
-        Editor editor = getOrOpenEditor(vf);
-        if (editor == null) {
-            return "Error: Could not open editor for " + pathStr
-                + ". Ensure the file is open in the IDE.";
-        }
-
-        if (!match.action().isAvailable(project, editor, psiFile)) {
+        if (!action.isAvailable(project, editor, psiFile)) {
             return "Action '" + actionName + "' is not currently applicable at " + pathStr
-                + " line " + targetLine + ".";
+                + LINE_LABEL + targetLine + ".";
         }
 
-        IntentionAction action = match.action();
         WriteCommandAction.runWriteCommandAction(project, actionName, null,
             () -> action.invoke(project, editor, psiFile));
 
         PsiDocumentManager.getInstance(project).commitAllDocuments();
         FileDocumentManager.getInstance().saveAllDocuments();
 
-        return "Applied action: " + actionName + "\n  File: " + pathStr + " line " + targetLine;
+        return "Applied action: " + actionName + "\n  File: " + pathStr + LINE_LABEL + targetLine;
     }
 
-    /** Scans all highlights on the line and returns the first action whose text matches {@code name}. */
+    /**
+     * Finds the named action by first searching highlight quick-fixes, then falling back to
+     * {@code IntentionManager} intention actions at the current caret position.
+     */
     @Nullable
-    private MatchedAction findAction(List<HighlightInfo> highlights, String name) {
-        for (var h : highlights) {
+    private IntentionAction findActionToApply(Document doc, int targetLine, String name,
+                                              Editor editor, PsiFile psiFile) {
+        // 1. Search highlight quick-fixes
+        for (var h : highlightsOnLine(doc, targetLine)) {
             IntentionAction found = h.findRegisteredQuickFix((descriptor, range) -> {
                 IntentionAction a = descriptor.getAction();
                 if (name.equals(a.getText())) return a;
                 return null;
             });
-            if (found != null) return new MatchedAction(found);
+            if (found != null) return found;
         }
-        return null;
+
+        // 2. Fall back to IntentionManager (handles refactoring / conversion intentions)
+        return findIntentionByName(name, editor, psiFile);
     }
 
-    /** Returns an existing text editor for {@code vf}, opening it silently if necessary. */
-    @Nullable
-    private Editor getOrOpenEditor(VirtualFile vf) {
-        FileEditorManager fem = FileEditorManager.getInstance(project);
-        for (var fe : fem.getEditors(vf)) {
-            if (fe instanceof TextEditor te) return te.getEditor();
-        }
-        // File not yet open — open it without stealing focus
-        var opened = fem.openFile(vf, false);
-        for (var fe : opened) {
-            if (fe instanceof TextEditor te) return te.getEditor();
-        }
-        return null;
-    }
-
-    private record MatchedAction(IntentionAction action) {
+    /**
+     * Collects names from both highlight quick-fixes and available intentions at the current
+     * caret position, for use in "not found" error messages.
+     */
+    private List<String> collectAvailableActionNames(Document doc, int targetLine,
+                                                     Editor editor, PsiFile psiFile) {
+        List<String> names = new ArrayList<>();
+        highlightsOnLine(doc, targetLine).forEach(h -> names.addAll(collectQuickFixNames(h)));
+        names.addAll(collectIntentionNames(editor, psiFile));
+        return names;
     }
 }
