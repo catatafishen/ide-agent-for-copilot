@@ -103,7 +103,11 @@ public final class McpProtocolHandler {
     }
 
     private JsonObject handleToolsList(JsonObject msg) {
+        // Ensure PsiBridgeService is initialized before listing tools
+        PsiBridgeService.getInstance(project);
+
         McpServerSettings settings = McpServerSettings.getInstance(project);
+        settings.ensureDefaultsApplied();
         List<ToolDefinition> enabledTools = McpToolFilter.getEnabledTools(settings, project);
 
         JsonArray tools = new JsonArray();
