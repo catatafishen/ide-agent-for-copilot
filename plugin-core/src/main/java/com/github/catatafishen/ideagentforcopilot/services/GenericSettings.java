@@ -147,8 +147,8 @@ public final class GenericSettings {
         ToolPermission top = getToolPermission(toolId);
         if (top != ToolPermission.ALLOW) return top;
 
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
-        if (entry == null || !entry.supportsPathSubPermissions) return top;
+        ToolDefinition entry = ToolRegistry.findById(toolId);
+        if (entry == null || !entry.supportsPathSubPermissions()) return top;
 
         return isInsideProject
             ? getToolPermissionInsideProject(toolId)
@@ -166,13 +166,13 @@ public final class GenericSettings {
     @NotNull
     public String getDisabledMcpToolIds() {
         StringBuilder sb = new StringBuilder();
-        for (ToolRegistry.ToolEntry tool : ToolRegistry.getAllTools()) {
-            if (!tool.isBuiltIn) {
-                String stored = PropertiesComponent.getInstance().getValue(key("tool.enabled." + tool.id));
+        for (ToolDefinition tool : ToolRegistry.getAllTools()) {
+            if (!tool.isBuiltIn()) {
+                String stored = PropertiesComponent.getInstance().getValue(key("tool.enabled." + tool.id()));
                 boolean enabled = stored == null || Boolean.parseBoolean(stored);
                 if (!enabled) {
                     if (!sb.isEmpty()) sb.append(',');
-                    sb.append(tool.id);
+                    sb.append(tool.id());
                 }
             }
         }

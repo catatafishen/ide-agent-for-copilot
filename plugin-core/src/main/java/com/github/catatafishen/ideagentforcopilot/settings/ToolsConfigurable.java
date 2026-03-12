@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
@@ -62,23 +63,23 @@ public final class ToolsConfigurable implements Configurable {
 
         toolsPanel.add(topRow);
 
-        List<ToolRegistry.ToolEntry> tools = McpToolFilter.getConfigurableTools();
+        List<ToolDefinition> tools = McpToolFilter.getConfigurableTools();
         ToolRegistry.Category currentCategory = null;
 
-        for (ToolRegistry.ToolEntry tool : tools) {
-            if (tool.category != currentCategory) {
-                currentCategory = tool.category;
+        for (ToolDefinition tool : tools) {
+            if (tool.category() != currentCategory) {
+                currentCategory = tool.category();
                 TitledSeparator sep = new TitledSeparator(currentCategory.displayName);
                 sep.setBorder(JBUI.Borders.empty(8, 0, 4, 0));
                 sep.setAlignmentX(Component.LEFT_ALIGNMENT);
                 toolsPanel.add(sep);
             }
 
-            JBCheckBox cb = new JBCheckBox(tool.displayName, settings.isToolEnabled(tool.id));
-            cb.setToolTipText(tool.description);
+            JBCheckBox cb = new JBCheckBox(tool.displayName(), settings.isToolEnabled(tool.id()));
+            cb.setToolTipText(tool.description());
             cb.setBorder(JBUI.Borders.empty(1, 16, 1, 0));
             cb.setAlignmentX(Component.LEFT_ALIGNMENT);
-            toolCheckboxes.put(tool.id, cb);
+            toolCheckboxes.put(tool.id(), cb);
             toolsPanel.add(cb);
         }
 

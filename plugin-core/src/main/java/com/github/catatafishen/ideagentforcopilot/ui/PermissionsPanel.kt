@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
 import com.github.catatafishen.ideagentforcopilot.services.AgentUiSettings
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.Category
@@ -99,7 +100,7 @@ private class NavTreeCellRenderer : TreeCellRenderer {
 internal class PermissionsPanel(private val settings: AgentUiSettings) {
 
     private data class ToolRow(
-        val tool: ToolRegistry.ToolEntry,
+        val tool: ToolDefinition,
         val isPlugin: Boolean,
         val permCombo: ComboBox<String>?,
         val inProjectCombo: ComboBox<String>?,
@@ -120,15 +121,15 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
     private fun buildAllRows() {
         for (tool in ToolRegistry.getAllTools()) {
             val permCombo: ComboBox<String>? = when {
-                !tool.isBuiltIn -> ComboBox(PLUGIN_PERM_OPTIONS).apply {
+                !tool.isBuiltIn() -> ComboBox(PLUGIN_PERM_OPTIONS).apply {
                     setMinimumAndPreferredWidth(JBUI.scale(108))
-                    selectedIndex = settings.getToolPermission(tool.id).toPluginIndex()
+                    selectedIndex = settings.getToolPermission(tool.id()).toPluginIndex()
                     toolTipText = "Permission when agent requests this tool"
                 }
 
-                tool.hasDenyControl -> ComboBox(BUILTIN_PERM_OPTIONS).apply {
+                tool.hasDenyControl() -> ComboBox(BUILTIN_PERM_OPTIONS).apply {
                     setMinimumAndPreferredWidth(JBUI.scale(108))
-                    selectedIndex = settings.getToolPermission(tool.id).toBuiltinIndex()
+                    selectedIndex = settings.getToolPermission(tool.id()).toBuiltinIndex()
                     toolTipText = BUILTIN_TOOLTIP
                 }
 
@@ -136,15 +137,15 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
             }
 
             val (inProjectCombo, outProjectCombo) = buildSubPermCombos(tool, permCombo)
-            rows.add(ToolRow(tool, !tool.isBuiltIn, permCombo, inProjectCombo, outProjectCombo))
+            rows.add(ToolRow(tool, !tool.isBuiltIn(), permCombo, inProjectCombo, outProjectCombo))
         }
     }
 
     private fun buildSubPermCombos(
-        tool: ToolRegistry.ToolEntry,
+        tool: ToolDefinition,
         permCombo: ComboBox<String>?
     ): Pair<ComboBox<String>?, ComboBox<String>?> {
-        if (!tool.supportsPathSubPermissions || tool.isBuiltIn || permCombo == null) {
+        if (!tool.supportsPathSubPermissions() || tool.isBuiltIn() || permCombo == null) {
             return Pair(null, null)
         }
 
@@ -157,13 +158,13 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
         val inProjectCombo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
             setMinimumAndPreferredWidth(JBUI.scale(108))
             isEnabled = topIsAllow
-            selectedIndex = settings.getToolPermissionInsideProject(tool.id).toPluginIndex()
+            selectedIndex = settings.getToolPermissionInsideProject(tool.id()).toPluginIndex()
             toolTipText = subTooltip(true, topIsAllow)
         }
         val outProjectCombo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
             setMinimumAndPreferredWidth(JBUI.scale(108))
             isEnabled = topIsAllow
-            selectedIndex = settings.getToolPermissionOutsideProject(tool.id).toPluginIndex()
+            selectedIndex = settings.getToolPermissionOutsideProject(tool.id()).toPluginIndex()
             toolTipText = subTooltip(false, topIsAllow)
         }
 
@@ -185,13 +186,13 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
 
         // Built-in section
         val builtinRoot = DefaultMutableTreeNode(NavNode.Section(isBuiltIn = true))
-        val builtinCats = rows.filter { it.tool.isBuiltIn }.map { it.tool.category }.distinct()
+        val builtinCats = rows.filter { it.tool.isBuiltIn() }.map { it.tool.category() }.distinct()
         for (cat in builtinCats) builtinRoot.add(DefaultMutableTreeNode(NavNode.Cat(cat, isBuiltIn = true)))
         root.add(builtinRoot)
 
         // IntelliJ plugin tools section
         val pluginRoot = DefaultMutableTreeNode(NavNode.Section(isBuiltIn = false))
-        val pluginCats = rows.filter { !it.tool.isBuiltIn }.map { it.tool.category }.distinct()
+        val pluginCats = rows.filter { !it.tool.isBuiltIn() }.map { it.tool.category() }.distinct()
         for (cat in pluginCats) pluginRoot.add(DefaultMutableTreeNode(NavNode.Cat(cat, isBuiltIn = false)))
         root.add(pluginRoot)
 
@@ -210,15 +211,15 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
         // Initial selection → plugin section
         val pluginPath = TreePath(arrayOf(root, pluginRoot))
         tree.selectionPath = pluginPath
-        showTools { !it.tool.isBuiltIn }
+        showTools { !it.tool.isBuiltIn() }
 
         tree.addTreeSelectionListener { e ->
             val node = e?.newLeadSelectionPath?.lastPathComponent as? DefaultMutableTreeNode
                 ?: return@addTreeSelectionListener
             when (val nav = node.userObject) {
-                is NavNode.Section -> showTools { it.tool.isBuiltIn == nav.isBuiltIn }
+                is NavNode.Section -> showTools { it.tool.isBuiltIn() == nav.isBuiltIn }
                 is NavNode.Cat -> showTools {
-                    it.tool.category == nav.category && it.tool.isBuiltIn == nav.isBuiltIn
+                    it.tool.category() == nav.category && it.tool.isBuiltIn() == nav.isBuiltIn
                 }
 
                 else -> Unit // other node types — no action needed
@@ -266,11 +267,11 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
 
         var lastCategory: Category? = null
         for (row in filtered) {
-            if (row.tool.category != lastCategory) {
-                lastCategory = row.tool.category
+            if (row.tool.category() != lastCategory) {
+                lastCategory = row.tool.category()
                 gbc.gridx = 0; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
                 gbc.insets = JBUI.insets(12, 0, 4, 0)
-                content.add(TitledSeparator(row.tool.category.displayName), gbc)
+                content.add(TitledSeparator(row.tool.category().displayName), gbc)
                 gbc.gridy++
                 gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
                 gbc.insets = JBUI.insets(2, 0)
@@ -280,8 +281,8 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
             gbc.gridwidth = 1; gbc.gridx = 0
             gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
             val nameLabel = SimpleColoredComponent().apply {
-                append(row.tool.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                if (row.tool.description.isNotEmpty()) toolTipText = row.tool.description
+                append(row.tool.displayName(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                if (row.tool.description().isNotEmpty()) toolTipText = row.tool.description()
                 border = JBUI.Borders.emptyLeft(4)
             }
             content.add(nameLabel, gbc)
@@ -336,7 +337,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
 
     fun isModified(): Boolean {
         for (row in rows) {
-            val id = row.tool.id
+            val id = row.tool.id()
             if (row.isPlugin) {
                 row.permCombo?.let { combo ->
                     if (combo.selectedIndex.toPluginPermission() != settings.getToolPermission(id)) return true
@@ -369,7 +370,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings) {
 
     fun save() {
         for (row in rows) {
-            val id = row.tool.id
+            val id = row.tool.id()
             if (row.isPlugin) {
                 row.permCombo?.let { combo ->
                     val perm = combo.selectedIndex.toPluginPermission()

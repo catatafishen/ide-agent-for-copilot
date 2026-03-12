@@ -1,7 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
-import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.ToolEntry;
 import com.intellij.openapi.project.Project;
 
 import java.util.List;
@@ -37,35 +37,35 @@ public final class McpToolFilter {
      * Returns all tools that should be visible in the settings UI
      * (excludes always-hidden and built-in tools).
      */
-    public static List<ToolEntry> getConfigurableTools() {
+    public static List<ToolDefinition> getConfigurableTools() {
         return ToolRegistry.getAllTools().stream()
-            .filter(t -> !t.isBuiltIn)
-            .filter(t -> !ALWAYS_HIDDEN.contains(t.id))
+            .filter(t -> !t.isBuiltIn())
+            .filter(t -> !ALWAYS_HIDDEN.contains(t.id()))
             .toList();
     }
 
     /**
      * Returns all configurable tools for a given project context.
      */
-    public static List<ToolEntry> getConfigurableTools(Project project) {
+    public static List<ToolDefinition> getConfigurableTools(Project project) {
         return getConfigurableTools();
     }
 
     /**
      * Returns tool IDs that are enabled for a given project context.
      */
-    public static List<ToolEntry> getEnabledTools(McpServerSettings settings, Project project) {
+    public static List<ToolDefinition> getEnabledTools(McpServerSettings settings, Project project) {
         return getConfigurableTools(project).stream()
-            .filter(t -> settings.isToolEnabled(t.id))
+            .filter(t -> settings.isToolEnabled(t.id()))
             .toList();
     }
 
     /**
      * Returns tool IDs that are enabled.
      */
-    public static List<ToolEntry> getEnabledTools(McpServerSettings settings) {
+    public static List<ToolDefinition> getEnabledTools(McpServerSettings settings) {
         return getConfigurableTools().stream()
-            .filter(t -> settings.isToolEnabled(t.id))
+            .filter(t -> settings.isToolEnabled(t.id()))
             .toList();
     }
 

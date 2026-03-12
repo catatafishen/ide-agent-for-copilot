@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.Gson;
@@ -1121,8 +1122,8 @@ public class AcpClient implements Closeable {
             return;
         }
         CompletableFuture<PermissionResponse> future = new CompletableFuture<>();
-        ToolRegistry.ToolEntry toolEntry = ToolRegistry.findById(toolId);
-        String displayName = toolEntry != null ? toolEntry.displayName : permKind;
+        ToolDefinition toolEntry = ToolRegistry.findById(toolId);
+        String displayName = toolEntry != null ? toolEntry.displayName() : permKind;
 
         // Extract structured tool arguments from the ACP toolCall JSON
         JsonObject toolCallJson = reqParams != null && reqParams.has("toolCall")
@@ -1209,10 +1210,10 @@ public class AcpClient implements Closeable {
      * For file tools, checks inside/outside-project sub-permission when a path is present.
      */
     private ToolPermission resolveEffectivePermission(String toolId, @Nullable JsonObject toolCall) {
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
+        ToolDefinition entry = ToolRegistry.findById(toolId);
 
         // Path-based sub-permissions for file tools (ceiling enforced by AgentSettings)
-        if (entry != null && entry.supportsPathSubPermissions && toolCall != null) {
+        if (entry != null && entry.supportsPathSubPermissions() && toolCall != null) {
             String path = extractPathFromToolCall(toolCall);
             if (path != null && !path.isEmpty()) {
                 boolean insideProject = isPathInsideProject(path);

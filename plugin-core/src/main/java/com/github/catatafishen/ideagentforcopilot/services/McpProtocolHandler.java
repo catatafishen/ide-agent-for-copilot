@@ -104,18 +104,16 @@ public final class McpProtocolHandler {
 
     private JsonObject handleToolsList(JsonObject msg) {
         McpServerSettings settings = McpServerSettings.getInstance(project);
-        List<ToolRegistry.ToolEntry> enabledTools = McpToolFilter.getEnabledTools(settings, project);
+        List<ToolDefinition> enabledTools = McpToolFilter.getEnabledTools(settings, project);
 
         JsonArray tools = new JsonArray();
-        for (ToolRegistry.ToolEntry entry : enabledTools) {
+        for (ToolDefinition entry : enabledTools) {
             JsonObject tool = new JsonObject();
-            tool.addProperty("name", entry.id);
-            tool.addProperty("description", entry.description);
-            // Prefer schema from ToolDefinition (new OO registry), fall back to legacy ToolSchemas
-            ToolDefinition def = ToolRegistry.findDefinition(entry.id);
-            JsonObject schema = def != null ? def.inputSchema() : null;
-            tool.add("inputSchema", schema != null ? schema : ToolSchemas.getInputSchema(entry.id));
-            tool.add("annotations", ToolRegistry.getMcpAnnotations(entry.id));
+            tool.addProperty("name", entry.id());
+            tool.addProperty("description", entry.description());
+            ToolDefinition def = ToolRegistry.findDefinition(entry.id());
+            tool.add("inputSchema", def != null ? def.inputSchema() : new JsonObject());
+            tool.add("annotations", ToolRegistry.getMcpAnnotations(entry.id()));
             tools.add(tool);
         }
 

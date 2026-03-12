@@ -405,15 +405,15 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         int allowCount = 0;
         int denyCount = 0;
         for (var entry : com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getAllTools()) {
-            if (entry.isBuiltIn) continue;
-            var perm = settings.getToolPermission(entry.id);
+            if (entry.isBuiltIn()) continue;
+            var perm = settings.getToolPermission(entry.id());
             if (perm == com.github.catatafishen.ideagentforcopilot.services.ToolPermission.ALLOW) {
                 cmd.add("--allow-tool");
-                cmd.add(entry.id);
+                cmd.add(entry.id());
                 allowCount++;
             } else if (perm == com.github.catatafishen.ideagentforcopilot.services.ToolPermission.DENY) {
                 cmd.add("--deny-tool");
-                cmd.add(entry.id);
+                cmd.add(entry.id());
                 denyCount++;
             }
         }
@@ -454,14 +454,14 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         var settings = new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(profile.getId());
         var permObj = new com.google.gson.JsonObject();
         for (var entry : com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getAllTools()) {
-            if (entry.isBuiltIn) {
+            if (entry.isBuiltIn()) {
                 if (profile.isExcludeAgentBuiltInTools()) {
-                    permObj.addProperty(entry.id, "deny");
+                    permObj.addProperty(entry.id(), "deny");
                 }
                 continue;
             }
-            var perm = settings.getToolPermission(entry.id);
-            permObj.addProperty(entry.id, perm.name().toLowerCase(java.util.Locale.ROOT));
+            var perm = settings.getToolPermission(entry.id());
+            permObj.addProperty(entry.id(), perm.name().toLowerCase(java.util.Locale.ROOT));
         }
         return permObj;
     }

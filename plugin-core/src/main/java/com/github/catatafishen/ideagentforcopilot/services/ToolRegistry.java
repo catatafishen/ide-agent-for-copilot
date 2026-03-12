@@ -33,29 +33,14 @@ public final class ToolRegistry {
         }
     }
 
-    public static final class ToolEntry {
-        public final String id;
-        public final String displayName;
-        /**
-         * One-line description shown as a tooltip in the settings panel.
-         */
-        public final String description;
-        public final Category category;
-        /**
-         * True = agent built-in tool; excluded via excludedTools in session/new for agents that
-         * support it (e.g. OpenCode). Cannot be disabled in Copilot CLI (ACP bug #556).
-         */
-        public final boolean isBuiltIn;
-        /**
-         * True = this built-in tool fires a permission request that we can intercept.
-         * False (and isBuiltIn=true) = runs silently with no hook.
-         */
-        public final boolean hasDenyControl;
-        /**
-         * True = tool accepts a file path; supports inside-project / outside-project
-         * sub-permissions.
-         */
-        public final boolean supportsPathSubPermissions;
+    public static final class ToolEntry implements ToolDefinition {
+        private final String id;
+        private final String displayName;
+        private final String description;
+        private final Category category;
+        private final boolean isBuiltIn;
+        private final boolean hasDenyControl;
+        private final boolean supportsPathSubPermissions;
 
         public ToolEntry(String id, String displayName, String description, Category category,
                          boolean isBuiltIn, boolean hasDenyControl, boolean supportsPathSubPermissions) {
@@ -66,6 +51,41 @@ public final class ToolRegistry {
             this.isBuiltIn = isBuiltIn;
             this.hasDenyControl = hasDenyControl;
             this.supportsPathSubPermissions = supportsPathSubPermissions;
+        }
+
+        @Override
+        public @org.jetbrains.annotations.NotNull String id() {
+            return id;
+        }
+
+        @Override
+        public @org.jetbrains.annotations.NotNull String displayName() {
+            return displayName;
+        }
+
+        @Override
+        public @org.jetbrains.annotations.NotNull String description() {
+            return description;
+        }
+
+        @Override
+        public @org.jetbrains.annotations.NotNull Category category() {
+            return category;
+        }
+
+        @Override
+        public boolean isBuiltIn() {
+            return isBuiltIn;
+        }
+
+        @Override
+        public boolean hasDenyControl() {
+            return hasDenyControl;
+        }
+
+        @Override
+        public boolean supportsPathSubPermissions() {
+            return supportsPathSubPermissions;
         }
     }
 
@@ -229,13 +249,9 @@ public final class ToolRegistry {
     /**
      * Returns all tools: built-in agent tools plus all registered MCP tool definitions.
      */
-    public static List<ToolEntry> getAllTools() {
-        var all = new java.util.ArrayList<>(BUILT_IN_TOOLS);
-        for (ToolDefinition def : DEFINITIONS.values()) {
-            all.add(new ToolEntry(def.id(), def.displayName(), def.description(),
-                def.category(), def.isBuiltIn(), def.hasDenyControl(),
-                def.supportsPathSubPermissions()));
-        }
+    public static List<ToolDefinition> getAllTools() {
+        var all = new java.util.ArrayList<ToolDefinition>(BUILT_IN_TOOLS);
+        all.addAll(DEFINITIONS.values());
         return List.copyOf(all);
     }
 
@@ -243,14 +259,10 @@ public final class ToolRegistry {
      * Look up a tool by id (exact match). Checks {@link ToolDefinition} registry first,
      * falls back to built-in tools list, returns null if not found.
      */
-    public static ToolEntry findById(String id) {
+    public static ToolDefinition findById(String id) {
         if (id == null) return null;
         ToolDefinition def = DEFINITIONS.get(id);
-        if (def != null) {
-            return new ToolEntry(def.id(), def.displayName(), def.description(),
-                def.category(), def.isBuiltIn(), def.hasDenyControl(),
-                def.supportsPathSubPermissions());
-        }
+        if (def != null) return def;
         for (ToolEntry e : BUILT_IN_TOOLS) {
             if (e.id.equals(id)) return e;
         }
@@ -266,7 +278,7 @@ public final class ToolRegistry {
     public static List<String> getBuiltInToolIds() {
         List<String> ids = new java.util.ArrayList<>();
         for (ToolEntry e : BUILT_IN_TOOLS) {
-            ids.add(e.id);
+            ids.add(e.id());
         }
         return ids;
     }
@@ -285,9 +297,9 @@ public final class ToolRegistry {
             ann.addProperty("destructiveHint", def.isDestructive());
             ann.addProperty("openWorldHint", def.isOpenWorld());
         } else {
-            ToolEntry entry = findById(toolId);
+            ToolDefinition entry = findById(toolId);
             if (entry != null) {
-                ann.addProperty("title", entry.displayName);
+                ann.addProperty("title", entry.displayName());
             }
         }
         return ann;

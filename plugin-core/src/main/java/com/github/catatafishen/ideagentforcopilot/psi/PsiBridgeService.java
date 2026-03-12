@@ -215,8 +215,8 @@ public final class PsiBridgeService implements Disposable {
 
     @Nullable
     private String askUserPermission(String toolName, JsonObject arguments) {
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
-        String displayName = entry != null ? entry.displayName : toolName;
+        ToolDefinition entry = ToolRegistry.findById(toolName);
+        String displayName = entry != null ? entry.displayName() : toolName;
         String reqId = java.util.UUID.randomUUID().toString();
 
         // Build a structured context JSON for the permission bubble: {question, args}
@@ -285,8 +285,8 @@ public final class PsiBridgeService implements Disposable {
 
     private ToolPermission resolvePluginPermission(String toolName, JsonObject arguments) {
         ToolLayerSettings settings = ToolLayerSettings.getInstance(project);
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
-        if (entry != null && entry.supportsPathSubPermissions) {
+        ToolDefinition entry = ToolRegistry.findById(toolName);
+        if (entry != null && entry.supportsPathSubPermissions()) {
             String path = extractPathArg(arguments);
             if (path != null && !path.isEmpty()) {
                 boolean inside = isInsideProject(path);
