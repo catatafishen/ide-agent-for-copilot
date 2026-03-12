@@ -425,8 +425,23 @@ const ChatController = {
         // Insert after the load-more banner (if present), otherwise before existing messages
         const loadMore = msgs.querySelector('load-more');
         const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
+
+        // Measure before insertion so we can restore the visual scroll position.
+        // JCEF does not implement CSS scroll anchoring, so inserting content above the
+        // viewport leaves scrollY at 0, pinning the user to the top and preventing a
+        // second scroll-up trigger.
+        const prevScrollY = window.scrollY;
+        const prevHeight = document.body.scrollHeight;
+
         while (temp.firstChild) {
             msgs.insertBefore(temp.firstChild, insertBefore);
+        }
+
+        // If the user was near the top when load-more fired, compensate for the added
+        // height so they are no longer pinned at scrollY=0 and can scroll up again.
+        if (prevScrollY <= 50) {
+            const addedHeight = document.body.scrollHeight - prevHeight;
+            if (addedHeight > 0) window.scrollBy(0, addedHeight);
         }
     },
 

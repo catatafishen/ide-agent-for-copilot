@@ -1219,8 +1219,14 @@ var __chatUI = (() => {
       const msgs = this._msgs();
       const loadMore = msgs.querySelector("load-more");
       const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
+      const prevScrollY = window.scrollY;
+      const prevHeight = document.body.scrollHeight;
       while (temp.firstChild) {
         msgs.insertBefore(temp.firstChild, insertBefore);
+      }
+      if (prevScrollY <= 50) {
+        const addedHeight = document.body.scrollHeight - prevHeight;
+        if (addedHeight > 0) window.scrollBy(0, addedHeight);
       }
     },
     showLoadMore(count) {
