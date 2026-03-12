@@ -74,6 +74,7 @@ class PromptContextManager(
     fun clearInlineChips(editor: EditorEx) {
         val inlays = editor.inlayModel
             .getInlineElementsInRange(0, editor.document.textLength, ContextChipRenderer::class.java)
+            .toList()
         if (inlays.isEmpty()) return
         com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
             for (inlay in inlays.sortedByDescending { it.offset }) {

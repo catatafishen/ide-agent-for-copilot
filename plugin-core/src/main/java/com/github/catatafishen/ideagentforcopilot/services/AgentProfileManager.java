@@ -261,12 +261,13 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         p.setDisplayName("Claude Code");
         p.setBuiltIn(true);
         p.setExperimental(true);
-        p.setDescription("Experimental profile — requires the claude-code-acp adapter "
-            + "(npm install -g @zed-industries/claude-code-acp). "
-            + "MCP tools are NOT auto-injected for this profile. "
-            + "To use IDE tools with Claude Code, add the MCP server manually:\n"
-            + "  claude mcp add intellij-ide-tools -s project -- java -jar <path-to-mcp-server.jar> --port <port>\n"
-            + "See docs/STANDALONE-MCP.md for detailed setup instructions.");
+        p.setDescription("""
+            Experimental profile — requires the claude-code-acp adapter \
+            (npm install -g @zed-industries/claude-code-acp). \
+            MCP tools are NOT auto-injected for this profile. \
+            To use IDE tools with Claude Code, add the MCP server manually:
+              claude mcp add intellij-ide-tools -s project -- java -jar <path-to-mcp-server.jar> --port <port>
+            See docs/STANDALONE-MCP.md for detailed setup instructions.""");
         p.setBinaryName("claude-code-acp");
         p.setAlternateNames(List.of());
         p.setInstallHint("Install with: npm install -g @zed-industries/claude-code-acp");
