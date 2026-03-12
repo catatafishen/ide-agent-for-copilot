@@ -257,7 +257,7 @@ public final class ToolUtils {
         return origPos - startIdx;
     }
 
-    static String truncateOutput(String output) {
+    public static String truncateOutput(String output) {
         return truncateOutput(output, 8000, 0);
     }
 

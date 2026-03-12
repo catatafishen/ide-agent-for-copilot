@@ -1,20 +1,23 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.terminal;
 
-import com.github.catatafishen.ideagentforcopilot.psi.TerminalTools;
+import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.TerminalOutputRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.intellij.ui.content.Content;
 import org.jetbrains.annotations.NotNull;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.TerminalOutputRenderer;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Reads output from an integrated terminal tab.
  */
-@SuppressWarnings("java:S112")
 public final class ReadTerminalOutputTool extends TerminalTool {
 
-    public ReadTerminalOutputTool(Project project, TerminalTools terminalTools) {
-        super(project, terminalTools);
+    public ReadTerminalOutputTool(Project project) {
+        super(project);
     }
 
     @Override
@@ -47,7 +50,35 @@ public final class ReadTerminalOutputTool extends TerminalTool {
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        return terminalTools.readTerminalOutput(args);
+        String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
+        int maxLines = args.has("max_lines") ? args.get("max_lines").getAsInt() : DEFAULT_MAX_LINES;
+
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+
+        EdtUtil.invokeLater(() -> {
+            try {
+                Content targetContent = resolveTerminalContent(tabName);
+                if (targetContent == null) {
+                    resultFuture.complete(tabName != null
+                        ? "No terminal tab found matching '" + tabName + "'. Use list_terminals to see available tabs."
+                        : "No terminal tab is open. Use run_in_terminal to start one.");
+                    return;
+                }
+                readTerminalText(resultFuture, targetContent, maxLines);
+            } catch (Exception e) {
+                LOG.warn("Failed to read terminal", e);
+                resultFuture.complete("Failed to read terminal: " + e.getMessage());
+            }
+        });
+
+        try {
+            return resultFuture.get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "Terminal read timed out.";
+        } catch (Exception e) {
+            return "Terminal read timed out.";
+        }
     }
 
     @Override
