@@ -33,60 +33,15 @@ public final class ToolRegistry {
         }
     }
 
-    public static final class ToolEntry implements ToolDefinition {
-        private final String id;
-        private final String displayName;
-        private final String description;
-        private final Category category;
-        private final boolean isBuiltIn;
-        private final boolean hasDenyControl;
-        private final boolean supportsPathSubPermissions;
-
-        public ToolEntry(String id, String displayName, String description, Category category,
-                         boolean isBuiltIn, boolean hasDenyControl, boolean supportsPathSubPermissions) {
-            this.id = id;
-            this.displayName = displayName;
-            this.description = description;
-            this.category = category;
-            this.isBuiltIn = isBuiltIn;
-            this.hasDenyControl = hasDenyControl;
-            this.supportsPathSubPermissions = supportsPathSubPermissions;
-        }
-
-        @Override
-        public @org.jetbrains.annotations.NotNull String id() {
-            return id;
-        }
-
-        @Override
-        public @org.jetbrains.annotations.NotNull String displayName() {
-            return displayName;
-        }
-
-        @Override
-        public @org.jetbrains.annotations.NotNull String description() {
-            return description;
-        }
-
-        @Override
-        public @org.jetbrains.annotations.NotNull Category category() {
-            return category;
-        }
-
-        @Override
-        public boolean isBuiltIn() {
-            return isBuiltIn;
-        }
-
-        @Override
-        public boolean hasDenyControl() {
-            return hasDenyControl;
-        }
-
-        @Override
-        public boolean supportsPathSubPermissions() {
-            return supportsPathSubPermissions;
-        }
+    record ToolEntry(
+        @org.jetbrains.annotations.NotNull String id,
+        @org.jetbrains.annotations.NotNull String displayName,
+        @org.jetbrains.annotations.NotNull String description,
+        @org.jetbrains.annotations.NotNull Category category,
+        boolean isBuiltIn,
+        boolean hasDenyControl,
+        boolean supportsPathSubPermissions
+    ) implements ToolDefinition {
     }
 
     /**
@@ -227,21 +182,6 @@ public final class ToolRegistry {
     @org.jetbrains.annotations.Nullable
     public static ToolDefinition findDefinition(@org.jetbrains.annotations.NotNull String id) {
         return DEFINITIONS.get(id);
-    }
-
-    /**
-     * Returns all registered tool definitions (new-style only).
-     */
-    @org.jetbrains.annotations.NotNull
-    public static java.util.Collection<ToolDefinition> getAllDefinitions() {
-        return java.util.Collections.unmodifiableCollection(DEFINITIONS.values());
-    }
-
-    /**
-     * Clears all registered definitions. Used by tests and during re-initialization.
-     */
-    public static void clearDefinitions() {
-        DEFINITIONS.clear();
     }
 
     // ── Unified lookups ────────────────────────────────────────────────────

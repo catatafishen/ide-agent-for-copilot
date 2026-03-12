@@ -47,7 +47,7 @@ public abstract class Tool implements ToolDefinition {
 
     // ── Shared utilities ─────────────────────────────────────
 
-    // ── Schema builder helpers (moved from ToolSchemas) ──────
+    // ── Schema builder helpers ─────────────────────────────────
 
     protected static final String TYPE_STRING = "string";
     protected static final String TYPE_BOOLEAN = "boolean";

@@ -67,7 +67,7 @@ public final class PsiBridgeService implements Disposable {
         EditorTools editorTools = new EditorTools(project);
 
         // Register OO-style individual tool classes (primary registration path)
-        boolean hasJava = AbstractToolHandler.isPluginInstalled("com.intellij.modules.java");
+        boolean hasJava = PlatformApiCompat.isPluginInstalled("com.intellij.modules.java");
         var allTools = new java.util.ArrayList<com.github.catatafishen.ideagentforcopilot.psi.tools.Tool>();
         allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.git.GitToolFactory.create(project, gitToolHandler));
         allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileToolFactory.create(project, fileTools));
@@ -166,7 +166,7 @@ public final class PsiBridgeService implements Disposable {
      * Dynamically registers a tool at runtime. Used by MacroToolRegistrar
      * (experimental plugin variant) to add user-recorded macros as MCP tools.
      */
-    public void registerTool(String id, ToolDefinition toolDef) {
+    public void registerTool(ToolDefinition toolDef) {
         ToolRegistry.register(toolDef);
     }
 
@@ -254,7 +254,7 @@ public final class PsiBridgeService implements Disposable {
             boolean[] result = {false};
             EdtUtil.invokeAndWait(() -> {
                 String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
-                    + buildArgSummary(arguments) + "</html>";
+                    + buildArgSummary(arguments != null ? arguments : new com.google.gson.JsonObject()) + "</html>";
                 int choice = Messages.showYesNoDialog(
                     project, message, "Tool Permission Request",
                     "Allow", "Deny", Messages.getQuestionIcon()
@@ -383,7 +383,7 @@ public final class PsiBridgeService implements Disposable {
      */
     private static long getDocumentStamp(@Nullable com.intellij.openapi.vfs.VirtualFile vf) {
         if (vf == null) return -1L;
-        // FileDocumentManager.getDocument requires a read action.
+        // Cast required for overload disambiguation: runReadAction(Computable) vs runReadAction(ThrowableComputable)
         return com.intellij.openapi.application.ApplicationManager.getApplication()
             .runReadAction((com.intellij.openapi.util.Computable<Long>) () -> {
                 com.intellij.openapi.editor.Document doc =
@@ -404,9 +404,13 @@ public final class PsiBridgeService implements Disposable {
             highlightArgs.addProperty("path", path);
             highlightArgs.addProperty("include_unindexed", true);
             String highlights = highlightDef.execute(highlightArgs);
-            LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
+            if (highlights != null) {
+                LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
+            }
 
-            return writeResult + "\n\n--- Highlights (auto) ---\n" + highlights;
+            return highlights != null
+                ? writeResult + "\n\n--- Highlights (auto) ---\n" + highlights
+                : writeResult;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return writeResult;
