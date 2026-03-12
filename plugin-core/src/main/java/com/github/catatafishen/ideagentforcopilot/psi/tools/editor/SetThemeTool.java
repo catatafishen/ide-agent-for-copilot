@@ -13,12 +13,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Changes the IDE theme by name.
- */
 public final class SetThemeTool extends EditorTool {
 
     private static final Logger LOG = Logger.getInstance(SetThemeTool.class);
+    private static final String PARAM_THEME = "theme";
 
     public SetThemeTool(Project project) {
         super(project);
@@ -47,8 +45,8 @@ public final class SetThemeTool extends EditorTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"theme", TYPE_STRING, "Theme name or partial name (e.g., 'Darcula', 'Light')"}
-        }, "theme");
+            {PARAM_THEME, TYPE_STRING, "Theme name or partial name (e.g., 'Darcula', 'Light')"}
+        }, PARAM_THEME);
     }
 
     @Override
@@ -58,10 +56,10 @@ public final class SetThemeTool extends EditorTool {
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        if (!args.has("theme")) {
+        if (!args.has(PARAM_THEME)) {
             return "Missing required parameter: 'theme' (theme name or partial name)";
         }
-        String themeQuery = args.get("theme").getAsString();
+        String themeQuery = args.get(PARAM_THEME).getAsString();
         String queryLower = themeQuery.toLowerCase();
 
         var lafManager = LafManager.getInstance();

@@ -3,16 +3,18 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkType;
 import com.intellij.openapi.roots.DependencyScope;
-import com.intellij.openapi.roots.LibraryOrderEntry;
 import com.intellij.openapi.roots.JdkOrderEntry;
+import com.intellij.openapi.roots.LibraryOrderEntry;
 import com.intellij.openapi.roots.ModifiableRootModel;
 import com.intellij.openapi.roots.ModuleOrderEntry;
 import com.intellij.openapi.roots.ModuleRootManager;
@@ -20,12 +22,10 @@ import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
-import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -77,16 +77,16 @@ public final class EditProjectStructureTool extends ProjectTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"action", TYPE_STRING, "Action: 'list_modules', 'list_dependencies', 'add_dependency', 'remove_dependency', 'list_sdks', 'add_sdk', 'remove_sdk'"},
-            {"module", TYPE_STRING, "Module name (required for list_dependencies, add_dependency, remove_dependency)"},
-            {"dependency_name", TYPE_STRING, "Name of the dependency to add or remove"},
-            {"dependency_type", TYPE_STRING, "Type of dependency to add: 'library' (default) or 'module'"},
-            {"scope", TYPE_STRING, "Dependency scope: 'COMPILE' (default), 'TEST', 'RUNTIME', 'PROVIDED'"},
-            {"jar_path", TYPE_STRING, "Path to JAR file (absolute or project-relative). Required when adding a library dependency"},
-            {"sdk_type", TYPE_STRING, "SDK type name for add_sdk (e.g., 'Python SDK', 'JavaSDK'). Use list_sdks to see available types"},
-            {"sdk_name", TYPE_STRING, "SDK name for remove_sdk. Use list_sdks to see configured SDK names"},
-            {"home_path", TYPE_STRING, "Home path for add_sdk. Use list_sdks to see suggested paths for each SDK type"}
-        }, "action");
+            {PARAM_ACTION, TYPE_STRING, "Action: 'list_modules', 'list_dependencies', 'add_dependency', 'remove_dependency', 'list_sdks', 'add_sdk', 'remove_sdk'"},
+            {JSON_MODULE, TYPE_STRING, "Module name (required for list_dependencies, add_dependency, remove_dependency)"},
+            {PARAM_DEPENDENCY_NAME, TYPE_STRING, "Name of the dependency to add or remove"},
+            {PARAM_DEPENDENCY_TYPE, TYPE_STRING, "Type of dependency to add: 'library' (default) or 'module'"},
+            {PARAM_SCOPE, TYPE_STRING, "Dependency scope: 'COMPILE' (default), 'TEST', 'RUNTIME', 'PROVIDED'"},
+            {PARAM_JAR_PATH, TYPE_STRING, "Path to JAR file (absolute or project-relative). Required when adding a library dependency"},
+            {PARAM_SDK_TYPE, TYPE_STRING, "SDK type name for add_sdk (e.g., 'Python SDK', 'JavaSDK'). Use list_sdks to see available types"},
+            {PARAM_SDK_NAME, TYPE_STRING, "SDK name for remove_sdk. Use list_sdks to see configured SDK names"},
+            {PARAM_HOME_PATH, TYPE_STRING, "Home path for add_sdk. Use list_sdks to see suggested paths for each SDK type"}
+        }, PARAM_ACTION);
     }
 
     @Override

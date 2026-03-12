@@ -42,6 +42,7 @@ public final class GetActionOptionsTool extends QualityTool {
     private static final String PARAM_ACTION_NAME = "action_name";
     private static final String PARAM_COLUMN = "column";
     private static final String PARAM_SYMBOL = "symbol";
+    private static final String ACTION_PREFIX = "Action '";
 
     public GetActionOptionsTool(Project project) {
         super(project);
@@ -129,11 +130,11 @@ public final class GetActionOptionsTool extends QualityTool {
 
         IntentionAction action = findIntentionByName(actionName, editor, psiFile);
         if (action == null) {
-            return "Action '" + actionName + "' not found at " + pathStr + ":" + targetLine
+            return ACTION_PREFIX + actionName + "' not found at " + pathStr + ":" + targetLine
                 + ". Use get_available_actions to list available actions.";
         }
         if (!action.isAvailable(project, editor, psiFile)) {
-            return "Action '" + actionName + "' is not currently applicable at " + pathStr + ":" + targetLine;
+            return ACTION_PREFIX + actionName + "' is not currently applicable at " + pathStr + ":" + targetLine;
         }
 
         // Capture document text before running the action
@@ -156,20 +157,20 @@ public final class GetActionOptionsTool extends QualityTool {
         // No dialog — action ran headlessly. Show the diff then undo.
         String diff = DiffUtils.unifiedDiff(before, after, pathStr);
         if (diff.isEmpty()) {
-            return "Action '" + actionName + "' made no changes and showed no dialog. "
+            return ACTION_PREFIX + actionName + "' made no changes and showed no dialog. "
                 + "It may require a different caret position or context.";
         }
 
         // Undo the change so this was truly a preview
-        undoLastAction(vf, editor);
+        undoLastAction(vf);
 
-        return "Action '" + actionName + "' makes the following changes (no dialog — use apply_action to apply):\n\n" + diff;
+        return ACTION_PREFIX + actionName + "' makes the following changes (no dialog — use apply_action to apply):\n\n" + diff;
     }
 
     private String formatDialogOptions(String actionName, String pathStr, int line,
                                        DialogInterceptor.DialogInfo info) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Action '").append(actionName).append("' at ").append(pathStr).append(':').append(line)
+        sb.append(ACTION_PREFIX).append(actionName).append("' at ").append(pathStr).append(':').append(line)
             .append(" shows a dialog with the following options:\n");
 
         if (!info.radioButtons().isEmpty()) {
@@ -198,7 +199,7 @@ public final class GetActionOptionsTool extends QualityTool {
         return sb.toString();
     }
 
-    private void undoLastAction(VirtualFile vf, Editor editor) {
+    private void undoLastAction(VirtualFile vf) {
         try {
             var fem = FileEditorManager.getInstance(project);
             for (var fe : fem.getEditors(vf)) {

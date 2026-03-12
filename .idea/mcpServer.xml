@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="McpServerSettings">
+    <option name="port" value="8645" />
     <option name="autoStart" value="true" />
-    <option name="bridgeAutoStart" value="false" />
-    <option name="bridgePort" value="36425" />
+    <option name="disabledToolIds">
+      <set>
+        <option value="get_notifications" />
+        <option value="set_theme" />
+        <option value="list_themes" />
+      </set>
+    </option>
+    <option name="defaultsApplied" value="true" />
   </component>
 </project>

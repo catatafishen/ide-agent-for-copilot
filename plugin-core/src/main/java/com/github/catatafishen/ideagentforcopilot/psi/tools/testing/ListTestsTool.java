@@ -55,7 +55,7 @@ public final class ListTestsTool extends TestingTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"file_pattern", TYPE_STRING, "Optional glob pattern to filter test files (e.g., '*IntegrationTest*')", ""}
+            {PARAM_FILE_PATTERN, TYPE_STRING, "Optional glob pattern to filter test files (e.g., '*IntegrationTest*')", ""}
         });
     }
 

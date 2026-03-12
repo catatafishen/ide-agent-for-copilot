@@ -47,7 +47,7 @@ public final class RedoTool extends FileTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to redo changes on"},
-            {"count", TYPE_INTEGER, "Number of redo steps (default: 1)"}
+            {PARAM_COUNT, TYPE_INTEGER, "Number of redo steps (default: 1)"}
         }, "path");
     }
 

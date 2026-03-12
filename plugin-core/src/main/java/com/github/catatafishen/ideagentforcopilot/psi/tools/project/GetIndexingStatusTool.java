@@ -1,9 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,7 +47,7 @@ public final class GetIndexingStatusTool extends ProjectTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"wait", TYPE_BOOLEAN, "If true, blocks until indexing finishes"},
-            {"timeout", TYPE_INTEGER, "Max seconds to wait when wait=true (default: 30)"}
+            {PARAM_TIMEOUT, TYPE_INTEGER, "Max seconds to wait when wait=true (default: 30)"}
         });
     }
 

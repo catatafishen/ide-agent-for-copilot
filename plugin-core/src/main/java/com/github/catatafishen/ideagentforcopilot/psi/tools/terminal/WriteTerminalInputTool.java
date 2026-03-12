@@ -10,10 +10,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Sends raw text or keystrokes to a running terminal.
- */
 public final class WriteTerminalInputTool extends TerminalTool {
+
+    private static final String PARAM_INPUT = "input";
 
     public WriteTerminalInputTool(Project project) {
         super(project);
@@ -42,14 +41,14 @@ public final class WriteTerminalInputTool extends TerminalTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"input", TYPE_STRING, "Text or keystrokes to send. Supports escape sequences: {enter}, {tab}, {ctrl-c}, {ctrl-d}, {ctrl-z}, {escape}, {up}, {down}, {left}, {right}, {backspace}, \\n, \\t"},
+            {PARAM_INPUT, TYPE_STRING, "Text or keystrokes to send. Supports escape sequences: {enter}, {tab}, {ctrl-c}, {ctrl-d}, {ctrl-z}, {escape}, {up}, {down}, {left}, {right}, {backspace}, \\n, \\t"},
             {"tab_name", TYPE_STRING, "Name of the terminal tab to write to. If omitted, writes to the currently selected tab"}
-        }, "input");
+        }, PARAM_INPUT);
     }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String input = args.get("input").getAsString();
+        String input = args.get(PARAM_INPUT).getAsString();
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
         String resolved = resolveInputEscapes(input);

@@ -8,11 +8,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Pushes commits to a remote repository.
- */
 @SuppressWarnings("java:S112")
 public final class GitPushTool extends GitTool {
+
+    private static final String PARAM_REMOTE = "remote";
+    private static final String PARAM_BRANCH = "branch";
+    private static final String PARAM_FORCE = "force";
+    private static final String PARAM_SET_UPSTREAM = "set_upstream";
 
     public GitPushTool(Project project) {
         super(project);
@@ -51,10 +53,10 @@ public final class GitPushTool extends GitTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"remote", TYPE_STRING, "Remote name (default: origin)"},
-            {"branch", TYPE_STRING, "Branch to push (default: current)"},
-            {"force", TYPE_BOOLEAN, "Force push"},
-            {"set_upstream", TYPE_BOOLEAN, "Set upstream tracking reference"},
+            {PARAM_REMOTE, TYPE_STRING, "Remote name (default: origin)"},
+            {PARAM_BRANCH, TYPE_STRING, "Branch to push (default: current)"},
+            {PARAM_FORCE, TYPE_BOOLEAN, "Force push"},
+            {PARAM_SET_UPSTREAM, TYPE_BOOLEAN, "Set upstream tracking reference"},
             {"tags", TYPE_BOOLEAN, "Push all tags"}
         });
     }
@@ -64,17 +66,17 @@ public final class GitPushTool extends GitTool {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("push");
 
-        boolean setUpstream = args.has("set_upstream") && args.get("set_upstream").getAsBoolean();
+        boolean setUpstream = args.has(PARAM_SET_UPSTREAM) && args.get(PARAM_SET_UPSTREAM).getAsBoolean();
 
-        if (args.has("force") && args.get("force").getAsBoolean()) {
+        if (args.has(PARAM_FORCE) && args.get(PARAM_FORCE).getAsBoolean()) {
             cmdArgs.add("--force");
         }
         if (setUpstream) {
             cmdArgs.add("--set-upstream");
         }
 
-        String remote = args.has("remote") ? args.get("remote").getAsString() : null;
-        String branch = args.has("branch") ? args.get("branch").getAsString() : null;
+        String remote = args.has(PARAM_REMOTE) ? args.get(PARAM_REMOTE).getAsString() : null;
+        String branch = args.has(PARAM_BRANCH) ? args.get(PARAM_BRANCH).getAsString() : null;
 
         if (setUpstream) {
             if (remote == null) {

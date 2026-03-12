@@ -8,14 +8,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Applies specific commits from another branch onto the current branch.
- */
 @SuppressWarnings("java:S112")
 public final class GitCherryPickTool extends GitTool {
 
     private static final String CHERRY_PICK = "cherry-pick";
     private static final String PARAM_COMMITS = "commits";
+    private static final String PARAM_NO_COMMIT = "no_commit";
+    private static final String PARAM_ABORT = "abort";
+    private static final String PARAM_CONTINUE_PICK = "continue_pick";
 
     public GitCherryPickTool(Project project) {
         super(project);
@@ -44,12 +44,12 @@ public final class GitCherryPickTool extends GitTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
-            {"commits", TYPE_ARRAY, "One or more commit SHAs to cherry-pick"},
-            {"no_commit", TYPE_BOOLEAN, "Apply changes without creating commits"},
-            {"abort", TYPE_BOOLEAN, "Abort an in-progress cherry-pick"},
-            {"continue_pick", TYPE_BOOLEAN, "Continue cherry-pick after resolving conflicts"}
+            {PARAM_COMMITS, TYPE_ARRAY, "One or more commit SHAs to cherry-pick"},
+            {PARAM_NO_COMMIT, TYPE_BOOLEAN, "Apply changes without creating commits"},
+            {PARAM_ABORT, TYPE_BOOLEAN, "Abort an in-progress cherry-pick"},
+            {PARAM_CONTINUE_PICK, TYPE_BOOLEAN, "Continue cherry-pick after resolving conflicts"}
         });
-        addArrayItems(s, "commits");
+        addArrayItems(s, PARAM_COMMITS);
         return s;
     }
 
@@ -57,11 +57,11 @@ public final class GitCherryPickTool extends GitTool {
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         flushAndSave();
 
-        if (args.has("abort") && args.get("abort").getAsBoolean()) {
+        if (args.has(PARAM_ABORT) && args.get(PARAM_ABORT).getAsBoolean()) {
             return runGit(CHERRY_PICK, "--abort");
         }
 
-        if (args.has("continue_pick") && args.get("continue_pick").getAsBoolean()) {
+        if (args.has(PARAM_CONTINUE_PICK) && args.get(PARAM_CONTINUE_PICK).getAsBoolean()) {
             return runGit(CHERRY_PICK, "--continue");
         }
 
@@ -72,7 +72,7 @@ public final class GitCherryPickTool extends GitTool {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add(CHERRY_PICK);
 
-        if (args.has("no_commit") && args.get("no_commit").getAsBoolean()) {
+        if (args.has(PARAM_NO_COMMIT) && args.get(PARAM_NO_COMMIT).getAsBoolean()) {
             cmdArgs.add("--no-commit");
         }
 

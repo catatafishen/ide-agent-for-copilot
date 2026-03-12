@@ -37,6 +37,7 @@ public final class ApplyActionTool extends QualityTool {
     private static final String PARAM_OPTION = "option";
     private static final String PARAM_DRY_RUN = "dry_run";
     private static final String LINE_LABEL = " line ";
+    private static final String ACTION_PREFIX = "Action '";
 
     public ApplyActionTool(Project project) {
         super(project);
@@ -104,7 +105,7 @@ public final class ApplyActionTool extends QualityTool {
 
         String result = future.get(30, TimeUnit.SECONDS);
         if (result != null && !dryRun && !result.startsWith("Error") && !result.startsWith("No ")
-            && !result.startsWith("Action '") && !result.startsWith("Preview")) {
+            && !result.startsWith(ACTION_PREFIX) && !result.startsWith("Preview")) {
             FileTool.followFileIfEnabled(project, pathStr, targetLine, targetLine,
                 FileTool.HIGHLIGHT_EDIT, FileTool.agentLabel(project) + " applied action");
         }
@@ -146,12 +147,12 @@ public final class ApplyActionTool extends QualityTool {
         if (action == null) {
             List<String> available = collectAvailableActionNames(doc, targetLine, editor, psiFile);
             String hint = available.isEmpty() ? "none" : String.join(", ", available);
-            return "Action '" + actionName + "' not found at " + pathStr + LINE_LABEL + targetLine
+            return ACTION_PREFIX + actionName + "' not found at " + pathStr + LINE_LABEL + targetLine
                 + ". Available: [" + hint + "]";
         }
 
         if (!action.isAvailable(project, editor, psiFile)) {
-            return "Action '" + actionName + "' is not currently applicable at " + pathStr
+            return ACTION_PREFIX + actionName + "' is not currently applicable at " + pathStr
                 + LINE_LABEL + targetLine + ".";
         }
 
@@ -202,7 +203,7 @@ public final class ApplyActionTool extends QualityTool {
 
         if (diff.isEmpty()) {
             // Document unchanged — likely a dialog appeared but wasn't handled
-            return "Action '" + actionName + "' made no changes. It may require user input via a dialog. "
+            return ACTION_PREFIX + actionName + "' made no changes. It may require user input via a dialog. "
                 + "Try get_action_options to inspect what dialog options it shows.";
         }
 

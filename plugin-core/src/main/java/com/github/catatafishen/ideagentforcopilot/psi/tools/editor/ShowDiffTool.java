@@ -15,12 +15,11 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Shows a diff viewer comparing a file to proposed content or another file.
- */
 public final class ShowDiffTool extends EditorTool {
 
     private static final String PARAM_CONTENT = "content";
+    private static final String PARAM_TITLE = "title";
+    private static final String PARAM_FILE2 = "file2";
     private static final String DIFF_LABEL_CURRENT = "Current";
 
     public ShowDiffTool(Project project) {
@@ -51,9 +50,9 @@ public final class ShowDiffTool extends EditorTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Path to the first file"},
-            {"file2", TYPE_STRING, "Optional: path to second file for two-file comparison"},
+            {PARAM_FILE2, TYPE_STRING, "Optional: path to second file for two-file comparison"},
             {PARAM_CONTENT, TYPE_STRING, "Optional: proposed new content to diff against the current file"},
-            {"title", TYPE_STRING, "Optional: title for the diff viewer tab"}
+            {PARAM_TITLE, TYPE_STRING, "Optional: title for the diff viewer tab"}
         }, "file");
     }
 
@@ -88,7 +87,7 @@ public final class ShowDiffTool extends EditorTool {
     }
 
     private String showDiffForFile(JsonObject args, VirtualFile vf, String pathStr) {
-        if (args.has("file2")) {
+        if (args.has(PARAM_FILE2)) {
             return showTwoFileDiff(args, vf, pathStr);
         } else if (args.has(PARAM_CONTENT)) {
             return showContentDiff(args, vf, pathStr);
@@ -98,7 +97,7 @@ public final class ShowDiffTool extends EditorTool {
     }
 
     private String showTwoFileDiff(JsonObject args, VirtualFile vf, String pathStr) {
-        String pathStr2 = args.get("file2").getAsString();
+        String pathStr2 = args.get(PARAM_FILE2).getAsString();
         VirtualFile vf2 = resolveVirtualFile(pathStr2);
         if (vf2 == null) {
             return "Error: Second file not found: " + pathStr2;
@@ -114,7 +113,7 @@ public final class ShowDiffTool extends EditorTool {
 
     private String showContentDiff(JsonObject args, VirtualFile vf, String pathStr) {
         String newContent = args.get(PARAM_CONTENT).getAsString();
-        String title = args.has("title") ? args.get("title").getAsString() : "Proposed Changes";
+        String title = args.has(PARAM_TITLE) ? args.get(PARAM_TITLE).getAsString() : "Proposed Changes";
         var content1 = DiffContentFactory.getInstance().create(project, vf);
         var content2 = DiffContentFactory.getInstance()
             .create(project, newContent, vf.getFileType());

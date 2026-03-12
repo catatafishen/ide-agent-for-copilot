@@ -9,11 +9,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Shows details and diff for a specific commit.
- */
 @SuppressWarnings("java:S112")
 public final class GitShowTool extends GitTool {
+
+    private static final String PARAM_STAT_ONLY = "stat_only";
 
     public GitShowTool(Project project) {
         super(project);
@@ -43,7 +42,7 @@ public final class GitShowTool extends GitTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"ref", TYPE_STRING, "Commit SHA, branch, tag, or ref (default: HEAD)"},
-            {"stat_only", TYPE_BOOLEAN, "If true, show only file stats, not full diff content"},
+            {PARAM_STAT_ONLY, TYPE_BOOLEAN, "If true, show only file stats, not full diff content"},
             {"path", TYPE_STRING, "Limit output to this file path"}
         });
     }
@@ -58,8 +57,8 @@ public final class GitShowTool extends GitTool {
             : "HEAD";
         cmdArgs.add(ref);
 
-        boolean statOnly = args.has("stat_only")
-            && args.get("stat_only").getAsBoolean();
+        boolean statOnly = args.has(PARAM_STAT_ONLY)
+            && args.get(PARAM_STAT_ONLY).getAsBoolean();
         if (statOnly) {
             cmdArgs.add("--stat");
         }

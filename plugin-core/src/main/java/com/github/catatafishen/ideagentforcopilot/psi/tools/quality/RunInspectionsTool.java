@@ -31,6 +31,7 @@ public final class RunInspectionsTool extends QualityTool {
     private static final Logger LOG = Logger.getInstance(RunInspectionsTool.class);
     private static final String SEVERITY_WARNING = "WARNING";
     private static final String FORMAT_FINDING = "%s:%d [%s/%s] %s";
+    private static final String PARAM_MIN_SEVERITY = "min_severity";
 
     // Cached inspection results for pagination
     private List<String> cachedInspectionResults;
@@ -68,7 +69,7 @@ public final class RunInspectionsTool extends QualityTool {
             {PARAM_SCOPE, TYPE_STRING, "Optional: file or directory path to inspect. Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"},
             {PARAM_LIMIT, TYPE_INTEGER, "Page size (default: 100). Maximum problems per response"},
             {PARAM_OFFSET, TYPE_INTEGER, "Number of problems to skip (default: 0). Use for pagination"},
-            {"min_severity", TYPE_STRING, "Minimum severity filter. Options: ERROR, WARNING, WEAK_WARNING, INFO. Default: all severities included. Only set this if the user explicitly asks to filter by severity."}
+            {PARAM_MIN_SEVERITY, TYPE_STRING, "Minimum severity filter. Options: ERROR, WARNING, WEAK_WARNING, INFO. Default: all severities included. Only set this if the user explicitly asks to filter by severity."}
         });
     }
 
@@ -76,7 +77,7 @@ public final class RunInspectionsTool extends QualityTool {
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
         int offset = args.has(PARAM_OFFSET) ? args.get(PARAM_OFFSET).getAsInt() : 0;
-        String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
+        String minSeverity = args.has(PARAM_MIN_SEVERITY) ? args.get(PARAM_MIN_SEVERITY).getAsString() : null;
         String scopePath = args.has(PARAM_SCOPE) ? args.get(PARAM_SCOPE).getAsString() : null;
 
         if (!project.isInitialized()) {

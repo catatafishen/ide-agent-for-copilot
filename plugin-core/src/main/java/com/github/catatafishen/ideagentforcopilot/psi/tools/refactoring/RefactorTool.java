@@ -26,14 +26,13 @@ import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Renames, extracts method, inlines, or safe-deletes a symbol using IntelliJ's refactoring engine.
- */
 @SuppressWarnings("java:S112")
 public final class RefactorTool extends RefactoringTool {
 
     private static final Logger LOG = Logger.getInstance(RefactorTool.class);
     private static final String PARAM_SYMBOL = "symbol";
+    private static final String PARAM_NEW_NAME = "new_name";
+    private static final String PARAM_OPERATION = "operation";
 
     public RefactorTool(Project project) {
         super(project);
@@ -62,12 +61,12 @@ public final class RefactorTool extends RefactoringTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"operation", TYPE_STRING, "Refactoring type: 'rename', 'extract_method', 'inline', or 'safe_delete'"},
+            {PARAM_OPERATION, TYPE_STRING, "Refactoring type: 'rename', 'extract_method', 'inline', or 'safe_delete'"},
             {"file", TYPE_STRING, "Absolute or project-relative path to the file containing the symbol"},
             {PARAM_SYMBOL, TYPE_STRING, "Name of the symbol to refactor (class, method, field, or variable)"},
             {"line", TYPE_INTEGER, "Line number to disambiguate if multiple symbols share the same name"},
-            {"new_name", TYPE_STRING, "New name for 'rename' operation. Required when operation is 'rename'"}
-        }, "operation", "file", PARAM_SYMBOL);
+            {PARAM_NEW_NAME, TYPE_STRING, "New name for 'rename' operation. Required when operation is 'rename'"}
+        }, PARAM_OPERATION, "file", PARAM_SYMBOL);
     }
 
     @Override
@@ -77,14 +76,14 @@ public final class RefactorTool extends RefactoringTool {
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        if (!args.has("operation") || !args.has("file") || !args.has(PARAM_SYMBOL)) {
+        if (!args.has(PARAM_OPERATION) || !args.has("file") || !args.has(PARAM_SYMBOL)) {
             return "Error: 'operation', 'file', and 'symbol' parameters are required";
         }
-        String operation = args.get("operation").getAsString();
+        String operation = args.get(PARAM_OPERATION).getAsString();
         String pathStr = args.get("file").getAsString();
         String symbolName = args.get(PARAM_SYMBOL).getAsString();
         int targetLine = args.has("line") ? args.get("line").getAsInt() : -1;
-        String newName = args.has("new_name") ? args.get("new_name").getAsString() : null;
+        String newName = args.has(PARAM_NEW_NAME) ? args.get(PARAM_NEW_NAME).getAsString() : null;
 
         if ("rename".equals(operation) && (newName == null || newName.isEmpty())) {
             return "Error: 'new_name' is required for rename operation";

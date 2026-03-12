@@ -44,6 +44,7 @@ public final class RunTestsTool extends TestingTool {
     private static final Logger LOG = Logger.getInstance(RunTestsTool.class);
 
     private static final String JSON_MODULE = "module";
+    private static final String PARAM_TARGET = "target";
     private static final String PARAM_MESSAGE = "message";
     private static final String TEST_TYPE_METHOD = "method";
     private static final String TEST_TYPE_CLASS = "class";
@@ -88,8 +89,8 @@ public final class RunTestsTool extends TestingTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"target", TYPE_STRING, "Test target: fully qualified class class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"},
-            {"module", TYPE_STRING, "Optional module name (e.g., 'plugin-core')", ""}
-        }, "target");
+            {JSON_MODULE, TYPE_STRING, "Optional module name (e.g., 'plugin-core')", ""}
+        }, PARAM_TARGET);
     }
 
     @Override
@@ -99,7 +100,7 @@ public final class RunTestsTool extends TestingTool {
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String target = args.get("target").getAsString();
+        String target = args.get(PARAM_TARGET).getAsString();
         String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;

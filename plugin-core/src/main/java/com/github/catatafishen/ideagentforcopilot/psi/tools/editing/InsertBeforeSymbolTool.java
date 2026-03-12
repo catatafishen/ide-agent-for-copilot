@@ -56,9 +56,9 @@ public final class InsertBeforeSymbolTool extends EditingTool {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Absolute or project-relative path to the file containing the symbol"},
             {"symbol", TYPE_STRING, "Name of the symbol to insert before"},
-            {"content", TYPE_STRING, "The content to insert before the symbol"},
+            {PARAM_CONTENT, TYPE_STRING, "The content to insert before the symbol"},
             {"line", TYPE_INTEGER, "Optional: line number hint to disambiguate if multiple symbols share the same name"}
-        }, "file", "symbol", "content");
+        }, "file", "symbol", PARAM_CONTENT);
     }
 
     @Override

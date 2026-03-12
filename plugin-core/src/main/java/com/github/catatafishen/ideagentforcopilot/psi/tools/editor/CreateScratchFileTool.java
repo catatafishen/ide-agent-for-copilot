@@ -20,12 +20,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
-/**
- * Creates a temporary scratch file with the given name and content.
- */
 public final class CreateScratchFileTool extends EditorTool {
 
     private static final Logger LOG = Logger.getInstance(CreateScratchFileTool.class);
+    private static final String PARAM_CONTENT = "content";
 
     public CreateScratchFileTool(Project project) {
         super(project);
@@ -50,8 +48,8 @@ public final class CreateScratchFileTool extends EditorTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"name", TYPE_STRING, "Scratch file name with extension (e.g., 'test.py', 'notes.md')"},
-            {"content", TYPE_STRING, "The content to write to the scratch file"}
-        }, "name", "content");
+            {PARAM_CONTENT, TYPE_STRING, "The content to write to the scratch file"}
+        }, "name", PARAM_CONTENT);
     }
 
     @Override
@@ -62,7 +60,7 @@ public final class CreateScratchFileTool extends EditorTool {
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         String name = args.has("name") ? args.get("name").getAsString() : "scratch.txt";
-        String content = args.has("content") ? args.get("content").getAsString() : "";
+        String content = args.has(PARAM_CONTENT) ? args.get(PARAM_CONTENT).getAsString() : "";
 
         try {
             final VirtualFile[] resultFile = new VirtualFile[1];

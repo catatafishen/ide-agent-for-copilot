@@ -1,9 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -11,12 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * Reads recent IntelliJ IDE log entries, optionally filtered by level or text.
- */
 public final class ReadIdeLogTool extends InfrastructureTool {
 
     private static final String IDEA_LOG_FILENAME = "idea.log";
+    private static final String PARAM_LINES = "lines";
+    private static final String PARAM_FILTER = "filter";
+    private static final String PARAM_LEVEL = "level";
 
     public ReadIdeLogTool(Project project) {
         super(project);
@@ -45,17 +45,17 @@ public final class ReadIdeLogTool extends InfrastructureTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"lines", TYPE_INTEGER, "Number of recent lines to return (default: 50)"},
-            {"filter", TYPE_STRING, "Only return lines containing this text"},
-            {"level", TYPE_STRING, "Filter by log level: INFO, WARN, ERROR"}
+            {PARAM_LINES, TYPE_INTEGER, "Number of recent lines to return (default: 50)"},
+            {PARAM_FILTER, TYPE_STRING, "Only return lines containing this text"},
+            {PARAM_LEVEL, TYPE_STRING, "Filter by log level: INFO, WARN, ERROR"}
         });
     }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws IOException {
-        int lines = args.has("lines") ? args.get("lines").getAsInt() : 50;
-        String filter = args.has("filter") ? args.get("filter").getAsString() : null;
-        String level = args.has("level") ? args.get("level").getAsString().toUpperCase() : null;
+        int lines = args.has(PARAM_LINES) ? args.get(PARAM_LINES).getAsInt() : 50;
+        String filter = args.has(PARAM_FILTER) ? args.get(PARAM_FILTER).getAsString() : null;
+        String level = args.has(PARAM_LEVEL) ? args.get(PARAM_LEVEL).getAsString().toUpperCase() : null;
 
         Path logFile = findIdeLogFile();
         if (logFile == null) {
