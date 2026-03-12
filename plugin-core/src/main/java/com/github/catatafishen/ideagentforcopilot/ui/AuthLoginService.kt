@@ -5,7 +5,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import javax.swing.SwingUtilities
 
 /**
  * Encapsulates all authentication login logic for Copilot CLI and GitHub CLI.
@@ -145,13 +144,13 @@ internal class AuthLoginService(private val project: Project) {
                         if (pendingCode != null && pendingUrl != null && !foundCode) {
                             foundCode = true
                             val info = DeviceCodeInfo(pendingCode, pendingUrl)
-                            SwingUtilities.invokeLater { onDeviceCode(info) }
+                            ApplicationManager.getApplication().invokeLater { onDeviceCode(info) }
                         }
                     }
                 }
 
                 val exitCode = process.waitFor()
-                SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     if (exitCode == 0) {
                         onAuthComplete()
                     } else if (!foundCode) {
@@ -163,7 +162,7 @@ internal class AuthLoginService(private val project: Project) {
             } catch (e: Exception) {
                 if (!process.isAlive) return@executeOnPooledThread // killed intentionally
                 LOG.warn("Inline auth: reader failed, falling back", e)
-                SwingUtilities.invokeLater { onFallback() }
+                ApplicationManager.getApplication().invokeLater { onFallback() }
             }
         }
         return process
@@ -215,7 +214,7 @@ internal class AuthLoginService(private val project: Project) {
                 launchExternalTerminal(command)
             } catch (e: Exception) {
                 LOG.warn("Could not open external terminal for Copilot auth", e)
-                SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     Messages.showErrorDialog(
                         project,
                         "The IntelliJ Terminal plugin is not available and no external terminal could be opened.\n\n" +
@@ -233,7 +232,7 @@ internal class AuthLoginService(private val project: Project) {
                 launchExternalTerminal("gh auth login")
             } catch (e: Exception) {
                 LOG.warn("Could not open external terminal for GitHub auth", e)
-                SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     Messages.showErrorDialog(
                         project,
                         "The IntelliJ Terminal plugin is not available and no external terminal could be opened.\n\n" +

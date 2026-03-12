@@ -56,9 +56,9 @@ class CopilotFreeModelIntegrationTest {
     void setUp() throws Exception {
         Assumptions.assumeTrue(copilotAvailable(), "Copilot CLI not available");
         client = new AcpClient(
-            new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile()),
+            new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile(), null),
             new GenericAgentSettings(new GenericSettings("copilot"), null),
-            null, 0);
+            null, null, 0);
         client.start();
         sessionId = client.createSession();
 
@@ -150,9 +150,9 @@ class CopilotFreeModelIntegrationTest {
 
         // Create new client
         client = new AcpClient(
-            new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile()),
+            new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile(), null),
             new GenericAgentSettings(new GenericSettings("copilot"), null),
-            null, 0);
+            null, null, 0);
         client.start();
         assertTrue(client.isHealthy());
 

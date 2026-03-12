@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonElement;
@@ -15,8 +16,6 @@ import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -44,44 +43,33 @@ public final class PsiBridgeService implements Disposable {
         Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
 
     private final Project project;
-    private final RunConfigurationService runConfigService;
-    private final Map<String, ToolHandler> toolRegistry = new LinkedHashMap<>();
-    private final FileTools fileTools;
+    private final ToolRegistry registry;
     private final java.util.Set<String> sessionAllowedTools =
         java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
-        this.fileTools = new FileTools(project);
-        GitToolHandler gitToolHandler = new GitToolHandler(project, fileTools);
+        this.registry = ToolRegistry.getInstance(project);
 
-        // Initialize handler groups
-        RefactoringTools refactoringTools = new RefactoringTools(project);
-        this.runConfigService = new RunConfigurationService(project, refactoringTools::resolveClass);
+        // Initialize services
+        RunConfigurationService runConfigService = new RunConfigurationService(
+            project, className -> ClassResolverUtil.resolveClass(project, className));
 
-        // Register all tools from handler groups
-        for (AbstractToolHandler handler : List.of(
-            new CodeNavigationTools(project),
-            fileTools,
-            new CodeQualityTools(project),
-            refactoringTools,
-            new SymbolEditingTools(project),
-            new TestTools(project, refactoringTools),
-            new ProjectTools(project),
-            new GitTools(project, gitToolHandler),
-            new InfrastructureTools(project),
-            new TerminalTools(project),
-            new EditorTools(project)
-        )) {
-            toolRegistry.putAll(handler.getTools());
-        }
-
-        // RunConfigurationService tools (not an AbstractToolHandler)
-        toolRegistry.put("list_run_configurations", args -> runConfigService.listRunConfigurations());
-        toolRegistry.put("run_configuration", runConfigService::runConfiguration);
-        toolRegistry.put("create_run_configuration", runConfigService::createRunConfiguration);
-        toolRegistry.put("edit_run_configuration", runConfigService::editRunConfiguration);
-        toolRegistry.put("delete_run_configuration", runConfigService::deleteRunConfiguration);
+        // Register OO-style individual tool classes
+        boolean hasJava = PlatformApiCompat.isPluginInstalled("com.intellij.modules.java");
+        var allTools = new java.util.ArrayList<com.github.catatafishen.ideagentforcopilot.psi.tools.Tool>();
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.git.GitToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.navigation.NavigationToolFactory.create(project, hasJava));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.quality.QualityToolFactory.create(project, SonarQubeIntegration.isInstalled()));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring.RefactoringToolFactory.create(project, hasJava));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.editing.EditingToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.testing.TestingToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.project.ProjectToolFactory.create(project, runConfigService, hasJava));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure.InfrastructureToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.terminal.TerminalToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.editor.EditorToolFactory.create(project));
+        registry.registerAll(allTools);
     }
 
     @SuppressWarnings("java:S1905") // Cast needed: IDE doesn't resolve Project→ComponentManager supertype
@@ -101,7 +89,7 @@ public final class PsiBridgeService implements Disposable {
      * Runs deferred auto-format and import optimization on all files modified during the turn.
      */
     public void flushPendingAutoFormat() {
-        fileTools.flushPendingAutoFormat();
+        com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool.flushPendingAutoFormat(project);
     }
 
     /**
@@ -112,8 +100,8 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public String callTool(String toolName, JsonObject arguments) {
-        ToolHandler handler = toolRegistry.get(toolName);
-        if (handler == null) {
+        ToolDefinition def = registry.findDefinition(toolName);
+        if (def == null || !def.hasExecutionHandler()) {
             fireToolCallEvent(toolName, System.currentTimeMillis(), false);
             return "Unknown tool: " + toolName;
         }
@@ -143,7 +131,7 @@ public final class PsiBridgeService implements Disposable {
                 return denied;
             }
 
-            String result = handler.handle(arguments);
+            String result = def.execute(arguments);
 
             // Piggyback highlights after successful write operations
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {
@@ -167,15 +155,15 @@ public final class PsiBridgeService implements Disposable {
      * Dynamically registers a tool at runtime. Used by MacroToolRegistrar
      * (experimental plugin variant) to add user-recorded macros as MCP tools.
      */
-    public void registerTool(String id, ToolHandler handler) {
-        toolRegistry.put(id, handler);
+    public void registerTool(ToolDefinition toolDef) {
+        registry.register(toolDef);
     }
 
     /**
      * Removes a dynamically registered tool.
      */
     public void unregisterTool(String id) {
-        toolRegistry.remove(id);
+        registry.unregister(id);
     }
 
     private void fireToolCallEvent(String toolName, long startTimeMs, boolean success) {
@@ -216,10 +204,17 @@ public final class PsiBridgeService implements Disposable {
 
     @Nullable
     private String askUserPermission(String toolName, JsonObject arguments) {
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
-        String displayName = entry != null ? entry.displayName : toolName;
-        String argsJson = arguments.toString();
+        ToolDefinition entry = registry.findById(toolName);
+        String displayName = entry != null ? entry.displayName() : toolName;
         String reqId = java.util.UUID.randomUUID().toString();
+
+        // Build a structured context JSON for the permission bubble: {question, args}
+        String resolvedQuestion = entry != null ? entry.resolvePermissionQuestion(arguments) : null;
+        com.google.gson.JsonObject context = new com.google.gson.JsonObject();
+        context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
+            : "Can I use " + displayName + "?");
+        if (arguments != null) context.add("args", arguments);
+        String argsJson = context.toString();
 
         com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel chatPanel =
             com.github.catatafishen.ideagentforcopilot.ui.ChatConsolePanel.Companion.getInstance(project);
@@ -248,7 +243,7 @@ public final class PsiBridgeService implements Disposable {
             boolean[] result = {false};
             EdtUtil.invokeAndWait(() -> {
                 String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
-                    + buildArgSummary(arguments) + "</html>";
+                    + buildArgSummary(arguments != null ? arguments : new com.google.gson.JsonObject()) + "</html>";
                 int choice = Messages.showYesNoDialog(
                     project, message, "Tool Permission Request",
                     "Allow", "Deny", Messages.getQuestionIcon()
@@ -279,8 +274,8 @@ public final class PsiBridgeService implements Disposable {
 
     private ToolPermission resolvePluginPermission(String toolName, JsonObject arguments) {
         ToolLayerSettings settings = ToolLayerSettings.getInstance(project);
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolName);
-        if (entry != null && entry.supportsPathSubPermissions) {
+        ToolDefinition entry = registry.findById(toolName);
+        if (entry != null && entry.supportsPathSubPermissions()) {
             String path = extractPathArg(arguments);
             if (path != null && !path.isEmpty()) {
                 boolean inside = isInsideProject(path);
@@ -377,7 +372,7 @@ public final class PsiBridgeService implements Disposable {
      */
     private static long getDocumentStamp(@Nullable com.intellij.openapi.vfs.VirtualFile vf) {
         if (vf == null) return -1L;
-        // FileDocumentManager.getDocument requires a read action.
+        // Cast required for overload disambiguation: runReadAction(Computable) vs runReadAction(ThrowableComputable)
         return com.intellij.openapi.application.ApplicationManager.getApplication()
             .runReadAction((com.intellij.openapi.util.Computable<Long>) () -> {
                 com.intellij.openapi.editor.Document doc =
@@ -391,16 +386,20 @@ public final class PsiBridgeService implements Disposable {
         try (DaemonWaiter activeWaiter = resolveActiveWaiter(preWriteWaiter, vf, path)) {
             activeWaiter.await();
 
-            ToolHandler highlightHandler = toolRegistry.get("get_highlights");
-            if (highlightHandler == null) return writeResult;
+            ToolDefinition highlightDef = registry.findDefinition("get_highlights");
+            if (highlightDef == null || !highlightDef.hasExecutionHandler()) return writeResult;
 
             JsonObject highlightArgs = new JsonObject();
             highlightArgs.addProperty("path", path);
             highlightArgs.addProperty("include_unindexed", true);
-            String highlights = highlightHandler.handle(highlightArgs);
-            LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
+            String highlights = highlightDef.execute(highlightArgs);
+            if (highlights != null) {
+                LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
+            }
 
-            return writeResult + "\n\n--- Highlights (auto) ---\n" + highlights;
+            return highlights != null
+                ? writeResult + "\n\n--- Highlights (auto) ---\n" + highlights
+                : writeResult;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return writeResult;

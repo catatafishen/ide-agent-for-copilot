@@ -16,8 +16,6 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import javax.swing.JComponent
-import javax.swing.SwingUtilities
-import javax.swing.UIManager
 
 /**
  * Orchestrates Copilot billing/usage display in the tool window toolbar.
@@ -28,7 +26,10 @@ import javax.swing.UIManager
  */
 internal class BillingManager {
 
-    val usageLabel: JBLabel = JBLabel("")
+    val usageLabel: JBLabel = JBLabel("").apply {
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        toolTipText = "Click to toggle session/monthly view"
+    }
     val costLabel: JBLabel = JBLabel("")
 
     var billingCycleStartUsed = -1
@@ -68,9 +69,8 @@ internal class BillingManager {
 
     private companion object {
         private val LOG = Logger.getInstance(BillingManager::class.java)
-        private val ERROR_COLOR: JBColor
-            get() = UIManager.getColor("Label.errorForeground") as? JBColor
-                ?: JBColor(Color(0xC7, 0x22, 0x22), Color(0xE0, 0x60, 0x60))
+        private val ERROR_COLOR: Color
+            get() = JBUI.CurrentTheme.Label.errorForeground()
 
         private fun errorHex(): String {
             val c = ERROR_COLOR
@@ -92,7 +92,7 @@ internal class BillingManager {
         val estimated = estimatedUsed()
         val shouldAnimate = previousUsedCount >= 0 && estimated > previousUsedCount
         previousUsedCount = estimated
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             refreshUsageDisplay()
             updateUsageGraph(estimated, lastBillingEntitlement, lastBillingUnlimited, lastBillingResetDate)
             if (shouldAnimate) animateUsageChange()
@@ -148,7 +148,7 @@ internal class BillingManager {
     }
 
     private fun updateUsageUi(text: String, tooltip: String, cost: String = "") {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             usageLabel.text = text
             usageLabel.toolTipText = tooltip
             costLabel.text = cost
@@ -170,7 +170,7 @@ internal class BillingManager {
         val shouldAnimate = previousUsedCount >= 0 && estimated > previousUsedCount
         previousUsedCount = estimated
 
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             refreshUsageDisplay()
             updateUsageGraph(estimated, snapshot.entitlement, snapshot.unlimited, snapshot.resetDate)
             if (shouldAnimate) animateUsageChange()

@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * A per-file generation counter ensures that only the most recently scheduled
  * expiry task actually removes the label — earlier tasks become no-ops.
  */
-final class FileAccessTracker {
+public final class FileAccessTracker {
 
     enum AccessType {
         READ, WRITE, READ_WRITE
@@ -45,7 +45,7 @@ final class FileAccessTracker {
     private FileAccessTracker() {
     }
 
-    static void recordRead(Project project, String path) {
+    public static void recordRead(Project project, String path) {
         VirtualFile vf = ToolUtils.resolveVirtualFile(project, path);
         if (vf == null) return;
         String key = vf.getPath();
@@ -56,7 +56,7 @@ final class FileAccessTracker {
         scheduleLabelExpiry(project, key, gen);
     }
 
-    static void recordWrite(Project project, String path) {
+    public static void recordWrite(Project project, String path) {
         VirtualFile vf = ToolUtils.resolveVirtualFile(project, path);
         if (vf == null) return;
         String key = vf.getPath();

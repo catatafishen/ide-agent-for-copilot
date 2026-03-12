@@ -70,6 +70,18 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         myState.transportMode = mode;
     }
 
+    /**
+     * Applies {@link McpToolFilter#DEFAULT_DISABLED} on first run (before any
+     * persisted state exists). Once applied, the flag is persisted so subsequent
+     * loads skip this step.
+     */
+    public void ensureDefaultsApplied() {
+        if (!myState.defaultsApplied) {
+            myState.disabledToolIds.addAll(McpToolFilter.DEFAULT_DISABLED);
+            myState.defaultsApplied = true;
+        }
+    }
+
     @Override
     public @NotNull State getState() {
         return myState;
@@ -85,5 +97,6 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         public boolean autoStart = false;
         public TransportMode transportMode = TransportMode.STREAMABLE_HTTP;
         public Set<String> disabledToolIds = new LinkedHashSet<>();
+        public boolean defaultsApplied = false;
     }
 }

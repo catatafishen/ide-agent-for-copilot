@@ -74,6 +74,8 @@
 
     <!-- PSI Bridge: reused from plugin-core for tool execution -->
     <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolRegistry"/>
+    <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
 
     <!-- Settings: MCP Server (parent group) -->

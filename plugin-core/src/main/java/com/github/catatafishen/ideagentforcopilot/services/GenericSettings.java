@@ -143,12 +143,13 @@ public final class GenericSettings {
     }
 
     @NotNull
-    public ToolPermission resolveEffectivePermission(@NotNull String toolId, boolean isInsideProject) {
+    public ToolPermission resolveEffectivePermission(@NotNull String toolId, boolean isInsideProject,
+                                                     @NotNull ToolRegistry registry) {
         ToolPermission top = getToolPermission(toolId);
         if (top != ToolPermission.ALLOW) return top;
 
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
-        if (entry == null || !entry.supportsPathSubPermissions) return top;
+        ToolDefinition entry = registry.findById(toolId);
+        if (entry == null || !entry.supportsPathSubPermissions()) return top;
 
         return isInsideProject
             ? getToolPermissionInsideProject(toolId)
@@ -158,25 +159,6 @@ public final class GenericSettings {
     public void clearToolSubPermissions(@NotNull String toolId) {
         PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_IN_PREFIX + toolId));
         PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_OUT_PREFIX + toolId));
-    }
-
-    /**
-     * Comma-separated list of disabled MCP tool IDs for this agent.
-     */
-    @NotNull
-    public String getDisabledMcpToolIds() {
-        StringBuilder sb = new StringBuilder();
-        for (ToolRegistry.ToolEntry tool : ToolRegistry.getAllTools()) {
-            if (!tool.isBuiltIn) {
-                String stored = PropertiesComponent.getInstance().getValue(key("tool.enabled." + tool.id));
-                boolean enabled = stored == null || Boolean.parseBoolean(stored);
-                if (!enabled) {
-                    if (!sb.isEmpty()) sb.append(',');
-                    sb.append(tool.id);
-                }
-            }
-        }
-        return sb.toString();
     }
 
     // ── Billing persistence ──────────────────────────────────────────────────

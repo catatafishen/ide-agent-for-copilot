@@ -123,7 +123,7 @@ public final class ActiveAgentManager implements Disposable {
     @NotNull
     public AgentConfig getConfig() {
         if (cachedConfig == null) {
-            cachedConfig = new ProfileBasedAgentConfig(getActiveProfile());
+            cachedConfig = new ProfileBasedAgentConfig(getActiveProfile(), ToolRegistry.getInstance(project));
         }
         return cachedConfig;
     }
@@ -172,7 +172,7 @@ public final class ActiveAgentManager implements Disposable {
             AgentConfig config = resolveStartConfig();
             AgentSettings agentSettings = createAgentSettings();
 
-            acpClient = new AcpClient(config, agentSettings, projectPath, mcpPort);
+            acpClient = new AcpClient(config, agentSettings, ToolRegistry.getInstance(project), projectPath, mcpPort);
             acpClient.start();
             started = true;
 
@@ -250,14 +250,14 @@ public final class ActiveAgentManager implements Disposable {
         String defaultCommand = profile.getDefaultStartCommand();
 
         if (storedCommand.isEmpty() || storedCommand.equals(defaultCommand)) {
-            AgentConfig config = new ProfileBasedAgentConfig(profile);
+            AgentConfig config = new ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project));
             cachedConfig = config;
             return config;
         }
 
         // User has customised the command — use CommandOverrideAgentConfig
         LOG.info("Using custom start command for " + profile.getDisplayName() + ": " + storedCommand);
-        AgentConfig realConfig = new ProfileBasedAgentConfig(profile);
+        AgentConfig realConfig = new ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project));
         cachedConfig = realConfig;
         return new CommandOverrideAgentConfig(realConfig, storedCommand);
     }

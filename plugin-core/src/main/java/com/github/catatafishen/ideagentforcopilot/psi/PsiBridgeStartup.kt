@@ -18,6 +18,9 @@ class PsiBridgeStartup : ProjectActivity {
 
         createAgentWorkspace(project)
 
+        // Force-initialize PsiBridgeService so tools are registered before any agent connects
+        PsiBridgeService.getInstance(project)
+
         // Auto-start MCP HTTP server (required for agent CLI to access tools)
         val mcpSettings = com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings.getInstance(project)
         if (mcpSettings.isAutoStart) {

@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
+import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.github.catatafishen.ideagentforcopilot.ui.PermissionsPanel;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
@@ -31,7 +32,7 @@ public final class ToolPermissionsConfigurable implements Configurable {
     @Override
     public @Nullable JComponent createComponent() {
         var settings = ActiveAgentManager.getInstance(project).getSettings();
-        permissionsPanel = new PermissionsPanel(settings);
+        permissionsPanel = new PermissionsPanel(settings, ToolRegistry.getInstance(project));
         return permissionsPanel.getComponent();
     }
 

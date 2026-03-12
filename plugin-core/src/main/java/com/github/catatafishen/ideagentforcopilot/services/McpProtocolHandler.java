@@ -103,16 +103,21 @@ public final class McpProtocolHandler {
     }
 
     private JsonObject handleToolsList(JsonObject msg) {
+        // Ensure PsiBridgeService is initialized before listing tools
+        PsiBridgeService.getInstance(project);
+
         McpServerSettings settings = McpServerSettings.getInstance(project);
-        List<ToolRegistry.ToolEntry> enabledTools = McpToolFilter.getEnabledTools(settings, project);
+        settings.ensureDefaultsApplied();
+        List<ToolDefinition> enabledTools = McpToolFilter.getEnabledTools(settings, project);
 
         JsonArray tools = new JsonArray();
-        for (ToolRegistry.ToolEntry entry : enabledTools) {
+        for (ToolDefinition entry : enabledTools) {
             JsonObject tool = new JsonObject();
-            tool.addProperty("name", entry.id);
-            tool.addProperty("description", entry.description);
-            tool.add("inputSchema", ToolSchemas.getInputSchema(entry.id));
-            tool.add("annotations", ToolRegistry.getMcpAnnotations(entry.id));
+            tool.addProperty("name", entry.id());
+            tool.addProperty("description", entry.description());
+            JsonObject schema = entry.inputSchema();
+            tool.add("inputSchema", schema != null ? schema : new JsonObject());
+            tool.add("annotations", entry.mcpAnnotations());
             tools.add(tool);
         }
 

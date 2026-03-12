@@ -93,21 +93,21 @@ internal object ToolCallPopup {
             border = JBUI.Borders.empty(8, 12)
         }
 
-        panel.add(sectionLabel("Result"))
-        resultPanel.alignmentX = JComponent.LEFT_ALIGNMENT
-        panel.add(resultPanel)
-
         if (paramsPanel != null) {
+            panel.add(sectionLabel("Parameters"))
+            paramsPanel.alignmentX = JComponent.LEFT_ALIGNMENT
+            panel.add(paramsPanel)
             panel.add(Box.createVerticalStrut(JBUI.scale(6)))
             val separator = JSeparator().apply {
                 alignmentX = JComponent.LEFT_ALIGNMENT
                 maximumSize = Dimension(Int.MAX_VALUE, 1)
             }
             panel.add(separator)
-            panel.add(sectionLabel("Parameters"))
-            paramsPanel.alignmentX = JComponent.LEFT_ALIGNMENT
-            panel.add(paramsPanel)
         }
+
+        panel.add(sectionLabel("Result"))
+        resultPanel.alignmentX = JComponent.LEFT_ALIGNMENT
+        panel.add(resultPanel)
 
         panel.add(Box.createVerticalGlue())
 
@@ -117,7 +117,7 @@ internal object ToolCallPopup {
     private fun sectionLabel(text: String): JBLabel {
         return JBLabel(text).apply {
             foreground = UIUtil.getContextHelpForeground()
-            font = UIUtil.getLabelFont().deriveFont(java.awt.Font.BOLD, UIUtil.getLabelFont().size2D - 1f)
+            font = JBUI.Fonts.smallFont().asBold()
             border = JBUI.Borders.empty(4, 0, 6, 0)
             alignmentX = JComponent.LEFT_ALIGNMENT
         }

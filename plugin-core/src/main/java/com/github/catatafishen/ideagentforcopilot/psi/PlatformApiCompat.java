@@ -49,7 +49,7 @@ public final class PlatformApiCompat {
      * "cannot be applied to (PluginId)" even though the types are identical. The Gradle build
      * compiles without errors.</p>
      */
-    static boolean isPluginInstalled(@NotNull String pluginId) {
+    public static boolean isPluginInstalled(@NotNull String pluginId) {
         return com.intellij.ide.plugins.PluginManagerCore.isPluginInstalled(
             com.intellij.openapi.extensions.PluginId.getId(pluginId));
     }
@@ -63,7 +63,7 @@ public final class PlatformApiCompat {
      * differences ({@code @ActionText String} vs plain {@code String}) between the dev IDE
      * and the target SDK. The Gradle build compiles without errors.</p>
      */
-    static @Nullable String getUndoActionName(
+    public static @Nullable String getUndoActionName(
         @NotNull com.intellij.openapi.command.undo.UndoManager undoManager,
         @Nullable com.intellij.openapi.fileEditor.FileEditor fileEditor) {
         return undoManager.getUndoActionNameAndDescription(fileEditor).first;
@@ -77,7 +77,7 @@ public final class PlatformApiCompat {
      * {@code getRedoActionNameAndDescription()} triggers false-positive
      * daemon errors between SDK versions.</p>
      */
-    static @Nullable String getRedoActionName(
+    public static @Nullable String getRedoActionName(
         @NotNull com.intellij.openapi.command.undo.UndoManager undoManager,
         @Nullable com.intellij.openapi.fileEditor.FileEditor fileEditor) {
         return undoManager.getRedoActionNameAndDescription(fileEditor).first;
@@ -99,7 +99,7 @@ public final class PlatformApiCompat {
      *
      * <p>All three methods exist and work correctly at runtime. The Gradle build compiles without errors.</p>
      */
-    static @NotNull List<String> collectEditorNotificationTexts(
+    public static @NotNull List<String> collectEditorNotificationTexts(
         @NotNull Project project, @NotNull VirtualFile vf, @NotNull FileEditor editor) {
         List<String> notifications = new ArrayList<>();
         for (var provider : EditorNotificationProvider.EP_NAME.getExtensions(project)) {
@@ -143,7 +143,7 @@ public final class PlatformApiCompat {
      * failures not caught by the pre-check (e.g., {@code ExceptionInInitializerError},
      * {@code NoClassDefFoundError}).</p>
      */
-    static @Nullable InspectionToolResultExporter getInspectionPresentation(
+    public static @Nullable InspectionToolResultExporter getInspectionPresentation(
         @NotNull GlobalInspectionContextEx ctx, @NotNull InspectionToolWrapper<?, ?> toolWrapper) {
         if (!hasPresentationConstructor(toolWrapper)) {
             return null;
@@ -289,7 +289,7 @@ public final class PlatformApiCompat {
      * The IDE daemon reports "Unknown class: com.intellij.vcs.log.Hash" and cascading resolution
      * failures on {@code showRevisionInMainLog}. The Gradle build compiles without errors.</p>
      */
-    static void showRevisionInLog(@NotNull Project project, @NotNull String fullHash) {
+    public static void showRevisionInLog(@NotNull Project project, @NotNull String fullHash) {
         var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
         com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
     }
@@ -314,7 +314,7 @@ public final class PlatformApiCompat {
      * @param project  the current project
      * @param fullHash the full 40-character commit SHA
      */
-    static void showRevisionInLogAfterRefresh(@NotNull Project project, @NotNull String fullHash) {
+    public static void showRevisionInLogAfterRefresh(@NotNull Project project, @NotNull String fullHash) {
         var hash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
         var vcsLog = com.intellij.vcs.log.impl.VcsProjectLog.getInstance(project);
         var data = vcsLog.getDataManager();
@@ -373,7 +373,7 @@ public final class PlatformApiCompat {
      * Isolated in this class so Git4Idea class loading is deferred until first use; if Git4Idea
      * is disabled, the caller catches {@code NoClassDefFoundError} and falls back.</p>
      */
-    static @Nullable String runIdeGitCommand(@NotNull Project project, @NotNull String[] args) {
+    public static @Nullable String runIdeGitCommand(@NotNull Project project, @NotNull String[] args) {
         if (args.length == 0) return null;
 
         git4idea.commands.GitCommand command = IDE_GIT_COMMAND_MAP.get(args[0]);
@@ -445,7 +445,7 @@ public final class PlatformApiCompat {
      * IDE versions. Cascading: {@code descriptor.getName()} and {@code descriptor.getVersion()}
      * fail because the return type of {@code getPlugin} is unresolved.</p>
      */
-    static @Nullable String getPluginVersionInfo(@NotNull String pluginId) {
+    public static @Nullable String getPluginVersionInfo(@NotNull String pluginId) {
         var descriptor = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
             com.intellij.openapi.extensions.PluginId.getId(pluginId));
         if (descriptor == null) return null;
@@ -461,7 +461,7 @@ public final class PlatformApiCompat {
      * JAR whose version differs between the dev IDE and target SDK. The Gradle build resolves
      * them correctly from the configured platform dependency.</p>
      */
-    static void addSourceFolder(@NotNull com.intellij.openapi.roots.ContentEntry entry,
+    public static void addSourceFolder(@NotNull com.intellij.openapi.roots.ContentEntry entry,
                                 @NotNull com.intellij.openapi.vfs.VirtualFile dir,
                                 @NotNull String type) {
         boolean isTest = type.startsWith("test_");
@@ -491,7 +491,7 @@ public final class PlatformApiCompat {
      * and the returned entry's {@code homePath()}/{@code versionString()} all fail.
      * The Gradle build compiles without errors.</p>
      */
-    static @NotNull String listSdkTypes(@NotNull Project project) {
+    public static @NotNull String listSdkTypes(@NotNull Project project) {
         var sb = new StringBuilder();
         var sdkTypes = com.intellij.openapi.projectRoots.SdkType.EP_NAME.getExtensionList();
         sb.append("\nAvailable SDK types:\n");
@@ -515,7 +515,7 @@ public final class PlatformApiCompat {
      * <p><b>Why extracted:</b> Same {@code SdkType.EP_NAME.getExtensionList()} resolution issue
      * as {@link #listSdkTypes}.</p>
      */
-    static @Nullable com.intellij.openapi.projectRoots.SdkType findSdkTypeByName(@NotNull String name) {
+    public static @Nullable com.intellij.openapi.projectRoots.SdkType findSdkTypeByName(@NotNull String name) {
         var sdkTypes = com.intellij.openapi.projectRoots.SdkType.EP_NAME.getExtensionList();
         for (var type : sdkTypes) {
             if (type.getName().equalsIgnoreCase(name) || type.getPresentableName().equalsIgnoreCase(name)) {
@@ -535,7 +535,7 @@ public final class PlatformApiCompat {
      * the false positive in calling code.</p>
      */
     @SuppressWarnings("unchecked")
-    static void writeActionRunAndWait(@NotNull Runnable action) throws Exception {
+    public static void writeActionRunAndWait(@NotNull Runnable action) throws Exception {
         com.intellij.openapi.application.WriteAction.runAndWait(
             (com.intellij.util.ThrowableRunnable<Exception>) action::run);
     }
@@ -547,7 +547,7 @@ public final class PlatformApiCompat {
      * cannot be resolved because the extension point generic differs between IDE versions.
      * Cascading: {@code getDisplayName()} fails on the unresolved type.</p>
      */
-    static @NotNull java.util.List<String> listConfigurationTypeNames() {
+    public static @NotNull java.util.List<String> listConfigurationTypeNames() {
         var result = new java.util.ArrayList<String>();
         for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
             result.add(ct.getDisplayName());
@@ -612,7 +612,7 @@ public final class PlatformApiCompat {
      * @param idOrNameSubstring case-insensitive substring to match against ID or display name
      * @return the matching ConfigurationType, or null if not found
      */
-    static com.intellij.execution.configurations.ConfigurationType findConfigurationTypeBySearch(
+    public static com.intellij.execution.configurations.ConfigurationType findConfigurationTypeBySearch(
         String idOrNameSubstring) {
         String lowerSearch = idOrNameSubstring.toLowerCase();
         for (var ct : com.intellij.execution.configurations.ConfigurationType
@@ -773,7 +773,7 @@ public final class PlatformApiCompat {
      * @param listener the execution listener
      * @return a Runnable that disconnects the subscription when called
      */
-    static Runnable subscribeExecutionListener(
+    public static Runnable subscribeExecutionListener(
         com.intellij.openapi.project.Project project,
         com.intellij.execution.ExecutionListener listener) {
         var connection = project.getMessageBus().connect();
@@ -828,7 +828,7 @@ public final class PlatformApiCompat {
      * @param onFinished callback invoked (on a background thread) after analysis completes;
      *                   receives the fully-populated {@code GlobalInspectionContextEx}
      */
-    static void runFullInspections(
+    public static void runFullInspections(
         @NotNull Project project,
         @NotNull com.intellij.analysis.AnalysisScope scope,
         @NotNull com.intellij.codeInspection.ex.InspectionProfileImpl profile,

@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
+import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,7 +37,8 @@ public final class GenericAgentSettings implements AgentSettings {
 
     @Override
     public @NotNull ToolPermission resolveEffectivePermission(@NotNull String toolId, boolean insideProject) {
-        return settings.resolveEffectivePermission(toolId, insideProject);
+        if (project == null) return settings.getToolPermission(toolId);
+        return settings.resolveEffectivePermission(toolId, insideProject, ToolRegistry.getInstance(project));
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
@@ -11,6 +12,7 @@ import java.awt.Font
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextPane
+import javax.swing.ScrollPaneConstants
 import javax.swing.text.StyleConstants
 import javax.swing.text.StyleContext
 
@@ -19,7 +21,7 @@ import javax.swing.text.StyleContext
  * when old_str/new_str are available in the arguments, otherwise falls back
  * to context lines.
  */
-internal object WriteFileRenderer : ArgumentAwareRenderer {
+object WriteFileRenderer : ArgumentAwareRenderer {
 
     private val WRITTEN = Regex("""^Written:\s+(.+?)\s+\((\d+)\s+chars\)""")
     private val CREATED = Regex("""^Created:\s+(.+)$""")
@@ -203,6 +205,9 @@ internal object WriteFileRenderer : ArgumentAwareRenderer {
         }
         if (codeLines.isEmpty()) return
 
-        panel.add(ToolRenderers.codeBlock(codeLines.joinToString("\n")))
+        panel.add(JBScrollPane(ToolRenderers.codeBlock(codeLines.joinToString("\n"))).apply {
+            border = JBUI.Borders.empty()
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED
+        })
     }
 }

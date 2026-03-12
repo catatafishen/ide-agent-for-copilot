@@ -3,13 +3,18 @@ package com.github.catatafishen.ideagentforcopilot.settings;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
+import com.intellij.icons.AllIcons;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.options.Configurable;
-import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.JBSplitter;
+import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.TitledSeparator;
+import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
@@ -20,6 +25,7 @@ import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -39,9 +45,7 @@ public final class AgentProfilesConfigurable implements Configurable {
 
     private static final String EMPTY_CARD = "empty";
 
-    private final Project project;
-
-    private JPanel mainPanel;
+    private JBPanel<?> mainPanel;
     private DefaultListModel<ProfileListEntry> listModel;
     private JBList<ProfileListEntry> profileList;
     private JPanel editorPanel;
@@ -65,7 +69,7 @@ public final class AgentProfilesConfigurable implements Configurable {
     private JBTextArea mcpConfigTemplateArea;
     private JBTextField mcpEnvVarNameField;
 
-    // ── Feature Flags tab ──
+    // ── Advanced tab ──
     private JBCheckBox supportsModelFlagCb;
     private JBCheckBox supportsConfigDirCb;
     private JBCheckBox supportsMcpConfigFlagCb;
@@ -81,9 +85,7 @@ public final class AgentProfilesConfigurable implements Configurable {
     private int currentIndex = -1;
     private boolean loading;
 
-    public AgentProfilesConfigurable(@NotNull Project project) {
-        this.project = project;
-    }
+    // Profiles are application-scoped; no per-project state needed.
 
     @Override
     public @Nls(capitalization = Nls.Capitalization.Title) String getDisplayName() {
@@ -102,6 +104,10 @@ public final class AgentProfilesConfigurable implements Configurable {
 
         profileList = new JBList<>(listModel);
         profileList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        profileList.setCellRenderer(SimpleListCellRenderer.create((label, entry, index) -> {
+            label.setText(entry.toString());
+            label.setIcon(entry.builtIn() ? AllIcons.Nodes.Plugin : AllIcons.Nodes.Function);
+        }));
         profileList.addListSelectionListener(this::onSelectionChanged);
 
         JPanel listPanel = buildListPanel();
@@ -124,72 +130,81 @@ public final class AgentProfilesConfigurable implements Configurable {
     }
 
     private JPanel buildListPanel() {
+        JPanel decoratorPanel = ToolbarDecorator.createDecorator(profileList)
+            .setAddAction(button -> addProfile())
+            .setRemoveAction(button -> removeProfile())
+            .addExtraAction(new AnAction("Duplicate", "Duplicate selected profile", AllIcons.Actions.Copy) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    duplicateProfile();
+                }
+
+                @Override
+                public @NotNull ActionUpdateThread getActionUpdateThread() {
+                    return ActionUpdateThread.EDT;
+                }
+            })
+            .addExtraAction(new AnAction("Reset to Defaults",
+                "Reset selected built-in profile to factory defaults", AllIcons.Actions.Rollback) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    resetProfile();
+                }
+
+                @Override
+                public @NotNull ActionUpdateThread getActionUpdateThread() {
+                    return ActionUpdateThread.EDT;
+                }
+            })
+            .createPanel();
+
         JPanel panel = new JBPanel<>(new BorderLayout());
         panel.setBorder(IdeBorderFactory.createTitledBorder("Profiles"));
-
-        JBScrollPane scrollPane = new JBScrollPane(profileList);
-        panel.add(scrollPane, BorderLayout.CENTER);
-
-        JButton addBtn = new JButton("Add");
-        addBtn.addActionListener(e -> addProfile());
-
-        JButton duplicateBtn = new JButton("Duplicate");
-        duplicateBtn.addActionListener(e -> duplicateProfile());
-
-        JButton removeBtn = new JButton("Remove");
-        removeBtn.addActionListener(e -> removeProfile());
-
-        JButton resetBtn = new JButton("Reset");
-        resetBtn.setToolTipText("Reset selected built-in profile to factory defaults");
-        resetBtn.addActionListener(e -> resetProfile());
-
-        JPanel buttons = new JBPanel<>();
-        buttons.setLayout(new BoxLayout(buttons, BoxLayout.X_AXIS));
-        buttons.setBorder(JBUI.Borders.empty(4, 2, 2, 2));
-        buttons.add(addBtn);
-        buttons.add(Box.createHorizontalStrut(JBUI.scale(4)));
-        buttons.add(duplicateBtn);
-        buttons.add(Box.createHorizontalStrut(JBUI.scale(4)));
-        buttons.add(removeBtn);
-        buttons.add(Box.createHorizontalStrut(JBUI.scale(4)));
-        buttons.add(resetBtn);
-        buttons.add(Box.createHorizontalGlue());
-        panel.add(buttons, BorderLayout.SOUTH);
-
+        panel.add(decoratorPanel, BorderLayout.CENTER);
         return panel;
     }
 
     @NotNull
     private JPanel buildEditorPanel() {
         nameField = new JBTextField();
-        descriptionArea = new JBTextArea(3, 40);
+        nameField.getEmptyText().setText("Profile display name");
+        descriptionArea = new JBTextArea(3, 0);
         descriptionArea.setLineWrap(true);
         descriptionArea.setWrapStyleWord(true);
         descriptionArea.setEditable(false);
-        descriptionArea.setBackground(null);
-        descriptionArea.setFont(com.intellij.util.ui.UIUtil.getLabelFont());
+        descriptionArea.setOpaque(false);
+        descriptionArea.setBackground(UIUtil.getPanelBackground());
+        descriptionArea.setFont(UIUtil.getLabelFont());
         binaryNameField = new JBTextField();
+        binaryNameField.getEmptyText().setText("e.g. copilot");
         alternateNamesField = new JBTextField();
+        alternateNamesField.getEmptyText().setText("Comma-separated, e.g. gh, github-copilot");
         installHintField = new JBTextField();
+        installHintField.getEmptyText().setText("Shown when binary is not found");
         customBinaryPathField = new JBTextField();
+        customBinaryPathField.getEmptyText().setText("Absolute path (overrides auto-discovery)");
         acpArgsField = new JBTextField();
+        acpArgsField.getEmptyText().setText("e.g. --acp --stdio");
 
         mcpMethodCombo = new ComboBox<>(McpInjectionMethod.values());
         mcpConfigTemplateArea = new JBTextArea(6, 40);
-        mcpConfigTemplateArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN,
-            mcpConfigTemplateArea.getFont().getSize()));
+        mcpConfigTemplateArea.setFont(JBUI.Fonts.create(Font.MONOSPACED, mcpConfigTemplateArea.getFont().getSize()));
         mcpConfigTemplateArea.setLineWrap(true);
         mcpConfigTemplateArea.setWrapStyleWord(false);
         mcpEnvVarNameField = new JBTextField();
+        mcpEnvVarNameField.getEmptyText().setText("e.g. COPILOT_MCP_CONFIG");
 
         supportsModelFlagCb = new JBCheckBox("Supports --model flag");
         supportsConfigDirCb = new JBCheckBox("Supports --config-dir flag");
         supportsMcpConfigFlagCb = new JBCheckBox("Supports --additional-mcp-config flag");
         requiresResourceDuplicationCb = new JBCheckBox("Requires resource content duplication");
         modelUsageFieldField = new JBTextField();
+        modelUsageFieldField.getEmptyText().setText("e.g. copilotUsage");
         agentsDirectoryField = new JBTextField();
+        agentsDirectoryField.getEmptyText().setText("Relative path, e.g. .agents");
 
         prependInstructionsToField = new JBTextField();
+        prependInstructionsToField.getEmptyText().setText("e.g. .copilot/copilot-instructions.md");
         ensureCopilotAgentsCb = new JBCheckBox("Ensure Copilot agents config on launch");
 
         usePluginPermissionsCb = new JBCheckBox("Use plugin-level tool permissions");
@@ -209,7 +224,7 @@ public final class AgentProfilesConfigurable implements Configurable {
         tabs.addTab("General", scrollTab(buildGeneralTab()));
         tabs.addTab("ACP & Launch", scrollTab(buildAcpTab()));
         tabs.addTab("MCP", scrollTab(buildMcpTab()));
-        tabs.addTab("Feature Flags", scrollTab(buildFlagsTab()));
+        tabs.addTab("Advanced", scrollTab(buildFlagsTab()));
         tabs.addTab("Permissions", scrollTab(buildPermissionsTab()));
 
         editorPanel.add(tabs, "editor");
@@ -245,7 +260,7 @@ public final class AgentProfilesConfigurable implements Configurable {
             .addComponent(new TitledSeparator("ACP Command"))
             .addLabeledComponent("ACP args (space-separated):", acpArgsField)
             .addTooltip("Arguments to activate ACP mode (e.g., \"--acp --stdio\" or \"acp\")")
-            .addComponent(new TitledSeparator("Pre-launch Hooks"))
+            .addComponent(new TitledSeparator("Pre-Launch Hooks"))
             .addLabeledComponent("Prepend instructions to (relative path):", prependInstructionsToField)
             .addTooltip("Relative path from project root to prepend plugin context to on launch "
                 + "(e.g. \".copilot/copilot-instructions.md\" or \"CLAUDE.md\"). Leave empty to skip.")
@@ -430,7 +445,10 @@ public final class AgentProfilesConfigurable implements Configurable {
         target.setInstallHint(installHintField.getText().trim());
         target.setCustomBinaryPath(customBinaryPathField.getText().trim());
         target.setAcpArgs(splitSpace(acpArgsField.getText()));
-        target.setMcpMethod((McpInjectionMethod) mcpMethodCombo.getSelectedItem());
+        McpInjectionMethod mcpMethod = (McpInjectionMethod) mcpMethodCombo.getSelectedItem();
+        if (mcpMethod != null) {
+            target.setMcpMethod(mcpMethod);
+        }
         target.setMcpConfigTemplate(mcpConfigTemplateArea.getText().trim());
         target.setMcpEnvVarName(mcpEnvVarNameField.getText().trim());
         target.setSupportsModelFlag(supportsModelFlagCb.isSelected());
@@ -564,7 +582,7 @@ public final class AgentProfilesConfigurable implements Configurable {
 
     private record ProfileListEntry(String displayName, boolean builtIn, boolean experimental, int index) {
         @Override
-        public String toString() {
+        public @NotNull String toString() {
             String suffix = builtIn ? " (built-in)" : "";
             if (experimental) suffix += " ⚠ experimental";
             return displayName + suffix;

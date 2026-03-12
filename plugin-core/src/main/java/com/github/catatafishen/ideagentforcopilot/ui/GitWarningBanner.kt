@@ -26,7 +26,7 @@ class GitWarningBanner(private val project: Project) : InlineBanner("", EditorNo
         } finally {
             g2.dispose()
         }
-        paintChildren(g as java.awt.Graphics2D)
+        paintChildren(g)
     }
 
     private companion object {
@@ -47,7 +47,7 @@ class GitWarningBanner(private val project: Project) : InlineBanner("", EditorNo
         ApplicationManager.getApplication().executeOnPooledThread {
             val warning = checkGitStatus()
             if (warning != null) {
-                javax.swing.SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     setMessage(
                         "No version control detected. $warning " +
                             "The agent can make destructive edits \u2014 having git with a remote " +

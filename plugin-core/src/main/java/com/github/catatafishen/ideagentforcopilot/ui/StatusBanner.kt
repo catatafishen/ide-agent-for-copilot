@@ -9,7 +9,6 @@ import java.awt.BorderLayout
 import java.awt.Graphics
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import javax.swing.SwingUtilities
 import javax.swing.event.AncestorEvent
 import javax.swing.event.AncestorListener
 
@@ -76,15 +75,15 @@ class StatusBanner(parentDisposable: Disposable) :
      */
     fun dismissCurrent() {
         if (currentBanner == null) return
-        if (SwingUtilities.isEventDispatchThread()) {
+        if (ApplicationManager.getApplication().isDispatchThread) {
             dismiss()
         } else {
-            SwingUtilities.invokeLater { dismiss() }
+            ApplicationManager.getApplication().invokeLater { dismiss() }
         }
     }
 
     private fun show(message: String, status: EditorNotificationPanel.Status) {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             dismiss()
             val borderColor = statusBorderColor(status)
             val banner = object : InlineBanner(message, status) {
@@ -99,7 +98,7 @@ class StatusBanner(parentDisposable: Disposable) :
                     } finally {
                         g2.dispose()
                     }
-                    paintChildren(g as java.awt.Graphics2D)
+                    paintChildren(g)
                 }
             }
             banner.showCloseButton(true)
@@ -153,7 +152,7 @@ class StatusBanner(parentDisposable: Disposable) :
             banner.close()
             isVisible = false
             // Ensure parent relayouts after InlineBanner's close animation
-            SwingUtilities.invokeLater {
+            ApplicationManager.getApplication().invokeLater {
                 revalidate()
                 repaint()
             }

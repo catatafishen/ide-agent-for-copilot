@@ -8,24 +8,24 @@ import com.github.catatafishen.ideagentforcopilot.services.McpServerControl
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.HyperlinkLabel
+import com.intellij.ui.InplaceButton
 import com.intellij.ui.JBColor
-import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBPanel
-import com.intellij.ui.components.JBScrollPane
-import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.components.*
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import java.awt.*
 import java.awt.datatransfer.StringSelection
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.swing.*
-import javax.swing.border.CompoundBorder
 
 /**
  * Pre-connection landing panel with a step-by-step "getting started" layout:
@@ -50,28 +50,14 @@ class AcpConnectPanel(
         isVisible = false
         toolTipText = "Working…"
     }
-    private val mcpAutoStartCheckbox = JCheckBox("Auto-start on IDE open")
+    private val mcpAutoStartCheckbox = JBCheckBox("Auto-start on IDE open")
     private val mcpStatusLabel = JBLabel("Stopped")
-    private val mcpUrlCopyButton = JButton(AllIcons.Actions.Copy).apply {
-        toolTipText = "Copy MCP URL"
-        isBorderPainted = false
-        isContentAreaFilled = false
-        isFocusable = false
+    private val mcpUrlCopyButton = InplaceButton("Copy MCP URL", AllIcons.Actions.Copy) {
+        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+        clipboard.setContents(StringSelection(mcpRunningUrl), null)
+    }.apply {
         isVisible = false
-        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        preferredSize = JBUI.size(22, 22)
-        maximumSize = JBUI.size(22, 22)
-        addMouseListener(object : java.awt.event.MouseAdapter() {
-            override fun mouseEntered(e: java.awt.event.MouseEvent) {
-                isContentAreaFilled = true
-                isBorderPainted = true
-            }
-
-            override fun mouseExited(e: java.awt.event.MouseEvent) {
-                isContentAreaFilled = false
-                isBorderPainted = false
-            }
-        })
+        accessibleContext.accessibleName = "Copy MCP URL"
     }
     private var mcpRunningUrl = ""
     private val toolCallLink = HyperlinkLabel("0 calls")
@@ -82,7 +68,7 @@ class AcpConnectPanel(
     private var acpSection: JComponent = JBPanel<JBPanel<*>>()
     private val profileCombo = ComboBox<AgentProfile>()
     private val connectButton = JButton("Connect")
-    private val acpAutoConnectCheckbox = JCheckBox("Auto-connect on startup")
+    private val acpAutoConnectCheckbox = JBCheckBox("Auto-connect on startup")
     private val acpHintLabel = JBLabel("Start the tool server above first").apply {
         foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
         font = JBUI.Fonts.smallFont()
@@ -134,7 +120,7 @@ class AcpConnectPanel(
         ).apply {
             foreground = JBUI.CurrentTheme.Label.disabledForeground()
             font = JBUI.Fonts.smallFont()
-            horizontalAlignment = javax.swing.SwingConstants.CENTER
+            horizontalAlignment = SwingConstants.CENTER
             border = JBUI.Borders.empty(4, 0, 8, 0)
         }
         add(versionLabel, BorderLayout.SOUTH)
@@ -200,7 +186,7 @@ class AcpConnectPanel(
                 Color(0xF0, 0xF0, 0xF0),
                 Color(0x3C, 0x3C, 0x3C)
             )
-            border = CompoundBorder(
+            border = JBUI.Borders.compound(
                 JBUI.Borders.customLine(JBColor.border(), 1),
                 JBUI.Borders.empty(4, 8)
             )
@@ -209,11 +195,6 @@ class AcpConnectPanel(
         mcpStatusLabel.icon = AllIcons.General.InspectionsOKEmpty
         mcpStatusLabel.font = JBUI.Fonts.label()
         pill.add(mcpStatusLabel, BorderLayout.WEST)
-
-        mcpUrlCopyButton.addActionListener {
-            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-            clipboard.setContents(StringSelection(mcpRunningUrl), null)
-        }
 
         val eastPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             isOpaque = false
@@ -241,8 +222,10 @@ class AcpConnectPanel(
         mcpStartButton.addActionListener { toggleMcpServer() }
         panel.add(mcpStartButton, BorderLayout.CENTER)
 
-        val eastPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 2, 0)).apply {
+        val eastPanel = JBPanel<JBPanel<*>>().apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
+            add(Box.createHorizontalStrut(JBUI.scale(4)))
             add(mcpSpinner)
         }
         panel.add(eastPanel, BorderLayout.EAST)
@@ -313,14 +296,8 @@ class AcpConnectPanel(
 
     private fun createProfileSelector(): JComponent {
         refreshProfileCombo()
-        profileCombo.renderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                text = (value as? AgentProfile)?.displayName ?: ""
-                return this
-            }
+        profileCombo.renderer = SimpleListCellRenderer.create { label, value, _ ->
+            label.text = value?.displayName ?: ""
         }
         profileCombo.alignmentX = LEFT_ALIGNMENT
         profileCombo.maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(32))
@@ -349,8 +326,8 @@ class AcpConnectPanel(
             alignmentX = LEFT_ALIGNMENT
         }
 
-        panel.add(JBLabel("\u2460\u2461"[step - 1].toString() + "  " + title).apply {
-            font = JBUI.Fonts.label(16f).asBold()
+        panel.add(JBLabel("$step. $title").apply {
+            font = JBUI.Fonts.label().deriveFont(JBUI.Fonts.label().size2D * 1.25f).asBold()
             alignmentX = LEFT_ALIGNMENT
             border = JBUI.Borders.empty(12, 0, 4, 0)
         })
@@ -372,13 +349,13 @@ class AcpConnectPanel(
         connection.subscribe(
             McpHttpServer.STATUS_TOPIC,
             McpHttpServer.StatusListener {
-                SwingUtilities.invokeLater { refreshMcpState() }
+                ApplicationManager.getApplication().invokeLater { refreshMcpState() }
             })
 
         connection.subscribe(
             PsiBridgeService.TOOL_CALL_TOPIC,
             PsiBridgeService.ToolCallListener { toolName, durationMs, success ->
-                SwingUtilities.invokeLater { addToolCallEntry(toolName, durationMs, success) }
+                ApplicationManager.getApplication().invokeLater { addToolCallEntry(toolName, durationMs, success) }
             })
     }
 
@@ -469,9 +446,9 @@ class AcpConnectPanel(
                     mcpServer.start(port)
                 }
             } catch (e: Exception) {
-                SwingUtilities.invokeLater { showError("MCP server error: ${e.message}") }
+                ApplicationManager.getApplication().invokeLater { showError("MCP server error: ${e.message}") }
             } finally {
-                SwingUtilities.invokeLater {
+                ApplicationManager.getApplication().invokeLater {
                     refreshMcpState()
                 }
             }
@@ -489,7 +466,7 @@ class AcpConnectPanel(
         mcpSpinner.isVisible = true
         mcpSpinner.resume()
         AppExecutorUtil.getAppScheduledExecutorService().schedule({
-            SwingUtilities.invokeLater {
+            ApplicationManager.getApplication().invokeLater {
                 if (mcpSpinner.isVisible) {
                     refreshMcpState()
                 }
@@ -516,21 +493,17 @@ class AcpConnectPanel(
         val listModel = DefaultListModel<String>()
         toolCallEntries.forEach { listModel.addElement(it) }
 
-        val list = JList(listModel)
-        list.font = JBUI.Fonts.create(Font.MONOSPACED, 11)
+        val list = JBList(listModel).apply {
+            emptyText.text = "No tool calls recorded"
+        }
+        list.font = JBUI.Fonts.create(Font.MONOSPACED, UIUtil.getLabelFont().size)
         list.visibleRowCount = minOf(toolCallEntries.size, 15)
-        list.cellRenderer = object : DefaultListCellRenderer() {
-            override fun getListCellRendererComponent(
-                jList: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
-            ): Component {
-                super.getListCellRendererComponent(jList, value, index, isSelected, cellHasFocus)
-                val text = value?.toString() ?: ""
-                if (!isSelected && text.contains("  \u2717  ")) {
-                    foreground = JBColor.RED
-                }
-                font = JBUI.Fonts.create(Font.MONOSPACED, 11)
-                return this
+        list.cellRenderer = SimpleListCellRenderer.create { label, value, _ ->
+            label.text = value ?: ""
+            if (label.text.contains("  \u2717  ")) {
+                label.foreground = JBUI.CurrentTheme.Label.errorForeground()
             }
+            label.font = JBUI.Fonts.create(Font.MONOSPACED, UIUtil.getLabelFont().size)
         }
 
         val scrollPane = JBScrollPane(list)
@@ -571,7 +544,7 @@ class AcpConnectPanel(
     // ── Public API for AgenticCopilotToolWindowContent ──
 
     fun showError(message: String) {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             connectButton.isEnabled = true
             connectButton.text = "Connect"
             statusBanner.showError(message)
@@ -579,7 +552,7 @@ class AcpConnectPanel(
     }
 
     fun resetConnectButton() {
-        SwingUtilities.invokeLater {
+        ApplicationManager.getApplication().invokeLater {
             connectButton.isEnabled = true
             connectButton.text = "Connect"
             refreshProfileCombo()

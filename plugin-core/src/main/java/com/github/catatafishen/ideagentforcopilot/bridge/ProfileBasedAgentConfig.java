@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
+import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,6 +32,8 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
     private static final String MCP_SERVERS_KEY = "mcpServers";
 
     private final AgentProfile profile;
+    @Nullable
+    private final ToolRegistry registry;
     private String resolvedBinaryPath;
     private JsonArray authMethods;
     /**
@@ -38,8 +41,9 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
      */
     private String effectiveMcpServerName = "intellij-code-tools";
 
-    public ProfileBasedAgentConfig(@NotNull AgentProfile profile) {
+    public ProfileBasedAgentConfig(@NotNull AgentProfile profile, @Nullable ToolRegistry registry) {
         this.profile = profile;
+        this.registry = registry;
     }
 
     @Override
@@ -401,19 +405,20 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
      * (the agent's default behavior is to prompt the user).
      */
     private void addPermissionCliFlags(@NotNull List<String> cmd) {
+        if (registry == null) return;
         var settings = new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(profile.getId());
         int allowCount = 0;
         int denyCount = 0;
-        for (var entry : com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getAllTools()) {
-            if (entry.isBuiltIn) continue;
-            var perm = settings.getToolPermission(entry.id);
+        for (var entry : registry.getAllTools()) {
+            if (entry.isBuiltIn()) continue;
+            var perm = settings.getToolPermission(entry.id());
             if (perm == com.github.catatafishen.ideagentforcopilot.services.ToolPermission.ALLOW) {
                 cmd.add("--allow-tool");
-                cmd.add(entry.id);
+                cmd.add(entry.id());
                 allowCount++;
             } else if (perm == com.github.catatafishen.ideagentforcopilot.services.ToolPermission.DENY) {
                 cmd.add("--deny-tool");
-                cmd.add(entry.id);
+                cmd.add(entry.id());
                 denyCount++;
             }
         }
@@ -451,17 +456,18 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
      */
     @NotNull
     private com.google.gson.JsonObject buildPermissionJsonObject() {
-        var settings = new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(profile.getId());
         var permObj = new com.google.gson.JsonObject();
-        for (var entry : com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getAllTools()) {
-            if (entry.isBuiltIn) {
+        if (registry == null) return permObj;
+        var settings = new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(profile.getId());
+        for (var entry : registry.getAllTools()) {
+            if (entry.isBuiltIn()) {
                 if (profile.isExcludeAgentBuiltInTools()) {
-                    permObj.addProperty(entry.id, "deny");
+                    permObj.addProperty(entry.id(), "deny");
                 }
                 continue;
             }
-            var perm = settings.getToolPermission(entry.id);
-            permObj.addProperty(entry.id, perm.name().toLowerCase(java.util.Locale.ROOT));
+            var perm = settings.getToolPermission(entry.id());
+            permObj.addProperty(entry.id(), perm.name().toLowerCase(java.util.Locale.ROOT));
         }
         return permObj;
     }

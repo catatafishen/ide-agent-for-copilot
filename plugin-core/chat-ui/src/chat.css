@@ -972,6 +972,67 @@ hr {
     pointer-events: none;
 }
 
+/* ── Permission request ────────────────────────────────── */
+
+.perm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    align-items: flex-start;
+    margin-top: var(--sp-2);
+}
+
+.perm-deny { color: var(--danger) !important; border-color: var(--danger) !important; }
+.perm-deny:hover { background: color-mix(in srgb, var(--danger) 20%, transparent) !important; }
+.perm-allow { color: var(--success) !important; border-color: var(--success) !important; }
+.perm-allow:hover { background: color-mix(in srgb, var(--success) 22%, transparent) !important; }
+.perm-allow-session { color: var(--link) !important; border-color: color-mix(in srgb, var(--link) 30%, transparent) !important; }
+.perm-allow-session:hover { background: color-mix(in srgb, var(--link) 22%, transparent) !important; }
+
+.perm-result {
+    font-size: 0.85em;
+    padding: var(--sp-2) var(--sp-4);
+    border-radius: var(--r-sm);
+}
+.perm-allowed { color: var(--success); }
+.perm-denied  { color: var(--danger); }
+
+.perm-args {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-bottom: var(--sp-3);
+    font-size: 0.82em;
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    background: var(--fg-a05);
+}
+
+.perm-arg-row {
+    display: flex;
+    gap: var(--sp-3);
+    padding: var(--sp-1) var(--sp-3);
+    background: var(--bg);
+}
+
+.perm-arg-key {
+    color: var(--fg-muted);
+    flex-shrink: 0;
+    min-width: 6em;
+    font-family: var(--code-font);
+    font-size: var(--code-font-size);
+}
+
+.perm-arg-val {
+    color: var(--fg);
+    font-family: var(--code-font);
+    font-size: var(--code-font-size);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ── Code action buttons (copy, wrap, scratch) ───────── */
 
 .code-lang-label {
@@ -1095,59 +1156,7 @@ pre.word-wrap code {
     color: var(--fg);
 }
 
-/* ── Permission request actions ──────────────────────── */
-permission-request {
-    display: flex;
-    gap: var(--sp-3);
-    padding: 0 var(--sp-4);
-    margin: var(--sp-2) 0;
-}
-
-.perm-allow {
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-    color: var(--success);
-    border-color: color-mix(in srgb, var(--success) 30%, transparent);
-}
-
-.perm-allow:hover {
-    background: color-mix(in srgb, var(--success) 22%, transparent);
-    border-color: var(--success);
-}
-
-.perm-allow-session {
-    background: color-mix(in srgb, var(--link) 12%, transparent);
-    color: var(--link);
-    border-color: color-mix(in srgb, var(--link) 30%, transparent);
-}
-
-.perm-allow-session:hover {
-    background: color-mix(in srgb, var(--link) 22%, transparent);
-    border-color: var(--link);
-}
-
-.perm-deny {
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    color: var(--danger);
-    border-color: color-mix(in srgb, var(--danger) 25%, transparent);
-}
-
-.perm-deny:hover {
-    background: color-mix(in srgb, var(--danger) 20%, transparent);
-    border-color: var(--danger);
-}
-
-.perm-result {
-    font-size: 0.88em;
-    padding: 0 var(--sp-4);
-}
-
-.perm-allowed {
-    color: var(--success);
-}
-
-.perm-denied {
-    color: var(--danger);
-}
+/* (Permission request styles consolidated above in the main .perm-* block) */
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

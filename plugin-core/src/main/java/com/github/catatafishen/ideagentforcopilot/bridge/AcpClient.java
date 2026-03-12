@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.Gson;
@@ -64,10 +65,7 @@ public class AcpClient implements Closeable {
     private static final String TITLE_KEY = "title";
     private static final String PARAMETERS_KEY = "parameters";
     private static final String TOOL_DENIED_DEFAULT_MSG_TEMPLATE = "⚠ Tool denied. Use tools with '%s' prefix instead.";
-    private static final String PRE_REJECTION_GUIDANCE_EVENT = "PRE_REJECTION_GUIDANCE";
-    private static final String SENDING_GUIDANCE_DESC = "Sending guidance before rejection";
-    private static final String PERMISSION_DENIED_EVENT = "PERMISSION_DENIED";
-    private static final String PERMISSION_APPROVED_EVENT = "PERMISSION_APPROVED";
+
     private static final String TOOL_PREFIX = " (tool=";
 
     // Note: DENIED_PERMISSION_KINDS was removed — permission denial is now handled by
@@ -80,6 +78,8 @@ public class AcpClient implements Closeable {
 
     private final Object writerLock = new Object();
     private final String projectBasePath; // Project path for config-dir
+    @Nullable
+    private final ToolRegistry registry;
     private final AgentConfig agentConfig;
     private final AgentSettings agentSettings;
     private final int mcpPort;
@@ -110,11 +110,6 @@ public class AcpClient implements Closeable {
 
     // Sub-agent tracking: set by UI layer when a Task tool call is active
     private volatile boolean subAgentActive = false;
-
-    private static final Set<String> GIT_WRITE_TOOLS = Set.of(
-        "git_commit", "git_stage", "git_unstage", "git_branch", "git_stash", "git_push", "git_remote",
-        "git_pull", "git_merge", "git_rebase", "git_cherry_pick", "git_tag", "git_reset"
-    );
 
     private static final String SUBAGENT_WRITE_ABUSE_PREFIX = "subagent_write_abuse:";
     private static final String KIND_BASH = "bash";
@@ -159,19 +154,14 @@ public class AcpClient implements Closeable {
     }
 
     /**
-     * Fire a debug event to all listeners.
-     */
-    private void fireDebugEvent(String type, String message, String details) {
-        // No registered debug listeners — retained for future extensibility.
-    }
-
-    /**
      * Create ACP client with an agent configuration, settings, and optional project base path.
      */
     public AcpClient(@NotNull AgentConfig agentConfig, @NotNull AgentSettings agentSettings,
+                     @Nullable ToolRegistry registry,
                      @Nullable String projectBasePath, int mcpPort) {
         this.agentConfig = agentConfig;
         this.agentSettings = agentSettings;
+        this.registry = registry;
         this.projectBasePath = projectBasePath;
         this.mcpPort = mcpPort;
     }
@@ -449,8 +439,6 @@ public class AcpClient implements Closeable {
                 if (builtInActionDeniedDuringTurn && retryCount < maxRetries) {
                     retryCount++;
                     LOG.info("Turn ended with denied tools - auto-retry #" + retryCount);
-                    fireDebugEvent("AUTO_RETRY", "Retrying after tool denial #" + retryCount,
-                        "Last denied: " + getLastDeniedKind());
                     currentPrompt = "The previous tool calls were denied. Please continue with the task using the correct tools with '"
                         + effectiveMcpPrefix + "' prefix.";
                     continue;
@@ -458,8 +446,6 @@ public class AcpClient implements Closeable {
 
                 if (builtInActionDeniedDuringTurn) {
                     LOG.info("Turn ended with denied tools after " + retryCount + " retries - giving up");
-                    fireDebugEvent("RETRY_EXHAUSTED", "Still denied after " + retryCount + " retries",
-                        "Last denied: " + getLastDeniedKind());
                 }
 
                 return stopReason;
@@ -545,9 +531,6 @@ public class AcpClient implements Closeable {
         if (inactiveMs > inactivityTimeoutSec * 1000L) {
             pendingRequests.remove(id);
             LOG.warn("Agent inactive for " + (inactiveMs / 1000) + "s, terminating");
-            fireDebugEvent("INACTIVITY_TIMEOUT",
-                "No activity for " + (inactiveMs / 1000) + "s (limit: " + inactivityTimeoutSec + "s)",
-                "Tool calls this turn: " + toolCallsInTurn.get());
             terminateAgent();
             throw new AcpException(
                 "Agent stopped: no activity for " + (inactiveMs / 1000) + " seconds", cause, true);
@@ -559,9 +542,6 @@ public class AcpClient implements Closeable {
         if (maxToolCalls > 0 && toolCallsInTurn.get() >= maxToolCalls) {
             pendingRequests.remove(id);
             LOG.warn("Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls);
-            fireDebugEvent("CREDIT_LIMIT",
-                "Tool call limit reached: " + toolCallsInTurn.get() + "/" + maxToolCalls,
-                "Terminating agent to prevent excess usage");
             terminateAgent();
             throw new AcpException(
                 "Agent stopped: tool call limit reached (" + toolCallsInTurn.get() + "/" + maxToolCalls + ")", cause, true);
@@ -1018,8 +998,6 @@ public class AcpClient implements Closeable {
         }
         LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
         String formattedPermission = formatPermissionDisplay(permKind, permTitle);
-        fireDebugEvent("PERMISSION_REQUEST", formattedPermission,
-            toolCall != null ? toolCall.toString() : "");
         lastActivityTimestamp = System.currentTimeMillis();
         toolCallsInTurn.incrementAndGet();
 
@@ -1047,31 +1025,57 @@ public class AcpClient implements Closeable {
     }
 
     /**
-     * Check for known abuse patterns (run_command abuse, sub-agent git/write tools) and deny the
-     * request if one is detected. Returns true if the request was denied.
+     * Check for abuse patterns and deny if detected. Uses tool definitions when available,
+     * falls back to built-in write tool set for unknown tools.
      * <p>
-     * Note: built-in CLI read tools (view, grep, glob) bypass request_permission entirely — they
-     * are handled by {@code interceptBuiltInToolCall()} in the stream handler.
+     * Three checks in priority order:
+     * <ol>
+     *   <li>Tool-specific abuse detection via {@link ToolDefinition#detectPermissionAbuse}</li>
+     *   <li>Sub-agent denial via {@link ToolDefinition#denyForSubAgent()}</li>
+     *   <li>Built-in write tool blocking for sub-agents (fallback for unknown tools)</li>
+     * </ol>
      */
     private boolean checkAbuseAndDeny(long reqId, @Nullable JsonObject reqParams, @Nullable JsonObject toolCall) {
-        String commandAbuse = detectCommandAbuse(toolCall);
-        if (commandAbuse != null) {
-            denyForAbuse(reqId, reqParams, toolCall, "run_command abuse: " + commandAbuse,
-                RUN_COMMAND_ABUSE_PREFIX + commandAbuse);
+        String toolId = resolveToolId(
+            toolCall != null && toolCall.has("kind") ? toolCall.get("kind").getAsString() : null,
+            toolCall);
+        ToolDefinition tool = registry != null ? registry.findById(toolId) : null;
+
+        // 1. Tool-specific abuse detection (e.g., RunCommandTool detects shell abuse)
+        if (tool != null) {
+            String abuse = tool.detectPermissionAbuse(toolCall);
+            if (abuse != null) {
+                denyForAbuse(reqId, reqParams, toolCall, "Tool abuse (" + toolId + "): " + abuse,
+                    RUN_COMMAND_ABUSE_PREFIX + abuse);
+                return true;
+            }
+        } else {
+            // Fallback: check command abuse on raw JSON for unregistered tools (e.g., bash built-in)
+            String commandAbuse = detectCommandAbuse(toolCall);
+            if (commandAbuse != null) {
+                denyForAbuse(reqId, reqParams, toolCall, "run_command abuse: " + commandAbuse,
+                    RUN_COMMAND_ABUSE_PREFIX + commandAbuse);
+                return true;
+            }
+        }
+
+        // 2. Sub-agent denial via tool definition
+        if (subAgentActive && tool != null && tool.denyForSubAgent()) {
+            denyForAbuse(reqId, reqParams, toolCall, "Sub-agent denied: " + toolId,
+                GIT_WRITE_ABUSE_PREFIX + toolId);
             return true;
         }
-        String gitWriteAbuse = detectSubAgentGitWrite(toolCall);
-        if (gitWriteAbuse != null) {
-            denyForAbuse(reqId, reqParams, toolCall, "Sub-agent git write: " + gitWriteAbuse,
-                GIT_WRITE_ABUSE_PREFIX + gitWriteAbuse);
-            return true;
+
+        // 3. Fallback: block built-in write/execute tools for sub-agents
+        if (subAgentActive) {
+            String writeAbuse = detectSubAgentWriteTool(toolCall);
+            if (writeAbuse != null) {
+                denyForAbuse(reqId, reqParams, toolCall, "Sub-agent write tool: " + writeAbuse,
+                    SUBAGENT_WRITE_ABUSE_PREFIX + writeAbuse);
+                return true;
+            }
         }
-        String writeAbuse = detectSubAgentWriteTool(toolCall);
-        if (writeAbuse != null) {
-            denyForAbuse(reqId, reqParams, toolCall, "Sub-agent write tool: " + writeAbuse,
-                SUBAGENT_WRITE_ABUSE_PREFIX + writeAbuse);
-            return true;
-        }
+
         return false;
     }
 
@@ -1084,9 +1088,7 @@ public class AcpClient implements Closeable {
         LOG.info("ACP request_permission: DENYING " + logSuffix);
         Map<String, Object> retryParams = buildRetryParams(abusePrefixedKind);
         String retryMessage = (String) retryParams.get(MESSAGE);
-        fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
         sendPromptMessage(retryMessage);
-        fireDebugEvent(PERMISSION_DENIED_EVENT, logSuffix, toolCall != null ? toolCall.toString() : "");
         builtInActionDeniedDuringTurn = true;
         lastDeniedKind = abusePrefixedKind;
         sendPermissionResponse(reqId, rejectOptionId);
@@ -1100,10 +1102,7 @@ public class AcpClient implements Closeable {
         LOG.info("ACP request_permission: DENYING " + permKind + TOOL_PREFIX + toolId + "), option=" + rejectOptionId);
         Map<String, Object> retryParams = buildRetryParams(permKind);
         String retryMessage = (String) retryParams.get(MESSAGE);
-        fireDebugEvent(PRE_REJECTION_GUIDANCE_EVENT, SENDING_GUIDANCE_DESC, retryMessage);
         sendPromptMessage(retryMessage);
-        fireDebugEvent(PERMISSION_DENIED_EVENT, "Denied: " + permKind + TOOL_PREFIX + toolId + ")",
-            "Permission mode: DENY");
         builtInActionDeniedDuringTurn = true;
         lastDeniedKind = permKind;
         sendPermissionResponse(reqId, rejectOptionId);
@@ -1121,9 +1120,32 @@ public class AcpClient implements Closeable {
             return;
         }
         CompletableFuture<PermissionResponse> future = new CompletableFuture<>();
-        ToolRegistry.ToolEntry toolEntry = ToolRegistry.findById(toolId);
-        String displayName = toolEntry != null ? toolEntry.displayName : permKind;
-        listener.accept(new PermissionRequest(reqId, toolId, displayName, formattedPermission, future::complete));
+        ToolDefinition toolEntry = registry != null ? registry.findById(toolId) : null;
+        String displayName = toolEntry != null ? toolEntry.displayName() : permKind;
+
+        // Extract structured tool arguments from the ACP toolCall JSON
+        JsonObject toolCallJson = reqParams != null && reqParams.has("toolCall")
+            ? reqParams.getAsJsonObject("toolCall") : null;
+        JsonObject toolArgs = null;
+        if (toolCallJson != null) {
+            for (String wrapper : new String[]{"arguments", "input", "params"}) {
+                if (toolCallJson.has(wrapper) && toolCallJson.get(wrapper).isJsonObject()) {
+                    toolArgs = toolCallJson.getAsJsonObject(wrapper);
+                    break;
+                }
+            }
+        }
+
+        // Build structured context JSON for the permission bubble
+        ToolDefinition def = registry != null ? registry.findById(toolId) : null;
+        String resolvedQuestion = def != null ? def.resolvePermissionQuestion(toolArgs) : null;
+        JsonObject context = new JsonObject();
+        context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
+            : "Can I use " + displayName + "?");
+        if (toolArgs != null) context.add("args", toolArgs);
+        String contextJson = context.toString();
+
+        listener.accept(new PermissionRequest(reqId, toolId, displayName, contextJson, future::complete));
         PermissionResponse response;
         try {
             response = future.get(120, TimeUnit.SECONDS);
@@ -1136,17 +1158,14 @@ public class AcpClient implements Closeable {
             case ALLOW_SESSION -> {
                 sessionAllowedTools.add(toolId);
                 LOG.info("ACP request_permission: ASK approved for session for " + toolId);
-                fireDebugEvent(PERMISSION_APPROVED_EVENT, formattedPermission, "session-approved");
                 sendPermissionResponse(reqId, findAllowOption(reqParams));
             }
             case ALLOW_ONCE -> {
                 LOG.info("ACP request_permission: ASK approved (once) for " + toolId);
-                fireDebugEvent(PERMISSION_APPROVED_EVENT, formattedPermission, "user-approved");
                 sendPermissionResponse(reqId, findAllowOption(reqParams));
             }
             default -> {
                 LOG.info("ACP request_permission: ASK denied by user for " + toolId);
-                fireDebugEvent(PERMISSION_DENIED_EVENT, "ASK denied by user: " + toolId, "");
                 builtInActionDeniedDuringTurn = true;
                 lastDeniedKind = permKind;
                 sendPermissionResponse(reqId, findRejectOption(reqParams));
@@ -1161,7 +1180,6 @@ public class AcpClient implements Closeable {
                                  String permKind, String toolId, String formattedPermission) {
         String allowOptionId = findAllowOption(reqParams);
         LOG.info("ACP request_permission: auto-approving " + permKind + TOOL_PREFIX + toolId + "), option=" + allowOptionId);
-        fireDebugEvent(PERMISSION_APPROVED_EVENT, formattedPermission, "");
         sendPermissionResponse(reqId, allowOptionId);
     }
 
@@ -1187,10 +1205,10 @@ public class AcpClient implements Closeable {
      * For file tools, checks inside/outside-project sub-permission when a path is present.
      */
     private ToolPermission resolveEffectivePermission(String toolId, @Nullable JsonObject toolCall) {
-        ToolRegistry.ToolEntry entry = ToolRegistry.findById(toolId);
+        ToolDefinition entry = registry != null ? registry.findById(toolId) : null;
 
         // Path-based sub-permissions for file tools (ceiling enforced by AgentSettings)
-        if (entry != null && entry.supportsPathSubPermissions && toolCall != null) {
+        if (entry != null && entry.supportsPathSubPermissions() && toolCall != null) {
             String path = extractPathFromToolCall(toolCall);
             if (path != null && !path.isEmpty()) {
                 boolean insideProject = isPathInsideProject(path);
@@ -1275,21 +1293,6 @@ public class AcpClient implements Closeable {
     // Note: detectCliToolAbuse, interceptBuiltInToolCall, classifyBuiltInTool, and
     // sendSubAgentGuidance were all removed — session/message notifications never reach
     // sub-agents or affect main agent behavior. See CLI-BUG-556-WORKAROUND.md.
-
-    /**
-     * Detect if a git write tool is being called by a sub-agent.
-     * Returns the tool name (e.g. "git_commit") if blocked, null otherwise.
-     */
-    private String detectSubAgentGitWrite(JsonObject toolCall) {
-        if (!subAgentActive || toolCall == null) return null;
-
-        String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
-        // Strip MCP prefix (dynamic — matches whatever name the server is registered under)
-        String shortName = toolName.startsWith(effectiveMcpPrefix)
-            ? toolName.substring(effectiveMcpPrefix.length())
-            : toolName;
-        return GIT_WRITE_TOOLS.contains(shortName) ? shortName : null;
-    }
 
     /**
      * Detect if a sub-agent is trying to use a built-in write/execute tool.

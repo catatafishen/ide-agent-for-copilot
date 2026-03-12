@@ -1,12 +1,17 @@
 /**
  * Permission request actions element — rendered below the question bubble.
- * Contains Deny / Allow / Allow for session buttons, replaced with result text on resolve.
+ * Contains a parameter detail section plus Deny / Allow / Allow for session buttons.
+ * Replaced with result text on resolve.
+ *
+ * Attributes:
+ *   req-id   — unique request ID passed back to the bridge on respond
+ *   args     — JSON object of tool call parameters (optional)
  */
 export default class PermissionRequest extends HTMLElement {
     private _init = false;
 
     static get observedAttributes(): string[] {
-        return ['resolved'];
+        return ['resolved', 'args'];
     }
 
     connectedCallback(): void {
@@ -18,6 +23,36 @@ export default class PermissionRequest extends HTMLElement {
     private _render(): void {
         const reqId = this.getAttribute('req-id') || '';
         this.className = 'perm-actions';
+
+        const argsAttr = this.getAttribute('args');
+        if (argsAttr) {
+            try {
+                const args = JSON.parse(argsAttr) as Record<string, unknown>;
+                const entries = Object.entries(args).filter(([, v]) => v !== null && v !== undefined && v !== false && v !== '');
+                if (entries.length > 0) {
+                    const table = document.createElement('div');
+                    table.className = 'perm-args';
+                    for (const [key, value] of entries) {
+                        const row = document.createElement('div');
+                        row.className = 'perm-arg-row';
+                        const label = document.createElement('span');
+                        label.className = 'perm-arg-key';
+                        label.textContent = key;
+                        const val = document.createElement('span');
+                        val.className = 'perm-arg-val';
+                        const strVal = Array.isArray(value) ? value.join(', ') : String(value);
+                        val.title = strVal;
+                        val.textContent = strVal.length > 80 ? strVal.slice(0, 77) + '…' : strVal;
+                        row.appendChild(label);
+                        row.appendChild(val);
+                        table.appendChild(row);
+                    }
+                    this.appendChild(table);
+                }
+            } catch {
+                // malformed args — skip
+            }
+        }
 
         const denyBtn = document.createElement('button');
         denyBtn.type = 'button';

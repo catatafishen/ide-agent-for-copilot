@@ -69,7 +69,7 @@ public final class MacroToolRegistrar {
             if (!reg.enabled || reg.toolName.isEmpty() || reg.macroName.isEmpty()) {
                 continue;
             }
-            bridge.registerTool(reg.toolName, new MacroToolHandler(project, reg.macroName));
+            bridge.registerTool(new MacroToolHandler(project, reg.toolName, reg.macroName));
             registeredToolIds.add(reg.toolName);
             LOG.info("Registered macro tool: " + reg.toolName + " → macro '" + reg.macroName + "'");
         }
@@ -89,12 +89,5 @@ public final class MacroToolRegistrar {
             sanitized = "unnamed";
         }
         return "macro_" + sanitized;
-    }
-
-    /**
-     * Returns the set of currently registered macro tool IDs.
-     */
-    public Set<String> getRegisteredToolIds() {
-        return Set.copyOf(registeredToolIds);
     }
 }

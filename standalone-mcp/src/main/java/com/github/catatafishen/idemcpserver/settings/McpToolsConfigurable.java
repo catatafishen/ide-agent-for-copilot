@@ -1,5 +1,6 @@
 package com.github.catatafishen.idemcpserver.settings;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.github.catatafishen.ideagentforcopilot.settings.McpToolFilter;
@@ -44,22 +45,22 @@ public final class McpToolsConfigurable implements Configurable {
         JPanel toolsPanel = new JPanel();
         toolsPanel.setLayout(new BoxLayout(toolsPanel, BoxLayout.Y_AXIS));
 
-        List<ToolRegistry.ToolEntry> tools = McpToolFilter.getConfigurableTools();
+        List<ToolDefinition> tools = McpToolFilter.getConfigurableTools(project);
         ToolRegistry.Category currentCategory = null;
 
-        for (ToolRegistry.ToolEntry tool : tools) {
-            if (tool.category != currentCategory) {
-                currentCategory = tool.category;
+        for (ToolDefinition tool : tools) {
+            if (tool.category() != currentCategory) {
+                currentCategory = tool.category();
                 JBLabel categoryLabel = new JBLabel(currentCategory.displayName);
                 categoryLabel.setFont(categoryLabel.getFont().deriveFont(Font.BOLD));
                 categoryLabel.setBorder(JBUI.Borders.empty(8, 0, 4, 0));
                 toolsPanel.add(categoryLabel);
             }
 
-            JBCheckBox cb = new JBCheckBox(tool.displayName, settings.isToolEnabled(tool.id));
-            cb.setToolTipText(tool.description);
+            JBCheckBox cb = new JBCheckBox(tool.displayName(), settings.isToolEnabled(tool.id()));
+            cb.setToolTipText(tool.description());
             cb.setBorder(JBUI.Borders.empty(1, 16, 1, 0));
-            toolCheckboxes.put(tool.id, cb);
+            toolCheckboxes.put(tool.id(), cb);
             toolsPanel.add(cb);
         }
 

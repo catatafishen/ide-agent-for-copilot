@@ -1,14 +1,14 @@
 <idea-plugin require-restart="false">
   <id>com.github.catatafishen.ideagentforcopilot</id>
-  <name>AgentBridge</name>
+  <name>IDE Agent for Copilot</name>
   <vendor email="henrik@westergard.org" url="https://github.com/catatafishen/ide-agent-for-copilot">
-    AgentBridge Contributors
+    IDE Agent for Copilot Contributors
   </vendor>
 
   <category>AI Assistant</category>
 
   <description><![CDATA[
-    <p><b>AgentBridge</b> &mdash; ACP &amp; MCP bridge connecting AI coding agents to your JetBrains IDE
+    <p><b>IDE Agent for Copilot</b> &mdash; ACP &amp; MCP bridge connecting AI coding agents to your JetBrains IDE
     through <b>92 native MCP tools</b>.</p>
 
     <p>Instead of operating through a terminal or generating diffs in isolation, agents work through
@@ -21,7 +21,7 @@
     tool permissions, and instructions.</p>
 
     <h3>Real IDE Integration, Not Just a Shell</h3>
-    <p>Other coding agents can build, test, and use Git. AgentBridge does it through native JetBrains
+    <p>Other coding agents can build, test, and use Git. IDE Agent for Copilot does it through native JetBrains
     platform APIs &mdash; keeping you in the loop with visible, reviewable actions:</p>
     <ul>
         <li><b>Inspections &amp; quick-fixes</b> &mdash; the agent sees the same warnings you see and can apply IDE-suggested fixes</li>
@@ -72,7 +72,7 @@
     <h3>1.12.0</h3>
 
     <h4>Multi-Agent Support</h4>
-    <p>AgentBridge is no longer limited to a single agent. Configure and switch between multiple agents:</p>
+    <p>IDE Agent for Copilot is no longer limited to a single agent. Configure and switch between multiple agents:</p>
     <ul>
         <li>Agent profile selector in the connection panel &mdash; switch agents with one click</li>
         <li>Per-profile settings: connection command, tool permissions, built-in tool blocking, custom instructions</li>
@@ -254,6 +254,8 @@
       serviceInterface="com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings"
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.bridge.CopilotToolLayerSettings"/>
     <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolRegistry"/>
+    <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>
@@ -263,12 +265,12 @@
       serviceInterface="com.github.catatafishen.ideagentforcopilot.services.McpServerControl"
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.McpHttpServer"/>
 
-    <!-- Settings: AgentBridge (root) -->
+    <!-- Settings: IDE Agent for Copilot (root) -->
     <projectConfigurable
       parentId="tools"
       instance="com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.settings"
-      displayName="AgentBridge"/>
+      displayName="IDE Agent for Copilot"/>
 
     <!-- ── MCP section ── -->
     <projectConfigurable

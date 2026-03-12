@@ -341,19 +341,30 @@ const ChatController = {
         this._trimMessages();
     },
 
-    showPermissionRequest(turnId: string, agentId: string, reqId: string, toolDisplayName: string, argsJson: string): void {
+    showPermissionRequest(turnId: string, agentId: string, reqId: string, toolDisplayName: string, contextJson: string): void {
         this.disableQuickReplies();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
 
-        // Question bubble (no chip/tool-section — addToolCall handles those)
+        // Parse the structured context {question, args} produced by Java.
+        // Falls back to generic label if the payload is a plain string (old code paths).
+        let questionHtml = `Can I use <strong>${escHtml(toolDisplayName)}</strong>?`;
+        let argsJson = '';
+        try {
+            const parsed = JSON.parse(contextJson) as { question?: string; args?: Record<string, unknown> };
+            if (parsed.question) questionHtml = escHtml(parsed.question);
+            if (parsed.args && Object.keys(parsed.args).length > 0) argsJson = JSON.stringify(parsed.args);
+        } catch {
+            // contextJson is a plain string from old code paths — use generic label
+        }
+
         const bubble = document.createElement('message-bubble');
-        bubble.innerHTML = `Can I use <strong>${toolDisplayName}</strong>?`;
+        bubble.innerHTML = questionHtml;
         ctx.msg!.appendChild(bubble);
 
-        // Allow/Deny actions (below the bubble, still inside chat-message)
         const actions = document.createElement('permission-request');
         actions.setAttribute('req-id', reqId);
+        if (argsJson) actions.setAttribute('args', argsJson);
         ctx.msg!.appendChild(actions);
 
         this._container()?.scrollIfNeeded();

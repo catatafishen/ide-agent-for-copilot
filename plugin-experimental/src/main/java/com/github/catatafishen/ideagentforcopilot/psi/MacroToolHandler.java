@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
+import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonObject;
 import com.intellij.ide.actionMacro.ActionMacro;
 import com.intellij.ide.actionMacro.ActionMacroManager;
@@ -10,6 +12,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -26,20 +29,47 @@ import java.util.concurrent.TimeoutException;
  *   <li>Captures document changes and returns a diff summary</li>
  * </ol>
  */
-public final class MacroToolHandler implements ToolHandler {
+public final class MacroToolHandler implements ToolDefinition {
 
     private static final int MACRO_TIMEOUT_SECONDS = 30;
 
     private final Project project;
+    private final String toolId;
     private final String macroName;
 
-    public MacroToolHandler(@NotNull Project project, @NotNull String macroName) {
+    public MacroToolHandler(@NotNull Project project, @NotNull String toolId, @NotNull String macroName) {
         this.project = project;
+        this.toolId = toolId;
         this.macroName = macroName;
     }
 
     @Override
-    public String handle(JsonObject args) throws Exception {
+    public @NotNull String id() {
+        return toolId;
+    }
+
+    @Override
+    public @NotNull String displayName() {
+        return "Macro: " + macroName;
+    }
+
+    @Override
+    public @NotNull String description() {
+        return "Execute recorded macro: " + macroName;
+    }
+
+    @Override
+    public @NotNull ToolRegistry.Category category() {
+        return ToolRegistry.Category.MACRO;
+    }
+
+    @Override
+    public boolean hasExecutionHandler() {
+        return true;
+    }
+
+    @Override
+    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         ActionMacro macro = findMacro();
         if (macro == null) {
             return "Error: Macro '" + macroName + "' not found. "
