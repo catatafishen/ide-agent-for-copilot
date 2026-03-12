@@ -1,0 +1,86 @@
+package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
+
+import com.github.catatafishen.ideagentforcopilot.psi.GitToolHandler;
+import com.google.gson.JsonObject;
+import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Shows commit history with configurable format, author, date, and path filters.
+ */
+@SuppressWarnings("java:S112")
+public final class GitLogTool extends GitTool {
+
+    private static final int DEFAULT_MAX_COUNT = 20;
+
+    public GitLogTool(Project project, GitToolHandler git) {
+        super(project, git);
+    }
+
+    @Override
+    public @NotNull String id() {
+        return "git_log";
+    }
+
+    @Override
+    public @NotNull String displayName() {
+        return "Git Log";
+    }
+
+    @Override
+    public @NotNull String description() {
+        return "Show commit history";
+    }
+
+    @Override
+    public boolean isReadOnly() {
+        return true;
+    }
+
+    @Override
+    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+        List<String> cmdArgs = new ArrayList<>();
+        cmdArgs.add("log");
+
+        int maxCount = args.has("max_count")
+                ? args.get("max_count").getAsInt()
+                : DEFAULT_MAX_COUNT;
+        cmdArgs.add("-n");
+        cmdArgs.add(String.valueOf(maxCount));
+
+        String format = args.has("format")
+                ? args.get("format").getAsString()
+                : "medium";
+        cmdArgs.add("--format=" + switch (format) {
+            case "oneline" -> "oneline";
+            case "short" -> "short";
+            case "full" -> "full";
+            default -> "medium";
+        });
+
+        if (args.has("author") && !args.get("author").getAsString().isEmpty()) {
+            cmdArgs.add("--author=" + args.get("author").getAsString());
+        }
+
+        if (args.has("since") && !args.get("since").getAsString().isEmpty()) {
+            cmdArgs.add("--since=" + args.get("since").getAsString());
+        }
+
+        if (args.has("branch") && !args.get("branch").getAsString().isEmpty()) {
+            cmdArgs.add(2, args.get("branch").getAsString());
+        }
+
+        if (args.has("path") && !args.get("path").getAsString().isEmpty()) {
+            cmdArgs.add("--");
+            cmdArgs.add(args.get("path").getAsString());
+        }
+
+        String result = git.runGit(cmdArgs.toArray(String[]::new));
+        git.showFirstCommitInLog(result);
+        return result;
+    }
+}

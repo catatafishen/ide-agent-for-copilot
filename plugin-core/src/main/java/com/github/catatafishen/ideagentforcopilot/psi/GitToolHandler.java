@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  * Individual git command implementations live in {@link GitCommands}.
  */
 @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
-final class GitToolHandler {
+public final class GitToolHandler {
 
     /**
      * Git subcommands that modify the repository and require a VCS refresh.
@@ -46,7 +46,7 @@ final class GitToolHandler {
      * Convenience method: flush pending auto-format and save all documents to disk.
      * Called by {@link GitCommands} before commands that need the working tree up-to-date.
      */
-    void flushAndSave() {
+    public void flushAndSave() {
         fileTools.flushPendingAutoFormat();
         saveAllDocuments();
     }
@@ -55,7 +55,7 @@ final class GitToolHandler {
      * Run a git command, preferring IntelliJ's Git4Idea infrastructure for proper VCS integration.
      * Falls back to ProcessBuilder if Git4Idea is unavailable or the command is not mapped.
      */
-    String runGit(String... args) throws Exception {
+    public String runGit(String... args) throws Exception {
         if (args.length == 0) return "Error: no git command";
 
         String result;
@@ -128,7 +128,7 @@ final class GitToolHandler {
      * Flush all IntelliJ editor buffers to disk so git sees current content.
      * Commits any pending PSI changes first to catch async reformats from external tools.
      */
-    void saveAllDocuments() {
+    public void saveAllDocuments() {
         EdtUtil.invokeAndWait(() ->
             com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction(() -> {
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments();
@@ -143,7 +143,7 @@ final class GitToolHandler {
      * "Commit or reference 'xxx' not found" notification.
      * Respects the "Follow Agent" setting — does nothing if disabled.
      */
-    void showNewCommitInLog() {
+    public void showNewCommitInLog() {
         if (!ToolLayerSettings.getInstance(project).getFollowAgentFiles()) return;
 
         com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread(() -> {
@@ -171,7 +171,7 @@ final class GitToolHandler {
      * to it in the VCS Log tab, so the user can follow what the agent is reading.
      * Respects the "Follow Agent" setting — does nothing if disabled.
      */
-    void showFirstCommitInLog(String gitOutput) {
+    public void showFirstCommitInLog(String gitOutput) {
         if (!ToolLayerSettings.getInstance(project).getFollowAgentFiles()) return;
         if (gitOutput == null || gitOutput.isEmpty()) return;
         String hash = null;

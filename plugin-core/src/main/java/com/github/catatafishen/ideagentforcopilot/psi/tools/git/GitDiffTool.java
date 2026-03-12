@@ -1,0 +1,72 @@
+package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
+
+import com.github.catatafishen.ideagentforcopilot.psi.GitToolHandler;
+import com.google.gson.JsonObject;
+import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Shows changes as a diff — staged, unstaged, or against a specific commit.
+ */
+@SuppressWarnings("java:S112")
+public final class GitDiffTool extends GitTool {
+
+    public GitDiffTool(Project project, GitToolHandler git) {
+        super(project, git);
+    }
+
+    @Override
+    public @NotNull String id() {
+        return "git_diff";
+    }
+
+    @Override
+    public @NotNull String displayName() {
+        return "Git Diff";
+    }
+
+    @Override
+    public @NotNull String description() {
+        return "Show changes as a diff";
+    }
+
+    @Override
+    public boolean isReadOnly() {
+        return true;
+    }
+
+    @Override
+    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+        git.flushAndSave();
+
+        List<String> cmdArgs = new ArrayList<>();
+        cmdArgs.add("diff");
+
+        boolean staged = args.has("staged")
+                && args.get("staged").getAsBoolean();
+        if (staged) {
+            cmdArgs.add("--cached");
+        }
+
+        if (args.has("commit") && !args.get("commit").getAsString().isEmpty()) {
+            cmdArgs.add(args.get("commit").getAsString());
+        }
+
+        boolean statOnly = args.has("stat_only")
+                && args.get("stat_only").getAsBoolean();
+        if (statOnly) {
+            cmdArgs.add(1, "--stat");
+        }
+
+        if (args.has("path") && !args.get("path").getAsString().isEmpty()) {
+            cmdArgs.add("--");
+            cmdArgs.add(args.get("path").getAsString());
+        }
+
+        return git.runGit(cmdArgs.toArray(String[]::new));
+    }
+}
