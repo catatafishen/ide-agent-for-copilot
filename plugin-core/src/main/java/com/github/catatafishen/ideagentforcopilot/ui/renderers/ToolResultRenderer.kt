@@ -56,26 +56,41 @@ object ToolIcons {
 object ToolRenderers {
 
     /**
-     * Resolves a renderer for a tool by looking up its definition in the registry.
-     * Falls back to null if the tool has no custom renderer.
+     * Best-effort renderers for built-in Copilot CLI tools that are not registered
+     * in our MCP ToolRegistry. Keyed by the bare tool name (after prefix stripping).
+     * Renderers are defensive: they return null when output doesn't match expectations,
+     * and the caller falls back to codePanel().
+     */
+    private val BUILTIN_RENDERERS: Map<String, ToolResultRenderer> = mapOf(
+        "update_todo" to TodoRenderer,
+        "glob" to GlobRenderer,
+    )
+
+    /**
+     * Resolves a renderer for a tool. Checks the MCP registry first, then falls
+     * back to the built-in renderer map for Copilot CLI tools.
+     * Returns null if no renderer is found.
      */
     fun get(
         toolName: String,
         registry: com.github.catatafishen.ideagentforcopilot.services.ToolRegistry?
     ): ToolResultRenderer? {
-        val def = registry?.findById(toolName) ?: return null
-        return def.resultRenderer() as? ToolResultRenderer
+        val def = registry?.findById(toolName)
+        if (def != null) return def.resultRenderer() as? ToolResultRenderer
+        return BUILTIN_RENDERERS[toolName]
     }
 
     /**
-     * Checks whether a tool has a custom renderer via its definition.
+     * Checks whether a tool has a custom renderer, either via its registry
+     * definition or via the built-in renderer map.
      */
     fun hasRenderer(
         toolName: String,
         registry: com.github.catatafishen.ideagentforcopilot.services.ToolRegistry?
     ): Boolean {
-        val def = registry?.findById(toolName) ?: return false
-        return def.resultRenderer() != null
+        val def = registry?.findById(toolName)
+        if (def != null) return def.resultRenderer() != null
+        return BUILTIN_RENDERERS.containsKey(toolName)
     }
 
     // ── Semantic colors — shared across all renderers ────────
