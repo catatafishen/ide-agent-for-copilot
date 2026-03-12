@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.RefactoringTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +42,11 @@ public final class GetDocumentationTool extends RefactoringTool {
         return schema(new Object[][]{
             {"symbol", TYPE_STRING, "Fully qualified symbol name (e.g. java.util.List)"}
         }, "symbol");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 
     @Override

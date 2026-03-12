@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,6 +44,11 @@ public final class OpenInEditorTool extends EditorTool {
             {"line", TYPE_INTEGER, "Optional: line number to navigate to after opening"},
             {"focus", TYPE_BOOLEAN, "Optional: if true (default), the editor gets focus. Set to false to open without stealing focus"}
         }, "file");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.CodeNavigationTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,6 +43,11 @@ public final class SearchSymbolsTool extends NavigationTool {
             {"query", TYPE_STRING, "Symbol name to search for, or '*' to list all symbols in the project"},
             {"type", TYPE_STRING, "Optional: filter by type (class, method, field, property). Default: all types", ""}
         }, "query");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SearchResultRenderer.INSTANCE;
     }
 
     @Override

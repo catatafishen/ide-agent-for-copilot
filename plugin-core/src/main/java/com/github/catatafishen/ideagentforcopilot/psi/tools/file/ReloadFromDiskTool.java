@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,6 +43,11 @@ public final class ReloadFromDiskTool extends FileTool {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "File or directory path to reload (absolute or project-relative). Omit to reload the entire project root."}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

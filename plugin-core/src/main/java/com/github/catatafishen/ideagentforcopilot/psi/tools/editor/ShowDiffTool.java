@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,6 +45,11 @@ public final class ShowDiffTool extends EditorTool {
             {"content", TYPE_STRING, "Optional: proposed new content to diff against the current file"},
             {"title", TYPE_STRING, "Optional: title for the diff viewer tab"}
         }, "file");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 
     @Override

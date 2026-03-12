@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.CodeNavigationTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ClassOutlineRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,6 +43,11 @@ public final class GetClassOutlineTool extends NavigationTool {
             {"class_name", TYPE_STRING, "Fully qualified class name (e.g. 'java.util.ArrayList', 'com.intellij.openapi.project.Project')"},
             {"include_inherited", TYPE_BOOLEAN, "If true, include inherited methods and fields from superclasses. Default: false (own members only)"}
         }, "class_name");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ClassOutlineRenderer.INSTANCE;
     }
 
     @Override

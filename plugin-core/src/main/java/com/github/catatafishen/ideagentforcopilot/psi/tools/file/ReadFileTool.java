@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ReadFileRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -43,6 +44,11 @@ public final class ReadFileTool extends FileTool {
             {"start_line", TYPE_INTEGER, "Optional: first line to read (1-based, inclusive)"},
             {"end_line", TYPE_INTEGER, "Optional: last line to read (1-based, inclusive). Use with start_line to read a range"}
         }, "path");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ReadFileRenderer.INSTANCE;
     }
 
     @Override

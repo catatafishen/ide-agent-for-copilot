@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.github.catatafishen.ideagentforcopilot.psi.RunConfigurationService;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.RunConfigCrudRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -48,6 +49,11 @@ public final class EditRunConfigurationTool extends ProjectTool {
         }, "name");
         addDictProperty(s, "env", "Environment variables as key-value pairs");
         return s;
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return RunConfigCrudRenderer.INSTANCE;
     }
 
     @Override

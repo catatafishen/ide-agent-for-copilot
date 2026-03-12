@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.RefactoringTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,6 +44,11 @@ public final class FindImplementationsTool extends RefactoringTool {
             {"file", TYPE_STRING, "Optional: file path for method context (required when searching for method overrides)"},
             {"line", TYPE_INTEGER, "Optional: line number to disambiguate the method (required when searching for method overrides)"}
         }, "symbol");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SearchResultRenderer.INSTANCE;
     }
 
     @Override

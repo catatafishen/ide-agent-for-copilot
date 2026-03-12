@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.WriteFileRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -46,6 +47,11 @@ public final class EditTextTool extends FileTool {
             {"new_str", TYPE_STRING, "Replacement string"},
             {"auto_format_and_optimize_imports", TYPE_BOOLEAN, "Auto-format code AND optimize imports after editing (default: true). Formatting is DEFERRED until the end of the current turn or before git commit — safe for multi-step edits within a single turn. ⚠\uFE0F Import optimization REMOVES imports it considers unused — if you add imports in one edit and reference them in a later edit, set this to false or combine both changes in one edit"}
         }, "path", "old_str", "new_str");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return WriteFileRenderer.INSTANCE;
     }
 
     @Override

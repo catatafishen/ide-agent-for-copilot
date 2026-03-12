@@ -6,6 +6,8 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitStatusRenderer;
+
 /**
  * Shows the working tree status (staged, unstaged, untracked files).
  */
@@ -54,5 +56,10 @@ public final class GitStatusTool extends GitTool {
             return git.runGit("status");
         }
         return git.runGit("status", "--short", "--branch");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitStatusRenderer.INSTANCE;
     }
 }

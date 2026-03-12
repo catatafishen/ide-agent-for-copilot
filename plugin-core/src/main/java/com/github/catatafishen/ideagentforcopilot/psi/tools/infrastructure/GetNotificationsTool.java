@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.InfrastructureTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -24,5 +25,10 @@ public final class GetNotificationsTool extends InfrastructureTool {
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         return infraTools.getNotifications(args);
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 }

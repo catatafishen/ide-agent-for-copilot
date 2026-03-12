@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.RefactoringTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.TypeHierarchyRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,6 +43,11 @@ public final class GetTypeHierarchyTool extends RefactoringTool {
             {"symbol", TYPE_STRING, "Fully qualified or simple class/interface name"},
             {"direction", TYPE_STRING, "Direction: 'supertypes' (ancestors) or 'subtypes' (descendants). Default: both"}
         }, "symbol");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return TypeHierarchyRenderer.INSTANCE;
     }
 
     @Override

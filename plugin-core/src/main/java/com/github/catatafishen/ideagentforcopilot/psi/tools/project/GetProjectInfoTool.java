@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ProjectInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,6 +21,11 @@ public final class GetProjectInfoTool extends ProjectTool {
     @Override public @NotNull String displayName() { return "Get Project Info"; }
     @Override public @NotNull String description() { return "Get project name, SDK, modules, and overall structure"; }
     @Override public boolean isReadOnly() { return true; }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ProjectInfoRenderer.INSTANCE;
+    }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {

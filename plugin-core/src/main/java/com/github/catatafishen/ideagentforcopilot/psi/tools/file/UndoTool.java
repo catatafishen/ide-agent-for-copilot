@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -37,6 +38,11 @@ public final class UndoTool extends FileTool {
             {"path", TYPE_STRING, "Path to the file to undo changes on"},
             {"count", TYPE_INTEGER, "Number of undo steps (default: 1). Each write + auto-format counts as 2 steps"}
         }, "path");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

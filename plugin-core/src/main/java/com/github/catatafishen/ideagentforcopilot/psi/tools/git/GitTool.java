@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
 import com.github.catatafishen.ideagentforcopilot.psi.GitToolHandler;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.Tool;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitOperationRenderer;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
@@ -22,5 +23,10 @@ public abstract class GitTool extends Tool {
     @Override
     public @NotNull ToolRegistry.Category category() {
         return ToolRegistry.Category.GIT;
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitOperationRenderer.INSTANCE;
     }
 }

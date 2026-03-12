@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editing;
 import com.github.catatafishen.ideagentforcopilot.psi.SymbolEditingTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ReplaceSymbolRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,6 +47,11 @@ public final class ReplaceSymbolBodyTool extends EditingTool {
             {"new_body", TYPE_STRING, "The complete new definition to replace the symbol with"},
             {"line", TYPE_INTEGER, "Optional: line number hint to disambiguate if multiple symbols share the same name"}
         }, "file", "symbol", "new_body");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ReplaceSymbolRenderer.INSTANCE;
     }
 
     @Override

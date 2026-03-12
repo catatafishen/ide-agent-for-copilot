@@ -6,6 +6,8 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitDiffRenderer;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -78,5 +80,10 @@ public final class GitDiffTool extends GitTool {
         }
 
         return git.runGit(cmdArgs.toArray(String[]::new));
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitDiffRenderer.INSTANCE;
     }
 }

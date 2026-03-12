@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.testing;
 import com.github.catatafishen.ideagentforcopilot.psi.TestTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.CoverageRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +42,11 @@ public final class GetCoverageTool extends TestingTool {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Optional file or class name to filter coverage results", ""}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return CoverageRenderer.INSTANCE;
     }
 
     @Override

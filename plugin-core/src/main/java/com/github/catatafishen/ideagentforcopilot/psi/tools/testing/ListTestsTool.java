@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.testing;
 import com.github.catatafishen.ideagentforcopilot.psi.TestTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ListTestsRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +42,11 @@ public final class ListTestsTool extends TestingTool {
         return schema(new Object[][]{
             {"file_pattern", TYPE_STRING, "Optional glob pattern to filter test files (e.g., '*IntegrationTest*')", ""}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ListTestsRenderer.INSTANCE;
     }
 
     @Override

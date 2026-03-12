@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,6 +43,11 @@ public final class GetIndexingStatusTool extends ProjectTool {
             {"wait", TYPE_BOOLEAN, "If true, blocks until indexing finishes"},
             {"timeout", TYPE_INTEGER, "Max seconds to wait when wait=true (default: 30)"}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 
     @Override

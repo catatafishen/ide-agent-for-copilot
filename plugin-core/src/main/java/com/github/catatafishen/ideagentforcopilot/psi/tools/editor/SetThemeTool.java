@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +42,11 @@ public final class SetThemeTool extends EditorTool {
         return schema(new Object[][]{
             {"theme", TYPE_STRING, "Theme name or partial name (e.g., 'Darcula', 'Light')"}
         }, "theme");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

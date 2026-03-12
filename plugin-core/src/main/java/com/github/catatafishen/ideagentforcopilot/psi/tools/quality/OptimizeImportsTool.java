@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.quality;
 
 import com.github.catatafishen.ideagentforcopilot.psi.CodeQualityTools;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -41,5 +42,10 @@ public final class OptimizeImportsTool extends QualityTool {
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         return qualityTools.optimizeImports(args);
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 }

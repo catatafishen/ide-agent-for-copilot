@@ -6,6 +6,8 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitBranchRenderer;
+
 /**
  * Lists, creates, switches, or deletes branches.
  */
@@ -88,5 +90,10 @@ public final class GitBranchTool extends GitTool {
             return null;
         }
         return args.get("name").getAsString();
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitBranchRenderer.INSTANCE;
     }
 }

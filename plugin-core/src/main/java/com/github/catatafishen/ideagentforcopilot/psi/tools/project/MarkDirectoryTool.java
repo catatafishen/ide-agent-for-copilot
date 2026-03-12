@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,6 +43,11 @@ public final class MarkDirectoryTool extends ProjectTool {
             {"path", TYPE_STRING, "Directory path (absolute or project-relative)"},
             {"type", TYPE_STRING, "Directory type: 'sources', 'test_sources', 'resources', 'test_resources', 'generated_sources', 'excluded', or 'unmark' to remove marking"}
         }, "path", "type");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

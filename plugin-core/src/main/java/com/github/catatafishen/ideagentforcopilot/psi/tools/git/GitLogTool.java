@@ -6,6 +6,8 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitLogRenderer;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -94,5 +96,10 @@ public final class GitLogTool extends GitTool {
         String result = git.runGit(cmdArgs.toArray(String[]::new));
         git.showFirstCommitInLog(result);
         return result;
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitLogRenderer.INSTANCE;
     }
 }

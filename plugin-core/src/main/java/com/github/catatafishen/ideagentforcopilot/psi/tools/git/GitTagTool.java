@@ -6,6 +6,8 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitTagRenderer;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -116,5 +118,10 @@ public final class GitTagTool extends GitTool {
             return null;
         }
         return args.get("name").getAsString();
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitTagRenderer.INSTANCE;
     }
 }

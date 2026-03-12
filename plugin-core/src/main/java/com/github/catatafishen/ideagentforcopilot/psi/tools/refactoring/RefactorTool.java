@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.RefactoringTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.RefactorRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -45,6 +46,11 @@ public final class RefactorTool extends RefactoringTool {
             {"line", TYPE_INTEGER, "Line number to disambiguate if multiple symbols share the same name"},
             {"new_name", TYPE_STRING, "New name for 'rename' operation. Required when operation is 'rename'"}
         }, "operation", "file", "symbol");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return RefactorRenderer.INSTANCE;
     }
 
     @Override

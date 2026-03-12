@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.quality;
 import com.github.catatafishen.ideagentforcopilot.psi.CodeQualityTools;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.Tool;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.InspectionResultRenderer;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
@@ -22,5 +23,10 @@ public abstract class QualityTool extends Tool {
     @Override
     public @NotNull ToolRegistry.Category category() {
         return ToolRegistry.Category.CODE_QUALITY;
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return InspectionResultRenderer.INSTANCE;
     }
 }

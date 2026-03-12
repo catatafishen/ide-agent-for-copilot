@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.github.catatafishen.ideagentforcopilot.psi.RunConfigurationService;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.RunConfigCrudRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,6 +51,11 @@ public final class DeleteRunConfigurationTool extends ProjectTool {
         return schema(new Object[][]{
             {"name", TYPE_STRING, "Exact name of the run configuration to delete"}
         }, "name");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return RunConfigCrudRenderer.INSTANCE;
     }
 
     @Override

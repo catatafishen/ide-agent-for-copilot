@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.CodeNavigationTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ListProjectFilesRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -47,6 +48,11 @@ public final class ListProjectFilesTool extends NavigationTool {
             {"modified_after", TYPE_STRING, "Only include files modified after this date (yyyy-MM-dd, UTC)", ""},
             {"modified_before", TYPE_STRING, "Only include files modified before this date (yyyy-MM-dd, UTC)", ""}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ListProjectFilesRenderer.INSTANCE;
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.CodeNavigationTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.FileOutlineRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -41,6 +42,11 @@ public final class GetFileOutlineTool extends NavigationTool {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to outline"}
         }, "path");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return FileOutlineRenderer.INSTANCE;
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.github.catatafishen.ideagentforcopilot.psi.RunConfigurationService;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.RunConfigRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,6 +25,11 @@ public final class ListRunConfigurationsTool extends ProjectTool {
     @Override public @NotNull String displayName() { return "List Run Configs"; }
     @Override public @NotNull String description() { return "List all available run configurations in the project"; }
     @Override public boolean isReadOnly() { return true; }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return RunConfigRenderer.INSTANCE;
+    }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {

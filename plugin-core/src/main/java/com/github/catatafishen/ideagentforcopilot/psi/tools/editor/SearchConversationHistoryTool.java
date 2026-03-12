@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,6 +44,11 @@ public final class SearchConversationHistoryTool extends EditorTool {
             {"file", TYPE_STRING, "Conversation to read: 'current' for the active session, or an archive timestamp (e.g., '2026-03-04T15-30-00')"},
             {"max_chars", TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 
     @Override

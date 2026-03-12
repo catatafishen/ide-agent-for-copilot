@@ -6,6 +6,8 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitStageRenderer;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -85,5 +87,10 @@ public final class GitStageTool extends GitTool {
             return "Staged: " + String.join(", ", stagedFiles);
         }
         return result;
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GitStageRenderer.INSTANCE;
     }
 }

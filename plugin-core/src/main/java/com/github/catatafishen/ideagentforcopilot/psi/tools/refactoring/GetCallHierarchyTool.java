@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.RefactoringTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,6 +44,11 @@ public final class GetCallHierarchyTool extends RefactoringTool {
             {"file", TYPE_STRING, "Path to the file containing the method definition"},
             {"line", TYPE_INTEGER, "Line number where the method is defined"}
         }, "symbol", "file", "line");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SearchResultRenderer.INSTANCE;
     }
 
     @Override

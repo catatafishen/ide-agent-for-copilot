@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.testing;
 import com.github.catatafishen.ideagentforcopilot.psi.TestTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.TestResultRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,6 +43,11 @@ public final class RunTestsTool extends TestingTool {
             {"target", TYPE_STRING, "Test target: fully qualified class class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"},
             {"module", TYPE_STRING, "Optional Gradle module name (e.g., 'plugin-core')", ""}
         }, "target");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return TestResultRenderer.INSTANCE;
     }
 
     @Override

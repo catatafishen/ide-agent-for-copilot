@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.CodeNavigationTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -45,6 +46,11 @@ public final class SearchTextTool extends NavigationTool {
             {"case_sensitive", TYPE_BOOLEAN, "Case-sensitive search. Default: true"},
             {"max_results", TYPE_INTEGER, "Maximum results to return (default: 100)"}
         }, "query");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SearchResultRenderer.INSTANCE;
     }
 
     @Override

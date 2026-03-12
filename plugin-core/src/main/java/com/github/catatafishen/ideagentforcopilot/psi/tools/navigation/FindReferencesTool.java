@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.CodeNavigationTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,6 +43,11 @@ public final class FindReferencesTool extends NavigationTool {
             {"symbol", TYPE_STRING, "The exact symbol name to search for"},
             {"file_pattern", TYPE_STRING, "Optional glob pattern to filter files (e.g., '*.java')", ""}
         }, "symbol");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SearchResultRenderer.INSTANCE;
     }
 
     @Override

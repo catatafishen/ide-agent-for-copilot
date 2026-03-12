@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.WriteFileRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,6 +43,11 @@ public final class CreateFileTool extends FileTool {
             {"path", TYPE_STRING, "Path for the new file (absolute or project-relative). File must not already exist"},
             {"content", TYPE_STRING, "Content to write to the file"}
         }, "path", "content");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return WriteFileRenderer.INSTANCE;
     }
 
     @Override

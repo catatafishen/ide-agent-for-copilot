@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -46,6 +47,11 @@ public final class DeleteFileTool extends FileTool {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to delete (absolute or project-relative)"}
         }, "path");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

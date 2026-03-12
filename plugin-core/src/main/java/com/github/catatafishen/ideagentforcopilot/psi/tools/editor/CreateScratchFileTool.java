@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ScratchFileRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,6 +38,11 @@ public final class CreateScratchFileTool extends EditorTool {
             {"name", TYPE_STRING, "Scratch file name with extension (e.g., 'test.py', 'notes.md')"},
             {"content", TYPE_STRING, "The content to write to the scratch file"}
         }, "name", "content");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ScratchFileRenderer.INSTANCE;
     }
 
     @Override

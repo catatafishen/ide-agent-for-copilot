@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +42,11 @@ public final class DownloadSourcesTool extends ProjectTool {
         return schema(new Object[][]{
             {"library", TYPE_STRING, "Optional library name filter (e.g. 'junit')"}
         });
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return SimpleStatusRenderer.INSTANCE;
     }
 
     @Override

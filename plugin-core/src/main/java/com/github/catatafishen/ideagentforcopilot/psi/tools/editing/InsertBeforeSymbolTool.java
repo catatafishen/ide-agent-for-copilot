@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editing;
 import com.github.catatafishen.ideagentforcopilot.psi.SymbolEditingTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ReplaceSymbolRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -45,6 +46,11 @@ public final class InsertBeforeSymbolTool extends EditingTool {
             {"content", TYPE_STRING, "The content to insert before the symbol"},
             {"line", TYPE_INTEGER, "Optional: line number hint to disambiguate if multiple symbols share the same name"}
         }, "file", "symbol", "content");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ReplaceSymbolRenderer.INSTANCE;
     }
 
     @Override

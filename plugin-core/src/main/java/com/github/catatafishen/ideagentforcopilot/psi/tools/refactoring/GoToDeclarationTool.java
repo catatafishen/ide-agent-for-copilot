@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.RefactoringTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.GoToDeclarationRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,6 +44,11 @@ public final class GoToDeclarationTool extends RefactoringTool {
             {"symbol", TYPE_STRING, "Name of the symbol to look up"},
             {"line", TYPE_INTEGER, "Line number where the symbol appears"}
         }, "file", "symbol", "line");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return GoToDeclarationRenderer.INSTANCE;
     }
 
     @Override

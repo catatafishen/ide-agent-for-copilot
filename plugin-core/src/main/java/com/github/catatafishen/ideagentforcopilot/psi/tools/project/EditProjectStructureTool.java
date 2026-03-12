@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.ProjectTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,6 +45,11 @@ public final class EditProjectStructureTool extends ProjectTool {
             {"sdk_name", TYPE_STRING, "SDK name for remove_sdk. Use list_sdks to see configured SDK names"},
             {"home_path", TYPE_STRING, "Home path for add_sdk. Use list_sdks to see suggested paths for each SDK type"}
         }, "action");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 
     @Override

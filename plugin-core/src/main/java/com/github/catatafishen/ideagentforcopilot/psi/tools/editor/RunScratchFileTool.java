@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 import com.github.catatafishen.ideagentforcopilot.psi.EditorTools;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ScratchFileRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,6 +39,11 @@ public final class RunScratchFileTool extends EditorTool {
             {"module", TYPE_STRING, "Optional: module name for classpath (e.g., 'plugin-core')"},
             {"interactive", TYPE_BOOLEAN, "Optional: enable interactive/REPL mode (Kotlin scripts)"}
         }, "name");
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return ScratchFileRenderer.INSTANCE;
     }
 
     @Override
