@@ -154,6 +154,12 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         stored.setExcludeAgentBuiltInTools(defaults.isExcludeAgentBuiltInTools());
         stored.setUsePluginPermissions(defaults.isUsePluginPermissions());
         stored.setPermissionInjectionMethod(defaults.getPermissionInjectionMethod());
+        stored.setModelUsageField(defaults.getModelUsageField());
+        stored.setEnsureCopilotAgents(defaults.isEnsureCopilotAgents());
+        // Only overwrite instructions target if not user-customized (null/empty means never set)
+        if (stored.getPrependInstructionsTo() == null || stored.getPrependInstructionsTo().isEmpty()) {
+            stored.setPrependInstructionsTo(defaults.getPrependInstructionsTo());
+        }
     }
 
     @Nullable
