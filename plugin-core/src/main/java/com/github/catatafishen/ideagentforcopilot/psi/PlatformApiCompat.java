@@ -773,7 +773,7 @@ public final class PlatformApiCompat {
      * @param listener the execution listener
      * @return a Runnable that disconnects the subscription when called
      */
-    static Runnable subscribeExecutionListener(
+    public static Runnable subscribeExecutionListener(
         com.intellij.openapi.project.Project project,
         com.intellij.execution.ExecutionListener listener) {
         var connection = project.getMessageBus().connect();

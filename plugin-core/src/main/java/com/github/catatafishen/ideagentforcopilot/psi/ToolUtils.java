@@ -18,15 +18,15 @@ public final class ToolUtils {
     public static final String ERROR_CANNOT_PARSE = "Cannot parse file: ";
     public static final String ERROR_PATH_REQUIRED = "Error: 'path' parameter is required";
     public static final String JAVA_EXTENSION = ".java";
-    static final String BUILD_DIR = "build";
+    public static final String BUILD_DIR = "build";
 
     // Element type constants
-    static final String ELEMENT_TYPE_CLASS = "class";
-    static final String ELEMENT_TYPE_INTERFACE = "interface";
-    static final String ELEMENT_TYPE_ENUM = "enum";
+    public static final String ELEMENT_TYPE_CLASS = "class";
+    public static final String ELEMENT_TYPE_INTERFACE = "interface";
+    public static final String ELEMENT_TYPE_ENUM = "enum";
     public static final String ELEMENT_TYPE_FIELD = "field";
-    static final String ELEMENT_TYPE_FUNCTION = "function";
-    static final String ELEMENT_TYPE_METHOD = "method";
+    public static final String ELEMENT_TYPE_FUNCTION = "function";
+    public static final String ELEMENT_TYPE_METHOD = "method";
 
     private ToolUtils() {
     }

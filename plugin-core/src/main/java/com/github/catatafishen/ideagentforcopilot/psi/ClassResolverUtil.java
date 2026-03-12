@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * Utility for resolving class names to fully-qualified names and their containing modules.
- * Used by {@link RunConfigurationService} and {@link TestTools} for class resolution
+ * Used by {@link RunConfigurationService} and the testing tools for class resolution
  * without depending on the former {@code RefactoringTools} handler.
  */
 public final class ClassResolverUtil {
