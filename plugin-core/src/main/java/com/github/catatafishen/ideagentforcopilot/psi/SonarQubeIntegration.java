@@ -77,28 +77,21 @@ public final class SonarQubeIntegration {
         try {
             String basePath = project.getBasePath();
 
-            // Fast path: return cached results immediately, even if analysis is still running.
-            // SonarLint's spinner sometimes stays active after analysis completes (tracker stuck),
-            // so waiting for isEmpty() would block until MCP transport timeout.
-            List<String> existing = collectViaEdt(basePath);
-            if (!existing.isEmpty()) {
-                String suffix = isAnalysisRunning() ? " (analysis still in progress)" : "";
-                LOG.info("Returning " + existing.size() + " cached SonarQube findings" + suffix);
-                return formatOutput(existing, limit, offset);
-            }
-
-            // No cached results — if analysis is already running, wait for it to complete
+            // Always trigger a fresh analysis — never return stale cached data from a prior run.
+            // If analysis is already running, wait for it to finish before triggering a new one.
             if (isAnalysisRunning()) {
-                LOG.info("SonarQube analysis in progress, waiting for completion");
-                List<String> findings = waitForNewResults(basePath, null);
-                return formatOutput(findings, limit, offset);
+                LOG.info("SonarQube analysis already in progress, waiting for it to complete first");
+                List<String> current = waitForNewResults(basePath, null);
+                // After it finishes, trigger a new one so results reflect latest code
+                String actionId = resolveActionId(scope);
+                CompletableFuture<Boolean> triggerResult = triggerAction(actionId);
+                List<String> findings = waitForNewResults(basePath, triggerResult);
+                return formatOutput(findings.isEmpty() ? current : findings, limit, offset);
             }
 
-            // No cached results found — trigger a new analysis
-            LOG.info("No cached results found, triggering SonarLint analysis for scope: " + scope);
+            LOG.info("Triggering fresh SonarLint analysis for scope: " + scope);
             String actionId = resolveActionId(scope);
             CompletableFuture<Boolean> triggerResult = triggerAction(actionId);
-
             List<String> findings = waitForNewResults(basePath, triggerResult);
             return formatOutput(findings, limit, offset);
         } catch (Exception e) {
@@ -594,8 +587,8 @@ public final class SonarQubeIntegration {
         }
 
         int total = findings.size();
-        int end = Math.min(offset + limit, total);
         int start = Math.min(offset, total);
+        int end = Math.min(offset + limit, total);
 
         StringBuilder sb = new StringBuilder();
         sb.append("SonarQube findings (").append(total).append(" total");
@@ -604,23 +597,15 @@ public final class SonarQubeIntegration {
         }
         sb.append("):\n\n");
 
-        List<String> pageFindings = findings.subList(start, end);
-        for (String finding : pageFindings) {
+        for (String finding : findings.subList(start, end)) {
             sb.append(finding).append('\n');
         }
 
         if (end < total) {
-            sb.append("\nWARNING: ").append(total - end).append(" more findings not shown. Use offset=")
-                .append(end).append(" to see more.");
+            sb.append("\nWARNING: ").append(total - end)
+                .append(" more findings not shown. Use offset=").append(end).append(" to see more.");
         }
 
-        // Only append rule descriptions if total output stays within MCP transport budget (~28KB).
-        // SonarRuleDescriptions can add up to 20 rules × 800 chars each, which exceeds the limit.
-        String mainOutput = sb.toString();
-        String rulesSection = SonarRuleDescriptions.buildRulesSection(pageFindings);
-        if (mainOutput.length() + rulesSection.length() < 28_000) {
-            return mainOutput + rulesSection;
-        }
-        return mainOutput;
+        return sb.toString();
     }
 }

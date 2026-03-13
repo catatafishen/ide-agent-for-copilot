@@ -173,6 +173,7 @@ internal val TOOL_DISPLAY_INFO = mapOf(
     "add_to_dictionary" to ToolInfo("Add to Dictionary", "Add a word to the spell-check dictionary"),
     "run_qodana" to ToolInfo("Run Qodana", "Run Qodana static analysis on the project"),
     "run_sonarqube_analysis" to ToolInfo("Run SonarQube", "Run SonarQube for IDE analysis on the project"),
+    "get_sonar_rule_description" to ToolInfo("Get SonarQube Rule", "Fetch SonarQube rule descriptions by rule ID"),
     // Refactoring
     "refactor" to ToolInfo("Refactor", "Refactor code (rename, extract method, inline, safe delete)"),
     "go_to_declaration" to ToolInfo("Go to Declaration", "Navigate to the declaration of a symbol"),

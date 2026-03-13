@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -17,8 +18,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Fetches rule descriptions from SonarLint's BackendService via reflection and formats
@@ -27,7 +26,7 @@ import java.util.regex.Pattern;
  * <p>All interaction is via reflection since SonarLint has no public API.
  */
 @SuppressWarnings("java:S3011") // setAccessible is inherent to reflection-based SonarLint integration
-final class SonarRuleDescriptions {
+public final class SonarRuleDescriptions {
 
     private static final Logger LOG = Logger.getInstance(SonarRuleDescriptions.class);
 
@@ -37,45 +36,31 @@ final class SonarRuleDescriptions {
         "org.sonarsource.sonarlint.core.rpc.protocol.backend.rules.GetStandaloneRuleDescriptionParams";
 
     // Matches [SEVERITY/ruleKey] in finding format "%s:%d [%s/%s] %s", e.g. "[MAJOR/java:S3776]"
-    private static final Pattern RULE_KEY_PATTERN = Pattern.compile("\\[\\S+/(\\S+)]");
     private static final int MAX_DESCRIPTION_CHARS = 800;
     private static final int FETCH_TIMEOUT_MS = 8_000;
-    private static final int MAX_RULES_PER_PAGE = 20;
 
     private SonarRuleDescriptions() {
     }
 
     /**
-     * Extracts unique rule keys from the visible findings, fetches their descriptions
-     * from SonarLint's BackendService, and returns a formatted "Referenced Rules" section.
-     * Returns empty string if descriptions cannot be fetched.
+     * Fetches descriptions for the given rule keys and returns a formatted section.
+     * Used by {@code get_sonar_rule_description} tool for on-demand lookups.
      */
     @NotNull
-    static String buildRulesSection(@NotNull List<String> visibleFindings) {
+    public static String buildRulesSectionForKeys(@NotNull Collection<String> ruleKeys) {
         ClassLoader cl = PlatformApiCompat.getPluginClassLoader(SONAR_PLUGIN_ID);
-        if (cl == null) return "";
+        if (cl == null) return "SonarLint plugin not available.";
+        if (ruleKeys.isEmpty()) return "No rule keys provided.";
 
-        Set<String> ruleKeys = extractRuleKeys(visibleFindings);
-        if (ruleKeys.isEmpty()) return "";
+        LinkedHashSet<String> keys = new LinkedHashSet<>(ruleKeys);
+        Map<String, String> descriptions = fetchDescriptions(keys, cl);
+        if (descriptions.isEmpty()) return "No descriptions found for the requested rule keys.";
 
-        Map<String, String> descriptions = fetchDescriptions(ruleKeys, cl);
-        if (descriptions.isEmpty()) return "";
-
-        StringBuilder sb = new StringBuilder("\n─── Referenced Rules ────────────────────────────────\n");
+        StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> entry : descriptions.entrySet()) {
-            sb.append(entry.getValue()).append('\n');
+            sb.append(entry.getValue()).append("\n\n");
         }
-        return sb.toString();
-    }
-
-    private static Set<String> extractRuleKeys(List<String> findings) {
-        Set<String> keys = new LinkedHashSet<>();
-        for (String finding : findings) {
-            if (keys.size() >= MAX_RULES_PER_PAGE) break;
-            Matcher m = RULE_KEY_PATTERN.matcher(finding);
-            if (m.find()) keys.add(m.group(1));
-        }
-        return keys;
+        return sb.toString().trim();
     }
 
     private static Map<String, String> fetchDescriptions(Set<String> ruleKeys, ClassLoader cl) {

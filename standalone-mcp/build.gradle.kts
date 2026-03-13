@@ -33,7 +33,7 @@ dependencies {
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
     // Force annotations version to match the platform
-    implementation("org.jetbrains:annotations:26.0.2")
+    implementation("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 
     testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
     testImplementation("junit:junit:${providers.gradleProperty("junit4Version").get()}")
@@ -42,7 +42,7 @@ dependencies {
 }
 
 configurations.all {
-    resolutionStrategy.force("org.jetbrains:annotations:26.0.2")
+    resolutionStrategy.force("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 }
 
 // Repackage plugin-core without its plugin.xml descriptor.

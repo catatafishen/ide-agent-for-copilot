@@ -33,7 +33,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
     // Force annotations version to match the platform (TYPE_USE support required for lambdas)
-    implementation("org.jetbrains:annotations:26.0.2")
+    implementation("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
@@ -50,7 +50,7 @@ dependencies {
 
 // Ensure annotations 26.x is used everywhere (needed for TYPE_USE @NotNull on functional interfaces)
 configurations.all {
-    resolutionStrategy.force("org.jetbrains:annotations:26.0.2")
+    resolutionStrategy.force("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 }
 
 // Copy MCP server JAR into plugin lib for bundling
@@ -221,6 +221,8 @@ tasks.named<Zip>("buildPlugin") {
 
 // Deploy built plugin to the main (outer) IDE installation
 tasks.register("deployToMainIde") {
+    group = "deployment"
+    description = "Builds the plugin ZIP and installs it into the running IDE's plugin directory."
     dependsOn("buildPlugin")
     doLast {
         val distDir = layout.buildDirectory.dir("distributions").get().asFile

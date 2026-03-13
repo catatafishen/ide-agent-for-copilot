@@ -44,6 +44,7 @@ public final class QualityToolFactory {
 
         if (hasSonar) {
             tools.add(new RunSonarQubeAnalysisTool(project));
+            tools.add(new GetSonarRuleDescriptionTool(project));
         }
 
         return List.copyOf(tools);
