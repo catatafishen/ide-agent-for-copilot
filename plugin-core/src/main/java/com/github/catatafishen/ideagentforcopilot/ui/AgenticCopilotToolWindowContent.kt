@@ -1285,15 +1285,13 @@ class AgenticCopilotToolWindowContent(
                     } else {
                         handlePasteToScratch(clipText)
                     }
+                    true
                 } else {
-                    val handler = com.intellij.openapi.editor.actionSystem.EditorActionManager.getInstance()
-                        .getActionHandler(IdeActions.ACTION_EDITOR_PASTE)
-                    val dataContext = com.intellij.ide.DataManager.getInstance().getDataContext(contentComponent)
-                    com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
-                        handler.execute(editor, null, dataContext)
-                    }
+                    // Small text: let the editor's own paste handler run normally.
+                    // Manually calling handler.execute here would double-paste because the
+                    // event still reaches the editor's InputMap on some IntelliJ versions.
+                    false
                 }
-                true
             },
             project
         )
