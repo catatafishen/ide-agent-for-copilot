@@ -1814,6 +1814,8 @@ class AgenticCopilotToolWindowContent(
             e.message ?: MSG_UNKNOWN_ERROR
         }
         consolePanel.addErrorEntry("Error: $msg")
+        // Persist whatever was collected so far — partial turns survive disconnects and crashes.
+        saveConversation()
 
         // Show the auth banner immediately when an auth error is detected
         if (authService.isAuthenticationError(msg)) {
