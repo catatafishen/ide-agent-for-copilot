@@ -77,18 +77,21 @@ public final class SonarQubeIntegration {
         try {
             String basePath = project.getBasePath();
 
-            // If an analysis is currently running, wait for it to finish then return those results
-            if (isAnalysisRunning()) {
-                LOG.info("SonarQube analysis already in progress, waiting for completion");
-                List<String> findings = waitForNewResults(basePath, null);
-                return formatOutput(findings, limit, offset);
-            }
-
-            // Fast path: return existing cached results without re-triggering analysis
+            // Fast path: return cached results immediately, even if analysis is still running.
+            // SonarLint's spinner sometimes stays active after analysis completes (tracker stuck),
+            // so waiting for isEmpty() would block until MCP transport timeout.
             List<String> existing = collectViaEdt(basePath);
             if (!existing.isEmpty()) {
-                LOG.info("Returning " + existing.size() + " cached SonarQube findings");
+                String suffix = isAnalysisRunning() ? " (analysis still in progress)" : "";
+                LOG.info("Returning " + existing.size() + " cached SonarQube findings" + suffix);
                 return formatOutput(existing, limit, offset);
+            }
+
+            // No cached results — if analysis is already running, wait for it to complete
+            if (isAnalysisRunning()) {
+                LOG.info("SonarQube analysis in progress, waiting for completion");
+                List<String> findings = waitForNewResults(basePath, null);
+                return formatOutput(findings, limit, offset);
             }
 
             // No cached results found — trigger a new analysis
@@ -611,8 +614,13 @@ public final class SonarQubeIntegration {
                 .append(end).append(" to see more.");
         }
 
-        sb.append(SonarRuleDescriptions.buildRulesSection(pageFindings));
-
-        return sb.toString();
+        // Only append rule descriptions if total output stays within MCP transport budget (~28KB).
+        // SonarRuleDescriptions can add up to 20 rules × 800 chars each, which exceeds the limit.
+        String mainOutput = sb.toString();
+        String rulesSection = SonarRuleDescriptions.buildRulesSection(pageFindings);
+        if (mainOutput.length() + rulesSection.length() < 28_000) {
+            return mainOutput + rulesSection;
+        }
+        return mainOutput;
     }
 }

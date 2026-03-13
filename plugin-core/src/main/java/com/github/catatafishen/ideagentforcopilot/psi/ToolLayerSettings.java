@@ -23,13 +23,9 @@ public interface ToolLayerSettings {
      */
     String FOLLOW_AGENT_FILES_KEY = "copilot.followAgentFiles";
 
-    /**
-     * Look up the project-level {@link ToolLayerSettings} service.
-     * Falls back to {@link DefaultToolLayerSettings} defaults if no implementation is registered.
-     */
     @NotNull
     static ToolLayerSettings getInstance(@NotNull Project project) {
-        ToolLayerSettings service = PlatformApiCompat.getService(project, ToolLayerSettings.class);
+        ToolLayerSettings service = (ToolLayerSettings) PlatformApiCompat.getServiceByRawClass(project, ToolLayerSettings.class);
         return service != null ? service : DefaultToolLayerSettings.FALLBACK;
     }
 

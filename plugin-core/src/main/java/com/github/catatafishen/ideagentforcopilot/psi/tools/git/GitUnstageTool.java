@@ -44,9 +44,9 @@ public final class GitUnstageTool extends GitTool {
     public @Nullable JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
             {"path", TYPE_STRING, "Single file path to unstage"},
-            {"paths", TYPE_ARRAY, "Multiple file paths to unstage"}
+            {PARAM_PATHS, TYPE_ARRAY, "Multiple file paths to unstage"}
         });
-        addArrayItems(s, "paths");
+        addArrayItems(s, PARAM_PATHS);
         return s;
     }
 

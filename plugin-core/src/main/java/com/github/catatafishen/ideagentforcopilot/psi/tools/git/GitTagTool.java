@@ -15,6 +15,8 @@ import java.util.List;
 @SuppressWarnings("java:S112")
 public final class GitTagTool extends GitTool {
 
+    private static final String PARAM_ACTION = "action";
+    private static final String PARAM_ANNOTATE = "annotate";
     private static final String PARAM_COMMIT = "commit";
     private static final String PARAM_MESSAGE = "message";
     private static final String PARAM_PATTERN = "pattern";
@@ -46,20 +48,20 @@ public final class GitTagTool extends GitTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"action", TYPE_STRING, "Action: 'list' (default), 'create', 'delete'"},
+            {PARAM_ACTION, TYPE_STRING, "Action: 'list' (default), 'create', 'delete'"},
             {"name", TYPE_STRING, "Tag name (required for create/delete)"},
-            {"commit", TYPE_STRING, "Commit to tag (default: HEAD, for create)"},
-            {"message", TYPE_STRING, "Tag message (for annotated tags)"},
-            {"annotate", TYPE_BOOLEAN, "Create an annotated tag (requires message)"},
-            {"pattern", TYPE_STRING, "Glob pattern to filter tags (for list)"},
+            {PARAM_COMMIT, TYPE_STRING, "Commit to tag (default: HEAD, for create)"},
+            {PARAM_MESSAGE, TYPE_STRING, "Tag message (for annotated tags)"},
+            {PARAM_ANNOTATE, TYPE_BOOLEAN, "Create an annotated tag (requires message)"},
+            {PARAM_PATTERN, TYPE_STRING, "Glob pattern to filter tags (for list)"},
             {"sort", TYPE_STRING, "Sort field for list (e.g., '-creatordate' for newest first)"}
         });
     }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String action = args.has("action")
-            ? args.get("action").getAsString()
+        String action = args.has(PARAM_ACTION)
+            ? args.get(PARAM_ACTION).getAsString()
             : "list";
 
         return switch (action) {
@@ -85,7 +87,7 @@ public final class GitTagTool extends GitTool {
                 List<String> cmdArgs = new ArrayList<>();
                 cmdArgs.add("tag");
 
-                if (args.has("annotate") && args.get("annotate").getAsBoolean()) {
+                if (args.has(PARAM_ANNOTATE) && args.get(PARAM_ANNOTATE).getAsBoolean()) {
                     cmdArgs.add("-a");
                 }
 

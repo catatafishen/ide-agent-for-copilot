@@ -48,7 +48,7 @@ public final class UndoTool extends FileTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to undo changes on"},
-            {"count", TYPE_INTEGER, "Number of undo steps (default: 1). Each write + auto-format counts as 2 steps"}
+            {PARAM_COUNT, TYPE_INTEGER, "Number of undo steps (default: 1). Each write + auto-format counts as 2 steps"}
         }, "path");
     }
 

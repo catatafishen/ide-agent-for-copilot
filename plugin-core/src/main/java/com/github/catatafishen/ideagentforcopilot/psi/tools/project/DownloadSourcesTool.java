@@ -59,7 +59,7 @@ public final class DownloadSourcesTool extends ProjectTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"library", TYPE_STRING, "Optional library name filter (e.g. 'junit')"}
+            {PARAM_LIBRARY, TYPE_STRING, "Optional library name filter (e.g. 'junit')"}
         });
     }
 

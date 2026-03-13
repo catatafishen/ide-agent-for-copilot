@@ -13,6 +13,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -96,7 +97,7 @@ public final class ListScratchFilesTool extends EditorTool {
         if (prefix.chars().filter(c -> c == '/').count() > 3) return;
 
         for (VirtualFile child : dir.getChildren()) {
-            String relPath = prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName();
+            String relPath = prefix.isEmpty() ? child.getName() : prefix + File.separator + child.getName();
             if (child.isDirectory()) {
                 collectScratchEntries(child, relPath, lines);
             } else {

@@ -19,7 +19,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Gets cached editor highlights for open files.
@@ -117,7 +119,10 @@ public final class GetHighlightsTool extends QualityTool {
                     result.append("\n\n--- Editor Notifications ---\n");
                     result.append(String.join("\n", notifications));
                 }
-            } catch (Exception e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOG.info("Interrupted while collecting editor notifications: " + e.getMessage());
+            } catch (ExecutionException | TimeoutException e) {
                 LOG.info("Failed to collect editor notifications: " + e.getMessage());
             }
         }
@@ -175,7 +180,7 @@ public final class GetHighlightsTool extends QualityTool {
      * Collects editor notification banners for a file.
      * Must be called outside a read action since it dispatches to EDT for Swing component creation.
      */
-    private List<String> collectEditorNotifications(String pathStr) throws Exception {
+    private List<String> collectEditorNotifications(String pathStr) throws ExecutionException, InterruptedException, TimeoutException {
         CompletableFuture<List<String>> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {

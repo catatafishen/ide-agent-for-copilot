@@ -179,7 +179,7 @@ public final class ActiveAgentManager implements Disposable {
             LOG.info(profile.getDisplayName() + " ACP client started");
         } catch (Exception e) {
             LOG.error("Failed to start ACP client", e);
-            throw new RuntimeException("Failed to start ACP client", e);
+            throw new IllegalStateException("Failed to start ACP client", e);
         }
     }
 

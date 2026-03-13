@@ -11,7 +11,11 @@ const ChatController = {
         forceScroll(): void;
         workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
     } | null {
-        return document.querySelector('chat-container') as any;
+        return document.querySelector<HTMLElement & {
+            scrollIfNeeded(): void;
+            forceScroll(): void;
+            workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
+        }>('chat-container');
     },
 
     _resetWorkingTimer(): void {

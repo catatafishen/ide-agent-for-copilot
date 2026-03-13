@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SonarLintProjectSettings">
+    <option name="fileExclusions">
+      <list>
+        <option value="DIRECTORY:build" />
+        <option value="DIRECTORY:plugin-core/build" />
+        <option value="DIRECTORY:plugin-core/out" />
+        <option value="DIRECTORY:plugin-core/node_modules" />
+        <option value="GLOB:**/out/**" />
+        <option value="GLOB:**/build/**" />
+      </list>
+    </option>
+  </component>
+</project>

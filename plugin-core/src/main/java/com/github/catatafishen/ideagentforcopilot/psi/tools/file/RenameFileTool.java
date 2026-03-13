@@ -21,6 +21,8 @@ import java.util.concurrent.TimeUnit;
 @SuppressWarnings("java:S112")
 public final class RenameFileTool extends FileTool {
 
+    private static final String PARAM_NEW_NAME = "new_name";
+
     public RenameFileTool(Project project) {
         super(project);
     }
@@ -49,16 +51,16 @@ public final class RenameFileTool extends FileTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to rename (absolute or project-relative)"},
-            {"new_name", TYPE_STRING, "New file name (just the filename, not a full path)"}
-        }, "path", "new_name");
+            {PARAM_NEW_NAME, TYPE_STRING, "New file name (just the filename, not a full path)"}
+        }, "path", PARAM_NEW_NAME);
     }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        if (!args.has("path") || !args.has("new_name"))
+        if (!args.has("path") || !args.has(PARAM_NEW_NAME))
             return ToolUtils.ERROR_PREFIX + "'path' and 'new_name' parameters are required";
         String pathStr = args.get("path").getAsString();
-        String newName = args.get("new_name").getAsString();
+        String newName = args.get(PARAM_NEW_NAME).getAsString();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         final RenameFileTool requestor = this;

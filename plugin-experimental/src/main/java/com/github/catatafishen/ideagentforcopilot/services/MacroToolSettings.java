@@ -50,14 +50,22 @@ public final class MacroToolSettings implements PersistentStateComponent<MacroTo
      * Represents a single macro registered as an MCP tool.
      */
     public static final class MacroRegistration {
-        /** Original name of the ActionMacro in IntelliJ. */
-        public String macroName = "";
-        /** Custom MCP tool name (e.g., "clean_and_analyze"). */
-        public String toolName = "";
-        /** Custom description shown to agents. */
-        public String description = "";
-        /** Whether this macro tool is currently active. */
-        public boolean enabled = true;
+        /**
+         * Original name of the ActionMacro in IntelliJ.
+         */
+        private String macroName = "";
+        /**
+         * Custom MCP tool name (e.g., "clean_and_analyze").
+         */
+        private String toolName = "";
+        /**
+         * Custom description shown to agents.
+         */
+        private String description = "";
+        /**
+         * Whether this macro tool is currently active.
+         */
+        private boolean enabled = true;
 
         public MacroRegistration() {
         }
@@ -69,7 +77,41 @@ public final class MacroToolSettings implements PersistentStateComponent<MacroTo
             this.enabled = enabled;
         }
 
-        /** Creates a copy of this registration. */
+        public String getMacroName() {
+            return macroName;
+        }
+
+        public void setMacroName(String macroName) {
+            this.macroName = macroName;
+        }
+
+        public String getToolName() {
+            return toolName;
+        }
+
+        public void setToolName(String toolName) {
+            this.toolName = toolName;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        /**
+         * Creates a copy of this registration.
+         */
         public MacroRegistration copy() {
             return new MacroRegistration(macroName, toolName, description, enabled);
         }
@@ -91,6 +133,14 @@ public final class MacroToolSettings implements PersistentStateComponent<MacroTo
     }
 
     public static final class State {
-        public List<MacroRegistration> registrations = new ArrayList<>();
+        private List<MacroRegistration> registrations = new ArrayList<>();
+
+        public List<MacroRegistration> getRegistrations() {
+            return registrations;
+        }
+
+        public void setRegistrations(List<MacroRegistration> registrations) {
+            this.registrations = registrations;
+        }
     }
 }

@@ -116,8 +116,24 @@ public final class ScratchTypeSettings implements PersistentStateComponent<Scrat
     }
 
     public static class State {
-        public Set<String> enabledLanguageIds = getDefaultEnabledIds();
-        public Map<String, String> mappings = getDefaults();
+        private Set<String> enabledLanguageIds = getDefaultEnabledIds();
+        private Map<String, String> mappings = getDefaults();
+
+        public Set<String> getEnabledLanguageIds() {
+            return enabledLanguageIds;
+        }
+
+        public void setEnabledLanguageIds(Set<String> enabledLanguageIds) {
+            this.enabledLanguageIds = enabledLanguageIds;
+        }
+
+        public Map<String, String> getMappings() {
+            return mappings;
+        }
+
+        public void setMappings(Map<String, String> mappings) {
+            this.mappings = mappings;
+        }
     }
 
     /**

@@ -15,6 +15,10 @@ import java.util.List;
 @SuppressWarnings("java:S112")
 public final class GitDiffTool extends GitTool {
 
+    private static final String PARAM_STAGED = "staged";
+    private static final String PARAM_COMMIT = "commit";
+    private static final String PARAM_STAT_ONLY = "stat_only";
+
     public GitDiffTool(Project project) {
         super(project);
     }
@@ -42,10 +46,10 @@ public final class GitDiffTool extends GitTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"staged", TYPE_BOOLEAN, "If true, show staged (cached) changes only"},
-            {"commit", TYPE_STRING, "Compare against this commit (e.g., 'HEAD~1', branch name)"},
+            {PARAM_STAGED, TYPE_BOOLEAN, "If true, show staged (cached) changes only"},
+            {PARAM_COMMIT, TYPE_STRING, "Compare against this commit (e.g., 'HEAD~1', branch name)"},
             {"path", TYPE_STRING, "Limit diff to this file path"},
-            {"stat_only", TYPE_BOOLEAN, "If true, show only file stats (insertions/deletions), not full diff"}
+            {PARAM_STAT_ONLY, TYPE_BOOLEAN, "If true, show only file stats (insertions/deletions), not full diff"}
         });
     }
 
@@ -56,18 +60,18 @@ public final class GitDiffTool extends GitTool {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("diff");
 
-        boolean staged = args.has("staged")
-            && args.get("staged").getAsBoolean();
+        boolean staged = args.has(PARAM_STAGED)
+            && args.get(PARAM_STAGED).getAsBoolean();
         if (staged) {
             cmdArgs.add("--cached");
         }
 
-        if (args.has("commit") && !args.get("commit").getAsString().isEmpty()) {
-            cmdArgs.add(args.get("commit").getAsString());
+        if (args.has(PARAM_COMMIT) && !args.get(PARAM_COMMIT).getAsString().isEmpty()) {
+            cmdArgs.add(args.get(PARAM_COMMIT).getAsString());
         }
 
-        boolean statOnly = args.has("stat_only")
-            && args.get("stat_only").getAsBoolean();
+        boolean statOnly = args.has(PARAM_STAT_ONLY)
+            && args.get(PARAM_STAT_ONLY).getAsBoolean();
         if (statOnly) {
             cmdArgs.add(1, "--stat");
         }

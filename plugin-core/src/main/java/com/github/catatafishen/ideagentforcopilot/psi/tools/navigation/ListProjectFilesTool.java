@@ -20,6 +20,13 @@ import java.util.List;
  */
 public final class ListProjectFilesTool extends NavigationTool {
 
+    private static final String PARAM_DIRECTORY = "directory";
+    private static final String PARAM_PATTERN = "pattern";
+    private static final String PARAM_MIN_SIZE = "min_size";
+    private static final String PARAM_MAX_SIZE = "max_size";
+    private static final String PARAM_MODIFIED_AFTER = "modified_after";
+    private static final String PARAM_MODIFIED_BEFORE = "modified_before";
+
     public ListProjectFilesTool(Project project) {
         super(project);
     }
@@ -47,13 +54,13 @@ public final class ListProjectFilesTool extends NavigationTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"directory", TYPE_STRING, "Optional subdirectory to list (relative to project root)", ""},
-            {"pattern", TYPE_STRING, "Optional glob pattern (e.g., '*.java', 'src/**/*.kt')", ""},
+            {PARAM_DIRECTORY, TYPE_STRING, "Optional subdirectory to list (relative to project root)", ""},
+            {PARAM_PATTERN, TYPE_STRING, "Optional glob pattern (e.g., '*.java', 'src/**/*.kt')", ""},
             {"sort", TYPE_STRING, "Sort order: 'name' (default, alphabetical), 'size' (largest first), 'modified' (most recently modified first)", ""},
-            {"min_size", TYPE_INTEGER, "Only include files at least this many bytes", ""},
-            {"max_size", TYPE_INTEGER, "Only include files at most this many bytes", ""},
-            {"modified_after", TYPE_STRING, "Only include files modified after this date (yyyy-MM-dd, UTC)", ""},
-            {"modified_before", TYPE_STRING, "Only include files modified before this date (yyyy-MM-dd, UTC)", ""}
+            {PARAM_MIN_SIZE, TYPE_INTEGER, "Only include files at least this many bytes", ""},
+            {PARAM_MAX_SIZE, TYPE_INTEGER, "Only include files at most this many bytes", ""},
+            {PARAM_MODIFIED_AFTER, TYPE_STRING, "Only include files modified after this date (yyyy-MM-dd, UTC)", ""},
+            {PARAM_MODIFIED_BEFORE, TYPE_STRING, "Only include files modified before this date (yyyy-MM-dd, UTC)", ""}
         });
     }
 
@@ -64,13 +71,13 @@ public final class ListProjectFilesTool extends NavigationTool {
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) {
-        String dir = args.has("directory") ? args.get("directory").getAsString() : "";
-        String pattern = args.has("pattern") ? args.get("pattern").getAsString() : "";
+        String dir = args.has(PARAM_DIRECTORY) ? args.get(PARAM_DIRECTORY).getAsString() : "";
+        String pattern = args.has(PARAM_PATTERN) ? args.get(PARAM_PATTERN).getAsString() : "";
         String sort = args.has("sort") ? args.get("sort").getAsString() : "name";
-        long minSize = args.has("min_size") ? args.get("min_size").getAsLong() : -1;
-        long maxSize = args.has("max_size") ? args.get("max_size").getAsLong() : -1;
-        long modifiedAfter = args.has("modified_after") ? ToolUtils.parseDateParam(args.get("modified_after").getAsString()) : -1;
-        long modifiedBefore = args.has("modified_before") ? ToolUtils.parseDateParam(args.get("modified_before").getAsString()) : -1;
+        long minSize = args.has(PARAM_MIN_SIZE) ? args.get(PARAM_MIN_SIZE).getAsLong() : -1;
+        long maxSize = args.has(PARAM_MAX_SIZE) ? args.get(PARAM_MAX_SIZE).getAsLong() : -1;
+        long modifiedAfter = args.has(PARAM_MODIFIED_AFTER) ? ToolUtils.parseDateParam(args.get(PARAM_MODIFIED_AFTER).getAsString()) : -1;
+        long modifiedBefore = args.has(PARAM_MODIFIED_BEFORE) ? ToolUtils.parseDateParam(args.get(PARAM_MODIFIED_BEFORE).getAsString()) : -1;
         return ApplicationManager.getApplication().runReadAction(
             (Computable<String>) () -> computeFilesList(dir, pattern, sort, minSize, maxSize, modifiedAfter, modifiedBefore));
     }

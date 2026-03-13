@@ -55,8 +55,8 @@ public class ReadFileTool extends FileTool {
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to read"},
-            {"start_line", TYPE_INTEGER, "Optional: first line to read (1-based, inclusive)"},
-            {"end_line", TYPE_INTEGER, "Optional: last line to read (1-based, inclusive). Use with start_line to read a range"}
+            {PARAM_START_LINE, TYPE_INTEGER, "Optional: first line to read (1-based, inclusive)"},
+            {PARAM_END_LINE, TYPE_INTEGER, "Optional: last line to read (1-based, inclusive). Use with start_line to read a range"}
         }, "path");
     }
 

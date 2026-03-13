@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 public final class ApplyQuickfixTool extends QualityTool {
 
     private static final Logger LOG = Logger.getInstance(ApplyQuickfixTool.class);
+    private static final String PARAM_FIX_INDEX = "fix_index";
 
     public ApplyQuickfixTool(Project project) {
         super(project);
@@ -56,7 +57,7 @@ public final class ApplyQuickfixTool extends QualityTool {
             {"file", TYPE_STRING, "Path to the file containing the problem"},
             {"line", TYPE_INTEGER, "Line number where the problem is located"},
             {PARAM_INSPECTION_ID, TYPE_STRING, "The inspection ID from run_inspections output (e.g., 'unused')"},
-            {"fix_index", TYPE_INTEGER, "Which fix to apply if multiple are available (default: 0)"}
+            {PARAM_FIX_INDEX, TYPE_INTEGER, "Which fix to apply if multiple are available (default: 0)"}
         }, "file", "line", PARAM_INSPECTION_ID);
     }
 
@@ -68,7 +69,7 @@ public final class ApplyQuickfixTool extends QualityTool {
         String pathStr = args.get("file").getAsString();
         int targetLine = args.get("line").getAsInt();
         String inspectionId = args.get(PARAM_INSPECTION_ID).getAsString();
-        int fixIndex = args.has("fix_index") ? args.get("fix_index").getAsInt() : 0;
+        int fixIndex = args.has(PARAM_FIX_INDEX) ? args.get(PARAM_FIX_INDEX).getAsInt() : 0;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 

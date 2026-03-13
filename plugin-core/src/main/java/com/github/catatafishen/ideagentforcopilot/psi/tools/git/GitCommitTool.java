@@ -15,6 +15,9 @@ import java.util.List;
 @SuppressWarnings("java:S112")
 public final class GitCommitTool extends GitTool {
 
+    private static final String PARAM_MESSAGE = "message";
+    private static final String PARAM_AMEND = "amend";
+
     public GitCommitTool(Project project) {
         super(project);
     }
@@ -42,24 +45,24 @@ public final class GitCommitTool extends GitTool {
     @Override
     public @Nullable JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"message", TYPE_STRING, "Commit message (use conventional commit format)"},
-            {"amend", TYPE_BOOLEAN, "If true, amend the previous commit instead of creating a new one"},
+            {PARAM_MESSAGE, TYPE_STRING, "Commit message (use conventional commit format)"},
+            {PARAM_AMEND, TYPE_BOOLEAN, "If true, amend the previous commit instead of creating a new one"},
             {"all", TYPE_BOOLEAN, "If true, automatically stage all modified and deleted files"}
-        }, "message");
+        }, PARAM_MESSAGE);
     }
 
     @Override
     public @Nullable String execute(@NotNull JsonObject args) throws Exception {
         flushAndSave();
 
-        if (!args.has("message") || args.get("message").getAsString().isEmpty()) {
+        if (!args.has(PARAM_MESSAGE) || args.get(PARAM_MESSAGE).getAsString().isEmpty()) {
             return "Error: 'message' parameter is required";
         }
 
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("commit");
 
-        if (args.has("amend") && args.get("amend").getAsBoolean()) {
+        if (args.has(PARAM_AMEND) && args.get(PARAM_AMEND).getAsBoolean()) {
             cmdArgs.add("--amend");
         }
 
@@ -68,7 +71,7 @@ public final class GitCommitTool extends GitTool {
         }
 
         cmdArgs.add("-m");
-        cmdArgs.add(args.get("message").getAsString());
+        cmdArgs.add(args.get(PARAM_MESSAGE).getAsString());
 
         String result = runGit(cmdArgs.toArray(String[]::new));
         showNewCommitInLog();

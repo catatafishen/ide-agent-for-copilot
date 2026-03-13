@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.module.Module;
@@ -15,7 +16,6 @@ import com.intellij.openapi.roots.SourceFolder;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -112,32 +112,35 @@ public final class MarkDirectoryTool extends ProjectTool {
     private String applyDirectoryMarking(String absolutePath, VirtualFile vDir, String type) {
         Module[] modules = ModuleManager.getInstance(project).getModules();
         for (Module module : modules) {
-            ModifiableRootModel model = ModuleRootManager.getInstance(module).getModifiableModel();
-            try {
-                for (ContentEntry entry : model.getContentEntries()) {
-                    VirtualFile contentRoot = entry.getFile();
-                    if (contentRoot == null) continue;
-                    if (!absolutePath.startsWith(contentRoot.getPath())) continue;
-
-                    if ("unmark".equals(type)) {
-                        return unmarkDirectory(entry, model, module, vDir.getUrl(), absolutePath);
-                    }
-
-                    if ("excluded".equals(type)) {
-                        entry.addExcludeFolder(vDir);
-                        model.commit();
-                        return "Marked '" + absolutePath + "' as excluded in module '" + module.getName() + "'";
-                    }
-
-                    return addSourceRoot(entry, model, module, vDir, absolutePath, type);
-                }
-            } finally {
-                if (!model.isDisposed() && model.isWritable()) {
-                    model.dispose();
-                }
-            }
+            String result = tryMarkInModule(module, absolutePath, vDir, type);
+            if (result != null) return result;
         }
         return "Error: directory '" + absolutePath + "' is not under any module's content root";
+    }
+
+    private @Nullable String tryMarkInModule(Module module, String absolutePath, VirtualFile vDir, String type) {
+        ModifiableRootModel model = ModuleRootManager.getInstance(module).getModifiableModel();
+        try {
+            for (ContentEntry entry : model.getContentEntries()) {
+                VirtualFile contentRoot = entry.getFile();
+                if (contentRoot == null || !absolutePath.startsWith(contentRoot.getPath())) continue;
+
+                if ("unmark".equals(type)) {
+                    return unmarkDirectory(entry, model, module, vDir.getUrl(), absolutePath);
+                }
+                if ("excluded".equals(type)) {
+                    entry.addExcludeFolder(vDir);
+                    model.commit();
+                    return "Marked '" + absolutePath + "' as excluded in module '" + module.getName() + "'";
+                }
+                return addSourceRoot(entry, model, module, vDir, absolutePath, type);
+            }
+        } finally {
+            if (!model.isDisposed() && model.isWritable()) {
+                model.dispose();
+            }
+        }
+        return null;
     }
 
     private static String addSourceRoot(ContentEntry entry, ModifiableRootModel model,

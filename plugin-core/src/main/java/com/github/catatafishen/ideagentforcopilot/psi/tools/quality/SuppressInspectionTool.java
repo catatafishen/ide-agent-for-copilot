@@ -39,7 +39,7 @@ public final class SuppressInspectionTool extends QualityTool {
 
     @Override
     public @NotNull String displayName() {
-        return "Suppress Inspection";
+        return LABEL_SUPPRESS_INSPECTION;
     }
 
     @Override

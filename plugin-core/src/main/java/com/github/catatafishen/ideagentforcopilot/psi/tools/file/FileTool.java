@@ -61,10 +61,6 @@ public abstract class FileTool extends Tool {
             k -> Collections.synchronizedSet(new LinkedHashSet<>())).add(path);
     }
 
-    /**
-     * Auto-format and optimize imports on all files modified during the agent turn.
-     * Called before git stage/commit and at turn end. Runs synchronously on the EDT.
-     */
     public static void flushPendingAutoFormat(Project project) {
         Set<String> pathSet = PENDING_AUTO_FORMAT.remove(project);
         if (pathSet == null || pathSet.isEmpty()) return;
@@ -75,19 +71,20 @@ public abstract class FileTool extends Tool {
             for (String pathStr : paths) {
                 try {
                     VirtualFile vf = ToolUtils.resolveVirtualFile(project, pathStr);
-                    if (vf == null) continue;
-                    PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                    if (psiFile == null) continue;
-
-                    ApplicationManager.getApplication().runWriteAction(() ->
-                        CommandProcessor.getInstance().executeCommand(project, () -> {
-                            PsiDocumentManager.getInstance(project).commitAllDocuments();
-                            new OptimizeImportsProcessor(project, psiFile).run();
-                            new ReformatCodeProcessor(psiFile, false).run();
-                            PsiDocumentManager.getInstance(project).commitAllDocuments();
-                        }, "Auto-Format (Deferred)", null)
-                    );
-                    LOG.info("Deferred auto-format: " + pathStr);
+                    if (vf != null) {
+                        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+                        if (psiFile != null) {
+                            ApplicationManager.getApplication().runWriteAction(() ->
+                                CommandProcessor.getInstance().executeCommand(project, () -> {
+                                    PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                    new OptimizeImportsProcessor(project, psiFile).run();
+                                    new ReformatCodeProcessor(psiFile, false).run();
+                                    PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                }, "Auto-Format (Deferred)", null)
+                            );
+                            LOG.info("Deferred auto-format: " + pathStr);
+                        }
+                    }
                 } catch (Exception e) {
                     LOG.warn("Deferred auto-format failed for " + pathStr + ": " + e.getMessage());
                 }
@@ -184,27 +181,27 @@ public abstract class FileTool extends Tool {
                 var editor = textEditor.getEditor();
                 Document doc = editor.getDocument();
                 int lineCount = doc.getLineCount();
-                if (midLine - 1 >= lineCount) break;
+                if (midLine - 1 < lineCount) {
+                    int visibleLines = editor.getScrollingModel().getVisibleArea().height
+                        / editor.getLineHeight();
+                    int rangeLines = endLine - startLine + 1;
+                    boolean fitsInViewport = startLine <= 0 || endLine <= 0 || rangeLines <= visibleLines;
 
-                int visibleLines = editor.getScrollingModel().getVisibleArea().height
-                    / editor.getLineHeight();
-                int rangeLines = endLine - startLine + 1;
-                boolean fitsInViewport = startLine <= 0 || endLine <= 0 || rangeLines <= visibleLines;
+                    if (fitsInViewport) {
+                        int offset = doc.getLineStartOffset(Math.max(midLine - 1, 0));
+                        editor.getCaretModel().moveToOffset(offset);
+                        editor.getScrollingModel().scrollTo(
+                            editor.offsetToLogicalPosition(offset), ScrollType.CENTER);
+                    } else {
+                        int topLine = Math.max(startLine - 2, 1);
+                        int offset = doc.getLineStartOffset(Math.max(topLine - 1, 0));
+                        editor.getCaretModel().moveToOffset(offset);
+                        editor.getScrollingModel().scrollTo(
+                            editor.offsetToLogicalPosition(offset), ScrollType.CENTER);
+                    }
 
-                if (fitsInViewport) {
-                    int offset = doc.getLineStartOffset(Math.max(midLine - 1, 0));
-                    editor.getCaretModel().moveToOffset(offset);
-                    editor.getScrollingModel().scrollTo(
-                        editor.offsetToLogicalPosition(offset), ScrollType.CENTER);
-                } else {
-                    int topLine = Math.max(startLine - 2, 1);
-                    int offset = doc.getLineStartOffset(Math.max(topLine - 1, 0));
-                    editor.getCaretModel().moveToOffset(offset);
-                    editor.getScrollingModel().scrollTo(
-                        editor.offsetToLogicalPosition(offset), ScrollType.CENTER);
+                    flashLineRange(editor, doc, startLine, endLine, highlightColor, actionLabel, textEditor);
                 }
-
-                flashLineRange(editor, doc, startLine, endLine, highlightColor, actionLabel, textEditor);
                 break;
             }
         }
