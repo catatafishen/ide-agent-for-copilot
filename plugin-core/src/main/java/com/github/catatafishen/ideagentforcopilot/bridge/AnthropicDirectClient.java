@@ -1,0 +1,776 @@
+package com.github.catatafishen.ideagentforcopilot.bridge;
+
+import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
+import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+/**
+ * Direct Anthropic Messages API client for Claude Code profiles.
+ *
+ * <p>Replaces the ACP subprocess layer with direct HTTPS calls to
+ * {@code api.anthropic.com/v1/messages}, implementing the full agentic
+ * tool-use loop in Java. All IDE tools are executed via {@link PsiBridgeService}.</p>
+ *
+ * <p>Sessions are conversation threads identified by UUIDs. Message history
+ * is kept in memory per session.</p>
+ */
+public final class AnthropicDirectClient implements AgentClient {
+
+    private static final Logger LOG = Logger.getInstance(AnthropicDirectClient.class);
+
+    private static final String API_BASE = "https://api.anthropic.com";
+    private static final String MESSAGES_PATH = "/v1/messages";
+    private static final String MODELS_PATH = "/v1/models";
+    private static final String API_VERSION_HEADER = "anthropic-version";
+    private static final String API_VERSION = "2023-06-01";
+    private static final String API_KEY_HEADER = "x-api-key";
+    private static final String BETA_HEADER = "anthropic-beta";
+    private static final String INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
+
+    private static final String DEFAULT_MODEL = "claude-opus-4-5-20251101";
+    private static final int MAX_TOOL_ITERATIONS = 50;
+    private static final int MAX_TOKENS = 16384;
+
+    // Message roles and content types
+    private static final String ROLE_USER = "user";
+    private static final String ROLE_ASSISTANT = "assistant";
+    private static final String TYPE_TEXT = "text";
+    private static final String TYPE_TOOL_USE = "tool_use";
+    private static final String TYPE_TOOL_RESULT = "tool_result";
+    private static final String TYPE_THINKING = "thinking";
+    private static final String STOP_REASON_TOOL_USE = "tool_use";
+    private static final String STOP_REASON_END_TURN = "end_turn";
+
+    // JSON field names referenced in multiple methods
+    private static final String FIELD_DELTA = "delta";
+    private static final String FIELD_ERROR = "error";
+    private static final String FIELD_INDEX = "index";
+    private static final String FIELD_CONTENT = "content";
+    private static final String FIELD_INPUT = "input";
+    private static final String FIELD_SESSION_UPDATE = "sessionUpdate";
+    private static final String FIELD_TYPE = "type";
+
+    // sessionUpdate event types
+    private static final String SESSION_UPDATE_TOOL_CALL = "tool_call";
+    private static final String SESSION_UPDATE_TOOL_CALL_UPDATE = "tool_call_update";
+    private static final String SESSION_UPDATE_THOUGHT = "agent_thought_chunk";
+    private static final String STATUS_COMPLETED = "completed";
+    private static final String STATUS_FAILED = "failed";
+
+    private final AgentProfile profile;
+    @Nullable
+    private final ToolRegistry registry;
+    @Nullable
+    private final Project project;
+
+    private final HttpClient httpClient;
+    private final Gson gson = new Gson();
+
+    /**
+     * Active conversations: session ID → ordered message history.
+     */
+    private final Map<String, List<JsonObject>> sessions = new ConcurrentHashMap<>();
+    /**
+     * Default model per session (may be overridden via setModel).
+     */
+    private final Map<String, String> sessionModels = new ConcurrentHashMap<>();
+    /**
+     * Cancellation flag per session.
+     */
+    private final Map<String, AtomicBoolean> sessionCancelled = new ConcurrentHashMap<>();
+
+    private volatile boolean started = false;
+
+    public AnthropicDirectClient(@NotNull AgentProfile profile,
+                                 @Nullable ToolRegistry registry,
+                                 @Nullable Project project) {
+        this.profile = profile;
+        this.registry = registry;
+        this.project = project;
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
+    }
+
+    // ── AgentClient lifecycle ────────────────────────────────────────────────
+
+    @Override
+    public void start() throws AcpException {
+        String apiKey = AnthropicKeyStore.getApiKey(profile.getId());
+        if (apiKey == null || apiKey.isEmpty()) {
+            throw new AcpException(
+                "No Anthropic API key configured for Claude Code. "
+                    + "Set your API key in Settings → Tools → IDE Agent → Agent Profiles → Claude Code.",
+                null, false);
+        }
+        started = true;
+        LOG.info("AnthropicDirectClient started for profile: " + profile.getDisplayName());
+    }
+
+    @Override
+    public boolean isHealthy() {
+        return started && AnthropicKeyStore.hasApiKey(profile.getId());
+    }
+
+    @Override
+    public void close() {
+        started = false;
+        sessions.clear();
+        sessionModels.clear();
+        sessionCancelled.clear();
+    }
+
+    // ── Session management ───────────────────────────────────────────────────
+
+    @Override
+    public @NotNull String createSession(@Nullable String cwd) throws AcpException {
+        ensureStarted();
+        String sessionId = UUID.randomUUID().toString();
+        sessions.put(sessionId, new ArrayList<>());
+        sessionCancelled.put(sessionId, new AtomicBoolean(false));
+        if (cwd != null) {
+            injectProjectInstructions(sessionId, cwd);
+        }
+        LOG.info("Created Anthropic session: " + sessionId);
+        return sessionId;
+    }
+
+    @Override
+    public void setModel(@NotNull String sessionId, @NotNull String modelId) {
+        sessionModels.put(sessionId, modelId);
+        LOG.info("Model set to " + modelId + " for session " + sessionId);
+    }
+
+    @Override
+    public void cancelSession(@NotNull String sessionId) {
+        AtomicBoolean flag = sessionCancelled.get(sessionId);
+        if (flag != null) flag.set(true);
+    }
+
+    // ── Model listing ────────────────────────────────────────────────────────
+
+    @Override
+    public @NotNull List<Model> listModels() throws AcpException {
+        ensureStarted();
+        String apiKey = getApiKey();
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(API_BASE + MODELS_PATH))
+                .header(API_KEY_HEADER, apiKey)
+                .header(API_VERSION_HEADER, API_VERSION)
+                .header("Content-Type", "application/json")
+                .GET()
+                .build();
+
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                throw new AcpException(
+                    "Failed to list models: HTTP " + resp.statusCode() + " — " + resp.body(), null, false);
+            }
+            return parseModelsFromResponse(resp.body());
+        } catch (IOException e) {
+            throw new AcpException("Failed to contact Anthropic API: " + e.getMessage(), e, true);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AcpException("Interrupted while listing models", e, false);
+        }
+    }
+
+    @NotNull
+    private List<Model> parseModelsFromResponse(@NotNull String responseBody) {
+        JsonObject body = JsonParser.parseString(responseBody).getAsJsonObject();
+        JsonArray data = body.getAsJsonArray("data");
+        List<Model> models = new ArrayList<>();
+        if (data == null) return models;
+        for (var elem : data) {
+            JsonObject m = elem.getAsJsonObject();
+            String id = m.has("id") ? m.get("id").getAsString() : "";
+            if (id.isEmpty()) continue;
+            String displayName = m.has("display_name") ? m.get("display_name").getAsString() : id;
+            Model model = new Model();
+            model.setId(id);
+            model.setName(displayName);
+            models.add(model);
+        }
+        return models;
+    }
+
+    // ── Prompt execution ─────────────────────────────────────────────────────
+
+    @Override
+    public @NotNull String sendPrompt(@NotNull String sessionId,
+                                      @NotNull String prompt,
+                                      @Nullable String model,
+                                      @Nullable List<ResourceReference> references,
+                                      @Nullable Consumer<String> onChunk,
+                                      @Nullable Consumer<JsonObject> onUpdate,
+                                      @Nullable Runnable onRequest) throws AcpException {
+        ensureStarted();
+        List<JsonObject> messages = sessions.computeIfAbsent(sessionId, k -> new ArrayList<>());
+        AtomicBoolean cancelled = sessionCancelled.computeIfAbsent(sessionId, k -> new AtomicBoolean(false));
+        cancelled.set(false);
+
+        String resolvedModel = resolveModel(sessionId, model);
+        String apiKey = getApiKey();
+
+        messages.add(buildUserMessage(prompt, references));
+
+        return runAgentLoop(messages, resolvedModel, apiKey, onChunk, onUpdate, onRequest, cancelled);
+    }
+
+    @NotNull
+    private String runAgentLoop(@NotNull List<JsonObject> messages,
+                                @NotNull String model,
+                                @NotNull String apiKey,
+                                @Nullable Consumer<String> onChunk,
+                                @Nullable Consumer<JsonObject> onUpdate,
+                                @Nullable Runnable onRequest,
+                                @NotNull AtomicBoolean cancelled) throws AcpException {
+        AtomicReference<String> stopReason = new AtomicReference<>(STOP_REASON_END_TURN);
+        for (int i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+            if (cancelled.get()) throw new AcpException("Request cancelled", null, false);
+            if (onRequest != null) onRequest.run();
+
+            JsonObject requestBody = buildRequestBody(messages, model);
+            List<JsonObject> contentBlocks = new ArrayList<>();
+
+            streamResponse(apiKey, requestBody, contentBlocks, stopReason, onChunk, onUpdate, cancelled);
+            messages.add(buildAssistantMessage(contentBlocks));
+
+            if (!STOP_REASON_TOOL_USE.equals(stopReason.get())) break;
+
+            List<JsonObject> toolResults = executeToolUseBlocks(contentBlocks, onUpdate, cancelled);
+            messages.add(buildToolResultMessage(toolResults));
+        }
+        return stopReason.get();
+    }
+
+    // ── SSE streaming ────────────────────────────────────────────────────────
+
+    private void streamResponse(@NotNull String apiKey,
+                                @NotNull JsonObject requestBody,
+                                @NotNull List<JsonObject> contentBlocks,
+                                @NotNull AtomicReference<String> stopReason,
+                                @Nullable Consumer<String> onChunk,
+                                @Nullable Consumer<JsonObject> onUpdate,
+                                @NotNull AtomicBoolean cancelled) throws AcpException {
+        String body = gson.toJson(requestBody);
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create(API_BASE + MESSAGES_PATH))
+            .header(API_KEY_HEADER, apiKey)
+            .header(API_VERSION_HEADER, API_VERSION)
+            .header(BETA_HEADER, INTERLEAVED_THINKING_BETA)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+            .timeout(Duration.ofMinutes(10))
+            .build();
+
+        try {
+            HttpResponse<InputStream> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream stream = resp.body()) {
+                if (resp.statusCode() != 200) {
+                    String errorBody = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+                    throw new AcpException(
+                        "Anthropic API error " + resp.statusCode() + ": " + errorBody, null, false);
+                }
+                parseSseStream(stream, contentBlocks, stopReason, onChunk, onUpdate, cancelled);
+            }
+        } catch (IOException e) {
+            throw new AcpException("Stream error: " + e.getMessage(), e, true);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AcpException("Interrupted during streaming", e, false);
+        }
+    }
+
+    /**
+     * Holds mutable state for a single SSE stream parse pass.
+     * Groups context values to avoid large parameter lists.
+     * Uses {@link AtomicReference} for stopReason to avoid record array-equality warnings.
+     */
+    private record SseStreamState(
+        Map<Integer, String> blockTypes,
+        Map<Integer, JsonObject> blockObjects,
+        Map<Integer, StringBuilder> toolInputBuffers,
+        Map<Integer, StringBuilder> thinkingBuffers,
+        List<JsonObject> contentBlocks,
+        AtomicReference<String> stopReason,
+        @Nullable Consumer<String> onChunk,
+        @Nullable Consumer<JsonObject> onUpdate) {
+
+        static SseStreamState create(
+            @NotNull List<JsonObject> contentBlocks,
+            @NotNull AtomicReference<String> stopReason,
+            @Nullable Consumer<String> onChunk,
+            @Nullable Consumer<JsonObject> onUpdate) {
+            return new SseStreamState(
+                new ConcurrentHashMap<>(), new ConcurrentHashMap<>(),
+                new ConcurrentHashMap<>(), new ConcurrentHashMap<>(),
+                contentBlocks, stopReason, onChunk, onUpdate);
+        }
+    }
+
+    private void parseSseStream(@NotNull InputStream inputStream,
+                                @NotNull List<JsonObject> contentBlocks,
+                                @NotNull AtomicReference<String> stopReason,
+                                @Nullable Consumer<String> onChunk,
+                                @Nullable Consumer<JsonObject> onUpdate,
+                                @NotNull AtomicBoolean cancelled) throws IOException {
+        SseStreamState state = SseStreamState.create(contentBlocks, stopReason, onChunk, onUpdate);
+
+        try (BufferedReader reader = new BufferedReader(
+            new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+
+            String line;
+            while (!cancelled.get() && (line = reader.readLine()) != null) {
+                if (line.startsWith("data: ")) {
+                    String data = line.substring(6).trim();
+                    if (!data.isEmpty() && !"[DONE]".equals(data)) {
+                        parseSseEvent(data, state);
+                    }
+                }
+            }
+        }
+    }
+
+    private void parseSseEvent(@NotNull String data, @NotNull SseStreamState state) {
+        JsonObject event;
+        try {
+            event = JsonParser.parseString(data).getAsJsonObject();
+        } catch (Exception e) {
+            LOG.debug("Could not parse SSE event: " + data, e);
+            return;
+        }
+
+        String eventType = event.has(FIELD_TYPE) ? event.get(FIELD_TYPE).getAsString() : "";
+        switch (eventType) {
+            case "content_block_start" -> handleBlockStart(event, state.blockTypes(), state.blockObjects(),
+                state.toolInputBuffers(), state.thinkingBuffers());
+            case "content_block_delta" -> handleBlockDelta(event, state.blockTypes(), state.toolInputBuffers(),
+                state.thinkingBuffers(), state.onChunk(), state.onUpdate());
+            case "content_block_stop" -> handleBlockStop(event, state.blockTypes(), state.blockObjects(),
+                state.toolInputBuffers(), state.thinkingBuffers(), state.contentBlocks());
+            case "message_delta" -> handleMessageDelta(event, state.stopReason());
+            case FIELD_ERROR -> handleStreamError(event);
+            default -> { /* ping, message_start, message_stop — ignore */ }
+        }
+    }
+
+    private void handleMessageDelta(@NotNull JsonObject event, @NotNull AtomicReference<String> stopReason) {
+        if (!event.has(FIELD_DELTA)) return;
+        JsonObject delta = event.getAsJsonObject(FIELD_DELTA);
+        if (delta.has("stop_reason")) {
+            stopReason.set(delta.get("stop_reason").getAsString());
+        }
+    }
+
+    private void handleStreamError(@NotNull JsonObject event) {
+        String errMsg = event.has(FIELD_ERROR)
+            ? event.getAsJsonObject(FIELD_ERROR).get("message").getAsString()
+            : event.toString();
+        LOG.warn("Anthropic stream error: " + errMsg);
+    }
+
+    private void handleBlockStart(@NotNull JsonObject event,
+                                  @NotNull Map<Integer, String> blockTypes,
+                                  @NotNull Map<Integer, JsonObject> blockObjects,
+                                  @NotNull Map<Integer, StringBuilder> toolInputBuffers,
+                                  @NotNull Map<Integer, StringBuilder> thinkingBuffers) {
+        int index = event.get(FIELD_INDEX).getAsInt();
+        JsonObject block = event.has("content_block") ? event.getAsJsonObject("content_block") : new JsonObject();
+        String type = block.has(FIELD_TYPE) ? block.get(FIELD_TYPE).getAsString() : TYPE_TEXT;
+        blockTypes.put(index, type);
+
+        if (TYPE_TOOL_USE.equals(type)) {
+            blockObjects.put(index, block.deepCopy());
+            toolInputBuffers.put(index, new StringBuilder());
+        } else if (TYPE_THINKING.equals(type)) {
+            thinkingBuffers.put(index, new StringBuilder());
+        }
+    }
+
+    private void handleBlockDelta(@NotNull JsonObject event,
+                                  @NotNull Map<Integer, String> blockTypes,
+                                  @NotNull Map<Integer, StringBuilder> toolInputBuffers,
+                                  @NotNull Map<Integer, StringBuilder> thinkingBuffers,
+                                  @Nullable Consumer<String> onChunk,
+                                  @Nullable Consumer<JsonObject> onUpdate) {
+        int index = event.get(FIELD_INDEX).getAsInt();
+        JsonObject delta = event.has(FIELD_DELTA) ? event.getAsJsonObject(FIELD_DELTA) : new JsonObject();
+        String deltaType = delta.has(FIELD_TYPE) ? delta.get(FIELD_TYPE).getAsString() : "";
+        String blockType = blockTypes.getOrDefault(index, TYPE_TEXT);
+
+        switch (deltaType) {
+            case "text_delta" -> applyTextDelta(blockType, delta, onChunk);
+            case "input_json_delta" -> applyInputJsonDelta(blockType, index, delta, toolInputBuffers);
+            case "thinking_delta" -> handleThinkingDelta(blockType, index, delta, thinkingBuffers, onUpdate);
+            default -> { /* no-op for unsupported delta types */ }
+        }
+    }
+
+    private void applyTextDelta(@NotNull String blockType, @NotNull JsonObject delta,
+                                @Nullable Consumer<String> onChunk) {
+        if (!TYPE_TEXT.equals(blockType) || onChunk == null) return;
+        String text = delta.has(TYPE_TEXT) ? delta.get(TYPE_TEXT).getAsString() : "";
+        if (!text.isEmpty()) onChunk.accept(text);
+    }
+
+    private void applyInputJsonDelta(@NotNull String blockType, int index,
+                                     @NotNull JsonObject delta,
+                                     @NotNull Map<Integer, StringBuilder> toolInputBuffers) {
+        if (!TYPE_TOOL_USE.equals(blockType)) return;
+        String partial = delta.has("partial_json") ? delta.get("partial_json").getAsString() : "";
+        StringBuilder buf = toolInputBuffers.get(index);
+        if (buf != null) buf.append(partial);
+    }
+
+    private void handleThinkingDelta(@NotNull String blockType,
+                                     int index,
+                                     @NotNull JsonObject delta,
+                                     @NotNull Map<Integer, StringBuilder> thinkingBuffers,
+                                     @Nullable Consumer<JsonObject> onUpdate) {
+        if (!TYPE_THINKING.equals(blockType)) return;
+        String thinking = delta.has(TYPE_THINKING) ? delta.get(TYPE_THINKING).getAsString() : "";
+        if (thinking.isEmpty()) return;
+        StringBuilder buf = thinkingBuffers.get(index);
+        if (buf != null) buf.append(thinking);
+        if (onUpdate != null) {
+            JsonObject update = new JsonObject();
+            update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_THOUGHT);
+            JsonObject content = new JsonObject();
+            content.addProperty(TYPE_TEXT, thinking);
+            update.add(FIELD_CONTENT, content);
+            onUpdate.accept(update);
+        }
+    }
+
+    private void handleBlockStop(@NotNull JsonObject event,
+                                 @NotNull Map<Integer, String> blockTypes,
+                                 @NotNull Map<Integer, JsonObject> blockObjects,
+                                 @NotNull Map<Integer, StringBuilder> toolInputBuffers,
+                                 @NotNull Map<Integer, StringBuilder> thinkingBuffers,
+                                 @NotNull List<JsonObject> contentBlocks) {
+        int index = event.get(FIELD_INDEX).getAsInt();
+        String type = blockTypes.getOrDefault(index, TYPE_TEXT);
+
+        if (TYPE_TOOL_USE.equals(type)) {
+            JsonObject block = blockObjects.getOrDefault(index, new JsonObject());
+            StringBuilder inputBuf = toolInputBuffers.getOrDefault(index, new StringBuilder());
+            String inputJson = inputBuf.toString().trim();
+            JsonObject input = inputJson.isEmpty() ? new JsonObject()
+                : JsonParser.parseString(inputJson).getAsJsonObject();
+            block.add(FIELD_INPUT, input);
+            contentBlocks.add(block);
+        } else if (TYPE_THINKING.equals(type)) {
+            StringBuilder buf = thinkingBuffers.get(index);
+            if (buf != null && !buf.isEmpty()) {
+                JsonObject block = new JsonObject();
+                block.addProperty(FIELD_TYPE, TYPE_THINKING);
+                block.addProperty(TYPE_THINKING, buf.toString());
+                contentBlocks.add(block);
+            }
+        }
+        // Text blocks are streamed directly via onChunk — no need to collect here
+    }
+
+    // ── Tool execution ───────────────────────────────────────────────────────
+
+    @NotNull
+    private List<JsonObject> executeToolUseBlocks(@NotNull List<JsonObject> contentBlocks,
+                                                  @Nullable Consumer<JsonObject> onUpdate,
+                                                  @NotNull AtomicBoolean cancelled) {
+        List<JsonObject> results = new ArrayList<>();
+        for (JsonObject block : contentBlocks) {
+            if (cancelled.get()) break;
+            if (isToolUseBlock(block)) {
+                results.add(buildAndExecuteToolResult(block, onUpdate));
+            }
+        }
+        return results;
+    }
+
+    private boolean isToolUseBlock(@NotNull JsonObject block) {
+        return TYPE_TOOL_USE.equals(block.has(FIELD_TYPE) ? block.get(FIELD_TYPE).getAsString() : "");
+    }
+
+    @NotNull
+    private JsonObject buildAndExecuteToolResult(@NotNull JsonObject block,
+                                                 @Nullable Consumer<JsonObject> onUpdate) {
+        String toolUseId = block.has("id") ? block.get("id").getAsString() : UUID.randomUUID().toString();
+        String toolName = block.has("name") ? block.get("name").getAsString() : "";
+        JsonObject input = block.has(FIELD_INPUT) ? block.getAsJsonObject(FIELD_INPUT) : new JsonObject();
+
+        emitToolCallStart(toolUseId, toolName, input, onUpdate);
+        String result;
+        boolean success = true;
+        try {
+            result = executeOneTool(toolName, input);
+        } catch (Exception e) {
+            result = "Error: " + e.getMessage();
+            success = false;
+            LOG.warn("Tool execution error: " + toolName, e);
+        }
+        emitToolCallEnd(toolUseId, result, success, onUpdate);
+
+        JsonObject toolResult = new JsonObject();
+        toolResult.addProperty(FIELD_TYPE, TYPE_TOOL_RESULT);
+        toolResult.addProperty("tool_use_id", toolUseId);
+        toolResult.addProperty(FIELD_CONTENT, result != null ? result : "");
+        return toolResult;
+    }
+
+    private String executeOneTool(@NotNull String toolName, @NotNull JsonObject input) {
+        if (project == null) return "Error: no project context available";
+        return PsiBridgeService.getInstance(project).callTool(toolName, input);
+    }
+
+    private void emitToolCallStart(@NotNull String toolUseId, @NotNull String toolName,
+                                   @NotNull JsonObject input, @Nullable Consumer<JsonObject> onUpdate) {
+        if (onUpdate == null) return;
+        JsonObject update = new JsonObject();
+        update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_TOOL_CALL);
+        update.addProperty("toolCallId", toolUseId);
+        update.addProperty("title", toolName);
+        update.addProperty("status", "in_progress");
+        update.addProperty("kind", "other");
+        update.add(FIELD_INPUT, input);
+        onUpdate.accept(update);
+    }
+
+    private void emitToolCallEnd(@NotNull String toolUseId, @Nullable String result,
+                                 boolean success, @Nullable Consumer<JsonObject> onUpdate) {
+        if (onUpdate == null) return;
+        JsonObject update = new JsonObject();
+        update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_TOOL_CALL_UPDATE);
+        update.addProperty("toolCallId", toolUseId);
+        update.addProperty("status", success ? STATUS_COMPLETED : STATUS_FAILED);
+        if (result != null) update.addProperty("result", result);
+        onUpdate.accept(update);
+    }
+
+    // ── Request building ─────────────────────────────────────────────────────
+
+    @NotNull
+    private JsonObject buildRequestBody(@NotNull List<JsonObject> messages, @NotNull String model) {
+        JsonObject body = new JsonObject();
+        body.addProperty("model", model);
+        body.addProperty("max_tokens", MAX_TOKENS);
+        body.addProperty("stream", true);
+
+        String systemPrompt = buildSystemPrompt();
+        if (!systemPrompt.isEmpty()) body.addProperty("system", systemPrompt);
+
+        JsonArray tools = buildToolsArray();
+        if (!tools.isEmpty()) body.add("tools", tools);
+
+        // Enable extended thinking
+        JsonObject thinkingConfig = new JsonObject();
+        thinkingConfig.addProperty(FIELD_TYPE, "enabled");
+        thinkingConfig.addProperty("budget_tokens", 5000);
+        body.add(TYPE_THINKING, thinkingConfig);
+
+        JsonArray msgs = new JsonArray();
+        for (JsonObject msg : messages) msgs.add(msg);
+        body.add("messages", msgs);
+
+        return body;
+    }
+
+    @NotNull
+    private JsonArray buildToolsArray() {
+        JsonArray tools = new JsonArray();
+        if (registry == null) return tools;
+
+        for (ToolDefinition def : registry.getAllTools()) {
+            if (def.isBuiltIn()) continue;
+            JsonObject tool = new JsonObject();
+            tool.addProperty("name", def.id());
+            tool.addProperty("description", def.description());
+            JsonObject schema = def.inputSchema();
+            tool.add("input_schema", schema != null ? schema : defaultSchema());
+            tools.add(tool);
+        }
+        return tools;
+    }
+
+    @NotNull
+    private JsonObject defaultSchema() {
+        JsonObject schema = new JsonObject();
+        schema.addProperty(FIELD_TYPE, "object");
+        schema.add("properties", new JsonObject());
+        return schema;
+    }
+
+    @NotNull
+    private String buildSystemPrompt() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are an expert software engineering assistant working inside IntelliJ IDEA. ");
+        sb.append("Use the provided tools to read files, make edits, run tests, and help with coding tasks. ");
+        sb.append("Prefer IntelliJ-native tools over generic file operations when available. ");
+        sb.append("Be concise and action-oriented.");
+
+        String additional = profile.getAdditionalInstructions();
+        if (!additional.isEmpty()) {
+            sb.append("\n\n").append(additional);
+        }
+        return sb.toString();
+    }
+
+    @NotNull
+    private JsonObject buildUserMessage(@NotNull String prompt,
+                                        @Nullable List<ResourceReference> references) {
+        JsonObject msg = new JsonObject();
+        msg.addProperty("role", ROLE_USER);
+
+        if (references == null || references.isEmpty()) {
+            msg.addProperty(FIELD_CONTENT, prompt);
+        } else {
+            JsonArray content = new JsonArray();
+            for (ResourceReference ref : references) {
+                String text = ref.text();
+                if (!text.isEmpty()) {
+                    JsonObject block = new JsonObject();
+                    block.addProperty(FIELD_TYPE, TYPE_TEXT);
+                    block.addProperty(TYPE_TEXT, "File: " + ref.uri() + "\n```\n" + text + "\n```");
+                    content.add(block);
+                }
+            }
+            JsonObject promptBlock = new JsonObject();
+            promptBlock.addProperty(FIELD_TYPE, TYPE_TEXT);
+            promptBlock.addProperty(TYPE_TEXT, prompt);
+            content.add(promptBlock);
+            msg.add(FIELD_CONTENT, content);
+        }
+        return msg;
+    }
+
+    @NotNull
+    private JsonObject buildAssistantMessage(@NotNull List<JsonObject> contentBlocks) {
+        JsonObject msg = new JsonObject();
+        msg.addProperty("role", ROLE_ASSISTANT);
+        JsonArray content = new JsonArray();
+        for (JsonObject block : contentBlocks) content.add(block);
+        msg.add(FIELD_CONTENT, content);
+        return msg;
+    }
+
+    @NotNull
+    private JsonObject buildToolResultMessage(@NotNull List<JsonObject> toolResults) {
+        JsonObject msg = new JsonObject();
+        msg.addProperty("role", ROLE_USER);
+        JsonArray content = new JsonArray();
+        for (JsonObject result : toolResults) content.add(result);
+        msg.add(FIELD_CONTENT, content);
+        return msg;
+    }
+
+    // ── Project instruction injection ────────────────────────────────────────
+
+    private void injectProjectInstructions(@NotNull String sessionId, @NotNull String cwd) {
+        List<JsonObject> messages = sessions.get(sessionId);
+        if (messages == null) return;
+
+        Path claudeMd = Path.of(cwd, "CLAUDE.md");
+        if (!Files.exists(claudeMd)) return;
+
+        try {
+            String fileContent = Files.readString(claudeMd);
+            JsonObject instructionMsg = new JsonObject();
+            instructionMsg.addProperty("role", ROLE_USER);
+            instructionMsg.addProperty(FIELD_CONTENT,
+                "Project instructions (CLAUDE.md):\n```\n" + fileContent + "\n```");
+            messages.add(instructionMsg);
+
+            JsonObject ack = new JsonObject();
+            ack.addProperty("role", ROLE_ASSISTANT);
+            ack.addProperty(FIELD_CONTENT, "Understood. I'll follow these project instructions.");
+            messages.add(ack);
+
+            LOG.info("Injected CLAUDE.md instructions for session " + sessionId);
+        } catch (IOException e) {
+            LOG.warn("Could not read CLAUDE.md: " + e.getMessage());
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    @NotNull
+    private String resolveModel(@NotNull String sessionId, @Nullable String model) {
+        if (model != null && !model.isEmpty()) return model;
+        String stored = sessionModels.get(sessionId);
+        return (stored != null && !stored.isEmpty()) ? stored : DEFAULT_MODEL;
+    }
+
+    @NotNull
+    private String getApiKey() throws AcpException {
+        String key = AnthropicKeyStore.getApiKey(profile.getId());
+        if (key == null || key.isEmpty()) {
+            throw new AcpException(
+                "Anthropic API key not set. Configure it in Agent Profiles settings.", null, false);
+        }
+        return key;
+    }
+
+    private void ensureStarted() throws AcpException {
+        if (!started) throw new AcpException("AnthropicDirectClient not started", null, false);
+    }
+
+    // ── AgentClient — compatibility / no-op implementations ─────────────────
+
+    @Override
+    public boolean requiresResourceContentDuplication() {
+        return false;
+    }
+
+    @Override
+    public void setPermissionRequestListener(@Nullable Consumer<PermissionRequest> listener) {
+        // PsiBridgeService handles permission dialogs internally via checkPluginToolPermission.
+    }
+
+    @Override
+    public void setSubAgentActive(boolean active) {
+        // Sub-agent support not yet implemented for the direct client.
+    }
+
+    @Override
+    @NotNull
+    public String getModelMultiplier(@NotNull String modelId) {
+        return "1x";
+    }
+
+    @Override
+    @Nullable
+    public AuthMethod getAuthMethod() {
+        return null;
+    }
+}

@@ -1,10 +1,13 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.AgentClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentSettings;
+import com.github.catatafishen.ideagentforcopilot.bridge.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.ProfileBasedAgentConfig;
+import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.Disposable;
@@ -41,7 +44,7 @@ public final class ActiveAgentManager implements Disposable {
     private final Project project;
     private volatile boolean acpConnected;
 
-    private AcpClient acpClient;
+    private AgentClient acpClient;
     private AgentConfig cachedConfig;
     private GenericSettings cachedSettings;
     private GenericAgentUiSettings cachedUiSettings;
@@ -138,10 +141,10 @@ public final class ActiveAgentManager implements Disposable {
     }
 
     /**
-     * Returns the ACP client, starting it if necessary.
+     * Returns the agent client, starting it if necessary.
      */
     @NotNull
-    public AcpClient getClient() {
+    public AgentClient getClient() {
         if (!started || acpClient == null || !acpClient.isHealthy()) {
             start();
         }
@@ -149,37 +152,41 @@ public final class ActiveAgentManager implements Disposable {
     }
 
     /**
-     * Start the ACP process for the active profile.
+     * Start the agent process for the active profile.
      */
     public synchronized void start() {
         if (started && acpClient != null && acpClient.isHealthy()) {
-            LOG.debug("ACP client already running for " + getActiveProfile().getDisplayName());
+            LOG.debug("Agent client already running for " + getActiveProfile().getDisplayName());
             return;
         }
 
         try {
             AgentProfile profile = getActiveProfile();
-            LOG.info("Starting " + profile.getDisplayName() + " ACP client for project: " + project.getName());
+            LOG.info("Starting " + profile.getDisplayName() + " agent client for project: " + project.getName());
 
             if (acpClient != null) {
                 acpClient.close();
             }
 
             clearCachedConfig();
-            String projectPath = project.getBasePath();
-            int mcpPort = resolveMcpPort();
 
-            AgentConfig config = resolveStartConfig();
-            AgentSettings agentSettings = createAgentSettings();
+            if (profile.getTransportType() == TransportType.ANTHROPIC_DIRECT) {
+                acpClient = new AnthropicDirectClient(profile, ToolRegistry.getInstance(project), project);
+            } else {
+                String projectPath = project.getBasePath();
+                int mcpPort = resolveMcpPort();
+                AgentConfig config = resolveStartConfig();
+                AgentSettings agentSettings = createAgentSettings();
+                acpClient = new AcpClient(config, agentSettings, ToolRegistry.getInstance(project), projectPath, mcpPort);
+            }
 
-            acpClient = new AcpClient(config, agentSettings, ToolRegistry.getInstance(project), projectPath, mcpPort);
             acpClient.start();
             started = true;
 
-            LOG.info(profile.getDisplayName() + " ACP client started");
+            LOG.info(profile.getDisplayName() + " agent client started");
         } catch (Exception e) {
-            LOG.error("Failed to start ACP client", e);
-            throw new IllegalStateException("Failed to start ACP client", e);
+            LOG.error("Failed to start agent client", e);
+            throw new IllegalStateException("Failed to start agent client", e);
         }
     }
 

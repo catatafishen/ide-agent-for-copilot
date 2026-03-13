@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
+import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.Service;
@@ -256,20 +257,19 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         p.setDisplayName("Claude Code");
         p.setBuiltIn(true);
         p.setExperimental(true);
+        p.setTransportType(TransportType.ANTHROPIC_DIRECT);
         p.setDescription("""
-            Experimental profile — requires the claude-code-acp adapter \
-            (npm install -g @zed-industries/claude-code-acp). \
-            MCP tools are NOT auto-injected for this profile. \
-            To use IDE tools with Claude Code, add the MCP server manually:
-              claude mcp add intellij-ide-tools -s project -- java -jar <path-to-mcp-server.jar> --port <port>
-            See docs/STANDALONE-MCP.md for detailed setup instructions.""");
-        p.setBinaryName("claude-code-acp");
+            Direct Anthropic API profile for Claude Code. \
+            Calls api.anthropic.com/v1/messages directly — no subprocess or ACP adapter needed. \
+            Requires an Anthropic API key (set in Settings → Tools → IDE Agent → Agent Profiles → Claude Code). \
+            All IntelliJ IDE tools are available natively via the PSI bridge.""");
+        p.setBinaryName("");
         p.setAlternateNames(List.of());
-        p.setInstallHint("Install with: npm install -g @zed-industries/claude-code-acp");
+        p.setInstallHint("Set your Anthropic API key in the profile settings.");
         p.setAcpArgs(List.of());
         p.setMcpMethod(McpInjectionMethod.NONE);
         p.setSupportsMcpConfigFlag(false);
-        p.setSupportsModelFlag(false);
+        p.setSupportsModelFlag(true);
         p.setSupportsConfigDir(false);
         p.setRequiresResourceDuplication(false);
         p.setExcludeAgentBuiltInTools(false);
@@ -323,6 +323,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         private boolean usePluginPermissions = true;
         private boolean excludeAgentBuiltInTools;
         private String permissionInjectionMethod = "NONE";
+        private String transportType = "ACP";
 
         public String getId() {
             return id;
@@ -524,6 +525,14 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             this.permissionInjectionMethod = permissionInjectionMethod;
         }
 
+        public String getTransportType() {
+            return transportType;
+        }
+
+        public void setTransportType(String transportType) {
+            this.transportType = transportType != null ? transportType : "ACP";
+        }
+
         @NotNull
         static ProfileEntry fromProfile(@NotNull AgentProfile p) {
             ProfileEntry e = new ProfileEntry();
@@ -552,6 +561,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
             e.setUsePluginPermissions(p.isUsePluginPermissions());
             e.setExcludeAgentBuiltInTools(p.isExcludeAgentBuiltInTools());
             e.setPermissionInjectionMethod(p.getPermissionInjectionMethod().name());
+            e.setTransportType(p.getTransportType().name());
             return e;
         }
 
@@ -590,6 +600,11 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
                 p.setPermissionInjectionMethod(PermissionInjectionMethod.valueOf(getPermissionInjectionMethod()));
             } catch (IllegalArgumentException e) {
                 p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
+            }
+            try {
+                p.setTransportType(TransportType.valueOf(getTransportType()));
+            } catch (IllegalArgumentException e) {
+                p.setTransportType(TransportType.ACP);
             }
             return p;
         }

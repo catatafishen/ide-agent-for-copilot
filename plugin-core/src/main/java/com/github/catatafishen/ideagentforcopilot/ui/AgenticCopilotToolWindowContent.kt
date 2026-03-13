@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AcpClient
+import com.github.catatafishen.ideagentforcopilot.bridge.AgentClient
+import com.github.catatafishen.ideagentforcopilot.bridge.PermissionRequest
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpException
 import com.github.catatafishen.ideagentforcopilot.bridge.Model
 import com.github.catatafishen.ideagentforcopilot.bridge.ResourceReference
@@ -1437,7 +1438,7 @@ class AgenticCopilotToolWindowContent(
         consolePanel.addErrorEntry("Stopped by user")
     }
 
-    private fun ensureSessionCreated(client: AcpClient): String {
+    private fun ensureSessionCreated(client: AgentClient): String {
         if (currentSessionId == null) {
             currentSessionId = client.createSession(project.basePath)
             updateSessionInfo()
@@ -1482,7 +1483,7 @@ class AgenticCopilotToolWindowContent(
      * {@link com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig#requiresResourceContentDuplication()}.</p>
      */
     private fun buildEffectivePromptWithContent(
-        client: AcpClient,
+        client: AgentClient,
         prompt: String,
         references: List<ResourceReference>,
         contextItems: List<ContextItemData>
@@ -1547,7 +1548,7 @@ class AgenticCopilotToolWindowContent(
     }
 
     private fun dispatchPromptWithRetry(
-        client: AcpClient,
+        client: AgentClient,
         initialSessionId: String,
         effectivePrompt: String,
         modelId: String,
@@ -1575,8 +1576,8 @@ class AgenticCopilotToolWindowContent(
         return true
     }
 
-    private fun wirePermissionListener(client: AcpClient) {
-        client.setPermissionRequestListener { req ->
+    private fun wirePermissionListener(client: AgentClient) {
+        client.setPermissionRequestListener { req: PermissionRequest ->
             ApplicationManager.getApplication().invokeLater {
                 consolePanel.showPermissionRequest(
                     req.reqId.toString(), req.displayName, req.description
@@ -1618,7 +1619,7 @@ class AgenticCopilotToolWindowContent(
      * and retries once with the new session ID. Returns the (possibly new) session ID.
      */
     private fun sendWithSessionRetry(
-        client: AcpClient,
+        client: AgentClient,
         initialSessionId: String,
         sendCall: (String) -> Unit,
         onRetry: () -> Unit
