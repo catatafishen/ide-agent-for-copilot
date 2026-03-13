@@ -272,16 +272,33 @@ public final class SonarQubeIntegration {
         }
     }
 
+    /**
+     * Path prefixes that are always excluded from findings — these are build output or
+     * IDE-generated folders, not source files. SonarLint standalone mode does not honour
+     * sonar.exclusions from sonar.properties, so we filter here.
+     */
+    private static final List<String> EXCLUDED_PATH_PREFIXES = List.of(
+        "out/", "build/", "plugin-core/out/", "plugin-core/build/",
+        "mcp-server/build/", "standalone-mcp/build/", "plugin-experimental/build/"
+    );
+
+    private static boolean isExcludedFinding(String finding) {
+        for (String prefix : EXCLUDED_PATH_PREFIXES) {
+            if (finding.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
     private List<String> collectAllFindings(String basePath) {
         List<String> reportResults = collectFromReportTab(basePath);
         List<String> onTheFlyResults = collectFromOnTheFlyHolder(basePath);
 
-        if (onTheFlyResults.isEmpty()) return reportResults;
-        if (reportResults.isEmpty()) return onTheFlyResults;
-
         // Merge and deduplicate: report tab findings take precedence
         LinkedHashSet<String> merged = new LinkedHashSet<>(reportResults);
         merged.addAll(onTheFlyResults);
+
+        // Filter out build output and IDE-generated paths
+        merged.removeIf(SonarQubeIntegration::isExcludedFinding);
         return new ArrayList<>(merged);
     }
 

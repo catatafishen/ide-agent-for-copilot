@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.ui.StatusBanner.Companion.INFO_DISMISS_MS
+import com.github.catatafishen.ideagentforcopilot.ui.StatusBanner.Companion.WARNING_DISMISS_MS
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.ui.EditorNotificationPanel

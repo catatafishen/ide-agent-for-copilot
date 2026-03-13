@@ -1008,7 +1008,7 @@ class AgenticCopilotToolWindowContent(
         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
     }
 
-    /** Dropdown action for project configuration files: Instructions, TODO.md, Agent Definitions, MCP Instructions */
+    /** Dropdown action for project configuration files: Instructions, project todo file, Agent Definitions, MCP Instructions */
     private inner class ProjectFilesDropdownAction : AnAction(
         "Project Files", "Open project configuration files",
         AllIcons.Nodes.Folder

@@ -189,15 +189,16 @@ public final class SearchConversationHistoryTool extends EditorTool {
             var arr = JsonParser.parseString(json).getAsJsonArray();
             StringBuilder sb = new StringBuilder();
             for (var el : arr) {
-                if (!el.isJsonObject()) continue;
-                var obj = el.getAsJsonObject();
-                String type = obj.has("type") ? obj.get("type").getAsString() : "";
-                String line = formatConversationEntry(obj, type);
-                if (isMatchingEntry(line, searchQuery)) {
-                    sb.append(line).append("\n");
-                    if (sb.length() >= maxChars) {
-                        sb.append("...[truncated at ").append(maxChars).append(" chars]\n");
-                        break;
+                if (el.isJsonObject()) {
+                    var obj = el.getAsJsonObject();
+                    String type = obj.has("type") ? obj.get("type").getAsString() : "";
+                    String line = formatConversationEntry(obj, type);
+                    if (isMatchingEntry(line, searchQuery)) {
+                        sb.append(line).append("\n");
+                        if (sb.length() >= maxChars) {
+                            sb.append("...[truncated at ").append(maxChars).append(" chars]\n");
+                            break;
+                        }
                     }
                 }
             }

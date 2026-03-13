@@ -257,7 +257,7 @@ public abstract class InfrastructureTool extends Tool {
     }
 
     private String extractTestRunnerResults(Object viewer,
-                                            com.intellij.execution.ui.ExecutionConsole console) throws Exception {
+                                            com.intellij.execution.ui.ExecutionConsole console) throws ReflectiveOperationException {
         var getTestsRootNode = viewer.getClass().getMethod("getTestsRootNode");
         Object root = getTestsRootNode.invoke(viewer);
         if (root == null) {
