@@ -423,14 +423,13 @@ public final class EditProjectStructureTool extends ProjectTool {
         try {
             boolean found = false;
             for (var entry : model.getOrderEntries()) {
-                if (entry instanceof LibraryOrderEntry libEntry
-                    && depName.equals(libEntry.getPresentableName())) {
-                    model.removeOrderEntry(entry);
-                    found = true;
-                    break;
+                String entryName = null;
+                if (entry instanceof LibraryOrderEntry libEntry) {
+                    entryName = libEntry.getPresentableName();
+                } else if (entry instanceof ModuleOrderEntry modEntry) {
+                    entryName = modEntry.getModuleName();
                 }
-                if (entry instanceof ModuleOrderEntry modEntry
-                    && depName.equals(modEntry.getModuleName())) {
+                if (depName.equals(entryName)) {
                     model.removeOrderEntry(entry);
                     found = true;
                     break;

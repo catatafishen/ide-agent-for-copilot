@@ -19,6 +19,8 @@ public final class McpServerConfigurable implements Configurable {
 
     public static final String ID = "com.github.catatafishen.idemcpserver";
 
+    // S1172: The Project parameter is required by IntelliJ's <projectConfigurable> instantiation mechanism.
+    @SuppressWarnings("java:S1172")
     public McpServerConfigurable(@NotNull Project project) {
     }
 

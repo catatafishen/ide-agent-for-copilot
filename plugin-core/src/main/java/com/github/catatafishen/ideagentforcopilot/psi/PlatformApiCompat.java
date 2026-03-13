@@ -111,7 +111,7 @@ public final class PlatformApiCompat {
                 JComponent panel = factory.apply(editor);
                 if (panel instanceof EditorNotificationPanel enp) {
                     String text = enp.getText();
-                    if (text != null && !text.isEmpty()) {
+                    if (!text.isEmpty()) {
                         notifications.add("[BANNER] " + text);
                     }
                 }
@@ -144,6 +144,8 @@ public final class PlatformApiCompat {
      * failures not caught by the pre-check (e.g., {@code ExceptionInInitializerError},
      * {@code NoClassDefFoundError}).</p>
      */
+    @SuppressWarnings("java:S1181")
+    // Intentional: safety net for reflection errors (ExceptionInInitializerError, NoClassDefFoundError)
     public static @Nullable InspectionToolResultExporter getInspectionPresentation(
         @NotNull GlobalInspectionContextEx ctx, @NotNull InspectionToolWrapper<?, ?> toolWrapper) {
         if (!hasPresentationConstructor(toolWrapper)) {
@@ -167,6 +169,8 @@ public final class PlatformApiCompat {
      * presentation will be used, which always works) or if the constructor exists.
      * Returns {@code false} if the constructor signature doesn't match.</p>
      */
+    @SuppressWarnings("java:S1181")
+    // Intentional: safety net for reflection errors (ExceptionInInitializerError, NoClassDefFoundError)
     private static boolean hasPresentationConstructor(@NotNull InspectionToolWrapper<?, ?> toolWrapper) {
         var ep = toolWrapper.getExtension();
         if (ep == null) {
@@ -478,8 +482,8 @@ public final class PlatformApiCompat {
      * them correctly from the configured platform dependency.</p>
      */
     public static void addSourceFolder(@NotNull com.intellij.openapi.roots.ContentEntry entry,
-                                @NotNull com.intellij.openapi.vfs.VirtualFile dir,
-                                @NotNull String type) {
+                                       @NotNull com.intellij.openapi.vfs.VirtualFile dir,
+                                       @NotNull String type) {
         boolean isTest = type.startsWith("test_");
         if (type.contains("resources")) {
             var rootType = isTest
@@ -516,8 +520,9 @@ public final class PlatformApiCompat {
             var entries = sdkType.collectSdkEntries(project);
             for (var entry : entries) {
                 sb.append("    suggested: ").append(entry.homePath());
-                if (entry.versionString() != null) {
-                    sb.append(" (").append(entry.versionString()).append(")");
+                String versionStr = entry.versionString();
+                if (!versionStr.isEmpty()) {
+                    sb.append(" (").append(versionStr).append(")");
                 }
                 sb.append("\n");
             }
@@ -676,22 +681,35 @@ public final class PlatformApiCompat {
             var prefixSeq = new com.intellij.openapi.util.io.ByteArraySequence(bytes, 0, prefixLen);
 
             for (var detector : com.intellij.openapi.fileTypes.FileTypeRegistry.FileTypeDetector.EP_NAME.getExtensionList()) {
-                try {
-                    int desired = detector.getDesiredContentPrefixLength();
-                    var seq = desired > 0 && desired < bytes.length ? prefixSeq : byteSeq;
-                    var ft = detector.detect(null, seq, text);
-                    if (ft instanceof com.intellij.openapi.fileTypes.LanguageFileType lft) {
-                        // Skip PlainText — it's a catch-all fallback, not a real detection.
-                        // Returning it would suppress pattern-based detection (e.g. JSON).
-                        if (lft.getLanguage() == com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE) continue;
-                        return lft.getLanguage();
-                    }
-                } catch (Exception ignored) {
-                    // Some detectors may throw on null VirtualFile — skip
-                }
+                com.intellij.lang.Language lang = tryDetectWithDetector(detector, byteSeq, prefixSeq, bytes, text);
+                if (lang != null) return lang;
             }
         } catch (Exception e) {
             LOG.debug("FileTypeDetector scan failed", e);
+        }
+        return null;
+    }
+
+    // S2637: FileTypeDetector.detect() documents null as a valid value for the VirtualFile param
+    @SuppressWarnings("java:S2637")
+    @Nullable
+    private static com.intellij.lang.Language tryDetectWithDetector(
+        com.intellij.openapi.fileTypes.FileTypeRegistry.FileTypeDetector detector,
+        com.intellij.openapi.util.io.ByteArraySequence byteSeq,
+        com.intellij.openapi.util.io.ByteArraySequence prefixSeq,
+        byte[] bytes,
+        @NotNull String text) {
+        try {
+            int desired = detector.getDesiredContentPrefixLength();
+            var seq = desired > 0 && desired < bytes.length ? prefixSeq : byteSeq;
+            var ft = detector.detect(null, seq, text);
+            if (ft instanceof com.intellij.openapi.fileTypes.LanguageFileType lft
+                && lft.getLanguage() != com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE) {
+                // Skip PlainText — it's a catch-all fallback, not a real detection.
+                return lft.getLanguage();
+            }
+        } catch (Exception ignored) {
+            // Some detectors may throw on null VirtualFile — skip
         }
         return null;
     }
@@ -730,47 +748,59 @@ public final class PlatformApiCompat {
         String trimmed = text.stripLeading();
         String first512 = trimmed.substring(0, Math.min(trimmed.length(), 512));
 
-        // JSON: starts with { or [ and contains " — high confidence
+        com.intellij.lang.Language result = detectMarkupLanguage(trimmed, first512);
+        if (result != null) return result;
+
+        String upper = first512.toUpperCase(java.util.Locale.ROOT);
+        result = detectSqlOrJavaFamily(upper, first512);
+        if (result != null) return result;
+
+        return detectScriptingLanguages(first512);
+    }
+
+    @Nullable
+    private static com.intellij.lang.Language detectMarkupLanguage(@NotNull String trimmed, @NotNull String first512) {
         if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && first512.contains("\"")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("JSON");
         }
-        // XML/HTML: starts with < (tag or declaration)
         if (trimmed.startsWith("<?xml") || trimmed.startsWith("<!DOCTYPE")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("XML");
         }
         if (trimmed.startsWith("<html") || trimmed.startsWith("<!doctype html")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("HTML");
         }
-        // YAML: starts with --- or has key: value patterns on first lines
         if (trimmed.startsWith("---")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("yaml");
         }
-        // SQL keywords (case-insensitive)
-        String upper = first512.toUpperCase(java.util.Locale.ROOT);
+        return null;
+    }
+
+    @Nullable
+    private static com.intellij.lang.Language detectSqlOrJavaFamily(@NotNull String upper, @NotNull String first512) {
         if (upper.startsWith("SELECT ") || upper.startsWith("INSERT ") || upper.startsWith("CREATE TABLE")
             || upper.startsWith("ALTER TABLE") || upper.startsWith("DROP ")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("SQL");
         }
-        // Java: package declaration or typical Java imports
         if (first512.startsWith("package ") && first512.contains(";")) {
             return first512.contains("fun ") || first512.contains("val ")
                 ? com.intellij.lang.LanguageUtil.findRegisteredLanguage("kotlin")
                 : com.intellij.lang.LanguageUtil.findRegisteredLanguage("JAVA");
         }
-        // Python: def/class with colon, or import without braces
+        return null;
+    }
+
+    @Nullable
+    private static com.intellij.lang.Language detectScriptingLanguages(@NotNull String first512) {
         if ((first512.contains("def ") && first512.contains(":"))
             || first512.startsWith("import ") && !first512.contains("{") && !first512.contains("from '")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage(LANG_PYTHON);
         }
-        // Kotlin top-level fun
         if (first512.contains("fun ") && first512.contains("{") && !first512.contains(";")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("kotlin");
         }
-        // Go: package main / func
         if (first512.startsWith("package main") || (first512.contains("func ") && first512.contains("{"))) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("go");
         }
-        // Rust: fn main, let mut, pub fn
         if (first512.contains("fn ") && (first512.contains("let ") || first512.contains("pub "))) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("Rust");
         }

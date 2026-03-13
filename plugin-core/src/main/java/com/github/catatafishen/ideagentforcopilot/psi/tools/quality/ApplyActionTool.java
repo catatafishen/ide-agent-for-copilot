@@ -157,57 +157,66 @@ public final class ApplyActionTool extends QualityTool {
         }
 
         String before = doc.getText();
+        ActionContext ctx = new ActionContext(action, editor, psiFile, doc);
 
         if (option != null) {
-            // Option-selection mode: intercept dialog and choose the matching option
-            boolean selected = DialogInterceptor.runAndSelectOption(
-                () -> WriteCommandAction.runWriteCommandAction(project, actionName, null,
-                    () -> action.invoke(project, editor, psiFile)),
-                option
-            );
-            PsiDocumentManager.getInstance(project).commitAllDocuments();
-            FileDocumentManager.getInstance().saveAllDocuments();
-
-            String after = doc.getText();
-            String diff = DiffUtils.unifiedDiff(before, after, pathStr);
-            if (!selected) {
-                return "Option '" + option + "' not found in dialog for action '" + actionName + "'. "
-                    + "Use get_action_options to see available options.";
-            }
-            return formatApplyResult(actionName, pathStr, targetLine, diff, false);
+            return applyWithOption(option, actionName, pathStr, targetLine, before, ctx);
         }
-
         if (dryRun) {
-            // Dry-run mode: apply, capture diff, undo
-            WriteCommandAction.runWriteCommandAction(project, actionName, null,
-                () -> action.invoke(project, editor, psiFile));
-            PsiDocumentManager.getInstance(project).commitAllDocuments();
-            String after = doc.getText();
-            String diff = DiffUtils.unifiedDiff(before, after, pathStr);
-            undoLastAction(vf);
-            if (diff.isEmpty()) {
-                return "Preview: action '" + actionName + "' would make no changes (it may require a dialog — "
-                    + "use get_action_options to check).";
-            }
-            return "Preview (not applied):\n\n" + diff;
+            return applyAsDryRun(actionName, pathStr, before, ctx, vf);
         }
+        return applyNormally(actionName, pathStr, targetLine, before, ctx);
+    }
 
-        // Normal apply
-        WriteCommandAction.runWriteCommandAction(project, actionName, null,
-            () -> action.invoke(project, editor, psiFile));
+    private String applyWithOption(String option, String actionName, String pathStr, int targetLine,
+                                   String before, ActionContext ctx) {
+        boolean selected = DialogInterceptor.runAndSelectOption(
+            () -> WriteCommandAction.runWriteCommandAction(project, actionName, null,
+                () -> ctx.action().invoke(project, ctx.editor(), ctx.psiFile())),
+            option
+        );
         PsiDocumentManager.getInstance(project).commitAllDocuments();
         FileDocumentManager.getInstance().saveAllDocuments();
-
-        String after = doc.getText();
+        String after = ctx.doc().getText();
         String diff = DiffUtils.unifiedDiff(before, after, pathStr);
+        if (!selected) {
+            return "Option '" + option + "' not found in dialog for action '" + actionName + "'. "
+                + "Use get_action_options to see available options.";
+        }
+        return formatApplyResult(actionName, pathStr, targetLine, diff, false);
+    }
 
+    private String applyAsDryRun(String actionName, String pathStr, String before,
+                                 ActionContext ctx, VirtualFile vf) {
+        WriteCommandAction.runWriteCommandAction(project, actionName, null,
+            () -> ctx.action().invoke(project, ctx.editor(), ctx.psiFile()));
+        PsiDocumentManager.getInstance(project).commitAllDocuments();
+        String after = ctx.doc().getText();
+        String diff = DiffUtils.unifiedDiff(before, after, pathStr);
+        undoLastAction(vf);
         if (diff.isEmpty()) {
-            // Document unchanged — likely a dialog appeared but wasn't handled
+            return "Preview: action '" + actionName + "' would make no changes (it may require a dialog — "
+                + "use get_action_options to check).";
+        }
+        return "Preview (not applied):\n\n" + diff;
+    }
+
+    private String applyNormally(String actionName, String pathStr, int targetLine,
+                                 String before, ActionContext ctx) {
+        WriteCommandAction.runWriteCommandAction(project, actionName, null,
+            () -> ctx.action().invoke(project, ctx.editor(), ctx.psiFile()));
+        PsiDocumentManager.getInstance(project).commitAllDocuments();
+        FileDocumentManager.getInstance().saveAllDocuments();
+        String after = ctx.doc().getText();
+        String diff = DiffUtils.unifiedDiff(before, after, pathStr);
+        if (diff.isEmpty()) {
             return ACTION_PREFIX + actionName + "' made no changes. It may require user input via a dialog. "
                 + "Try get_action_options to inspect what dialog options it shows.";
         }
-
         return formatApplyResult(actionName, pathStr, targetLine, diff, true);
+    }
+
+    private record ActionContext(IntentionAction action, Editor editor, PsiFile psiFile, Document doc) {
     }
 
     private String formatApplyResult(String actionName, String pathStr, int line,

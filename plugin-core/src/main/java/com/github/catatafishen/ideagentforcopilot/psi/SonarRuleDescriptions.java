@@ -6,7 +6,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +42,8 @@ final class SonarRuleDescriptions {
     private static final int FETCH_TIMEOUT_MS = 8_000;
     private static final int MAX_RULES_PER_PAGE = 20;
 
-    private SonarRuleDescriptions() {}
+    private SonarRuleDescriptions() {
+    }
 
     /**
      * Extracts unique rule keys from the visible findings, fetches their descriptions

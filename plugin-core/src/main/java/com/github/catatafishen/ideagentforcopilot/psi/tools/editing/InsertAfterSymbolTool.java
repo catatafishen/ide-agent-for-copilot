@@ -79,54 +79,7 @@ public final class InsertAfterSymbolTool extends EditingTool {
         CompletableFuture<String> result = new CompletableFuture<>();
         int[] endLine = new int[1];
 
-        EdtUtil.invokeLater(() -> {
-            try {
-                SymbolLocation loc = resolveSymbol(pathStr, symbolName, lineHint);
-                if (loc == null) {
-                    result.complete(symbolNotFoundMessage(pathStr, symbolName, lineHint));
-                    return;
-                }
-                endLine[0] = loc.endLine();
-
-                VirtualFile vf = resolveVirtualFile(pathStr);
-                if (vf == null) {
-                    result.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
-                    return;
-                }
-                Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                if (doc == null) {
-                    result.complete(ERROR_CANNOT_OPEN_DOC + pathStr);
-                    return;
-                }
-
-                String normalized = content.replace("\r\n", "\n").replace("\r", "\n");
-                if (!normalized.endsWith("\n")) {
-                    normalized += "\n";
-                }
-                int offset = doc.getLineEndOffset(loc.endLine() - 1);
-                if (offset < doc.getTextLength() && doc.getText().charAt(offset) == '\n') {
-                    offset++;
-                }
-                final String fContent = normalized;
-                final int fOffset = offset;
-
-                ApplicationManager.getApplication().runWriteAction(() ->
-                    CommandProcessor.getInstance().executeCommand(
-                        project, () -> doc.insertString(fOffset, fContent),
-                        "Insert After Symbol", null)
-                );
-
-                PsiDocumentManager.getInstance(project).commitDocument(doc);
-                formatInline(vf);
-                FileDocumentManager.getInstance().saveDocument(doc);
-
-                int newLineCount = (int) fContent.chars().filter(c -> c == '\n').count();
-                result.complete("Inserted " + newLineCount + " lines after line " + loc.endLine() + " in " + pathStr
-                    + FORMATTED_SUFFIX);
-            } catch (Exception e) {
-                result.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
-            }
-        });
+        EdtUtil.invokeLater(() -> performInsertAfter(pathStr, symbolName, content, lineHint, endLine, result));
 
         String resultStr = result.get(15, TimeUnit.SECONDS);
         if (!resultStr.startsWith(ToolUtils.ERROR_PREFIX) && !resultStr.startsWith(SYMBOL_PREFIX)) {
@@ -137,5 +90,55 @@ public final class InsertAfterSymbolTool extends EditingTool {
             FileAccessTracker.recordWrite(project, pathStr);
         }
         return resultStr;
+    }
+
+    private void performInsertAfter(String pathStr, String symbolName, String content,
+                                    Integer lineHint, int[] endLine, CompletableFuture<String> result) {
+        try {
+            SymbolLocation loc = resolveSymbol(pathStr, symbolName, lineHint);
+            if (loc == null) {
+                result.complete(symbolNotFoundMessage(pathStr, symbolName, lineHint));
+                return;
+            }
+            endLine[0] = loc.endLine();
+
+            VirtualFile vf = resolveVirtualFile(pathStr);
+            if (vf == null) {
+                result.complete(ToolUtils.ERROR_FILE_NOT_FOUND + pathStr);
+                return;
+            }
+            Document doc = FileDocumentManager.getInstance().getDocument(vf);
+            if (doc == null) {
+                result.complete(ERROR_CANNOT_OPEN_DOC + pathStr);
+                return;
+            }
+
+            String normalized = content.replace("\r\n", "\n").replace("\r", "\n");
+            if (!normalized.endsWith("\n")) {
+                normalized += "\n";
+            }
+            int offset = doc.getLineEndOffset(loc.endLine() - 1);
+            if (offset < doc.getTextLength() && doc.getText().charAt(offset) == '\n') {
+                offset++;
+            }
+            final String fContent = normalized;
+            final int fOffset = offset;
+
+            ApplicationManager.getApplication().runWriteAction(() ->
+                CommandProcessor.getInstance().executeCommand(
+                    project, () -> doc.insertString(fOffset, fContent),
+                    "Insert After Symbol", null)
+            );
+
+            PsiDocumentManager.getInstance(project).commitDocument(doc);
+            formatInline(vf);
+            FileDocumentManager.getInstance().saveDocument(doc);
+
+            int newLineCount = (int) fContent.chars().filter(c -> c == '\n').count();
+            result.complete("Inserted " + newLineCount + " lines after line " + loc.endLine() + " in " + pathStr
+                + FORMATTED_SUFFIX);
+        } catch (Exception e) {
+            result.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
+        }
     }
 }

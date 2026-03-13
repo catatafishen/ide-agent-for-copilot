@@ -208,7 +208,7 @@ public final class PsiBridgeService implements Disposable {
         String displayName = entry != null ? entry.displayName() : toolName;
         String reqId = java.util.UUID.randomUUID().toString();
 
-        // Build a structured context JSON for the permission bubble: {question, args}
+        // Build a structured context JSON for the permission bubble, containing question and args
         String resolvedQuestion = entry != null ? entry.resolvePermissionQuestion(arguments) : null;
         com.google.gson.JsonObject context = new com.google.gson.JsonObject();
         context.addProperty("question", resolvedQuestion != null ? resolvedQuestion

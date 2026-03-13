@@ -16,6 +16,8 @@ import java.util.concurrent.CompletableFuture;
  * Abstract base for terminal tools. Provides shared constants and utility
  * methods for terminal operations (formerly in {@code TerminalTools}).
  */
+// S112: These methods wrap reflection-based IntelliJ terminal API calls — generic exceptions are intentional
+@SuppressWarnings("java:S112")
 public abstract class TerminalTool extends Tool {
 
     protected static final Logger LOG = Logger.getInstance(TerminalTool.class);

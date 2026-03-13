@@ -153,8 +153,11 @@ public final class GetAvailableActionsTool extends QualityTool {
         sb.append("[QUICK FIX] at ").append(pathStr).append(LINE_LABEL).append(targetLine).append(":\n\n");
         sb.append(String.join("\n", entries));
         if (!allFixNames.isEmpty()) {
-            sb.append("\n\nTip: provide 'symbol' or 'column' to also see intention actions at a specific symbol. "
-                + "Use apply_action(file, line, action_name) to invoke a fix.");
+            sb.append("""
+
+
+                Tip: provide 'symbol' or 'column' to also see intention actions at a specific symbol. \
+                Use apply_action(file, line, action_name) to invoke a fix.""");
         }
         return sb.toString();
     }

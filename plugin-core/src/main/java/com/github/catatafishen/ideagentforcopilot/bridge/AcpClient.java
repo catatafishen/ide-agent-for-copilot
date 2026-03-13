@@ -1115,28 +1115,8 @@ public class AcpClient implements Closeable {
         CompletableFuture<PermissionResponse> future = new CompletableFuture<>();
         ToolDefinition toolEntry = registry != null ? registry.findById(toolId) : null;
         String displayName = toolEntry != null ? toolEntry.displayName() : permKind;
-
-        // Extract structured tool arguments from the ACP toolCall JSON
-        JsonObject toolCallJson = reqParams != null && reqParams.has(TOOL_CALL_KEY)
-            ? reqParams.getAsJsonObject(TOOL_CALL_KEY) : null;
-        JsonObject toolArgs = null;
-        if (toolCallJson != null) {
-            for (String wrapper : new String[]{"arguments", "input", PARAMS}) {
-                if (toolCallJson.has(wrapper) && toolCallJson.get(wrapper).isJsonObject()) {
-                    toolArgs = toolCallJson.getAsJsonObject(wrapper);
-                    break;
-                }
-            }
-        }
-
-        // Build structured context JSON for the permission bubble
-        ToolDefinition def = registry != null ? registry.findById(toolId) : null;
-        String resolvedQuestion = def != null ? def.resolvePermissionQuestion(toolArgs) : null;
-        JsonObject context = new JsonObject();
-        context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
-            : "Can I use " + displayName + "?");
-        if (toolArgs != null) context.add("args", toolArgs);
-        String contextJson = context.toString();
+        JsonObject toolArgs = extractToolArgs(reqParams);
+        String contextJson = buildPermissionContextJson(toolId, toolArgs, displayName);
 
         listener.accept(new PermissionRequest(reqId, toolId, displayName, contextJson, future::complete));
         PermissionResponse response;
@@ -1147,6 +1127,33 @@ public class AcpClient implements Closeable {
             LOG.info("ACP request_permission: ASK timed out / cancelled for " + toolId + " — denying");
             response = PermissionResponse.DENY;
         }
+        dispatchPermissionResponse(response, reqId, reqParams, toolId);
+    }
+
+    @Nullable
+    private JsonObject extractToolArgs(@Nullable JsonObject reqParams) {
+        if (reqParams == null || !reqParams.has(TOOL_CALL_KEY)) return null;
+        JsonObject toolCallJson = reqParams.getAsJsonObject(TOOL_CALL_KEY);
+        for (String wrapper : new String[]{"arguments", "input", PARAMS}) {
+            if (toolCallJson.has(wrapper) && toolCallJson.get(wrapper).isJsonObject()) {
+                return toolCallJson.getAsJsonObject(wrapper);
+            }
+        }
+        return null;
+    }
+
+    private String buildPermissionContextJson(String toolId, @Nullable JsonObject toolArgs, String displayName) {
+        ToolDefinition def = registry != null ? registry.findById(toolId) : null;
+        String resolvedQuestion = def != null ? def.resolvePermissionQuestion(toolArgs) : null;
+        JsonObject context = new JsonObject();
+        context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
+            : "Can I use " + displayName + "?");
+        if (toolArgs != null) context.add("args", toolArgs);
+        return context.toString();
+    }
+
+    private void dispatchPermissionResponse(PermissionResponse response, long reqId,
+                                            @Nullable JsonObject reqParams, String toolId) {
         switch (response) {
             case ALLOW_SESSION -> {
                 sessionAllowedTools.add(toolId);

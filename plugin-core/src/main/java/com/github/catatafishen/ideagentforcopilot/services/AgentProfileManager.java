@@ -98,7 +98,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         ProfileState state = new ProfileState();
         synchronized (this) {
             for (AgentProfile profile : profiles.values()) {
-                state.profiles.add(ProfileEntry.fromProfile(profile));
+                state.getProfiles().add(ProfileEntry.fromProfile(profile));
             }
         }
         return state;
@@ -108,7 +108,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
     public void loadState(@NotNull ProfileState state) {
         synchronized (this) {
             profiles.clear();
-            for (ProfileEntry entry : state.profiles) {
+            for (ProfileEntry entry : state.getProfiles()) {
                 AgentProfile profile = entry.toProfile();
                 profiles.put(profile.getId(), profile);
             }
@@ -204,7 +204,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         p.setId(COPILOT_PROFILE_ID);
         p.setDisplayName("GitHub Copilot");
         p.setBuiltIn(true);
-        p.setBinaryName("copilot");
+        p.setBinaryName(COPILOT_PROFILE_ID);
         p.setAlternateNames(List.of("copilot-cli"));
         p.setInstallHint("Install with: npm install -g @anthropic-ai/copilot-cli");
         p.setAcpArgs(List.of("--acp", "--stdio"));
@@ -234,7 +234,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
         p.setExperimental(true);
         p.setDescription("Experimental profile — OpenCode ACP support is community-maintained. "
             + "Install: npm i -g opencode-ai");
-        p.setBinaryName("opencode");
+        p.setBinaryName(OPENCODE_PROFILE_ID);
         p.setInstallHint("Install with: npm i -g opencode-ai");
         p.setAcpArgs(List.of("acp"));
         p.setMcpMethod(McpInjectionMethod.ENV_VAR);
@@ -289,7 +289,15 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
      * Serializable state wrapper for {@link PersistentStateComponent}.
      */
     public static final class ProfileState {
-        public List<ProfileEntry> profiles = new ArrayList<>();
+        private List<ProfileEntry> profiles = new ArrayList<>();
+
+        public List<ProfileEntry> getProfiles() {
+            return profiles;
+        }
+
+        public void setProfiles(List<ProfileEntry> profiles) {
+            this.profiles = profiles;
+        }
     }
 
     /**
@@ -297,93 +305,285 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
      * Uses primitive types and strings for XML serialization compatibility.
      */
     public static final class ProfileEntry {
-        public String id = "";
-        public String displayName = "";
-        public boolean builtIn;
-        public boolean experimental;
-        public String description = "";
-        public String binaryName = "";
-        public String alternateNames = "";
-        public String installHint = "";
-        public String customBinaryPath = "";
-        public String acpArgs = "";
-        public String mcpMethod = "CONFIG_FLAG";
-        public String mcpConfigTemplate = "";
-        public String mcpEnvVarName = "";
-        public boolean supportsModelFlag = true;
-        public boolean supportsConfigDir = true;
-        public boolean supportsMcpConfigFlag = true;
-        public boolean requiresResourceDuplication;
-        public String modelUsageField = "";
-        public String agentsDirectory = "";
-        public boolean ensureCopilotAgents;
-        public String prependInstructionsTo = "";
-        public boolean usePluginPermissions = true;
-        public boolean excludeAgentBuiltInTools;
-        public String permissionInjectionMethod = "NONE";
+        private String id = "";
+        private String displayName = "";
+        private boolean builtIn;
+        private boolean experimental;
+        private String description = "";
+        private String binaryName = "";
+        private String alternateNames = "";
+        private String installHint = "";
+        private String customBinaryPath = "";
+        private String acpArgs = "";
+        private String mcpMethod = "CONFIG_FLAG";
+        private String mcpConfigTemplate = "";
+        private String mcpEnvVarName = "";
+        private boolean supportsModelFlag = true;
+        private boolean supportsConfigDir = true;
+        private boolean supportsMcpConfigFlag = true;
+        private boolean requiresResourceDuplication;
+        private String modelUsageField = "";
+        private String agentsDirectory = "";
+        private boolean ensureCopilotAgents;
+        private String prependInstructionsTo = "";
+        private boolean usePluginPermissions = true;
+        private boolean excludeAgentBuiltInTools;
+        private String permissionInjectionMethod = "NONE";
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public void setDisplayName(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public boolean isBuiltIn() {
+            return builtIn;
+        }
+
+        public void setBuiltIn(boolean builtIn) {
+            this.builtIn = builtIn;
+        }
+
+        public boolean isExperimental() {
+            return experimental;
+        }
+
+        public void setExperimental(boolean experimental) {
+            this.experimental = experimental;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public String getBinaryName() {
+            return binaryName;
+        }
+
+        public void setBinaryName(String binaryName) {
+            this.binaryName = binaryName;
+        }
+
+        public String getAlternateNames() {
+            return alternateNames;
+        }
+
+        public void setAlternateNames(String alternateNames) {
+            this.alternateNames = alternateNames;
+        }
+
+        public String getInstallHint() {
+            return installHint;
+        }
+
+        public void setInstallHint(String installHint) {
+            this.installHint = installHint;
+        }
+
+        public String getCustomBinaryPath() {
+            return customBinaryPath;
+        }
+
+        public void setCustomBinaryPath(String customBinaryPath) {
+            this.customBinaryPath = customBinaryPath;
+        }
+
+        public String getAcpArgs() {
+            return acpArgs;
+        }
+
+        public void setAcpArgs(String acpArgs) {
+            this.acpArgs = acpArgs;
+        }
+
+        public String getMcpMethod() {
+            return mcpMethod;
+        }
+
+        public void setMcpMethod(String mcpMethod) {
+            this.mcpMethod = mcpMethod;
+        }
+
+        public String getMcpConfigTemplate() {
+            return mcpConfigTemplate;
+        }
+
+        public void setMcpConfigTemplate(String mcpConfigTemplate) {
+            this.mcpConfigTemplate = mcpConfigTemplate;
+        }
+
+        public String getMcpEnvVarName() {
+            return mcpEnvVarName;
+        }
+
+        public void setMcpEnvVarName(String mcpEnvVarName) {
+            this.mcpEnvVarName = mcpEnvVarName;
+        }
+
+        public boolean isSupportsModelFlag() {
+            return supportsModelFlag;
+        }
+
+        public void setSupportsModelFlag(boolean supportsModelFlag) {
+            this.supportsModelFlag = supportsModelFlag;
+        }
+
+        public boolean isSupportsConfigDir() {
+            return supportsConfigDir;
+        }
+
+        public void setSupportsConfigDir(boolean supportsConfigDir) {
+            this.supportsConfigDir = supportsConfigDir;
+        }
+
+        public boolean isSupportsMcpConfigFlag() {
+            return supportsMcpConfigFlag;
+        }
+
+        public void setSupportsMcpConfigFlag(boolean supportsMcpConfigFlag) {
+            this.supportsMcpConfigFlag = supportsMcpConfigFlag;
+        }
+
+        public boolean isRequiresResourceDuplication() {
+            return requiresResourceDuplication;
+        }
+
+        public void setRequiresResourceDuplication(boolean v) {
+            this.requiresResourceDuplication = v;
+        }
+
+        public String getModelUsageField() {
+            return modelUsageField;
+        }
+
+        public void setModelUsageField(String modelUsageField) {
+            this.modelUsageField = modelUsageField;
+        }
+
+        public String getAgentsDirectory() {
+            return agentsDirectory;
+        }
+
+        public void setAgentsDirectory(String agentsDirectory) {
+            this.agentsDirectory = agentsDirectory;
+        }
+
+        public boolean isEnsureCopilotAgents() {
+            return ensureCopilotAgents;
+        }
+
+        public void setEnsureCopilotAgents(boolean ensureCopilotAgents) {
+            this.ensureCopilotAgents = ensureCopilotAgents;
+        }
+
+        public String getPrependInstructionsTo() {
+            return prependInstructionsTo;
+        }
+
+        public void setPrependInstructionsTo(String prependInstructionsTo) {
+            this.prependInstructionsTo = prependInstructionsTo;
+        }
+
+        public boolean isUsePluginPermissions() {
+            return usePluginPermissions;
+        }
+
+        public void setUsePluginPermissions(boolean usePluginPermissions) {
+            this.usePluginPermissions = usePluginPermissions;
+        }
+
+        public boolean isExcludeAgentBuiltInTools() {
+            return excludeAgentBuiltInTools;
+        }
+
+        public void setExcludeAgentBuiltInTools(boolean excludeAgentBuiltInTools) {
+            this.excludeAgentBuiltInTools = excludeAgentBuiltInTools;
+        }
+
+        public String getPermissionInjectionMethod() {
+            return permissionInjectionMethod;
+        }
+
+        public void setPermissionInjectionMethod(String permissionInjectionMethod) {
+            this.permissionInjectionMethod = permissionInjectionMethod;
+        }
 
         @NotNull
         static ProfileEntry fromProfile(@NotNull AgentProfile p) {
             ProfileEntry e = new ProfileEntry();
-            e.id = p.getId();
-            e.displayName = p.getDisplayName();
-            e.builtIn = p.isBuiltIn();
-            e.experimental = p.isExperimental();
-            e.description = p.getDescription() != null ? p.getDescription() : "";
-            e.binaryName = p.getBinaryName();
-            e.alternateNames = String.join(",", p.getAlternateNames());
-            e.installHint = p.getInstallHint();
-            e.customBinaryPath = p.getCustomBinaryPath();
-            e.acpArgs = String.join(" ", p.getAcpArgs());
-            e.mcpMethod = p.getMcpMethod().name();
-            e.mcpConfigTemplate = p.getMcpConfigTemplate();
-            e.mcpEnvVarName = p.getMcpEnvVarName();
-            e.supportsModelFlag = p.isSupportsModelFlag();
-            e.supportsConfigDir = p.isSupportsConfigDir();
-            e.supportsMcpConfigFlag = p.isSupportsMcpConfigFlag();
-            e.requiresResourceDuplication = p.isRequiresResourceDuplication();
-            e.modelUsageField = p.getModelUsageField() != null ? p.getModelUsageField() : "";
-            e.agentsDirectory = p.getAgentsDirectory() != null ? p.getAgentsDirectory() : "";
-            e.ensureCopilotAgents = p.isEnsureCopilotAgents();
-            e.prependInstructionsTo = p.getPrependInstructionsTo() != null ? p.getPrependInstructionsTo() : "";
-            e.usePluginPermissions = p.isUsePluginPermissions();
-            e.excludeAgentBuiltInTools = p.isExcludeAgentBuiltInTools();
-            e.permissionInjectionMethod = p.getPermissionInjectionMethod().name();
+            e.setId(p.getId());
+            e.setDisplayName(p.getDisplayName());
+            e.setBuiltIn(p.isBuiltIn());
+            e.setExperimental(p.isExperimental());
+            e.setDescription(p.getDescription() != null ? p.getDescription() : "");
+            e.setBinaryName(p.getBinaryName());
+            e.setAlternateNames(String.join(",", p.getAlternateNames()));
+            e.setInstallHint(p.getInstallHint());
+            e.setCustomBinaryPath(p.getCustomBinaryPath());
+            e.setAcpArgs(String.join(" ", p.getAcpArgs()));
+            e.setMcpMethod(p.getMcpMethod().name());
+            e.setMcpConfigTemplate(p.getMcpConfigTemplate());
+            e.setMcpEnvVarName(p.getMcpEnvVarName());
+            e.setSupportsModelFlag(p.isSupportsModelFlag());
+            e.setSupportsConfigDir(p.isSupportsConfigDir());
+            e.setSupportsMcpConfigFlag(p.isSupportsMcpConfigFlag());
+            e.setRequiresResourceDuplication(p.isRequiresResourceDuplication());
+            e.setModelUsageField(p.getModelUsageField() != null ? p.getModelUsageField() : "");
+            e.setAgentsDirectory(p.getAgentsDirectory() != null ? p.getAgentsDirectory() : "");
+            e.setEnsureCopilotAgents(p.isEnsureCopilotAgents());
+            e.setPrependInstructionsTo(p.getPrependInstructionsTo() != null ? p.getPrependInstructionsTo() : "");
+            e.setUsePluginPermissions(p.isUsePluginPermissions());
+            e.setExcludeAgentBuiltInTools(p.isExcludeAgentBuiltInTools());
+            e.setPermissionInjectionMethod(p.getPermissionInjectionMethod().name());
             return e;
         }
 
         @NotNull
         AgentProfile toProfile() {
             AgentProfile p = new AgentProfile();
-            p.setId(id);
-            p.setDisplayName(displayName);
-            p.setBuiltIn(builtIn);
-            p.setExperimental(experimental);
-            p.setDescription(description.isEmpty() ? null : description);
-            p.setBinaryName(binaryName);
-            p.setAlternateNames(splitComma(alternateNames));
-            p.setInstallHint(installHint);
-            p.setCustomBinaryPath(customBinaryPath);
-            p.setAcpArgs(splitSpace(acpArgs));
+            p.setId(getId());
+            p.setDisplayName(getDisplayName());
+            p.setBuiltIn(isBuiltIn());
+            p.setExperimental(isExperimental());
+            p.setDescription(getDescription().isEmpty() ? null : getDescription());
+            p.setBinaryName(getBinaryName());
+            p.setAlternateNames(splitComma(getAlternateNames()));
+            p.setInstallHint(getInstallHint());
+            p.setCustomBinaryPath(getCustomBinaryPath());
+            p.setAcpArgs(splitSpace(getAcpArgs()));
             try {
-                p.setMcpMethod(McpInjectionMethod.valueOf(mcpMethod));
+                p.setMcpMethod(McpInjectionMethod.valueOf(getMcpMethod()));
             } catch (IllegalArgumentException e) {
                 p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
             }
-            p.setMcpConfigTemplate(mcpConfigTemplate);
-            p.setMcpEnvVarName(mcpEnvVarName);
-            p.setSupportsModelFlag(supportsModelFlag);
-            p.setSupportsConfigDir(supportsConfigDir);
-            p.setSupportsMcpConfigFlag(supportsMcpConfigFlag);
-            p.setRequiresResourceDuplication(requiresResourceDuplication);
-            p.setModelUsageField(modelUsageField);
-            p.setAgentsDirectory(agentsDirectory.isEmpty() ? null : agentsDirectory);
-            p.setEnsureCopilotAgents(ensureCopilotAgents);
-            p.setPrependInstructionsTo(prependInstructionsTo.isEmpty() ? null : prependInstructionsTo);
-            p.setUsePluginPermissions(usePluginPermissions);
-            p.setExcludeAgentBuiltInTools(excludeAgentBuiltInTools);
+            p.setMcpConfigTemplate(getMcpConfigTemplate());
+            p.setMcpEnvVarName(getMcpEnvVarName());
+            p.setSupportsModelFlag(isSupportsModelFlag());
+            p.setSupportsConfigDir(isSupportsConfigDir());
+            p.setSupportsMcpConfigFlag(isSupportsMcpConfigFlag());
+            p.setRequiresResourceDuplication(isRequiresResourceDuplication());
+            p.setModelUsageField(getModelUsageField());
+            p.setAgentsDirectory(getAgentsDirectory().isEmpty() ? null : getAgentsDirectory());
+            p.setEnsureCopilotAgents(isEnsureCopilotAgents());
+            p.setPrependInstructionsTo(getPrependInstructionsTo().isEmpty() ? null : getPrependInstructionsTo());
+            p.setUsePluginPermissions(isUsePluginPermissions());
+            p.setExcludeAgentBuiltInTools(isExcludeAgentBuiltInTools());
             try {
-                p.setPermissionInjectionMethod(PermissionInjectionMethod.valueOf(permissionInjectionMethod));
+                p.setPermissionInjectionMethod(PermissionInjectionMethod.valueOf(getPermissionInjectionMethod()));
             } catch (IllegalArgumentException e) {
                 p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
             }
