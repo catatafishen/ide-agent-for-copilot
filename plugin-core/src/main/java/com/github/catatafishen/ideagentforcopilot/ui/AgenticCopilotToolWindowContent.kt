@@ -1256,24 +1256,30 @@ class AgenticCopilotToolWindowContent(
     }
 
     private fun registerPasteIntercept(editor: EditorEx, contentComponent: JComponent) {
-        // Intercept paste: redirect large clipboard content to a scratch file
-        val pasteShortcuts = arrayOf(
-            KeyboardShortcut(
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.CTRL_DOWN_MASK), null
-            ),
-            KeyboardShortcut(
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.META_DOWN_MASK), null
-            ),
-            KeyboardShortcut(
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_INSERT, java.awt.event.InputEvent.SHIFT_DOWN_MASK),
-                null
-            ),
+        val pasteStrokes = setOf(
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.META_DOWN_MASK),
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_INSERT, java.awt.event.InputEvent.SHIFT_DOWN_MASK)
         )
-        object : AnAction() {
-            override fun actionPerformed(e: AnActionEvent) {
-                // Consume the underlying AWT key event so IntelliJ's built-in editor paste handler
-                // does not also fire for the same keystroke (which would cause a double-paste).
-                e.inputEvent?.consume()
+
+        // Use IdeEventQueue preprocessor (runs before IdeKeyEventDispatcher) so we consume the
+        // event before any other handler sees it — avoiding the double-paste that occurred when
+        // popup.cancel() restored focus to contentComponent mid-dispatch and IdeKeyEventDispatcher
+        // fired our shortcut again for the now-focused component.
+        com.intellij.ide.IdeEventQueue.getInstance().addPreprocessor(
+            com.intellij.ide.IdeEventQueue.EventDispatcher { event ->
+                if (event !is java.awt.event.KeyEvent) return@EventDispatcher false
+                if (editor.isDisposed) return@EventDispatcher false
+                if (event.id != java.awt.event.KeyEvent.KEY_PRESSED) return@EventDispatcher false
+                if (KeyStroke.getKeyStrokeForEvent(event) !in pasteStrokes) return@EventDispatcher false
+                // Only intercept when our prompt editor is in the focus hierarchy
+                val focused = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+                if (!javax.swing.SwingUtilities.isDescendingFrom(
+                        focused,
+                        contentComponent
+                    )
+                ) return@EventDispatcher false
+
                 val clipText = contextManager.getClipboardText()
                 if (clipText != null && (clipText.lines().size > 3 || clipText.length > 500)) {
                     val projectSource = contextManager.findClipboardSourceInProject(clipText)
@@ -1285,14 +1291,14 @@ class AgenticCopilotToolWindowContent(
                 } else {
                     val handler = com.intellij.openapi.editor.actionSystem.EditorActionManager.getInstance()
                         .getActionHandler(IdeActions.ACTION_EDITOR_PASTE)
+                    val dataContext = com.intellij.ide.DataManager.getInstance().getDataContext(contentComponent)
                     com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
-                        handler.execute(editor, null, e.dataContext)
+                        handler.execute(editor, null, dataContext)
                     }
                 }
-            }
-        }.registerCustomShortcutSet(
-            CustomShortcutSet(*pasteShortcuts),
-            contentComponent
+                true
+            },
+            project
         )
     }
 
