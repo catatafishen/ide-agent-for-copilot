@@ -97,6 +97,14 @@ public final class ApplyActionTool extends QualityTool {
         EdtUtil.invokeLater(() -> {
             try {
                 future.complete(invokeAction(pathStr, targetLine, actionName, symbol, targetCol, option, dryRun));
+            } catch (AssertionError e) {
+                // Some actions (e.g. SafeDeleteFix) trigger interactive dialogs via assertions
+                // that fail headlessly. Catch AssertionError separately for a clear message.
+                LOG.warn(ACTION_PREFIX + actionName + "' requires interactive UI at " + pathStr + ":" + targetLine, e);
+                future.complete("Error: " + ACTION_PREFIX + actionName + "' requires an interactive dialog "
+                    + "and cannot be applied non-interactively. "
+                    + "Try get_action_options to see what dialog options it shows, "
+                    + "or perform this action manually in the IDE.");
             } catch (Exception e) {
                 LOG.warn("Error invoking action '" + actionName + "' at " + pathStr + ":" + targetLine, e);
                 future.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
@@ -104,7 +112,8 @@ public final class ApplyActionTool extends QualityTool {
         });
 
         String result = future.get(30, TimeUnit.SECONDS);
-        if (result != null && !dryRun && !result.startsWith("Error") && !result.startsWith("No ")
+        if (result == null) return "Error: action invocation returned no result";
+        if (!dryRun && !result.startsWith("Error") && !result.startsWith("No ")
             && !result.startsWith(ACTION_PREFIX) && !result.startsWith("Preview")) {
             FileTool.followFileIfEnabled(project, pathStr, targetLine, targetLine,
                 FileTool.HIGHLIGHT_EDIT, FileTool.agentLabel(project) + " applied action");
