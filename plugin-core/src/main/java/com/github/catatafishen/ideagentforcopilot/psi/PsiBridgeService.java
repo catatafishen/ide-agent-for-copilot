@@ -42,6 +42,14 @@ public final class PsiBridgeService implements Disposable {
     public static final Topic<ToolCallListener> TOOL_CALL_TOPIC =
         Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
 
+    /**
+     * Serializes write tool calls (non-read-only) to prevent EDT flooding.
+     * The MCP HTTP server uses a thread pool; multiple concurrent write/heavy operations
+     * all posting lambdas via invokeLater can saturate the EDT queue and freeze the IDE.
+     * A single-permit semaphore ensures only one such operation runs at a time.
+     */
+    private final java.util.concurrent.Semaphore writeToolSemaphore = new java.util.concurrent.Semaphore(1);
+
     private final Project project;
     private final ToolRegistry registry;
     private final java.util.Set<String> sessionAllowedTools =
@@ -108,6 +116,15 @@ public final class PsiBridgeService implements Disposable {
         long startMs = System.currentTimeMillis();
         boolean success = true;
 
+        // Serialize non-read-only tool calls to prevent EDT flooding.
+        // Multiple concurrent write/heavy operations each posting lambdas via invokeLater
+        // can saturate the EDT queue and cause the IDE to freeze.
+        boolean needsLock = !def.isReadOnly();
+        if (needsLock) {
+            String lockError = acquireWriteLock(toolName, startMs);
+            if (lockError != null) return lockError;
+        }
+
         // Subscribe to daemon events BEFORE the write to avoid the race where
         // the daemon finishes before we subscribe and we miss the event entirely.
         // For existing files, we resolve the VirtualFile now and make the waiter file-specific.
@@ -147,6 +164,7 @@ public final class PsiBridgeService implements Disposable {
             success = false;
             return "Error: " + e.getMessage();
         } finally {
+            if (needsLock) writeToolSemaphore.release();
             fireToolCallEvent(toolName, startMs, success);
         }
     }
@@ -164,6 +182,25 @@ public final class PsiBridgeService implements Disposable {
      */
     public void unregisterTool(String id) {
         registry.unregister(id);
+    }
+
+    /**
+     * Tries to acquire the write-tool serialization semaphore within 60 seconds.
+     * Returns {@code null} on success, or an error message string if acquisition fails.
+     */
+    @Nullable
+    private String acquireWriteLock(String toolName, long startMs) {
+        try {
+            if (!writeToolSemaphore.tryAcquire(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                fireToolCallEvent(toolName, startMs, false);
+                return "Error: IDE is busy processing another write operation. Please retry shortly.";
+            }
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            fireToolCallEvent(toolName, startMs, false);
+            return "Error: Interrupted waiting for write lock.";
+        }
     }
 
     private void fireToolCallEvent(String toolName, long startTimeMs, boolean success) {
@@ -208,7 +245,7 @@ public final class PsiBridgeService implements Disposable {
         String displayName = entry != null ? entry.displayName() : toolName;
         String reqId = java.util.UUID.randomUUID().toString();
 
-        // Build a structured context JSON for the permission bubble: {question, args}
+        // Build a structured context JSON for the permission bubble, containing question and args
         String resolvedQuestion = entry != null ? entry.resolvePermissionQuestion(arguments) : null;
         com.google.gson.JsonObject context = new com.google.gson.JsonObject();
         context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
@@ -372,13 +409,11 @@ public final class PsiBridgeService implements Disposable {
      */
     private static long getDocumentStamp(@Nullable com.intellij.openapi.vfs.VirtualFile vf) {
         if (vf == null) return -1L;
-        // Cast required for overload disambiguation: runReadAction(Computable) vs runReadAction(ThrowableComputable)
-        return com.intellij.openapi.application.ApplicationManager.getApplication()
-            .runReadAction((com.intellij.openapi.util.Computable<Long>) () -> {
-                com.intellij.openapi.editor.Document doc =
-                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf);
-                return doc != null ? doc.getModificationStamp() : -1L;
-            });
+        return com.intellij.openapi.application.ReadAction.compute(() -> {
+            com.intellij.openapi.editor.Document doc =
+                com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf);
+            return doc != null ? doc.getModificationStamp() : -1L;
+        });
     }
 
     private String appendAutoHighlights(String writeResult, String path, DaemonWaiter preWriteWaiter) {

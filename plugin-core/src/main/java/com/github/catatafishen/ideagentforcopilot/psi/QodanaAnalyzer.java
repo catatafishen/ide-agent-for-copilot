@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -15,7 +16,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Handles Qodana analysis execution and SARIF result parsing.
@@ -38,7 +41,7 @@ public final class QodanaAnalyzer {
         this.project = project;
     }
 
-    public String runQodana(JsonObject args) throws Exception {
+    public String runQodana(JsonObject args) throws ExecutionException, InterruptedException, TimeoutException {
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
@@ -173,7 +176,7 @@ public final class QodanaAnalyzer {
 
     private void waitForQodanaCompletion(Object qodanaService, Class<?> serviceClass,
                                          int limit, CompletableFuture<String> resultFuture)
-        throws Exception {
+        throws ReflectiveOperationException, InterruptedException, IOException {
         var getRunState = serviceClass.getMethod("getRunState");
         var runStateFlow = getRunState.invoke(qodanaService);
         var getValueMethod = runStateFlow.getClass().getMethod("getValue");
@@ -185,7 +188,7 @@ public final class QodanaAnalyzer {
     }
 
     private boolean pollQodanaRunState(java.lang.reflect.Method getValueMethod, Object runStateFlow,
-                                       CompletableFuture<String> resultFuture) throws Exception {
+                                       CompletableFuture<String> resultFuture) throws InterruptedException {
         CompletableFuture<Boolean> done = new CompletableFuture<>();
         var scheduler = AppExecutorUtil.getAppScheduledExecutorService();
         final int maxPolls = 480;
@@ -235,7 +238,7 @@ public final class QodanaAnalyzer {
 
     private void tryReadQodanaSarifResults(Object qodanaService, Class<?> serviceClass,
                                            java.lang.reflect.Method getValueMethod, int limit,
-                                           CompletableFuture<String> resultFuture) throws Exception {
+                                           CompletableFuture<String> resultFuture) throws ReflectiveOperationException, IOException {
         var getRunsResults = serviceClass.getMethod("getRunsResults");
         var runsResultsFlow = getRunsResults.invoke(qodanaService);
         var outputs = (Set<?>) getValueMethod.invoke(runsResultsFlow);

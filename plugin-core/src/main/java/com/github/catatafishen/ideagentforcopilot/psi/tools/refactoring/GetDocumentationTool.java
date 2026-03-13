@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -48,7 +49,7 @@ public final class GetDocumentationTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {PARAM_SYMBOL, TYPE_STRING, "Fully qualified symbol name (e.g. java.util.List)"}
         }, PARAM_SYMBOL);
@@ -60,12 +61,12 @@ public final class GetDocumentationTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String symbol = args.has(PARAM_SYMBOL) ? args.get(PARAM_SYMBOL).getAsString() : "";
         if (symbol.isEmpty())
             return "Error: 'symbol' parameter required (e.g. java.util.List, com.google.gson.Gson.fromJson)";
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        return ReadAction.compute(() -> {
             try {
                 GlobalSearchScope scope = GlobalSearchScope.allScope(project);
                 String[] parts = splitSymbolParts(symbol);

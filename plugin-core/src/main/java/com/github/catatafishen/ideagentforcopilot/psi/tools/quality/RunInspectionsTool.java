@@ -3,16 +3,14 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.quality;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -31,6 +29,7 @@ public final class RunInspectionsTool extends QualityTool {
     private static final Logger LOG = Logger.getInstance(RunInspectionsTool.class);
     private static final String SEVERITY_WARNING = "WARNING";
     private static final String FORMAT_FINDING = "%s:%d [%s/%s] %s";
+    private static final String PARAM_MIN_SEVERITY = "min_severity";
 
     // Cached inspection results for pagination
     private List<String> cachedInspectionResults;
@@ -63,24 +62,27 @@ public final class RunInspectionsTool extends QualityTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {PARAM_SCOPE, TYPE_STRING, "Optional: file or directory path to inspect. Examples: 'src/main/java/com/example/MyClass.java' or 'src/main/java/com/example'"},
             {PARAM_LIMIT, TYPE_INTEGER, "Page size (default: 100). Maximum problems per response"},
             {PARAM_OFFSET, TYPE_INTEGER, "Number of problems to skip (default: 0). Use for pagination"},
-            {"min_severity", TYPE_STRING, "Minimum severity filter. Options: ERROR, WARNING, WEAK_WARNING, INFO. Default: all severities included. Only set this if the user explicitly asks to filter by severity."}
+            {PARAM_MIN_SEVERITY, TYPE_STRING, "Minimum severity filter. Options: ERROR, WARNING, WEAK_WARNING, INFO. Default: all severities included. Only set this if the user explicitly asks to filter by severity."}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
         int offset = args.has(PARAM_OFFSET) ? args.get(PARAM_OFFSET).getAsInt() : 0;
-        String minSeverity = args.has("min_severity") ? args.get("min_severity").getAsString() : null;
+        String minSeverity = args.has(PARAM_MIN_SEVERITY) ? args.get(PARAM_MIN_SEVERITY).getAsString() : null;
         String scopePath = args.has(PARAM_SCOPE) ? args.get(PARAM_SCOPE).getAsString() : null;
 
         if (!project.isInitialized()) {
             return ERROR_IDE_INITIALIZING;
+        }
+        if (com.intellij.openapi.project.DumbService.isDumb(project)) {
+            return "IDE is currently indexing the project. Please wait for indexing to finish and try again.";
         }
 
         // Serve from cache if available and fresh (5 min TTL)
@@ -158,49 +160,17 @@ public final class RunInspectionsTool extends QualityTool {
             PlatformApiCompat.runFullInspections(project, scope, currentProfile, ctx -> {
                 LOG.info("Inspection analysis completed, collecting results...");
                 LOG.info("Used tools count: " + ctx.getUsedTools().size());
-                scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
-                    new InspectionPageParams(profileName, offset, limit), resultFuture, 0);
+                // Collect synchronously while the context is still valid — the callback is
+                // invoked BEFORE super.notifyInspectionsFinished which calls cleanup().
+                InspectionCollectionResult collected = ReadAction.compute(
+                    () -> collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
+                cacheAndCompleteInspection(collected, new InspectionPageParams(profileName, offset, limit), resultFuture);
             });
 
         } catch (Exception e) {
             LOG.error("Error setting up inspections", e);
             resultFuture.complete("Error setting up inspections: " + e.getMessage());
         }
-    }
-
-    /**
-     * Schedule inspection result collection with retries using the app scheduler.
-     * Retries up to 3 times with increasing delay (0ms, 500ms, 1000ms) to allow
-     * tool presentations to populate.
-     */
-    private void scheduleInspectionCollection(
-        com.intellij.codeInspection.ex.GlobalInspectionContextEx ctx, Map<String, Integer> severityRank, int requiredRank,
-        String basePath, InspectionPageParams pageParams,
-        CompletableFuture<String> resultFuture, int attempt) {
-
-        long delayMs = attempt > 0 ? 500L * attempt : 0;
-
-        AppExecutorUtil.getAppScheduledExecutorService().schedule(() -> {
-            try {
-                //noinspection RedundantCast - required to disambiguate Computable<T> vs ThrowableComputable<T,E> overloads
-                InspectionCollectionResult collected = ApplicationManager.getApplication().runReadAction(
-                    (com.intellij.openapi.util.Computable<InspectionCollectionResult>) () ->
-                        collectInspectionProblems(ctx, severityRank, requiredRank, basePath));
-
-                if (collected.problems.isEmpty() && attempt < 2) {
-                    LOG.info("Inspection collection attempt " + (attempt + 1) +
-                        " found 0 problems, scheduling retry...");
-                    scheduleInspectionCollection(ctx, severityRank, requiredRank, basePath,
-                        pageParams, resultFuture, attempt + 1);
-                    return;
-                }
-
-                cacheAndCompleteInspection(collected, pageParams, resultFuture);
-            } catch (Exception e) {
-                LOG.error("Error collecting inspection results", e);
-                resultFuture.completeExceptionally(e);
-            }
-        }, delayMs, TimeUnit.MILLISECONDS);
     }
 
     private void cacheAndCompleteInspection(InspectionCollectionResult collected,
@@ -237,10 +207,8 @@ public final class RunInspectionsTool extends QualityTool {
             return null;
         }
         if (scopeFile.isDirectory()) {
-            //noinspection RedundantCast - required to disambiguate Computable<T> vs ThrowableComputable<T,E> overloads
-            PsiDirectory psiDir = ApplicationManager.getApplication().runReadAction(
-                (com.intellij.openapi.util.Computable<PsiDirectory>) () ->
-                    PsiManager.getInstance(project).findDirectory(scopeFile)
+            PsiDirectory psiDir = ReadAction.compute(
+                () -> PsiManager.getInstance(project).findDirectory(scopeFile)
             );
             if (psiDir == null) {
                 resultFuture.complete("Error: Cannot resolve directory: " + scopePath);
@@ -249,10 +217,8 @@ public final class RunInspectionsTool extends QualityTool {
             LOG.info("Analysis scope: directory " + scopePath);
             return new com.intellij.analysis.AnalysisScope(psiDir);
         }
-        //noinspection RedundantCast - required to disambiguate Computable<T> vs ThrowableComputable<T,E> overloads
-        PsiFile psiFile = ApplicationManager.getApplication().runReadAction(
-            (com.intellij.openapi.util.Computable<PsiFile>) () ->
-                PsiManager.getInstance(project).findFile(scopeFile));
+        PsiFile psiFile = ReadAction.compute(
+            () -> PsiManager.getInstance(project).findFile(scopeFile));
         if (psiFile == null) {
             resultFuture.complete(ToolUtils.ERROR_PREFIX + ToolUtils.ERROR_CANNOT_PARSE + scopePath);
             return null;

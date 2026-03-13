@@ -4,7 +4,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 
 import java.awt.*;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -18,10 +17,7 @@ import java.util.concurrent.TimeoutException;
  * <p>
  * {@link #invokeAndWait(Runnable)} includes a timeout so that a modal dialog
  * can never cause an MCP tool to block indefinitely — it will time out and
- * report which dialog is blocking. Callers using the
- * {@code invokeLater + CompletableFuture.get(timeout)} pattern can use
- * {@link #awaitOnEdt(CompletableFuture, long, TimeUnit)} for the same
- * modal-aware timeout behavior.
+ * report which dialog is blocking.
  */
 public final class EdtUtil {
 
@@ -57,7 +53,7 @@ public final class EdtUtil {
             try {
                 runnable.run();
                 future.complete(null);
-            } catch (Throwable t) {
+            } catch (Exception t) {
                 future.completeExceptionally(t);
             }
         }, ModalityState.defaultModalityState());
@@ -66,55 +62,17 @@ public final class EdtUtil {
             future.get(DEFAULT_INVOKE_AND_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             String detail = describeModalBlocker();
-            throw new RuntimeException(
+            throw new IllegalStateException(
                 "EDT operation timed out after " + DEFAULT_INVOKE_AND_WAIT_TIMEOUT_SECONDS + "s." + detail, e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof RuntimeException re) throw re;
             if (cause instanceof Error err) throw err;
-            throw new RuntimeException(cause);
+            throw new IllegalStateException(cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("EDT operation interrupted", e);
+            throw new IllegalStateException("EDT operation interrupted", e);
         }
-    }
-
-    /**
-     * Wait for a {@link CompletableFuture} that depends on EDT execution.
-     * <p>
-     * Drop-in replacement for {@code future.get(timeout, unit)} that enriches
-     * {@link TimeoutException} messages with modal-dialog information when a
-     * timeout occurs.
-     *
-     * @return the future's result
-     * @throws TimeoutException     if the timeout elapses (message includes modal info)
-     * @throws ExecutionException   if the future completed exceptionally
-     * @throws InterruptedException if the current thread is interrupted
-     */
-    public static <T> T awaitOnEdt(CompletableFuture<T> future, long timeout, TimeUnit unit)
-        throws TimeoutException, ExecutionException, InterruptedException {
-        try {
-            return future.get(timeout, unit);
-        } catch (TimeoutException e) {
-            String detail = describeModalBlocker();
-            if (!detail.isEmpty()) {
-                throw new TimeoutException("Operation timed out after " + timeout + " "
-                    + unit.toString().toLowerCase(Locale.ROOT) + "." + detail);
-            }
-            throw e;
-        }
-    }
-
-    /**
-     * Check whether any modal dialog is currently visible in the IDE.
-     */
-    public static boolean isModalDialogOpen() {
-        for (Window window : Window.getWindows()) {
-            if (window instanceof Dialog dialog && dialog.isModal() && dialog.isVisible()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

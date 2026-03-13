@@ -179,7 +179,15 @@ public interface ToolDefinition {
      * Executes the tool with the given JSON arguments.
      * Returns null if this definition does not provide an execution handler
      * (e.g. built-in agent tools that are handled by the Copilot CLI).
+     *
+     * <p>The {@code throws Exception} declaration is intentional: this is an open extension
+     * point — any tool implementation may need to propagate checked exceptions (ExecutionException,
+     * InterruptedException, IOException, ReflectiveOperationException, …). Enumerating them all
+     * here would not add value and would force every implementation to declare an equally long list.</p>
      */
+    // Interface extension point — implementations may throw any checked exception; enumerating all
+    // possibilities at the interface level would be more verbose without adding safety.
+    @SuppressWarnings("java:S112")
     default @Nullable String execute(@NotNull JsonObject args) throws Exception {
         return null;
     }

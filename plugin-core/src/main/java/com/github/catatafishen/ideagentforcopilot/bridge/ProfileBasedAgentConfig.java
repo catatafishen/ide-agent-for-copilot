@@ -60,10 +60,12 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
     public void prepareForLaunch(@Nullable String projectBasePath) {
         String prependTarget = profile.getPrependInstructionsTo();
         if (prependTarget != null && !prependTarget.isEmpty()) {
-            InstructionsManager.ensureInstructions(projectBasePath, prependTarget);
+            InstructionsManager.ensureInstructions(projectBasePath, prependTarget,
+                profile.getAdditionalInstructions());
         }
-        if (profile.isEnsureCopilotAgents()) {
-            CopilotAgentsManager.ensureAgents(projectBasePath);
+        List<String> bundledAgents = profile.getBundledAgentFiles();
+        if (!bundledAgents.isEmpty()) {
+            CopilotAgentsManager.ensureAgents(projectBasePath, bundledAgents);
         }
     }
 
@@ -113,60 +115,52 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         resolvedBinaryPath = binaryPath;
         List<String> cmd = new ArrayList<>();
 
-        // Resolve NVM-managed node for the binary
         addNodeAndCommand(cmd, binaryPath);
-
-        // ACP activation args
         cmd.addAll(profile.getAcpArgs());
+        addModelFlagIfSupported(cmd);
+        addConfigDirIfSupported(cmd, projectBasePath);
 
-        // Model flag
-        if (profile.isSupportsModelFlag()) {
-            String savedModel = getSettingsPrefix() != null
-                ? new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(profile.getId()).getSelectedModel()
-                : null;
-            if (savedModel != null && !savedModel.isEmpty()) {
-                cmd.add("--model");
-                cmd.add(savedModel);
-                LOG.info(profile.getDisplayName() + " model set to: " + savedModel);
-            }
-        }
-
-        // Config dir
-        if (profile.isSupportsConfigDir() && projectBasePath != null) {
-            Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
-            cmd.add("--config-dir");
-            cmd.add(agentWorkPath.toString());
-        }
-
-        // MCP injection via --additional-mcp-config flag
         if (profile.isSupportsMcpConfigFlag() && profile.getMcpMethod() == McpInjectionMethod.CONFIG_FLAG) {
             addMcpConfigFlag(cmd, mcpPort);
         }
-
-        // Permission injection via CLI flags (e.g., Copilot CLI --allow-tool / --deny-tool)
         if (profile.getPermissionInjectionMethod() == PermissionInjectionMethod.CLI_FLAGS) {
             addPermissionCliFlags(cmd);
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
-
-        // MCP injection via environment variable
         if (profile.getMcpMethod() == McpInjectionMethod.ENV_VAR && mcpPort > 0) {
-            String envVarName = profile.getMcpEnvVarName();
-            if (!envVarName.isEmpty()) {
-                String resolved = resolveMcpTemplate(mcpPort);
-                if (resolved != null) {
-                    // For CONFIG_JSON permission injection, merge permissions into the JSON
-                    if (profile.getPermissionInjectionMethod() == PermissionInjectionMethod.CONFIG_JSON) {
-                        resolved = mergePermissionsIntoConfig(resolved);
-                    }
-                    pb.environment().put(envVarName, resolved);
-                    LOG.info(profile.getDisplayName() + " MCP config injected via env var " + envVarName);
-                }
-            }
+            injectMcpViaEnvVar(pb, mcpPort);
         }
-
         return pb;
+    }
+
+    private void addModelFlagIfSupported(@NotNull List<String> cmd) {
+        if (!profile.isSupportsModelFlag()) return;
+        String savedModel = new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(getSettingsPrefix()).getSelectedModel();
+        if (savedModel != null && !savedModel.isEmpty()) {
+            cmd.add("--model");
+            cmd.add(savedModel);
+            LOG.info(profile.getDisplayName() + " model set to: " + savedModel);
+        }
+    }
+
+    private void addConfigDirIfSupported(@NotNull List<String> cmd, @Nullable String projectBasePath) {
+        if (!profile.isSupportsConfigDir() || projectBasePath == null) return;
+        Path agentWorkPath = Path.of(projectBasePath, ".agent-work");
+        cmd.add("--config-dir");
+        cmd.add(agentWorkPath.toString());
+    }
+
+    private void injectMcpViaEnvVar(@NotNull ProcessBuilder pb, int mcpPort) {
+        String envVarName = profile.getMcpEnvVarName();
+        if (envVarName.isEmpty()) return;
+        String resolved = resolveMcpTemplate(mcpPort);
+        if (resolved == null) return;
+        if (profile.getPermissionInjectionMethod() == PermissionInjectionMethod.CONFIG_JSON) {
+            resolved = mergePermissionsIntoConfig(resolved);
+        }
+        pb.environment().put(envVarName, resolved);
+        LOG.info(profile.getDisplayName() + " MCP config injected via env var " + envVarName);
     }
 
     @Override
@@ -220,7 +214,7 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    @Nullable
+    @NotNull
     private String getSettingsPrefix() {
         return profile.getId();
     }
@@ -348,53 +342,46 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         }
     }
 
-    /**
-     * Scan known agent persistent MCP config files for an entry whose URL already points to
-     * {@code http://127.0.0.1:{mcpPort}/mcp}. Returns the registered server name if found,
-     * or {@code null} if no match is detected.
-     *
-     * <p>Checked locations (in order):
-     * <ul>
-     *   <li>{@code ~/.copilot/mcp-config.json} — Copilot CLI persistent MCP config</li>
-     *   <li>{@code ~/.config/github-copilot/mcp.json} — alternative Copilot config path</li>
-     * </ul>
-     * Each file is expected to have a {@code mcpServers} object (or entries at the root) where
-     * each key is the server name and each value has a {@code "url"} field.
-     */
     @Nullable
     private String detectExistingMcpRegistration(int mcpPort) {
         String targetUrl = "http://127.0.0.1:" + mcpPort + "/mcp";
         String userHome = System.getProperty("user.home", "");
-
         List<Path> candidates = List.of(
             Path.of(userHome, ".copilot", "mcp-config.json"),
             Path.of(userHome, ".config", "github-copilot", "mcp.json")
         );
-
         for (Path configPath : candidates) {
-            if (!configPath.toFile().exists()) continue;
-            try {
-                String content = Files.readString(configPath);
-                JsonObject root = JsonParser.parseString(content).getAsJsonObject();
-
-                // Support both nested and flat MCP server config layouts
-                JsonObject servers = root.has(MCP_SERVERS_KEY) && root.get(MCP_SERVERS_KEY).isJsonObject()
-                    ? root.getAsJsonObject(MCP_SERVERS_KEY)
-                    : root;
-
-                for (Map.Entry<String, JsonElement> entry : servers.entrySet()) {
-                    if (!entry.getValue().isJsonObject()) continue;
-                    JsonObject server = entry.getValue().getAsJsonObject();
-                    String url = server.has("url") ? server.get("url").getAsString() : "";
-                    if (targetUrl.equals(url)) {
-                        LOG.info("Found existing MCP registration '" + entry.getKey()
-                            + "' → " + url + " in " + configPath);
-                        return entry.getKey();
-                    }
-                }
-            } catch (Exception e) {
-                LOG.debug("Could not read MCP config at " + configPath, e);
+            String found = scanConfigFileForMcpRegistration(configPath, targetUrl);
+            if (found != null) {
+                effectiveMcpServerName = found;
+                LOG.info("MCP server already registered as '" + found + "' at port " + mcpPort
+                    + " — skipping injection, using existing registration");
+                return found;
             }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String scanConfigFileForMcpRegistration(Path configPath, String targetUrl) {
+        if (!configPath.toFile().exists()) return null;
+        try {
+            String content = Files.readString(configPath);
+            JsonObject root = JsonParser.parseString(content).getAsJsonObject();
+            JsonObject servers = root.has(MCP_SERVERS_KEY) && root.get(MCP_SERVERS_KEY).isJsonObject()
+                ? root.getAsJsonObject(MCP_SERVERS_KEY)
+                : root;
+            for (Map.Entry<String, JsonElement> entry : servers.entrySet()) {
+                if (!entry.getValue().isJsonObject()) continue;
+                JsonObject server = entry.getValue().getAsJsonObject();
+                String url = server.has("url") ? server.get("url").getAsString() : "";
+                if (targetUrl.equals(url)) {
+                    LOG.info("Found existing MCP registration '" + entry.getKey() + "' → " + url + " in " + configPath);
+                    return entry.getKey();
+                }
+            }
+        } catch (Exception e) {
+            LOG.debug("Could not read MCP config at " + configPath, e);
         }
         return null;
     }
@@ -513,10 +500,6 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         return new File(javaPath).exists() ? javaPath : null;
     }
 
-    /**
-     * Parses auth method from the standard ACP authMethods array.
-     * Works for all known agents (Copilot, Claude, Kiro, OpenCode, etc.).
-     */
     @Nullable
     static AuthMethod parseStandardAuthMethod(@Nullable JsonArray authMethods) {
         if (authMethods == null || authMethods.isEmpty()) return null;
@@ -525,20 +508,21 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         method.setId(first.has("id") ? first.get("id").getAsString() : "");
         method.setName(first.has("name") ? first.get("name").getAsString() : "");
         method.setDescription(first.has("description") ? first.get("description").getAsString() : "");
-        if (first.has("_meta")) {
-            JsonObject meta = first.getAsJsonObject("_meta");
-            if (meta.has("terminal-auth")) {
-                JsonObject termAuth = meta.getAsJsonObject("terminal-auth");
-                method.setCommand(termAuth.has("command") ? termAuth.get("command").getAsString() : null);
-                if (termAuth.has("args")) {
-                    List<String> args = new ArrayList<>();
-                    for (JsonElement a : termAuth.getAsJsonArray("args")) {
-                        args.add(a.getAsString());
-                    }
-                    method.setArgs(args);
-                }
-            }
-        }
+        parseTerminalAuthFromMeta(first, method);
         return method;
+    }
+
+    private static void parseTerminalAuthFromMeta(JsonObject first, AuthMethod method) {
+        if (!first.has("_meta")) return;
+        JsonObject meta = first.getAsJsonObject("_meta");
+        if (!meta.has("terminal-auth")) return;
+        JsonObject termAuth = meta.getAsJsonObject("terminal-auth");
+        method.setCommand(termAuth.has("command") ? termAuth.get("command").getAsString() : null);
+        if (!termAuth.has("args")) return;
+        List<String> args = new ArrayList<>();
+        for (JsonElement a : termAuth.getAsJsonArray("args")) {
+            args.add(a.getAsString());
+        }
+        method.setArgs(args);
     }
 }

@@ -1,11 +1,6 @@
 import {b64, escHtml} from './helpers';
 import type {TurnContext} from './types';
 
-interface TurnStats {
-    model?: string;
-    mult?: string;
-}
-
 const ChatController = {
     _msgs(): HTMLElement {
         return document.querySelector('#messages')!;
@@ -16,7 +11,11 @@ const ChatController = {
         forceScroll(): void;
         workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
     } | null {
-        return document.querySelector('chat-container') as any;
+        return document.querySelector<HTMLElement & {
+            scrollIfNeeded(): void;
+            forceScroll(): void;
+            workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
+        }>('chat-container');
     },
 
     _resetWorkingTimer(): void {
@@ -213,8 +212,8 @@ const ChatController = {
         chip.setAttribute('label', title);
         chip.setAttribute('status', 'running');
         if (kind) chip.setAttribute('kind', kind);
-        (chip as HTMLElement).dataset.chipFor = id;
-        if (paramsJson) (chip as HTMLElement).dataset.params = paramsJson;
+        chip.dataset.chipFor = id;
+        if (paramsJson) chip.dataset.params = paramsJson;
         ctx.meta!.appendChild(chip);
         ctx.meta!.classList.add('show');
         this._container()?.scrollIfNeeded();
@@ -235,7 +234,7 @@ const ChatController = {
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
         chip.setAttribute('color-index', String(colorIndex));
-        (chip as HTMLElement).dataset.chipFor = 'sa-' + sectionId;
+        chip.dataset.chipFor = 'sa-' + sectionId;
         ctx.meta!.appendChild(chip);
         ctx.meta!.classList.add('show');
         const promptBubble = document.createElement('message-bubble');
@@ -323,15 +322,6 @@ const ChatController = {
         const ctx = this._ctx[turnId + '-main'];
         if (ctx?.textBubble && !ctx.textBubble.textContent?.trim()) {
             ctx.textBubble.remove();
-        }
-        let meta: Element | null = ctx?.meta ?? null;
-        if (!meta) {
-            const rows = this._msgs().querySelectorAll('chat-message[type="agent"]:not(.subagent-indent)');
-            if (rows.length) meta = rows[rows.length - 1].querySelector('message-meta');
-        }
-        if (statsJson && meta) {
-            const stats: TurnStats = typeof statsJson === 'string' ? JSON.parse(statsJson) : statsJson;
-            // Model multiplier is shown on the user prompt only, not on agent responses
         }
         if (ctx) {
             ctx.thinkingBlock = null;
@@ -425,8 +415,23 @@ const ChatController = {
         // Insert after the load-more banner (if present), otherwise before existing messages
         const loadMore = msgs.querySelector('load-more');
         const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
+
+        // Measure before insertion so we can restore the visual scroll position.
+        // JCEF does not implement CSS scroll anchoring, so inserting content above the
+        // viewport leaves scrollY at 0, pinning the user to the top and preventing a
+        // second scroll-up trigger.
+        const prevScrollY = window.scrollY;
+        const prevHeight = document.body.scrollHeight;
+
         while (temp.firstChild) {
             msgs.insertBefore(temp.firstChild, insertBefore);
+        }
+
+        // If the user was near the top when load-more fired, compensate for the added
+        // height so they are no longer pinned at scrollY=0 and can scroll up again.
+        if (prevScrollY <= 50) {
+            const addedHeight = document.body.scrollHeight - prevHeight;
+            if (addedHeight > 0) window.scrollBy(0, addedHeight);
         }
     },
 

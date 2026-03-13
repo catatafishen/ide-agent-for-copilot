@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
 public final class RunScratchFileTool extends EditorTool {
 
     private static final Logger LOG = Logger.getInstance(RunScratchFileTool.class);
+    private static final String PARAM_MODULE = "module";
+    private static final String PARAM_INTERACTIVE = "interactive";
 
     public RunScratchFileTool(Project project) {
         super(project);
@@ -57,11 +59,11 @@ public final class RunScratchFileTool extends EditorTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"name", TYPE_STRING, "Scratch file name with extension (e.g., 'test.kts', 'MyApp.java', 'hello.js')"},
-            {"module", TYPE_STRING, "Optional: module name for classpath (e.g., 'plugin-core')"},
-            {"interactive", TYPE_BOOLEAN, "Optional: enable interactive/REPL mode (Kotlin scripts)"}
+            {PARAM_MODULE, TYPE_STRING, "Optional: module name for classpath (e.g., 'plugin-core')"},
+            {PARAM_INTERACTIVE, TYPE_BOOLEAN, "Optional: enable interactive/REPL mode (Kotlin scripts)"}
         }, "name");
     }
 
@@ -71,13 +73,13 @@ public final class RunScratchFileTool extends EditorTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("name")) {
             return "Error: 'name' parameter is required (scratch file name, e.g. 'test.kts')";
         }
         String name = args.get("name").getAsString();
-        String moduleName = args.has("module") ? args.get("module").getAsString() : "";
-        boolean interactive = args.has("interactive") && args.get("interactive").getAsBoolean();
+        String moduleName = args.has(PARAM_MODULE) ? args.get(PARAM_MODULE).getAsString() : "";
+        boolean interactive = args.has(PARAM_INTERACTIVE) && args.get(PARAM_INTERACTIVE).getAsBoolean();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 

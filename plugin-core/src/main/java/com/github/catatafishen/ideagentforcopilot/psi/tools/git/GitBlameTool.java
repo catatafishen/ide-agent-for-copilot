@@ -4,16 +4,15 @@ import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitBlameRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Shows per-line authorship for a file, optionally restricted to a line range.
- */
 @SuppressWarnings("java:S112")
 public final class GitBlameTool extends GitTool {
+
+    private static final String PARAM_LINE_START = "line_start";
+    private static final String PARAM_LINE_END = "line_end";
 
     public GitBlameTool(Project project) {
         super(project);
@@ -40,16 +39,16 @@ public final class GitBlameTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "File path to blame"},
-            {"line_start", TYPE_INTEGER, "Start line number for partial blame"},
-            {"line_end", TYPE_INTEGER, "End line number for partial blame"}
+            {PARAM_LINE_START, TYPE_INTEGER, "Start line number for partial blame"},
+            {PARAM_LINE_END, TYPE_INTEGER, "End line number for partial blame"}
         }, "path");
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("path") || args.get("path").getAsString().isEmpty()) {
             return "Error: 'path' parameter is required";
         }
@@ -58,9 +57,9 @@ public final class GitBlameTool extends GitTool {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("blame");
 
-        if (args.has("line_start") && args.has("line_end")) {
-            int lineStart = args.get("line_start").getAsInt();
-            int lineEnd = args.get("line_end").getAsInt();
+        if (args.has(PARAM_LINE_START) && args.has(PARAM_LINE_END)) {
+            int lineStart = args.get(PARAM_LINE_START).getAsInt();
+            int lineEnd = args.get(PARAM_LINE_END).getAsInt();
             cmdArgs.add("-L");
             cmdArgs.add(lineStart + "," + lineEnd);
         }

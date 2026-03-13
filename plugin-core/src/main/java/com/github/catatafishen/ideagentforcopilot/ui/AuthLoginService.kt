@@ -101,17 +101,6 @@ internal class AuthLoginService(private val project: Project) {
         return command.split(" ").filter { it.isNotEmpty() }
     }
 
-    /**
-     * Attempts to run the auth command via [ProcessBuilder], capturing stdout line-by-line
-     * to extract the device code and verification URL.
-     *
-     * @param onDeviceCode  called on EDT when a device code + URL are parsed from stdout
-     * @param onAuthComplete called on EDT when the process exits successfully (auth done)
-     * @param onFallback     called on EDT if we cannot parse or the process fails — caller
-     *                       should open the embedded terminal as a fallback
-     * @return the spawned [Process], or null if it could not be started.  Callers should
-     *         [Process.destroy] it when no longer needed (e.g. banner dismissed).
-     */
     fun startInlineAuth(
         onDeviceCode: (DeviceCodeInfo) -> Unit,
         onAuthComplete: () -> Unit,
@@ -131,41 +120,50 @@ internal class AuthLoginService(private val project: Project) {
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                var foundCode = false
-                var pendingCode: String? = null
-                var pendingUrl: String? = null
-
-                process.inputStream.bufferedReader().use { reader ->
-                    reader.forEachLine { line ->
-                        val parsed = parseDeviceCode(line, pendingCode, pendingUrl)
-                        if (parsed.code != null) pendingCode = parsed.code
-                        if (parsed.url != null) pendingUrl = parsed.url
-
-                        if (pendingCode != null && pendingUrl != null && !foundCode) {
-                            foundCode = true
-                            val info = DeviceCodeInfo(pendingCode, pendingUrl)
-                            ApplicationManager.getApplication().invokeLater { onDeviceCode(info) }
-                        }
-                    }
-                }
-
+                val foundCode = readAuthProcessOutput(process, onDeviceCode)
                 val exitCode = process.waitFor()
                 ApplicationManager.getApplication().invokeLater {
-                    if (exitCode == 0) {
-                        onAuthComplete()
-                    } else if (!foundCode) {
-                        LOG.info("Inline auth: process exited with $exitCode, no device code found — falling back")
-                        onFallback()
-                    }
-                    // If we did show a code but exit != 0, user probably cancelled — do nothing
+                    handleAuthProcessExit(exitCode, foundCode, onAuthComplete, onFallback)
                 }
             } catch (e: Exception) {
-                if (!process.isAlive) return@executeOnPooledThread // killed intentionally
+                if (!process.isAlive) return@executeOnPooledThread
                 LOG.warn("Inline auth: reader failed, falling back", e)
                 ApplicationManager.getApplication().invokeLater { onFallback() }
             }
         }
         return process
+    }
+
+    private fun readAuthProcessOutput(process: Process, onDeviceCode: (DeviceCodeInfo) -> Unit): Boolean {
+        var foundCode = false
+        var pendingCode: String? = null
+        var pendingUrl: String? = null
+        process.inputStream.bufferedReader().use { reader ->
+            reader.forEachLine { line ->
+                val parsed = parseDeviceCode(line, pendingCode, pendingUrl)
+                if (parsed.code != null) pendingCode = parsed.code
+                if (parsed.url != null) pendingUrl = parsed.url
+                if (pendingCode != null && pendingUrl != null && !foundCode) {
+                    foundCode = true
+                    val info = DeviceCodeInfo(pendingCode, pendingUrl)
+                    ApplicationManager.getApplication().invokeLater { onDeviceCode(info) }
+                }
+            }
+        }
+        return foundCode
+    }
+
+    private fun handleAuthProcessExit(
+        exitCode: Int, foundCode: Boolean,
+        onAuthComplete: () -> Unit, onFallback: () -> Unit
+    ) {
+        if (exitCode == 0) {
+            onAuthComplete()
+        } else if (!foundCode) {
+            LOG.info("Inline auth: process exited with $exitCode, no device code found — falling back")
+            onFallback()
+        }
+        // If we did show a code but exit != 0, user probably cancelled — do nothing
     }
 
     private data class ParseResult(val code: String?, val url: String?)

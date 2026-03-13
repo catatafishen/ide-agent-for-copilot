@@ -67,6 +67,7 @@ public class AcpClient implements Closeable {
     private static final String TOOL_DENIED_DEFAULT_MSG_TEMPLATE = "⚠ Tool denied. Use tools with '%s' prefix instead.";
 
     private static final String TOOL_PREFIX = " (tool=";
+    private static final String TOOL_CALL_KEY = "toolCall";
 
     // Note: DENIED_PERMISSION_KINDS was removed — permission denial is now handled by
     // per-tool ToolPermission settings in handlePermissionRequest, not a static set.
@@ -106,7 +107,6 @@ public class AcpClient implements Closeable {
 
     // Permission tracking: set when a built-in permission is denied during a prompt turn
     private volatile boolean builtInActionDeniedDuringTurn = false;
-    private volatile String lastDeniedKind = "";
 
     // Sub-agent tracking: set by UI layer when a Task tool call is active
     private volatile boolean subAgentActive = false;
@@ -453,10 +453,6 @@ public class AcpClient implements Closeable {
         } finally {
             notificationListeners.remove(listener);
         }
-    }
-
-    private String getLastDeniedKind() {
-        return lastDeniedKind != null ? lastDeniedKind : UNKNOWN;
     }
 
     /**
@@ -991,13 +987,12 @@ public class AcpClient implements Closeable {
         String permTitle = "";
         JsonObject toolCall = null;
 
-        if (reqParams != null && reqParams.has("toolCall")) {
-            toolCall = reqParams.getAsJsonObject("toolCall");
+        if (reqParams != null && reqParams.has(TOOL_CALL_KEY)) {
+            toolCall = reqParams.getAsJsonObject(TOOL_CALL_KEY);
             permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
             permTitle = toolCall.has(TITLE_KEY) ? toolCall.get(TITLE_KEY).getAsString() : "";
         }
         LOG.info("ACP request_permission: kind=" + permKind + " title=" + permTitle);
-        String formattedPermission = formatPermissionDisplay(permKind, permTitle);
         lastActivityTimestamp = System.currentTimeMillis();
         toolCallsInTurn.incrementAndGet();
 
@@ -1019,8 +1014,8 @@ public class AcpClient implements Closeable {
 
         switch (perm) {
             case DENY -> denyPermission(reqId, reqParams, permKind, toolId);
-            case ASK -> handleAskPermission(reqId, reqParams, toolId, permKind, formattedPermission);
-            default -> allowPermission(reqId, reqParams, permKind, toolId, formattedPermission);
+            case ASK -> handleAskPermission(reqId, reqParams, toolId, permKind);
+            default -> allowPermission(reqId, reqParams, permKind, toolId);
         }
     }
 
@@ -1045,7 +1040,7 @@ public class AcpClient implements Closeable {
         if (tool != null) {
             String abuse = tool.detectPermissionAbuse(toolCall);
             if (abuse != null) {
-                denyForAbuse(reqId, reqParams, toolCall, "Tool abuse (" + toolId + "): " + abuse,
+                denyForAbuse(reqId, reqParams, "Tool abuse (" + toolId + "): " + abuse,
                     RUN_COMMAND_ABUSE_PREFIX + abuse);
                 return true;
             }
@@ -1053,7 +1048,7 @@ public class AcpClient implements Closeable {
             // Fallback: check command abuse on raw JSON for unregistered tools (e.g., bash built-in)
             String commandAbuse = detectCommandAbuse(toolCall);
             if (commandAbuse != null) {
-                denyForAbuse(reqId, reqParams, toolCall, "run_command abuse: " + commandAbuse,
+                denyForAbuse(reqId, reqParams, "run_command abuse: " + commandAbuse,
                     RUN_COMMAND_ABUSE_PREFIX + commandAbuse);
                 return true;
             }
@@ -1061,7 +1056,7 @@ public class AcpClient implements Closeable {
 
         // 2. Sub-agent denial via tool definition
         if (subAgentActive && tool != null && tool.denyForSubAgent()) {
-            denyForAbuse(reqId, reqParams, toolCall, "Sub-agent denied: " + toolId,
+            denyForAbuse(reqId, reqParams, "Sub-agent denied: " + toolId,
                 GIT_WRITE_ABUSE_PREFIX + toolId);
             return true;
         }
@@ -1070,7 +1065,7 @@ public class AcpClient implements Closeable {
         if (subAgentActive) {
             String writeAbuse = detectSubAgentWriteTool(toolCall);
             if (writeAbuse != null) {
-                denyForAbuse(reqId, reqParams, toolCall, "Sub-agent write tool: " + writeAbuse,
+                denyForAbuse(reqId, reqParams, "Sub-agent write tool: " + writeAbuse,
                     SUBAGENT_WRITE_ABUSE_PREFIX + writeAbuse);
                 return true;
             }
@@ -1082,7 +1077,7 @@ public class AcpClient implements Closeable {
     /**
      * Deny a permission request for a detected abuse pattern, sending pre-rejection guidance first.
      */
-    private void denyForAbuse(long reqId, @Nullable JsonObject reqParams, @Nullable JsonObject toolCall,
+    private void denyForAbuse(long reqId, @Nullable JsonObject reqParams,
                               String logSuffix, String abusePrefixedKind) {
         String rejectOptionId = findRejectOption(reqParams);
         LOG.info("ACP request_permission: DENYING " + logSuffix);
@@ -1090,7 +1085,6 @@ public class AcpClient implements Closeable {
         String retryMessage = (String) retryParams.get(MESSAGE);
         sendPromptMessage(retryMessage);
         builtInActionDeniedDuringTurn = true;
-        lastDeniedKind = abusePrefixedKind;
         sendPermissionResponse(reqId, rejectOptionId);
     }
 
@@ -1104,7 +1098,6 @@ public class AcpClient implements Closeable {
         String retryMessage = (String) retryParams.get(MESSAGE);
         sendPromptMessage(retryMessage);
         builtInActionDeniedDuringTurn = true;
-        lastDeniedKind = permKind;
         sendPermissionResponse(reqId, rejectOptionId);
     }
 
@@ -1112,7 +1105,7 @@ public class AcpClient implements Closeable {
      * Handle an ASK permission: prompt the UI and block until user responds (120s timeout).
      */
     private void handleAskPermission(long reqId, @Nullable JsonObject reqParams,
-                                     String toolId, String permKind, String formattedPermission) {
+                                     String toolId, String permKind) {
         var listener = permissionRequestListener.get();
         if (listener == null) {
             LOG.warn("ACP request_permission: ASK for " + toolId + " but no listener — auto-denying");
@@ -1122,28 +1115,8 @@ public class AcpClient implements Closeable {
         CompletableFuture<PermissionResponse> future = new CompletableFuture<>();
         ToolDefinition toolEntry = registry != null ? registry.findById(toolId) : null;
         String displayName = toolEntry != null ? toolEntry.displayName() : permKind;
-
-        // Extract structured tool arguments from the ACP toolCall JSON
-        JsonObject toolCallJson = reqParams != null && reqParams.has("toolCall")
-            ? reqParams.getAsJsonObject("toolCall") : null;
-        JsonObject toolArgs = null;
-        if (toolCallJson != null) {
-            for (String wrapper : new String[]{"arguments", "input", "params"}) {
-                if (toolCallJson.has(wrapper) && toolCallJson.get(wrapper).isJsonObject()) {
-                    toolArgs = toolCallJson.getAsJsonObject(wrapper);
-                    break;
-                }
-            }
-        }
-
-        // Build structured context JSON for the permission bubble
-        ToolDefinition def = registry != null ? registry.findById(toolId) : null;
-        String resolvedQuestion = def != null ? def.resolvePermissionQuestion(toolArgs) : null;
-        JsonObject context = new JsonObject();
-        context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
-            : "Can I use " + displayName + "?");
-        if (toolArgs != null) context.add("args", toolArgs);
-        String contextJson = context.toString();
+        JsonObject toolArgs = extractToolArgs(reqParams);
+        String contextJson = buildPermissionContextJson(toolId, toolArgs, displayName);
 
         listener.accept(new PermissionRequest(reqId, toolId, displayName, contextJson, future::complete));
         PermissionResponse response;
@@ -1154,6 +1127,33 @@ public class AcpClient implements Closeable {
             LOG.info("ACP request_permission: ASK timed out / cancelled for " + toolId + " — denying");
             response = PermissionResponse.DENY;
         }
+        dispatchPermissionResponse(response, reqId, reqParams, toolId);
+    }
+
+    @Nullable
+    private JsonObject extractToolArgs(@Nullable JsonObject reqParams) {
+        if (reqParams == null || !reqParams.has(TOOL_CALL_KEY)) return null;
+        JsonObject toolCallJson = reqParams.getAsJsonObject(TOOL_CALL_KEY);
+        for (String wrapper : new String[]{"arguments", "input", PARAMS}) {
+            if (toolCallJson.has(wrapper) && toolCallJson.get(wrapper).isJsonObject()) {
+                return toolCallJson.getAsJsonObject(wrapper);
+            }
+        }
+        return null;
+    }
+
+    private String buildPermissionContextJson(String toolId, @Nullable JsonObject toolArgs, String displayName) {
+        ToolDefinition def = registry != null ? registry.findById(toolId) : null;
+        String resolvedQuestion = def != null ? def.resolvePermissionQuestion(toolArgs) : null;
+        JsonObject context = new JsonObject();
+        context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
+            : "Can I use " + displayName + "?");
+        if (toolArgs != null) context.add("args", toolArgs);
+        return context.toString();
+    }
+
+    private void dispatchPermissionResponse(PermissionResponse response, long reqId,
+                                            @Nullable JsonObject reqParams, String toolId) {
         switch (response) {
             case ALLOW_SESSION -> {
                 sessionAllowedTools.add(toolId);
@@ -1167,7 +1167,6 @@ public class AcpClient implements Closeable {
             default -> {
                 LOG.info("ACP request_permission: ASK denied by user for " + toolId);
                 builtInActionDeniedDuringTurn = true;
-                lastDeniedKind = permKind;
                 sendPermissionResponse(reqId, findRejectOption(reqParams));
             }
         }
@@ -1177,7 +1176,7 @@ public class AcpClient implements Closeable {
      * Handle an ALLOW permission: auto-approve the tool call.
      */
     private void allowPermission(long reqId, @Nullable JsonObject reqParams,
-                                 String permKind, String toolId, String formattedPermission) {
+                                 String permKind, String toolId) {
         String allowOptionId = findAllowOption(reqParams);
         LOG.info("ACP request_permission: auto-approving " + permKind + TOOL_PREFIX + toolId + "), option=" + allowOptionId);
         sendPermissionResponse(reqId, allowOptionId);
@@ -1249,10 +1248,6 @@ public class AcpClient implements Closeable {
 
     private boolean isPathInsideProject(String path) {
         return PsiBridgeService.isPathUnderBase(path, projectBasePath);
-    }
-
-    private String formatPermissionDisplay(String permKind, String permTitle) {
-        return permKind + (permTitle.isEmpty() ? "" : " - " + permTitle);
     }
 
     /**

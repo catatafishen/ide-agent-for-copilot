@@ -57,9 +57,9 @@ public final class DownloadSourcesTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"library", TYPE_STRING, "Optional library name filter (e.g. 'junit')"}
+            {PARAM_LIBRARY, TYPE_STRING, "Optional library name filter (e.g. 'junit')"}
         });
     }
 
@@ -70,7 +70,7 @@ public final class DownloadSourcesTool extends ProjectTool {
 
     @Override
     @SuppressWarnings({"JavaReflectionMemberAccess", "RedundantSuppression"})
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         String library = args.has(PARAM_LIBRARY) ? args.get(PARAM_LIBRARY).getAsString() : "";
 
         try {

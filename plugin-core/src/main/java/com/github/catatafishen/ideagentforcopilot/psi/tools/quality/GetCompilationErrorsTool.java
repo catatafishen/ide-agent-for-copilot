@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.quality;
 
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -51,14 +52,14 @@ public final class GetCompilationErrorsTool extends QualityTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Optional: specific file to check. If omitted, checks all open source files", ""}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String pathStr = args.has("path") ? args.get("path").getAsString() : null;
 
         if (!project.isInitialized()) {
@@ -78,7 +79,7 @@ public final class GetCompilationErrorsTool extends QualityTool {
     }
 
     private void collectCompilationErrors(String pathStr, CompletableFuture<String> resultFuture) {
-        ApplicationManager.getApplication().runReadAction(() -> {
+        ReadAction.run(() -> {
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> files = collectFilesForHighlightAnalysis(pathStr, false, fileIndex, resultFuture);
             if (resultFuture.isDone()) return;

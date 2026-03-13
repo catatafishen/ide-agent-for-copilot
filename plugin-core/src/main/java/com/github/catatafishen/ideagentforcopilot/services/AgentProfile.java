@@ -76,7 +76,8 @@ public final class AgentProfile {
      * {@code "CLAUDE.md"}). Empty/null means skip file injection (rely on MCP instructions field).
      */
     private String prependInstructionsTo;
-    private boolean ensureCopilotAgents;
+    private List<String> bundledAgentFiles = new ArrayList<>();
+    private String additionalInstructions = "";
 
     public AgentProfile() {
         this.id = UUID.randomUUID().toString();
@@ -126,7 +127,8 @@ public final class AgentProfile {
         copy.excludeAgentBuiltInTools = excludeAgentBuiltInTools;
         copy.permissionInjectionMethod = permissionInjectionMethod;
         copy.prependInstructionsTo = prependInstructionsTo;
-        copy.ensureCopilotAgents = ensureCopilotAgents;
+        copy.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
+        copy.additionalInstructions = additionalInstructions;
         return copy;
     }
 
@@ -161,7 +163,8 @@ public final class AgentProfile {
         copy.excludeAgentBuiltInTools = excludeAgentBuiltInTools;
         copy.permissionInjectionMethod = permissionInjectionMethod;
         copy.prependInstructionsTo = prependInstructionsTo;
-        copy.ensureCopilotAgents = ensureCopilotAgents;
+        copy.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
+        copy.additionalInstructions = additionalInstructions;
         return copy;
     }
 
@@ -190,7 +193,8 @@ public final class AgentProfile {
         this.excludeAgentBuiltInTools = other.excludeAgentBuiltInTools;
         this.permissionInjectionMethod = other.permissionInjectionMethod;
         this.prependInstructionsTo = other.prependInstructionsTo;
-        this.ensureCopilotAgents = other.ensureCopilotAgents;
+        this.bundledAgentFiles = new ArrayList<>(other.bundledAgentFiles);
+        this.additionalInstructions = other.additionalInstructions;
     }
 
     // ── Getters / Setters ────────────────────────────────────────────────────
@@ -395,11 +399,31 @@ public final class AgentProfile {
     }
 
     public boolean isEnsureCopilotAgents() {
-        return ensureCopilotAgents;
+        return !bundledAgentFiles.isEmpty();
     }
 
+    /** @deprecated Use {@link #getBundledAgentFiles()} instead. */
+    @Deprecated
     public void setEnsureCopilotAgents(boolean ensureCopilotAgents) {
-        this.ensureCopilotAgents = ensureCopilotAgents;
+        // no-op: replaced by bundledAgentFiles
+    }
+
+    @NotNull
+    public List<String> getBundledAgentFiles() {
+        return bundledAgentFiles;
+    }
+
+    public void setBundledAgentFiles(@NotNull List<String> bundledAgentFiles) {
+        this.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
+    }
+
+    @NotNull
+    public String getAdditionalInstructions() {
+        return additionalInstructions;
+    }
+
+    public void setAdditionalInstructions(@NotNull String additionalInstructions) {
+        this.additionalInstructions = additionalInstructions;
     }
 
     /**

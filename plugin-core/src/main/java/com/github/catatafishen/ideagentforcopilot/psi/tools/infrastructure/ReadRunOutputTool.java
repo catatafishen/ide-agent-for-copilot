@@ -1,13 +1,11 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure;
 
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
-import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Computable;
-import org.jetbrains.annotations.NotNull;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.TerminalOutputRenderer;
-import org.jetbrains.annotations.Nullable;
+import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +44,7 @@ public final class ReadRunOutputTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {JSON_TAB_NAME, TYPE_STRING, "Name of the Run tab to read (default: most recent)"},
             {PARAM_MAX_CHARS, TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
@@ -54,14 +52,12 @@ public final class ReadRunOutputTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
 
         try {
-            //noinspection RedundantCast — needed for Computable vs ThrowableComputable overload resolution
-            var findResult = ApplicationManager.getApplication()
-                .runReadAction((Computable<Object>) () -> {
+            var findResult = ReadAction.compute(() -> {
                     var descriptors = collectRunDescriptors();
                     if (descriptors.isEmpty()) return "No Run or Debug panel tabs available.";
                     return findTargetRunDescriptor(descriptors, tabName);

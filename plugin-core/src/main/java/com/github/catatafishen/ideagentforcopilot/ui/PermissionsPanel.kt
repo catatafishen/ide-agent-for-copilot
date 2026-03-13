@@ -269,37 +269,10 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         for (row in filtered) {
             if (row.tool.category() != lastCategory) {
                 lastCategory = row.tool.category()
-                gbc.gridx = 0; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
-                gbc.insets = JBUI.insets(12, 0, 4, 0)
-                content.add(TitledSeparator(row.tool.category().displayName), gbc)
-                gbc.gridy++
-                gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
-                gbc.insets = JBUI.insets(2, 0)
+                addCategoryHeader(content, gbc, row.tool.category())
             }
-
-            // [name] [perm combo or silent label]
-            gbc.gridwidth = 1; gbc.gridx = 0
-            gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
-            val nameLabel = SimpleColoredComponent().apply {
-                append(row.tool.displayName(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                if (row.tool.description().isNotEmpty()) toolTipText = row.tool.description()
-                border = JBUI.Borders.emptyLeft(4)
-            }
-            content.add(nameLabel, gbc)
-
-            gbc.gridx = 1; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
-            if (row.permCombo != null) {
-                content.add(row.permCombo, gbc)
-            } else {
-                content.add(JBLabel("Runs silently", AllIcons.Actions.Suspend, SwingConstants.LEFT).apply {
-                    foreground = JBUI.CurrentTheme.Label.disabledForeground()
-                    font = JBUI.Fonts.smallFont()
-                    toolTipText = SILENT_TOOLTIP
-                }, gbc)
-            }
-
+            addToolRow(content, gbc, row)
             gbc.gridy++
-
             if (row.inProjectCombo != null && row.outProjectCombo != null) {
                 addSubPermRow(content, gbc, "▸ Inside project:", row.inProjectCombo)
                 addSubPermRow(content, gbc, "▸ Outside project:", row.outProjectCombo)
@@ -314,6 +287,36 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
             border = JBUI.Borders.empty()
             verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
             horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+        }
+    }
+
+    private fun addCategoryHeader(content: JBPanel<*>, gbc: GridBagConstraints, category: Category) {
+        gbc.gridx = 0; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
+        gbc.insets = JBUI.insets(12, 0, 4, 0)
+        content.add(TitledSeparator(category.displayName), gbc)
+        gbc.gridy++
+        gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+        gbc.insets = JBUI.insets(2, 0)
+    }
+
+    private fun addToolRow(content: JBPanel<*>, gbc: GridBagConstraints, row: ToolRow) {
+        gbc.gridwidth = 1; gbc.gridx = 0
+        gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
+        val nameLabel = SimpleColoredComponent().apply {
+            append(row.tool.displayName(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
+            if (row.tool.description().isNotEmpty()) toolTipText = row.tool.description()
+            border = JBUI.Borders.emptyLeft(4)
+        }
+        content.add(nameLabel, gbc)
+        gbc.gridx = 1; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+        if (row.permCombo != null) {
+            content.add(row.permCombo, gbc)
+        } else {
+            content.add(JBLabel("Runs silently", AllIcons.Actions.Suspend, SwingConstants.LEFT).apply {
+                foreground = JBUI.CurrentTheme.Label.disabledForeground()
+                font = JBUI.Fonts.smallFont()
+                toolTipText = SILENT_TOOLTIP
+            }, gbc)
         }
     }
 
@@ -338,25 +341,28 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     fun isModified(): Boolean {
         for (row in rows) {
             val id = row.tool.id()
-            if (row.isPlugin) {
-                row.permCombo?.let { combo ->
-                    if (combo.selectedIndex.toPluginPermission() != settings.getToolPermission(id)) return true
-                    if (combo.selectedIndex == 0) {
-                        row.inProjectCombo?.let {
-                            if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionInsideProject(id)) return true
-                        }
-                        row.outProjectCombo?.let {
-                            if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionOutsideProject(id)) return true
-                        }
-                    }
-                }
-            } else {
-                row.permCombo?.let {
-                    if (it.selectedIndex.toBuiltinPermission() != settings.getToolPermission(id)) return true
-                }
+            val modified = if (row.isPlugin) isPluginToolModified(row, id) else isBuiltinToolModified(row, id)
+            if (modified) return true
+        }
+        return false
+    }
+
+    private fun isPluginToolModified(row: ToolRow, id: String): Boolean {
+        val combo = row.permCombo ?: return false
+        if (combo.selectedIndex.toPluginPermission() != settings.getToolPermission(id)) return true
+        if (combo.selectedIndex == 0) {
+            row.inProjectCombo?.let {
+                if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionInsideProject(id)) return true
+            }
+            row.outProjectCombo?.let {
+                if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionOutsideProject(id)) return true
             }
         }
         return false
+    }
+
+    private fun isBuiltinToolModified(row: ToolRow, id: String): Boolean {
+        return row.permCombo?.let { it.selectedIndex.toBuiltinPermission() != settings.getToolPermission(id) } ?: false
     }
 
     /** Rebuilds the panel from persisted settings. */

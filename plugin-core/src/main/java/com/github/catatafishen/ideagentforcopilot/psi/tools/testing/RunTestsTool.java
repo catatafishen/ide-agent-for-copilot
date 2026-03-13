@@ -6,6 +6,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.TestResultRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.execution.ExecutionManager;
 import com.intellij.execution.RunManager;
 import com.intellij.execution.configurations.ConfigurationType;
@@ -18,7 +19,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
-import com.intellij.openapi.util.Computable;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.annotations.NotNull;
@@ -35,7 +35,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Runs tests by class, method, or wildcard pattern via Gradle.
+ * Runs tests by class, method, or wildcard pattern.
+ * Uses IntelliJ's built-in JUnit runner when possible; falls back to Gradle for unresolvable targets.
  */
 @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
 public final class RunTestsTool extends TestingTool {
@@ -43,6 +44,7 @@ public final class RunTestsTool extends TestingTool {
     private static final Logger LOG = Logger.getInstance(RunTestsTool.class);
 
     private static final String JSON_MODULE = "module";
+    private static final String PARAM_TARGET = "target";
     private static final String PARAM_MESSAGE = "message";
     private static final String TEST_TYPE_METHOD = "method";
     private static final String TEST_TYPE_CLASS = "class";
@@ -75,7 +77,7 @@ public final class RunTestsTool extends TestingTool {
 
     @Override
     public @NotNull String description() {
-        return "Run tests by class, method, or wildcard pattern via Gradle";
+        return "Run tests by class, method, or wildcard pattern. Uses IntelliJ's built-in test runner; falls back to Gradle for unresolvable targets";
     }
 
     @Override
@@ -84,11 +86,11 @@ public final class RunTestsTool extends TestingTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"target", TYPE_STRING, "Test target: fully qualified class class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"},
-            {"module", TYPE_STRING, "Optional Gradle module name (e.g., 'plugin-core')", ""}
-        }, "target");
+            {PARAM_TARGET, TYPE_STRING, "Test target: fully qualified class class.method (e.g., 'MyTest.testFoo'), or pattern with wildcards (e.g., '*Test')"},
+            {JSON_MODULE, TYPE_STRING, "Optional module name (e.g., 'plugin-core')", ""}
+        }, PARAM_TARGET);
     }
 
     @Override
@@ -97,8 +99,8 @@ public final class RunTestsTool extends TestingTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String target = args.get("target").getAsString();
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        String target = args.get(PARAM_TARGET).getAsString();
         String module = args.has(JSON_MODULE) ? args.get(JSON_MODULE).getAsString() : "";
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
@@ -256,27 +258,31 @@ public final class RunTestsTool extends TestingTool {
     }
 
     private List<String> resolveMatchingTestClasses(String target) {
-        return ApplicationManager.getApplication().runReadAction((Computable<List<String>>) () -> {
+        return ReadAction.compute(() -> {
             List<String> classes = new ArrayList<>();
             ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
-            fileIndex.iterateContent(vf -> {
-                if (!fileIndex.isInTestSourceContent(vf)) return true;
-                if (vf.isDirectory()) return true;
-                String name = vf.getName();
-                if (!name.endsWith(ToolUtils.JAVA_EXTENSION) && !name.endsWith(".kt")) return true;
-                String simpleName = name.substring(0, name.lastIndexOf('.'));
-                if (ToolUtils.doesNotMatchGlob(simpleName, target)) return true;
-
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
-                if (psiFile == null) return true;
-                String fqn = extractClassFqn(psiFile, simpleName);
-                if (fqn != null) classes.add(fqn);
-                return classes.size() < 200;
-            });
+            fileIndex.iterateContent(vf -> processTestFile(vf, fileIndex, target, classes));
             return classes;
         });
     }
 
+    private boolean processTestFile(com.intellij.openapi.vfs.VirtualFile vf,
+                                    ProjectFileIndex fileIndex, String target, List<String> classes) {
+        if (!fileIndex.isInTestSourceContent(vf)) return true;
+        if (vf.isDirectory()) return true;
+        String name = vf.getName();
+        if (!name.endsWith(ToolUtils.JAVA_EXTENSION) && !name.endsWith(".kt")) return true;
+        String simpleName = name.substring(0, name.lastIndexOf('.'));
+        if (ToolUtils.doesNotMatchGlob(simpleName, target)) return true;
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
+        if (psiFile == null) return true;
+        String fqn = extractClassFqn(psiFile, simpleName);
+        if (fqn != null) classes.add(fqn);
+        return classes.size() < 200;
+    }
+
+    @SuppressWarnings("java:S3011")
+    // Required: accessing internal JUnit run config fields via reflection — no public API exists
     private void launchPatternConfig(ConfigurationType junitType, String configName,
                                      List<String> matchingClasses,
                                      CompletableFuture<String> launchFuture) {
@@ -292,10 +298,9 @@ public final class RunTestsTool extends TestingTool {
             data.getClass().getField("PATTERNS").set(data,
                 new java.util.LinkedHashSet<>(matchingClasses));
 
-            try {
-                config.checkConfiguration();
-            } catch (com.intellij.execution.configurations.RuntimeConfigurationException e) {
-                launchFuture.complete("Error: Invalid pattern config: " + e.getLocalizedMessage());
+            String configError = checkRunConfiguration(config);
+            if (configError != null) {
+                launchFuture.complete(configError);
                 return;
             }
 
@@ -313,6 +318,16 @@ public final class RunTestsTool extends TestingTool {
         } catch (Exception e) {
             LOG.warn("Failed to run JUnit pattern config", e);
             launchFuture.complete(LAUNCH_FAILED);
+        }
+    }
+
+    @Nullable
+    private static String checkRunConfiguration(RunConfiguration config) {
+        try {
+            config.checkConfiguration();
+            return null;
+        } catch (com.intellij.execution.configurations.RuntimeConfigurationException e) {
+            return "Error: Invalid pattern config: " + e.getLocalizedMessage();
         }
     }
 
@@ -358,7 +373,9 @@ public final class RunTestsTool extends TestingTool {
                 PlatformApiCompat.findConfigurationTypeBySearch("Gradle");
 
             if (gradleType == null) {
-                return "Error: Gradle run configuration type not available";
+                return "Error: Gradle run configuration type not available. "
+                    + "For non-Gradle projects, use create_run_configuration with the appropriate type "
+                    + "(e.g., 'maven' for Maven, 'npm' for Node.js) or run_command to invoke the build tool directly.";
             }
 
             var factory = gradleType.getConfigurationFactories()[0];
@@ -611,37 +628,53 @@ public final class RunTestsTool extends TestingTool {
             var console = target.getExecutionConsole();
             if (console == null) return "";
 
-            try {
-                var getResultsViewer = console.getClass().getMethod("getResultsViewer");
-                var viewer = getResultsViewer.invoke(console);
-                if (viewer != null) {
-                    var getAllTests = viewer.getClass().getMethod("getAllTests");
-                    var tests = (java.util.List<?>) getAllTests.invoke(viewer);
-                    if (tests != null && !tests.isEmpty()) {
-                        StringBuilder sb = new StringBuilder("\n=== Test Results ===\n");
-                        for (var test : tests) {
-                            appendTestDetail(test, sb);
-                        }
-                        return sb.toString();
-                    }
-                }
-            } catch (NoSuchMethodException ignored) {
-                // Not an SMTRunnerConsoleView
-            }
+            String testResults = tryGetTestResults(console);
+            if (testResults != null) return testResults;
 
-            try {
-                var getTextMethod = console.getClass().getMethod("getText");
-                String text = (String) getTextMethod.invoke(console);
-                if (text != null && !text.isBlank()) {
-                    return "\n=== Console Output ===\n" + ToolUtils.truncateOutput(text);
-                }
-            } catch (NoSuchMethodException ignored) {
-                // getText not available
-            }
+            String consoleText = tryGetConsoleText(console);
+            if (consoleText != null) return consoleText;
         } catch (Exception e) {
             LOG.debug("Failed to collect test run output", e);
         }
         return "";
+    }
+
+    @Nullable
+    private String tryGetTestResults(Object console) {
+        try {
+            var getResultsViewer = console.getClass().getMethod("getResultsViewer");
+            var viewer = getResultsViewer.invoke(console);
+            if (viewer != null) {
+                var getAllTests = viewer.getClass().getMethod("getAllTests");
+                var tests = (java.util.List<?>) getAllTests.invoke(viewer);
+                if (tests != null && !tests.isEmpty()) {
+                    StringBuilder sb = new StringBuilder("\n=== Test Results ===\n");
+                    for (var test : tests) {
+                        appendTestDetail(test, sb);
+                    }
+                    return sb.toString();
+                }
+            }
+        } catch (NoSuchMethodException ignored) {
+            // Not an SMTRunnerConsoleView
+        } catch (Exception e) {
+            LOG.debug("Failed to get test results viewer", e);
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String tryGetConsoleText(Object console) {
+        try {
+            var getTextMethod = console.getClass().getMethod("getText");
+            String text = (String) getTextMethod.invoke(console);
+            if (text != null && !text.isBlank()) {
+                return "\n=== Console Output ===\n" + ToolUtils.truncateOutput(text);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // getText not available on this console type
+        }
+        return null;
     }
 
     private void appendTestDetail(Object test, StringBuilder sb) throws Exception {

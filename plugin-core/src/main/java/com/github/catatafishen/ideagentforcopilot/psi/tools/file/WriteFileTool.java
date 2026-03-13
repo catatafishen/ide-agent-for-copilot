@@ -5,7 +5,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.FileAccessTracker;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.WriteFileRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -19,7 +19,6 @@ import com.intellij.psi.PsiErrorElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -76,18 +75,18 @@ public class WriteFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to write or create"},
-            {"content", TYPE_STRING, "Full file content to write (replaces entire file). Creates the file if it doesn't exist"},
-            {"auto_format_and_optimize_imports", TYPE_BOOLEAN,
+            {PARAM_CONTENT, TYPE_STRING, "Full file content to write (replaces entire file). Creates the file if it doesn't exist"},
+            {PARAM_AUTO_FORMAT, TYPE_BOOLEAN,
                 "Auto-format code AND optimize imports after writing (default: true). "
                     + "Formatting is DEFERRED until the end of the current turn or before git commit — "
                     + "safe for multi-step edits within a single turn. "
-                    + "\u26A0\uFE0F Import optimization REMOVES imports it considers unused — "
+                    + "⚠️ Import optimization REMOVES imports it considers unused — "
                     + "if you add imports in one edit and reference them in a later edit, "
                     + "set this to false or combine both changes in one edit"}
-        }, "path", "content");
+        }, "path", PARAM_CONTENT);
     }
 
     @Override
@@ -96,7 +95,7 @@ public class WriteFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("path") || args.get("path").isJsonNull())
             return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
@@ -144,7 +143,7 @@ public class WriteFileTool extends FileTool {
         }
         Document doc = FileDocumentManager.getInstance().getDocument(vf);
         if (doc != null) {
-            ApplicationManager.getApplication().runWriteAction(() ->
+            WriteAction.run(() ->
                 CommandProcessor.getInstance().executeCommand(
                     project, () -> doc.setText(newContent), "Write File", null)
             );
@@ -154,7 +153,7 @@ public class WriteFileTool extends FileTool {
             String formatNote = autoFormat && syntaxWarning.isEmpty() ? AUTO_FORMAT_SUFFIX : "";
             resultFuture.complete("Written: " + pathStr + " (" + newContent.length() + FORMAT_CHARS_SUFFIX + formatNote + syntaxWarning);
         } else {
-            ApplicationManager.getApplication().runWriteAction(() -> {
+            WriteAction.run(() -> {
                 try (var os = vf.getOutputStream(this)) {
                     os.write(newContent.getBytes(StandardCharsets.UTF_8));
                 } catch (IOException e) {
@@ -166,7 +165,7 @@ public class WriteFileTool extends FileTool {
     }
 
     private void createNewFile(String pathStr, String content, CompletableFuture<String> resultFuture) {
-        ApplicationManager.getApplication().runWriteAction(() -> {
+        WriteAction.run(() -> {
             try {
                 String normalized = pathStr.replace('\\', '/');
                 String basePath = project.getBasePath();
@@ -225,7 +224,7 @@ public class WriteFileTool extends FileTool {
         }
         final int finalIdx = idx;
         final int finalLen = matchLen;
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
             CommandProcessor.getInstance().executeCommand(
                 project, () -> doc.replaceString(finalIdx, finalIdx + finalLen, normalizedNew),
                 "Edit File", null)
@@ -286,10 +285,10 @@ public class WriteFileTool extends FileTool {
         final int fEnd = endOffset;
         final String fNew = newStr;
         int replacedLines = endLine - startLine + 1;
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
             CommandProcessor.getInstance().executeCommand(
                 project, () -> doc.replaceString(fStart, fEnd, fNew),
-                "Edit File (line range)", null)
+                "Edit File (Line Range)", null)
         );
         FileDocumentManager.getInstance().saveDocument(doc);
         String syntaxWarning = checkSyntaxErrors(pathStr);
@@ -375,7 +374,7 @@ public class WriteFileTool extends FileTool {
     private void formatFileSync(VirtualFile vf) {
         PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
         if (psiFile == null) return;
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
             CommandProcessor.getInstance().executeCommand(project, () -> {
                 PsiDocumentManager.getInstance(project).commitAllDocuments();
                 new com.intellij.codeInsight.actions.ReformatCodeProcessor(psiFile, false).run();

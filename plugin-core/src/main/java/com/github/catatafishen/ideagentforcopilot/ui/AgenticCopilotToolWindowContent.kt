@@ -1008,7 +1008,7 @@ class AgenticCopilotToolWindowContent(
         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
     }
 
-    /** Dropdown action for project configuration files: Instructions, TODO.md, Agent Definitions, MCP Instructions */
+    /** Dropdown action for project configuration files: Instructions, project todo file, Agent Definitions, MCP Instructions */
     private inner class ProjectFilesDropdownAction : AnAction(
         "Project Files", "Open project configuration files",
         AllIcons.Nodes.Folder
@@ -1256,21 +1256,30 @@ class AgenticCopilotToolWindowContent(
     }
 
     private fun registerPasteIntercept(editor: EditorEx, contentComponent: JComponent) {
-        // Intercept paste: redirect large clipboard content to a scratch file
-        val pasteShortcuts = arrayOf(
-            KeyboardShortcut(
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.CTRL_DOWN_MASK), null
-            ),
-            KeyboardShortcut(
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.META_DOWN_MASK), null
-            ),
-            KeyboardShortcut(
-                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_INSERT, java.awt.event.InputEvent.SHIFT_DOWN_MASK),
-                null
-            ),
+        val pasteStrokes = setOf(
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_V, java.awt.event.InputEvent.META_DOWN_MASK),
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_INSERT, java.awt.event.InputEvent.SHIFT_DOWN_MASK)
         )
-        object : AnAction() {
-            override fun actionPerformed(e: AnActionEvent) {
+
+        // Use IdeEventQueue preprocessor (runs before IdeKeyEventDispatcher) so we consume the
+        // event before any other handler sees it — avoiding the double-paste that occurred when
+        // popup.cancel() restored focus to contentComponent mid-dispatch and IdeKeyEventDispatcher
+        // fired our shortcut again for the now-focused component.
+        com.intellij.ide.IdeEventQueue.getInstance().addPreprocessor(
+            com.intellij.ide.IdeEventQueue.EventDispatcher { event ->
+                if (event !is java.awt.event.KeyEvent) return@EventDispatcher false
+                if (editor.isDisposed) return@EventDispatcher false
+                if (event.id != java.awt.event.KeyEvent.KEY_PRESSED) return@EventDispatcher false
+                if (KeyStroke.getKeyStrokeForEvent(event) !in pasteStrokes) return@EventDispatcher false
+                // Only intercept when our prompt editor is in the focus hierarchy
+                val focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+                if (!SwingUtilities.isDescendingFrom(
+                        focused,
+                        contentComponent
+                    )
+                ) return@EventDispatcher false
+
                 val clipText = contextManager.getClipboardText()
                 if (clipText != null && (clipText.lines().size > 3 || clipText.length > 500)) {
                     val projectSource = contextManager.findClipboardSourceInProject(clipText)
@@ -1282,14 +1291,14 @@ class AgenticCopilotToolWindowContent(
                 } else {
                     val handler = com.intellij.openapi.editor.actionSystem.EditorActionManager.getInstance()
                         .getActionHandler(IdeActions.ACTION_EDITOR_PASTE)
+                    val dataContext = com.intellij.ide.DataManager.getInstance().getDataContext(contentComponent)
                     com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
-                        handler.execute(editor, null, e.dataContext)
+                        handler.execute(editor, null, dataContext)
                     }
                 }
-            }
-        }.registerCustomShortcutSet(
-            CustomShortcutSet(*pasteShortcuts),
-            contentComponent
+                true
+            },
+            project
         )
     }
 
@@ -1805,26 +1814,52 @@ class AgenticCopilotToolWindowContent(
     }
 
     private fun handlePromptError(e: Exception) {
-        val msg = if (e is InterruptedException || e.cause is InterruptedException) {
-            "Request cancelled"
-        } else {
-            e.message ?: MSG_UNKNOWN_ERROR
-        }
-        consolePanel.addErrorEntry("Error: $msg")
+        val isCancelled = e is InterruptedException || e.cause is InterruptedException
+        val msg = if (isCancelled) "Request cancelled" else e.message ?: MSG_UNKNOWN_ERROR
+
+        // Persist whatever was collected so far — partial turns survive disconnects and crashes.
+        saveConversation()
 
         // Show the auth banner immediately when an auth error is detected
         if (authService.isAuthenticationError(msg)) {
             authService.markAuthError(msg)
             copilotBanner?.triggerCheck()
+            consolePanel.addErrorEntry("Error: $msg")
+            e.printStackTrace()
+            return
         }
 
-        val isRecoverable = e is InterruptedException || e.cause is InterruptedException ||
-            (e is AcpException && e.isRecoverable)
+        val isRecoverable = isCancelled || (e is AcpException && e.isRecoverable)
         if (!isRecoverable) {
             currentSessionId = null
             updateSessionInfo()
         }
+
+        // ACP/stream errors may leave the JCEF panel unresponsive, so show the error in the
+        // always-visible Swing status banner with a Reconnect action. Also add an entry in the
+        // chat panel so it is visible in the conversation history if the browser is alive.
+        consolePanel.addErrorEntry("Error: $msg")
+        if (!isCancelled) {
+            statusBanner?.showError(msg, "Reconnect") { reconnectAfterError() }
+        }
+
         e.printStackTrace()
+    }
+
+    private fun reconnectAfterError() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                agentManager.restart()
+                ApplicationManager.getApplication().invokeLater {
+                    statusBanner?.showInfo("Reconnected — ready for a new message.")
+                }
+            } catch (ex: Exception) {
+                LOG.warn("Reconnect failed", ex)
+                ApplicationManager.getApplication().invokeLater {
+                    statusBanner?.showError("Reconnect failed: ${ex.message ?: "unknown error"}")
+                }
+            }
+        }
     }
 
     private fun getModelMultiplier(modelId: String): String {

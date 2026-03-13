@@ -36,6 +36,14 @@ public final class BillingSettings implements PersistentStateComponent<BillingSe
     }
 
     public static class State {
-        public boolean showCopilotUsage = true;
+        private boolean showCopilotUsage = true;
+
+        public boolean isShowCopilotUsage() {
+            return showCopilotUsage;
+        }
+
+        public void setShowCopilotUsage(boolean showCopilotUsage) {
+            this.showCopilotUsage = showCopilotUsage;
+        }
     }
 }

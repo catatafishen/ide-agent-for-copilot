@@ -39,14 +39,14 @@ public final class AddToDictionaryTool extends QualityTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"word", TYPE_STRING, "The word to add to the project dictionary"}
         }, "word");
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String word = args.get("word").getAsString().trim().toLowerCase();
         if (word.isEmpty()) {
             return "Error: word cannot be empty";

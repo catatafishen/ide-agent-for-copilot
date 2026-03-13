@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
@@ -52,7 +53,7 @@ public final class DeleteFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to delete (absolute or project-relative)"}
         }, "path");
@@ -64,7 +65,7 @@ public final class DeleteFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("path")) return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
 
@@ -95,7 +96,7 @@ public final class DeleteFileTool extends FileTool {
     private void scheduleFileDeletion(VirtualFile vf, String pathStr, CompletableFuture<String> resultFuture) {
         final DeleteFileTool requestor = this;
         EdtUtil.invokeLater(() ->
-            ApplicationManager.getApplication().runWriteAction(() -> {
+            WriteAction.run(() -> {
                 try {
                     com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                         project,

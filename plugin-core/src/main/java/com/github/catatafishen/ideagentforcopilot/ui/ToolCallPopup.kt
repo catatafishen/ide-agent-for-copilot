@@ -12,10 +12,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
 import java.awt.Dimension
-import javax.swing.Box
-import javax.swing.BoxLayout
-import javax.swing.JComponent
-import javax.swing.JSeparator
+import javax.swing.*
 
 internal object ToolCallPopup {
 
@@ -52,7 +49,11 @@ internal object ToolCallPopup {
         val width = popupWidth()
         val height = popupHeight()
 
-        val scrollPane = JBScrollPane(contentPanel).apply {
+        val scrollPane = JBScrollPane(
+            contentPanel,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER,
+        ).apply {
             preferredSize = Dimension(width, height)
             border = JBUI.Borders.empty()
         }
@@ -87,7 +88,20 @@ internal object ToolCallPopup {
     }
 
     private fun buildContentPanel(bg: Color, resultPanel: JComponent, paramsPanel: JComponent?): JBPanel<JBPanel<*>> {
-        val panel = JBPanel<JBPanel<*>>().apply {
+        val panel = object : JBPanel<JBPanel<*>>(), Scrollable {
+            override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
+            override fun getScrollableUnitIncrement(visibleRect: java.awt.Rectangle, orientation: Int, direction: Int) =
+                16
+
+            override fun getScrollableBlockIncrement(
+                visibleRect: java.awt.Rectangle,
+                orientation: Int,
+                direction: Int
+            ) = height
+
+            override fun getScrollableTracksViewportWidth() = true
+            override fun getScrollableTracksViewportHeight() = false
+        }.apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             background = bg
             border = JBUI.Borders.empty(8, 12)

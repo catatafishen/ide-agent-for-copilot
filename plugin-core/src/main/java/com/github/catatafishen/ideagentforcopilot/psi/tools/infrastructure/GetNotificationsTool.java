@@ -36,7 +36,7 @@ public final class GetNotificationsTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         StringBuilder result = new StringBuilder();
         try {
             var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()

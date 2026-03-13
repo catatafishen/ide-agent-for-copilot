@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.navigation;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
@@ -48,7 +49,7 @@ public final class FindReferencesTool extends NavigationTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"symbol", TYPE_STRING, "The exact symbol name to search for"},
             {"file_pattern", TYPE_STRING, "Optional glob pattern to filter files (e.g., '*.java')", ""}
@@ -61,37 +62,39 @@ public final class FindReferencesTool extends NavigationTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         if (!args.has(PARAM_SYMBOL) || args.get(PARAM_SYMBOL).isJsonNull())
             return "Error: 'symbol' parameter is required";
         String symbol = args.get(PARAM_SYMBOL).getAsString();
         String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
 
         showSearchFeedback("🔍 Finding references: " + symbol);
-        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        String result = ReadAction.compute(() -> {
             List<String> results = new ArrayList<>();
             String basePath = project.getBasePath();
             GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
 
             PsiElement definition = findDefinition(symbol, scope);
-
             if (definition != null) {
-                for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
-                    if (results.size() >= 100) break;
-                    String entry = buildReferenceEntry(ref, filePattern, basePath);
-                    if (entry != null) results.add(entry);
-                }
+                collectDefinitionReferences(definition, scope, filePattern, basePath, results);
             }
-
             if (results.isEmpty()) {
                 collectWordReferences(symbol, scope, filePattern, basePath, results);
             }
-
             if (results.isEmpty()) return "No references found for '" + symbol + "'";
             return results.size() + " references found:\n" + String.join("\n", results);
         });
         showSearchFeedback("✓ Reference search complete: " + symbol);
         return result;
+    }
+
+    private void collectDefinitionReferences(PsiElement definition, GlobalSearchScope scope,
+                                             String filePattern, String basePath, List<String> results) {
+        for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
+            if (results.size() >= 100) break;
+            String entry = buildReferenceEntry(ref, filePattern, basePath);
+            if (entry != null) results.add(entry);
+        }
     }
 
     private void collectWordReferences(String symbol, GlobalSearchScope scope,

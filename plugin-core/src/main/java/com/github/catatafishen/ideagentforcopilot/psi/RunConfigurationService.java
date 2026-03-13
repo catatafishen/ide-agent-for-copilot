@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.execution.ExecutionManager;
 import com.intellij.execution.RunManager;
 import com.intellij.execution.configurations.RunConfiguration;
@@ -60,7 +61,7 @@ public final class RunConfigurationService {
     }
 
     public String listRunConfigurations() {
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        return ReadAction.compute(() -> {
             try {
                 var configs = RunManager.getInstance(project).getAllSettings();
                 if (configs.isEmpty()) return "No run configurations found";
@@ -172,12 +173,10 @@ public final class RunConfigurationService {
     public String editRunConfiguration(JsonObject args) throws Exception {
         String name = args.get("name").getAsString();
 
-        // Abuse detection on program_args — same rules as run_command
         String abuseError = checkProgramArgsAbuse(args, null);
         if (abuseError != null) return abuseError;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
-
         EdtUtil.invokeLater(() -> {
             try {
                 var settings = RunManager.getInstance(project).findConfigurationByName(name);
@@ -185,20 +184,8 @@ public final class RunConfigurationService {
                     resultFuture.complete(ERROR_CONFIG_NOT_FOUND + name + "'");
                     return;
                 }
-
                 List<String> changes = applyEditProperties(settings.getConfiguration(), args);
-
-                // Handle shared/workspace storage toggle
-                if (args.has(PARAM_SHARED)) {
-                    boolean shared = args.get(PARAM_SHARED).getAsBoolean();
-                    if (shared) {
-                        settings.storeInDotIdeaFolder();
-                    } else {
-                        settings.storeInLocalWorkspace();
-                    }
-                    changes.add(shared ? "stored as shared" : "stored in workspace");
-                }
-
+                applySharedStorageChange(settings, args, changes);
                 if (changes.isEmpty()) {
                     resultFuture.complete("No changes applied. Available properties: "
                         + "env (object), jvm_args, program_args, working_dir, "
@@ -392,27 +379,14 @@ public final class RunConfigurationService {
     private void applyGradleProperties(RunConfiguration config, JsonObject args) {
         if (!args.has(PARAM_TASKS) && !args.has(PARAM_SCRIPT_PARAMETERS)) return;
         try {
-            // ExternalSystemRunConfiguration.getSettings() -> ExternalSystemTaskExecutionSettings
             var getSettings = config.getClass().getMethod("getSettings");
             var settings = getSettings.invoke(config);
 
             if (args.has(PARAM_TASKS)) {
-                // Parse tasks: accept JSON array or space-separated string
-                List<String> taskNames = new ArrayList<>();
-                var tasksElem = args.get(PARAM_TASKS);
-                if (tasksElem.isJsonArray()) {
-                    for (var t : tasksElem.getAsJsonArray()) {
-                        taskNames.add(t.getAsString());
-                    }
-                } else {
-                    for (String t : tasksElem.getAsString().split("\\s+")) {
-                        if (!t.isEmpty()) taskNames.add(t);
-                    }
-                }
+                List<String> taskNames = parseTaskNames(args.get(PARAM_TASKS));
                 var setTaskNames = settings.getClass().getMethod("setTaskNames", List.class);
                 setTaskNames.invoke(settings, taskNames);
             }
-
             if (args.has(PARAM_SCRIPT_PARAMETERS)) {
                 var setScriptParams = settings.getClass().getMethod("setScriptParameters", String.class);
                 setScriptParams.invoke(settings, args.get(PARAM_SCRIPT_PARAMETERS).getAsString());
@@ -420,6 +394,33 @@ public final class RunConfigurationService {
         } catch (Exception e) {
             LOG.warn("Failed to apply Gradle properties (config may not be a Gradle type)", e);
         }
+    }
+
+    private static List<String> parseTaskNames(com.google.gson.JsonElement tasksElem) {
+        List<String> taskNames = new ArrayList<>();
+        if (tasksElem.isJsonArray()) {
+            for (var t : tasksElem.getAsJsonArray()) {
+                taskNames.add(t.getAsString());
+            }
+        } else {
+            for (String t : tasksElem.getAsString().split("\\s+")) {
+                if (!t.isEmpty()) taskNames.add(t);
+            }
+        }
+        return taskNames;
+    }
+
+    private static void applySharedStorageChange(
+        com.intellij.execution.RunnerAndConfigurationSettings settings,
+        JsonObject args, List<String> changes) {
+        if (!args.has(PARAM_SHARED)) return;
+        boolean shared = args.get(PARAM_SHARED).getAsBoolean();
+        if (shared) {
+            settings.storeInDotIdeaFolder();
+        } else {
+            settings.storeInLocalWorkspace();
+        }
+        changes.add(shared ? "stored as shared" : "stored in workspace");
     }
 
     private void applyEnvVars(RunConfiguration config, JsonObject envObj, List<String> changes) {

@@ -6,13 +6,15 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Lists, creates, switches, or deletes branches.
- */
 @SuppressWarnings("java:S112")
 public final class GitBranchTool extends GitTool {
 
     private static final String CMD_BRANCH = "branch";
+    private static final String PARAM_ACTION = "action";
+    private static final String PARAM_NAME = "name";
+    private static final String PARAM_BASE = "base";
+    private static final String PARAM_ALL = "all";
+    private static final String PARAM_FORCE = "force";
 
     public GitBranchTool(Project project) {
         super(project);
@@ -39,32 +41,32 @@ public final class GitBranchTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"action", TYPE_STRING, "Action: 'list' (default), 'create', 'switch', 'delete'"},
-            {"name", TYPE_STRING, "Branch name (required for create/switch/delete)"},
-            {"base", TYPE_STRING, "Base ref for create (default: HEAD)"},
-            {"all", TYPE_BOOLEAN, "For list: include remote branches"},
-            {"force", TYPE_BOOLEAN, "For delete: force delete unmerged branches"}
+            {PARAM_ACTION, TYPE_STRING, "Action: 'list' (default), 'create', 'switch', 'delete'"},
+            {PARAM_NAME, TYPE_STRING, "Branch name (required for create/switch/delete)"},
+            {PARAM_BASE, TYPE_STRING, "Base ref for create (default: HEAD)"},
+            {PARAM_ALL, TYPE_BOOLEAN, "For list: include remote branches"},
+            {PARAM_FORCE, TYPE_BOOLEAN, "For delete: force delete unmerged branches"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String action = args.has("action")
-            ? args.get("action").getAsString()
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        String action = args.has(PARAM_ACTION)
+            ? args.get(PARAM_ACTION).getAsString()
             : "list";
 
         return switch (action) {
             case "list" -> {
-                boolean all = args.has("all") && args.get("all").getAsBoolean();
+                boolean all = args.has(PARAM_ALL) && args.get(PARAM_ALL).getAsBoolean();
                 yield runGit(CMD_BRANCH, all ? "--all" : "--list", "-v");
             }
             case "create" -> {
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'create'";
-                String base = args.has("base") && !args.get("base").getAsString().isEmpty()
-                    ? args.get("base").getAsString()
+                String base = args.has(PARAM_BASE) && !args.get(PARAM_BASE).getAsString().isEmpty()
+                    ? args.get(PARAM_BASE).getAsString()
                     : "HEAD";
                 yield runGit(CMD_BRANCH, name, base);
             }
@@ -76,7 +78,7 @@ public final class GitBranchTool extends GitTool {
             case "delete" -> {
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'delete'";
-                boolean force = args.has("force") && args.get("force").getAsBoolean();
+                boolean force = args.has(PARAM_FORCE) && args.get(PARAM_FORCE).getAsBoolean();
                 yield runGit(CMD_BRANCH, force ? "-D" : "-d", name);
             }
             default -> "Error: unknown action '" + action + "'. Use: list, create, switch, delete";
@@ -84,10 +86,10 @@ public final class GitBranchTool extends GitTool {
     }
 
     private static @Nullable String requireName(JsonObject args) {
-        if (!args.has("name") || args.get("name").getAsString().isEmpty()) {
+        if (!args.has(PARAM_NAME) || args.get(PARAM_NAME).getAsString().isEmpty()) {
             return null;
         }
-        return args.get("name").getAsString();
+        return args.get(PARAM_NAME).getAsString();
     }
 
     @Override

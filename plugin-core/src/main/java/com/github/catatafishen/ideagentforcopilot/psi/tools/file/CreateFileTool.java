@@ -15,13 +15,11 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Creates a new file and registers it in IntelliJ's VFS.
- */
 @SuppressWarnings("java:S112")
 public final class CreateFileTool extends FileTool {
 
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
+    private static final String PARAM_CONTENT = "content";
 
     public CreateFileTool(Project project) {
         super(project);
@@ -48,11 +46,11 @@ public final class CreateFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path for the new file (absolute or project-relative). File must not already exist"},
-            {"content", TYPE_STRING, "Content to write to the file"}
-        }, "path", "content");
+            {PARAM_CONTENT, TYPE_STRING, "Content to write to the file"}
+        }, "path", PARAM_CONTENT);
     }
 
     @Override
@@ -61,12 +59,12 @@ public final class CreateFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        if (!args.has("path") || !args.has("content")) {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        if (!args.has("path") || !args.has(PARAM_CONTENT)) {
             return "Error: 'path' and 'content' parameters are required";
         }
         String pathStr = args.get("path").getAsString();
-        String content = args.get("content").getAsString();
+        String content = args.get(PARAM_CONTENT).getAsString();
 
         String basePath = project.getBasePath();
         Path pathObj = Path.of(pathStr);

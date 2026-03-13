@@ -35,7 +35,7 @@ public final class McpHttpServer implements Disposable, McpServerControl {
      * Fired on the project message bus when the MCP server starts or stops.
      */
     public static final Topic<StatusListener> STATUS_TOPIC =
-            Topic.create("McpHttpServer.Status", StatusListener.class);
+        Topic.create("McpHttpServer.Status", StatusListener.class);
 
     /**
      * Listener notified when the MCP HTTP server starts or stops.
@@ -106,7 +106,7 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         httpServer.start();
         running = true;
         LOG.info("MCP server started on port " + actualPort + " (" + activeTransportMode.getDisplayName()
-                + ") for project: " + project.getBasePath());
+            + ") for project: " + project.getBasePath());
         project.getMessageBus().syncPublisher(STATUS_TOPIC).serverStatusChanged();
     }
 
@@ -131,7 +131,9 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         running = false;
         activeConnections.set(0);
         LOG.info("MCP HTTP server stopped for project: " + project.getBasePath());
-        project.getMessageBus().syncPublisher(STATUS_TOPIC).serverStatusChanged();
+        if (!project.isDisposed()) {
+            project.getMessageBus().syncPublisher(STATUS_TOPIC).serverStatusChanged();
+        }
     }
 
     public boolean isRunning() {
@@ -188,7 +190,7 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         } catch (Exception e) {
             LOG.warn("MCP request error", e);
             byte[] err = ("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal error: "
-                    + e.getMessage().replace("\"", "'") + "\"}}").getBytes(StandardCharsets.UTF_8);
+                + e.getMessage().replace("\"", "'") + "\"}}").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set(CONTENT_TYPE, APPLICATION_JSON);
             exchange.sendResponseHeaders(500, err.length);
             exchange.getResponseBody().write(err);
@@ -202,8 +204,8 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         String transport = activeTransportMode != null ? activeTransportMode.name() : "none";
         String json = "{\"status\":\"" + (running ? "ok" : "stopped") + "\","
-                + "\"transport\":\"" + transport + "\","
-                + "\"project\":\"" + (project.getName().replace("\"", "'")) + "\"}";
+            + "\"transport\":\"" + transport + "\","
+            + "\"project\":\"" + (project.getName().replace("\"", "'")) + "\"}";
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set(CONTENT_TYPE, APPLICATION_JSON);
         exchange.sendResponseHeaders(200, bytes.length);

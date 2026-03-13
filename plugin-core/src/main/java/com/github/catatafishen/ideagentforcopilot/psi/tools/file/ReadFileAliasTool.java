@@ -21,7 +21,7 @@ public final class ReadFileAliasTool extends ReadFileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to read"},
             {"start_line", TYPE_INTEGER, "Optional: first line to read (1-based, inclusive)"},

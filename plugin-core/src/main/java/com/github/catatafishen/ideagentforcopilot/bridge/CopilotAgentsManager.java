@@ -9,26 +9,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
-/**
- * Deploys bundled agent definitions to the project's {@code .github/agents/} directory.
- *
- * <p>The plugin bundles agent {@code .md} files (e.g., an IntelliJ-aware explore agent)
- * as classpath resources under {@code /agents/}. On startup, this manager copies them
- * into the project so the Copilot CLI discovers them as custom agents.</p>
- *
- * <p>Each deployed file uses a sentinel comment to detect prior deployment. Files are
- * only written once — manual edits by the user are preserved on subsequent runs.</p>
- *
- * <p>Thread-safe: uses a class-level lock to prevent races between startup hooks.</p>
- */
-public final class CopilotAgentsManager {
+final class CopilotAgentsManager {
     private static final Logger LOG = Logger.getInstance(CopilotAgentsManager.class);
 
     private static final String SENTINEL =
-            "<!-- Deployed by AgentBridge — edits are preserved, delete to stop auto-deploy -->";
-
-    private static final String[] BUNDLED_AGENTS = {"ide-explore.md"};
+        "<!-- Deployed by AgentBridge — edits are preserved, delete to stop auto-deploy -->";
 
     private static final Object LOCK = new Object();
 
@@ -36,17 +23,19 @@ public final class CopilotAgentsManager {
     }
 
     /**
-     * Ensures all bundled agent definitions exist in the project's {@code .github/agents/} directory.
+     * Ensures the given agent definitions exist in the project's {@code .github/agents/} directory.
+     * Each filename in {@code agentFiles} must correspond to a classpath resource under {@code /agents/}.
      * Safe to call multiple times — uses a sentinel to skip already-deployed files.
      *
      * @param projectBasePath the project root directory, or null to skip
+     * @param agentFiles      list of agent filenames to deploy (e.g. {@code "ide-explore.md"})
      */
-    public static void ensureAgents(@Nullable String projectBasePath) {
-        if (projectBasePath == null) return;
+    public static void ensureAgents(@Nullable String projectBasePath, @NotNull List<String> agentFiles) {
+        if (projectBasePath == null || agentFiles.isEmpty()) return;
 
         synchronized (LOCK) {
             Path agentsDir = Path.of(projectBasePath, ".github", "agents");
-            for (String agentFile : BUNDLED_AGENTS) {
+            for (String agentFile : agentFiles) {
                 deployAgent(agentsDir, agentFile);
             }
         }

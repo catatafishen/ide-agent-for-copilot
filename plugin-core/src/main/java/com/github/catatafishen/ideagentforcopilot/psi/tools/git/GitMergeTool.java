@@ -14,6 +14,13 @@ import java.util.List;
 @SuppressWarnings("java:S112")
 public final class GitMergeTool extends GitTool {
 
+    private static final String PARAM_BRANCH = "branch";
+    private static final String PARAM_MESSAGE = "message";
+    private static final String PARAM_NO_FF = "no_ff";
+    private static final String PARAM_FF_ONLY = "ff_only";
+    private static final String PARAM_SQUASH = "squash";
+    private static final String PARAM_ABORT = "abort";
+
     public GitMergeTool(Project project) {
         super(project);
     }
@@ -39,21 +46,21 @@ public final class GitMergeTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"branch", TYPE_STRING, "Branch to merge into current branch"},
-            {"message", TYPE_STRING, "Custom merge commit message"},
-            {"no_ff", TYPE_BOOLEAN, "Create a merge commit even for fast-forward merges"},
-            {"ff_only", TYPE_BOOLEAN, "Only merge if fast-forward is possible"},
-            {"squash", TYPE_BOOLEAN, "Squash all commits into a single commit (requires manual commit after)"},
-            {"abort", TYPE_BOOLEAN, "Abort an in-progress merge"}
+            {PARAM_BRANCH, TYPE_STRING, "Branch to merge into current branch"},
+            {PARAM_MESSAGE, TYPE_STRING, "Custom merge commit message"},
+            {PARAM_NO_FF, TYPE_BOOLEAN, "Create a merge commit even for fast-forward merges"},
+            {PARAM_FF_ONLY, TYPE_BOOLEAN, "Only merge if fast-forward is possible"},
+            {PARAM_SQUASH, TYPE_BOOLEAN, "Squash all commits into a single commit (requires manual commit after)"},
+            {PARAM_ABORT, TYPE_BOOLEAN, "Abort an in-progress merge"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        boolean hasAbort = args.has("abort") && args.get("abort").getAsBoolean();
-        boolean hasBranch = args.has("branch") && !args.get("branch").getAsString().isEmpty();
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        boolean hasAbort = args.has(PARAM_ABORT) && args.get(PARAM_ABORT).getAsBoolean();
+        boolean hasBranch = args.has(PARAM_BRANCH) && !args.get(PARAM_BRANCH).getAsString().isEmpty();
 
         if (!hasBranch && !hasAbort) {
             return "Error: 'branch' parameter is required (or use 'abort' to abort an in-progress merge)";
@@ -68,24 +75,24 @@ public final class GitMergeTool extends GitTool {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("merge");
 
-        if (args.has("no_ff") && args.get("no_ff").getAsBoolean()) {
+        if (args.has(PARAM_NO_FF) && args.get(PARAM_NO_FF).getAsBoolean()) {
             cmdArgs.add("--no-ff");
         }
 
-        if (args.has("ff_only") && args.get("ff_only").getAsBoolean()) {
+        if (args.has(PARAM_FF_ONLY) && args.get(PARAM_FF_ONLY).getAsBoolean()) {
             cmdArgs.add("--ff-only");
         }
 
-        if (args.has("squash") && args.get("squash").getAsBoolean()) {
+        if (args.has(PARAM_SQUASH) && args.get(PARAM_SQUASH).getAsBoolean()) {
             cmdArgs.add("--squash");
         }
 
-        if (args.has("message") && !args.get("message").getAsString().isEmpty()) {
+        if (args.has(PARAM_MESSAGE) && !args.get(PARAM_MESSAGE).getAsString().isEmpty()) {
             cmdArgs.add("-m");
-            cmdArgs.add(args.get("message").getAsString());
+            cmdArgs.add(args.get(PARAM_MESSAGE).getAsString());
         }
 
-        cmdArgs.add(args.get("branch").getAsString());
+        cmdArgs.add(args.get(PARAM_BRANCH).getAsString());
 
         return runGit(cmdArgs.toArray(String[]::new));
     }

@@ -45,7 +45,7 @@ public final class DeleteRunConfigurationTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"name", TYPE_STRING, "Exact name of the run configuration to delete"}
         }, "name");
@@ -57,7 +57,7 @@ public final class DeleteRunConfigurationTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         return runConfigService.deleteRunConfiguration(args);
     }
 }

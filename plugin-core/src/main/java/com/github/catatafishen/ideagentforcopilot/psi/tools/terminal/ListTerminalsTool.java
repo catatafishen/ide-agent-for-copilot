@@ -36,7 +36,7 @@ public final class ListTerminalsTool extends TerminalTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         StringBuilder result = new StringBuilder();
 
         appendOpenTerminalTabs(result);

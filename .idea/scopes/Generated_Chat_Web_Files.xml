@@ -1,0 +1,4 @@
+<component name="DependencyValidationManager">
+  <scope name="Generated Chat Web Files"
+         pattern="file[plugin-core]:src/main/resources/chat/chat-components.js||file[plugin-core]:src/main/resources/chat/chat.css||file[plugin-core]:chat-ui/src/chat.css"/>
+</component>

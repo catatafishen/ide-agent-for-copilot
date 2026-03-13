@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.psi;
 import com.intellij.codeInspection.InspectionToolResultExporter;
 import com.intellij.codeInspection.ex.GlobalInspectionContextEx;
 import com.intellij.codeInspection.ex.InspectionToolWrapper;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.project.Project;
@@ -110,7 +111,7 @@ public final class PlatformApiCompat {
                 JComponent panel = factory.apply(editor);
                 if (panel instanceof EditorNotificationPanel enp) {
                     String text = enp.getText();
-                    if (text != null && !text.isEmpty()) {
+                    if (!text.isEmpty()) {
                         notifications.add("[BANNER] " + text);
                     }
                 }
@@ -143,6 +144,8 @@ public final class PlatformApiCompat {
      * failures not caught by the pre-check (e.g., {@code ExceptionInInitializerError},
      * {@code NoClassDefFoundError}).</p>
      */
+    @SuppressWarnings("java:S1181")
+    // Intentional: safety net for reflection errors (ExceptionInInitializerError, NoClassDefFoundError)
     public static @Nullable InspectionToolResultExporter getInspectionPresentation(
         @NotNull GlobalInspectionContextEx ctx, @NotNull InspectionToolWrapper<?, ?> toolWrapper) {
         if (!hasPresentationConstructor(toolWrapper)) {
@@ -166,6 +169,8 @@ public final class PlatformApiCompat {
      * presentation will be used, which always works) or if the constructor exists.
      * Returns {@code false} if the constructor signature doesn't match.</p>
      */
+    @SuppressWarnings("java:S1181")
+    // Intentional: safety net for reflection errors (ExceptionInInitializerError, NoClassDefFoundError)
     private static boolean hasPresentationConstructor(@NotNull InspectionToolWrapper<?, ?> toolWrapper) {
         var ep = toolWrapper.getExtension();
         if (ep == null) {
@@ -218,6 +223,21 @@ public final class PlatformApiCompat {
      */
     public static <T> @NotNull T getService(@NotNull Project project, @NotNull Class<T> serviceClass) {
         return project.getService(serviceClass);
+    }
+
+    /**
+     * Application-level analogue of {@link #getServiceByRawClass}. Used by reflection-based
+     * integrations (e.g., SonarLint) where the service class is loaded from a foreign classloader.
+     * <p>
+     * <b>Why extracted:</b> {@code ApplicationManager.getApplication().getService(Class&lt;T&gt;)}
+     * causes an IDE daemon false-positive when passed a raw {@code Class&lt;?&gt;} because the
+     * generic bound differs between SDK versions. The {@code (Class&lt;Object&gt;)} cast silences
+     * the daemon; Gradle compiles cleanly.
+     */
+    @SuppressWarnings("unchecked")
+    public static @Nullable Object getApplicationServiceByRawClass(@NotNull Class<?> serviceClass) {
+        // Cast to Class<Object> satisfies the generic bound; safe because we only use the result as Object.
+        return ApplicationManager.getApplication().getService((Class<Object>) serviceClass);
     }
 
     /**
@@ -319,7 +339,7 @@ public final class PlatformApiCompat {
         var vcsLog = com.intellij.vcs.log.impl.VcsProjectLog.getInstance(project);
         var data = vcsLog.getDataManager();
         if (data == null) {
-            // Log not initialized — fall back to direct navigation
+            // Log not yet initialized — fall back to direct navigation
             com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, hash);
             return;
         }
@@ -370,7 +390,7 @@ public final class PlatformApiCompat {
      * </ul>
      *
      * <p>All methods exist and work correctly at runtime. The Gradle build compiles without errors.
-     * Isolated in this class so Git4Idea class loading is deferred until first use; if Git4Idea
+     * Isolated in this class, so Git4Idea class loading is deferred until first use; if Git4Idea
      * is disabled, the caller catches {@code NoClassDefFoundError} and falls back.</p>
      */
     public static @Nullable String runIdeGitCommand(@NotNull Project project, @NotNull String[] args) {
@@ -462,8 +482,8 @@ public final class PlatformApiCompat {
      * them correctly from the configured platform dependency.</p>
      */
     public static void addSourceFolder(@NotNull com.intellij.openapi.roots.ContentEntry entry,
-                                @NotNull com.intellij.openapi.vfs.VirtualFile dir,
-                                @NotNull String type) {
+                                       @NotNull com.intellij.openapi.vfs.VirtualFile dir,
+                                       @NotNull String type) {
         boolean isTest = type.startsWith("test_");
         if (type.contains("resources")) {
             var rootType = isTest
@@ -500,8 +520,9 @@ public final class PlatformApiCompat {
             var entries = sdkType.collectSdkEntries(project);
             for (var entry : entries) {
                 sb.append("    suggested: ").append(entry.homePath());
-                if (entry.versionString() != null) {
-                    sb.append(" (").append(entry.versionString()).append(")");
+                String versionStr = entry.versionString();
+                if (!versionStr.isEmpty()) {
+                    sb.append(" (").append(versionStr).append(")");
                 }
                 sb.append("\n");
             }
@@ -534,7 +555,6 @@ public final class PlatformApiCompat {
      * reports "ThrowableRunnable is not a functional interface". Wrapping the call here avoids
      * the false positive in calling code.</p>
      */
-    @SuppressWarnings("unchecked")
     public static void writeActionRunAndWait(@NotNull Runnable action) throws Exception {
         com.intellij.openapi.application.WriteAction.runAndWait(
             (com.intellij.util.ThrowableRunnable<Exception>) action::run);
@@ -632,9 +652,9 @@ public final class PlatformApiCompat {
      *
      * <p><b>Why extracted:</b> {@code FileTypeDetector.EP_NAME} and
      * {@code LanguageUtil.getFileTypeLanguage()} have subtle signature changes across IDE
-     * versions. Centralising here keeps the caller insulated.</p>
+     * versions. Centralizing here keeps the caller insulated.</p>
      *
-     * @param text the pasted / imported text to analyse
+     * @param text the pasted / imported text to analyze
      * @return the detected {@link com.intellij.lang.Language}, or {@code null} if unknown
      */
     @Nullable
@@ -660,22 +680,39 @@ public final class PlatformApiCompat {
             var prefixSeq = new com.intellij.openapi.util.io.ByteArraySequence(bytes, 0, prefixLen);
 
             for (var detector : com.intellij.openapi.fileTypes.FileTypeRegistry.FileTypeDetector.EP_NAME.getExtensionList()) {
-                try {
-                    int desired = detector.getDesiredContentPrefixLength();
-                    var seq = desired > 0 && desired < bytes.length ? prefixSeq : byteSeq;
-                    var ft = detector.detect(null, seq, text);
-                    if (ft instanceof com.intellij.openapi.fileTypes.LanguageFileType lft) {
-                        // Skip PlainText — it's a catch-all fallback, not a real detection.
-                        // Returning it would suppress pattern-based detection (e.g. JSON).
-                        if (lft.getLanguage() == com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE) continue;
-                        return lft.getLanguage();
-                    }
-                } catch (Exception ignored) {
-                    // Some detectors may throw on null VirtualFile — skip
-                }
+                com.intellij.lang.Language lang = tryDetectWithDetector(detector, byteSeq, prefixSeq, bytes, text);
+                if (lang != null) return lang;
             }
         } catch (Exception e) {
             LOG.debug("FileTypeDetector scan failed", e);
+        }
+        return null;
+    }
+
+    // S2637: FileTypeDetector.detect() documents null as a valid value for the VirtualFile param
+    @SuppressWarnings("java:S2637")
+    @Nullable
+    private static com.intellij.lang.Language tryDetectWithDetector(
+        com.intellij.openapi.fileTypes.FileTypeRegistry.FileTypeDetector detector,
+        com.intellij.openapi.util.io.ByteArraySequence byteSeq,
+        com.intellij.openapi.util.io.ByteArraySequence prefixSeq,
+        byte[] bytes,
+        @NotNull String text) {
+        try {
+            int desired = detector.getDesiredContentPrefixLength();
+            var seq = desired > 0 && desired < bytes.length ? prefixSeq : byteSeq;
+            // Passing null VirtualFile is the standard pattern for content-based detection; the
+            // @NotNull annotation on detect() is overly strict in some SDK versions. The outer
+            // try-catch handles detectors that reject a null file.
+            @SuppressWarnings("DataFlowIssue")
+            var ft = detector.detect(null, seq, text);
+            if (ft instanceof com.intellij.openapi.fileTypes.LanguageFileType lft
+                && lft.getLanguage() != com.intellij.openapi.fileTypes.PlainTextLanguage.INSTANCE) {
+                // Skip PlainText — it's a catch-all fallback, not a real detection.
+                return lft.getLanguage();
+            }
+        } catch (Exception ignored) {
+            // Some detectors may throw on null VirtualFile — skip
         }
         return null;
     }
@@ -714,47 +751,59 @@ public final class PlatformApiCompat {
         String trimmed = text.stripLeading();
         String first512 = trimmed.substring(0, Math.min(trimmed.length(), 512));
 
-        // JSON: starts with { or [ and contains " — high confidence
+        com.intellij.lang.Language result = detectMarkupLanguage(trimmed, first512);
+        if (result != null) return result;
+
+        String upper = first512.toUpperCase(java.util.Locale.ROOT);
+        result = detectSqlOrJavaFamily(upper, first512);
+        if (result != null) return result;
+
+        return detectScriptingLanguages(first512);
+    }
+
+    @Nullable
+    private static com.intellij.lang.Language detectMarkupLanguage(@NotNull String trimmed, @NotNull String first512) {
         if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && first512.contains("\"")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("JSON");
         }
-        // XML/HTML: starts with < (tag or declaration)
         if (trimmed.startsWith("<?xml") || trimmed.startsWith("<!DOCTYPE")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("XML");
         }
         if (trimmed.startsWith("<html") || trimmed.startsWith("<!doctype html")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("HTML");
         }
-        // YAML: starts with --- or has key: value patterns on first lines
         if (trimmed.startsWith("---")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("yaml");
         }
-        // SQL keywords (case-insensitive)
-        String upper = first512.toUpperCase(java.util.Locale.ROOT);
+        return null;
+    }
+
+    @Nullable
+    private static com.intellij.lang.Language detectSqlOrJavaFamily(@NotNull String upper, @NotNull String first512) {
         if (upper.startsWith("SELECT ") || upper.startsWith("INSERT ") || upper.startsWith("CREATE TABLE")
             || upper.startsWith("ALTER TABLE") || upper.startsWith("DROP ")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("SQL");
         }
-        // Java: package declaration or typical Java imports
         if (first512.startsWith("package ") && first512.contains(";")) {
             return first512.contains("fun ") || first512.contains("val ")
                 ? com.intellij.lang.LanguageUtil.findRegisteredLanguage("kotlin")
                 : com.intellij.lang.LanguageUtil.findRegisteredLanguage("JAVA");
         }
-        // Python: def/class with colon, or import without braces
+        return null;
+    }
+
+    @Nullable
+    private static com.intellij.lang.Language detectScriptingLanguages(@NotNull String first512) {
         if ((first512.contains("def ") && first512.contains(":"))
             || first512.startsWith("import ") && !first512.contains("{") && !first512.contains("from '")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage(LANG_PYTHON);
         }
-        // Kotlin top-level fun
         if (first512.contains("fun ") && first512.contains("{") && !first512.contains(";")) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("kotlin");
         }
-        // Go: package main / func
         if (first512.startsWith("package main") || (first512.contains("func ") && first512.contains("{"))) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("go");
         }
-        // Rust: fn main, let mut, pub fn
         if (first512.contains("fn ") && (first512.contains("let ") || first512.contains("pub "))) {
             return com.intellij.lang.LanguageUtil.findRegisteredLanguage("Rust");
         }
@@ -811,40 +860,82 @@ public final class PlatformApiCompat {
     }
 
     /**
-     * Launches a full IDE inspection run against the given scope and profile, and invokes
-     * {@code onFinished} with the populated context once analysis is complete.
+     * Returns all installed UI themes.
      *
-     * <p><b>Why extracted:</b> The inspection infrastructure requires subclassing
-     * {@code GlobalInspectionContextEx} (rather than using a plain instance) to intercept
-     * {@code notifyInspectionsFinished}, which is the only reliable callback for when all
-     * tool analysis has completed. {@code setExternalProfile()} and {@code doInspections()}
-     * are inherited from {@code GlobalInspectionContextBase} (both public). The analysis runs
-     * without opening the IDE Inspection Results tool window, which is intentional for
-     * programmatic MCP use.</p>
+     * <p><b>Why extracted:</b> {@code LafManager.getInstalledThemes()} is annotated
+     * {@code @ApiStatus.Experimental} and its return type changed from {@code Sequence<UIThemeLookAndFeelInfo>}
+     * to {@code List<UIThemeLookAndFeelInfo>} across supported IDE versions. Centralizing here
+     * isolates callers from the unstable API and the Kotlin sequence adapter.</p>
+     *
+     * @param lafManager the LafManager instance to query
+     * @return list of all installed themes
+     */
+    @SuppressWarnings("UnstableApiUsage") // getInstalledThemes() is @Experimental; no stable alternative exists
+    public static @NotNull java.util.List<com.intellij.ide.ui.laf.UIThemeLookAndFeelInfo> getInstalledThemes(
+        @NotNull com.intellij.ide.ui.LafManager lafManager) {
+        return kotlin.sequences.SequencesKt.toList(lafManager.getInstalledThemes());
+    }
+
+    /**
+     * Runs the full inspection engine on the given scope using the supplied profile.
+     * <p>
+     * <b>Why extracted:</b> The actual analysis requires {@code GlobalInspectionContextImpl}
+     * (obtained via {@code InspectionManagerEx.createNewGlobalContext()}), NOT a raw
+     * {@code GlobalInspectionContextEx}. {@code GlobalInspectionContextBase.runTools()} is a
+     * no-op; only {@code GlobalInspectionContextImpl.runTools()} performs real file-by-file
+     * inspection. Using {@code GlobalInspectionContextEx} directly completes in ~40ms with 0
+     * results because {@code runTools()} is never overridden in {@code GlobalInspectionContextEx}.
+     * <p>
+     * {@code InspectionManagerEx} is an internal class but is the only way to obtain a
+     * {@code GlobalInspectionContextImpl} with the correct {@code ContentManager}; confined here
+     * to keep internal API usage out of business code.
+     * <p>
+     * The {@code onFinished} callback is invoked <b>synchronously</b> before
+     * {@code super.notifyInspectionsFinished}, which calls {@code cleanup()} and disposes the
+     * context. Callers must therefore collect all results inside the callback before returning.
      *
      * @param project    the current project
      * @param scope      the analysis scope to inspect
      * @param profile    the inspection profile to use
-     * @param onFinished callback invoked (on a background thread) after analysis completes;
-     *                   receives the fully-populated {@code GlobalInspectionContextEx}
+     * @param onFinished callback invoked synchronously before cleanup; context is still valid
      */
+    // GlobalInspectionContextImpl and InspectionManagerEx are @ApiStatus.Internal but are the only
+    // way to run real inspections (GlobalInspectionContextBase.runTools() is a no-op). No stable
+    // alternative exists; see Javadoc above for full rationale. Confined here per PlatformApiCompat policy.
+    @SuppressWarnings("UnstableApiUsage")
     public static void runFullInspections(
         @NotNull Project project,
         @NotNull com.intellij.analysis.AnalysisScope scope,
         @NotNull com.intellij.codeInspection.ex.InspectionProfileImpl profile,
         @NotNull java.util.function.Consumer<com.intellij.codeInspection.ex.GlobalInspectionContextEx> onFinished) {
-        com.intellij.codeInspection.ex.GlobalInspectionContextEx context =
-            new com.intellij.codeInspection.ex.GlobalInspectionContextEx(project) {
+        // GlobalInspectionContextImpl extends GlobalInspectionContextEx and is the only concrete
+        // class with a real runTools() implementation.  InspectionManagerEx provides the
+        // ContentManager required by its constructor.
+        com.intellij.codeInspection.ex.InspectionManagerEx mgr =
+            (com.intellij.codeInspection.ex.InspectionManagerEx)
+                com.intellij.codeInspection.InspectionManager.getInstance(project);
+        com.intellij.codeInspection.ex.GlobalInspectionContextImpl context =
+            new com.intellij.codeInspection.ex.GlobalInspectionContextImpl(project, mgr.getContentManager()) {
                 @Override
-                protected void notifyInspectionsFinished(@NotNull com.intellij.analysis.AnalysisScope finishedScope) {
-                    super.notifyInspectionsFinished(finishedScope);
+                protected void notifyInspectionsFinished(
+                    @NotNull com.intellij.analysis.AnalysisScope finishedScope) {
+                    // Collect results before calling super, which invokes cleanup() and disposes the context
                     onFinished.accept(this);
+                    super.notifyInspectionsFinished(finishedScope);
                 }
             };
         context.setExternalProfile(profile);
-        // doInspections asserts EDT — launch it there; the actual file analysis runs on a
-        // background thread inside the backgroundable task that doInspections creates.
-        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
-            context.doInspections(scope));
+        // Run doInspections on a pooled thread, never the EDT.
+        // DumbService.runWhenSmart() can dispatch its callback to the EDT when indexing is active;
+        // running doInspections() on the EDT causes ProgressManager to show a modal dialog (Task.Modal),
+        // which locks the EDT in a modal event loop. Any invokeLater() calls posted with NON_MODAL
+        // modality state (which is all MCP tool lambdas from background HTTP threads) are then held
+        // back until the modal dialog closes — causing cascading 30-second timeouts and an IDE freeze.
+        // By always running on a pooled thread, doInspections() runs synchronously in that thread
+        // without a modal dialog, leaving the EDT free to process write-tool lambdas normally.
+        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            com.intellij.openapi.project.DumbService.getInstance(project).waitForSmartMode();
+            context.doInspections(scope);
+        });
     }
 }

@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -22,6 +21,8 @@ import java.util.Locale;
 public final class SearchConversationHistoryTool extends EditorTool {
 
     private static final String JSON_EXT = ".json";
+    private static final String PARAM_QUERY = "query";
+    private static final String PARAM_MAX_CHARS = "max_chars";
     private static final String CONVERSATION_PREFIX = "conversation-";
     private static final String JSON_TITLE = "title";
 
@@ -52,9 +53,9 @@ public final class SearchConversationHistoryTool extends EditorTool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"query", TYPE_STRING, "Text to search for across conversations (case-insensitive)"},
+            {PARAM_QUERY, TYPE_STRING, "Text to search for across conversations (case-insensitive)"},
             {"file", TYPE_STRING, "Conversation to read: 'current' for the active session, or an archive timestamp (e.g., '2026-03-04T15-30-00')"},
-            {"max_chars", TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
+            {PARAM_MAX_CHARS, TYPE_INTEGER, "Maximum characters to return (default: 8000)"}
         });
     }
 
@@ -72,9 +73,9 @@ public final class SearchConversationHistoryTool extends EditorTool {
         File archiveDir = new File(agentDir, "conversations");
         File currentFile = new File(agentDir, "conversation" + JSON_EXT);
 
-        String query = args.has("query") ? args.get("query").getAsString() : null;
+        String query = args.has(PARAM_QUERY) ? args.get(PARAM_QUERY).getAsString() : null;
         String file = args.has("file") ? args.get("file").getAsString() : null;
-        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
+        int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
 
         if (file == null && query == null) {
             return listConversations(currentFile, archiveDir);
@@ -187,27 +188,29 @@ public final class SearchConversationHistoryTool extends EditorTool {
             String json = Files.readString(file.toPath());
             var arr = JsonParser.parseString(json).getAsJsonArray();
             StringBuilder sb = new StringBuilder();
-
             for (var el : arr) {
-                if (!el.isJsonObject()) continue;
-                var obj = el.getAsJsonObject();
-                String type = obj.has("type") ? obj.get("type").getAsString() : "";
-                String line = formatConversationEntry(obj, type);
-                if (line == null || line.isEmpty()) continue;
-
-                if (searchQuery != null && !line.toLowerCase(Locale.ROOT).contains(searchQuery)) {
-                    continue;
-                }
-                sb.append(line).append("\n");
-                if (sb.length() >= maxChars) {
-                    sb.append("...[truncated at ").append(maxChars).append(" chars]\n");
-                    break;
+                if (el.isJsonObject()) {
+                    var obj = el.getAsJsonObject();
+                    String type = obj.has("type") ? obj.get("type").getAsString() : "";
+                    String line = formatConversationEntry(obj, type);
+                    if (isMatchingEntry(line, searchQuery)) {
+                        sb.append(line).append("\n");
+                        if (sb.length() >= maxChars) {
+                            sb.append("...[truncated at ").append(maxChars).append(" chars]\n");
+                            break;
+                        }
+                    }
                 }
             }
             return sb.toString();
         } catch (Exception e) {
             return "Error reading " + file.getName() + ": " + e.getMessage();
         }
+    }
+
+    private static boolean isMatchingEntry(String line, String searchQuery) {
+        if (line == null || line.isEmpty()) return false;
+        return searchQuery == null || line.toLowerCase(Locale.ROOT).contains(searchQuery);
     }
 
     private static String formatConversationEntry(JsonObject obj, String type) {

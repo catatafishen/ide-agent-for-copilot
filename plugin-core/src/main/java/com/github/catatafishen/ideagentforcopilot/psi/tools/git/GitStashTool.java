@@ -9,11 +9,15 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Pushes, pops, applies, lists, or drops stashed changes.
- */
 @SuppressWarnings("java:S112")
 public final class GitStashTool extends GitTool {
+
+    private static final String CMD_STASH = "stash";
+    private static final String PARAM_ACTION = "action";
+    private static final String PARAM_MESSAGE = "message";
+    private static final String PARAM_INDEX = "index";
+    private static final String PARAM_INCLUDE_UNTRACKED = "include_untracked";
+    private static final String ACTION_APPLY = "apply";
 
     public GitStashTool(Project project) {
         super(project);
@@ -40,34 +44,34 @@ public final class GitStashTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"action", TYPE_STRING, "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"},
-            {"message", TYPE_STRING, "Stash message (for push action)"},
-            {"index", TYPE_STRING, "Stash index (for pop/apply/drop, e.g., 'stash@{0}')"},
-            {"include_untracked", TYPE_BOOLEAN, "For push: include untracked files"}
+            {PARAM_ACTION, TYPE_STRING, "Action: 'list' (default), 'push', 'pop', 'apply', 'drop'"},
+            {PARAM_MESSAGE, TYPE_STRING, "Stash message (for push action)"},
+            {PARAM_INDEX, TYPE_STRING, "Stash index (for pop/apply/drop, e.g., 'stash@{0}')"},
+            {PARAM_INCLUDE_UNTRACKED, TYPE_BOOLEAN, "For push: include untracked files"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String action = args.has("action")
-            ? args.get("action").getAsString()
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        String action = args.has(PARAM_ACTION)
+            ? args.get(PARAM_ACTION).getAsString()
             : "list";
 
         return switch (action) {
-            case "list" -> runGit("stash", "list");
+            case "list" -> runGit(CMD_STASH, "list");
             case "push", "save" -> {
                 List<String> cmdArgs = new ArrayList<>();
-                cmdArgs.add("stash");
+                cmdArgs.add(CMD_STASH);
                 cmdArgs.add("push");
 
-                if (args.has("message") && !args.get("message").getAsString().isEmpty()) {
+                if (args.has(PARAM_MESSAGE) && !args.get(PARAM_MESSAGE).getAsString().isEmpty()) {
                     cmdArgs.add("-m");
-                    cmdArgs.add(args.get("message").getAsString());
+                    cmdArgs.add(args.get(PARAM_MESSAGE).getAsString());
                 }
 
-                if (args.has("include_untracked") && args.get("include_untracked").getAsBoolean()) {
+                if (args.has(PARAM_INCLUDE_UNTRACKED) && args.get(PARAM_INCLUDE_UNTRACKED).getAsBoolean()) {
                     cmdArgs.add("--include-untracked");
                 }
 
@@ -76,28 +80,28 @@ public final class GitStashTool extends GitTool {
             case "pop" -> {
                 String index = stashRef(args);
                 yield index != null
-                    ? runGit("stash", "pop", index)
-                    : runGit("stash", "pop");
+                    ? runGit(CMD_STASH, "pop", index)
+                    : runGit(CMD_STASH, "pop");
             }
-            case "apply" -> {
+            case ACTION_APPLY -> {
                 String index = stashRef(args);
                 yield index != null
-                    ? runGit("stash", "apply", index)
-                    : runGit("stash", "apply");
+                    ? runGit(CMD_STASH, ACTION_APPLY, index)
+                    : runGit(CMD_STASH, ACTION_APPLY);
             }
             case "drop" -> {
                 String index = stashRef(args);
                 yield index != null
-                    ? runGit("stash", "drop", index)
-                    : runGit("stash", "drop");
+                    ? runGit(CMD_STASH, "drop", index)
+                    : runGit(CMD_STASH, "drop");
             }
             default -> "Error: unknown action '" + action + "'. Use: list, push, pop, apply, drop";
         };
     }
 
     private static @Nullable String stashRef(JsonObject args) {
-        if (args.has("index") && !args.get("index").getAsString().isEmpty()) {
-            return "stash@{" + args.get("index").getAsString() + "}";
+        if (args.has(PARAM_INDEX) && !args.get(PARAM_INDEX).getAsString().isEmpty()) {
+            return "stash@{" + args.get(PARAM_INDEX).getAsString() + "}";
         }
         return null;
     }

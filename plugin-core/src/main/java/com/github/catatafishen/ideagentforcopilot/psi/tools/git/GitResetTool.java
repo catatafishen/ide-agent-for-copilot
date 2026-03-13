@@ -14,6 +14,8 @@ import java.util.List;
 @SuppressWarnings("java:S112")
 public final class GitResetTool extends GitTool {
 
+    private static final String PARAM_COMMIT = "commit";
+
     public GitResetTool(Project project) {
         super(project);
     }
@@ -44,42 +46,48 @@ public final class GitResetTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"commit", TYPE_STRING, "Target commit (default: HEAD)"},
+            {PARAM_COMMIT, TYPE_STRING, "Target commit (default: HEAD)"},
             {"mode", TYPE_STRING, "Reset mode: 'soft' (keep staged), 'mixed' (default, unstage), 'hard' (discard all changes)"},
             {"path", TYPE_STRING, "Reset a specific file path (unstages it)"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         flushAndSave();
-
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("reset");
 
         if (args.has("path") && !args.get("path").getAsString().isEmpty()) {
-            String commit = args.has("commit") ? args.get("commit").getAsString() : null;
-            if (commit != null && !commit.isEmpty()) {
-                cmdArgs.add(commit);
-            }
-            cmdArgs.add("--");
-            cmdArgs.add(args.get("path").getAsString());
+            addFilePathResetArgs(cmdArgs, args);
         } else {
-            String mode = args.has("mode") ? args.get("mode").getAsString() : "mixed";
-            switch (mode) {
-                case "soft" -> cmdArgs.add("--soft");
-                case "hard" -> cmdArgs.add("--hard");
-                default -> cmdArgs.add("--mixed");
-            }
-
-            if (args.has("commit") && !args.get("commit").getAsString().isEmpty()) {
-                cmdArgs.add(args.get("commit").getAsString());
-            }
+            addModeResetArgs(cmdArgs, args);
         }
 
         String result = runGit(cmdArgs.toArray(String[]::new));
         return result.isBlank() ? "Reset completed successfully." : result;
+    }
+
+    private void addFilePathResetArgs(List<String> cmdArgs, JsonObject args) {
+        String commit = args.has(PARAM_COMMIT) ? args.get(PARAM_COMMIT).getAsString() : null;
+        if (commit != null && !commit.isEmpty()) {
+            cmdArgs.add(commit);
+        }
+        cmdArgs.add("--");
+        cmdArgs.add(args.get("path").getAsString());
+    }
+
+    private void addModeResetArgs(List<String> cmdArgs, JsonObject args) {
+        String mode = args.has("mode") ? args.get("mode").getAsString() : "mixed";
+        switch (mode) {
+            case "soft" -> cmdArgs.add("--soft");
+            case "hard" -> cmdArgs.add("--hard");
+            default -> cmdArgs.add("--mixed");
+        }
+        if (args.has(PARAM_COMMIT) && !args.get(PARAM_COMMIT).getAsString().isEmpty()) {
+            cmdArgs.add(args.get(PARAM_COMMIT).getAsString());
+        }
     }
 }

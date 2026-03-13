@@ -53,7 +53,7 @@ public final class HttpRequestTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
             {"url", TYPE_STRING, "Full URL to request (e.g., http://localhost:8080/api)"},
             {PARAM_METHOD, TYPE_STRING, "HTTP method: GET (default), POST, PUT, PATCH, DELETE"},
@@ -65,7 +65,7 @@ public final class HttpRequestTool extends InfrastructureTool {
 
     @Override
     @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String urlStr = args.get("url").getAsString();
         String method = args.has(PARAM_METHOD) ? args.get(PARAM_METHOD).getAsString().toUpperCase() : "GET";
         String body = args.has("body") ? args.get("body").getAsString() : null;

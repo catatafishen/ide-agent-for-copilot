@@ -6,7 +6,6 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -19,6 +18,8 @@ public final class McpServerConfigurable implements Configurable {
 
     public static final String ID = "com.github.catatafishen.idemcpserver";
 
+    // S1172: The Project parameter is required by IntelliJ's <projectConfigurable> instantiation mechanism.
+    @SuppressWarnings("java:S1172")
     public McpServerConfigurable(@NotNull Project project) {
     }
 
@@ -28,7 +29,7 @@ public final class McpServerConfigurable implements Configurable {
     }
 
     @Override
-    public @Nullable JComponent createComponent() {
+    public @NotNull JComponent createComponent() {
         JPanel panel = new JPanel(new BorderLayout());
         JBLabel label = new JBLabel(
             "<html><b>MCP Server</b><br><br>"

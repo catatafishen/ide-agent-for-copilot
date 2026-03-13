@@ -31,38 +31,42 @@ object ListProjectFilesRenderer : ToolResultRenderer {
 
         val panel = ToolRenderers.listPanel()
         panel.add(ToolRenderers.headerPanel(ToolIcons.FOLDER, fileCount, "files"))
-
         for ((dir, files) in grouped) {
-            if (dir.isNotEmpty()) {
-                val dirRow = ToolRenderers.rowPanel()
-                dirRow.border = JBUI.Borders.emptyTop(4)
-                dirRow.add(ToolRenderers.monoLabel("$dir/").apply {
-                    font = font.deriveFont(Font.BOLD)
-                })
-                dirRow.add(ToolRenderers.mutedLabel("${files.size}"))
-                panel.add(dirRow)
-            }
-            for (f in files) {
-                val row = ToolRenderers.rowPanel()
-                row.border = JBUI.Borders.emptyLeft(if (dir.isNotEmpty()) 12 else 0)
-                val fullPath = if (dir.isNotEmpty()) "$dir/${f.name}" else f.name
-                row.add(ToolRenderers.fileLink(f.name, fullPath))
-                for (tag in f.tags) {
-                    row.add(JBLabel(tag).apply {
-                        font = UIUtil.getLabelFont().deriveFont(UIUtil.getLabelFont().size2D - 2f)
-                        foreground = tagColor(tag)
-                    })
-                }
-                panel.add(row)
-            }
+            renderDirectoryGroup(panel, dir, files)
         }
 
         val remaining = entries.size - displayEntries.size
         if (remaining > 0) {
             ToolRenderers.addTruncationIndicator(panel, remaining, "files")
         }
-
         return panel
+    }
+
+    private fun renderDirectoryGroup(panel: JComponent, dir: String, files: List<FileEntry>) {
+        if (dir.isNotEmpty()) {
+            val dirRow = ToolRenderers.rowPanel()
+            dirRow.border = JBUI.Borders.emptyTop(4)
+            dirRow.add(ToolRenderers.monoLabel("$dir/").apply { font = font.deriveFont(Font.BOLD) })
+            dirRow.add(ToolRenderers.mutedLabel("${files.size}"))
+            panel.add(dirRow)
+        }
+        for (f in files) {
+            panel.add(renderFileRow(dir, f))
+        }
+    }
+
+    private fun renderFileRow(dir: String, f: FileEntry): JComponent {
+        val row = ToolRenderers.rowPanel()
+        row.border = JBUI.Borders.emptyLeft(if (dir.isNotEmpty()) 12 else 0)
+        val fullPath = if (dir.isNotEmpty()) "$dir/${f.name}" else f.name
+        row.add(ToolRenderers.fileLink(f.name, fullPath))
+        for (tag in f.tags) {
+            row.add(JBLabel(tag).apply {
+                font = UIUtil.getLabelFont().deriveFont(UIUtil.getLabelFont().size2D - 2f)
+                foreground = tagColor(tag)
+            })
+        }
+        return row
     }
 
     private data class FileEntry(val dir: String, val name: String, val tags: List<String>)

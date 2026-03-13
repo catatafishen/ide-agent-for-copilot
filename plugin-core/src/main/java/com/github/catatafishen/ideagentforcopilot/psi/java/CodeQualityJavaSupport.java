@@ -1,6 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi.java;
 
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
@@ -74,7 +74,7 @@ public class CodeQualityJavaSupport {
         }
 
         String annotation = indent + "@SuppressWarnings(\"" + inspectionId + "\")\n";
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                     document.insertString(lineStart, annotation);
                     PsiDocumentManager.getInstance(project).commitDocument(document);
@@ -91,7 +91,7 @@ public class CodeQualityJavaSupport {
             return "Inspection '" + inspectionId + "' is already suppressed at this location";
         }
 
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
                 com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(project, () -> {
                     var value = annotation.findAttributeValue("value");
                     if (value != null) {

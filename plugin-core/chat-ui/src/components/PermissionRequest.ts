@@ -23,37 +23,41 @@ export default class PermissionRequest extends HTMLElement {
     private _render(): void {
         const reqId = this.getAttribute('req-id') || '';
         this.className = 'perm-actions';
+        this._buildArgsTable();
+        this._buildButtons(reqId);
+    }
 
+    private _buildArgsTable(): void {
         const argsAttr = this.getAttribute('args');
-        if (argsAttr) {
-            try {
-                const args = JSON.parse(argsAttr) as Record<string, unknown>;
-                const entries = Object.entries(args).filter(([, v]) => v !== null && v !== undefined && v !== false && v !== '');
-                if (entries.length > 0) {
-                    const table = document.createElement('div');
-                    table.className = 'perm-args';
-                    for (const [key, value] of entries) {
-                        const row = document.createElement('div');
-                        row.className = 'perm-arg-row';
-                        const label = document.createElement('span');
-                        label.className = 'perm-arg-key';
-                        label.textContent = key;
-                        const val = document.createElement('span');
-                        val.className = 'perm-arg-val';
-                        const strVal = Array.isArray(value) ? value.join(', ') : String(value);
-                        val.title = strVal;
-                        val.textContent = strVal.length > 80 ? strVal.slice(0, 77) + '…' : strVal;
-                        row.appendChild(label);
-                        row.appendChild(val);
-                        table.appendChild(row);
-                    }
-                    this.appendChild(table);
-                }
-            } catch {
-                // malformed args — skip
+        if (!argsAttr) return;
+        try {
+            const args = JSON.parse(argsAttr) as Record<string, unknown>;
+            const entries = Object.entries(args).filter(([, v]) => v !== null && v !== undefined && v !== false && v !== '');
+            if (entries.length === 0) return;
+            const table = document.createElement('div');
+            table.className = 'perm-args';
+            for (const [key, value] of entries) {
+                const row = document.createElement('div');
+                row.className = 'perm-arg-row';
+                const label = document.createElement('span');
+                label.className = 'perm-arg-key';
+                label.textContent = key;
+                const val = document.createElement('span');
+                val.className = 'perm-arg-val';
+                const strVal = Array.isArray(value) ? value.join(', ') : String(value);
+                val.title = strVal;
+                val.textContent = strVal.length > 80 ? strVal.slice(0, 77) + '…' : strVal;
+                row.appendChild(label);
+                row.appendChild(val);
+                table.appendChild(row);
             }
+            this.appendChild(table);
+        } catch {
+            // malformed args — skip
         }
+    }
 
+    private _buildButtons(reqId: string): void {
         const denyBtn = document.createElement('button');
         denyBtn.type = 'button';
         denyBtn.className = 'quick-reply-btn perm-deny';
@@ -78,7 +82,9 @@ export default class PermissionRequest extends HTMLElement {
     }
 
     private _respond(reqId: string, mode: 'deny' | 'once' | 'session', label: string): void {
-        this.querySelectorAll('button').forEach(b => (b as HTMLButtonElement).disabled = true);
+        this.querySelectorAll('button').forEach(b => {
+            b.disabled = true;
+        });
 
         const result = document.createElement('div');
         const allowed = mode !== 'deny';

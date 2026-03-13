@@ -7,7 +7,6 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Forces IntelliJ to refresh a file or directory from disk,
@@ -41,7 +40,7 @@ public final class ReloadFromDiskTool extends FileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "File or directory path to reload (absolute or project-relative). Omit to reload the entire project root."}
         });
@@ -53,7 +52,7 @@ public final class ReloadFromDiskTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         String basePath = project.getBasePath();
         if (basePath == null) return "No project base path";
 

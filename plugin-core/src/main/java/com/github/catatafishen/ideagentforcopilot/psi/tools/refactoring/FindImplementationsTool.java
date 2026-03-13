@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
@@ -42,7 +43,7 @@ public final class FindImplementationsTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {PARAM_SYMBOL, TYPE_STRING, "Class, interface, or method name to find implementations for"},
             {"file", TYPE_STRING, "Optional: file path for method context (required when searching for method overrides)"},
@@ -56,13 +57,13 @@ public final class FindImplementationsTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has(PARAM_SYMBOL)) return "Error: 'symbol' parameter is required";
         String symbolName = args.get(PARAM_SYMBOL).getAsString();
         String filePath = args.has("file") ? args.get("file").getAsString() : null;
         int line = args.has("line") ? args.get("line").getAsInt() : 0;
 
-        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+        String result = ReadAction.compute(() ->
             com.github.catatafishen.ideagentforcopilot.psi.java.RefactoringJavaSupport
                 .findImplementations(project, symbolName, filePath, line)
         );

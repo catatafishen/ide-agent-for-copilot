@@ -3,16 +3,19 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkType;
 import com.intellij.openapi.roots.DependencyScope;
-import com.intellij.openapi.roots.LibraryOrderEntry;
 import com.intellij.openapi.roots.JdkOrderEntry;
+import com.intellij.openapi.roots.LibraryOrderEntry;
 import com.intellij.openapi.roots.ModifiableRootModel;
 import com.intellij.openapi.roots.ModuleOrderEntry;
 import com.intellij.openapi.roots.ModuleRootManager;
@@ -20,14 +23,10 @@ import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
-import com.intellij.openapi.projectRoots.ProjectJdkTable;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,18 +74,18 @@ public final class EditProjectStructureTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"action", TYPE_STRING, "Action: 'list_modules', 'list_dependencies', 'add_dependency', 'remove_dependency', 'list_sdks', 'add_sdk', 'remove_sdk'"},
-            {"module", TYPE_STRING, "Module name (required for list_dependencies, add_dependency, remove_dependency)"},
-            {"dependency_name", TYPE_STRING, "Name of the dependency to add or remove"},
-            {"dependency_type", TYPE_STRING, "Type of dependency to add: 'library' (default) or 'module'"},
-            {"scope", TYPE_STRING, "Dependency scope: 'COMPILE' (default), 'TEST', 'RUNTIME', 'PROVIDED'"},
-            {"jar_path", TYPE_STRING, "Path to JAR file (absolute or project-relative). Required when adding a library dependency"},
-            {"sdk_type", TYPE_STRING, "SDK type name for add_sdk (e.g., 'Python SDK', 'JavaSDK'). Use list_sdks to see available types"},
-            {"sdk_name", TYPE_STRING, "SDK name for remove_sdk. Use list_sdks to see configured SDK names"},
-            {"home_path", TYPE_STRING, "Home path for add_sdk. Use list_sdks to see suggested paths for each SDK type"}
-        }, "action");
+            {PARAM_ACTION, TYPE_STRING, "Action: 'list_modules', 'list_dependencies', 'add_dependency', 'remove_dependency', 'list_sdks', 'add_sdk', 'remove_sdk'"},
+            {JSON_MODULE, TYPE_STRING, "Module name (required for list_dependencies, add_dependency, remove_dependency)"},
+            {PARAM_DEPENDENCY_NAME, TYPE_STRING, "Name of the dependency to add or remove"},
+            {PARAM_DEPENDENCY_TYPE, TYPE_STRING, "Type of dependency to add: 'library' (default) or 'module'"},
+            {PARAM_SCOPE, TYPE_STRING, "Dependency scope: 'COMPILE' (default), 'TEST', 'RUNTIME', 'PROVIDED'"},
+            {PARAM_JAR_PATH, TYPE_STRING, "Path to JAR file (absolute or project-relative). Required when adding a library dependency"},
+            {PARAM_SDK_TYPE, TYPE_STRING, "SDK type name for add_sdk (e.g., 'Python SDK', 'JavaSDK'). Use list_sdks to see available types"},
+            {PARAM_SDK_NAME, TYPE_STRING, "SDK name for remove_sdk. Use list_sdks to see configured SDK names"},
+            {PARAM_HOME_PATH, TYPE_STRING, "Home path for add_sdk. Use list_sdks to see suggested paths for each SDK type"}
+        }, PARAM_ACTION);
     }
 
     @Override
@@ -95,7 +94,7 @@ public final class EditProjectStructureTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String action = args.has(PARAM_ACTION) ? args.get(PARAM_ACTION).getAsString() : "";
         return switch (action) {
             case "list_modules" -> listModules();
@@ -111,7 +110,7 @@ public final class EditProjectStructureTool extends ProjectTool {
     }
 
     private String listModules() {
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        return ReadAction.compute(() -> {
             Module[] modules = ModuleManager.getInstance(project).getModules();
             if (modules.length == 0) {
                 return "No modules found in the project.";
@@ -158,7 +157,7 @@ public final class EditProjectStructureTool extends ProjectTool {
             return ToolUtils.ERROR_PREFIX + "'module' parameter is required for list_dependencies";
         }
 
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        return ReadAction.compute(() -> {
             Module module = ModuleManager.getInstance(project).findModuleByName(moduleName);
             if (module == null) {
                 return ToolUtils.ERROR_PREFIX + MSG_MODULE_PREFIX + moduleName + MSG_NOT_FOUND;
@@ -255,7 +254,7 @@ public final class EditProjectStructureTool extends ProjectTool {
         CompletableFuture<String> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {
-                String result = ApplicationManager.getApplication().runWriteAction((Computable<String>)
+                String result = WriteAction.compute(
                     () -> doAddModuleDependency(moduleName, depModuleName, scope));
                 future.complete(result);
             } catch (Exception e) {
@@ -322,7 +321,7 @@ public final class EditProjectStructureTool extends ProjectTool {
         CompletableFuture<String> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {
-                String result = ApplicationManager.getApplication().runWriteAction((Computable<String>)
+                String result = WriteAction.compute(
                     () -> doAddLibraryDependency(
                         moduleName, effectiveLibName, absoluteJarPath, scope));
                 future.complete(result);
@@ -403,7 +402,7 @@ public final class EditProjectStructureTool extends ProjectTool {
         CompletableFuture<String> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {
-                String result = ApplicationManager.getApplication().runWriteAction((Computable<String>)
+                String result = WriteAction.compute(
                     () -> doRemoveDependency(moduleName, depName));
                 future.complete(result);
             } catch (Exception e) {
@@ -423,14 +422,13 @@ public final class EditProjectStructureTool extends ProjectTool {
         try {
             boolean found = false;
             for (var entry : model.getOrderEntries()) {
-                if (entry instanceof LibraryOrderEntry libEntry
-                    && depName.equals(libEntry.getPresentableName())) {
-                    model.removeOrderEntry(entry);
-                    found = true;
-                    break;
+                String entryName = null;
+                if (entry instanceof LibraryOrderEntry libEntry) {
+                    entryName = libEntry.getPresentableName();
+                } else if (entry instanceof ModuleOrderEntry modEntry) {
+                    entryName = modEntry.getModuleName();
                 }
-                if (entry instanceof ModuleOrderEntry modEntry
-                    && depName.equals(modEntry.getModuleName())) {
+                if (depName.equals(entryName)) {
                     model.removeOrderEntry(entry);
                     found = true;
                     break;
@@ -453,7 +451,7 @@ public final class EditProjectStructureTool extends ProjectTool {
     }
 
     private String listSdks() {
-        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        return ReadAction.compute(() -> {
             var jdkTable = ProjectJdkTable.getInstance();
             Sdk[] sdks = jdkTable.getAllJdks();
 

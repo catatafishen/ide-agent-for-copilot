@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -12,14 +13,15 @@ import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Gets cached editor highlights for open files.
@@ -53,7 +55,7 @@ public final class GetHighlightsTool extends QualityTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Optional: file path to check. If omitted, checks all open files", ""},
             {PARAM_LIMIT, TYPE_INTEGER, "Maximum number of highlights to return (default: 100)"}
@@ -61,7 +63,7 @@ public final class GetHighlightsTool extends QualityTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String pathStr = args.has("path") ? args.get("path").getAsString() : null;
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 100;
         boolean includeUnindexed = args.has("include_unindexed") && args.get("include_unindexed").getAsBoolean();
@@ -85,7 +87,7 @@ public final class GetHighlightsTool extends QualityTool {
     private void getHighlightsCached(String pathStr, int limit, boolean includeUnindexed,
                                      CompletableFuture<String> resultFuture) {
         StringBuilder result = new StringBuilder();
-        ApplicationManager.getApplication().runReadAction(() -> {
+        ReadAction.run(() -> {
             ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
             Collection<VirtualFile> allFiles =
                 collectFilesForHighlightAnalysis(pathStr, includeUnindexed, fileIndex, resultFuture);
@@ -117,7 +119,10 @@ public final class GetHighlightsTool extends QualityTool {
                     result.append("\n\n--- Editor Notifications ---\n");
                     result.append(String.join("\n", notifications));
                 }
-            } catch (Exception e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOG.info("Interrupted while collecting editor notifications: " + e.getMessage());
+            } catch (ExecutionException | TimeoutException e) {
                 LOG.info("Failed to collect editor notifications: " + e.getMessage());
             }
         }
@@ -156,7 +161,12 @@ public final class GetHighlightsTool extends QualityTool {
                     && severity != com.intellij.lang.annotation.HighlightSeverity.INFORMATION
                     && severity.myVal >= com.intellij.lang.annotation.HighlightSeverity.WEAK_WARNING.myVal) {
                     int line = doc.getLineNumber(h.getStartOffset()) + 1;
-                    problems.add(String.format(FORMAT_LOCATION, relPath, line, severity.getName(), h.getDescription()));
+                    String entry = String.format(FORMAT_LOCATION, relPath, line, severity.getName(), h.getDescription());
+                    List<String> fixes = collectQuickFixNames(h);
+                    if (!fixes.isEmpty()) {
+                        entry += "  →  Quick fixes: [" + String.join(", ", fixes) + "]";
+                    }
+                    problems.add(entry);
                     added++;
                 }
             }
@@ -170,7 +180,7 @@ public final class GetHighlightsTool extends QualityTool {
      * Collects editor notification banners for a file.
      * Must be called outside a read action since it dispatches to EDT for Swing component creation.
      */
-    private List<String> collectEditorNotifications(String pathStr) throws Exception {
+    private List<String> collectEditorNotifications(String pathStr) throws ExecutionException, InterruptedException, TimeoutException {
         CompletableFuture<List<String>> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {

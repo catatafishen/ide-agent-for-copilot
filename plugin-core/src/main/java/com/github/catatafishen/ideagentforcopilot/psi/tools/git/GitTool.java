@@ -8,6 +8,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.GitOperationRenderer;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager;
@@ -143,7 +144,7 @@ public abstract class GitTool extends Tool {
 
     private void saveAllDocuments() {
         EdtUtil.invokeAndWait(() ->
-            ApplicationManager.getApplication().runWriteAction(() -> {
+            WriteAction.run(() -> {
                 PsiDocumentManager.getInstance(project).commitAllDocuments();
                 FileDocumentManager.getInstance().saveAllDocuments();
             }));

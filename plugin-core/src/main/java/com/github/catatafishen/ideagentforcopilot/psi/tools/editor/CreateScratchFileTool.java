@@ -5,6 +5,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ScratchFileRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.ide.scratch.ScratchFileService;
 import com.intellij.ide.scratch.ScratchRootType;
 import com.intellij.openapi.application.ApplicationManager;
@@ -20,12 +21,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
-/**
- * Creates a temporary scratch file with the given name and content.
- */
 public final class CreateScratchFileTool extends EditorTool {
 
     private static final Logger LOG = Logger.getInstance(CreateScratchFileTool.class);
+    private static final String PARAM_CONTENT = "content";
 
     public CreateScratchFileTool(Project project) {
         super(project);
@@ -47,11 +46,11 @@ public final class CreateScratchFileTool extends EditorTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"name", TYPE_STRING, "Scratch file name with extension (e.g., 'test.py', 'notes.md')"},
-            {"content", TYPE_STRING, "The content to write to the scratch file"}
-        }, "name", "content");
+            {PARAM_CONTENT, TYPE_STRING, "The content to write to the scratch file"}
+        }, "name", PARAM_CONTENT);
     }
 
     @Override
@@ -60,9 +59,9 @@ public final class CreateScratchFileTool extends EditorTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String name = args.has("name") ? args.get("name").getAsString() : "scratch.txt";
-        String content = args.has("content") ? args.get("content").getAsString() : "";
+        String content = args.has(PARAM_CONTENT) ? args.get(PARAM_CONTENT).getAsString() : "";
 
         try {
             final VirtualFile[] resultFile = new VirtualFile[1];
@@ -93,10 +92,8 @@ public final class CreateScratchFileTool extends EditorTool {
             ScratchFileService scratchService = ScratchFileService.getInstance();
             ScratchRootType scratchRoot = ScratchRootType.getInstance();
 
-            // Cast needed: runWriteAction is overloaded (Computable vs. ThrowableComputable)
-            //noinspection RedundantCast
-            resultFile[0] = ApplicationManager.getApplication().runWriteAction(
-                (Computable<VirtualFile>) () -> {
+            resultFile[0] = WriteAction.compute(
+                () -> {
                     try {
                         VirtualFile file = scratchService.findFile(
                             scratchRoot, name,

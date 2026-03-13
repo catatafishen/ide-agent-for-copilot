@@ -75,9 +75,9 @@ public final class ProjectFilesConfigurable implements Configurable {
         for (int i = 0; i < current.size(); i++) {
             ProjectFilesSettings.FileEntry a = current.get(i);
             ProjectFilesSettings.FileEntry b = edited.get(i);
-            if (!Objects.equals(a.label, b.label)
-                || !Objects.equals(a.path, b.path)
-                || a.isGlob != b.isGlob) return true;
+            if (!Objects.equals(a.getLabel(), b.getLabel())
+                || !Objects.equals(a.getPath(), b.getPath())
+                || a.isGlob() != b.isGlob()) return true;
         }
         return false;
     }
@@ -102,7 +102,7 @@ public final class ProjectFilesConfigurable implements Configurable {
         if (tableModel == null) return;
         tableModel.clear();
         for (ProjectFilesSettings.FileEntry entry : ProjectFilesSettings.getInstance().getEntries()) {
-            tableModel.addRow(entry.label, entry.path, entry.isGlob);
+            tableModel.addRow(entry.getLabel(), entry.getPath(), entry.isGlob());
         }
     }
 

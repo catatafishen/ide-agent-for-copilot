@@ -35,7 +35,7 @@ public final class EditRunConfigurationTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
             {"name", TYPE_STRING, "Name of the run configuration to edit"},
             {"jvm_args", TYPE_STRING, "Optional: new JVM arguments"},
@@ -55,7 +55,7 @@ public final class EditRunConfigurationTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         return runConfigService.editRunConfiguration(args);
     }
 }

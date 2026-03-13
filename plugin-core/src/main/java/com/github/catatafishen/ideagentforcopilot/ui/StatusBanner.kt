@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.ui.StatusBanner.Companion.INFO_DISMISS_MS
+import com.github.catatafishen.ideagentforcopilot.ui.StatusBanner.Companion.WARNING_DISMISS_MS
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.ui.EditorNotificationPanel
@@ -65,6 +67,9 @@ class StatusBanner(parentDisposable: Disposable) :
 
     fun showError(message: String) = show(message, EditorNotificationPanel.Status.Error)
 
+    fun showError(message: String, actionText: String, action: () -> Unit) =
+        show(message, EditorNotificationPanel.Status.Error, actionText, action)
+
     fun showWarning(message: String) = show(message, EditorNotificationPanel.Status.Warning)
 
     fun showInfo(message: String) = show(message, EditorNotificationPanel.Status.Info)
@@ -82,7 +87,12 @@ class StatusBanner(parentDisposable: Disposable) :
         }
     }
 
-    private fun show(message: String, status: EditorNotificationPanel.Status) {
+    private fun show(
+        message: String,
+        status: EditorNotificationPanel.Status,
+        actionText: String? = null,
+        action: (() -> Unit)? = null
+    ) {
         ApplicationManager.getApplication().invokeLater {
             dismiss()
             val borderColor = statusBorderColor(status)
@@ -103,6 +113,9 @@ class StatusBanner(parentDisposable: Disposable) :
             }
             banner.showCloseButton(true)
             banner.setCloseAction { dismiss() }
+            if (actionText != null && action != null) {
+                banner.addAction(actionText) { dismiss(); action() }
+            }
             banner.accessibleContext.accessibleName = when (status) {
                 EditorNotificationPanel.Status.Error -> "Error: $message"
                 EditorNotificationPanel.Status.Warning -> "Warning: $message"

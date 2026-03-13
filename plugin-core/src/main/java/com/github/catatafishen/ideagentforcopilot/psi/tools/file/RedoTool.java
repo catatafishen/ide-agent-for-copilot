@@ -44,15 +44,15 @@ public final class RedoTool extends FileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to redo changes on"},
-            {"count", TYPE_INTEGER, "Number of redo steps (default: 1)"}
+            {PARAM_COUNT, TYPE_INTEGER, "Number of redo steps (default: 1)"}
         }, "path");
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("path")) return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
         int count = args.has(PARAM_COUNT) ? args.get(PARAM_COUNT).getAsInt() : 1;

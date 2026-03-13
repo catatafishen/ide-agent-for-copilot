@@ -43,21 +43,29 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
     }
 
     public static class State {
-        public List<FileEntry> entries = getDefaults();
+        private List<FileEntry> entries = getDefaults();
+
+        public List<FileEntry> getEntries() {
+            return entries;
+        }
+
+        public void setEntries(List<FileEntry> entries) {
+            this.entries = entries;
+        }
     }
 
     /**
      * A single file shortcut entry.
      *
-     * @see #label   Display name in the menu
-     * @see #path    Relative path from project root (supports glob for directory scanning)
-     * @see #isGlob  If true, path is a glob pattern (e.g., ".github/agents/*.md") and
-     *               matching files are listed individually in the menu
+     * @see #getLabel()   Display name in the menu
+     * @see #getPath()    Relative path from project root (supports glob for directory scanning)
+     * @see #isGlob()     If true, path is a glob pattern (e.g., ".github/agents/*.md") and
+     * matching files are listed individually in the menu
      */
     public static class FileEntry {
-        public String label = "";
-        public String path = "";
-        public boolean isGlob = false;
+        private String label = "";
+        private String path = "";
+        private boolean glob = false;
 
         public FileEntry() {
         }
@@ -65,7 +73,31 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
         public FileEntry(String label, String path, boolean isGlob) {
             this.label = label;
             this.path = path;
-            this.isGlob = isGlob;
+            this.glob = isGlob;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public void setLabel(String label) {
+            this.label = label;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path;
+        }
+
+        public boolean isGlob() {
+            return glob;
+        }
+
+        public void setGlob(boolean glob) {
+            this.glob = glob;
         }
     }
 

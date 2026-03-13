@@ -45,7 +45,7 @@ public final class ListRunConfigurationsTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         return runConfigService.listRunConfigurations();
     }
 }

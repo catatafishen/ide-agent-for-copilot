@@ -5,7 +5,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -15,7 +15,6 @@ import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -39,7 +38,7 @@ public final class SuppressInspectionTool extends QualityTool {
 
     @Override
     public @NotNull String displayName() {
-        return "Suppress Inspection";
+        return LABEL_SUPPRESS_INSPECTION;
     }
 
     @Override
@@ -48,7 +47,7 @@ public final class SuppressInspectionTool extends QualityTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file containing the code to suppress"},
             {"line", TYPE_INTEGER, "Line number where the inspection finding is located"},
@@ -57,7 +56,7 @@ public final class SuppressInspectionTool extends QualityTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String pathStr = args.get("path").getAsString();
         int line = args.get("line").getAsInt();
         String inspectionId = args.get(PARAM_INSPECTION_ID).getAsString().trim();
@@ -152,7 +151,7 @@ public final class SuppressInspectionTool extends QualityTool {
         }
 
         String annotation = info.indent() + "@Suppress(\"" + inspectionId + "\")\n";
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
             CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(info.lineStart(), annotation);
                 PsiDocumentManager.getInstance(project).commitDocument(document);
@@ -165,7 +164,7 @@ public final class SuppressInspectionTool extends QualityTool {
     private String suppressWithComment(PsiElement target, String inspectionId, Document document) {
         LineInfo info = getLineInfo(target, document);
         String comment = info.indent() + "//noinspection " + inspectionId + "\n";
-        ApplicationManager.getApplication().runWriteAction(() ->
+        WriteAction.run(() ->
             CommandProcessor.getInstance().executeCommand(project, () -> {
                 document.insertString(info.lineStart(), comment);
                 PsiDocumentManager.getInstance(project).commitDocument(document);

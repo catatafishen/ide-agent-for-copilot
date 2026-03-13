@@ -14,11 +14,11 @@ import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -53,7 +53,7 @@ public final class MacroToolConfigurable implements Configurable {
     }
 
     @Override
-    public @Nullable JComponent createComponent() {
+    public @NotNull JComponent createComponent() {
         JPanel panel = new JPanel(new BorderLayout(0, JBUI.scale(8)));
 
         JBLabel info = new JBLabel(
@@ -94,7 +94,7 @@ public final class MacroToolConfigurable implements Configurable {
 
         Map<String, MacroRegistration> byName = new LinkedHashMap<>();
         for (MacroRegistration reg : persisted) {
-            byName.put(reg.macroName, reg.copy());
+            byName.put(reg.getMacroName(), reg.copy());
         }
 
         for (ActionMacro macro : ActionMacroManager.getInstance().getAllMacros()) {
@@ -116,7 +116,7 @@ public final class MacroToolConfigurable implements Configurable {
 
         Map<String, MacroRegistration> currentEdits = new LinkedHashMap<>();
         for (MacroRegistration row : tableModel.rows) {
-            currentEdits.put(row.macroName, row);
+            currentEdits.put(row.getMacroName(), row);
         }
 
         Set<String> discoveredNames = new LinkedHashSet<>();
@@ -148,9 +148,9 @@ public final class MacroToolConfigurable implements Configurable {
     public void apply() throws ConfigurationException {
         Set<String> names = new HashSet<>();
         for (MacroRegistration reg : tableModel.rows) {
-            if (reg.enabled && !reg.toolName.isEmpty() && !names.add(reg.toolName)) {
+            if (reg.isEnabled() && !reg.getToolName().isEmpty() && !names.add(reg.getToolName())) {
                 throw new ConfigurationException(
-                    "Duplicate tool name: " + reg.toolName);
+                    "Duplicate tool name: " + reg.getToolName());
             }
         }
 
@@ -171,6 +171,7 @@ public final class MacroToolConfigurable implements Configurable {
 
     private static final class MacroTableModel extends AbstractTableModel {
         private static final String[] COLUMNS = {"Enabled", "Macro", "Tool Name", "Description"};
+        @Serial
         private static final long serialVersionUID = 1L;
         transient List<MacroRegistration> rows = new ArrayList<>();
 
@@ -203,10 +204,10 @@ public final class MacroToolConfigurable implements Configurable {
         public Object getValueAt(int rowIndex, int columnIndex) {
             MacroRegistration reg = rows.get(rowIndex);
             return switch (columnIndex) {
-                case COL_ENABLED -> reg.enabled;
-                case COL_MACRO -> reg.macroName;
-                case COL_TOOL_NAME -> reg.toolName;
-                case COL_DESCRIPTION -> reg.description;
+                case COL_ENABLED -> reg.isEnabled();
+                case COL_MACRO -> reg.getMacroName();
+                case COL_TOOL_NAME -> reg.getToolName();
+                case COL_DESCRIPTION -> reg.getDescription();
                 default -> null;
             };
         }
@@ -215,9 +216,9 @@ public final class MacroToolConfigurable implements Configurable {
         public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
             MacroRegistration reg = rows.get(rowIndex);
             switch (columnIndex) {
-                case COL_ENABLED -> reg.enabled = (Boolean) aValue;
-                case COL_TOOL_NAME -> reg.toolName = ((String) aValue).trim();
-                case COL_DESCRIPTION -> reg.description = ((String) aValue).trim();
+                case COL_ENABLED -> reg.setEnabled((Boolean) aValue);
+                case COL_TOOL_NAME -> reg.setToolName(((String) aValue).trim());
+                case COL_DESCRIPTION -> reg.setDescription(((String) aValue).trim());
                 default -> { /* macro name is read-only */ }
             }
             fireTableCellUpdated(rowIndex, columnIndex);

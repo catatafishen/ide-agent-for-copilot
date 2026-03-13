@@ -103,10 +103,18 @@ public abstract class InfrastructureTool extends Tool {
         }
     }
 
-    /**
-     * Extract plain text from a ConsoleView via getText() or editor document.
-     */
     protected String extractPlainConsoleText(Object console) {
+        String text = tryExtractViaGetText(console);
+        if (text != null) return text;
+        text = tryExtractViaTerminalWidget(console);
+        if (text != null) return text;
+        text = tryExtractViaEditor(console);
+        if (text != null) return text;
+        return tryExtractViaComponentTree(console);
+    }
+
+    @Nullable
+    private String tryExtractViaGetText(Object console) {
         try {
             var getTextMethod = console.getClass().getMethod("getText");
             String text = (String) getTextMethod.invoke(console);
@@ -116,7 +124,11 @@ public abstract class InfrastructureTool extends Tool {
         } catch (Exception e) {
             LOG.warn("getText() failed", e);
         }
+        return null;
+    }
 
+    @Nullable
+    private String tryExtractViaTerminalWidget(Object console) {
         try {
             var getTerminalWidget = console.getClass().getMethod("getTerminalWidget");
             var widget = getTerminalWidget.invoke(console);
@@ -130,7 +142,11 @@ public abstract class InfrastructureTool extends Tool {
         } catch (Exception e) {
             LOG.warn("Terminal widget getText() failed", e);
         }
+        return null;
+    }
 
+    @Nullable
+    private String tryExtractViaEditor(Object console) {
         try {
             var getEditorMethod = console.getClass().getMethod("getEditor");
             var editor = getEditorMethod.invoke(console);
@@ -144,7 +160,11 @@ public abstract class InfrastructureTool extends Tool {
         } catch (Exception ignored) {
             // XML parsing or file access errors are non-fatal
         }
+        return null;
+    }
 
+    @Nullable
+    private String tryExtractViaComponentTree(Object console) {
         try {
             var getComponent = console.getClass().getMethod("getComponent");
             var component = getComponent.invoke(console);
@@ -155,7 +175,24 @@ public abstract class InfrastructureTool extends Tool {
         } catch (Exception ignored) {
             // Not a component-based console
         }
+        return null;
+    }
 
+    @Nullable
+    private String extractCurrentComponentText(java.awt.Component component) {
+        if (component instanceof com.intellij.execution.impl.ConsoleViewImpl cv) {
+            cv.flushDeferredText();
+            return extractPlainConsoleText(cv);
+        }
+        return extractPlainConsoleText(component);
+    }
+
+    @Nullable
+    private String searchChildrenForText(java.awt.Container container, int maxDepth) {
+        for (var child : container.getComponents()) {
+            String childText = findConsoleTextInComponentTree(child, maxDepth - 1);
+            if (childText != null && !childText.isEmpty()) return childText;
+        }
         return null;
     }
 
@@ -178,26 +215,12 @@ public abstract class InfrastructureTool extends Tool {
         return null;
     }
 
-    /**
-     * Depth-limited component tree traversal to find embedded console text.
-     */
     protected @Nullable String findConsoleTextInComponentTree(java.awt.Component component, int maxDepth) {
         if (maxDepth <= 0) return null;
-
-        if (component instanceof com.intellij.execution.impl.ConsoleViewImpl cv) {
-            cv.flushDeferredText();
-            String text = extractPlainConsoleText(cv);
-            if (text != null && !text.isEmpty()) return text;
-        } else {
-            String text = extractPlainConsoleText(component);
-            if (text != null && !text.isEmpty()) return text;
-        }
-
+        String text = extractCurrentComponentText(component);
+        if (text != null && !text.isEmpty()) return text;
         if (component instanceof java.awt.Container container) {
-            for (var child : container.getComponents()) {
-                String childText = findConsoleTextInComponentTree(child, maxDepth - 1);
-                if (childText != null && !childText.isEmpty()) return childText;
-            }
+            return searchChildrenForText(container, maxDepth);
         }
         return null;
     }
@@ -234,7 +257,7 @@ public abstract class InfrastructureTool extends Tool {
     }
 
     private String extractTestRunnerResults(Object viewer,
-                                            com.intellij.execution.ui.ExecutionConsole console) throws Exception {
+                                            com.intellij.execution.ui.ExecutionConsole console) throws ReflectiveOperationException {
         var getTestsRootNode = viewer.getClass().getMethod("getTestsRootNode");
         Object root = getTestsRootNode.invoke(viewer);
         if (root == null) {
@@ -305,7 +328,7 @@ public abstract class InfrastructureTool extends Tool {
         }
     }
 
-    private void appendTestResult(Object test, StringBuilder testOutput) throws Exception {
+    private void appendTestResult(Object test, StringBuilder testOutput) throws ReflectiveOperationException {
         var getName = test.getClass().getMethod("getPresentableName");
         var isPassed = test.getClass().getMethod("isPassed");
         var isDefect = test.getClass().getMethod("isDefect");

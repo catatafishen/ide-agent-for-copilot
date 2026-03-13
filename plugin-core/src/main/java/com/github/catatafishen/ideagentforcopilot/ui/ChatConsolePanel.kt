@@ -566,10 +566,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             for (i in 0 until splitAt) deferredRestoreJson.add(arr[i])
             executeJs("ChatController.showLoadMore(${deferredRestoreJson.size})")
         }
-        for (i in splitAt until arr.size()) {
-            val obj = arr[i].asJsonObject
-            addEntryFromJson(obj)
-            renderRestoredEntry(obj)
+
+        // Batch-render the recent entries as a single HTML payload.
+        // Previously this fired one executeJs per entry (100-300+ calls), which flooded
+        // JCEF's IPC queue and caused the renderer to appear completely frozen until
+        // all messages were processed. One restoreBatch call is processed as a single
+        // script execution, allowing the browser to render a frame immediately after.
+        val recentEntries = (splitAt until arr.size()).map { arr[it].asJsonObject }
+        recentEntries.forEach { addEntryFromJson(it) }
+        turnCounter = recentEntries.count { it["type"]?.asString == "prompt" }
+        val html = renderBatchGroupedHtml(recentEntries)
+        if (html.isNotEmpty()) {
+            val encoded = b64(html)
+            executeJs("ChatController.restoreBatch('$encoded')")
         }
     }
 
@@ -642,107 +651,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
-    private fun renderRestoredEntry(obj: com.google.gson.JsonObject) {
-        when (obj["type"]?.asString) {
-            "prompt" -> {
-                currentTurnId = "t${turnCounter++}"
-                val text = obj["text"]?.asString ?: ""
-                val ts = obj["ts"]?.asString ?: ""
-                val ctxFiles = obj["ctxFiles"]?.asJsonArray?.map { f ->
-                    val fo = f.asJsonObject
-                    Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
-                }
-                val encodedBubble = if (!ctxFiles.isNullOrEmpty()) b64(buildRestoredBubbleHtml(text, ctxFiles)) else ""
-                executeJs("ChatController.addUserMessage('${escJs(text)}','${escJs(displayTs(ts))}','$encodedBubble')")
-            }
-
-            "text" -> {
-                if (currentTurnId.isEmpty()) currentTurnId = "t${turnCounter++}"
-                val raw = obj["raw"]?.asString ?: ""
-                if (raw.isNotBlank()) {
-                    val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
-                    val html = markdownToHtml(clean)
-                    val encoded = b64(html)
-                    executeJs("ChatController.finalizeAgentText('$currentTurnId','main','$encoded')")
-                }
-                // Reset segment so subsequent tool/text entries get a fresh message element,
-                // matching the live flow where newSegment is called between tool results and new text.
-                executeJs("ChatController.newSegment('$currentTurnId','main')")
-            }
-
-            "thinking" -> {
-                if (currentTurnId.isEmpty()) currentTurnId = "t${turnCounter++}"
-                val raw = obj["raw"]?.asString ?: ""
-                if (raw.isNotBlank()) {
-                    executeJs("ChatController.addThinkingText('$currentTurnId','main','${escJs(raw)}');ChatController.collapseThinking('$currentTurnId','main')")
-                }
-            }
-
-            "tool" -> {
-                if (currentTurnId.isEmpty()) currentTurnId = "t${turnCounter++}"
-                val title = obj["title"]?.asString ?: ""
-                val args = obj["args"]?.asString
-                val baseName = stripMcpPrefix(title)
-                val info = TOOL_DISPLAY_INFO[baseName]
-                val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
-                val short = formatToolSubtitle(baseName, args)
-                val label = if (short != null) "$displayName — $short" else displayName
-                val did = "restored-tool-${entries.size}"
-                val kind = obj["kind"]?.asString ?: "other"
-                val result = obj["result"]?.asString
-                val status = obj["status"]?.asString ?: "completed"
-                toolCallNames[did] = baseName
-                toolCallEntries[did] = EntryData.ToolCall(title, args, kind, result, status)
-                val hasCustomRenderer = ToolRenderers.hasRenderer(baseName, toolRegistry)
-                val paramsJson = if (!args.isNullOrBlank() && !hasCustomRenderer) escJs(args) else ""
-                executeJs(
-                    "ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','${
-                        escJs(kind)
-                    }');ChatController.updateToolCall('$did','$status','$status')"
-                )
-            }
-
-            "subagent" -> {
-                if (currentTurnId.isEmpty()) currentTurnId = "t${turnCounter++}"
-                val agentType = obj["agentType"]?.asString ?: DEFAULT_AGENT_TYPE
-                val saInfo = SUB_AGENT_INFO[agentType]
-                val displayName = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
-                val prompt = obj["prompt"]?.asString?.ifEmpty { null }
-                val result = obj["result"]?.asString?.ifEmpty { null }
-                val status = obj["status"]?.asString?.ifEmpty { null } ?: "completed"
-                val ci = obj["colorIndex"]?.asInt ?: 0
-                val did = "restored-sa-${entries.size}"
-                val promptText = prompt ?: (obj["description"]?.asString ?: "")
-                executeJs(
-                    "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$ci,'${
-                        escJs(
-                            promptText
-                        )
-                    }')"
-                )
-                val resultHtml =
-                    if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else FAILED_SPAN
-                val encoded = b64(resultHtml)
-                executeJs("ChatController.updateSubAgent('$did','$status',b64('$encoded'))")
-                // Start a new segment so subsequent entries are appended after the
-                // subagent result element in the DOM, not inside the preceding message.
-                executeJs("ChatController.newSegment('$currentTurnId','main')")
-            }
-
-            "status" -> {
-                // Status entries are shown via Swing banner, not in the chat HTML.
-                // During history replay we skip them — they are transient notifications.
-            }
-
-            "separator" -> {
-                currentTurnId = ""
-                val ts = obj["timestamp"]?.asString ?: ""
-                val ag = obj["agent"]?.asString ?: ""
-                executeJs("ChatController.addSessionSeparator('${escJs(displayTsSeparator(ts))}', '${escJs(ag)}')")
-            }
-        }
-    }
-
     private fun buildRestoredBubbleHtml(text: String, ctxFiles: List<Triple<String, String, Int>>): String {
         var result = esc(text)
         for ((name, path, line) in ctxFiles) {
@@ -790,24 +698,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val obj = entries[i]
             when (obj["type"]?.asString) {
                 "prompt" -> {
-                    val text = obj["text"]?.asString ?: ""
-                    val ts = obj["ts"]?.asString ?: ""
-                    val ctxArr = obj["ctxFiles"]?.asJsonArray
-                    val ctxFiles = ctxArr?.map { f ->
-                        val fo = f.asJsonObject
-                        Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
-                    }
-                    sb.append("<chat-message type='user'>")
-                    sb.append("<message-meta><span class='ts'>${esc(ts)}</span></message-meta>")
-                    sb.append("<message-bubble type='user'>")
-                    if (!ctxFiles.isNullOrEmpty()) {
-                        sb.append(buildRestoredBubbleHtml(text, ctxFiles))
-                    } else {
-                        sb.append(esc(text))
-                    }
-                    sb.append("</message-bubble>")
-                    sb.append("</chat-message>")
-                    i++
+                    sb.append(buildPromptHtml(obj)); i++
                 }
 
                 "separator" -> {
@@ -815,97 +706,128 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     i++
                 }
 
-                "status" -> {
-                    // Status entries are transient Swing banners — skip in HTML rendering.
-                    i++
-                }
-
-                "context" -> {
-                    i++
-                }
-
+                "status" -> i++ // transient Swing banners — skip in HTML rendering
+                "context" -> i++
                 else -> {
-                    // Agent turn: group consecutive agent entries into one chat-message
-                    sb.append("<chat-message type='agent'>")
-                    val metaChips = StringBuilder()
-                    val detailsContent = StringBuilder()
-                    val afterDetails = StringBuilder()
-                    while (i < entries.size) {
-                        val e = entries[i]
-                        val t = e["type"]?.asString
-                        if (t == "prompt" || t == "separator" || t == "status") break
-                        when (t) {
-                            "thinking" -> {
-                                val raw = e["raw"]?.asString ?: ""
-                                if (raw.isNotBlank()) {
-                                    val id = "batch-think-${batchIdCounter++}"
-                                    metaChips.append("<thinking-chip status='complete' data-chip-for='$id'></thinking-chip>")
-                                    detailsContent.append(
-                                        "<thinking-block id='$id' class='thinking-section turn-hidden'><div class='thinking-content'>${
-                                            esc(
-                                                raw
-                                            )
-                                        }</div></thinking-block>"
-                                    )
-                                }
-                            }
-
-                            "tool" -> {
-                                val title = e["title"]?.asString ?: ""
-                                val args = e["args"]?.asString
-                                val kind = e["kind"]?.asString ?: "other"
-                                val baseName = stripMcpPrefix(title)
-                                val info = TOOL_DISPLAY_INFO[baseName]
-                                val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
-                                val short = formatToolSubtitle(baseName, args)
-                                val label = if (short != null) "$displayName — $short" else displayName
-                                val id = "batch-tool-${batchIdCounter++}"
-                                val result = e["result"]?.asString
-                                val status = e["status"]?.asString ?: "completed"
-                                toolCallNames[id] = baseName
-                                toolCallEntries[id] = EntryData.ToolCall(title, args, kind, result, status)
-                                val paramsAttr = if (args != null) " data-params='${esc(args)}'" else ""
-                                metaChips.append("<tool-chip label='${esc(label)}' status='complete' kind='${esc(kind)}' data-chip-for='$id'$paramsAttr></tool-chip>")
-                            }
-
-                            "text" -> {
-                                val raw = e["raw"]?.asString ?: ""
-                                if (raw.isNotBlank()) {
-                                    val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
-                                    val html = markdownToHtml(clean)
-                                    afterDetails.append("<message-bubble>$html</message-bubble>")
-                                }
-                            }
-
-                            "subagent" -> {
-                                val agentType = e["agentType"]?.asString ?: DEFAULT_AGENT_TYPE
-                                val saInfo = SUB_AGENT_INFO[agentType]
-                                val dn = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
-                                val result = e["result"]?.asString?.ifEmpty { null }
-                                val ci = e["colorIndex"]?.asInt ?: 0
-                                val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else "Completed"
-                                val id = "batch-sa-${batchIdCounter++}"
-                                metaChips.append("<subagent-chip label='${esc(dn)}' status='complete' color-index='$ci' data-chip-for='$id'></subagent-chip>")
-                                afterDetails.append("<div id='$id' class='subagent-indent subagent-c$ci turn-hidden'><message-bubble>$resultHtml</message-bubble></div>")
-                            }
-
-                            else -> { /* exhaustive: no action for unknown entry types */
-                            }
-                        }
-                        i++
-                    }
-                    if (metaChips.isNotEmpty()) {
-                        sb.append("<message-meta class='show'>$metaChips</message-meta>")
-                    }
-                    sb.append("<turn-details>$detailsContent</turn-details>")
-                    sb.append(afterDetails)
-                    sb.append("</chat-message>")
+                    i = appendAgentTurn(entries, i, sb)
                 }
             }
         }
         return sb.toString()
     }
 
+    private fun buildPromptHtml(obj: com.google.gson.JsonObject): String {
+        val text = obj["text"]?.asString ?: ""
+        val ts = obj["ts"]?.asString ?: ""
+        val ctxArr = obj["ctxFiles"]?.asJsonArray
+        val ctxFiles = ctxArr?.map { f ->
+            val fo = f.asJsonObject
+            Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
+        }
+        val sb = StringBuilder()
+        sb.append("<chat-message type='user'>")
+        sb.append("<message-meta><span class='ts'>${esc(ts)}</span></message-meta>")
+        sb.append("<message-bubble type='user'>")
+        if (!ctxFiles.isNullOrEmpty()) {
+            sb.append(buildRestoredBubbleHtml(text, ctxFiles))
+        } else {
+            sb.append(esc(text))
+        }
+        sb.append("</message-bubble>")
+        sb.append("</chat-message>")
+        return sb.toString()
+    }
+
+    private fun appendAgentTurn(entries: List<com.google.gson.JsonObject>, startI: Int, sb: StringBuilder): Int {
+        var i = startI
+        sb.append("<chat-message type='agent'>")
+        val metaChips = StringBuilder()
+        val detailsContent = StringBuilder()
+        val afterDetails = StringBuilder()
+        while (i < entries.size) {
+            val e = entries[i]
+            val t = e["type"]?.asString
+            if (t == "prompt" || t == "separator" || t == "status") break
+            appendAgentEntry(e, metaChips, detailsContent, afterDetails)
+            i++
+        }
+        if (metaChips.isNotEmpty()) {
+            sb.append("<message-meta class='show'>$metaChips</message-meta>")
+        }
+        sb.append("<turn-details>$detailsContent</turn-details>")
+        sb.append(afterDetails)
+        sb.append("</chat-message>")
+        return i
+    }
+
+    private fun appendAgentEntry(
+        e: com.google.gson.JsonObject,
+        metaChips: StringBuilder,
+        detailsContent: StringBuilder,
+        afterDetails: StringBuilder
+    ) {
+        when (e["type"]?.asString) {
+            "thinking" -> {
+                val raw = e["raw"]?.asString ?: ""
+                if (raw.isNotBlank()) {
+                    val id = "batch-think-${batchIdCounter++}"
+                    metaChips.append("<thinking-chip status='complete' data-chip-for='$id'></thinking-chip>")
+                    detailsContent.append(
+                        "<thinking-block id='$id' class='thinking-section turn-hidden'><div class='thinking-content'>${
+                            esc(
+                                raw
+                            )
+                        }</div></thinking-block>"
+                    )
+                }
+            }
+
+            "tool" -> appendToolEntry(e, metaChips)
+            "text" -> {
+                val raw = e["raw"]?.asString ?: ""
+                if (raw.isNotBlank()) {
+                    val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
+                    val html = markdownToHtml(clean)
+                    afterDetails.append("<message-bubble>$html</message-bubble>")
+                }
+            }
+
+            "subagent" -> {
+                val agentType = e["agentType"]?.asString ?: DEFAULT_AGENT_TYPE
+                val saInfo = SUB_AGENT_INFO[agentType]
+                val dn = saInfo?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
+                val result = e["result"]?.asString?.ifEmpty { null }
+                val ci = e["colorIndex"]?.asInt ?: 0
+                val resultHtml = if (!result.isNullOrBlank()) markdownToHtml(result) else "Completed"
+                val id = "batch-sa-${batchIdCounter++}"
+                metaChips.append("<subagent-chip label='${esc(dn)}' status='complete' color-index='$ci' data-chip-for='$id'></subagent-chip>")
+                afterDetails.append("<div id='$id' class='subagent-indent subagent-c$ci turn-hidden'><message-bubble>$resultHtml</message-bubble></div>")
+            }
+
+            else -> { /* exhaustive: no action for unknown entry types */
+            }
+        }
+    }
+
+    private fun appendToolEntry(e: com.google.gson.JsonObject, metaChips: StringBuilder) {
+        val title = e["title"]?.asString ?: ""
+        val args = e["args"]?.asString
+        val kind = e["kind"]?.asString ?: "other"
+        val baseName = stripMcpPrefix(title)
+        val info = TOOL_DISPLAY_INFO[baseName]
+        val displayName = info?.displayName ?: title.replaceFirstChar { it.uppercaseChar() }
+        val short = formatToolSubtitle(baseName, args)
+        val label = if (short != null) "$displayName — $short" else displayName
+        val id = "batch-tool-${batchIdCounter++}"
+        val result = e["result"]?.asString
+        val status = e["status"]?.asString ?: "completed"
+        toolCallNames[id] = baseName
+        toolCallEntries[id] = EntryData.ToolCall(title, args, kind, result, status)
+        val paramsAttr = if (args != null) " data-params='${esc(args)}'" else ""
+        metaChips.append("<tool-chip label='${esc(label)}' status='complete' kind='${esc(kind)}' data-chip-for='$id'$paramsAttr></tool-chip>")
+    }
+
+    @Suppress("kotlin:S6518") // False positive: CompletableFuture.get(long, TimeUnit) is not an indexed accessor
     override fun getPageHtml(): String? {
         if (browser == null || !browserReady || htmlQueryBridgeJs.isBlank()) return null
         val future = java.util.concurrent.CompletableFuture<String>()

@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.GoToDeclarationRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -57,7 +58,7 @@ public final class GoToDeclarationTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Path to the file containing the symbol usage"},
             {PARAM_SYMBOL, TYPE_STRING, "Name of the symbol to look up"},
@@ -71,7 +72,7 @@ public final class GoToDeclarationTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("file") || !args.has(PARAM_SYMBOL) || !args.has("line")) {
             return "Error: 'file', 'symbol', and 'line' parameters are required";
         }
@@ -81,8 +82,8 @@ public final class GoToDeclarationTool extends RefactoringTool {
 
         String[] declInfo = new String[2];
 
-        String result = ApplicationManager.getApplication().runReadAction(
-            (Computable<String>) () -> findAndFormatDeclaration(pathStr, targetLine, symbolName, declInfo));
+        String result = ReadAction.compute(
+            () -> findAndFormatDeclaration(pathStr, targetLine, symbolName, declInfo));
 
         if (declInfo[0] != null && declInfo[1] != null) {
             int declLine = Integer.parseInt(declInfo[1]);

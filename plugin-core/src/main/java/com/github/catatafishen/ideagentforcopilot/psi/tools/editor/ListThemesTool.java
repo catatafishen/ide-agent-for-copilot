@@ -42,7 +42,7 @@ public final class ListThemesTool extends EditorTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         var lafManager = LafManager.getInstance();
         var current = lafManager.getCurrentUIThemeLookAndFeel();
         String currentName = current != null ? current.getName() : "";

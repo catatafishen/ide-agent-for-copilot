@@ -16,6 +16,8 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class RunCommandTool extends InfrastructureTool {
 
+    private static final String PARAM_COMMAND = "command";
+    private static final String JSON_PARAMETERS = "parameters";
     private static final String PARAM_OFFSET = "offset";
     private static final String PARAM_TIMEOUT = "timeout";
     private static final String PARAM_MAX_CHARS = "max_chars";
@@ -54,14 +56,14 @@ public final class RunCommandTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"command", TYPE_STRING, "Shell command to execute (e.g., 'gradle build', 'cat file.txt')"},
+            {PARAM_COMMAND, TYPE_STRING, "Shell command to execute (e.g., 'gradle build', 'cat file.txt')"},
             {PARAM_TIMEOUT, TYPE_INTEGER, "Timeout in seconds (default: 60)"},
             {JSON_TITLE, TYPE_STRING, "Human-readable title for the Run panel tab. ALWAYS set this to a short descriptive name"},
             {PARAM_OFFSET, TYPE_INTEGER, "Character offset to start output from (default: 0). Use for pagination when output is truncated"},
             {PARAM_MAX_CHARS, TYPE_INTEGER, "Maximum characters to return per page (default: 8000)"}
-        }, "command");
+        }, PARAM_COMMAND);
     }
 
     @Override
@@ -74,18 +76,18 @@ public final class RunCommandTool extends InfrastructureTool {
 
     private static @Nullable String extractCommandFromToolCall(com.google.gson.JsonObject toolCall) {
         // Check direct parameters
-        if (toolCall.has("parameters") && toolCall.get("parameters").isJsonObject()) {
-            var params = toolCall.getAsJsonObject("parameters");
-            if (params.has("command") && params.get("command").isJsonPrimitive()) {
-                return params.get("command").getAsString().toLowerCase().trim();
+        if (toolCall.has(JSON_PARAMETERS) && toolCall.get(JSON_PARAMETERS).isJsonObject()) {
+            var params = toolCall.getAsJsonObject(JSON_PARAMETERS);
+            if (params.has(PARAM_COMMAND) && params.get(PARAM_COMMAND).isJsonPrimitive()) {
+                return params.get(PARAM_COMMAND).getAsString().toLowerCase().trim();
             }
         }
         // Check nested input/arguments
         for (String wrapper : new String[]{"arguments", "input"}) {
             if (toolCall.has(wrapper) && toolCall.get(wrapper).isJsonObject()) {
                 var nested = toolCall.getAsJsonObject(wrapper);
-                if (nested.has("command") && nested.get("command").isJsonPrimitive()) {
-                    return nested.get("command").getAsString().toLowerCase().trim();
+                if (nested.has(PARAM_COMMAND) && nested.get(PARAM_COMMAND).isJsonPrimitive()) {
+                    return nested.get(PARAM_COMMAND).getAsString().toLowerCase().trim();
                 }
             }
         }
@@ -94,13 +96,13 @@ public final class RunCommandTool extends InfrastructureTool {
 
     @Override
     @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        String command = args.get("command").getAsString();
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        String command = args.get(PARAM_COMMAND).getAsString();
         String abuseType = ToolUtils.detectCommandAbuseType(command);
         if (abuseType != null) return ToolUtils.getCommandAbuseMessage(abuseType);
 
         EdtUtil.invokeAndWait(() ->
-            com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction(() ->
+            com.intellij.openapi.application.WriteAction.run(() ->
                 com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments()));
 
         String title = args.has(JSON_TITLE) ? args.get(JSON_TITLE).getAsString() : null;
@@ -111,6 +113,22 @@ public final class RunCommandTool extends InfrastructureTool {
         int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
         String tabTitle = title != null ? title : "Command: " + truncateForTitle(command);
 
+        GeneralCommandLine cmd = buildCommandLine(command, basePath);
+        ProcessResult result = executeInRunPanel(cmd, tabTitle, timeoutSec);
+
+        return formatExecuteOutput(result, args, maxChars, offset, timeoutSec);
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return RunCommandRenderer.INSTANCE;
+    }
+
+    private static String truncateForTitle(String command) {
+        return command.length() > 40 ? command.substring(0, 37) + "..." : command;
+    }
+
+    private GeneralCommandLine buildCommandLine(String command, String basePath) {
         GeneralCommandLine cmd;
         if (System.getProperty(OS_NAME_PROPERTY).contains("Win")) {
             cmd = new GeneralCommandLine("cmd", "/c", command);
@@ -118,20 +136,19 @@ public final class RunCommandTool extends InfrastructureTool {
             cmd = new GeneralCommandLine("sh", "-c", command);
         }
         cmd.setWorkDirectory(basePath);
-
         String javaHome = getProjectJavaHome();
         if (javaHome != null) {
             cmd.withEnvironment(JAVA_HOME_ENV, javaHome);
         }
+        return cmd;
+    }
 
-        ProcessResult result = executeInRunPanel(cmd, tabTitle, timeoutSec);
-
-        String fullOutput = result.output();
+    private String formatExecuteOutput(ProcessResult result, JsonObject args, int maxChars, int offset, int timeoutSec) {
         if (result.timedOut()) {
             return "Command timed out after " + timeoutSec + " seconds.\n\n"
-                + ToolUtils.truncateOutput(fullOutput, maxChars, offset);
+                + ToolUtils.truncateOutput(result.output(), maxChars, offset);
         }
-
+        String fullOutput = result.output();
         boolean failed = result.exitCode() != 0;
         int effectiveOffset = offset;
         if (failed && !args.has(PARAM_OFFSET) && fullOutput.length() > maxChars) {
@@ -144,15 +161,6 @@ public final class RunCommandTool extends InfrastructureTool {
             header += "\n(showing last " + maxChars + " chars — use offset=0 for beginning)";
         }
         return header + "\n\n" + ToolUtils.truncateOutput(fullOutput, maxChars, effectiveOffset);
-    }
-
-    @Override
-    public @NotNull Object resultRenderer() {
-        return RunCommandRenderer.INSTANCE;
-    }
-
-    private static String truncateForTitle(String command) {
-        return command.length() > 40 ? command.substring(0, 37) + "..." : command;
     }
 
     private String getProjectJavaHome() {

@@ -38,8 +38,6 @@ object HttpRequestRenderer : ToolResultRenderer {
         val body = if (bodyStart >= 0) output.substring(bodyStart + "--- Body ---".length).trim() else ""
 
         val panel = ToolRenderers.listPanel()
-
-        // Status header
         val statusRow = ToolRenderers.rowPanel()
         statusRow.add(JBLabel("HTTP $code $message").apply {
             font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
@@ -47,47 +45,46 @@ object HttpRequestRenderer : ToolResultRenderer {
         })
         panel.add(statusRow)
 
-        // Headers
-        if (headers.isNotEmpty()) {
-            val section = ToolRenderers.sectionPanel("Headers", headers.size)
-            for (h in headers) {
-                val colonIdx = h.indexOf(':')
-                val row = ToolRenderers.rowPanel()
-                row.border = JBUI.Borders.emptyLeft(8)
-                if (colonIdx > 0) {
-                    row.add(ToolRenderers.mutedLabel(h.substring(0, colonIdx).trim() + ":"))
-                    row.add(ToolRenderers.monoLabel(h.substring(colonIdx + 1).trim()))
-                } else {
-                    row.add(ToolRenderers.monoLabel(h))
-                }
-                section.add(row)
-            }
-            panel.add(section)
-        }
-
-        // Body with truncation
-        if (body.isNotEmpty()) {
-            val bodySection = ToolRenderers.listPanel().apply {
-                border = JBUI.Borders.emptyTop(6)
-                alignmentX = JComponent.LEFT_ALIGNMENT
-            }
-            bodySection.add(JBLabel("Body").apply {
-                font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
-                alignmentX = JComponent.LEFT_ALIGNMENT
-            })
-            val bodyLines = body.lines()
-            val truncatedBody = if (bodyLines.size > MAX_BODY_LINES) {
-                bodyLines.take(MAX_BODY_LINES).joinToString("\n")
-            } else {
-                body
-            }
-            bodySection.add(ToolRenderers.codeBlock(truncatedBody))
-            if (bodyLines.size > MAX_BODY_LINES) {
-                ToolRenderers.addTruncationIndicator(bodySection, bodyLines.size - MAX_BODY_LINES, "lines")
-            }
-            panel.add(bodySection)
-        }
+        if (headers.isNotEmpty()) panel.add(renderHeaderSection(headers))
+        if (body.isNotEmpty()) panel.add(renderBodySection(body))
 
         return panel
+    }
+
+    private fun renderHeaderSection(headers: List<String>): JComponent {
+        val section = ToolRenderers.sectionPanel("Headers", headers.size)
+        for (h in headers) {
+            val colonIdx = h.indexOf(':')
+            val row = ToolRenderers.rowPanel()
+            row.border = JBUI.Borders.emptyLeft(8)
+            if (colonIdx > 0) {
+                row.add(ToolRenderers.mutedLabel(h.substring(0, colonIdx).trim() + ":"))
+                row.add(ToolRenderers.monoLabel(h.substring(colonIdx + 1).trim()))
+            } else {
+                row.add(ToolRenderers.monoLabel(h))
+            }
+            section.add(row)
+        }
+        return section
+    }
+
+    private fun renderBodySection(body: String): JComponent {
+        val bodySection = ToolRenderers.listPanel().apply {
+            border = JBUI.Borders.emptyTop(6)
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        }
+        bodySection.add(JBLabel("Body").apply {
+            font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        })
+        val bodyLines = body.lines()
+        val truncatedBody = if (bodyLines.size > MAX_BODY_LINES)
+            bodyLines.take(MAX_BODY_LINES).joinToString("\n")
+        else body
+        bodySection.add(ToolRenderers.codeBlock(truncatedBody))
+        if (bodyLines.size > MAX_BODY_LINES) {
+            ToolRenderers.addTruncationIndicator(bodySection, bodyLines.size - MAX_BODY_LINES, "lines")
+        }
+        return bodySection
     }
 }
