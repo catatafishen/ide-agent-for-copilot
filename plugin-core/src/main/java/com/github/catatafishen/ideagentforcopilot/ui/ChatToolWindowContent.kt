@@ -1409,10 +1409,21 @@ class ChatToolWindowContent(
                 val clipText = contextManager.getClipboardText()
                 if (clipText != null && (clipText.lines().size > 3 || clipText.length > 500)) {
                     val projectSource = contextManager.findClipboardSourceInProject(clipText)
-                    if (projectSource != null) {
-                        contextManager.insertInlineChip(editor, projectSource)
-                    } else {
-                        handlePasteToScratch(clipText)
+                    // Defer the action to the next EDT cycle so the preprocessor returns `true`
+                    // (consuming Ctrl+V) before any UI mutation happens. Without this deferral:
+                    //  • insertInlineChip's WriteCommandAction runs while Ctrl+V is still
+                    //    in-flight, allowing the editor's own paste handler to also fire (chip
+                    //    + raw text both appear).
+                    //  • showCenteredInCurrentWindow opens the popup synchronously while Ctrl+V
+                    //    is still being dispatched, so the popup's search field receives the
+                    //    in-flight paste event (text ends up in search field instead of editor).
+                    ApplicationManager.getApplication().invokeLater {
+                        if (editor.isDisposed) return@invokeLater
+                        if (projectSource != null) {
+                            contextManager.insertInlineChip(editor, projectSource)
+                        } else {
+                            handlePasteToScratch(clipText)
+                        }
                     }
                     true
                 } else {
