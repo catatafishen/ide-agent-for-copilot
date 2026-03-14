@@ -1276,12 +1276,12 @@ class ChatToolWindowContent(
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
         private var cachedOptions: List<SessionOption> = emptyList()
-        private var cachedChildren: Array<AnAction> = AnAction.EMPTY_ARRAY
+        private var cachedChildren: Array<AnAction> = EMPTY_ARRAY
 
         override fun getChildren(e: AnActionEvent?): Array<AnAction> {
-            if (!agentManager.isAcpConnected) return AnAction.EMPTY_ARRAY
+            if (!agentManager.isAcpConnected) return EMPTY_ARRAY
             val options = agentManager.client.listSessionOptions()
-            if (options.isEmpty()) return AnAction.EMPTY_ARRAY
+            if (options.isEmpty()) return EMPTY_ARRAY
             if (options != cachedOptions) {
                 cachedOptions = options
                 cachedChildren = options.map { SessionOptionSelectorAction(it) }.toTypedArray()
@@ -1417,6 +1417,7 @@ class ChatToolWindowContent(
                     //  • showCenteredInCurrentWindow opens the popup synchronously while Ctrl+V
                     //    is still being dispatched, so the popup's search field receives the
                     //    in-flight paste event (text ends up in search field instead of editor).
+                    event.consume()
                     ApplicationManager.getApplication().invokeLater {
                         if (editor.isDisposed) return@invokeLater
                         if (projectSource != null) {
