@@ -83,6 +83,9 @@ class ChatToolWindowContent(
     // Per-turn tracking
     private var turnToolCallCount = 0
     private var turnModelId = ""
+    private var turnInputTokens = 0
+    private var turnOutputTokens = 0
+    private var turnCostUsd = 0.0
 
     // Throttled incremental save during streaming (avoid data loss on crash)
     private val saveIntervalMs = 30_000L
@@ -659,7 +662,7 @@ class ChatToolWindowContent(
         leftGroup.add(RestartSessionGroup())
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
-            "CopilotControls", leftGroup, true
+            "AgentControls", leftGroup, true
         )
         controlsToolbar.targetComponent = row
         controlsToolbar.isReservePlaceAutoPopupIcon = false
@@ -671,7 +674,7 @@ class ChatToolWindowContent(
         }
 
         val rightToolbar = ActionManager.getInstance().createActionToolbar(
-            "CopilotRight", rightGroup, true
+            "AgentRight", rightGroup, true
         )
         rightToolbar.targetComponent = row
         rightToolbar.isReservePlaceAutoPopupIcon = false
@@ -695,12 +698,6 @@ class ChatToolWindowContent(
         }
     }
 
-    /**
-     * Native Swing panel that shows a small animated spinner + elapsed-time counter
-     * plus tool call count and requests used. Hidden when idle; visible once [start] is called.
-     * On [stop], spinner changes to checkmark and stats remain visible until next [start].
-     * Click to toggle between per-turn and session-wide stats.
-     */
     private inner class ProcessingTimerPanel : JBPanel<ProcessingTimerPanel>(), com.intellij.openapi.Disposable {
         private val spinner = AsyncProcessIcon("CopilotProcessing")
         private val doneIcon = JBLabel(AllIcons.Actions.Checked)
@@ -716,6 +713,14 @@ class ChatToolWindowContent(
         private var sessionTotalToolCalls = 0
         private var sessionTurnCount = 0
         private var isRunning = false
+
+        // Per-turn and session-aggregate token/cost (Claude CLI only)
+        private var turnInputTokens = 0
+        private var turnOutputTokens = 0
+        private var turnCostUsd = 0.0
+        private var sessionTotalInputTokens = 0L
+        private var sessionTotalOutputTokens = 0L
+        private var sessionTotalCostUsd = 0.0
 
         private val modeTurn = 0
         private val modeSession = 1
@@ -758,6 +763,9 @@ class ChatToolWindowContent(
         fun start() {
             startedAt = System.currentTimeMillis()
             toolCallCount = 0
+            turnInputTokens = 0
+            turnOutputTokens = 0
+            turnCostUsd = 0.0
             isRunning = true
             displayMode = modeTurn
             timerLabel.text = "0s"
@@ -788,10 +796,27 @@ class ChatToolWindowContent(
             revalidate(); repaint()
         }
 
+        /**
+         * Records token/cost usage for the completed turn (Claude CLI only).
+         * Must be called after [stop] so session accumulators are correct.
+         */
+        fun recordUsage(inputTokens: Int, outputTokens: Int, costUsd: Double) {
+            turnInputTokens = inputTokens
+            turnOutputTokens = outputTokens
+            turnCostUsd = costUsd
+            sessionTotalInputTokens += inputTokens
+            sessionTotalOutputTokens += outputTokens
+            sessionTotalCostUsd += costUsd
+            refreshDisplay()
+        }
+
         fun resetSession() {
             sessionTotalTimeMs = 0L
             sessionTotalToolCalls = 0
             sessionTurnCount = 0
+            sessionTotalInputTokens = 0L
+            sessionTotalOutputTokens = 0L
+            sessionTotalCostUsd = 0.0
             displayMode = modeTurn
         }
 
@@ -818,7 +843,13 @@ class ChatToolWindowContent(
             updateLabel()
             toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
             toolsLabel.isVisible = toolCallCount > 0
-            requestsLabel.isVisible = false
+            // Show per-turn token/cost for Claude when available
+            if (!isRunning && turnCostUsd > 0.0 || (turnInputTokens + turnOutputTokens) > 0) {
+                requestsLabel.text = "\u2022 ${formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)}"
+                requestsLabel.isVisible = requestsLabel.text.length > 2
+            } else {
+                requestsLabel.isVisible = false
+            }
             if (!isRunning) {
                 doneIcon.icon = AllIcons.Actions.Checked; doneIcon.text = null
             }
@@ -832,12 +863,30 @@ class ChatToolWindowContent(
             val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
             toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
             toolsLabel.isVisible = totalTools > 0
-            // Session requests: local counter (no API polling needed)
-            val sessionReqs = billing.localSessionRequests
-            requestsLabel.text = if (sessionReqs > 0) "\u2022 $sessionReqs req" else "\u2022 0 req"
-            requestsLabel.isVisible = true
             toolTipText = "Session totals · Click for turn"
             doneIcon.icon = null; doneIcon.text = "\u2211"
+
+            if (agentManager.client.supportsMultiplier()) {
+                // Copilot: show premium request count
+                val sessionReqs = billing.localSessionRequests
+                requestsLabel.text = if (sessionReqs > 0) "\u2022 $sessionReqs req" else "\u2022 0 req"
+                requestsLabel.isVisible = true
+            } else {
+                // Claude: show cumulative session token/cost
+                val totalTok = sessionTotalInputTokens + sessionTotalOutputTokens
+                if (totalTok > 0 || sessionTotalCostUsd > 0.0) {
+                    requestsLabel.text = "\u2022 ${
+                        formatUsageChip(
+                            sessionTotalInputTokens.toInt(),
+                            sessionTotalOutputTokens.toInt(),
+                            sessionTotalCostUsd
+                        )
+                    }"
+                    requestsLabel.isVisible = requestsLabel.text.length > 2
+                } else {
+                    requestsLabel.isVisible = false
+                }
+            }
         }
 
         private fun updateLabel() {
@@ -1226,11 +1275,18 @@ class ChatToolWindowContent(
 
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
+        private var cachedOptions: List<SessionOption> = emptyList()
+        private var cachedChildren: Array<AnAction> = AnAction.EMPTY_ARRAY
+
         override fun getChildren(e: AnActionEvent?): Array<AnAction> {
             if (!agentManager.isAcpConnected) return AnAction.EMPTY_ARRAY
             val options = agentManager.client.listSessionOptions()
             if (options.isEmpty()) return AnAction.EMPTY_ARRAY
-            return options.map { SessionOptionSelectorAction(it) }.toTypedArray()
+            if (options != cachedOptions) {
+                cachedOptions = options
+                cachedChildren = options.map { SessionOptionSelectorAction(it) }.toTypedArray()
+            }
+            return cachedChildren
         }
     }
 
@@ -1578,11 +1634,30 @@ class ChatToolWindowContent(
     private fun handlePromptCompletion(prompt: String) {
         com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project).flushPendingAutoFormat()
         com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project).clearFileAccessTracking()
-        consolePanel.finishResponse(turnToolCallCount, turnModelId, getModelMultiplier(turnModelId))
+
+        val client = agentManager.client
+        if (client.supportsMultiplier()) {
+            val multiplier = getModelMultiplier(turnModelId)
+            consolePanel.finishResponse(turnToolCallCount, turnModelId, multiplier)
+            billing.recordTurnCompleted(multiplier)
+            if (::processingTimerPanel.isInitialized) processingTimerPanel.recordUsage(0, 0, 0.0)
+        } else {
+            // Claude: show token/cost stats on the prompt chip, record usage in toolbar panel
+            consolePanel.finishResponse(turnToolCallCount, turnModelId, "")
+            val usageChip = formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)
+            if (usageChip.isNotEmpty()) {
+                ApplicationManager.getApplication().invokeLater {
+                    consolePanel.setPromptStats(turnModelId, usageChip)
+                }
+            }
+            if (::processingTimerPanel.isInitialized) {
+                processingTimerPanel.recordUsage(turnInputTokens, turnOutputTokens, turnCostUsd)
+            }
+        }
+
         notifyIfUnfocused(turnToolCallCount)
         saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
         saveConversation()
-        billing.recordTurnCompleted(getModelMultiplier(turnModelId))
 
         val lastResponse = consolePanel.getLastResponseText()
         val quickReplies = detectQuickReplies(lastResponse)
@@ -1669,12 +1744,19 @@ class ChatToolWindowContent(
             if (selectedModelIndex >= 0 && selectedModelIndex < loadedModels.size) loadedModels[selectedModelIndex] else null
         val modelId = selectedModelObj?.id ?: ""
         turnToolCallCount = 0
+        turnInputTokens = 0
+        turnOutputTokens = 0
+        turnCostUsd = 0.0
         activeSubAgentId = null
         turnModelId = modelId
         ApplicationManager.getApplication().invokeLater {
             consolePanel.setCurrentProfile(agentManager.activeProfileId)
             consolePanel.setCurrentModel(modelId)
-            consolePanel.setPromptStats(modelId, getModelMultiplier(modelId))
+            // Multiplier chip shown upfront only for Copilot (which has fixed per-model pricing).
+            // For Claude, token/cost stats are shown at turn completion instead.
+            if (agentManager.client.supportsMultiplier()) {
+                consolePanel.setPromptStats(modelId, getModelMultiplier(modelId))
+            }
         }
         return modelId
     }
@@ -1755,6 +1837,11 @@ class ChatToolWindowContent(
             "tool_call" -> handleStreamingToolCall(update)
             "tool_call_update" -> handleStreamingToolCallUpdate(update)
             "agent_thought_chunk" -> handleStreamingAgentThought(update)
+            "claude_usage" -> {
+                turnInputTokens = update["inputTokens"]?.asInt ?: 0
+                turnOutputTokens = update["outputTokens"]?.asInt ?: 0
+                turnCostUsd = update["costUsd"]?.asDouble ?: 0.0
+            }
         }
         handleClientUpdate(update)
     }
@@ -1948,6 +2035,20 @@ class ChatToolWindowContent(
         }
     }
 
+    /**
+     * Formats token counts and cost for the prompt stats chip shown next to each Claude message.
+     * Returns an empty string if no usage data is available.
+     * Examples: "1.2k tok · $0.004",  "850 tok · $0.001"
+     */
+    private fun formatUsageChip(inputTokens: Int, outputTokens: Int, costUsd: Double): String {
+        if (inputTokens == 0 && outputTokens == 0 && costUsd == 0.0) return ""
+        val totalTokens = inputTokens + outputTokens
+        val tokStr = if (totalTokens >= 1000) "${totalTokens / 1000}.${(totalTokens % 1000) / 100}k tok"
+        else "$totalTokens tok"
+        return if (costUsd > 0.0) "$tokStr · $${String.format("%.4f", costUsd).trimEnd('0').trimEnd('.')}"
+        else tokStr
+    }
+
     private fun saveTurnStatistics(prompt: String, toolCalls: Int, modelId: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
@@ -1958,7 +2059,13 @@ class ChatToolWindowContent(
                     addProperty("timestamp", java.time.Instant.now().toString())
                     addProperty("prompt", prompt.take(200))
                     addProperty("model", modelId)
-                    addProperty("multiplier", getModelMultiplier(modelId))
+                    if (agentManager.client.supportsMultiplier()) {
+                        addProperty("multiplier", getModelMultiplier(modelId))
+                    } else {
+                        addProperty("inputTokens", turnInputTokens)
+                        addProperty("outputTokens", turnOutputTokens)
+                        addProperty("costUsd", turnCostUsd)
+                    }
                     addProperty("toolCalls", toolCalls)
                 }
                 statsFile.appendText(entry.toString() + "\n")

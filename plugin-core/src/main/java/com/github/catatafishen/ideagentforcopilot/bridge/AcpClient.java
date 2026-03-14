@@ -1406,12 +1406,17 @@ public class AcpClient implements AgentClient {
 
     // ---- End agent request handlers ----
 
+    @Override
+    public boolean supportsMultiplier() {
+        return true;
+    }
+
     /**
      * Get the usage multiplier for a model ID (e.g., "1x", "3x", "0.33x").
      * Returns "1x" if the model is not found.
      */
     @NotNull
-    @SuppressWarnings("unused") // Public API - may be used by external code
+    @Override
     public String getModelMultiplier(@NotNull String modelId) {
         if (availableModels == null) return "1x";
         return availableModels.stream()

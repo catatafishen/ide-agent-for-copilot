@@ -454,6 +454,8 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                 if (isError && onChunk != null && event.has(SUBTYPE_ERROR)) {
                     onChunk.accept("\n[Error: " + extractErrorText(event.get(SUBTYPE_ERROR)) + "]");
                 }
+                // Emit token/cost usage so the UI can display it in the toolbar
+                if (!isError) emitUsageStats(event, onUpdate);
                 // Close stdin so profile-based sessions (which keep stdout open waiting
                 // for the next message) receive the EOF signal and exit cleanly.
                 closeQuietly(stdin);
@@ -498,6 +500,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     private static final String FIELD_REQUEST_ID = "requestId";
     private static final String BLOCK_TYPE_TEXT = "text";
     private static final String BLOCK_TYPE_THINKING = "thinking";
+    private static final String FIELD_TOTAL_INPUT_TOKENS = "total_input_tokens";
+    private static final String FIELD_TOTAL_OUTPUT_TOKENS = "total_output_tokens";
+    private static final String FIELD_COST_USD = "cost_usd";
 
     /**
      * Extracts a human-readable string from a Claude CLI error element (string or object).
@@ -524,6 +529,26 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         boolean isError = event.has("is_error") && event.get("is_error").getAsBoolean();
         String content = extractToolResultContent(event);
         emitToolCallEnd(toolUseId, content, !isError, onUpdate);
+    }
+
+    /**
+     * Reads {@code total_input_tokens}, {@code total_output_tokens}, and {@code cost_usd}
+     * from a {@code result} event and emits a {@code claude_usage} update so the UI layer
+     * can display per-prompt and session-aggregate token counts and dollar cost.
+     */
+    private void emitUsageStats(@NotNull JsonObject resultEvent, @Nullable Consumer<JsonObject> onUpdate) {
+        if (onUpdate == null) return;
+        if (!resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) && !resultEvent.has(FIELD_COST_USD)) return;
+
+        JsonObject update = new JsonObject();
+        update.addProperty("sessionUpdate", "claude_usage");
+        update.addProperty("inputTokens",
+            resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_INPUT_TOKENS).getAsInt() : 0);
+        update.addProperty("outputTokens",
+            resultEvent.has(FIELD_TOTAL_OUTPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_OUTPUT_TOKENS).getAsInt() : 0);
+        update.addProperty("costUsd",
+            resultEvent.has(FIELD_COST_USD) ? resultEvent.get(FIELD_COST_USD).getAsDouble() : 0.0);
+        onUpdate.accept(update);
     }
 
     /**

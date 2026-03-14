@@ -114,7 +114,20 @@ public interface AgentClient extends Closeable {
     }
 
     /**
+     * Whether this client supports per-model premium-request multipliers.
+     *
+     * <p>When {@code true} (e.g. GitHub Copilot), a multiplier chip is shown on each
+     * prompt and used in billing calculations. When {@code false} (e.g. Claude CLI),
+     * token counts and cost are shown instead.
+     * Default: {@code false}.</p>
+     */
+    default boolean supportsMultiplier() {
+        return false;
+    }
+
+    /**
      * Returns the pricing multiplier label for the given model ID (e.g. "1x", "2x").
+     * Only called when {@link #supportsMultiplier()} returns {@code true}.
      * Default: {@code "1x"} — override for agents with tiered model pricing.
      */
     @NotNull
