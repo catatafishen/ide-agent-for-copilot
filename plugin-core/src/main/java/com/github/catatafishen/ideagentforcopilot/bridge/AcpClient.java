@@ -70,6 +70,8 @@ public class AcpClient implements AgentClient {
     private static final String ARGUMENTS_KEY = "arguments";
     private static final String INPUT_KEY = "input";
     private static final String RAW_INPUT_KEY = "rawInput";
+    private static final String AGENT_TYPE_KEY = "agent_type";
+    private static final String PROMPT = "prompt";
 
     private static final String TOOL_PREFIX = " (tool=";
     private static final String TOOL_CALL_KEY = "toolCall";
@@ -639,7 +641,26 @@ public class AcpClient implements AgentClient {
         SessionUpdate.ToolKind kind = SessionUpdate.ToolKind.fromString(update.has(KIND_KEY) ? update.get(KIND_KEY).getAsString() : null);
         String args = extractAcpArguments(update);
         List<String> filePaths = extractFilePaths(update, title);
-        return new SessionUpdate.ToolCall(toolCallId, title, kind, args, filePaths);
+        String agentType = extractSubAgentField(args, AGENT_TYPE_KEY);
+        String subAgentDesc = agentType != null ? extractSubAgentField(args, DESCRIPTION) : null;
+        String subAgentPrompt = agentType != null ? extractSubAgentField(args, PROMPT) : null;
+        return new SessionUpdate.ToolCall(toolCallId, title, kind, args, filePaths, agentType, subAgentDesc, subAgentPrompt);
+    }
+
+    /**
+     * Extracts a string field from an already-serialised JSON arguments string, or {@code null}.
+     */
+    @Nullable
+    private static String extractSubAgentField(@Nullable String argsJson, @NotNull String field) {
+        if (argsJson == null || argsJson.isEmpty()) return null;
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(argsJson);
+            if (!parsed.isJsonObject()) return null;
+            com.google.gson.JsonElement el = parsed.getAsJsonObject().get(field);
+            return el != null && el.isJsonPrimitive() ? el.getAsString() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @NotNull
@@ -775,7 +796,7 @@ public class AcpClient implements AgentClient {
         promptContent.addProperty("type", "text");
         promptContent.addProperty("text", prompt);
         promptArray.add(promptContent);
-        params.add("prompt", promptArray);
+        params.add(PROMPT, promptArray);
 
         // Model is set per-session via session/set_model (see setModel method).
         // The model parameter is not sent in session/prompt params.

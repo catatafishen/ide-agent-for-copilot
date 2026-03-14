@@ -165,7 +165,12 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
         if (onUpdate == null) return;
         String normalized = normalizeToolName(toolName);
         String args = (!input.isEmpty()) ? input.toString() : null;
-        onUpdate.accept(new SessionUpdate.ToolCall(toolUseId, normalized, resolveToolKind(normalized), args, List.of()));
+        String agentType = input.has("agent_type") ? input.get("agent_type").getAsString() : null;
+        String subAgentDesc = agentType != null && input.has("description") ? input.get("description").getAsString() : null;
+        String subAgentPrompt = agentType != null && input.has("prompt") ? input.get("prompt").getAsString() : null;
+        onUpdate.accept(new SessionUpdate.ToolCall(
+            toolUseId, normalized, resolveToolKind(normalized), args, List.of(),
+            agentType, subAgentDesc, subAgentPrompt));
     }
 
     protected void emitToolCallEnd(@NotNull String toolUseId, @NotNull String result,

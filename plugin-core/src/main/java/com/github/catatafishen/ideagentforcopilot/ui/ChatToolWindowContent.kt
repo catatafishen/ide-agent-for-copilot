@@ -1880,17 +1880,17 @@ class ChatToolWindowContent(
         val kind = toolCall.kind().value()
         val arguments = toolCall.arguments()
         if (toolCallId.isEmpty()) return
-        val agentType = extractJsonField(arguments, "agent_type")
-        if (agentType != null) {
+        if (toolCall.isSubAgent) {
+            val agentType = toolCall.agentType()!!
             turnToolCallCount++
             if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
             toolCallTitles[toolCallId] = "task"
             activeSubAgentId = toolCallId
             agentManager.client.setSubAgentActive(true)
             agentManager.settings.setActiveAgentLabel(agentType)
-            val description = title.ifBlank { extractJsonField(arguments, "description") ?: "Sub-agent task" }
-            val prompt = extractJsonField(arguments, "prompt")
-            consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
+            val description =
+                toolCall.subAgentDescription()?.takeIf { it.isNotBlank() } ?: title.ifBlank { "Sub-agent task" }
+            consolePanel.addSubAgentEntry(toolCallId, agentType, description, toolCall.subAgentPrompt())
         } else if (activeSubAgentId != null) {
             turnToolCallCount++
             if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
@@ -1901,15 +1901,6 @@ class ChatToolWindowContent(
             if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
             toolCallTitles[toolCallId] = title
             consolePanel.addToolCallEntry(toolCallId, title, arguments, kind)
-        }
-    }
-
-    private fun extractJsonField(json: String?, key: String): String? {
-        if (json.isNullOrBlank()) return null
-        return try {
-            com.google.gson.JsonParser.parseString(json).asJsonObject[key]?.asString
-        } catch (_: Exception) {
-            null
         }
     }
 

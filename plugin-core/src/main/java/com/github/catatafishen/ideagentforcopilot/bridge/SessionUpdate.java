@@ -155,19 +155,33 @@ public sealed interface SessionUpdate
     /**
      * A new tool call has started.
      *
-     * @param toolCallId unique ID used to correlate with the matching {@link ToolCallUpdate}
-     * @param title      normalised tool name (MCP prefix stripped)
-     * @param kind       functional category of the tool
-     * @param arguments  serialised JSON string of the tool arguments, or {@code null} if empty
-     * @param filePaths  file paths extracted from the tool event (may be empty)
+     * @param toolCallId          unique ID used to correlate with the matching {@link ToolCallUpdate}
+     * @param title               normalised tool name (MCP prefix stripped)
+     * @param kind                functional category of the tool
+     * @param arguments           serialised JSON string of the tool arguments, or {@code null} if empty
+     * @param filePaths           file paths extracted from the tool event (may be empty)
+     * @param agentType           non-null when this is a Task/sub-agent tool call; contains the
+     *                            agent-type string (e.g. {@code "general-purpose"})
+     * @param subAgentDescription short description of the sub-agent task, or {@code null}
+     * @param subAgentPrompt      the prompt sent to the sub-agent, or {@code null}
      */
     record ToolCall(
         @NotNull String toolCallId,
         @NotNull String title,
         @NotNull ToolKind kind,
         @Nullable String arguments,
-        @NotNull List<String> filePaths
+        @NotNull List<String> filePaths,
+        @Nullable String agentType,
+        @Nullable String subAgentDescription,
+        @Nullable String subAgentPrompt
     ) implements SessionUpdate {
+
+        /**
+         * Returns {@code true} when this tool call starts a sub-agent (Task tool).
+         */
+        public boolean isSubAgent() {
+            return agentType != null;
+        }
     }
 
     /**
