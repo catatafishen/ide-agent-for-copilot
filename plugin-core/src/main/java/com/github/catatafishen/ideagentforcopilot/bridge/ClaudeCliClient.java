@@ -322,7 +322,8 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
             Thread stderrThread = startStderrDrainer(proc, stderrBuf);
 
             // Write JSON user message; stdin is kept open for bidirectional control_response exchange.
-            // parseStreamOutput closes stdin after the result event (or on cancellation).
+            // handleStreamEvent closes stdin when the result event arrives; parseStreamOutput's
+            // finally block closes it again as a safety net (double-close is a no-op).
             OutputStream stdin = proc.getOutputStream();
             writeJsonPromptToStdin(stdin, prompt);
 
@@ -420,6 +421,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                 if (isError && onChunk != null && event.has(SUBTYPE_ERROR)) {
                     onChunk.accept("\n[Error: " + extractErrorText(event.get(SUBTYPE_ERROR)) + "]");
                 }
+                // Close stdin so profile-based sessions (which keep stdout open waiting
+                // for the next message) receive the EOF signal and exit cleanly.
+                closeQuietly(stdin);
                 yield isError ? SUBTYPE_ERROR : STOP_REASON_END_TURN;
             }
             default -> currentStopReason;
