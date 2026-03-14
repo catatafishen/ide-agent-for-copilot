@@ -374,7 +374,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                 yield currentStopReason;
             }
             case "assistant" -> {
-                streamAssistantText(event, onChunk);
+                streamAssistantMessage(event, onChunk, onUpdate);
                 yield currentStopReason;
             }
             case "tool_use" -> {
@@ -401,22 +401,35 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         };
     }
 
-    private void streamAssistantText(@NotNull JsonObject event, @Nullable Consumer<String> onChunk) {
-        if (onChunk == null || !event.has(FIELD_MESSAGE)) return;
+    private void streamAssistantMessage(@NotNull JsonObject event,
+                                         @Nullable Consumer<String> onChunk,
+                                         @Nullable Consumer<JsonObject> onUpdate) {
+        if (!event.has(FIELD_MESSAGE)) return;
         JsonObject message = event.getAsJsonObject(FIELD_MESSAGE);
         if (!message.has(FIELD_CONTENT)) return;
         for (JsonElement block : message.getAsJsonArray(FIELD_CONTENT)) {
-            if (!block.isJsonObject()) continue;
-            JsonObject b = block.getAsJsonObject();
-            String blockType = b.has(FIELD_TYPE) ? b.get(FIELD_TYPE).getAsString() : "";
-            if ("text".equals(blockType) && b.has("text")) {
-                String text = b.get("text").getAsString();
-                if (!text.isEmpty()) onChunk.accept(text);
+            if (block.isJsonObject()) {
+                streamContentBlock(block.getAsJsonObject(), onChunk, onUpdate);
             }
         }
     }
 
+    private void streamContentBlock(@NotNull JsonObject block,
+                                     @Nullable Consumer<String> onChunk,
+                                     @Nullable Consumer<JsonObject> onUpdate) {
+        String blockType = block.has(FIELD_TYPE) ? block.get(FIELD_TYPE).getAsString() : "";
+        if (BLOCK_TYPE_TEXT.equals(blockType) && block.has(BLOCK_TYPE_TEXT) && onChunk != null) {
+            String text = block.get(BLOCK_TYPE_TEXT).getAsString();
+            if (!text.isEmpty()) onChunk.accept(text);
+        } else if (BLOCK_TYPE_THINKING.equals(blockType) && block.has(BLOCK_TYPE_THINKING)) {
+            String thinking = block.get(BLOCK_TYPE_THINKING).getAsString();
+            emitThought(thinking, onUpdate);
+        }
+    }
+
     private static final String FIELD_MESSAGE = "message";
+    private static final String BLOCK_TYPE_TEXT = "text";
+    private static final String BLOCK_TYPE_THINKING = "thinking";
 
     /**
      * Extracts a human-readable string from a Claude CLI error element (string or object).
@@ -441,8 +454,33 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     private void emitToolCallEnd(@NotNull JsonObject event, @Nullable Consumer<JsonObject> onUpdate) {
         String toolUseId = event.has("tool_use_id") ? event.get("tool_use_id").getAsString() : "";
         boolean isError = event.has("is_error") && event.get("is_error").getAsBoolean();
-        String content = event.has(FIELD_CONTENT) ? event.get(FIELD_CONTENT).getAsString() : "";
+        String content = extractToolResultContent(event);
         emitToolCallEnd(toolUseId, content, !isError, onUpdate);
+    }
+
+    /**
+     * Extracts tool result content as a plain string.
+     * The CLI may emit {@code content} as either a plain string or an array of content blocks
+     * (e.g. {@code [{"type":"text","text":"..."}]}). Both forms are handled.
+     */
+    @NotNull
+    private String extractToolResultContent(@NotNull JsonObject event) {
+        if (!event.has(FIELD_CONTENT)) return "";
+        JsonElement el = event.get(FIELD_CONTENT);
+        if (el.isJsonPrimitive()) return el.getAsString();
+        if (el.isJsonArray()) {
+            StringBuilder sb = new StringBuilder();
+            for (JsonElement item : el.getAsJsonArray()) {
+                if (item.isJsonObject()) {
+                    JsonObject obj = item.getAsJsonObject();
+                    if (obj.has(BLOCK_TYPE_TEXT)) sb.append(obj.get(BLOCK_TYPE_TEXT).getAsString());
+                } else if (item.isJsonPrimitive()) {
+                    sb.append(item.getAsString());
+                }
+            }
+            return sb.toString();
+        }
+        return el.toString();
     }
 
     // ── MCP injection ────────────────────────────────────────────────────────

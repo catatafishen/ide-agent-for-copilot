@@ -36,6 +36,7 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
     protected static final String FIELD_SESSION_UPDATE = "sessionUpdate";
     protected static final String SESSION_UPDATE_TOOL_CALL = "tool_call";
     protected static final String SESSION_UPDATE_TOOL_CALL_UPDATE = "tool_call_update";
+    protected static final String SESSION_UPDATE_THOUGHT = "agent_thought_chunk";
     protected static final String STATUS_COMPLETED = "completed";
     protected static final String STATUS_FAILED = "failed";
 
@@ -149,6 +150,22 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
         update.addProperty("toolCallId", toolUseId);
         update.addProperty("status", success ? STATUS_COMPLETED : STATUS_FAILED);
         if (result != null) update.addProperty("result", result);
+        onUpdate.accept(update);
+    }
+
+    /**
+     * Emits an {@code agent_thought_chunk} sessionUpdate event carrying a thinking text chunk.
+     *
+     * @param text     thinking text to surface in the UI
+     * @param onUpdate update consumer (no-op if null)
+     */
+    protected void emitThought(@NotNull String text, @Nullable Consumer<JsonObject> onUpdate) {
+        if (onUpdate == null || text.isEmpty()) return;
+        JsonObject update = new JsonObject();
+        update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_THOUGHT);
+        JsonObject content = new JsonObject();
+        content.addProperty("text", text);
+        update.add(FIELD_CONTENT, content);
         onUpdate.accept(update);
     }
 }
