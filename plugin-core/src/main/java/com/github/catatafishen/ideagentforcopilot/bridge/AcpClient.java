@@ -64,6 +64,12 @@ public class AcpClient implements AgentClient {
     private static final String TITLE_KEY = "title";
     private static final String PARAMETERS_KEY = "parameters";
     private static final String TOOL_DENIED_DEFAULT_MSG_TEMPLATE = "⚠ Tool denied. Use tools with '%s' prefix instead.";
+    private static final String TOOL_CALL_ID_KEY = "toolCallId";
+    private static final String STATUS_KEY = "status";
+    private static final String KIND_KEY = "kind";
+    private static final String ARGUMENTS_KEY = "arguments";
+    private static final String INPUT_KEY = "input";
+    private static final String RAW_INPUT_KEY = "rawInput";
 
     private static final String TOOL_PREFIX = " (tool=";
     private static final String TOOL_CALL_KEY = "toolCall";
@@ -132,6 +138,7 @@ public class AcpClient implements AgentClient {
     /**
      * Register a listener that is called when a tool with ASK permission needs user approval.
      */
+    @Override
     public void setPermissionRequestListener(java.util.function.Consumer<PermissionRequest> listener) {
         this.permissionRequestListener.set(listener);
     }
@@ -148,6 +155,7 @@ public class AcpClient implements AgentClient {
      * they run in their own context within the CLI. Read-only built-in tools (view, grep, glob)
      * cannot be intercepted. See CLI-BUG-556-WORKAROUND.md for details.
      */
+    @Override
     public void setSubAgentActive(boolean active) {
         this.subAgentActive = active;
     }
@@ -387,7 +395,7 @@ public class AcpClient implements AgentClient {
     public String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
                              @Nullable String model, @Nullable List<ResourceReference> references,
                              @Nullable Consumer<String> onChunk,
-                             @Nullable Consumer<JsonObject> onUpdate)
+                             @Nullable Consumer<SessionUpdate> onUpdate)
         throws AcpException {
         return sendPrompt(sessionId, prompt, model, references, onChunk, onUpdate, null);
     }
@@ -396,14 +404,14 @@ public class AcpClient implements AgentClient {
      * Send a prompt with full control over ACP session/update notifications.
      *
      * @param onChunk   receives text chunks for streaming display
-     * @param onUpdate  receives raw update JSON objects for plan events, tool calls, etc.
+     * @param onUpdate  receives structured update events for plan events, tool calls, etc.
      * @param onRequest called each time a session/prompt RPC request is sent (including retries)
      */
     @Override
     public @NotNull String sendPrompt(@NotNull String sessionId, @NotNull String prompt,
                                       @Nullable String model, @Nullable List<ResourceReference> references,
                                       @Nullable Consumer<String> onChunk,
-                                      @Nullable Consumer<JsonObject> onUpdate,
+                                      @Nullable Consumer<SessionUpdate> onUpdate,
                                       @Nullable Runnable onRequest)
         throws AcpException {
         ensureStarted();
@@ -567,7 +575,7 @@ public class AcpClient implements AgentClient {
 
     private Consumer<JsonObject> createStreamingListener(@NotNull String sessionId,
                                                          @Nullable Consumer<String> onChunk,
-                                                         @Nullable Consumer<JsonObject> onUpdate) {
+                                                         @Nullable Consumer<SessionUpdate> onUpdate) {
         return notification -> {
             String method = notification.has(METHOD) ? notification.get(METHOD).getAsString() : "";
             if (!"session/update".equals(method)) return;
@@ -590,34 +598,139 @@ public class AcpClient implements AgentClient {
 
     private void handleSessionUpdate(JsonObject update,
                                      @Nullable Consumer<String> onChunk,
-                                     @Nullable Consumer<JsonObject> onUpdate) {
+                                     @Nullable Consumer<SessionUpdate> onUpdate) {
         String updateType = update.has("sessionUpdate") ? update.get("sessionUpdate").getAsString() : "";
         LOG.debug("sendPrompt: received update type=" + updateType);
-
-        // Track activity for inactivity timeout
         lastActivityTimestamp = System.currentTimeMillis();
 
-        if ("agent_message_chunk".equals(updateType) && onChunk != null) {
-            JsonObject content = update.has(CONTENT) ? update.getAsJsonObject(CONTENT) : null;
-            if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
-                onChunk.accept(content.get("text").getAsString());
-            }
+        if (AgentClient.SessionUpdateType.AGENT_MESSAGE_CHUNK.value().equals(updateType)) {
+            handleAgentMessageChunk(update, onChunk);
         }
 
-        // Normalize tool name in tool_call events so the UI receives clean, prefix-free names.
-        if ("tool_call".equals(updateType) && update.has(TITLE_KEY)) {
-            String rawTitle = update.get(TITLE_KEY).getAsString();
-            String normalized = normalizeAcpToolName(rawTitle);
-            if (!normalized.equals(rawTitle)) {
-                update = update.deepCopy();
-                update.addProperty(TITLE_KEY, normalized);
+        if (onUpdate == null) return;
+        AgentClient.SessionUpdateType type = AgentClient.SessionUpdateType.fromString(updateType);
+        if (type == null) return;
+
+        switch (type) {
+            case TOOL_CALL -> onUpdate.accept(buildToolCallEvent(update));
+            case TOOL_CALL_UPDATE -> onUpdate.accept(buildToolCallUpdateEvent(update));
+            case AGENT_THOUGHT -> {
+                String text = extractContentText(update);
+                if (text != null && !text.isEmpty()) onUpdate.accept(new SessionUpdate.AgentThought(text));
+            }
+            case PLAN -> onUpdate.accept(new SessionUpdate.Plan(extractPlanEntries(update)));
+            default -> { /* AGENT_MESSAGE_CHUNK handled above; TURN_USAGE and BANNER come from Claude clients */ }
+        }
+    }
+
+    private void handleAgentMessageChunk(@NotNull JsonObject update, @Nullable Consumer<String> onChunk) {
+        if (onChunk == null) return;
+        JsonObject content = update.has(CONTENT) ? update.getAsJsonObject(CONTENT) : null;
+        if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
+            onChunk.accept(content.get("text").getAsString());
+        }
+    }
+
+    @NotNull
+    private SessionUpdate.ToolCall buildToolCallEvent(@NotNull JsonObject update) {
+        String toolCallId = update.has(TOOL_CALL_ID_KEY) ? update.get(TOOL_CALL_ID_KEY).getAsString() : "";
+        String rawTitle = update.has(TITLE_KEY) ? update.get(TITLE_KEY).getAsString() : "tool";
+        String title = normalizeAcpToolName(rawTitle);
+        String kind = update.has(KIND_KEY) ? update.get(KIND_KEY).getAsString() : "other";
+        String args = extractAcpArguments(update);
+        List<String> filePaths = extractFilePaths(update, title);
+        return new SessionUpdate.ToolCall(toolCallId, title, kind, args, filePaths);
+    }
+
+    @NotNull
+    private SessionUpdate.ToolCallUpdate buildToolCallUpdateEvent(@NotNull JsonObject update) {
+        String toolCallId = update.has(TOOL_CALL_ID_KEY) ? update.get(TOOL_CALL_ID_KEY).getAsString() : "";
+        String status = update.has(STATUS_KEY) ? update.get(STATUS_KEY).getAsString() : "";
+        String result = extractAcpResult(update);
+        String error = update.has(ERROR) ? update.get(ERROR).getAsString() : null;
+        return new SessionUpdate.ToolCallUpdate(toolCallId, status, result, error);
+    }
+
+    @Nullable
+    private String extractAcpArguments(@NotNull JsonObject update) {
+        for (String key : new String[]{ARGUMENTS_KEY, INPUT_KEY, RAW_INPUT_KEY}) {
+            if (!update.has(key)) continue;
+            com.google.gson.JsonElement el = update.get(key);
+            if (el.isJsonPrimitive()) return el.getAsString();
+            if (el.isJsonObject() || el.isJsonArray()) return el.toString();
+        }
+        return null;
+    }
+
+    @NotNull
+    private List<String> extractFilePaths(@NotNull JsonObject update, @NotNull String title) {
+        if (update.has("locations")) {
+            com.google.gson.JsonArray locations = update.getAsJsonArray("locations");
+            List<String> paths = new java.util.ArrayList<>();
+            for (com.google.gson.JsonElement loc : locations) {
+                if (loc.isJsonObject()) {
+                    com.google.gson.JsonElement path = loc.getAsJsonObject().get("path");
+                    if (path != null && path.isJsonPrimitive()) paths.add(path.getAsString());
+                }
+            }
+            if (!paths.isEmpty()) return paths;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("(?:Creating|Writing|Editing|Reading)\\s+(.+\\.\\w+)")
+            .matcher(title);
+        return m.find() ? List.of(m.group(1)) : List.of();
+    }
+
+    @Nullable
+    private String extractAcpResult(@NotNull JsonObject update) {
+        if (update.has(RESULT)) return update.get(RESULT).getAsString();
+        if (update.has(CONTENT)) return extractContentText(update);
+        return null;
+    }
+
+    @Nullable
+    private String extractContentText(@NotNull JsonObject update) {
+        if (!update.has(CONTENT)) return null;
+        com.google.gson.JsonElement el = update.get(CONTENT);
+        if (el.isJsonPrimitive()) return el.getAsString();
+        if (el.isJsonObject()) return extractTextFromObject(el.getAsJsonObject());
+        if (el.isJsonArray()) return extractTextFromArray(el.getAsJsonArray());
+        return null;
+    }
+
+    @Nullable
+    private String extractTextFromObject(@NotNull JsonObject obj) {
+        com.google.gson.JsonElement text = obj.get("text");
+        return text != null ? text.getAsString() : null;
+    }
+
+    @Nullable
+    private String extractTextFromArray(@NotNull com.google.gson.JsonArray array) {
+        StringBuilder sb = new StringBuilder();
+        for (com.google.gson.JsonElement item : array) {
+            if (item.isJsonObject()) {
+                com.google.gson.JsonElement text = item.getAsJsonObject().get("text");
+                if (text != null) sb.append(text.getAsString());
+            } else if (item.isJsonPrimitive()) {
+                sb.append(item.getAsString());
             }
         }
+        return sb.isEmpty() ? null : sb.toString();
+    }
 
-        // Forward all updates to onUpdate listener (plan events, tool calls, etc.)
-        if (onUpdate != null) {
-            onUpdate.accept(update);
+    @NotNull
+    private List<SessionUpdate.Plan.PlanEntry> extractPlanEntries(@NotNull JsonObject update) {
+        if (!update.has("entries")) return List.of();
+        List<SessionUpdate.Plan.PlanEntry> result = new java.util.ArrayList<>();
+        for (com.google.gson.JsonElement el : update.getAsJsonArray("entries")) {
+            if (!el.isJsonObject()) continue;
+            JsonObject obj = el.getAsJsonObject();
+            String content = obj.has(CONTENT) ? obj.get(CONTENT).getAsString() : "Step";
+            String status = obj.has(STATUS_KEY) ? obj.get(STATUS_KEY).getAsString() : "pending";
+            String priority = obj.has("priority") ? obj.get("priority").getAsString() : "";
+            result.add(new SessionUpdate.Plan.PlanEntry(content, status, priority));
         }
+        return result;
     }
 
     /**
@@ -712,6 +825,7 @@ public class AcpClient implements AgentClient {
     /**
      * Get the auth method info from the initialization response (for the login button).
      */
+    @Override
     @Nullable
     public AuthMethod getAuthMethod() {
         return agentConfig.getAuthMethod();
@@ -723,6 +837,7 @@ public class AcpClient implements AgentClient {
      *
      * @see AgentConfig#requiresResourceContentDuplication()
      */
+    @Override
     public boolean requiresResourceContentDuplication() {
         return agentConfig.requiresResourceContentDuplication();
     }
@@ -1162,7 +1277,7 @@ public class AcpClient implements AgentClient {
     private JsonObject extractToolArgs(@Nullable JsonObject reqParams) {
         if (reqParams == null || !reqParams.has(TOOL_CALL_KEY)) return null;
         JsonObject toolCallJson = reqParams.getAsJsonObject(TOOL_CALL_KEY);
-        for (String wrapper : new String[]{"arguments", "input", PARAMS}) {
+        for (String wrapper : new String[]{ARGUMENTS_KEY, INPUT_KEY, PARAMS}) {
             if (toolCallJson.has(wrapper) && toolCallJson.get(wrapper).isJsonObject()) {
                 return toolCallJson.getAsJsonObject(wrapper);
             }
@@ -1253,7 +1368,7 @@ public class AcpClient implements AgentClient {
         String direct = findPathInJson(toolCall);
         if (direct != null) return direct;
         // Also check inside a nested "arguments" / "input" object
-        for (String wrapper : new String[]{"arguments", "input", PARAMS}) {
+        for (String wrapper : new String[]{ARGUMENTS_KEY, INPUT_KEY, PARAMS}) {
             if (toolCall.has(wrapper) && toolCall.get(wrapper).isJsonObject()) {
                 String nested = findPathInJson(toolCall.getAsJsonObject(wrapper));
                 if (nested != null) return nested;

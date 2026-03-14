@@ -208,13 +208,12 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     // ── Prompt execution ─────────────────────────────────────────────────────
 
-    @Override
     public @NotNull String sendPrompt(@NotNull String sessionId,
                                       @NotNull String prompt,
                                       @Nullable String model,
                                       @Nullable List<ResourceReference> references,
                                       @Nullable Consumer<String> onChunk,
-                                      @Nullable Consumer<JsonObject> onUpdate,
+                                      @Nullable Consumer<SessionUpdate> onUpdate,
                                       @Nullable Runnable onRequest) throws AcpException {
         ensureStarted();
         AtomicBoolean cancelled = sessionCancelled.computeIfAbsent(sessionId, k -> new AtomicBoolean(false));
@@ -322,12 +321,11 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         return null;
     }
 
-    @NotNull
     private String runSubprocess(@NotNull String sessionId,
                                  @NotNull List<String> cmd,
                                  @NotNull String prompt,
                                  @Nullable Consumer<String> onChunk,
-                                 @Nullable Consumer<JsonObject> onUpdate,
+                                 @Nullable Consumer<SessionUpdate> onUpdate,
                                  @NotNull AtomicBoolean cancelled) throws AcpException {
         try {
             ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -375,7 +373,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                                      @NotNull Process proc,
                                      @NotNull OutputStream stdin,
                                      @Nullable Consumer<String> onChunk,
-                                     @Nullable Consumer<JsonObject> onUpdate,
+                                     @Nullable Consumer<SessionUpdate> onUpdate,
                                      @NotNull AtomicBoolean cancelled) throws IOException {
         String stopReason = STOP_REASON_END_TURN;
         try (BufferedReader reader = new BufferedReader(
@@ -404,7 +402,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                                      @NotNull String currentStopReason,
                                      @NotNull OutputStream stdin,
                                      @Nullable Consumer<String> onChunk,
-                                     @Nullable Consumer<JsonObject> onUpdate) {
+                                     @Nullable Consumer<SessionUpdate> onUpdate) {
         String type = event.has(FIELD_TYPE) ? event.get(FIELD_TYPE).getAsString() : "";
         return switch (type) {
             case "system" -> {
@@ -458,8 +456,10 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                 }
                 boolean isError = event.has(FIELD_SUBTYPE)
                     && SUBTYPE_ERROR.equals(event.get(FIELD_SUBTYPE).getAsString());
-                if (isError && onChunk != null && event.has(SUBTYPE_ERROR)) {
-                    onChunk.accept("\n[Error: " + extractErrorText(event.get(SUBTYPE_ERROR)) + "]");
+                if (isError && event.has(SUBTYPE_ERROR)) {
+                    String errorText = extractErrorText(event.get(SUBTYPE_ERROR));
+                    if (onChunk != null) onChunk.accept("\n[Error: " + errorText + "]");
+                    if (isRateLimitError(errorText)) emitBannerEvent(errorText, "warning", "next_success", onUpdate);
                 }
                 // Emit token/cost usage so the UI can display it in the toolbar
                 if (!isError) emitUsageStats(event, onUpdate);
@@ -474,7 +474,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     private void streamAssistantMessage(@NotNull JsonObject event,
                                         @Nullable Consumer<String> onChunk,
-                                        @Nullable Consumer<JsonObject> onUpdate) {
+                                        @Nullable Consumer<SessionUpdate> onUpdate) {
         if (!event.has(FIELD_MESSAGE)) return;
         JsonObject message = event.getAsJsonObject(FIELD_MESSAGE);
         if (!message.has(FIELD_CONTENT)) return;
@@ -487,7 +487,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     private void streamContentBlock(@NotNull JsonObject block,
                                     @Nullable Consumer<String> onChunk,
-                                    @Nullable Consumer<JsonObject> onUpdate) {
+                                    @Nullable Consumer<SessionUpdate> onUpdate) {
         String blockType = block.has(FIELD_TYPE) ? block.get(FIELD_TYPE).getAsString() : "";
         if (BLOCK_TYPE_TEXT.equals(blockType) && block.has(BLOCK_TYPE_TEXT) && onChunk != null) {
             String text = block.get(BLOCK_TYPE_TEXT).getAsString();
@@ -524,14 +524,14 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         return el.toString();
     }
 
-    private void emitToolCallStart(@NotNull JsonObject event, @Nullable Consumer<JsonObject> onUpdate) {
+    private void emitToolCallStart(@NotNull JsonObject event, @Nullable Consumer<SessionUpdate> onUpdate) {
         String id = event.has("id") ? event.get("id").getAsString() : UUID.randomUUID().toString();
         String name = event.has("name") ? event.get("name").getAsString() : "tool";
         JsonObject input = event.has(FIELD_INPUT) ? event.getAsJsonObject(FIELD_INPUT) : new JsonObject();
         emitToolCallStart(id, name, input, onUpdate);
     }
 
-    private void emitToolCallEnd(@NotNull JsonObject event, @Nullable Consumer<JsonObject> onUpdate) {
+    private void emitToolCallEnd(@NotNull JsonObject event, @Nullable Consumer<SessionUpdate> onUpdate) {
         String toolUseId = event.has("tool_use_id") ? event.get("tool_use_id").getAsString() : "";
         boolean isError = event.has("is_error") && event.get("is_error").getAsBoolean();
         String content = extractToolResultContent(event);
@@ -540,22 +540,16 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     /**
      * Reads {@code total_input_tokens}, {@code total_output_tokens}, and {@code cost_usd}
-     * from a {@code result} event and emits a {@code claude_usage} update so the UI layer
-     * can display per-prompt and session-aggregate token counts and dollar cost.
+     * from a {@code result} event and emits a {@link SessionUpdate.TurnUsage} update so the UI
+     * layer can display per-prompt and session-aggregate token counts and dollar cost.
      */
-    private void emitUsageStats(@NotNull JsonObject resultEvent, @Nullable Consumer<JsonObject> onUpdate) {
+    private void emitUsageStats(@NotNull JsonObject resultEvent, @Nullable Consumer<SessionUpdate> onUpdate) {
         if (onUpdate == null) return;
         if (!resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) && !resultEvent.has(FIELD_COST_USD)) return;
-
-        JsonObject update = new JsonObject();
-        update.addProperty("sessionUpdate", SESSION_UPDATE_TURN_USAGE);
-        update.addProperty("inputTokens",
-            resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_INPUT_TOKENS).getAsInt() : 0);
-        update.addProperty("outputTokens",
-            resultEvent.has(FIELD_TOTAL_OUTPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_OUTPUT_TOKENS).getAsInt() : 0);
-        update.addProperty("costUsd",
-            resultEvent.has(FIELD_COST_USD) ? resultEvent.get(FIELD_COST_USD).getAsDouble() : 0.0);
-        onUpdate.accept(update);
+        int inputTokens = resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_INPUT_TOKENS).getAsInt() : 0;
+        int outputTokens = resultEvent.has(FIELD_TOTAL_OUTPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_OUTPUT_TOKENS).getAsInt() : 0;
+        double costUsd = resultEvent.has(FIELD_COST_USD) ? resultEvent.get(FIELD_COST_USD).getAsDouble() : 0.0;
+        onUpdate.accept(new SessionUpdate.TurnUsage(inputTokens, outputTokens, costUsd));
     }
 
     /**

@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,12 +35,8 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
     protected static final String FIELD_CONTENT = "content";
     protected static final String FIELD_INPUT = "input";
 
-    // ── sessionUpdate event protocol ─────────────────────────────────────────
+    // ── Tool call status values ───────────────────────────────────────────────
 
-    protected static final String FIELD_SESSION_UPDATE = "sessionUpdate";
-    protected static final String SESSION_UPDATE_TOOL_CALL = "tool_call";
-    protected static final String SESSION_UPDATE_TOOL_CALL_UPDATE = "tool_call_update";
-    protected static final String SESSION_UPDATE_THOUGHT = "agent_thought_chunk";
     protected static final String STATUS_COMPLETED = "completed";
     protected static final String STATUS_FAILED = "failed";
 
@@ -170,63 +167,45 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
 
     // ── sessionUpdate emission ───────────────────────────────────────────────
 
-    /**
-     * Emits a {@code tool_call} sessionUpdate event to the UI layer.
-     * The tool name is normalised (MCP prefix stripped) and the kind resolved
-     * before the event is forwarded.
-     *
-     * @param toolUseId unique tool-call ID
-     * @param toolName  raw tool name (may include MCP server prefix)
-     * @param input     tool input arguments
-     * @param onUpdate  update consumer (no-op if null)
-     */
     protected void emitToolCallStart(@NotNull String toolUseId, @NotNull String toolName,
                                      @NotNull JsonObject input,
-                                     @Nullable Consumer<JsonObject> onUpdate) {
+                                     @Nullable Consumer<SessionUpdate> onUpdate) {
         if (onUpdate == null) return;
         String normalized = normalizeToolName(toolName);
-        JsonObject update = new JsonObject();
-        update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_TOOL_CALL);
-        update.addProperty("toolCallId", toolUseId);
-        update.addProperty("title", normalized);
-        update.addProperty("status", "in_progress");
-        update.addProperty("kind", resolveToolKind(normalized));
-        update.add(FIELD_INPUT, input);
-        onUpdate.accept(update);
+        String args = (!input.isEmpty()) ? input.toString() : null;
+        onUpdate.accept(new SessionUpdate.ToolCall(toolUseId, normalized, resolveToolKind(normalized), args, List.of()));
     }
 
-    /**
-     * Emits a {@code tool_call_update} sessionUpdate event signalling tool completion.
-     *
-     * @param toolUseId unique tool-call ID (must match the corresponding {@link #emitToolCallStart})
-     * @param result    result text (may be null)
-     * @param success   whether the tool succeeded
-     * @param onUpdate  update consumer (no-op if null)
-     */
-    protected void emitToolCallEnd(@NotNull String toolUseId, @Nullable String result,
-                                   boolean success, @Nullable Consumer<JsonObject> onUpdate) {
+    protected void emitToolCallEnd(@NotNull String toolUseId, @NotNull String result,
+                                   boolean isError,
+                                   @Nullable Consumer<SessionUpdate> onUpdate) {
         if (onUpdate == null) return;
-        JsonObject update = new JsonObject();
-        update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_TOOL_CALL_UPDATE);
-        update.addProperty("toolCallId", toolUseId);
-        update.addProperty("status", success ? STATUS_COMPLETED : STATUS_FAILED);
-        if (result != null) update.addProperty("result", result);
-        onUpdate.accept(update);
+        if (isError) {
+            onUpdate.accept(new SessionUpdate.ToolCallUpdate(toolUseId, STATUS_FAILED, null, result));
+        } else {
+            onUpdate.accept(new SessionUpdate.ToolCallUpdate(toolUseId, STATUS_COMPLETED, result, null));
+        }
     }
 
+    private static final Pattern RATE_LIMIT_PATTERN =
+        Pattern.compile("hit.*limit|rate.?limit|usage.*limit", Pattern.CASE_INSENSITIVE);
+
     /**
-     * Emits an {@code agent_thought_chunk} sessionUpdate event carrying a thinking text chunk.
-     *
-     * @param text     thinking text to surface in the UI
-     * @param onUpdate update consumer (no-op if null)
+     * Returns {@code true} if the error text indicates a Claude usage/rate-limit error.
      */
-    protected void emitThought(@NotNull String text, @Nullable Consumer<JsonObject> onUpdate) {
+    protected static boolean isRateLimitError(@NotNull String errorText) {
+        return RATE_LIMIT_PATTERN.matcher(errorText).find();
+    }
+
+    protected void emitBannerEvent(@NotNull String message, @NotNull String level,
+                                   @NotNull String clearOn,
+                                   @Nullable Consumer<SessionUpdate> onUpdate) {
+        if (onUpdate == null) return;
+        onUpdate.accept(new SessionUpdate.Banner(message, level, clearOn));
+    }
+
+    protected void emitThought(@NotNull String text, @Nullable Consumer<SessionUpdate> onUpdate) {
         if (onUpdate == null || text.isEmpty()) return;
-        JsonObject update = new JsonObject();
-        update.addProperty(FIELD_SESSION_UPDATE, SESSION_UPDATE_THOUGHT);
-        JsonObject content = new JsonObject();
-        content.addProperty("text", text);
-        update.add(FIELD_CONTENT, content);
-        onUpdate.accept(update);
+        onUpdate.accept(new SessionUpdate.AgentThought(text));
     }
 }

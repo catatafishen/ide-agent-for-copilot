@@ -218,40 +218,31 @@ class ChatToolWindowContent(
     private val toolCallTitles = mutableMapOf<String, String>() // toolCallId -> display title
     private var activeSubAgentId: String? = null // non-null while a sub-agent is running
 
-    /** Handle session/update notifications — routes to timeline and session tab. */
-    private fun handleClientUpdate(update: com.google.gson.JsonObject) {
-        val updateType = update["sessionUpdate"]?.asString ?: return
+    /** Non-null when an agent banner with {@code clearOn="next_success"} is pending re-display. */
+    private data class PendingBanner(val message: String, val level: String)
 
-        when (updateType) {
-            "tool_call" -> handleToolCall(update)
-            "tool_call_update" -> handleToolCallUpdate(update)
-            "plan" -> handlePlanUpdate(update)
+    private var pendingBanner: PendingBanner? = null
+
+    private fun handleClientUpdate(update: SessionUpdate) {
+        when (update) {
+            is SessionUpdate.ToolCall -> handleToolCall(update)
+            is SessionUpdate.ToolCallUpdate -> handleToolCallUpdate(update)
+            is SessionUpdate.Plan -> handlePlanUpdate(update)
+            else -> Unit
         }
     }
 
-    private fun handleToolCall(update: com.google.gson.JsonObject) {
-        val title = update["title"]?.asString ?: "Unknown tool"
-        val toolCallId = update["toolCallId"]?.asString ?: ""
-
-        val filePath = extractFilePath(update, title)
+    private fun handleToolCall(update: SessionUpdate.ToolCall) {
+        val filePath = update.filePaths().firstOrNull()
+        val toolCallId = update.toolCallId()
         if (filePath != null && toolCallId.isNotEmpty()) {
             toolCallFiles[toolCallId] = filePath
         }
     }
 
-    private fun extractFilePath(update: com.google.gson.JsonObject, title: String): String? {
-        val locations = if (update.has("locations")) update.getAsJsonArray("locations") else null
-        if (locations != null && locations.size() > 0) {
-            val path = locations[0].asJsonObject["path"]?.asString
-            if (path != null) return path
-        }
-        val pathMatch = Regex("""(?:Creating|Writing|Editing|Reading)\s+(.+\.\w+)""").find(title)
-        return pathMatch?.groupValues?.get(1)
-    }
-
-    private fun handleToolCallUpdate(update: com.google.gson.JsonObject) {
-        val status = update["status"]?.asString ?: ""
-        val toolCallId = update["toolCallId"]?.asString ?: ""
+    private fun handleToolCallUpdate(update: SessionUpdate.ToolCallUpdate) {
+        val status = update.status()
+        val toolCallId = update.toolCallId()
         if (status != "completed" && status != "failed") return
 
         val filePath = toolCallFiles[toolCallId]
@@ -280,10 +271,9 @@ class ChatToolWindowContent(
         }
     }
 
-    private fun handlePlanUpdate(update: com.google.gson.JsonObject) {
-        val entries = update.getAsJsonArray("entries") ?: return
+    private fun handlePlanUpdate(update: SessionUpdate.Plan) {
+        val entries = update.entries()
         ApplicationManager.getApplication().invokeLater {
-            // Remove existing plan group, but keep Files group
             val toRemove = mutableListOf<javax.swing.tree.DefaultMutableTreeNode>()
             for (i in 0 until planRoot.childCount) {
                 val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
@@ -293,11 +283,10 @@ class ChatToolWindowContent(
 
             val planNode = javax.swing.tree.DefaultMutableTreeNode("Plan")
             for (entry in entries) {
-                val obj = entry.asJsonObject
-                val content = obj["content"]?.asString ?: "Step"
-                val entryStatus = obj["status"]?.asString ?: "pending"
-                val priority = obj["priority"]?.asString ?: ""
-                val label = "$content [$entryStatus]${if (priority.isNotEmpty()) " ($priority)" else ""}"
+                val label =
+                    "${entry.content()} [${entry.status()}]${
+                        if (entry.priority().isNotEmpty()) " (${entry.priority()})" else ""
+                    }"
                 planNode.add(javax.swing.tree.DefaultMutableTreeNode(label))
             }
             planRoot.add(planNode)
@@ -1645,6 +1634,9 @@ class ChatToolWindowContent(
         com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project).flushPendingAutoFormat()
         com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project).clearFileAccessTracking()
 
+        // A successful turn means the rate limit was not blocking — clear any cached warning.
+        pendingBanner = null
+
         val client = agentManager.client
         if (client.supportsMultiplier()) {
             val multiplier = getModelMultiplier(turnModelId)
@@ -1689,6 +1681,14 @@ class ChatToolWindowContent(
         try {
             if (isBlockedByAuth()) return
 
+            val pending = pendingBanner
+            if (pending != null) {
+                ApplicationManager.getApplication().invokeLater {
+                    if (pending.level == "error") statusBanner?.showError(pending.message)
+                    else statusBanner?.showWarning(pending.message)
+                }
+            }
+
             val client = agentManager.client
             val sessionId = ensureSessionCreated(client)
             wirePermissionListener(client)
@@ -1718,11 +1718,9 @@ class ChatToolWindowContent(
     ) {
         val refs = references.ifEmpty { null }
         val onChunk = createStreamingChunkHandler()
-        val onUpdate = java.util.function.Consumer<com.google.gson.JsonObject> { update ->
+        val onUpdate = java.util.function.Consumer<SessionUpdate> { update ->
             handlePromptStreamingUpdate(update)
         }
-        // Pass the session ID as a parameter so the retry uses the freshly created session,
-        // not the stale ID captured in the closure.
         val sendPromptCall: (String) -> Unit = { sid ->
             client.sendPrompt(sid, effectivePrompt, modelId, refs, onChunk, onUpdate, null)
         }
@@ -1841,66 +1839,68 @@ class ChatToolWindowContent(
         return match.groupValues[1].split("|").map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    private fun handlePromptStreamingUpdate(update: com.google.gson.JsonObject) {
-        val updateType = update["sessionUpdate"]?.asString ?: ""
-        when (updateType) {
-            "tool_call" -> handleStreamingToolCall(update)
-            "tool_call_update" -> handleStreamingToolCallUpdate(update)
-            "agent_thought_chunk" -> handleStreamingAgentThought(update)
-            AgentClient.SESSION_UPDATE_TURN_USAGE -> {
-                turnInputTokens = update["inputTokens"]?.asInt ?: 0
-                turnOutputTokens = update["outputTokens"]?.asInt ?: 0
-                turnCostUsd = update["costUsd"]?.asDouble ?: 0.0
+    private fun handlePromptStreamingUpdate(update: SessionUpdate) {
+        when (update) {
+            is SessionUpdate.ToolCall -> {
+                handleStreamingToolCall(update)
+                handleClientUpdate(update)
             }
-        }
-        handleClientUpdate(update)
-    }
 
-    private fun extractJsonElementText(element: com.google.gson.JsonElement): String? {
-        return when {
-            element.isJsonObject -> com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(element)
-            element.isJsonPrimitive -> element.asString
-            else -> null
+            is SessionUpdate.ToolCallUpdate -> {
+                handleStreamingToolCallUpdate(update)
+                handleClientUpdate(update)
+            }
+
+            is SessionUpdate.AgentThought -> handleStreamingAgentThought(update)
+            is SessionUpdate.TurnUsage -> handleStreamingTurnUsage(update)
+            is SessionUpdate.Banner -> handleStreamingBanner(update)
+            is SessionUpdate.Plan -> handleClientUpdate(update)
         }
     }
 
-    private fun extractJsonArguments(update: com.google.gson.JsonObject): String? {
-        return update["arguments"]?.let { extractJsonElementText(it) }
-            ?: update["input"]?.let { extractJsonElementText(it) }
-            ?: update["rawInput"]?.let { extractJsonElementText(it) }
+    private fun handleStreamingTurnUsage(usage: SessionUpdate.TurnUsage) {
+        turnInputTokens = usage.inputTokens()
+        turnOutputTokens = usage.outputTokens()
+        turnCostUsd = usage.costUsd()
     }
 
-    private fun handleStreamingToolCall(update: com.google.gson.JsonObject) {
-        val title = update["title"]?.asString ?: "tool"
-        val status = update["status"]?.asString ?: ""
-        val toolCallId = update["toolCallId"]?.asString ?: ""
-        val kind = update["kind"]?.asString ?: "other"
-        val arguments = extractJsonArguments(update)
-        if (status != "completed" && toolCallId.isNotEmpty()) {
-            // Detect sub-agent calls by checking for agent_type in arguments
-            val agentType = extractJsonField(arguments, "agent_type")
-            if (agentType != null) {
-                turnToolCallCount++
-                if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
-                toolCallTitles[toolCallId] = "task" // mark as sub-agent for update routing
-                activeSubAgentId = toolCallId
-                agentManager.client.setSubAgentActive(true)
-                agentManager.settings.setActiveAgentLabel(agentType)
-                val description = title.ifBlank { extractJsonField(arguments, "description") ?: "Sub-agent task" }
-                val prompt = extractJsonField(arguments, "prompt")
-                consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
-            } else if (activeSubAgentId != null) {
-                // Internal tool call from a running sub-agent — show on sub-agent's message
-                turnToolCallCount++
-                if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
-                toolCallTitles[toolCallId] = "subagent_internal"
-                consolePanel.addSubAgentToolCall(activeSubAgentId!!, toolCallId, title, arguments, kind)
-            } else {
-                turnToolCallCount++
-                if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
-                toolCallTitles[toolCallId] = title
-                consolePanel.addToolCallEntry(toolCallId, title, arguments, kind)
-            }
+    private fun handleStreamingBanner(banner: SessionUpdate.Banner) {
+        val msg = banner.message()
+        val level = banner.level()
+        if (banner.clearOn() == "next_success") pendingBanner = PendingBanner(msg, level)
+        ApplicationManager.getApplication().invokeLater {
+            if (level == "error") statusBanner?.showError(msg)
+            else statusBanner?.showWarning(msg)
+        }
+    }
+
+    private fun handleStreamingToolCall(toolCall: SessionUpdate.ToolCall) {
+        val title = toolCall.title()
+        val toolCallId = toolCall.toolCallId()
+        val kind = toolCall.kind()
+        val arguments = toolCall.arguments()
+        if (toolCallId.isEmpty()) return
+        val agentType = extractJsonField(arguments, "agent_type")
+        if (agentType != null) {
+            turnToolCallCount++
+            if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
+            toolCallTitles[toolCallId] = "task"
+            activeSubAgentId = toolCallId
+            agentManager.client.setSubAgentActive(true)
+            agentManager.settings.setActiveAgentLabel(agentType)
+            val description = title.ifBlank { extractJsonField(arguments, "description") ?: "Sub-agent task" }
+            val prompt = extractJsonField(arguments, "prompt")
+            consolePanel.addSubAgentEntry(toolCallId, agentType, description, prompt)
+        } else if (activeSubAgentId != null) {
+            turnToolCallCount++
+            if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
+            toolCallTitles[toolCallId] = "subagent_internal"
+            consolePanel.addSubAgentToolCall(activeSubAgentId!!, toolCallId, title, arguments, kind)
+        } else {
+            turnToolCallCount++
+            if (::processingTimerPanel.isInitialized) processingTimerPanel.incrementToolCalls()
+            toolCallTitles[toolCallId] = title
+            consolePanel.addToolCallEntry(toolCallId, title, arguments, kind)
         }
     }
 
@@ -1913,11 +1913,10 @@ class ChatToolWindowContent(
         }
     }
 
-    private fun handleStreamingToolCallUpdate(update: com.google.gson.JsonObject) {
-        val status = update["status"]?.asString ?: ""
-        val toolCallId = update["toolCallId"]?.asString ?: ""
-        val result = update["result"]?.asString
-            ?: update["content"]?.let { extractContentText(it) }
+    private fun handleStreamingToolCallUpdate(update: SessionUpdate.ToolCallUpdate) {
+        val status = update.status()
+        val toolCallId = update.toolCallId()
+        val result = update.result()
         val callType = toolCallTitles[toolCallId]
         val isSubAgent = callType == "task"
         val isInternal = callType == "subagent_internal"
@@ -1933,9 +1932,7 @@ class ChatToolWindowContent(
                 consolePanel.updateToolCall(toolCallId, "completed", result)
             }
         } else if (status == "failed") {
-            val error = update["error"]?.asString
-                ?: result
-                ?: update.toString().take(500)
+            val error = update.error() ?: result ?: "Unknown error"
             if (isSubAgent) {
                 activeSubAgentId = null
                 agentManager.client.setSubAgentActive(false)
@@ -1952,40 +1949,8 @@ class ChatToolWindowContent(
         }
     }
 
-    private fun extractContentText(element: com.google.gson.JsonElement): String? {
-        return try {
-            when {
-                element.isJsonArray -> {
-                    element.asJsonArray.mapNotNull { block ->
-                        extractContentBlockText(block)
-                    }.joinToString("\n").ifEmpty { null }
-                }
-
-                element.isJsonObject -> element.asJsonObject["text"]?.asString
-                element.isJsonPrimitive -> element.asString
-                else -> null
-            }
-        } catch (_: Exception) {
-            element.toString()
-        }
-    }
-
-    private fun extractContentBlockText(block: com.google.gson.JsonElement): String? {
-        if (!block.isJsonObject) return if (block.isJsonPrimitive) block.asString else block.toString()
-        val obj = block.asJsonObject
-        return obj["content"]?.let { inner ->
-            if (inner.isJsonObject) inner.asJsonObject["text"]?.asString
-            else if (inner.isJsonPrimitive) inner.asString
-            else null
-        } ?: obj["text"]?.asString
-    }
-
-    private fun handleStreamingAgentThought(update: com.google.gson.JsonObject) {
-        val content = update["content"]?.asJsonObject
-        val text = content?.get("text")?.asString
-        if (text != null) {
-            consolePanel.appendThinkingText(text)
-        }
+    private fun handleStreamingAgentThought(thought: SessionUpdate.AgentThought) {
+        consolePanel.appendThinkingText(thought.text())
     }
 
     private fun handlePromptError(e: Exception) {

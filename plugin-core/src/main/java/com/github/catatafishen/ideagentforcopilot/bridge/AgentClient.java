@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
-import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,7 +49,7 @@ public interface AgentClient extends Closeable {
      * @param model      model ID to use (null = use session default)
      * @param references optional file/selection context references
      * @param onChunk    receives text chunks for streaming display (nullable)
-     * @param onUpdate   receives raw update JSON (tool_call, plan, etc.) (nullable)
+     * @param onUpdate   receives structured update events (tool calls, plans, etc.) (nullable)
      * @param onRequest  called each time a request is sent (nullable)
      * @return the stop reason (e.g. "end_turn", "max_tokens")
      */
@@ -60,7 +59,7 @@ public interface AgentClient extends Closeable {
                       @Nullable String model,
                       @Nullable List<ResourceReference> references,
                       @Nullable Consumer<String> onChunk,
-                      @Nullable Consumer<JsonObject> onUpdate,
+                      @Nullable Consumer<SessionUpdate> onUpdate,
                       @Nullable Runnable onRequest) throws AcpException;
 
     /**
@@ -114,13 +113,74 @@ public interface AgentClient extends Closeable {
     }
 
     /**
-     * {@code sessionUpdate} event type emitted by clients that support turn-level usage tracking.
-     * The event carries {@code inputTokens} (int), {@code outputTokens} (int), and
-     * {@code costUsd} (double) fields. Clients that do not track usage simply never emit
-     * this event type. Defined here so both emitters and consumers share the same constant
-     * and neither layer hard-codes a client-specific string.
+     * All recognised {@code sessionUpdate} event types.
+     *
+     * <p>Every {@code sessionUpdate} JSON object carries a {@code sessionUpdate} field whose
+     * value matches one of these entries.  Using an enum prevents string literals from
+     * drifting out of sync between emitters and consumers.
      */
-    String SESSION_UPDATE_TURN_USAGE = "turn_usage";
+    enum SessionUpdateType {
+        /**
+         * A new agent tool call has started.
+         */
+        TOOL_CALL("tool_call"),
+        /**
+         * An in-progress tool call has completed or failed.
+         */
+        TOOL_CALL_UPDATE("tool_call_update"),
+        /**
+         * A streaming text chunk from the ACP agent message.
+         */
+        AGENT_MESSAGE_CHUNK("agent_message_chunk"),
+        /**
+         * A streaming reasoning/thinking chunk from the model.
+         */
+        AGENT_THOUGHT("agent_thought_chunk"),
+        /**
+         * Turn-level token/cost usage.  Carries {@code inputTokens} (int),
+         * {@code outputTokens} (int), and {@code costUsd} (double).
+         */
+        TURN_USAGE("turn_usage"),
+        /**
+         * Agent-initiated banner notification.  Carries:
+         * <ul>
+         *   <li>{@code message} — human-readable text</li>
+         *   <li>{@code level} — {@code "warning"} (yellow) or {@code "error"} (red)</li>
+         *   <li>{@code clearOn} — {@code "next_success"} to re-show until a successful
+         *       turn clears it, or {@code "manual"} to show once (default)</li>
+         * </ul>
+         */
+        BANNER("banner"),
+        /**
+         * ACP plan update.  Carries a list of plan entries via {@link SessionUpdate.Plan}.
+         */
+        PLAN("plan");
+
+        private final String wireValue;
+
+        SessionUpdateType(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        /**
+         * Returns the string value used in the {@code sessionUpdate} JSON field.
+         */
+        public String value() {
+            return wireValue;
+        }
+
+        /**
+         * Returns the enum constant for the given wire value, or {@code null} if unrecognised.
+         */
+        @Nullable
+        public static SessionUpdateType fromString(@Nullable String value) {
+            if (value == null) return null;
+            for (SessionUpdateType t : values()) {
+                if (t.wireValue.equals(value)) return t;
+            }
+            return null;
+        }
+    }
 
     /**
      * Whether this client supports per-model premium-request multipliers.

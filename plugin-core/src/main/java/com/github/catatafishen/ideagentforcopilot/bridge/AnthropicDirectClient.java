@@ -74,6 +74,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
     // JSON field names specific to the Anthropic SSE stream
     private static final String FIELD_DELTA = "delta";
     private static final String FIELD_ERROR = "error";
+    private static final String FIELD_ERROR_MESSAGE = "message";
     private static final String FIELD_INDEX = "index";
 
     private final AgentProfile profile;
@@ -207,13 +208,12 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
 
     // ── Prompt execution ─────────────────────────────────────────────────────
 
-    @Override
     public @NotNull String sendPrompt(@NotNull String sessionId,
                                       @NotNull String prompt,
                                       @Nullable String model,
                                       @Nullable List<ResourceReference> references,
                                       @Nullable Consumer<String> onChunk,
-                                      @Nullable Consumer<JsonObject> onUpdate,
+                                      @Nullable Consumer<SessionUpdate> onUpdate,
                                       @Nullable Runnable onRequest) throws AcpException {
         ensureStarted();
         List<JsonObject> messages = sessions.computeIfAbsent(sessionId, k -> new ArrayList<>());
@@ -233,7 +233,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
                                 @NotNull String model,
                                 @NotNull String apiKey,
                                 @Nullable Consumer<String> onChunk,
-                                @Nullable Consumer<JsonObject> onUpdate,
+                                @Nullable Consumer<SessionUpdate> onUpdate,
                                 @Nullable Runnable onRequest,
                                 @NotNull AtomicBoolean cancelled) throws AcpException {
         AtomicReference<String> stopReason = new AtomicReference<>(STOP_REASON_END_TURN);
@@ -262,7 +262,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
                                 @NotNull List<JsonObject> contentBlocks,
                                 @NotNull AtomicReference<String> stopReason,
                                 @Nullable Consumer<String> onChunk,
-                                @Nullable Consumer<JsonObject> onUpdate,
+                                @Nullable Consumer<SessionUpdate> onUpdate,
                                 @NotNull AtomicBoolean cancelled) throws AcpException {
         String body = gson.toJson(requestBody);
         HttpRequest req = HttpRequest.newBuilder()
@@ -280,6 +280,10 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
             try (InputStream stream = resp.body()) {
                 if (resp.statusCode() != 200) {
                     String errorBody = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+                    if (resp.statusCode() == 429 || isRateLimitError(errorBody)) {
+                        String userMessage = extractAnthropicErrorMessage(errorBody);
+                        emitBannerEvent(userMessage, "warning", "next_success", onUpdate);
+                    }
                     throw new AcpException(
                         "Anthropic API error " + resp.statusCode() + ": " + errorBody, null, false);
                 }
@@ -306,13 +310,13 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
         List<JsonObject> contentBlocks,
         AtomicReference<String> stopReason,
         @Nullable Consumer<String> onChunk,
-        @Nullable Consumer<JsonObject> onUpdate) {
+        @Nullable Consumer<SessionUpdate> onUpdate) {
 
         static SseStreamState create(
             @NotNull List<JsonObject> contentBlocks,
             @NotNull AtomicReference<String> stopReason,
             @Nullable Consumer<String> onChunk,
-            @Nullable Consumer<JsonObject> onUpdate) {
+            @Nullable Consumer<SessionUpdate> onUpdate) {
             return new SseStreamState(
                 new HashMap<>(), new HashMap<>(),
                 new HashMap<>(), new HashMap<>(),
@@ -324,7 +328,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
                                 @NotNull List<JsonObject> contentBlocks,
                                 @NotNull AtomicReference<String> stopReason,
                                 @Nullable Consumer<String> onChunk,
-                                @Nullable Consumer<JsonObject> onUpdate,
+                                @Nullable Consumer<SessionUpdate> onUpdate,
                                 @NotNull AtomicBoolean cancelled) throws IOException {
         SseStreamState state = SseStreamState.create(contentBlocks, stopReason, onChunk, onUpdate);
 
@@ -376,9 +380,28 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
 
     private void handleStreamError(@NotNull JsonObject event) {
         String errMsg = event.has(FIELD_ERROR)
-            ? event.getAsJsonObject(FIELD_ERROR).get("message").getAsString()
+            ? event.getAsJsonObject(FIELD_ERROR).get(FIELD_ERROR_MESSAGE).getAsString()
             : event.toString();
         LOG.warn("Anthropic stream error: " + errMsg);
+    }
+
+    /**
+     * Extracts a human-readable message from an Anthropic HTTP error response body.
+     * Anthropic errors are JSON of the form {@code {"type":"error","error":{"type":"...","message":"..."}}}.
+     * Falls back to the raw body if parsing fails.
+     */
+    @NotNull
+    private static String extractAnthropicErrorMessage(@NotNull String errorBody) {
+        try {
+            JsonObject root = JsonParser.parseString(errorBody).getAsJsonObject();
+            if (root.has(FIELD_ERROR) && root.get(FIELD_ERROR).isJsonObject()) {
+                JsonObject err = root.getAsJsonObject(FIELD_ERROR);
+                if (err.has(FIELD_ERROR_MESSAGE)) return err.get(FIELD_ERROR_MESSAGE).getAsString();
+            }
+        } catch (Exception ignored) {
+            // Fall through to raw body
+        }
+        return errorBody;
     }
 
     private void handleBlockStart(@NotNull JsonObject event,
@@ -404,7 +427,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
                                   @NotNull Map<Integer, StringBuilder> toolInputBuffers,
                                   @NotNull Map<Integer, StringBuilder> thinkingBuffers,
                                   @Nullable Consumer<String> onChunk,
-                                  @Nullable Consumer<JsonObject> onUpdate) {
+                                  @Nullable Consumer<SessionUpdate> onUpdate) {
         int index = event.get(FIELD_INDEX).getAsInt();
         JsonObject delta = event.has(FIELD_DELTA) ? event.getAsJsonObject(FIELD_DELTA) : new JsonObject();
         String deltaType = delta.has(FIELD_TYPE) ? delta.get(FIELD_TYPE).getAsString() : "";
@@ -438,7 +461,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
                                      int index,
                                      @NotNull JsonObject delta,
                                      @NotNull Map<Integer, StringBuilder> thinkingBuffers,
-                                     @Nullable Consumer<JsonObject> onUpdate) {
+                                     @Nullable Consumer<SessionUpdate> onUpdate) {
         if (!TYPE_THINKING.equals(blockType)) return;
         String thinking = delta.has(TYPE_THINKING) ? delta.get(TYPE_THINKING).getAsString() : "";
         if (thinking.isEmpty()) return;
@@ -480,7 +503,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
 
     @NotNull
     private List<JsonObject> executeToolUseBlocks(@NotNull List<JsonObject> contentBlocks,
-                                                  @Nullable Consumer<JsonObject> onUpdate,
+                                                  @Nullable Consumer<SessionUpdate> onUpdate,
                                                   @NotNull AtomicBoolean cancelled) {
         List<JsonObject> results = new ArrayList<>();
         for (JsonObject block : contentBlocks) {
@@ -498,7 +521,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
 
     @NotNull
     private JsonObject buildAndExecuteToolResult(@NotNull JsonObject block,
-                                                 @Nullable Consumer<JsonObject> onUpdate) {
+                                                 @Nullable Consumer<SessionUpdate> onUpdate) {
         String toolUseId = block.has("id") ? block.get("id").getAsString() : UUID.randomUUID().toString();
         String toolName = block.has("name") ? block.get("name").getAsString() : "";
         JsonObject input = block.has(FIELD_INPUT) ? block.getAsJsonObject(FIELD_INPUT) : new JsonObject();
@@ -518,7 +541,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
         JsonObject toolResult = new JsonObject();
         toolResult.addProperty(FIELD_TYPE, TYPE_TOOL_RESULT);
         toolResult.addProperty("tool_use_id", toolUseId);
-        toolResult.addProperty(FIELD_CONTENT, result != null ? result : "");
+        toolResult.addProperty(FIELD_CONTENT, result);
         return toolResult;
     }
 
