@@ -153,9 +153,18 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
-            // Run from home dir so Claude doesn't prompt "do you trust this folder?"
+            // Run from home dir to minimise trust prompts; stdin is piped so we can
+            // send a newline to auto-accept the "do you trust this folder?" dialog in
+            // case the home directory hasn't been trusted yet.
             pb.directory(new java.io.File(System.getProperty("user.home")));
             Process proc = pb.start();
+
+            // Immediately write a newline to stdin so the trust prompt (if shown)
+            // auto-accepts (Enter = "Yes, I trust this folder").  Close stdin right
+            // after so the CLI doesn't wait for more input.
+            try (OutputStream stdin = proc.getOutputStream()) {
+                stdin.write('\n');
+            }
 
             // Read stdout concurrently — if we call waitFor() first, the process can
             // deadlock when the OS pipe buffer fills up (it blocks writing, we block waiting).
