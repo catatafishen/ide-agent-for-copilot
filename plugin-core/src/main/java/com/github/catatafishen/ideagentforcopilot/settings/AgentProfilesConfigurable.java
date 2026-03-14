@@ -91,6 +91,8 @@ public final class AgentProfilesConfigurable implements Configurable {
     // ── Claude Code (CLI) ──
     private JLabel claudeCliStatusLabel;
     private JPanel claudeCliStatusSection;
+    private JBTextArea customCliModelsArea;
+    private JPanel customCliModelsSection;
 
     private List<AgentProfile> workingCopies;
     private int currentIndex = -1;
@@ -228,6 +230,11 @@ public final class AgentProfilesConfigurable implements Configurable {
         claudeCliStatusLabel = new JLabel();
         claudeCliStatusLabel.setFont(UIUtil.getLabelFont());
 
+        customCliModelsArea = new JBTextArea(5, 0);
+        customCliModelsArea.setFont(JBUI.Fonts.create(Font.MONOSPACED, customCliModelsArea.getFont().getSize()));
+        customCliModelsArea.setLineWrap(false);
+        customCliModelsArea.getEmptyText().setText("claude-opus-4-6=Claude Opus 4.6");
+
         editorCards = new CardLayout();
         editorPanel = new JBPanel<>(editorCards);
 
@@ -269,11 +276,26 @@ public final class AgentProfilesConfigurable implements Configurable {
             .addTooltip("Run 'claude auth login' in a terminal to log in.")
             .getPanel();
 
+        JBLabel modelsNote = new JBLabel(
+            "<html>The Claude CLI has no stable <code>models</code> subcommand — "
+                + "<code>claude models</code> is treated as a plain user prompt that "
+                + "makes a full API call and can return unpredictable output.<br>"
+                + "Add one model per line in <b>model-id=Display Name</b> format.<br>"
+                + "Leave empty to use the built-in defaults.</html>");
+        modelsNote.setFont(UIUtil.getLabelFont(UIUtil.FontSize.SMALL));
+        modelsNote.setForeground(UIUtil.getContextHelpForeground());
+        customCliModelsSection = FormBuilder.createFormBuilder()
+            .addComponent(new TitledSeparator("Model List"))
+            .addComponent(modelsNote)
+            .addLabeledComponent("Models (id=Name, one per line):", new JBScrollPane(customCliModelsArea))
+            .getPanel();
+
         FormBuilder builder = FormBuilder.createFormBuilder()
             .addLabeledComponent("Display name:", nameField);
         builder.addLabeledComponent("Notes:", new JBScrollPane(descriptionArea));
         builder.addComponent(anthropicApiKeySection);
         builder.addComponent(claudeCliStatusSection);
+        builder.addComponent(customCliModelsSection);
         builder.addComponent(new TitledSeparator("Binary Discovery"))
             .addLabeledComponent("Binary name:", binaryNameField)
             .addTooltip("Primary executable name to search for (e.g., \"copilot\", \"opencode\")")
@@ -455,6 +477,8 @@ public final class AgentProfilesConfigurable implements Configurable {
             bundledAgentFilesField.setText(String.join(",", p.getBundledAgentFiles()));
             usePluginPermissionsCb.setSelected(p.isUsePluginPermissions());
             excludeAgentBuiltInToolsCb.setSelected(p.isExcludeAgentBuiltInTools());
+            customCliModelsArea.setText(String.join("\n", p.getCustomCliModels()));
+            customCliModelsArea.setCaretPosition(0);
             loadTransportSections(p, isDirect, isCli);
         } finally {
             loading = false;
@@ -485,6 +509,7 @@ public final class AgentProfilesConfigurable implements Configurable {
             }
         }
         claudeCliStatusSection.setVisible(isCli);
+        customCliModelsSection.setVisible(isCli);
     }
 
     private void saveCurrentToWorking() {
@@ -533,6 +558,8 @@ public final class AgentProfilesConfigurable implements Configurable {
             Arrays.stream(bundledRaw.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList());
         target.setUsePluginPermissions(usePluginPermissionsCb.isSelected());
         target.setExcludeAgentBuiltInTools(excludeAgentBuiltInToolsCb.isSelected());
+        target.setCustomCliModels(Arrays.stream(customCliModelsArea.getText().split("\n"))
+            .map(String::trim).filter(s -> !s.isEmpty()).toList());
     }
 
     // ── Configurable interface ───────────────────────────────────────────────
@@ -645,7 +672,8 @@ public final class AgentProfilesConfigurable implements Configurable {
             && Objects.equals(a.getPrependInstructionsTo(), b.getPrependInstructionsTo())
             && a.isEnsureCopilotAgents() == b.isEnsureCopilotAgents()
             && a.isUsePluginPermissions() == b.isUsePluginPermissions()
-            && a.isExcludeAgentBuiltInTools() == b.isExcludeAgentBuiltInTools();
+            && a.isExcludeAgentBuiltInTools() == b.isExcludeAgentBuiltInTools()
+            && a.getCustomCliModels().equals(b.getCustomCliModels());
     }
 
     @NotNull

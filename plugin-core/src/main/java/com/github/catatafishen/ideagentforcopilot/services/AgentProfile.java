@@ -84,6 +84,21 @@ public final class AgentProfile {
     private List<String> bundledAgentFiles = new ArrayList<>();
     private String additionalInstructions = "";
 
+    /**
+     * Custom model list for CLI-mode profiles.
+     *
+     * <p>Each entry is {@code "model-id=Display Name"}, e.g.
+     * {@code "claude-opus-4-6=Claude Opus 4.6"}.  When non-empty this list
+     * is returned by {@code ClaudeCliClient.listModels()} instead of the
+     * built-in defaults.  Empty means "use defaults".</p>
+     *
+     * <p>This field exists because the Claude CLI has no stable
+     * {@code models} subcommand — {@code claude models} is treated as a
+     * plain user prompt that makes a full API call and returns an LLM
+     * response, so programmatic discovery is unreliable.</p>
+     */
+    private List<String> customCliModels = new ArrayList<>();
+
     public AgentProfile() {
         this.id = UUID.randomUUID().toString();
         this.displayName = "New Agent";
@@ -136,6 +151,7 @@ public final class AgentProfile {
         copy.prependInstructionsTo = prependInstructionsTo;
         copy.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
         copy.additionalInstructions = additionalInstructions;
+        copy.customCliModels = new ArrayList<>(customCliModels);
         return copy;
     }
 
@@ -173,6 +189,7 @@ public final class AgentProfile {
         copy.prependInstructionsTo = prependInstructionsTo;
         copy.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
         copy.additionalInstructions = additionalInstructions;
+        copy.customCliModels = new ArrayList<>(customCliModels);
         return copy;
     }
 
@@ -204,6 +221,7 @@ public final class AgentProfile {
         this.prependInstructionsTo = other.prependInstructionsTo;
         this.bundledAgentFiles = new ArrayList<>(other.bundledAgentFiles);
         this.additionalInstructions = other.additionalInstructions;
+        this.customCliModels = new ArrayList<>(other.customCliModels);
     }
 
     // ── Getters / Setters ────────────────────────────────────────────────────
@@ -444,6 +462,15 @@ public final class AgentProfile {
 
     public void setAdditionalInstructions(@NotNull String additionalInstructions) {
         this.additionalInstructions = additionalInstructions;
+    }
+
+    @NotNull
+    public List<String> getCustomCliModels() {
+        return customCliModels;
+    }
+
+    public void setCustomCliModels(@NotNull List<String> customCliModels) {
+        this.customCliModels = new ArrayList<>(customCliModels);
     }
 
     /**

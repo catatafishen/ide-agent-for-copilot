@@ -140,9 +140,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     private static List<Model> buildKnownModels() {
         Object[][] rows = {
             // { id, displayName }
-            { "claude-opus-4-6",           "Claude Opus 4.6"   },
-            { "claude-sonnet-4-6",         "Claude Sonnet 4.6" },
-            { "claude-haiku-4-5-20251001", "Claude Haiku 4.5"  },
+            {"claude-opus-4-6", "Claude Opus 4.6"},
+            {"claude-sonnet-4-6", "Claude Sonnet 4.6"},
+            {"claude-haiku-4-5-20251001", "Claude Haiku 4.5"},
         };
         List<Model> list = new ArrayList<>(rows.length);
         for (Object[] row : rows) {
@@ -157,7 +157,31 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     @Override
     public @NotNull List<Model> listModels() throws AcpException {
         ensureStarted();
+        List<String> custom = profile.getCustomCliModels();
+        if (!custom.isEmpty()) {
+            return parseCustomModels(custom);
+        }
         return KNOWN_MODELS;
+    }
+
+    /**
+     * Parses {@code "model-id=Display Name"} entries; malformed lines are skipped.
+     */
+    @NotNull
+    private static List<Model> parseCustomModels(@NotNull List<String> entries) {
+        List<Model> result = new ArrayList<>(entries.size());
+        for (String entry : entries) {
+            int eq = entry.indexOf('=');
+            if (eq <= 0) continue;
+            String id = entry.substring(0, eq).trim();
+            String name = entry.substring(eq + 1).trim();
+            if (id.isEmpty()) continue;
+            Model m = new Model();
+            m.setId(id);
+            m.setName(name.isEmpty() ? id : name);
+            result.add(m);
+        }
+        return result.isEmpty() ? KNOWN_MODELS : result;
     }
 
     // ── Prompt execution ─────────────────────────────────────────────────────
