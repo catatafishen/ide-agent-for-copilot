@@ -110,7 +110,7 @@ public class AcpClient implements AgentClient {
 
     // Session state
     private String currentSessionId;
-    private List<Model> availableModels;
+    protected List<Model> availableModels;
 
     // Permission tracking: set when a built-in permission is denied during a prompt turn
     private volatile boolean builtInActionDeniedDuringTurn = false;

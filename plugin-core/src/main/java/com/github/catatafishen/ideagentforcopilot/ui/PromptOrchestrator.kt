@@ -1,10 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AcpException
-import com.github.catatafishen.ideagentforcopilot.bridge.AgentClient
-import com.github.catatafishen.ideagentforcopilot.bridge.PermissionRequest
-import com.github.catatafishen.ideagentforcopilot.bridge.ResourceReference
-import com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate
+import com.github.catatafishen.ideagentforcopilot.bridge.*
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
 import com.intellij.openapi.application.ApplicationManager

@@ -11,15 +11,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-final class CopilotAgentsManager {
-    private static final Logger LOG = Logger.getInstance(CopilotAgentsManager.class);
+final class BundledAgentDeployer {
+    private static final Logger LOG = Logger.getInstance(BundledAgentDeployer.class);
 
     private static final String SENTINEL =
         "<!-- Deployed by AgentBridge — edits are preserved, delete to stop auto-deploy -->";
 
     private static final Object LOCK = new Object();
 
-    private CopilotAgentsManager() {
+    private BundledAgentDeployer() {
     }
 
     /**
@@ -75,7 +75,7 @@ final class CopilotAgentsManager {
     @Nullable
     private static String loadBundledAgent(@NotNull String filename) {
         String resourcePath = "/agents/" + filename;
-        try (InputStream is = CopilotAgentsManager.class.getResourceAsStream(resourcePath)) {
+        try (InputStream is = BundledAgentDeployer.class.getResourceAsStream(resourcePath)) {
             if (is == null) {
                 LOG.warn("Bundled agent resource not found: " + resourcePath);
                 return null;

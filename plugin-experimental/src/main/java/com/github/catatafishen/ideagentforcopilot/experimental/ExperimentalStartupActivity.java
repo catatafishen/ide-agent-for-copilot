@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.experimental;
 
+import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
+import com.github.catatafishen.ideagentforcopilot.psi.tools.quality.RunInspectionsTool;
 import com.github.catatafishen.ideagentforcopilot.services.MacroToolRegistrar;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.ProjectActivity;
@@ -9,15 +11,16 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Startup activity that syncs macro tool registrations when the project opens.
- * This is the experimental variant's entry point for the macro tool feature.
+ * Startup activity for the experimental plugin variant.
+ * Registers experimental tools (RunInspectionsTool) and syncs macro tool registrations.
  */
-public final class MacroStartupActivity implements ProjectActivity {
+public final class ExperimentalStartupActivity implements ProjectActivity {
 
     @Nullable
     @Override
     public Object execute(@NotNull Project project, @NotNull Continuation<? super Unit> continuation) {
         MacroToolRegistrar.getInstance(project).syncRegistrations();
+        PsiBridgeService.getInstance(project).registerTool(new RunInspectionsTool(project));
         return Unit.INSTANCE;
     }
 }

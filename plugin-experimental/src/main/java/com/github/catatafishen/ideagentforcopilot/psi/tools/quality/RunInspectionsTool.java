@@ -3,8 +3,16 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.quality;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.google.gson.JsonObject;
+import com.intellij.analysis.AnalysisScope;
+import com.intellij.codeInspection.InspectionManager;
+import com.intellij.codeInspection.ex.GlobalInspectionContextEx;
+import com.intellij.codeInspection.ex.GlobalInspectionContextImpl;
+import com.intellij.codeInspection.ex.InspectionManagerEx;
+import com.intellij.codeInspection.ex.InspectionProfileImpl;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDirectory;
@@ -19,9 +27,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * Runs IntelliJ's full inspection engine on the project or a specific scope.
+ *
+ * <p>Lives in plugin-experimental (not plugin-core / marketplace) because it requires
+ * {@link GlobalInspectionContextImpl}, which is {@code @ApiStatus.Internal}. There is no
+ * public API equivalent — {@code GlobalInspectionContextBase.runTools()} is a no-op.
+ * See the private {@link #runFullInspections} helper for the full rationale.</p>
  */
 @SuppressWarnings("java:S112") // generic exceptions caught at JSON-RPC dispatch level
 public final class RunInspectionsTool extends QualityTool {
@@ -81,7 +95,7 @@ public final class RunInspectionsTool extends QualityTool {
         if (!project.isInitialized()) {
             return ERROR_IDE_INITIALIZING;
         }
-        if (com.intellij.openapi.project.DumbService.isDumb(project)) {
+        if (DumbService.isDumb(project)) {
             return "IDE is currently indexing the project. Please wait for indexing to finish and try again.";
         }
 
@@ -103,6 +117,54 @@ public final class RunInspectionsTool extends QualityTool {
         }
 
         return resultFuture.get(600, TimeUnit.SECONDS);
+    }
+
+    // ── Inspection trigger ────────────────────────────────────
+
+    /**
+     * Runs the full inspection engine on the given scope using the supplied profile.
+     *
+     * <p><b>Why {@code GlobalInspectionContextImpl} is required:</b>
+     * {@code GlobalInspectionContextBase.runTools()} is a no-op; only
+     * {@code GlobalInspectionContextImpl.runTools()} performs real file-by-file inspection.
+     * Using {@code GlobalInspectionContextEx} directly completes in ~40ms with 0 results.
+     * {@code InspectionManagerEx} is the only way to obtain a {@code GlobalInspectionContextImpl}
+     * with the correct {@code ContentManager}.
+     *
+     * <p>The {@code onFinished} callback is invoked <b>synchronously</b> before
+     * {@code super.notifyInspectionsFinished}, which calls {@code cleanup()} and disposes the
+     * context. Callers must collect all results inside the callback before returning.
+     *
+     * <p>No public API equivalent exists. This class lives in plugin-experimental specifically
+     * to isolate this {@code @ApiStatus.Internal} usage from the marketplace-published plugin-core.
+     */
+    @SuppressWarnings("UnstableApiUsage")
+    private static void runFullInspections(
+        @NotNull Project project,
+        @NotNull AnalysisScope scope,
+        @NotNull InspectionProfileImpl profile,
+        @NotNull Consumer<GlobalInspectionContextEx> onFinished) {
+        InspectionManagerEx mgr = (InspectionManagerEx) InspectionManager.getInstance(project);
+        GlobalInspectionContextImpl context =
+            new GlobalInspectionContextImpl(project, mgr.getContentManager()) {
+                @Override
+                protected void notifyInspectionsFinished(@NotNull AnalysisScope finishedScope) {
+                    // Collect results before calling super, which invokes cleanup() and disposes the context
+                    onFinished.accept(this);
+                    super.notifyInspectionsFinished(finishedScope);
+                }
+            };
+        context.setExternalProfile(profile);
+        // Run doInspections on a pooled thread, never the EDT.
+        // DumbService.runWhenSmart() can dispatch its callback to the EDT when indexing is active;
+        // running doInspections() on the EDT causes ProgressManager to show a modal dialog (Task.Modal),
+        // which locks the EDT in a modal event loop. Any invokeLater() calls posted with NON_MODAL
+        // modality state are then held back until the modal dialog closes — causing cascading
+        // 30-second timeouts and an IDE freeze. Pooled thread avoids this entirely.
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            DumbService.getInstance(project).waitForSmartMode();
+            context.doInspections(scope);
+        });
     }
 
     // ── Inspection analysis pipeline ─────────────────────────
@@ -149,7 +211,7 @@ public final class RunInspectionsTool extends QualityTool {
             var profileManager = com.intellij.profile.codeInspection.InspectionProjectProfileManager.getInstance(project);
             var currentProfile = profileManager.getCurrentProfile();
 
-            com.intellij.analysis.AnalysisScope scope = createAnalysisScope(scopePath, resultFuture);
+            AnalysisScope scope = createAnalysisScope(scopePath, resultFuture);
             if (scope == null) return;
 
             LOG.info("Using inspection profile: " + currentProfile.getName());
@@ -157,7 +219,7 @@ public final class RunInspectionsTool extends QualityTool {
             String basePath = project.getBasePath();
             String profileName = currentProfile.getName();
 
-            PlatformApiCompat.runFullInspections(project, scope, currentProfile, ctx -> {
+            runFullInspections(project, scope, currentProfile, ctx -> {
                 LOG.info("Inspection analysis completed, collecting results...");
                 LOG.info("Used tools count: " + ctx.getUsedTools().size());
                 // Collect synchronously while the context is still valid — the callback is
@@ -195,11 +257,11 @@ public final class RunInspectionsTool extends QualityTool {
         }
     }
 
-    private com.intellij.analysis.AnalysisScope createAnalysisScope(
+    private AnalysisScope createAnalysisScope(
         String scopePath, CompletableFuture<String> resultFuture) {
         if (scopePath == null || scopePath.isEmpty()) {
             LOG.info("Analysis scope: entire project");
-            return new com.intellij.analysis.AnalysisScope(project);
+            return new AnalysisScope(project);
         }
         VirtualFile scopeFile = resolveVirtualFile(scopePath);
         if (scopeFile == null) {
@@ -215,7 +277,7 @@ public final class RunInspectionsTool extends QualityTool {
                 return null;
             }
             LOG.info("Analysis scope: directory " + scopePath);
-            return new com.intellij.analysis.AnalysisScope(psiDir);
+            return new AnalysisScope(psiDir);
         }
         PsiFile psiFile = ReadAction.compute(
             () -> PsiManager.getInstance(project).findFile(scopeFile));
@@ -224,7 +286,7 @@ public final class RunInspectionsTool extends QualityTool {
             return null;
         }
         LOG.info("Analysis scope: file " + scopePath);
-        return new com.intellij.analysis.AnalysisScope(psiFile);
+        return new AnalysisScope(psiFile);
     }
 
     // ── Inspection collection records ────────────────────────
@@ -243,7 +305,7 @@ public final class RunInspectionsTool extends QualityTool {
     // ── Problem collection ───────────────────────────────────
 
     private InspectionCollectionResult collectInspectionProblems(
-        com.intellij.codeInspection.ex.GlobalInspectionContextEx ctx, Map<String, Integer> severityRank,
+        GlobalInspectionContextEx ctx, Map<String, Integer> severityRank,
         int requiredRank, String basePath) {
         List<String> allProblems = new ArrayList<>();
         Set<String> filesSet = new HashSet<>();

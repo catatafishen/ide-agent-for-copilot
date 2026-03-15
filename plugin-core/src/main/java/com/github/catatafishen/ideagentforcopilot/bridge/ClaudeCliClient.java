@@ -507,9 +507,10 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     private static final String FIELD_REQUEST_ID = "requestId";
     private static final String BLOCK_TYPE_TEXT = "text";
     private static final String BLOCK_TYPE_THINKING = "thinking";
-    private static final String FIELD_TOTAL_INPUT_TOKENS = "total_input_tokens";
-    private static final String FIELD_TOTAL_OUTPUT_TOKENS = "total_output_tokens";
-    private static final String FIELD_COST_USD = "cost_usd";
+    private static final String FIELD_TOTAL_COST_USD = "total_cost_usd";
+    private static final String FIELD_USAGE = "usage";
+    private static final String FIELD_INPUT_TOKENS = "input_tokens";
+    private static final String FIELD_OUTPUT_TOKENS = "output_tokens";
 
     /**
      * Extracts a human-readable string from a Claude CLI error element (string or object).
@@ -545,11 +546,27 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
      */
     private void emitUsageStats(@NotNull JsonObject resultEvent, @Nullable Consumer<SessionUpdate> onUpdate) {
         if (onUpdate == null) return;
-        if (!resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) && !resultEvent.has(FIELD_COST_USD)) return;
-        int inputTokens = resultEvent.has(FIELD_TOTAL_INPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_INPUT_TOKENS).getAsInt() : 0;
-        int outputTokens = resultEvent.has(FIELD_TOTAL_OUTPUT_TOKENS) ? resultEvent.get(FIELD_TOTAL_OUTPUT_TOKENS).getAsInt() : 0;
-        double costUsd = resultEvent.has(FIELD_COST_USD) ? resultEvent.get(FIELD_COST_USD).getAsDouble() : 0.0;
+        // Tokens are nested under "usage"; cost is top-level "total_cost_usd"
+        if (!resultEvent.has(FIELD_USAGE) && !resultEvent.has(FIELD_TOTAL_COST_USD)) return;
+        JsonObject usage = resultEvent.has(FIELD_USAGE) && resultEvent.get(FIELD_USAGE).isJsonObject()
+            ? resultEvent.getAsJsonObject(FIELD_USAGE) : null;
+        int inputTokens = usage != null ? safeGetInt(usage, FIELD_INPUT_TOKENS) : 0;
+        int outputTokens = usage != null ? safeGetInt(usage, FIELD_OUTPUT_TOKENS) : 0;
+        double costUsd = safeGetDouble(resultEvent, FIELD_TOTAL_COST_USD);
+        if (inputTokens == 0 && outputTokens == 0 && costUsd == 0.0) return;
         onUpdate.accept(new SessionUpdate.TurnUsage(inputTokens, outputTokens, costUsd));
+    }
+
+    private static int safeGetInt(@NotNull JsonObject obj, @NotNull String field) {
+        if (!obj.has(field)) return 0;
+        JsonElement el = obj.get(field);
+        return el.isJsonNull() ? 0 : el.getAsInt();
+    }
+
+    private static double safeGetDouble(@NotNull JsonObject obj, @NotNull String field) {
+        if (!obj.has(field)) return 0.0;
+        JsonElement el = obj.get(field);
+        return el.isJsonNull() ? 0.0 : el.getAsDouble();
     }
 
     /**

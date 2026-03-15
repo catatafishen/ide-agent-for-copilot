@@ -6,7 +6,9 @@ import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.ClaudeCliClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.CopilotAcpClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
+import com.github.catatafishen.ideagentforcopilot.bridge.OpenCodeAcpClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.ProfileBasedAgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
@@ -16,6 +18,7 @@ import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -181,7 +184,8 @@ public final class ActiveAgentManager implements Disposable {
                 int mcpPort = resolveMcpPort();
                 AgentConfig config = resolveStartConfig();
                 AgentSettings agentSettings = createAgentSettings();
-                acpClient = new AcpClient(config, agentSettings, ToolRegistry.getInstance(project), projectPath, mcpPort);
+                ToolRegistry registry = ToolRegistry.getInstance(project);
+                acpClient = createAcpClient(profile.getId(), config, agentSettings, registry, projectPath, mcpPort);
             }
 
             acpClient.start();
@@ -285,6 +289,29 @@ public final class ActiveAgentManager implements Disposable {
             cachedSettings = new GenericSettings(profileId);
             cachedUiSettings = new GenericAgentUiSettings(cachedSettings);
         }
+    }
+
+    /**
+     * Instantiates the appropriate {@link AcpClient} subclass for the given profile ID.
+     * Each built-in ACP profile has a dedicated subclass that encapsulates any
+     * profile-specific {@link com.github.catatafishen.ideagentforcopilot.bridge.AgentClient}
+     * overrides. User-created profiles fall back to the generic {@link AcpClient}.
+     */
+    @NotNull
+    private static AcpClient createAcpClient(@NotNull String profileId,
+                                              @NotNull AgentConfig config,
+                                              @NotNull AgentSettings settings,
+                                              @NotNull ToolRegistry registry,
+                                              @Nullable String projectBasePath,
+                                              int mcpPort) {
+        return switch (profileId) {
+            case AgentProfileManager.COPILOT_PROFILE_ID ->
+                new CopilotAcpClient(config, settings, registry, projectBasePath, mcpPort);
+            case AgentProfileManager.OPENCODE_PROFILE_ID ->
+                new OpenCodeAcpClient(config, settings, registry, projectBasePath, mcpPort);
+            default ->
+                new AcpClient(config, settings, registry, projectBasePath, mcpPort);
+        };
     }
 
     private void clearCachedConfig() {

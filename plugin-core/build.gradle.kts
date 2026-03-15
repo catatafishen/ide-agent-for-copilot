@@ -1,5 +1,6 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
+import java.util.zip.ZipInputStream
 
 plugins {
     id("java")
@@ -22,7 +23,6 @@ dependencies {
         } else {
             intellijIdeaUltimate("2025.3")
         }
-        instrumentationTools()
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
@@ -100,9 +100,17 @@ tasks.named("prepareSandbox") {
                     val extractedDir = File(pluginsDir, pluginName)
                     if (!extractedDir.exists()) {
                         logger.lifecycle("Extracting marketplace plugin: ${zipFile.name}")
-                        project.copy {
-                            from(project.zipTree(zipFile))
-                            into(pluginsDir)
+                        ZipInputStream(zipFile.inputStream()).use { zis: ZipInputStream ->
+                            var entry = zis.nextEntry
+                            while (entry != null) {
+                                val dest = File(pluginsDir, entry.name)
+                                if (entry.isDirectory) dest.mkdirs()
+                                else {
+                                    dest.parentFile.mkdirs(); dest.outputStream().use { zis.copyTo(it) }
+                                }
+                                zis.closeEntry()
+                                entry = zis.nextEntry
+                            }
                         }
                     }
                 }
@@ -160,10 +168,11 @@ val nvmNodeBin: String? by lazy {
 // system PATH before our environment override takes effect.
 val npmCmd: String by lazy { nvmNodeBin?.let { "$it/npm" } ?: "npm" }
 
-fun ExecSpec.withNvmNode() {
-    nvmNodeBin?.let { binDir ->
-        environment("PATH", "$binDir:${System.getenv("PATH")}")
-    }
+fun runProcess(workDir: File, vararg cmd: String) {
+    val pb = ProcessBuilder(*cmd).directory(workDir).inheritIO()
+    nvmNodeBin?.let { bin -> pb.environment()["PATH"] = "$bin:${System.getenv("PATH")}" }
+    val exit = pb.start().waitFor()
+    if (exit != 0) error("Command failed (exit $exit): ${cmd.joinToString(" ")}")
 }
 
 // Build chat-ui TypeScript → bundled JS + copy static assets
@@ -172,15 +181,8 @@ val buildChatUi by tasks.registering {
     outputs.dir("src/main/resources/chat")
 
     doLast {
-        exec {
-            workingDir = file("chat-ui")
-            commandLine(npmCmd, "run", "build")
-            withNvmNode()
-        }
-        copy {
-            from("chat-ui/src/chat.css")
-            into("src/main/resources/chat")
-        }
+        runProcess(file("chat-ui"), npmCmd, "run", "build")
+        file("chat-ui/src/chat.css").copyTo(file("src/main/resources/chat/chat.css"), overwrite = true)
     }
 }
 
@@ -192,11 +194,7 @@ val jsTest by tasks.registering {
     inputs.dir("js-tests")
 
     doLast {
-        exec {
-            workingDir = file("js-tests")
-            commandLine(npmCmd, "test")
-            withNvmNode()
-        }
+        runProcess(file("js-tests"), npmCmd, "test")
     }
 }
 
@@ -236,9 +234,17 @@ tasks.register("deployToMainIde") {
         val installDir = detectPluginInstallDir()
         logger.lifecycle("📂 Target: $installDir")
         if (installDir.exists()) installDir.deleteRecursively()
-        project.copy {
-            from(project.zipTree(latestZip))
-            into(installDir.parentFile)
+        ZipInputStream(latestZip.inputStream()).use { zis: ZipInputStream ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val dest = File(installDir.parentFile, entry.name)
+                if (entry.isDirectory) dest.mkdirs()
+                else {
+                    dest.parentFile.mkdirs(); dest.outputStream().use { zis.copyTo(it) }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
         }
         logger.lifecycle("✅ Plugin deployed to $installDir")
         logger.lifecycle("⚠️  Restart IntelliJ to apply the new version.")
@@ -318,13 +324,10 @@ intellijPlatform {
         // TODO: Move psi.java classes to a separate Gradle module (separate JAR) so the
         //       verifier only checks them against IDEs with Java support.
         //
-        // Don't fail on INTERNAL_API_USAGES: PlatformApiCompat.runFullInspections uses
-        // GlobalInspectionContextImpl (the only concrete class with a real runTools() impl).
-        // No stable public alternative exists. Usage is confined to PlatformApiCompat.java
-        // and annotated @SuppressWarnings("UnstableApiUsage") with full rationale in Javadoc.
         failureLevel.set(
             listOf(
                 FailureLevel.INVALID_PLUGIN,
+                FailureLevel.INTERNAL_API_USAGES,
                 FailureLevel.OVERRIDE_ONLY_API_USAGES,
                 FailureLevel.NON_EXTENDABLE_API_USAGES,
                 FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
@@ -348,6 +351,7 @@ tasks {
     // Generate build info properties file
     val generateBuildInfo by registering {
         val outputDir = layout.buildDirectory.dir("generated/buildinfo")
+        val pluginVersion = project.version.toString()
         outputs.dir(outputDir)
         outputs.upToDateWhen { false }
         doLast {
@@ -360,7 +364,7 @@ tasks {
                 "unknown"
             }
             val timestamp = System.currentTimeMillis().toString()
-            propsFile.writeText("build.timestamp=$timestamp\nbuild.git.hash=$gitHash\nbuild.version=${project.version}\n")
+            propsFile.writeText("build.timestamp=$timestamp\nbuild.git.hash=$gitHash\nbuild.version=$pluginVersion\n")
         }
     }
 

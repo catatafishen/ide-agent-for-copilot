@@ -113,11 +113,10 @@ intellijPlatform {
     }
 
     pluginVerification {
-        // Don't fail on INTERNAL_API_USAGES: standalone-mcp bundles plugin-core classes which
-        // use GlobalInspectionContextImpl (see plugin-core/build.gradle.kts for full rationale).
         failureLevel.set(
             listOf(
                 FailureLevel.INVALID_PLUGIN,
+                FailureLevel.INTERNAL_API_USAGES,
                 FailureLevel.OVERRIDE_ONLY_API_USAGES,
                 FailureLevel.NON_EXTENDABLE_API_USAGES,
                 FailureLevel.PLUGIN_STRUCTURE_WARNINGS,

@@ -65,7 +65,7 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         }
         List<String> bundledAgents = profile.getBundledAgentFiles();
         if (!bundledAgents.isEmpty()) {
-            CopilotAgentsManager.ensureAgents(projectBasePath, bundledAgents);
+            BundledAgentDeployer.ensureAgents(projectBasePath, bundledAgents);
         }
     }
 

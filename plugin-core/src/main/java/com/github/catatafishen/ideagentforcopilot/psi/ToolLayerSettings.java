@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
  * settings class, keeping the tool layer agent-agnostic.
  *
  * <p>Each agent plugin registers its own implementation as a project service
- * (e.g., {@code CopilotToolLayerSettings}). The standalone MCP plugin registers
+ * (e.g., {@code ActiveAgentToolLayerSettings}). The standalone MCP plugin registers
  * {@link DefaultToolLayerSettings}.</p>
  */
 public interface ToolLayerSettings {

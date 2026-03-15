@@ -252,7 +252,7 @@
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager"/>
     <projectService
       serviceInterface="com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings"
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.bridge.CopilotToolLayerSettings"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.bridge.ActiveAgentToolLayerSettings"/>
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolRegistry"/>
     <projectService

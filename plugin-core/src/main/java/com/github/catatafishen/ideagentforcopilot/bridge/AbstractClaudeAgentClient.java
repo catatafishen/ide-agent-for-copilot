@@ -174,13 +174,13 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
     }
 
     protected void emitToolCallEnd(@NotNull String toolUseId, @NotNull String result,
-                                   boolean isError,
+                                   boolean success,
                                    @Nullable Consumer<SessionUpdate> onUpdate) {
         if (onUpdate == null) return;
-        if (isError) {
-            onUpdate.accept(new SessionUpdate.ToolCallUpdate(toolUseId, SessionUpdate.ToolCallStatus.FAILED, null, result));
-        } else {
+        if (success) {
             onUpdate.accept(new SessionUpdate.ToolCallUpdate(toolUseId, SessionUpdate.ToolCallStatus.COMPLETED, result, null));
+        } else {
+            onUpdate.accept(new SessionUpdate.ToolCallUpdate(toolUseId, SessionUpdate.ToolCallStatus.FAILED, null, result));
         }
     }
 

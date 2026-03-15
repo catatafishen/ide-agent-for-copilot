@@ -15,11 +15,11 @@ import org.jetbrains.annotations.Nullable;
  * <p>Registered as a project service in plugin.xml so the MCP tool layer
  * gets the active agent's settings without importing any agent-specific class.</p>
  */
-public final class CopilotToolLayerSettings implements ToolLayerSettings {
+public final class ActiveAgentToolLayerSettings implements ToolLayerSettings {
 
     private final Project project;
 
-    public CopilotToolLayerSettings(@NotNull Project project) {
+    public ActiveAgentToolLayerSettings(@NotNull Project project) {
         this.project = project;
     }
 
