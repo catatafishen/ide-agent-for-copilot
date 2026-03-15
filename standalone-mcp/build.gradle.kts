@@ -54,7 +54,16 @@ val repackagePluginCore by tasks.registering(Jar::class) {
     from(provider {
         zipTree(project(":plugin-core").tasks.named("jar").get().outputs.files.singleFile)
     }) {
+        // Exclude plugin-core's plugin descriptor and optional-dependency feature XMLs.
+        // standalone-mcp declares its own plugin.xml and feature XMLs so they resolve
+        // correctly from the primary JAR when the plugin verifier scans config-file attributes.
         exclude("META-INF/plugin.xml")
+        exclude("META-INF/git-features.xml")
+        exclude("META-INF/java-features.xml")
+        exclude("META-INF/gradle-features.xml")
+        exclude("META-INF/maven-features.xml")
+        exclude("META-INF/sonarlint-features.xml")
+        exclude("META-INF/terminal-features.xml")
     }
 }
 
@@ -104,10 +113,11 @@ intellijPlatform {
     }
 
     pluginVerification {
+        // Don't fail on INTERNAL_API_USAGES: standalone-mcp bundles plugin-core classes which
+        // use GlobalInspectionContextImpl (see plugin-core/build.gradle.kts for full rationale).
         failureLevel.set(
             listOf(
                 FailureLevel.INVALID_PLUGIN,
-                FailureLevel.INTERNAL_API_USAGES,
                 FailureLevel.OVERRIDE_ONLY_API_USAGES,
                 FailureLevel.NON_EXTENDABLE_API_USAGES,
                 FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
