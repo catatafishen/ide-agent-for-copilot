@@ -28,6 +28,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -102,6 +103,9 @@ public class AcpClient implements AgentClient {
 
     // Auto-restart state
     private final AtomicInteger restartAttempts = new AtomicInteger(0);
+    // Guards against double-scheduling: both readLoop and the restart thread's catch block can
+    // call attemptAutoRestart() for the same crash event. CAS ensures only one proceeds.
+    private final AtomicBoolean restartPending = new AtomicBoolean(false);
     private static final int MAX_RESTART_ATTEMPTS = 3;
     private static final long[] RESTART_DELAYS_MS = {1000, 2000, 4000}; // Exponential backoff
 
@@ -993,11 +997,21 @@ public class AcpClient implements AgentClient {
     }
 
     private void attemptAutoRestart() {
-        // Immediately unblock any callers stuck in pollForPromptCompletion
+        // Deduplicate: when a process crashes during doInitialize(), both readLoop and the
+        // restart thread's catch block call this method for the same crash event.
+        // CAS ensures only one of them actually schedules a restart, preventing double-counting.
+        if (!restartPending.compareAndSet(false, true)) {
+            LOG.debug("ACP restart already scheduled — skipping duplicate request");
+            return;
+        }
+
+        // Immediately unblock any callers stuck waiting on a response
         failAllPendingRequests();
 
         String name = agentConfig.getDisplayName();
         if (restartAttempts.get() >= MAX_RESTART_ATTEMPTS) {
+            // Reset flag so a manual reconnect from the UI can try again
+            restartPending.set(false);
             LOG.warn("ACP process terminated after " + MAX_RESTART_ATTEMPTS + " restart attempts");
             showNotification(name + " Disconnected",
                 "Could not reconnect after " + MAX_RESTART_ATTEMPTS + " attempts. Please restart the IDE.",
@@ -1015,8 +1029,10 @@ public class AcpClient implements AgentClient {
             "Attempt " + attempts + "/" + MAX_RESTART_ATTEMPTS,
             com.intellij.notification.NotificationType.INFORMATION);
 
-        // Schedule restart on background thread
         new Thread(() -> {
+            // Clear the flag before starting the new process so readLoop of the NEW process
+            // can schedule the NEXT restart if needed, without counting it as a duplicate.
+            restartPending.set(false);
             try {
                 Thread.sleep(delayMs);
                 if (closed) {
@@ -1034,7 +1050,11 @@ public class AcpClient implements AgentClient {
                 LOG.warn("Restart attempt interrupted", e);
             } catch (AcpException e) {
                 LOG.warn("Failed to restart ACP process (attempt " + restartAttempts + ")", e);
-                attemptAutoRestart(); // Try again
+                // If the process crashed during doInitialize(), readLoop already called
+                // attemptAutoRestart(). The CAS above ensures only one of the two schedules
+                // the next attempt. If the process never started (binary not found), readLoop
+                // was never spawned, so this call is the only retry trigger.
+                attemptAutoRestart();
             }
         }, name + "ACP-Restart").start();
     }
