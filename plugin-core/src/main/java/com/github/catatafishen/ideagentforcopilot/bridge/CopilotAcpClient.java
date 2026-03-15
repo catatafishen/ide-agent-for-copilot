@@ -1,8 +1,13 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
+import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * ACP client for GitHub Copilot.
@@ -21,6 +26,47 @@ import org.jetbrains.annotations.Nullable;
  * as the generic {@link AcpClient}.</p>
  */
 public class CopilotAcpClient extends AcpClient {
+
+    public static final String PROFILE_ID = "copilot";
+
+    private static final String ADDITIONAL_INSTRUCTIONS =
+        """
+            SUB-AGENT SELECTION:
+            When spawning sub-agents via the `task` tool, ALWAYS prefer these IDE-aware custom agents \\
+            over the equivalent built-in agents — they use IntelliJ MCP tools and live editor buffers \\
+            instead of stale CLI tools:
+            - Use `@ide-explore` instead of the built-in `explore` agent
+            - Use `@ide-task` instead of the built-in `task` agent""";
+
+    @NotNull
+    public static AgentProfile createDefaultProfile() {
+        AgentProfile p = new AgentProfile();
+        p.setId(PROFILE_ID);
+        p.setDisplayName("GitHub Copilot");
+        p.setBuiltIn(true);
+        p.setBinaryName(PROFILE_ID);
+        p.setAlternateNames(List.of("copilot-cli"));
+        p.setInstallHint("Install with: npm install -g @github/copilot-cli");
+        p.setInstallUrl("https://github.com/github/copilot-cli#installation");
+        p.setSupportsOAuthSignIn(true);
+        p.setAcpArgs(List.of("--acp", "--stdio"));
+        p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
+        p.setSupportsMcpConfigFlag(true);
+        p.setMcpConfigTemplate(
+            "{\"mcpServers\":{\"intellij-code-tools\":"
+                + "{\"type\":\"http\","
+                + "\"url\":\"http://localhost:{mcpPort}/mcp\"}}}");
+        p.setSupportsModelFlag(true);
+        p.setSupportsConfigDir(true);
+        p.setRequiresResourceDuplication(true);
+        p.setModelUsageField("copilotUsage");
+        p.setAgentsDirectory(".github/agents");
+        p.setBundledAgentFiles(List.of("ide-explore.md", "ide-task.md"));
+        p.setAdditionalInstructions(ADDITIONAL_INSTRUCTIONS);
+        p.setPrependInstructionsTo(".copilot/copilot-instructions.md");
+        p.setPermissionInjectionMethod(PermissionInjectionMethod.CLI_FLAGS);
+        return p;
+    }
 
     public CopilotAcpClient(@NotNull AgentConfig config,
                              @NotNull AgentSettings settings,

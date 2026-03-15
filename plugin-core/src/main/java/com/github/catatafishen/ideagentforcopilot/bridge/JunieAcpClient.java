@@ -1,5 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
+import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,6 +16,43 @@ import java.util.List;
  * such as translating generic model names into CLI-compatible identifiers.</p>
  */
 public class JunieAcpClient extends AcpClient {
+
+    public static final String PROFILE_ID = "junie";
+
+    @NotNull
+    public static AgentProfile createDefaultProfile() {
+        AgentProfile p = new AgentProfile();
+        p.setId(PROFILE_ID);
+        p.setDisplayName("Junie");
+        p.setBuiltIn(true);
+        p.setExperimental(false);
+        p.setTransportType(TransportType.ACP);
+        p.setDescription("""
+            Junie CLI by JetBrains. Connects via ACP (--acp true). \
+            Authenticate with your JetBrains Account or a JUNIE_API_KEY token. \
+            Install from junie.jetbrains.com and run 'junie' once to authenticate.""");
+        p.setBinaryName("junie");
+        p.setAlternateNames(List.of());
+        p.setInstallHint("Install from junie.jetbrains.com and run 'junie' to authenticate.");
+        p.setInstallUrl("https://junie.jetbrains.com/docs/junie-cli.html");
+        p.setSupportsOAuthSignIn(false);
+        p.setAcpArgs(List.of("--acp", "true"));
+        p.setMcpMethod(McpInjectionMethod.MCP_LOCATION_FLAG);
+        p.setSupportsMcpConfigFlag(false);
+        p.setMcpConfigTemplate(
+            "{\"mcpServers\":{\"intellij-code-tools\":"
+                + "{\"type\":\"stdio\","
+                + "\"command\":\"{mcpCommand}\","
+                + "\"args\":[\"{mcpPort}\"]}}}");
+        p.setSupportsModelFlag(true);
+        p.setSupportsConfigDir(false);
+        p.setRequiresResourceDuplication(false);
+        p.setExcludeAgentBuiltInTools(true);
+        p.setUsePluginPermissions(false);
+        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
+        p.setPrependInstructionsTo("AGENTS.md");
+        return p;
+    }
 
     public JunieAcpClient(@NotNull AgentConfig config,
                           @NotNull AgentSettings settings,

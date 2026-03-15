@@ -2,6 +2,8 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
+import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.Gson;
@@ -48,6 +50,38 @@ import java.util.function.Consumer;
 public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
 
     private static final Logger LOG = Logger.getInstance(AnthropicDirectClient.class);
+
+    public static final String PROFILE_ID = "claude-code";
+
+    @NotNull
+    public static AgentProfile createDefaultProfile() {
+        AgentProfile p = new AgentProfile();
+        p.setId(PROFILE_ID);
+        p.setDisplayName("Claude Code");
+        p.setBuiltIn(true);
+        p.setExperimental(true);
+        p.setTransportType(TransportType.ANTHROPIC_DIRECT);
+        p.setDescription("""
+            Direct Anthropic API profile for Claude Code. \
+            Calls api.anthropic.com/v1/messages directly — no subprocess or ACP adapter needed. \
+            Requires an Anthropic API key (set in Settings → Tools → IDE Agent → Agent Profiles → Claude Code). \
+            All IntelliJ IDE tools are available natively via the PSI bridge.""");
+        p.setBinaryName("");
+        p.setAlternateNames(List.of());
+        p.setInstallHint("Set your Anthropic API key in the profile settings.");
+        p.setInstallUrl("");
+        p.setSupportsOAuthSignIn(false);
+        p.setAcpArgs(List.of());
+        p.setMcpMethod(McpInjectionMethod.NONE);
+        p.setSupportsMcpConfigFlag(false);
+        p.setSupportsModelFlag(true);
+        p.setSupportsConfigDir(false);
+        p.setRequiresResourceDuplication(false);
+        p.setExcludeAgentBuiltInTools(false);
+        p.setUsePluginPermissions(true);
+        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
+        return p;
+    }
 
     private static final String API_BASE = "https://api.anthropic.com";
     private static final String MESSAGES_PATH = "/v1/messages";

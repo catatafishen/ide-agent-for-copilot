@@ -1,6 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
+import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -50,10 +52,48 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     private static final Logger LOG = Logger.getInstance(ClaudeCliClient.class);
 
+    public static final String PROFILE_ID = "claude-cli";
+
     private static final String FIELD_SESSION_ID = "session_id";
     private static final String SUBTYPE_ERROR = "error";
     private static final String STOP_REASON_END_TURN = "end_turn";
     private static final String PROFILE_FLAG = "--profile";
+
+    @NotNull
+    public static AgentProfile createDefaultProfile() {
+        AgentProfile p = new AgentProfile();
+        p.setId(PROFILE_ID);
+        p.setDisplayName("Claude Code (CLI)");
+        p.setBuiltIn(true);
+        p.setExperimental(true);
+        p.setTransportType(TransportType.CLAUDE_CLI);
+        p.setDescription("""
+            Claude Code CLI profile. Drives the locally-installed \
+            'claude' binary in --print mode via subprocess. \
+            Uses your Claude subscription — no Anthropic API key required. \
+            Install the CLI from code.claude.com and run 'claude auth login' once to set up.""");
+        p.setBinaryName("claude");
+        p.setAlternateNames(List.of());
+        p.setInstallHint("Install the Claude CLI from code.claude.com and run 'claude auth login'.");
+        p.setInstallUrl("https://code.claude.com");
+        p.setSupportsOAuthSignIn(false);
+        p.setAcpArgs(List.of());
+        p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
+        p.setSupportsMcpConfigFlag(true);
+        p.setSupportsModelFlag(true);
+        p.setSupportsConfigDir(false);
+        p.setRequiresResourceDuplication(false);
+        p.setExcludeAgentBuiltInTools(true);
+        p.setUsePluginPermissions(true);
+        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
+        p.setPrependInstructionsTo("CLAUDE.md");
+        p.setCustomCliModels(List.of(
+            "claude-opus-4-5=Claude Opus 4.5",
+            "claude-sonnet-4-5=Claude Sonnet 4.5",
+            "claude-haiku-4-5=Claude Haiku 4.5"
+        ));
+        return p;
+    }
 
     private final AgentProfile profile;
     private final int mcpPort;

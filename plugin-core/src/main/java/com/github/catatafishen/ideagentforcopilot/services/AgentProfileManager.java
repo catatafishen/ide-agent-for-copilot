@@ -1,6 +1,12 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
+import com.github.catatafishen.ideagentforcopilot.bridge.AnthropicDirectClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.ClaudeCliClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.ClaudeCliCredentials;
+import com.github.catatafishen.ideagentforcopilot.bridge.CopilotAcpClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.JunieAcpClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.KiroAcpClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.OpenCodeAcpClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
@@ -29,12 +35,12 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
 
     private static final Logger LOG = Logger.getInstance(AgentProfileManager.class);
 
-    public static final String COPILOT_PROFILE_ID = "copilot";
-    public static final String OPENCODE_PROFILE_ID = "opencode";
-    public static final String CLAUDE_CODE_PROFILE_ID = "claude-code";
-    public static final String CLAUDE_CLI_PROFILE_ID = "claude-cli";
-    public static final String JUNIE_PROFILE_ID = "junie";
-    public static final String KIRO_PROFILE_ID = "kiro";
+    public static final String COPILOT_PROFILE_ID = CopilotAcpClient.PROFILE_ID;
+    public static final String OPENCODE_PROFILE_ID = OpenCodeAcpClient.PROFILE_ID;
+    public static final String CLAUDE_CODE_PROFILE_ID = AnthropicDirectClient.PROFILE_ID;
+    public static final String CLAUDE_CLI_PROFILE_ID = ClaudeCliClient.PROFILE_ID;
+    public static final String JUNIE_PROFILE_ID = JunieAcpClient.PROFILE_ID;
+    public static final String KIRO_PROFILE_ID = KiroAcpClient.PROFILE_ID;
 
     private final Map<String, AgentProfile> profiles = new LinkedHashMap<>();
 
@@ -137,35 +143,14 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
     }
 
     private void ensureDefaults() {
-        if (!profiles.containsKey(COPILOT_PROFILE_ID)) {
-            profiles.put(COPILOT_PROFILE_ID, createCopilotProfile());
-        } else {
-            refreshBuiltInProfile(COPILOT_PROFILE_ID);
-        }
-        if (!profiles.containsKey(OPENCODE_PROFILE_ID)) {
-            profiles.put(OPENCODE_PROFILE_ID, createOpenCodeProfile());
-        } else {
-            refreshBuiltInProfile(OPENCODE_PROFILE_ID);
-        }
-        if (!profiles.containsKey(CLAUDE_CODE_PROFILE_ID)) {
-            profiles.put(CLAUDE_CODE_PROFILE_ID, createClaudeCodeProfile());
-        } else {
-            refreshBuiltInProfile(CLAUDE_CODE_PROFILE_ID);
-        }
-        if (!profiles.containsKey(CLAUDE_CLI_PROFILE_ID)) {
-            profiles.put(CLAUDE_CLI_PROFILE_ID, createClaudeCliProfile());
-        } else {
-            refreshBuiltInProfile(CLAUDE_CLI_PROFILE_ID);
-        }
-        if (!profiles.containsKey(JUNIE_PROFILE_ID)) {
-            profiles.put(JUNIE_PROFILE_ID, createJunieProfile());
-        } else {
-            refreshBuiltInProfile(JUNIE_PROFILE_ID);
-        }
-        if (!profiles.containsKey(KIRO_PROFILE_ID)) {
-            profiles.put(KIRO_PROFILE_ID, createKiroProfile());
-        } else {
-            refreshBuiltInProfile(KIRO_PROFILE_ID);
+        for (String id : List.of(COPILOT_PROFILE_ID, OPENCODE_PROFILE_ID, CLAUDE_CODE_PROFILE_ID,
+                                  CLAUDE_CLI_PROFILE_ID, JUNIE_PROFILE_ID, KIRO_PROFILE_ID)) {
+            if (!profiles.containsKey(id)) {
+                AgentProfile profile = createDefaultProfile(id);
+                if (profile != null) profiles.put(id, profile);
+            } else {
+                refreshBuiltInProfile(id);
+            }
         }
     }
 
@@ -209,224 +194,22 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
     @Nullable
     private AgentProfile createDefaultProfile(@NotNull String id) {
         return switch (id) {
-            case COPILOT_PROFILE_ID -> createCopilotProfile();
-            case OPENCODE_PROFILE_ID -> createOpenCodeProfile();
-            case CLAUDE_CODE_PROFILE_ID -> createClaudeCodeProfile();
-            case CLAUDE_CLI_PROFILE_ID -> createClaudeCliProfile();
-            case JUNIE_PROFILE_ID -> createJunieProfile();
-            case KIRO_PROFILE_ID -> createKiroProfile();
+            case COPILOT_PROFILE_ID -> CopilotAcpClient.createDefaultProfile();
+            case OPENCODE_PROFILE_ID -> OpenCodeAcpClient.createDefaultProfile();
+            case CLAUDE_CODE_PROFILE_ID -> AnthropicDirectClient.createDefaultProfile();
+            case CLAUDE_CLI_PROFILE_ID -> ClaudeCliClient.createDefaultProfile();
+            case JUNIE_PROFILE_ID -> JunieAcpClient.createDefaultProfile();
+            case KIRO_PROFILE_ID -> KiroAcpClient.createDefaultProfile();
             default -> null;
         };
     }
-
-    // ── Default Profiles ─────────────────────────────────────────────────────
 
     /**
      * Creates the default Copilot profile. Public for use in tests.
      */
     @NotNull
     public static AgentProfile createDefaultCopilotProfile() {
-        return createCopilotProfile();
-    }
-
-    private static final String COPILOT_ADDITIONAL_INSTRUCTIONS =
-        """
-            SUB-AGENT SELECTION:
-            When spawning sub-agents via the `task` tool, ALWAYS prefer these IDE-aware custom agents \\
-            over the equivalent built-in agents — they use IntelliJ MCP tools and live editor buffers \\
-            instead of stale CLI tools:
-            - Use `@ide-explore` instead of the built-in `explore` agent
-            - Use `@ide-task` instead of the built-in `task` agent""";
-
-    @NotNull
-    private static AgentProfile createCopilotProfile() {
-        AgentProfile p = new AgentProfile();
-        p.setId(COPILOT_PROFILE_ID);
-        p.setDisplayName("GitHub Copilot");
-        p.setBuiltIn(true);
-        p.setBinaryName(COPILOT_PROFILE_ID);
-        p.setAlternateNames(List.of("copilot-cli"));
-        p.setInstallHint("Install with: npm install -g @github/copilot-cli");
-        p.setInstallUrl("https://github.com/github/copilot-cli#installation");
-        p.setSupportsOAuthSignIn(true);
-        p.setAcpArgs(List.of("--acp", "--stdio"));
-        p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
-        p.setSupportsMcpConfigFlag(true);
-        p.setMcpConfigTemplate(
-            "{\"mcpServers\":{\"intellij-code-tools\":"
-                + "{\"type\":\"http\","
-                + "\"url\":\"http://localhost:{mcpPort}/mcp\"}}}");
-        p.setSupportsModelFlag(true);
-        p.setSupportsConfigDir(true);
-        p.setRequiresResourceDuplication(true);
-        p.setModelUsageField("copilotUsage");
-        p.setAgentsDirectory(".github/agents");
-        p.setBundledAgentFiles(List.of("ide-explore.md", "ide-task.md"));
-        p.setAdditionalInstructions(COPILOT_ADDITIONAL_INSTRUCTIONS);
-        p.setPrependInstructionsTo(".copilot/copilot-instructions.md");
-        p.setPermissionInjectionMethod(PermissionInjectionMethod.CLI_FLAGS);
-        return p;
-    }
-
-    @NotNull
-    private static AgentProfile createOpenCodeProfile() {
-        AgentProfile p = new AgentProfile();
-        p.setId(OPENCODE_PROFILE_ID);
-        p.setDisplayName("OpenCode");
-        p.setBuiltIn(true);
-        p.setExperimental(true);
-        p.setDescription("Experimental profile — OpenCode ACP support is community-maintained. "
-            + "Install: npm i -g opencode-ai");
-        p.setBinaryName(OPENCODE_PROFILE_ID);
-        p.setInstallHint("Install with: npm i -g opencode-ai");
-        p.setAcpArgs(List.of("acp"));
-        p.setMcpMethod(McpInjectionMethod.ENV_VAR);
-        p.setMcpEnvVarName("OPENCODE_CONFIG_CONTENT");
-        p.setMcpConfigTemplate(
-            "{\"mcp\":{\"intellij-code-tools\":"
-                + "{\"type\":\"local\","
-                + "\"command\":[\"{javaPath}\",\"-jar\",\"{mcpJarPath}\","
-                + "\"--port\",\"{mcpPort}\"]}}}");
-        p.setSupportsMcpConfigFlag(false);
-        p.setSupportsModelFlag(false);
-        p.setSupportsConfigDir(false);
-        p.setRequiresResourceDuplication(false);
-        p.setExcludeAgentBuiltInTools(true);
-        p.setUsePluginPermissions(false);
-        p.setPermissionInjectionMethod(PermissionInjectionMethod.CONFIG_JSON);
-        return p;
-    }
-
-    @NotNull
-    private static AgentProfile createClaudeCodeProfile() {
-        AgentProfile p = new AgentProfile();
-        p.setId(CLAUDE_CODE_PROFILE_ID);
-        p.setDisplayName("Claude Code");
-        p.setBuiltIn(true);
-        p.setExperimental(true);
-        p.setTransportType(TransportType.ANTHROPIC_DIRECT);
-        p.setDescription("""
-            Direct Anthropic API profile for Claude Code. \
-            Calls api.anthropic.com/v1/messages directly — no subprocess or ACP adapter needed. \
-            Requires an Anthropic API key (set in Settings → Tools → IDE Agent → Agent Profiles → Claude Code). \
-            All IntelliJ IDE tools are available natively via the PSI bridge.""");
-        p.setBinaryName("");
-        p.setAlternateNames(List.of());
-        p.setInstallHint("Set your Anthropic API key in the profile settings.");
-        p.setInstallUrl("");
-        p.setSupportsOAuthSignIn(false);
-        p.setAcpArgs(List.of());
-        p.setMcpMethod(McpInjectionMethod.NONE);
-        p.setSupportsMcpConfigFlag(false);
-        p.setSupportsModelFlag(true);
-        p.setSupportsConfigDir(false);
-        p.setRequiresResourceDuplication(false);
-        p.setExcludeAgentBuiltInTools(false);
-        p.setUsePluginPermissions(true);
-        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
-        return p;
-    }
-
-    @NotNull
-    private static AgentProfile createClaudeCliProfile() {
-        AgentProfile p = new AgentProfile();
-        p.setId(CLAUDE_CLI_PROFILE_ID);
-        p.setDisplayName("Claude Code (CLI)");
-        p.setBuiltIn(true);
-        p.setExperimental(true);
-        p.setTransportType(TransportType.CLAUDE_CLI);
-        p.setDescription("""
-            Claude Code CLI profile. Drives the locally-installed \
-            'claude' binary in --print mode via subprocess. \
-            Uses your Claude subscription — no Anthropic API key required. \
-            Install the CLI from code.claude.com and run 'claude auth login' once to set up.""");
-        p.setBinaryName("claude");
-        p.setAlternateNames(List.of());
-        p.setInstallHint("Install the Claude CLI from code.claude.com and run 'claude auth login'.");
-        p.setInstallUrl("https://code.claude.com");
-        p.setSupportsOAuthSignIn(false);
-        p.setAcpArgs(List.of());
-        p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
-        p.setSupportsMcpConfigFlag(true);
-        p.setSupportsModelFlag(true);
-        p.setSupportsConfigDir(false);
-        p.setRequiresResourceDuplication(false);
-        p.setExcludeAgentBuiltInTools(true);
-        p.setUsePluginPermissions(true);
-        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
-        p.setPrependInstructionsTo("CLAUDE.md");
-        // Seed the custom models list with the known Claude models.
-        // Users can edit this list to add new models or aliases.
-        // Format: <model-id>=<Display Name>
-        p.setCustomCliModels(List.of(
-            "claude-opus-4-5=Claude Opus 4.5",
-            "claude-sonnet-4-5=Claude Sonnet 4.5",
-            "claude-haiku-4-5=Claude Haiku 4.5"
-        ));
-        return p;
-    }
-
-    @NotNull
-    private static AgentProfile createJunieProfile() {
-        AgentProfile p = new AgentProfile();
-        p.setId(JUNIE_PROFILE_ID);
-        p.setDisplayName("Junie");
-        p.setBuiltIn(true);
-        p.setExperimental(false);
-        p.setTransportType(TransportType.ACP);
-        p.setDescription("""
-            Junie CLI by JetBrains. Connects via ACP (--acp true). \
-            Authenticate with your JetBrains Account or a JUNIE_API_KEY token. \
-            Install from junie.jetbrains.com and run 'junie' once to authenticate.""");
-        p.setBinaryName("junie");
-        p.setAlternateNames(List.of());
-        p.setInstallHint("Install from junie.jetbrains.com and run 'junie' to authenticate.");
-        p.setInstallUrl("https://junie.jetbrains.com/docs/junie-cli.html");
-        p.setSupportsOAuthSignIn(false);
-        p.setAcpArgs(List.of("--acp", "true"));
-        p.setMcpMethod(McpInjectionMethod.MCP_LOCATION_FLAG);
-        p.setSupportsMcpConfigFlag(false);
-        p.setMcpConfigTemplate(
-            "{\"mcpServers\":{\"intellij-code-tools\":"
-                + "{\"type\":\"stdio\","
-                + "\"command\":\"{mcpCommand}\","
-                + "\"args\":[\"{mcpPort}\"]}}}");
-        p.setSupportsModelFlag(true);
-        p.setSupportsConfigDir(false);
-        p.setRequiresResourceDuplication(false);
-        p.setExcludeAgentBuiltInTools(true);
-        p.setUsePluginPermissions(false);
-        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
-        // Junie reads guidelines from AGENTS.md (checked as .junie/AGENTS.md first)
-        p.setPrependInstructionsTo("AGENTS.md");
-        return p;
-    }
-
-    @NotNull
-    private static AgentProfile createKiroProfile() {
-        AgentProfile p = new AgentProfile();
-        p.setId(KIRO_PROFILE_ID);
-        p.setDisplayName("Kiro");
-        p.setBuiltIn(true);
-        p.setExperimental(false);
-        p.setTransportType(TransportType.ACP);
-        p.setDescription("Kiro CLI. Ensure 'kiro-cli' is in your PATH.");
-        p.setBinaryName("kiro-cli");
-        p.setAlternateNames(List.of("kiro"));
-        p.setInstallHint("Install Kiro CLI and ensure it's available on your PATH.");
-        p.setInstallUrl("https://kiro.dev/docs/cli/acp/");
-        p.setSupportsOAuthSignIn(false);
-        p.setAcpArgs(List.of("acp"));
-        // Kiro supports MCP via standard standard configuration
-        p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
-        p.setSupportsMcpConfigFlag(true);
-        p.setSupportsModelFlag(true);
-        p.setSupportsConfigDir(false);
-        p.setRequiresResourceDuplication(false);
-        p.setExcludeAgentBuiltInTools(false);
-        p.setUsePluginPermissions(true);
-        p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
-        return p;
+        return CopilotAcpClient.createDefaultProfile();
     }
 
     // ── Serialization model ──────────────────────────────────────────────────
