@@ -307,14 +307,19 @@ public class AcpClient implements AgentClient {
     private void parseAvailableModels(JsonObject result) {
         if (result.has("models")) {
             JsonObject modelsObj = result.getAsJsonObject("models");
-            availableModels = new ArrayList<>();
+            List<Model> models = new ArrayList<>();
             if (modelsObj.has("availableModels")) {
+                Set<String> seen = new java.util.HashSet<>();
                 for (JsonElement elem : modelsObj.getAsJsonArray("availableModels")) {
                     JsonObject m = elem.getAsJsonObject();
                     Model model = parseModel(m);
-                    availableModels.add(model);
+                    if (seen.add(model.getId())) {
+                        models.add(model);
+                    }
                 }
             }
+            // Single atomic assignment to the field — prevents partial-read races
+            availableModels = models;
         }
     }
 
@@ -351,9 +356,12 @@ public class AcpClient implements AgentClient {
     /**
      * List available models. Creates a session if needed (models come from session/new).
      * Uses the project path as CWD so the CLI reads copilot-instructions.md correctly.
+     *
+     * <p>Synchronized to prevent concurrent {@link #createSession} calls from two threads
+     * racing inside {@link #parseAvailableModels}, which could produce duplicate model entries.
      */
     @NotNull
-    public List<Model> listModels() throws AcpException {
+    public synchronized List<Model> listModels() throws AcpException {
         if (availableModels == null) {
             createSession(projectBasePath);
         }
@@ -580,7 +588,8 @@ public class AcpClient implements AgentClient {
                                                          @Nullable Consumer<SessionUpdate> onUpdate) {
         return notification -> {
             String method = notification.has(METHOD) ? notification.get(METHOD).getAsString() : "";
-            if (!"session/update".equals(method)) return;
+            // Handle both session/update (Copilot) and session/chunk (Claude CLI, Junie)
+            if (!"session/update".equals(method) && !"session/chunk".equals(method)) return;
 
             JsonObject params = notification.getAsJsonObject(PARAMS);
             if (params == null) return;
@@ -605,7 +614,9 @@ public class AcpClient implements AgentClient {
         LOG.debug("sendPrompt: received update type=" + updateType);
         lastActivityTimestamp = System.currentTimeMillis();
 
-        if (AgentClient.SessionUpdateType.AGENT_MESSAGE_CHUNK.value().equals(updateType)) {
+        if (AgentClient.SessionUpdateType.AGENT_MESSAGE_CHUNK.value().equals(updateType)
+            || AgentClient.SessionUpdateType.MESSAGE_CHUNK.value().equals(updateType)
+            || AgentClient.SessionUpdateType.TEXT_CHUNK.value().equals(updateType)) {
             handleAgentMessageChunk(update, onChunk);
         }
 
@@ -627,9 +638,9 @@ public class AcpClient implements AgentClient {
 
     private void handleAgentMessageChunk(@NotNull JsonObject update, @Nullable Consumer<String> onChunk) {
         if (onChunk == null) return;
-        JsonObject content = update.has(CONTENT) ? update.getAsJsonObject(CONTENT) : null;
-        if (content != null && "text".equals(content.has("type") ? content.get("type").getAsString() : "")) {
-            onChunk.accept(content.get("text").getAsString());
+        String text = extractContentText(update);
+        if (text != null) {
+            onChunk.accept(text);
         }
     }
 
@@ -760,8 +771,25 @@ public class AcpClient implements AgentClient {
      * so it works regardless of what the user named their MCP server.
      */
     private String normalizeAcpToolName(String name) {
+        String customRegex = agentConfig.getToolNameRegex();
+        if (customRegex != null && !customRegex.isEmpty()) {
+            try {
+                String replacement = agentConfig.getToolNameReplacement();
+                return name.replaceAll(customRegex, replacement != null ? replacement : "");
+            } catch (Exception e) {
+                LOG.warn("Failed to apply tool name regex '" + customRegex + "' to '" + name + "'", e);
+            }
+        }
+
         if (!effectiveMcpPrefix.isEmpty() && name.startsWith(effectiveMcpPrefix)) {
             return name.substring(effectiveMcpPrefix.length());
+        }
+        // Handle slash-prefixed format (e.g. "intellij-code-tools/tool")
+        String slashPrefix = effectiveMcpPrefix.endsWith("-")
+            ? effectiveMcpPrefix.substring(0, effectiveMcpPrefix.length() - 1) + "/"
+            : effectiveMcpPrefix + "/";
+        if (name.startsWith(slashPrefix)) {
+            return name.substring(slashPrefix.length());
         }
         // Handle mcp__server__tool format (double-underscore)
         if (name.startsWith("mcp__")) {
@@ -1356,9 +1384,7 @@ public class AcpClient implements AgentClient {
         if (toolCall != null && toolCall.has("name")) {
             name = toolCall.get("name").getAsString();
         }
-        if (name.startsWith(effectiveMcpPrefix)) {
-            name = name.substring(effectiveMcpPrefix.length());
-        }
+        name = normalizeAcpToolName(name);
         String fallback = permKind != null ? permKind : "";
         return name.isEmpty() ? fallback : name;
     }
@@ -1423,9 +1449,9 @@ public class AcpClient implements AgentClient {
 
         String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
         String permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
-        String expectedMcpName = effectiveMcpPrefix + "run_command";
+        String normalizedName = normalizeAcpToolName(toolName);
 
-        boolean isRunCommand = "run_command".equals(toolName) || expectedMcpName.equals(toolName);
+        boolean isRunCommand = "run_command".equals(normalizedName);
         // Also intercept the bash built-in tool (kind=execute or kind=bash)
         boolean isBashTool = KIND_BASH.equals(permKind) || KIND_EXECUTE.equals(permKind)
             || KIND_BASH.equals(toolName);

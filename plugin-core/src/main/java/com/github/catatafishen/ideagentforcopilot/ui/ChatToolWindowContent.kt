@@ -47,6 +47,7 @@ class ChatToolWindowContent(
 
     // Shared model list (populated from ACP)
     private var loadedModels: List<Model> = emptyList()
+    private var modelLoadGeneration = 0
 
     // Prompt tab fields
     private var selectedModelIndex = -1
@@ -176,6 +177,9 @@ class ChatToolWindowContent(
             LOG.warn("Error stopping agent", e)
         }
         agentManager.isConnected = false
+        loadedModels = emptyList()
+        selectedModelIndex = -1
+        modelsStatusText = null
         connectPanel.resetConnectButton()
         connectPanel.refreshMcpStatus()
         cardLayout.show(mainPanel, CARD_CONNECT)
@@ -250,6 +254,7 @@ class ChatToolWindowContent(
     private fun handlePlanUpdate(update: SessionUpdate.Plan) {
         val entries = update.entries()
         ApplicationManager.getApplication().invokeLater {
+            if (!::planRoot.isInitialized) return@invokeLater
             val toRemove = mutableListOf<javax.swing.tree.DefaultMutableTreeNode>()
             for (i in 0 until planRoot.childCount) {
                 val child = planRoot.getChildAt(i) as javax.swing.tree.DefaultMutableTreeNode
@@ -929,9 +934,11 @@ class ChatToolWindowContent(
 
         override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
             val group = DefaultActionGroup()
+            val supportsMultiplier = agentManager.client.supportsMultiplier()
             loadedModels.forEachIndexed { index, model ->
                 val cost = model.usage ?: "1x"
-                group.add(object : AnAction("${model.name}  ($cost)") {
+                val label = if (supportsMultiplier && cost != "1x") "${model.name}  ($cost)" else model.name
+                group.add(object : AnAction(label) {
                     override fun actionPerformed(e: AnActionEvent) {
                         if (index == selectedModelIndex) return
 
@@ -940,7 +947,12 @@ class ChatToolWindowContent(
                         LOG.info("Model selected: ${model.id} (index=$index)")
                         ApplicationManager.getApplication().invokeLater {
                             consolePanel.setCurrentModel(model.id)
-                            consolePanel.setPromptStats(model.id, getModelMultiplier(model.id))
+                            if (supportsMultiplier) {
+                                val multiplier = getModelMultiplier(model.id)
+                                if (multiplier != "1x") {
+                                    consolePanel.setPromptStats(model.id, multiplier)
+                                }
+                            }
                         }
                         ApplicationManager.getApplication().executeOnPooledThread {
                             try {
@@ -1460,6 +1472,7 @@ class ChatToolWindowContent(
     }
 
     private fun loadModelsAsync(onSuccess: (List<Model>) -> Unit) {
+        val generation = ++modelLoadGeneration
         ApplicationManager.getApplication().invokeLater {
             modelsStatusText = MSG_LOADING
             selectedModelIndex = -1
@@ -1467,11 +1480,19 @@ class ChatToolWindowContent(
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val models = fetchModelsWithRetry()
-                ApplicationManager.getApplication().invokeLater { onModelsLoaded(models, onSuccess) }
+                ApplicationManager.getApplication().invokeLater {
+                    if (generation == modelLoadGeneration) {
+                        onModelsLoaded(models, onSuccess)
+                    } else {
+                        LOG.info("Discarding stale model load (gen $generation, current $modelLoadGeneration)")
+                    }
+                }
             } catch (e: Exception) {
                 val errorMsg = e.message ?: MSG_UNKNOWN_ERROR
                 LOG.warn("Failed to load models: $errorMsg")
-                ApplicationManager.getApplication().invokeLater { onModelsLoadFailed(e) }
+                ApplicationManager.getApplication().invokeLater {
+                    if (generation == modelLoadGeneration) onModelsLoadFailed(e)
+                }
             }
         }
     }
