@@ -9,12 +9,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * ACP client for Junie.
- *
- * <p>Extends the generic {@link AcpClient} with Junie-specific behaviour,
- * such as translating generic model names into CLI-compatible identifiers.</p>
- */
 public class JunieAcpClient extends AcpClient {
 
     public static final String PROFILE_ID = "junie";
@@ -31,7 +25,7 @@ public class JunieAcpClient extends AcpClient {
             Junie CLI by JetBrains. Connects via ACP (--acp true). \
             Authenticate with your JetBrains Account or a JUNIE_API_KEY token. \
             Install from junie.jetbrains.com and run 'junie' once to authenticate.""");
-        p.setBinaryName("junie");
+        p.setBinaryName(PROFILE_ID);
         p.setAlternateNames(List.of());
         p.setInstallHint("Install from junie.jetbrains.com and run 'junie' to authenticate.");
         p.setInstallUrl("https://junie.jetbrains.com/docs/junie-cli.html");
