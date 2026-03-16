@@ -44,7 +44,7 @@ public class JunieAcpClient extends AcpClient {
         p.setExcludeAgentBuiltInTools(true);
         p.setUsePluginPermissions(false);
         p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
-        p.setPrependInstructionsTo("AGENTS.md");
+        p.setPrependInstructionsTo("");
         return p;
     }
 

@@ -154,6 +154,16 @@ public interface AgentConfig {
     }
 
     /**
+     * Returns startup instructions to inject into the conversation via {@code session/message}
+     * after session creation. This is the preferred mechanism for agents that process
+     * in-conversation messages (e.g. Junie). Return {@code null} to skip.
+     */
+    @Nullable
+    default String getSessionInstructions() {
+        return null;
+    }
+
+    /**
      * Clears the persisted model selection for this agent.
      * Called when the agent process rejects the saved {@code --model} flag on startup,
      * so the next restart attempt launches without a model flag and can connect successfully.

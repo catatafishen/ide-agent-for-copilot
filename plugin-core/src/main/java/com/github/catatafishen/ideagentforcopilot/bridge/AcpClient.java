@@ -320,6 +320,14 @@ public class AcpClient implements AgentClient {
         // Parse available models
         parseAvailableModels(result);
 
+        // Inject startup instructions into the conversation via session/message.
+        // This is the primary mechanism for agents like Junie that read in-conversation context.
+        String instructions = agentConfig.getSessionInstructions();
+        if (instructions != null && !instructions.isEmpty()) {
+            sendPromptMessage(instructions);
+            LOG.info("Sent startup instructions via session/message (" + instructions.length() + " chars)");
+        }
+
         LOG.info("ACP session created: " + currentSessionId + " with " +
             (availableModels != null ? availableModels.size() : 0) + " models");
         return currentSessionId;

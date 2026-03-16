@@ -237,6 +237,25 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         return profile.getId();
     }
 
+    @Override
+    @Nullable
+    public String getSessionInstructions() {
+        StringBuilder sb = new StringBuilder();
+        try (java.io.InputStream is = getClass().getResourceAsStream("/default-startup-instructions.md")) {
+            if (is != null) {
+                sb.append(new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to load default-startup-instructions.md", e);
+        }
+        String additional = profile.getAdditionalInstructions();
+        if (!additional.isBlank()) {
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append(additional);
+        }
+        return sb.isEmpty() ? null : sb.toString();
+    }
+
     /**
      * Search for a binary by name on PATH and common installation locations.
      */
