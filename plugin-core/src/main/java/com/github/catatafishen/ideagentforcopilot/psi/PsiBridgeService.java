@@ -198,6 +198,7 @@ public final class PsiBridgeService implements Disposable {
         } finally {
             if (needsLock) writeToolSemaphore.release();
             fireToolCallEvent(toolName, startMs, success);
+            fireFocusRestoreEvent();
         }
     }
 
@@ -242,6 +243,15 @@ public final class PsiBridgeService implements Disposable {
                 .toolCalled(toolName, duration, success);
         } catch (Exception e) {
             LOG.debug("Failed to fire tool call event", e);
+        }
+    }
+
+    private void fireFocusRestoreEvent() {
+        try {
+            PlatformApiCompat.syncPublisher(project, FOCUS_RESTORE_TOPIC)
+                .restoreFocus();
+        } catch (Exception e) {
+            LOG.debug("Failed to fire focus restore event", e);
         }
     }
 

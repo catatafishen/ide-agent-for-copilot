@@ -102,7 +102,12 @@ class ChatToolWindowContent(
             com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.FocusRestoreListener {
                 ApplicationManager.getApplication().invokeLater {
                     if (::promptTextArea.isInitialized) {
-                        promptTextArea.requestFocusInWindow()
+                        // Activate the tool window first to ensure it can receive focus
+                        val toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+                        val toolWindow = toolWindowManager.getToolWindow("AgentBridge")
+                        toolWindow?.activate {
+                            promptTextArea.requestFocus()
+                        }
                     }
                 }
             }
