@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
 
+import com.github.catatafishen.ideagentforcopilot.services.PermissionTemplateUtil;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -45,6 +46,16 @@ public final class GitFetchTool extends GitTool {
     @Override
     public @NotNull String permissionTemplate() {
         return "Fetch {remote}";
+    }
+
+    @Override
+    public @Nullable String resolvePermissionQuestion(@Nullable JsonObject args) {
+        JsonObject enriched = args != null ? args.deepCopy() : new JsonObject();
+        if (!enriched.has(PARAM_REMOTE)) {
+            enriched.addProperty(PARAM_REMOTE, "origin");
+        }
+        String resolved = PermissionTemplateUtil.substituteArgs(permissionTemplate(), enriched);
+        return PermissionTemplateUtil.stripPlaceholders(resolved);
     }
 
     @Override
