@@ -73,3 +73,10 @@ CLAUDE.md
 
 qodana.yaml
 .sandbox-plugins/
+/plugin-core/bin
+**/.classpath
+standalone-mcp/bin
+plugin-experimental/bin
+integration-tests/bin
+mcp-server/bin
+.junie/
