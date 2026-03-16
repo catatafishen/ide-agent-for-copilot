@@ -65,7 +65,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         p.setId(PROFILE_ID);
         p.setDisplayName("Claude Code CLI");
         p.setBuiltIn(true);
-        p.setExperimental(true);
+        p.setExperimental(false);
         p.setTransportType(TransportType.CLAUDE_CLI);
         p.setDescription("""
             Claude Code CLI profile — experimental support. Drives the locally-installed \
@@ -86,7 +86,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         p.setExcludeAgentBuiltInTools(true);
         p.setUsePluginPermissions(true);
         p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
-        p.setPrependInstructionsTo("CLAUDE.md");
+        p.setPrependInstructionsTo("");  // Claude CLI gets instructions via MCP initialize, not file prepend
         p.setCustomCliModels(List.of(
             "claude-opus-4-5=Claude Opus 4.5",
             "claude-sonnet-4-5=Claude Sonnet 4.5",
@@ -96,7 +96,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     }
 
     private final AgentProfile profile;
+    private final Project project;
     private final int mcpPort;
+    private final AgentConfig config;
 
     /**
      * Maps plugin session ID → CLI session ID (for --resume).
@@ -106,12 +108,15 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     private String resolvedBinaryPath;
 
-    @SuppressWarnings("unused") // registry and project reserved for future PSI tool integration
+    @SuppressWarnings("unused") // registry reserved for future PSI tool integration
     public ClaudeCliClient(@NotNull AgentProfile profile,
+                           @NotNull AgentConfig config,
                            @Nullable ToolRegistry registry,
                            @Nullable Project project,
                            int mcpPort) {
         this.profile = profile;
+        this.config = config;
+        this.project = project;
         this.mcpPort = mcpPort;
     }
 
@@ -261,7 +266,8 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         if (onRequest != null) onRequest.run();
 
         String resolvedModel = resolveModel(sessionId, model);
-        String fullPrompt = buildFullPrompt(prompt, references);
+        boolean isNewSession = !cliSessionIds.containsKey(sessionId);
+        String fullPrompt = buildFullPrompt(prompt, references, isNewSession);
         List<String> cmd = buildCommand(sessionId, resolvedModel);
 
         Path mcpConfig = null;
@@ -282,20 +288,6 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
             }
         }
     }
-
-    /**
-     * All Claude Code CLI built-in tool names. Used with {@code --disallowed-tools} when
-     * {@link AgentProfile#isExcludeAgentBuiltInTools()} is set, so only MCP tools remain active.
-     */
-    private static final List<String> CLAUDE_BUILT_IN_TOOLS = List.of(
-        "Bash", "BashOutput", "KillShell",
-        "Edit", "MultiEdit", "Read", "Write",
-        "Glob", "Grep",
-        "WebFetch", "WebSearch",
-        "TodoWrite", "Task",
-        "ExitPlanMode", "EnterPlanMode",
-        "AskUserQuestion", "NotebookEdit"
-    );
 
     @NotNull
     private List<String> buildCommand(@NotNull String sessionId, @NotNull String model) {
@@ -323,11 +315,10 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         cmd.add(model);
 
         // Disable all Claude built-in tools when the profile requests it, leaving only MCP tools.
+        // Using --tools "" is cleaner than listing each tool with --disallowed-tools.
         if (profile.isExcludeAgentBuiltInTools()) {
-            for (String tool : CLAUDE_BUILT_IN_TOOLS) {
-                cmd.add("--disallowed-tools");
-                cmd.add(tool);
-            }
+            cmd.add("--tools");
+            cmd.add("");  // Empty string disables all built-in tools
         }
 
         String effort = getSessionOption(sessionId, "effort");
@@ -368,7 +359,14 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
                                  @Nullable Consumer<SessionUpdate> onUpdate,
                                  @NotNull AtomicBoolean cancelled) throws AcpException {
         try {
+            LOG.info("Executing Claude CLI command: " + String.join(" ", cmd));
             ProcessBuilder pb = new ProcessBuilder(cmd);
+
+            // Set working directory to project base path so the CLI detects correct git repo and cwd
+            if (project != null && project.getBasePath() != null) {
+                pb.directory(new File(project.getBasePath()));
+            }
+
             pb.redirectErrorStream(false);
             Process proc = pb.start();
             activeProcesses.put(sessionId, proc);
@@ -743,16 +741,34 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     // ── Prompt building ──────────────────────────────────────────────────────
 
     @NotNull
-    private static String buildFullPrompt(@NotNull String prompt,
-                                          @Nullable List<ResourceReference> references) {
-        if (references == null || references.isEmpty()) return prompt;
+    private String buildFullPrompt(@NotNull String prompt,
+                                   @Nullable List<ResourceReference> references,
+                                   boolean isNewSession) {
         StringBuilder sb = new StringBuilder();
-        for (ResourceReference ref : references) {
-            String text = ref.text();
-            if (!text.isEmpty()) {
-                sb.append("File: ").append(ref.uri()).append("\n```\n").append(text).append("\n```\n\n");
+
+        // Inject startup instructions for new sessions (not --resume).
+        // This ensures Claude CLI receives the plugin's system instructions even though
+        // it may not properly read the MCP initialize response's instructions field.
+        if (isNewSession) {
+            String instructions = config.getSessionInstructions();
+            if (instructions != null && !instructions.isEmpty()) {
+                sb.append("<system-reminder>\n");
+                sb.append(instructions);
+                sb.append("\n</system-reminder>\n\n");
+                LOG.info("Injected startup instructions into first message (" + instructions.length() + " chars)");
             }
         }
+
+        // Add resource references (file context)
+        if (references != null && !references.isEmpty()) {
+            for (ResourceReference ref : references) {
+                String text = ref.text();
+                if (!text.isEmpty()) {
+                    sb.append("File: ").append(ref.uri()).append("\n```\n").append(text).append("\n```\n\n");
+                }
+            }
+        }
+
         sb.append(prompt);
         return sb.toString();
     }

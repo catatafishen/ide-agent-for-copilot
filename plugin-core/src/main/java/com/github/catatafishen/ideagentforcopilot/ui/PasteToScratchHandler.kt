@@ -23,6 +23,9 @@ internal class PasteToScratchHandler(
 ) {
     private val log = Logger.getInstance(PasteToScratchHandler::class.java)
 
+    @Volatile
+    private var suppressNextPaste = false
+
     fun handlePasteToScratch(text: String) {
         val settings = ScratchTypeSettings.getInstance()
         val enabledLanguages = settings.enabledLanguages
@@ -100,6 +103,7 @@ internal class PasteToScratchHandler(
                 if (!popup.isVisible) return@EventDispatcher false
                 if (event.id != java.awt.event.KeyEvent.KEY_PRESSED) return@EventDispatcher false
                 if (KeyStroke.getKeyStrokeForEvent(event) !in pasteStrokes) return@EventDispatcher false
+                event.consume()
                 swallowFollowUp = true
                 pasteIntercepted = true
                 executePasteFromPopup(popup, text)

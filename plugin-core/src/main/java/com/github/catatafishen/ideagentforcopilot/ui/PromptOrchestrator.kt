@@ -429,9 +429,17 @@ internal class PromptOrchestrator(
 
     private fun handlePromptError(e: Exception) {
         val isCancelled = e is InterruptedException || e.cause is InterruptedException
-        val msg = if (isCancelled) "Request cancelled" else e.message ?: "Unknown error"
+        var msg = if (isCancelled) "Request cancelled" else e.message ?: "Unknown error"
+
+        // For ACP errors, ensure the message is descriptive
+        if (e is AcpException && msg.startsWith("(") && msg.contains(")")) {
+             // Keep the enhanced message format: (code) Message: Data
+        } else if (e is AcpException) {
+             msg = "ACP error: $msg"
+        }
 
         consolePanel().cancelAllRunning()
+        consolePanel().finishResponse(turnToolCallCount, turnModelId, "")
         callbacks.saveConversation()
 
         if (authService.isAuthenticationError(msg)) {

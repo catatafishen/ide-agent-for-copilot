@@ -56,7 +56,7 @@ var __chatUI = (() => {
           this._autoScroll = true;
         } else if (window.scrollY < this._prevScrollY) {
           this._autoScroll = false;
-          if (window.scrollY <= 50) {
+          if (window.scrollY <= 80) {
             const lm = this._messages.querySelector("load-more:not([loading])");
             if (lm) lm.click();
           }
@@ -432,7 +432,7 @@ var __chatUI = (() => {
     return i >= 0 ? fqn.substring(i + 1) : fqn;
   }
   function toolDisplayName(rawTitle, paramsJson) {
-    const name = rawTitle.replace(/^intellij[-_]code[-_]tools[-_]/i, "").replace(/^github[-_]mcp[-_]server[-_]/i, "gh:");
+    const name = rawTitle;
     let p = {};
     if (paramsJson) {
       try {
@@ -1228,9 +1228,12 @@ var __chatUI = (() => {
       while (temp.firstChild) {
         msgs.insertBefore(temp.firstChild, insertBefore);
       }
-      if (prevScrollY <= 50) {
+      if (prevScrollY <= 80) {
         const addedHeight = document.body.scrollHeight - prevHeight;
-        if (addedHeight > 0) window.scrollBy(0, addedHeight);
+        if (addedHeight > 0) {
+          const targetScroll = Math.max(10, prevScrollY + addedHeight);
+          window.scrollTo(0, targetScroll);
+        }
       }
     },
     showLoadMore(count) {
@@ -1253,12 +1256,16 @@ var __chatUI = (() => {
       const loadMore = msgs.querySelector("load-more");
       const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
       const prevHeight = document.body.scrollHeight;
-      const wasNearTop = window.scrollY <= 200;
+      const prevScrollY = window.scrollY;
+      const wasNearTop = prevScrollY <= 80;
       while (temp.firstChild) {
         msgs.insertBefore(temp.firstChild, insertBefore);
       }
       const addedHeight = document.body.scrollHeight - prevHeight;
-      if (addedHeight > 0) window.scrollBy(0, addedHeight);
+      if (addedHeight > 0) {
+        const targetScroll = Math.max(10, prevScrollY + addedHeight);
+        window.scrollTo(0, targetScroll);
+      }
       if (wasNearTop) {
         requestAnimationFrame(() => {
           const lm = msgs.querySelector("load-more:not([loading])");

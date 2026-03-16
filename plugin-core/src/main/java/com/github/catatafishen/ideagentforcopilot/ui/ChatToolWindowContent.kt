@@ -650,6 +650,7 @@ class ChatToolWindowContent(
         )
         controlsToolbar.targetComponent = row
         controlsToolbar.isReservePlaceAutoPopupIcon = false
+        controlsToolbar.component.border = JBUI.Borders.empty()
 
         val rightGroup = DefaultActionGroup()
         rightGroup.add(ProcessingIndicatorAction())
@@ -662,9 +663,22 @@ class ChatToolWindowContent(
         )
         rightToolbar.targetComponent = row
         rightToolbar.isReservePlaceAutoPopupIcon = false
+        rightToolbar.component.border = JBUI.Borders.empty()
 
-        row.add(controlsToolbar.component, BorderLayout.CENTER)
-        row.add(rightToolbar.component, BorderLayout.EAST)
+        val wrapper = JBPanel<JBPanel<*>>(GridBagLayout())
+        wrapper.isOpaque = false
+        val c = GridBagConstraints()
+        c.fill = GridBagConstraints.VERTICAL
+        c.weighty = 1.0
+        c.anchor = GridBagConstraints.WEST
+        c.weightx = 1.0
+        wrapper.add(controlsToolbar.component, c)
+
+        c.weightx = 0.0
+        c.anchor = GridBagConstraints.EAST
+        wrapper.add(rightToolbar.component, c)
+
+        row.add(wrapper, BorderLayout.CENTER)
 
         return row
     }
@@ -1360,7 +1374,7 @@ class ChatToolWindowContent(
                 if (json != null) {
                     conversationReplayer.loadAndSplit(json)
                     chatConsolePanel.appendEntries(conversationReplayer.recentEntries())
-                    val deferred = conversationReplayer.deferredCount()
+                    val deferred = conversationReplayer.remainingPromptCount()
                     if (deferred > 0) chatConsolePanel.showLoadMore(deferred)
                 }
                 onComplete()
@@ -1391,7 +1405,7 @@ class ChatToolWindowContent(
     private fun onLoadMoreHistory() {
         val batch = conversationReplayer.loadNextBatch()
         if (batch.isNotEmpty()) chatConsolePanel.prependEntries(batch)
-        val remaining = conversationReplayer.deferredCount()
+        val remaining = conversationReplayer.remainingPromptCount()
         if (remaining > 0) chatConsolePanel.showLoadMore(remaining)
         else chatConsolePanel.hideLoadMore()
     }

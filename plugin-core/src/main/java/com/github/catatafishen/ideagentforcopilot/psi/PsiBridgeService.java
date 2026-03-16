@@ -104,15 +104,23 @@ public final class PsiBridgeService implements Disposable {
      * Adds a small delay to allow editor scrolling/navigation to complete first.
      */
     private void restoreChatFocus() {
-        // Wait briefly for editor operations (scrolling, navigation) to complete
-        // before stealing focus back to the chat input
-        com.intellij.util.concurrency.EdtExecutorService.getScheduledExecutorInstance().schedule(() -> {
-            try {
-                PlatformApiCompat.syncPublisher(project, FOCUS_RESTORE_TOPIC).restoreFocus();
-            } catch (Exception e) {
-                LOG.debug("Failed to request focus restoration", e);
+        // Wait for editor operations (scrolling, navigation) to complete
+        // before stealing focus back to the chat input by listening for the action to finish
+        var connection = com.intellij.openapi.application.ApplicationManager.getApplication().getMessageBus().connect();
+        connection.subscribe(com.intellij.openapi.actionSystem.ex.AnActionListener.TOPIC, new com.intellij.openapi.actionSystem.ex.AnActionListener() {
+            @Override
+            public void afterActionPerformed(@NotNull com.intellij.openapi.actionSystem.AnAction action,
+                                           @NotNull com.intellij.openapi.actionSystem.AnActionEvent event,
+                                           @NotNull com.intellij.openapi.actionSystem.AnActionResult result) {
+                try {
+                    PlatformApiCompat.syncPublisher(project, FOCUS_RESTORE_TOPIC).restoreFocus();
+                } catch (Exception e) {
+                    LOG.debug("Failed to request focus restoration", e);
+                } finally {
+                    connection.disconnect();
+                }
             }
-        }, 150, java.util.concurrent.TimeUnit.MILLISECONDS);
+        });
     }
 
     @SuppressWarnings("java:S1905") // Cast needed: IDE doesn't resolve Project→ComponentManager supertype

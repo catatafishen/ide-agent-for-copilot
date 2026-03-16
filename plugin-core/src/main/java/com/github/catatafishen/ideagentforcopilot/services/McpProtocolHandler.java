@@ -83,10 +83,7 @@ public final class McpProtocolHandler {
         result.add("capabilities", capabilities);
         result.add("serverInfo", serverInfo);
 
-        String instructions = loadInstructions();
-        if (instructions != null) {
-            result.addProperty("instructions", instructions);
-        }
+        result.addProperty("instructions", loadInstructions());
 
         return respondResult(msg, result);
     }
@@ -95,11 +92,13 @@ public final class McpProtocolHandler {
         try (java.io.InputStream is = McpProtocolHandler.class.getResourceAsStream("/default-startup-instructions.md")) {
             if (is != null) {
                 return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            } else {
+                LOG.warn("Resource /default-startup-instructions.md not found in classpath for MCP initialize");
             }
         } catch (java.io.IOException e) {
-            LOG.warn("Failed to load default-startup-instructions.md for MCP initialize", e);
+            LOG.error("Failed to read /default-startup-instructions.md from classpath for MCP initialize", e);
         }
-        return null;
+        return "You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.";
     }
 
     private JsonObject handleToolsList(JsonObject msg) {

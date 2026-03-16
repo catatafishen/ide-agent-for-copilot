@@ -82,6 +82,7 @@ public sealed interface SessionUpdate
             for (ToolCallStatus st : values()) {
                 if (st.value.equalsIgnoreCase(s)) return st;
             }
+            if ("success".equalsIgnoreCase(s) || "succeeded".equalsIgnoreCase(s)) return COMPLETED;
             return FAILED;
         }
     }

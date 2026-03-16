@@ -6,6 +6,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
+import java.awt.Component
 import java.awt.Cursor
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -49,6 +50,7 @@ internal class ProcessingTimerPanel(
         layout = BoxLayout(this, BoxLayout.X_AXIS)
         isOpaque = false
         border = JBUI.Borders.emptyRight(6)
+        alignmentY = Component.CENTER_ALIGNMENT
         val smallGray = JBUI.Fonts.smallFont()
         spinner.isVisible = false
         doneIcon.isVisible = false
@@ -161,7 +163,8 @@ internal class ProcessingTimerPanel(
         toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
         toolsLabel.isVisible = toolCallCount > 0
         if (!isRunning && turnCostUsd > 0.0 || (turnInputTokens + turnOutputTokens) > 0) {
-            requestsLabel.text = "\u2022 ${BillingManager.formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)}"
+            requestsLabel.text =
+                "\u2022 ${BillingManager.formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)}"
             requestsLabel.isVisible = requestsLabel.text.length > 2
         } else {
             requestsLabel.isVisible = false

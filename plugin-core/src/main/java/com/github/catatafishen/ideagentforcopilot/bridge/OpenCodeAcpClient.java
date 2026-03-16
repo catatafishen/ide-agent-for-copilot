@@ -60,4 +60,16 @@ public class OpenCodeAcpClient extends AcpClient {
                               int mcpPort) {
         super(config, settings, registry, projectBasePath, mcpPort);
     }
+
+    @Override
+    @NotNull
+    public String normalizeToolName(@NotNull String name) {
+        String slashPrefix = effectiveMcpPrefix.endsWith("-")
+            ? effectiveMcpPrefix.substring(0, effectiveMcpPrefix.length() - 1) + "/"
+            : effectiveMcpPrefix + "/";
+        if (name.startsWith(slashPrefix)) {
+            return name.substring(slashPrefix.length());
+        }
+        return name;
+    }
 }

@@ -5,18 +5,26 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
  */
 public class AcpException extends Exception {
     private final boolean recoverable;
+    private final int errorCode;
+    private final String errorData;
 
     public AcpException(String message) {
-        this(message, null, true);
+        this(message, null, true, 0, null);
     }
 
     public AcpException(String message, Throwable cause) {
-        this(message, cause, true);
+        this(message, cause, true, 0, null);
     }
 
     public AcpException(String message, Throwable cause, boolean recoverable) {
+        this(message, cause, recoverable, 0, null);
+    }
+
+    public AcpException(String message, Throwable cause, boolean recoverable, int errorCode, String errorData) {
         super(message, cause);
         this.recoverable = recoverable;
+        this.errorCode = errorCode;
+        this.errorData = errorData;
     }
 
     /**
@@ -24,5 +32,19 @@ public class AcpException extends Exception {
      */
     public boolean isRecoverable() {
         return recoverable;
+    }
+
+    /**
+     * JSON-RPC error code, if applicable.
+     */
+    public int getErrorCode() {
+        return errorCode;
+    }
+
+    /**
+     * Extra error data (e.g. detailed API response) from JSON-RPC.
+     */
+    public String getErrorData() {
+        return errorData;
     }
 }

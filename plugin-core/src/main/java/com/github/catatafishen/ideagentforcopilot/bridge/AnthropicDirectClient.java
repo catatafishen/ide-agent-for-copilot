@@ -686,6 +686,30 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
     @NotNull
     private String buildSystemPrompt() {
         StringBuilder sb = new StringBuilder();
+
+        // Add environment context (working directory, git status, platform)
+        // This ensures the agent has correct context about where it's operating
+        if (project != null) {
+            sb.append("# Environment\n");
+            sb.append("You have been invoked in the following environment:\n");
+
+            String basePath = project.getBasePath();
+            if (basePath != null) {
+                sb.append(" - Primary working directory: ").append(basePath).append("\n");
+
+                // Check if it's a git repository
+                java.nio.file.Path gitPath = java.nio.file.Path.of(basePath, ".git");
+                boolean isGitRepo = java.nio.file.Files.exists(gitPath);
+                sb.append(" - Is a git repository: ").append(isGitRepo ? "true" : "false").append("\n");
+            }
+
+            // Add platform information
+            sb.append(" - Platform: ").append(System.getProperty("os.name").toLowerCase()).append("\n");
+            sb.append(" - OS Version: ").append(System.getProperty("os.version")).append("\n");
+
+            sb.append("\n");
+        }
+
         sb.append("You are an expert software engineering assistant working inside IntelliJ IDEA. ");
         sb.append("Use the provided tools to read files, make edits, run tests, and help with coding tasks. ");
         sb.append("Prefer IntelliJ-native tools over generic file operations when available. ");

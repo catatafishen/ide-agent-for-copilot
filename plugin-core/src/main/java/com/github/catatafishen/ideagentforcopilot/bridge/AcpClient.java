@@ -39,7 +39,7 @@ import java.util.function.Consumer;
  * Agent-specific concerns (binary discovery, auth, model parsing) are delegated
  * to the {@link AgentConfig} strategy provided at construction time.
  */
-public class AcpClient implements AgentClient {
+public abstract class AcpClient implements AgentClient {
     private static final Logger LOG = Logger.getInstance(AcpClient.class);
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
     private static final long INITIALIZE_TIMEOUT_SECONDS = 90;
@@ -95,7 +95,7 @@ public class AcpClient implements AgentClient {
     /**
      * Prefix used to strip the MCP server name from incoming tool-call names (e.g. "intellij-code-tools-").
      */
-    private volatile String effectiveMcpPrefix = "intellij-code-tools-";
+    protected volatile String effectiveMcpPrefix = "intellij-code-tools-";
     private Process process;
     private BufferedWriter writer;
     private Thread readerThread;
@@ -388,6 +388,7 @@ public class AcpClient implements AgentClient {
      *
      * <p>Synchronized to prevent concurrent {@link #createSession} calls from two threads
      * racing inside {@link #parseAvailableModels}, which could produce duplicate model entries.
+     * mess
      */
     @NotNull
     public synchronized List<Model> listModels() throws AcpException {
@@ -677,7 +678,7 @@ public class AcpClient implements AgentClient {
     private SessionUpdate.ToolCall buildToolCallEvent(@NotNull JsonObject update) {
         String toolCallId = update.has(TOOL_CALL_ID_KEY) ? update.get(TOOL_CALL_ID_KEY).getAsString() : "";
         String rawTitle = update.has(TITLE_KEY) ? update.get(TITLE_KEY).getAsString() : "tool";
-        String title = normalizeAcpToolName(rawTitle);
+        String title = normalizeToolName(rawTitle);
         SessionUpdate.ToolKind kind = SessionUpdate.ToolKind.fromString(update.has(KIND_KEY) ? update.get(KIND_KEY).getAsString() : null);
         String args = extractAcpArguments(update);
         List<String> filePaths = extractFilePaths(update, title);
@@ -795,38 +796,10 @@ public class AcpClient implements AgentClient {
     }
 
     /**
-     * Strips the MCP server-name prefix from a tool name received via the ACP protocol.
-     * The effective prefix is determined dynamically from the server registration name
-     * so it works regardless of what the user named their MCP server.
+     * Normalize tool name before checking permissions or displaying it.
      */
-    private String normalizeAcpToolName(String name) {
-        String customRegex = agentConfig.getToolNameRegex();
-        if (customRegex != null && !customRegex.isEmpty()) {
-            try {
-                String replacement = agentConfig.getToolNameReplacement();
-                return name.replaceAll(customRegex, replacement != null ? replacement : "");
-            } catch (Exception e) {
-                LOG.warn("Failed to apply tool name regex '" + customRegex + "' to '" + name + "'", e);
-            }
-        }
-
-        if (!effectiveMcpPrefix.isEmpty() && name.startsWith(effectiveMcpPrefix)) {
-            return name.substring(effectiveMcpPrefix.length());
-        }
-        // Handle slash-prefixed format (e.g. "intellij-code-tools/tool")
-        String slashPrefix = effectiveMcpPrefix.endsWith("-")
-            ? effectiveMcpPrefix.substring(0, effectiveMcpPrefix.length() - 1) + "/"
-            : effectiveMcpPrefix + "/";
-        if (name.startsWith(slashPrefix)) {
-            return name.substring(slashPrefix.length());
-        }
-        // Handle mcp__server__tool format (double-underscore)
-        if (name.startsWith("mcp__")) {
-            int second = name.indexOf("__", 5);
-            if (second > 0) return name.substring(second + 2);
-        }
-        return name;
-    }
+    @NotNull
+    public abstract String normalizeToolName(@NotNull String name);
 
     // Note: interceptBuiltInToolCall and classifyBuiltInTool were removed — session/message
     // notifications never reach sub-agents (they run in their own CLI context). Tested with
@@ -1088,7 +1061,7 @@ public class AcpClient implements AgentClient {
     private void failAllPendingRequests() {
         for (Map.Entry<Long, CompletableFuture<JsonObject>> entry : pendingRequests.entrySet()) {
             entry.getValue().completeExceptionally(
-                new AcpException("Connection lost — please retry your message", null, false));
+                new AcpException("Connection lost — please retry your message", null, false, 0, null));
         }
         pendingRequests.clear();
     }
@@ -1142,16 +1115,36 @@ public class AcpClient implements AgentClient {
 
     private void handleErrorResponse(JsonObject msg, long id, CompletableFuture<JsonObject> future) {
         JsonObject error = msg.getAsJsonObject(ERROR);
-        String errorMessage = error.has(MESSAGE) ? error.get(MESSAGE).getAsString() : "Unknown error";
+        int code = error.has("code") ? error.get("code").getAsInt() : 0;
+        String message = error.has(MESSAGE) ? error.get(MESSAGE).getAsString() : "Unknown error";
+        String data = null;
+
         LOG.warn("ACP error response for request id=" + id + ": " + gson.toJson(error));
+
         if (error.has("data") && !error.get("data").isJsonNull()) {
             try {
-                errorMessage = error.get("data").getAsString();
-            } catch (ClassCastException | IllegalStateException e) {
-                LOG.debug("Error extracting error data as string", e);
+                JsonElement dataElem = error.get("data");
+                if (dataElem.isJsonPrimitive() && dataElem.getAsJsonPrimitive().isString()) {
+                    data = dataElem.getAsString();
+                } else {
+                    data = gson.toJson(dataElem);
+                }
+            } catch (Exception e) {
+                LOG.debug("Error extracting error data", e);
             }
         }
-        future.completeExceptionally(new AcpException("ACP error: " + errorMessage, null, false));
+
+        StringBuilder fullMessage = new StringBuilder();
+        if (code != 0) {
+            fullMessage.append("(").append(code).append(") ");
+        }
+        fullMessage.append(message);
+        if (data != null && !data.isEmpty()) {
+            if (fullMessage.length() > 0) fullMessage.append(": ");
+            fullMessage.append(data);
+        }
+
+        future.completeExceptionally(new AcpException(fullMessage.toString(), null, false, code, data));
     }
 
     private void handleNotificationMessage(JsonObject msg) {
@@ -1434,7 +1427,7 @@ public class AcpClient implements AgentClient {
         if (toolCall != null && toolCall.has("name")) {
             name = toolCall.get("name").getAsString();
         }
-        name = normalizeAcpToolName(name);
+        name = normalizeToolName(name);
         String fallback = permKind != null ? permKind : "";
         return name.isEmpty() ? fallback : name;
     }
@@ -1499,7 +1492,7 @@ public class AcpClient implements AgentClient {
 
         String toolName = toolCall.has("name") ? toolCall.get("name").getAsString() : "";
         String permKind = toolCall.has("kind") ? toolCall.get("kind").getAsString() : "";
-        String normalizedName = normalizeAcpToolName(toolName);
+        String normalizedName = normalizeToolName(toolName);
 
         boolean isRunCommand = "run_command".equals(normalizedName);
         // Also intercept the bash built-in tool (kind=execute or kind=bash)

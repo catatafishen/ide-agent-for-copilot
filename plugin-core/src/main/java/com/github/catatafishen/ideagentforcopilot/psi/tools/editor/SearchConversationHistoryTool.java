@@ -231,7 +231,7 @@ public final class SearchConversationHistoryTool extends EditorTool {
             case "tool" -> {
                 String title = obj.has(JSON_TITLE) ? obj.get(JSON_TITLE).getAsString() : "tool";
                 String toolArgs = obj.has("args") ? obj.get("args").getAsString() : "";
-                yield "Tool: " + title + (toolArgs.isEmpty() ? "" : " " + toolArgs);
+                yield title + (toolArgs.isEmpty() ? "" : " " + toolArgs);
             }
             case "subagent" -> {
                 String agentType = obj.has("agentType") ? obj.get("agentType").getAsString() : "";

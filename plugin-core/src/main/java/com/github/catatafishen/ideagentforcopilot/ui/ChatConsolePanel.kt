@@ -230,7 +230,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     override fun appendThinkingText(text: String) {
         maybeStartNewSegment()
         if (currentThinkingData == null) {
-            currentThinkingData = EntryData.Thinking(StringBuilder(), timestamp(), currentAgent).also { entries.add(it) }
+            currentThinkingData =
+                EntryData.Thinking(StringBuilder(), timestamp(), currentAgent).also { entries.add(it) }
         }
         currentThinkingData!!.raw.append(text)
         executeJs("ChatController.addThinkingText('$currentTurnId','main','${escJs(text)}')")
@@ -506,7 +507,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 }
 
                 is EntryData.SessionSeparator -> {
-                    sb.append("<session-divider timestamp='${esc(e.timestamp)}' agent='${esc(e.agent)}'></session-divider>")
+                    sb.append("<session-divider timestamp='${esc(displayTsSeparator(e.timestamp))}' agent='${esc(e.agent)}'></session-divider>")
                     i++
                 }
 
@@ -520,7 +521,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private fun buildPromptHtml(e: EntryData.Prompt): String {
         val sb = StringBuilder()
         sb.append("<chat-message type='user'>")
-        sb.append("<message-meta><span class='ts'>${esc(e.timestamp)}</span></message-meta>")
+        sb.append("<message-meta><span class='ts'>${esc(displayTs(e.timestamp))}</span></message-meta>")
         sb.append("<message-bubble type='user'>")
         if (!e.contextFiles.isNullOrEmpty()) {
             sb.append(buildRestoredBubbleHtml(e.text, e.contextFiles))
@@ -554,7 +555,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
             sb.append(">")
             if (segmentTimestamp.isNotEmpty()) {
-                sb.append("<span class='ts'>${esc(segmentTimestamp)}</span>")
+                sb.append("<span class='ts'>${esc(displayTs(segmentTimestamp))}</span>")
             }
             sb.append(segmentMetaChips)
             sb.append("</message-meta>")
@@ -580,10 +581,22 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             // Capture timestamp and agent from the first entry in the segment
             if (!segmentStarted) {
                 when (e) {
-                    is EntryData.Text -> { segmentTimestamp = e.timestamp; segmentAgent = e.agent }
-                    is EntryData.Thinking -> { segmentTimestamp = e.timestamp; segmentAgent = e.agent }
-                    is EntryData.ToolCall -> { segmentTimestamp = e.timestamp; segmentAgent = e.agent }
-                    is EntryData.SubAgent -> { segmentTimestamp = e.timestamp; segmentAgent = e.agent }
+                    is EntryData.Text -> {
+                        segmentTimestamp = e.timestamp; segmentAgent = e.agent
+                    }
+
+                    is EntryData.Thinking -> {
+                        segmentTimestamp = e.timestamp; segmentAgent = e.agent
+                    }
+
+                    is EntryData.ToolCall -> {
+                        segmentTimestamp = e.timestamp; segmentAgent = e.agent
+                    }
+
+                    is EntryData.SubAgent -> {
+                        segmentTimestamp = e.timestamp; segmentAgent = e.agent
+                    }
+
                     else -> {}
                 }
             }
@@ -754,13 +767,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         arguments: String? = null
     ): JComponent {
         if (details.isNullOrBlank()) {
-            return JBLabel(
-                when (status) {
-                    "failed" -> "✖ Failed"
-                    "running" -> "⏳ Running…"
-                    else -> "Completed"
-                }
-            )
+            val label = when (status) {
+                "failed" -> "✖ Failed"
+                "running" -> "⏳ Running…"
+                else -> if (baseName != null) "Tool $baseName completed with no output." else "Completed"
+            }
+            return JBLabel(label).apply {
+                foreground = if (status == "failed") ToolRenderers.FAIL_COLOR else ToolRenderers.MUTED_COLOR
+                border = com.intellij.util.ui.JBUI.Borders.empty(4, 0)
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            }
         }
         if (status != "failed" && baseName != null) {
             val renderer = ToolRenderers.get(baseName, toolRegistry)
@@ -770,7 +786,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
             if (panel != null) return panel
         }
-        return ToolRenderers.codePanel(details)
+        return if (isJson(details)) {
+            ToolRenderers.jsonEditor(prettyJson(details), project)
+        } else {
+            ToolRenderers.codePanel(details)
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────
@@ -888,13 +908,17 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val chipTitle = toolChipTitle(baseName, entry?.arguments)
         val kind = entry?.kind ?: "other"
         val resultPanel = renderToolResultPanel(baseName, entry?.status, entry?.result, entry?.arguments)
-        val paramsPanel = if (!entry?.arguments.isNullOrBlank()) {
-            ToolRenderers.jsonEditor(prettyJson(entry.arguments), project)
+        val arguments = entry?.arguments
+        val paramsPanel = if (!arguments.isNullOrBlank()) {
+            ToolRenderers.jsonEditor(prettyJson(arguments), project)
         } else null
         ApplicationManager.getApplication().invokeLater {
             ToolCallPopup.show(project, chipTitle, kind, paramsPanel, resultPanel)
         }
     }
+
+    private fun isJson(text: String): Boolean =
+        (text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))
 
     /** Produces a chip-style title matching the JS toolDisplayName() logic. */
     private fun toolChipTitle(baseName: String?, arguments: String?): String {

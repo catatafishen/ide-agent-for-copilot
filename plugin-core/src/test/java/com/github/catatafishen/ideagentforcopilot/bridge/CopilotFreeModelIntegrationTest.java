@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class CopilotFreeModelIntegrationTest {
 
-    private AcpClient client;
+    private DefaultAcpClient client;
     private String sessionId;
     private String freeModelId;
 
@@ -55,7 +55,7 @@ class CopilotFreeModelIntegrationTest {
     @BeforeEach
     void setUp() throws Exception {
         Assumptions.assumeTrue(copilotAvailable(), "Copilot CLI not available");
-        client = new AcpClient(
+        client = new DefaultAcpClient(
             new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile(), null),
             new GenericAgentSettings(new GenericSettings("copilot"), null),
             null, null, 0);
@@ -149,7 +149,7 @@ class CopilotFreeModelIntegrationTest {
         assertFalse(client.isHealthy());
 
         // Create new client
-        client = new AcpClient(
+        client = new DefaultAcpClient(
             new ProfileBasedAgentConfig(AgentProfileManager.createDefaultCopilotProfile(), null),
             new GenericAgentSettings(new GenericSettings("copilot"), null),
             null, null, 0);

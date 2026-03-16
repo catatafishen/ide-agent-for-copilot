@@ -11,7 +11,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -103,28 +102,17 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
     // ── Tool name normalisation ──────────────────────────────────────────────
 
     /**
-     * Strips MCP server-name prefixes from a raw tool name so the UI always
-     * receives a clean, registry-compatible name.
-     *
-     * <p>Handles two formats:
-     * <ul>
-     *   <li>{@code mcp__server-name__tool_name} — Claude CLI double-underscore format</li>
-     *   <li>{@code server-name-tool_name} / {@code server_name_tool_name} — dash/underscore format</li>
-     * </ul>
+     * Strips the MCP server prefix from tool names.
+     * Claude Code uses the format: {@code mcp__intellij-code-tools__tool_name}
      */
-    protected static String normalizeToolName(@NotNull String name) {
-        // Claude CLI format: mcp__server-name__tool_name
-        if (name.startsWith("mcp__")) {
-            int second = name.indexOf("__", 5);
-            if (second > 0) return name.substring(second + 2);
+    @Override
+    @NotNull
+    public String normalizeToolName(@NotNull String name) {
+        if (name.startsWith("mcp__intellij-code-tools__")) {
+            return name.substring("mcp__intellij-code-tools__".length());
         }
-        // Dash/underscore format: intellij-code-tools-tool_name
-        Matcher m = MCP_SERVER_PREFIX_PATTERN.matcher(name);
-        return m.find() ? name.substring(m.end()) : name;
+        return name;
     }
-
-    private static final Pattern MCP_SERVER_PREFIX_PATTERN =
-        Pattern.compile("^(?i)(intellij[-_]code[-_]tools|github[-_]mcp[-_]server)[-_]");
 
     // ── Tool kind resolution ─────────────────────────────────────────────────
 

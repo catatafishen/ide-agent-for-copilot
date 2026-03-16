@@ -429,9 +429,14 @@ const ChatController = {
 
         // If the user was near the top when load-more fired, compensate for the added
         // height so they are no longer pinned at scrollY=0 and can scroll up again.
-        if (prevScrollY <= 50) {
+        // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
+        // scroll-up gestures, preventing the user from getting stuck at the absolute top.
+        if (prevScrollY <= 80) {
             const addedHeight = document.body.scrollHeight - prevHeight;
-            if (addedHeight > 0) window.scrollBy(0, addedHeight);
+            if (addedHeight > 0) {
+                const targetScroll = Math.max(10, prevScrollY + addedHeight);
+                window.scrollTo(0, targetScroll);
+            }
         }
     },
 
@@ -458,15 +463,21 @@ const ChatController = {
         const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
 
         const prevHeight = document.body.scrollHeight;
-        const wasNearTop = window.scrollY <= 200;
+        const prevScrollY = window.scrollY;
+        const wasNearTop = prevScrollY <= 80;
 
         while (temp.firstChild) {
             msgs.insertBefore(temp.firstChild, insertBefore);
         }
 
-        // Compensate scroll so user stays at same visual position
+        // Compensate scroll so user stays at same visual position.
+        // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
+        // scroll-up gestures, preventing the user from getting stuck at the absolute top.
         const addedHeight = document.body.scrollHeight - prevHeight;
-        if (addedHeight > 0) window.scrollBy(0, addedHeight);
+        if (addedHeight > 0) {
+            const targetScroll = Math.max(10, prevScrollY + addedHeight);
+            window.scrollTo(0, targetScroll);
+        }
 
         // Continue loading if user was near top before scroll adjustment
         if (wasNearTop) {

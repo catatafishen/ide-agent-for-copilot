@@ -28,6 +28,9 @@ internal class ConversationReplayer {
     /** Number of entries still waiting in the deferred queue. */
     fun deferredCount(): Int = deferredEntries.size
 
+    /** Number of prompt turns still waiting in the deferred queue. */
+    fun remainingPromptCount(): Int = deferredEntries.count { it is EntryData.Prompt }
+
     /**
      * Pops the next [turnsToLoad] prompt-turns (plus all entries between them) from
      * the deferred queue. Returns entries in chronological order (oldest first).

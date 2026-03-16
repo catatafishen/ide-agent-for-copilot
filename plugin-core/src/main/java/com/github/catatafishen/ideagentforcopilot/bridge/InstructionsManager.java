@@ -84,11 +84,12 @@ public final class InstructionsManager {
             if (is != null) {
                 sb.append(new String(is.readAllBytes(), StandardCharsets.UTF_8));
             } else {
-                sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools.");
+                LOG.warn("Resource /default-startup-instructions.md not found in classpath");
+                sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.");
             }
         } catch (IOException e) {
-            LOG.warn("Failed to load default-startup-instructions.md", e);
-            sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools.");
+            LOG.error("Failed to read /default-startup-instructions.md from classpath", e);
+            sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.");
         }
         if (!additionalInstructions.isBlank()) {
             sb.append("\n\n").append(additionalInstructions);

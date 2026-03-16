@@ -7,6 +7,7 @@ import com.github.catatafishen.ideagentforcopilot.bridge.AgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.ClaudeCliClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.CopilotAcpClient;
+import com.github.catatafishen.ideagentforcopilot.bridge.DefaultAcpClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.JunieAcpClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.KiroAcpClient;
@@ -180,7 +181,8 @@ public final class ActiveAgentManager implements Disposable {
                 acpClient = new AnthropicDirectClient(profile, ToolRegistry.getInstance(project), project);
             } else if (profile.getTransportType() == TransportType.CLAUDE_CLI) {
                 int mcpPort = resolveMcpPort();
-                acpClient = new ClaudeCliClient(profile, ToolRegistry.getInstance(project), project, mcpPort);
+                AgentConfig config = resolveStartConfig();
+                acpClient = new ClaudeCliClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
             } else {
                 String projectPath = project.getBasePath();
                 int mcpPort = resolveMcpPort();
@@ -301,11 +303,11 @@ public final class ActiveAgentManager implements Disposable {
      */
     @NotNull
     private static AcpClient createAcpClient(@NotNull String profileId,
-                                              @NotNull AgentConfig config,
-                                              @NotNull AgentSettings settings,
-                                              @NotNull ToolRegistry registry,
-                                              @Nullable String projectBasePath,
-                                              int mcpPort) {
+                                             @NotNull AgentConfig config,
+                                             @NotNull AgentSettings settings,
+                                             @NotNull ToolRegistry registry,
+                                             @Nullable String projectBasePath,
+                                             int mcpPort) {
         return switch (profileId) {
             case AgentProfileManager.COPILOT_PROFILE_ID ->
                 new CopilotAcpClient(config, settings, registry, projectBasePath, mcpPort);
@@ -315,8 +317,7 @@ public final class ActiveAgentManager implements Disposable {
                 new JunieAcpClient(config, settings, registry, projectBasePath, mcpPort);
             case AgentProfileManager.KIRO_PROFILE_ID ->
                 new KiroAcpClient(config, settings, registry, projectBasePath, mcpPort);
-            default ->
-                new AcpClient(config, settings, registry, projectBasePath, mcpPort);
+            default -> new DefaultAcpClient(config, settings, registry, projectBasePath, mcpPort);
         };
     }
 

@@ -251,9 +251,13 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         try (java.io.InputStream is = getClass().getResourceAsStream("/default-startup-instructions.md")) {
             if (is != null) {
                 sb.append(new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            } else {
+                LOG.warn("Resource /default-startup-instructions.md not found in classpath");
+                sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.");
             }
         } catch (IOException e) {
-            LOG.warn("Failed to load default-startup-instructions.md", e);
+            LOG.error("Failed to read /default-startup-instructions.md from classpath", e);
+            sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.");
         }
         String additional = profile.getAdditionalInstructions();
         if (!additional.isBlank()) {

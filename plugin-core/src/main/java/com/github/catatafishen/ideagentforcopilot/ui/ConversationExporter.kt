@@ -43,7 +43,7 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
             )
 
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
-            is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${e.timestamp} ---")
+            is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${formatTimestamp(e.timestamp)} ---")
         }
         return sb.toString()
     }
@@ -69,16 +69,16 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
             is EntryData.ToolCall -> {
                 val info = TOOL_DISPLAY_INFO[e.title]
                 val name = info?.displayName ?: e.title
-                sb.appendLine("Tool: $name")
+                sb.appendLine(name)
             }
 
             is EntryData.SubAgent -> {
                 val info = SUB_AGENT_INFO[e.agentType]
-                sb.appendLine("Tool: ${info?.displayName ?: e.agentType} — ${e.description}")
+                sb.appendLine("${info?.displayName ?: e.agentType} — ${e.description}")
             }
 
             is EntryData.ContextFiles -> sb.appendLine("Context: ${e.files.joinToString(", ") { it.first }}")
-            is EntryData.SessionSeparator -> sb.appendLine("--- ${e.timestamp} ---")
+            is EntryData.SessionSeparator -> sb.appendLine("--- ${formatTimestamp(e.timestamp)} ---")
             is EntryData.Thinking -> { /* Thinking entries are rendered in HTML only */
             }
 
@@ -169,7 +169,7 @@ ul,ol{margin:4px 0;padding-left:22px}
 
         is EntryData.SessionSeparator -> "<hr style='border:none;border-top:1px solid #555;margin:16px 0'><div style='text-align:center;font-size:0.85em;color:#888'>Previous session \uD83D\uDCC5 ${
             escapeHtml(
-                e.timestamp
+                formatTimestamp(e.timestamp)
             )
         }</div>\n"
     }
@@ -212,5 +212,14 @@ ul,ol{margin:4px 0;padding-left:22px}
 
         private fun markdownToHtml(text: String): String =
             MarkdownRenderer.markdownToHtml(text)
+
+        private fun formatTimestamp(isoOrLegacy: String): String {
+            return try {
+                val zdt = java.time.Instant.parse(isoOrLegacy).atZone(java.time.ZoneId.systemDefault())
+                java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm").format(zdt)
+            } catch (_: Exception) {
+                isoOrLegacy
+            }
+        }
     }
 }
