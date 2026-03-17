@@ -353,7 +353,7 @@ public abstract class AcpClient implements AgentClient {
         JsonObject params = new JsonObject();
         params.addProperty("cwd", cwd != null ? cwd : System.getProperty(USER_HOME));
 
-        // mcpServers format depends on agent: Kiro uses object (keyed by name), others may use array
+        // mcpServers format depends on agent: Kiro uses array, others may use object
         if (agentConfig.requiresMcpInSessionNew()) {
             String template = agentConfig.getMcpConfigTemplate();
             if (template != null && !template.isEmpty()) {
@@ -362,10 +362,15 @@ public abstract class AcpClient implements AgentClient {
                     try {
                         JsonObject mcpConfig = JsonParser.parseString(resolved).getAsJsonObject();
                         if (mcpConfig.has(MCP_SERVERS_KEY)) {
-                            // Pass the mcpServers object directly (Kiro expects object keyed by server name)
-                            JsonObject serversObj = mcpConfig.getAsJsonObject(MCP_SERVERS_KEY);
-                            params.add(MCP_SERVERS_KEY, serversObj);
-                            LOG.info("Creating session with " + serversObj.size() + " injected MCP servers");
+                            JsonElement serversElement = mcpConfig.get(MCP_SERVERS_KEY);
+                            // Handle both array (Kiro) and object (others) formats
+                            if (serversElement.isJsonArray()) {
+                                params.add(MCP_SERVERS_KEY, serversElement.getAsJsonArray());
+                                LOG.info("Creating session with " + serversElement.getAsJsonArray().size() + " injected MCP servers");
+                            } else if (serversElement.isJsonObject()) {
+                                params.add(MCP_SERVERS_KEY, serversElement.getAsJsonObject());
+                                LOG.info("Creating session with " + serversElement.getAsJsonObject().size() + " injected MCP servers");
+                            }
                         }
                     } catch (Exception e) {
                         LOG.warn("Failed to parse MCP config for session/new injection", e);
