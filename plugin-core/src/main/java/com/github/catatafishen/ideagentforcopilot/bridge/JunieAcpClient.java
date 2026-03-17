@@ -87,9 +87,32 @@ public class JunieAcpClient extends AcpClient {
     @Override
     @NotNull
     public String normalizeToolName(@NotNull String name) {
-        // Junie uses MCP tool names like "intellij-code-tools/git_status"
-        // Strip the MCP server prefix to get just "git_status"
-        return name.replaceFirst("^[^/]+/", "");
+        // Junie sends tool names in various decorated formats:
+        // 1. "Tool: intellij-code-tools/git_status"
+        // 2. "Reading \"AcpClient.java\""
+        // 3. "*.js\"" (likely a fragment of a file list)
+        // 4. "intellij-code-tools/git_status"
+
+        String clean = name;
+
+        // Strip "Tool: " prefix
+        if (clean.startsWith("Tool: ")) {
+            clean = clean.substring(6);
+        }
+
+        // Handle "Reading/Writing/etc. \"file.ext\"" format
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:Creating|Writing|Editing|Reading|Opening|Viewing|Searching)\\s+\"(.+)\"").matcher(clean);
+        if (m.find()) {
+            clean = m.group(1);
+        }
+
+        // Strip the MCP server prefix (e.g., "intellij-code-tools/")
+        clean = clean.replaceFirst("^[^/]+/", "");
+
+        // Strip any surrounding quotes or trailing fragments
+        clean = clean.replaceAll("^[\"']+", "").replaceAll("[\"']+$", "");
+
+        return clean;
     }
 
     @NotNull
@@ -99,18 +122,20 @@ public class JunieAcpClient extends AcpClient {
         String toolCallId = base.toolCallId();
         String naturalLanguageSummary = base.result();
 
-        // IN_PROGRESS: Just tool arguments, not useful - return as-is
-        if (base.status() != SessionUpdate.ToolCallStatus.COMPLETED) {
+        // IN_PROGRESS: Just tool arguments, not useful - return with null result to avoid showing JSON args in UI
+        if (base.status() == SessionUpdate.ToolCallStatus.IN_PROGRESS) {
+            return new SessionUpdate.ToolCallUpdate(toolCallId, base.status(), null, null, null);
+        }
+
+        // FAILED: Return as-is
+        if (base.status() == SessionUpdate.ToolCallStatus.FAILED) {
             return base;
         }
 
         // COMPLETED: Try to correlate with actual MCP execution to get raw result
         if (naturalLanguageSummary != null && !naturalLanguageSummary.isEmpty()) {
-            // Extract tool name from the update event
+            // Extract and normalize tool name from the update event
             String rawToolName = update.has("title") ? update.get("title").getAsString() : null;
-            if (rawToolName != null && rawToolName.startsWith("Tool: ")) {
-                rawToolName = rawToolName.substring(6); // Strip "Tool: " prefix
-            }
             String normalizedToolName = rawToolName != null ? normalizeToolName(rawToolName) : null;
 
             // Extract arguments from the update event (if available)

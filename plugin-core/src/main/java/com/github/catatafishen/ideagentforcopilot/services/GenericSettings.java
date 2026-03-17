@@ -45,7 +45,11 @@ public final class GenericSettings {
 
     @Nullable
     public String getSelectedModel() {
-        return PropertiesComponent.getInstance().getValue(key("selectedModel"));
+        String model = PropertiesComponent.getInstance().getValue(key("selectedModel"));
+        if (model == null || model.isEmpty()) {
+            return activeAgentLabel;
+        }
+        return model;
     }
 
     public void setSelectedModel(@NotNull String modelId) {

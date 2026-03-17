@@ -342,3 +342,35 @@
     "NEW INSTRUCTION": "WHEN parsing Junie tool results THEN derive fields from current IDE logs and parse accordingly"
 }
 
+[2026-03-17 18:33] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool name parsing/rendering",
+    "EXPECTATION": "Tool chips should show friendly tool names without stray quotes or file/glob text; current chips display values like 'AcpClient.java\"' or '*.js\"' indicating the parser used arguments/title text instead of the normalized tool ID.",
+    "NEW INSTRUCTION": "WHEN deriving tool chip label from Junie updates THEN use normalized tool ID and strip quotes"
+}
+
+[2026-03-17 18:37] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip rendering stage",
+    "EXPECTATION": "The issue is not JunieAcpClient normalization; most chips render fine and the problem arises later during UI string template rendering.",
+    "NEW INSTRUCTION": "WHEN chip labels show stray quotes or file/glob THEN inspect UI string template rendering"
+}
+
+[2026-03-17 18:41] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "UI template rendering",
+    "EXPECTATION": "The chip label issue occurs during later UI string template rendering, not in JunieAcpClient normalization; most chips already render correctly.",
+    "NEW INSTRUCTION": "WHEN few chips show quoted or globbed labels THEN inspect UI string template rendering stage"
+}
+
+[2026-03-17 18:44] - Updated by Junie
+{
+    "TYPE": "preference",
+    "CATEGORY": "Root cause investigation",
+    "EXPECTATION": "Beyond adding fallbacks, identify why Junie’s agent and model labels are empty at the source.",
+    "NEW INSTRUCTION": "WHEN agent is Junie AND labels are empty THEN trace settings sources and logs"
+}
+

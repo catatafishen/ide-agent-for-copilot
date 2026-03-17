@@ -78,7 +78,8 @@ public sealed interface SessionUpdate
      */
     enum ToolCallStatus {
         COMPLETED("completed"),
-        FAILED("failed");
+        FAILED("failed"),
+        IN_PROGRESS("in_progress");
 
         private final String value;
 
@@ -99,6 +100,8 @@ public sealed interface SessionUpdate
                 if (st.value.equalsIgnoreCase(s)) return st;
             }
             if ("success".equalsIgnoreCase(s) || "succeeded".equalsIgnoreCase(s)) return COMPLETED;
+            if ("in-progress".equalsIgnoreCase(s) || "in_progress".equalsIgnoreCase(s) || "running".equalsIgnoreCase(s))
+                return IN_PROGRESS;
             return FAILED;
         }
     }

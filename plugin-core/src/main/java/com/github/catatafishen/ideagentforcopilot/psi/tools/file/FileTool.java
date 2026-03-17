@@ -103,9 +103,9 @@ public abstract class FileTool extends Tool {
     public static String agentLabel(Project project) {
         ToolLayerSettings settings = ToolLayerSettings.getInstance(project);
         String agent = settings.getActiveAgentLabel();
-        if (agent != null) return agent;
+        if (agent != null && !agent.isEmpty()) return agent;
         String model = settings.getSelectedModel();
-        return model != null ? model : "Agent";
+        return (model != null && !model.isEmpty()) ? model : "Agent";
     }
 
     // ── Follow file / editor highlighting ─────────────────────────────────────

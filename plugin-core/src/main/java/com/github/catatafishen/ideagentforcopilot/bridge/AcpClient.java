@@ -238,7 +238,19 @@ public abstract class AcpClient implements AgentClient {
             stderrReaderThread.start();
 
             // Initialize handshake
-            doInitialize();
+            try {
+                doInitialize();
+                // Set initial active agent label (the profile's display name)
+                agentSettings.setActiveAgentLabel(agentConfig.getDisplayName());
+            } catch (AcpException e) {
+                // If the process died or rejected the handshake, clean up so the next attempt starts fresh.
+                // This is especially important for model rejection recovery.
+                LOG.warn("ACP initialization handshake failed: " + e.getMessage());
+                if (process != null && process.isAlive()) {
+                    process.destroyForcibly();
+                }
+                throw e;
+            }
 
         } catch (IOException e) {
             throw new AcpException("Failed to start " + agentConfig.getDisplayName() + " ACP process", e);
@@ -735,6 +747,12 @@ public abstract class AcpClient implements AgentClient {
         String args = extractAcpArguments(update);
         List<String> filePaths = extractFilePaths(update, title);
         String agentType = extractSubAgentField(args, AGENT_TYPE_KEY);
+
+        // Update active agent label in settings if a sub-agent is active
+        if (agentType != null && !agentType.isEmpty()) {
+            agentSettings.setActiveAgentLabel(agentType);
+        }
+
         String subAgentDesc = agentType != null ? extractSubAgentField(args, DESCRIPTION) : null;
         String subAgentPrompt = agentType != null ? extractSubAgentField(args, PROMPT) : null;
         LOG.info("[ACP tool_call event] extracted: id=" + toolCallId + ", title=" + title + ", kind=" + kind + ", args=" + args);
@@ -1300,7 +1318,7 @@ public abstract class AcpClient implements AgentClient {
                 LOG.warn(agentConfig.getDisplayName() + " CLI stderr: " + line);
                 // The CLI rejected our --model flag. Clear the saved model so the auto-restart
                 // can launch without it and connect successfully.
-                if (line.contains("invalid value for --model") || line.contains("Unknown model:")) {
+                if (line.contains("invalid value for --model") || line.contains("Unknown model:") || line.contains("not found for --model")) {
                     agentConfig.clearSavedModel();
                 }
             }

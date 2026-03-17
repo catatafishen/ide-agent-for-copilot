@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Strategy interface for agent-specific settings that the generic {@link AcpClient} needs
@@ -51,4 +52,12 @@ public interface AgentSettings {
      */
     @NotNull
     ToolPermission getToolPermission(@NotNull String toolId);
+
+    /**
+     * Set the current active agent label (e.g. "ide-explore").
+     * Used to inform the UI and tools about the currently active sub-agent.
+     */
+    default void setActiveAgentLabel(@Nullable String label) {
+        // no-op
+    }
 }

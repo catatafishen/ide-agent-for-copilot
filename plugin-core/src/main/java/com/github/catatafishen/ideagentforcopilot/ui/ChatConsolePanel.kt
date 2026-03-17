@@ -304,9 +304,15 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             it.status = status
             if (description != null) it.description = description
         }
-        val failed = if (status == "failed") "failed" else "completed"
-        executeJs("ChatController.updateToolCall('$did','$failed','$failed')")
-        toolJustCompleted = true
+        val jsStatus = when (status) {
+            "failed" -> "failed"
+            "running" -> "running"
+            else -> "completed"
+        }
+        executeJs("ChatController.updateToolCall('$did','$jsStatus','$jsStatus')")
+        if (jsStatus != "running") {
+            toolJustCompleted = true
+        }
     }
 
     /** Add a tool call chip+section to a sub-agent's result message. */
@@ -344,8 +350,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             it.status = status
             if (description != null) it.description = description
         }
-        val failed = if (status == "failed") "failed" else "completed"
-        executeJs("ChatController.updateToolCall('$did','$failed','$failed')")
+        val jsStatus = when (status) {
+            "failed" -> "failed"
+            "running" -> "running"
+            else -> "completed"
+        }
+        executeJs("ChatController.updateToolCall('$did','$jsStatus','$jsStatus')")
     }
 
     override fun addSubAgentEntry(
@@ -801,7 +811,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val detailsLen = details?.length ?: 0
         val descLen = description?.length ?: 0
         LOG.debug("renderToolResultPanel: baseName=$baseName, status=$status, detailsLen=$detailsLen, descLen=$descLen")
-        
+
         val container = ToolRenderers.listPanel()
 
         // 1. Show natural language description/explanation if available
@@ -839,18 +849,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (status != "failed" && baseName != null) {
             val renderer = ToolRenderers.get(baseName, toolRegistry)
             LOG.debug("Renderer for $baseName: ${renderer?.javaClass?.simpleName ?: "null"}")
-            
+
             val rendered = when (renderer) {
                 is ArgumentAwareRenderer -> renderer.render(finalDetails, arguments)
                 else -> renderer?.render(finalDetails)
             }
-            
+
             if (rendered != null) {
                 container.add(rendered)
                 return container
             }
         }
-        
+
         // 4. Fallback: monospace code or JSON editor
         val fallbackContent = if (isJson(finalDetails)) {
             ToolRenderers.jsonEditor(prettyJson(finalDetails), project)
@@ -858,7 +868,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             ToolRenderers.codePanel(finalDetails)
         }
         container.add(fallbackContent)
-        
+
         return container
     }
 
@@ -976,7 +986,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val baseName = toolCallNames[toolDomId]
         val chipTitle = toolChipTitle(baseName, entry?.arguments)
         val kind = entry?.kind ?: "other"
-        val resultPanel = renderToolResultPanel(baseName, entry?.status, entry?.result, entry?.arguments, entry?.description)
+        val resultPanel =
+            renderToolResultPanel(baseName, entry?.status, entry?.result, entry?.arguments, entry?.description)
         val arguments = entry?.arguments
         val paramsPanel = if (!arguments.isNullOrBlank()) {
             ToolRenderers.jsonEditor(prettyJson(arguments), project)

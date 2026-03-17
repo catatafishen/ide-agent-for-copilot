@@ -430,6 +430,16 @@ class PromptOrchestrator(
             } else {
                 consolePanel().updateToolCall(toolCallId, "failed", error, description)
             }
+        } else if (status == SessionUpdate.ToolCallStatus.IN_PROGRESS) {
+            // Keep the "running" state in UI without marking it as success or failure yet.
+            // This prevents tool chips from showing red (failed) prematurely.
+            if (isSubAgent) {
+                consolePanel().updateSubAgentResult(toolCallId, "running", null, description)
+            } else if (isInternal) {
+                consolePanel().updateSubAgentToolCall(toolCallId, "running", null, description)
+            } else {
+                consolePanel().updateToolCall(toolCallId, "running", null, description)
+            }
         }
         if (status == SessionUpdate.ToolCallStatus.COMPLETED || status == SessionUpdate.ToolCallStatus.FAILED) {
             callbacks.saveConversationThrottled()
@@ -442,9 +452,9 @@ class PromptOrchestrator(
 
         // For ACP errors, ensure the message is descriptive
         if (e is AcpException && msg.startsWith("(") && msg.contains(")")) {
-             // Keep the enhanced message format: (code) Message: Data
+            // Keep the enhanced message format: (code) Message: Data
         } else if (e is AcpException) {
-             msg = "ACP error: $msg"
+            msg = "ACP error: $msg"
         }
 
         consolePanel().cancelAllRunning()
