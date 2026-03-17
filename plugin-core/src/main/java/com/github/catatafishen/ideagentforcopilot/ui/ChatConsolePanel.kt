@@ -294,12 +294,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind',$isExternal)")
     }
 
-    override fun updateToolCall(id: String, status: String, details: String?) {
+    override fun updateToolCall(id: String, status: String, details: String?, description: String?) {
         val did = domId(id)
         val toolName = toolCallNames[did]
         val resultLen = details?.length ?: 0
-        LOG.debug("updateToolCall: id=$id, toolName=$toolName, status=$status, resultLen=$resultLen")
-        toolCallEntries[did]?.let { it.result = details; it.status = status }
+        LOG.debug("updateToolCall: id=$id, toolName=$toolName, status=$status, resultLen=$resultLen, hasDesc=${description != null}")
+        toolCallEntries[did]?.let {
+            it.result = details
+            it.status = status
+            if (description != null) it.description = description
+        }
         val failed = if (status == "failed") "failed" else "completed"
         executeJs("ChatController.updateToolCall('$did','$failed','$failed')")
         toolJustCompleted = true
@@ -333,16 +337,20 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     }
 
     /** Update a sub-agent internal tool call (no segment break). */
-    override fun updateSubAgentToolCall(toolId: String, status: String, details: String?) {
+    override fun updateSubAgentToolCall(toolId: String, status: String, details: String?, description: String?) {
         val did = domId(toolId)
-        toolCallEntries[did]?.let { it.result = details; it.status = status }
+        toolCallEntries[did]?.let {
+            it.result = details
+            it.status = status
+            if (description != null) it.description = description
+        }
         val failed = if (status == "failed") "failed" else "completed"
         executeJs("ChatController.updateToolCall('$did','$failed','$failed')")
     }
 
     override fun addSubAgentEntry(
         id: String, agentType: String, description: String, prompt: String?,
-        initialResult: String?, initialStatus: String?
+        initialResult: String?, initialStatus: String?, initialDescription: String?
     ) {
         maybeStartNewSegment()
         finalizeCurrentText()
@@ -354,6 +362,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
         if (initialResult != null) {
             entry.result = initialResult; entry.status = initialStatus
+            if (initialDescription != null) entry.result = "$initialDescription\n\n$initialResult"
         }
         entries.add(entry)
         val did = domId(id)
@@ -375,10 +384,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
-    override fun updateSubAgentResult(id: String, status: String, result: String?) {
+    override fun updateSubAgentResult(id: String, status: String, result: String?, description: String?) {
         val entry = entries.filterIsInstance<EntryData.SubAgent>().find { it.callId == id }
             ?: entries.filterIsInstance<EntryData.SubAgent>().lastOrNull()
-        entry?.let { it.result = result; it.status = status }
+        entry?.let {
+            it.result = result
+            it.status = status
+            if (description != null) it.result = "$description\n\n$result"
+        }
         val did = domId(id)
         val resultHtml =
             if (!result.isNullOrBlank()) markdownToHtml(result) else if (status == "completed") "Completed" else FAILED_SPAN
@@ -779,9 +792,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         baseName: String?,
         status: String?,
         details: String?,
-        arguments: String? = null
+        arguments: String? = null,
+        description: String? = null
     ): JComponent {
-        LOG.debug("renderToolResultPanel: baseName=$baseName, status=$status, detailsLen=${details?.length ?: 0}")
+        val detailsLen = details?.length ?: 0
+        val descLen = description?.length ?: 0
+        LOG.debug("renderToolResultPanel: baseName=$baseName, status=$status, detailsLen=$detailsLen, descLen=$descLen")
+        if (descLen > 0) {
+            LOG.debug("renderToolResultPanel description: " + description?.take(100)?.replace("\n", "\\n") + (if (descLen > 100) "..." else ""))
+        }
+        if (detailsLen > 0) {
+            LOG.debug("renderToolResultPanel details: " + details?.take(100)?.replace("\n", "\\n") + (if (detailsLen > 100) "..." else ""))
+        }
         if (details.isNullOrBlank()) {
             val label = when (status) {
                 "failed" -> "✖ Failed"
@@ -796,25 +818,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
         }
 
-        // Some agents (like Junie) wrap tool output in natural language explanations.
-        // We attempt to split them to show both the explanation and the custom renderer.
-        val (explanation, rawOutput) = splitAgentOutput(details)
-
         if (status != "failed" && baseName != null) {
             val renderer = ToolRenderers.get(baseName, toolRegistry)
             LOG.debug("Renderer for $baseName: ${renderer?.javaClass?.simpleName ?: "null"}")
 
-            // Try rendering rawOutput first if we split it, otherwise use details
-            val toRender = rawOutput ?: details
             val rendered = when (renderer) {
-                is ArgumentAwareRenderer -> renderer.render(toRender, arguments)
-                else -> renderer?.render(toRender)
+                is ArgumentAwareRenderer -> renderer.render(details, arguments)
+                else -> renderer?.render(details)
             }
 
             if (rendered != null) {
-                if (explanation != null) {
+                if (description != null) {
                     val container = ToolRenderers.listPanel()
-                    container.add(JBLabel("<html><body style='width: 450px'>${markdownToHtml(explanation)}</body></html>").apply {
+                    container.add(JBLabel("<html><body style='width: 450px'>${markdownToHtml(description)}</body></html>").apply {
                         border = com.intellij.util.ui.JBUI.Borders.empty(0, 0, 8, 0)
                         alignmentX = JComponent.LEFT_ALIGNMENT
                     })
@@ -825,39 +841,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
         }
 
-        return if (isJson(details)) {
-            ToolRenderers.jsonEditor(prettyJson(details), project)
+        val toRender = if (description != null) "$description\n\n$details" else details
+        return if (isJson(toRender)) {
+            ToolRenderers.jsonEditor(prettyJson(toRender), project)
         } else {
-            ToolRenderers.codePanel(details)
+            ToolRenderers.codePanel(toRender)
         }
-    }
-
-    private fun splitAgentOutput(details: String): Pair<String?, String?> {
-        val lines = details.lines()
-        if (lines.size < 2) return null to null
-
-        // Markers that commonly indicate the start of a raw tool output in Junie/OpenCode
-        val markers = listOf(
-            "Written:", "Created:", "Edited:", "Context after edit",
-            "Test Results:", "diff --git", "Changes:", "Matches:",
-            "Symbol:", "Declaration:", "Type hierarchy:", "Documentation:"
-        )
-
-        for (i in lines.indices) {
-            val line = lines[i].trim()
-            if (markers.any { line.startsWith(it) }) {
-                // Found a marker. If it's not the first line, we split.
-                if (i > 0) {
-                    val explanation = lines.subList(0, i).joinToString("\n").trim()
-                    val rawOutput = lines.subList(i, lines.size).joinToString("\n").trim()
-                    if (explanation.isNotEmpty() && rawOutput.isNotEmpty()) {
-                        return explanation to rawOutput
-                    }
-                }
-                break
-            }
-        }
-        return null to null
     }
 
     // ── Helpers ────────────────────────────────────────────────────
@@ -974,7 +963,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val baseName = toolCallNames[toolDomId]
         val chipTitle = toolChipTitle(baseName, entry?.arguments)
         val kind = entry?.kind ?: "other"
-        val resultPanel = renderToolResultPanel(baseName, entry?.status, entry?.result, entry?.arguments)
+        val resultPanel = renderToolResultPanel(baseName, entry?.status, entry?.result, entry?.arguments, entry?.description)
         val arguments = entry?.arguments
         val paramsPanel = if (!arguments.isNullOrBlank()) {
             ToolRenderers.jsonEditor(prettyJson(arguments), project)
