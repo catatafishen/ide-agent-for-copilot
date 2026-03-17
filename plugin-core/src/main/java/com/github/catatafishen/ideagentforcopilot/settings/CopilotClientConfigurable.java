@@ -155,7 +155,7 @@ public final class CopilotClientConfigurable implements Configurable {
                 boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
                 ProcessBuilder pb = isWindows
                     ? new ProcessBuilder("cmd", "/c", binary + " --version")
-                    : new ProcessBuilder("bash", "-c", binary + " --version 2>/dev/null");
+                    : new ProcessBuilder("bash", "-l", "-c", binary + " --version 2>/dev/null");
                 // Do NOT redirect error stream, we only want clean stdout
                 processBuilderRedirectError(pb);
                 Process process = pb.start();

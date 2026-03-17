@@ -138,7 +138,7 @@ public final class OpenCodeClientConfigurable implements Configurable {
             boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
             ProcessBuilder pb = isWindows
                 ? new ProcessBuilder("cmd", "/c", "opencode --version")
-                : new ProcessBuilder("bash", "-c", "opencode --version 2>/dev/null");
+                : new ProcessBuilder("bash", "-l", "-c", "opencode --version 2>/dev/null");
 
             processBuilderRedirectError(pb);
             Process process = pb.start();
