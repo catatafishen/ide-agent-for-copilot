@@ -156,16 +156,37 @@ See [JUNIE-TOOL-WORKAROUND.md](docs/JUNIE-TOOL-WORKAROUND.md).
 
 ## Kiro CLI
 
-**Status**: ❓ Unknown (not investigated)
+**Location**: `.agent-work/.kiro/agents/*.json`  
+**Format**: JSON configuration with `tools` and `allowedTools` arrays
+
+```json
+{
+  "name": "intellij-agent",
+  "tools": [
+    "web_search",
+    "@intellij-code-tools/*"
+  ],
+  "allowedTools": [
+    "@intellij-code-tools/read_file",
+    "web_search"
+  ]
+}
+```
+
+**Bundled Agents**:
+
+- `intellij-agent` — created dynamically by the plugin
+
+**Status**: ⚠️ **Experimental** (agent definitions supported via `allowedTools`, but hangs on non-allowed tool prompts)
 
 ## Summary Table
 
-| Agent    | Agent Definition Support         | Tool Filtering Format                                      | Permission Requests  | Bundled Agents               | Status                     |
-|----------|----------------------------------|------------------------------------------------------------|----------------------|------------------------------|----------------------------|
-| Copilot  | ✅ `~/.copilot/agents/*.md`       | YAML array: `tools: [tool1, tool2]`                        | ✅ For write tools    | 2 (ide-explore, ide-task)    | Working (filtering broken) |
-| OpenCode | ✅ `.opencode/agent/*.md` or JSON | YAML object: `permission: {"*": "deny", "tool1": "allow"}` | ✅ Yes                | 2 (ide-general, ide-explore) | ✅ Working                  |
-| Junie    | ❌ No support                     | N/A                                                        | ❌ No (auto-executes) | 0                            | Prompt workaround only     |
-| Kiro     | ❓ Unknown                        | ❓ Unknown                                                  | ❓ Unknown            | ❓                            | Not investigated           |
+| Agent    | MCP Tool Prefix         | Agent Definition Support         | Tool Filtering Format                                      | Permission Requests  | Bundled Agents               | Status                     |
+|----------|-------------------------|----------------------------------|------------------------------------------------------------|----------------------|------------------------------|----------------------------|
+| Copilot  | `intellij-code-tools-`  | ✅ `~/.copilot/agents/*.md`       | YAML array: `tools: [tool1, tool2]`                        | ✅ For write tools    | 2 (ide-explore, ide-task)    | Working (filtering broken) |
+| OpenCode | `intellij-code-tools_`  | ✅ `.opencode/agent/*.md` or JSON | YAML object: `permission: {"*": "deny", "tool1": "allow"}` | ✅ Yes                | 2 (ide-general, ide-explore) | ✅ Working                  |
+| Junie    | `intellij-code-tools-`  | ❌ No support                     | N/A                                                        | ❌ No (auto-executes) | 0                            | Prompt workaround only     |
+| Kiro     | `@intellij-code-tools/` | ✅ `.agent-work/.kiro/agents/`    | JSON: `allowedTools: ["tool1"]`                            | ⚠️ Hangs on prompts  | 1 (intellij-agent)           | ⚠️ Experimental (hangs)    |
 
 See [.agent-work/OPENCODE-AGENT-FINDINGS.md](.agent-work/OPENCODE-AGENT-FINDINGS.md) for detailed OpenCode
-investigation.
+investigation and [.agent-work/KIRO-AGENT-FINDINGS.md](.agent-work/KIRO-AGENT-FINDINGS.md) for Kiro findings.

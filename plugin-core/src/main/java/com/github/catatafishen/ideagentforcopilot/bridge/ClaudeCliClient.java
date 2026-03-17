@@ -314,11 +314,11 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         cmd.add("--model");
         cmd.add(model);
 
-        // Disable all Claude built-in tools when the profile requests it, leaving only MCP tools.
-        // Using --tools "" is cleaner than listing each tool with --disallowed-tools.
+        // Allow only safe web tools (WebFetch, WebSearch) when excluding agent built-in tools.
+        // All other tools (Bash, Edit, Write, Read, etc.) are provided via MCP instead.
         if (profile.isExcludeAgentBuiltInTools()) {
             cmd.add("--tools");
-            cmd.add("");  // Empty string disables all built-in tools
+            cmd.add("WebFetch,WebSearch");
         }
 
         String effort = getSessionOption(sessionId, "effort");
@@ -361,6 +361,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         try {
             LOG.info("Executing Claude CLI command: " + String.join(" ", cmd));
             ProcessBuilder pb = new ProcessBuilder(cmd);
+
+            // Inject captured shell environment (includes nvm, sdkman, etc.)
+            pb.environment().putAll(com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.getEnvironment());
 
             // Set working directory to project base path so the CLI detects correct git repo and cwd
             if (project != null && project.getBasePath() != null) {

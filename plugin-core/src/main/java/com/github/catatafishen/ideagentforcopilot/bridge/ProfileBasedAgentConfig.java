@@ -64,7 +64,12 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         }
         List<String> bundledAgents = profile.getBundledAgentFiles();
         if (!bundledAgents.isEmpty()) {
-            BundledAgentDeployer.ensureAgents(projectBasePath, bundledAgents);
+            String agentsDir = profile.getAgentsDirectory();
+            if (agentsDir != null && !agentsDir.isEmpty()) {
+                BundledAgentDeployer.ensureAgents(projectBasePath, agentsDir, bundledAgents);
+            } else {
+                BundledAgentDeployer.ensureAgents(projectBasePath, bundledAgents);
+            }
         }
     }
 
@@ -130,6 +135,10 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
+
+        // Inject captured shell environment (includes nvm, sdkman, etc.)
+        pb.environment().putAll(com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.getEnvironment());
+
         if (profile.getMcpMethod() == McpInjectionMethod.ENV_VAR && mcpPort > 0) {
             injectMcpViaEnvVar(pb, mcpPort);
         }
@@ -150,6 +159,11 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
     public void clearSavedModel() {
         new com.github.catatafishen.ideagentforcopilot.services.GenericSettings(getSettingsPrefix()).setSelectedModel("");
         LOG.info(profile.getDisplayName() + ": cleared saved model selection (rejected by CLI)");
+    }
+
+    @Override
+    public @Nullable String getMcpConfigTemplate() {
+        return profile.getMcpConfigTemplate();
     }
 
     private void addConfigDirIfSupported(@NotNull List<String> cmd, @Nullable String projectBasePath) {
@@ -287,69 +301,13 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
      */
     @Nullable
     private String searchForBinary(@NotNull String binaryName) {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-
-        // Check PATH
-        try {
-            String cmd = isWindows ? "where" : "which";
-            Process check = new ProcessBuilder(cmd, binaryName).start();
-            if (check.waitFor() == 0) {
-                String path = new String(check.getInputStream().readAllBytes()).trim().split("\\r?\\n")[0];
-                if (new File(path).exists()) {
-                    LOG.info("Found " + binaryName + " in PATH: " + path);
-                    return path;
-                }
-            }
-        } catch (IOException e) {
-            LOG.debug("Failed to check for " + binaryName + " in PATH", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        // Delegate to BinaryDetector which uses a login shell to find binaries
+        // This ensures we see the same PATH as the user's terminal (nvm, sdkman, etc.)
+        String path = com.github.catatafishen.ideagentforcopilot.settings.BinaryDetector.findBinaryPath(binaryName);
+        if (path != null) {
+            LOG.info("Found " + binaryName + " at: " + path);
         }
-
-        // Check common Unix locations
-        if (!isWindows) {
-            return checkUnixLocations(binaryName);
-        }
-
-        return null;
-    }
-
-    @Nullable
-    private static String checkUnixLocations(@NotNull String binaryName) {
-        String home = System.getProperty("user.home");
-        List<String> candidates = new ArrayList<>();
-
-        // NVM-managed node installations
-        addNvmCandidates(home, binaryName, candidates);
-
-        candidates.add(home + "/.local/bin/" + binaryName);
-        candidates.add("/usr/local/bin/" + binaryName);
-        candidates.add(home + "/.npm-global/bin/" + binaryName);
-        candidates.add(home + "/.yarn/bin/" + binaryName);
-        candidates.add("/opt/homebrew/bin/" + binaryName);
-        candidates.add(home + "/go/bin/" + binaryName);
-
-        for (String path : candidates) {
-            if (new File(path).exists()) {
-                LOG.info("Found " + binaryName + " at: " + path);
-                return path;
-            }
-        }
-        return null;
-    }
-
-    private static void addNvmCandidates(@NotNull String home, @NotNull String binaryName,
-                                         @NotNull List<String> candidates) {
-        File nvmDir = new File(home, ".nvm/versions/node");
-        if (nvmDir.isDirectory()) {
-            File[] nodeDirs = nvmDir.listFiles(File::isDirectory);
-            if (nodeDirs != null) {
-                java.util.Arrays.sort(nodeDirs, (a, b) -> b.getName().compareTo(a.getName()));
-                for (File nodeDir : nodeDirs) {
-                    candidates.add(new File(nodeDir, "bin/" + binaryName).getAbsolutePath());
-                }
-            }
-        }
+        return path;
     }
 
     /**
@@ -621,5 +579,15 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
             args.add(a.getAsString());
         }
         method.setArgs(args);
+    }
+
+    @Override
+    public boolean requiresMcpInSessionNew() {
+        return profile.getMcpMethod() == McpInjectionMethod.SESSION_NEW;
+    }
+
+    @Override
+    public @NotNull String getMcpServerName() {
+        return profile.getMcpServerName();
     }
 }

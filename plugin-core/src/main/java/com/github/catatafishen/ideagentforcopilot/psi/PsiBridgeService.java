@@ -152,6 +152,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public String callTool(String toolName, JsonObject arguments) {
+        LOG.info("PSI Bridge: calling " + toolName + " with args: " + arguments);
         ToolDefinition def = registry.findDefinition(toolName);
         if (def == null || !def.hasExecutionHandler()) {
             fireToolCallEvent(toolName, System.currentTimeMillis(), false);

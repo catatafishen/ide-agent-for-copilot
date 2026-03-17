@@ -129,7 +129,10 @@ public final class JunieClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String version = detectJunieVersion();
+            AgentProfile p = AgentProfileManager.getInstance().getProfile(AgentProfileManager.JUNIE_PROFILE_ID);
+            String binary = p != null ? p.getBinaryName() : "junie";
+            String[] alternates = p != null ? p.getAlternateNames().toArray(new String[0]) : new String[0];
+            String version = BinaryDetector.detectBinaryVersion(binary, alternates);
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {
@@ -141,26 +144,6 @@ public final class JunieClientConfigurable implements Configurable {
                 }
             });
         });
-    }
-
-    /**
-     * Runs {@code junie --version} and returns the trimmed output, or null if not installed.
-     */
-    @Nullable
-    private static String detectJunieVersion() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("junie", "--version");
-            pb.redirectErrorStream(true);
-            // Use the user's actual shell environment to ensure PATH is correct
-            pb.environment().putAll(EnvironmentUtil.getEnvironmentMap());
-            Process process = pb.start();
-            String output = new String(process.getInputStream().readAllBytes()).trim();
-            int exit = process.waitFor();
-            if (exit == 0 && !output.isEmpty()) return output;
-        } catch (IOException | InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return null;
     }
 
     @NotNull

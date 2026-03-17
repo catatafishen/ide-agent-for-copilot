@@ -59,7 +59,8 @@ public final class AgentProfile {
 
     private McpInjectionMethod mcpMethod;
     private String mcpConfigTemplate;
-    private String mcpEnvVarName;
+    private String mcpEnvVarName = "";
+    private String mcpServerName = "intellij-code-tools";
 
     // ── Feature Flags ────────────────────────────────────────────────────────
 
@@ -397,6 +398,15 @@ public final class AgentProfile {
 
     public void setMcpEnvVarName(@NotNull String mcpEnvVarName) {
         this.mcpEnvVarName = mcpEnvVarName;
+    }
+
+    @NotNull
+    public String getMcpServerName() {
+        return mcpServerName;
+    }
+
+    public void setMcpServerName(@NotNull String mcpServerName) {
+        this.mcpServerName = mcpServerName;
     }
 
     public boolean isSupportsModelFlag() {

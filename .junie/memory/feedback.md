@@ -382,3 +382,123 @@
     "NEW INSTRUCTION": "WHEN parsing Junie tool_call_update text fields THEN safely handle trailing newlines and render"
 }
 
+[2026-03-17 19:06] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool prefix requirement",
+    "EXPECTATION": "Use the IDE MCP tools with the 'intellij-code-tools-' prefix for all actions.",
+    "NEW INSTRUCTION": "WHEN invoking any tool in this workspace THEN use names starting with 'intellij-code-tools-'"
+}
+
+[2026-03-17 19:08] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "CLI detection regression",
+    "EXPECTATION": "Settings should correctly detect Copilot and OpenCode on PATH and not show 'Not found' when installed.",
+    "NEW INSTRUCTION": "WHEN detecting Copilot/OpenCode in settings THEN use 'command -v' then '--version'; rely on exit code only"
+}
+
+[2026-03-17 19:09] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool prefix requirement",
+    "EXPECTATION": "All tool calls must use the 'intellij-code-tools-' prefix to avoid being denied.",
+    "NEW INSTRUCTION": "WHEN invoking any tool here THEN use names starting with 'intellij-code-tools-'"
+}
+
+[2026-03-17 19:12] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip label newline",
+    "EXPECTATION": "Tool chips should show the friendly tool name (from normalized tool ID) without stray quotes or file names, even when Junie sends multiline content or a 'Tool: ' title.",
+    "NEW INSTRUCTION": "WHEN Junie tool_call_update contains multiline content/title THEN label from normalized tool ID only"
+}
+
+[2026-03-17 19:15] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Comment/format accuracy",
+    "EXPECTATION": "JunieAcpClient’s comment about multiple tool result formats is likely inaccurate; only case 1 has been observed in IDE logs.",
+    "NEW INSTRUCTION": "WHEN documenting Junie tool result formats THEN verify against IDE logs and remove unobserved cases"
+}
+
+[2026-03-17 19:17] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Simplify name parsing",
+    "EXPECTATION": "Stop using complex normalization; just extract the tool ID when the title starts with \"Tool: intellij_code_tools/\".",
+    "NEW INSTRUCTION": "WHEN tool title begins with 'Tool: ' THEN extract following token as normalized tool ID"
+}
+
+[2026-03-17 19:26] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Slash-command parsing + duplicate prompt",
+    "EXPECTATION": "When attaching a code snippet, the prompt should be sent literally (no slash-command parsing) and the code should not be duplicated in both resource and text parts.",
+    "NEW INSTRUCTION": "WHEN message contains code fences or inline code THEN bypass slash-command parsing and send literal text"
+}
+
+[2026-03-17 19:32] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "CLI detection inconsistency",
+    "EXPECTATION": "OpenCode and Copilot should be detected on PATH the same way Junie and Claude are, without false 'Not found' messages.",
+    "NEW INSTRUCTION": "WHEN detecting OpenCode or Copilot binaries THEN run 'command -v <name>' and trust exit code; try known binary aliases"
+}
+
+[2026-03-17 19:40] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "CLI detection still failing",
+    "EXPECTATION": "Copilot and OpenCode should be detected on PATH like Junie and Claude, not shown as 'Not found'.",
+    "NEW INSTRUCTION": "WHEN detecting Copilot or OpenCode binaries THEN mirror Junie detection using command -v and --version with EnvironmentUtil PATH"
+}
+
+[2026-03-17 19:44] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "CLI detection parity",
+    "EXPECTATION": "Copilot and OpenCode should be detected on PATH the same way as Junie and not show 'Not found' when installed.",
+    "NEW INSTRUCTION": "WHEN detecting Copilot or OpenCode binaries THEN reuse Junie’s detection helper exactly with command -v/--version"
+}
+
+[2026-03-17 19:47] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "CLI detection assumption",
+    "EXPECTATION": "Copilot and OpenCode should be detected on PATH like Junie/Claude without assuming npm installs.",
+    "NEW INSTRUCTION": "WHEN detecting Copilot or OpenCode binaries THEN use command -v/where with IDE PATH; run --version; avoid npm paths"
+}
+
+[2026-03-17 20:21] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Junie chip attributes missing",
+    "EXPECTATION": "Tool chips for Junie should display key attributes (e.g., file path for Read File, query for Search Text) like other clients do.",
+    "NEW INSTRUCTION": "WHEN agent is Junie AND rendering chip for search_text or read_file THEN include query or file path from normalized payload"
+}
+
+[2026-03-17 21:09] - Updated by Junie
+{
+    "TYPE": "positive",
+    "CATEGORY": "Bug identification confirmation",
+    "EXPECTATION": "The disconnect was caused by a plugin bug (invalid persisted model name causing session/set_model timeout) and needs a fix.",
+    "NEW INSTRUCTION": "WHEN restoring a saved model for an agent THEN validate against supported models and fallback without killing session"
+}
+
+[2026-03-17 21:27] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Edit permission handling",
+    "EXPECTATION": "Kiro should not hang on edits; it must surface permission requests and explicitly report denial or timeout instead of waiting silently.",
+    "NEW INSTRUCTION": "WHEN starting an edit and no permission reply arrives THEN timeout and notify user about missing permission"
+}
+
+[2026-03-17 21:28] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool prefix requirement",
+    "EXPECTATION": "Use only IDE MCP tools whose names start with 'intellij-code-tools-' so calls are not denied.",
+    "NEW INSTRUCTION": "WHEN invoking any tool in this workspace THEN use names starting with 'intellij-code-tools-'"
+}
+

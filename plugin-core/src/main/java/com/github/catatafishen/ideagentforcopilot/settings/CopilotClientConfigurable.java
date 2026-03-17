@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.ui.HyperlinkLabel;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -128,7 +129,10 @@ public final class CopilotClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String version = detectCopilotVersion();
+            AgentProfile p = AgentProfileManager.getInstance().getProfile(AgentProfileManager.COPILOT_PROFILE_ID);
+            String binary = p != null ? p.getBinaryName() : "copilot";
+            String[] alternates = p != null ? p.getAlternateNames().toArray(new String[0]) : new String[]{"copilot-cli"};
+            String version = BinaryDetector.detectBinaryVersion(binary, alternates);
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {
@@ -140,52 +144,5 @@ public final class CopilotClientConfigurable implements Configurable {
                 }
             });
         });
-    }
-
-    /**
-     * Runs {@code copilot --version} or {@code copilot-cli --version} and returns the trimmed output,
-     * or null if not installed.
-     */
-    @Nullable
-    private static String detectCopilotVersion() {
-        // Try copilot first, then copilot-cli
-        for (String binary : new String[]{"copilot", "copilot-cli"}) {
-            try {
-                // Run through login shell to ensure PATH is fully loaded from shell profile
-                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-                ProcessBuilder pb = isWindows
-                    ? new ProcessBuilder("cmd", "/c", binary + " --version")
-                    : new ProcessBuilder("bash", "-l", "-c", binary + " --version 2>/dev/null");
-                // Do NOT redirect error stream, we only want clean stdout
-                processBuilderRedirectError(pb);
-                Process process = pb.start();
-                String output = new String(process.getInputStream().readAllBytes()).trim();
-                int exit = process.waitFor();
-                if (exit == 0 && !output.isEmpty()) {
-                    // Extract version line if there's any noise left (should be clean now)
-                    return output.lines()
-                        .filter(l -> !l.toLowerCase().contains("bash:"))
-                        .findFirst()
-                        .orElse(output)
-                        .trim();
-                }
-            } catch (IOException e) {
-                // Try next binary
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static void processBuilderRedirectError(ProcessBuilder pb) {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        if (isWindows) {
-            pb.redirectErrorStream(true);
-        } else {
-            // On Linux/Mac, we want to keep stderr separate to avoid bash noise
-            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
-        }
     }
 }

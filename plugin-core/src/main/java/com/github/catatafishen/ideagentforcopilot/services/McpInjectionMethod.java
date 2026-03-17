@@ -25,6 +25,12 @@ public enum McpInjectionMethod {
     MCP_LOCATION_FLAG,
 
     /**
+     * Inject via MCP servers array in {@code session/new} request.
+     * Used by agents that expect MCP server definitions in the session creation call.
+     */
+    SESSION_NEW,
+
+    /**
      * No MCP injection — the agent either doesn't support MCP or handles it externally.
      */
     NONE

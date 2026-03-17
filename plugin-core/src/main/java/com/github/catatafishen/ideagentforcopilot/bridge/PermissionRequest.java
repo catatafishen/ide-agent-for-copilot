@@ -1,13 +1,13 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
 public class PermissionRequest {
-    public final long reqId;
+    public final String reqId;
     public final String toolId;
     public final String displayName;
     public final String description;
     private final java.util.function.Consumer<PermissionResponse> respondFn;
 
-    public PermissionRequest(long reqId, String toolId, String displayName, String description,
+    public PermissionRequest(String reqId, String toolId, String displayName, String description,
                              java.util.function.Consumer<PermissionResponse> respondFn) {
         this.reqId = reqId;
         this.toolId = toolId;

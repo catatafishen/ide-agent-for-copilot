@@ -165,6 +165,7 @@ public class OpenCodeAcpClient extends AcpClient {
                              @Nullable String projectBasePath,
                              int mcpPort) {
         super(config, settings, registry, projectBasePath, mcpPort);
+        this.logMcpPrefix = "intellij-code-tools_";
     }
 
     @Override

@@ -87,32 +87,9 @@ public class JunieAcpClient extends AcpClient {
     @Override
     @NotNull
     public String normalizeToolName(@NotNull String name) {
-        // Junie sends tool names in various decorated formats:
-        // 1. "Tool: intellij-code-tools/git_status"
-        // 2. "Reading \"AcpClient.java\""
-        // 3. "*.js\"" (likely a fragment of a file list)
-        // 4. "intellij-code-tools/git_status"
-
-        String clean = name;
-
-        // Strip "Tool: " prefix
-        if (clean.startsWith("Tool: ")) {
-            clean = clean.substring(6);
-        }
-
-        // Handle "Reading/Writing/etc. \"file.ext\"" format
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:Creating|Writing|Editing|Reading|Opening|Viewing|Searching)\\s+\"(.+)\"").matcher(clean);
-        if (m.find()) {
-            clean = m.group(1);
-        }
-
-        // Strip the MCP server prefix (e.g., "intellij-code-tools/")
-        clean = clean.replaceFirst("^[^/]+/", "");
-
-        // Strip any surrounding quotes or trailing fragments
-        clean = clean.replaceAll("^[\"']+", "").replaceAll("[\"']+$", "");
-
-        return clean;
+        return name.trim()
+            .replaceFirst("Tool: intellij-code-tools/", "")
+            .replaceFirst("Tool: ", "");
     }
 
     @NotNull

@@ -31,14 +31,25 @@ public class KiroAcpClient extends AcpClient {
         p.setInstallUrl("https://kiro.dev/docs/cli/acp/");
         p.setSupportsOAuthSignIn(false);
         p.setAcpArgs(List.of("acp"));
-        p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
-        p.setSupportsMcpConfigFlag(true);
+
+        // Kiro doesn't support MCP config flags, only SESSION_NEW injection
+        // mcpCapabilities shows {"http": false, "sse": false} - command-based only
+        p.setMcpMethod(McpInjectionMethod.SESSION_NEW);
+        p.setMcpConfigTemplate(
+            "{\"mcpServers\":["
+                + "{\"command\":\"{javaPath}\","
+                + "\"args\":[\"-jar\",\"{mcpJarPath}\",\"--port\",\"{mcpPort}\"],"
+                + "\"env\":{}}"
+                + "]}");
+
+        p.setSupportsMcpConfigFlag(false);
         p.setSupportsModelFlag(true);
         p.setSupportsConfigDir(false);
         p.setRequiresResourceDuplication(false);
         p.setExcludeAgentBuiltInTools(false);
         p.setUsePluginPermissions(true);
         p.setPermissionInjectionMethod(PermissionInjectionMethod.NONE);
+        p.setSupportsSessionMessage(true);
         return p;
     }
 

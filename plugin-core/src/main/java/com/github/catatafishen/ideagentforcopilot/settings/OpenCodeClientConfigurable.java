@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.ui.HyperlinkLabel;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -114,7 +115,10 @@ public final class OpenCodeClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String version = detectOpenCodeVersion();
+            AgentProfile p = AgentProfileManager.getInstance().getProfile(AgentProfileManager.OPENCODE_PROFILE_ID);
+            String binary = p != null ? p.getBinaryName() : "opencode";
+            String[] alternates = p != null ? p.getAlternateNames().toArray(new String[0]) : new String[0];
+            String version = BinaryDetector.detectBinaryVersion(binary, alternates);
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {
@@ -126,45 +130,5 @@ public final class OpenCodeClientConfigurable implements Configurable {
                 }
             });
         });
-    }
-
-    /**
-     * Runs {@code opencode --version} and returns the trimmed output, or null if not installed.
-     */
-    @Nullable
-    private static String detectOpenCodeVersion() {
-        try {
-            // Run through login shell to ensure PATH is fully loaded from shell profile
-            boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-            ProcessBuilder pb = isWindows
-                ? new ProcessBuilder("cmd", "/c", "opencode --version")
-                : new ProcessBuilder("bash", "-l", "-c", "opencode --version 2>/dev/null");
-
-            processBuilderRedirectError(pb);
-            Process process = pb.start();
-            String output = new String(process.getInputStream().readAllBytes()).trim();
-            int exit = process.waitFor();
-            if (exit == 0 && !output.isEmpty()) {
-                // Filter out any remaining shell noise
-                return output.lines()
-                    .filter(l -> !l.toLowerCase().contains("bash:"))
-                    .findFirst()
-                    .orElse(output)
-                    .trim();
-            }
-        } catch (IOException | InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return null;
-    }
-
-    private static void processBuilderRedirectError(ProcessBuilder pb) {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        if (isWindows) {
-            pb.redirectErrorStream(true);
-        } else {
-            // On Linux/Mac, we want to keep stderr separate to avoid bash noise
-            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
-        }
     }
 }

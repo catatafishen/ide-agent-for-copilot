@@ -212,4 +212,28 @@ public interface AgentConfig {
     default void clearSavedModel() {
         // no-op
     }
+
+    /**
+     * Returns the MCP config template (JSON string) to use for injection.
+     * Supported placeholders: {javaPath}, {mcpJarPath}, {mcpPort}.
+     */
+    @Nullable
+    default String getMcpConfigTemplate() {
+        return null;
+    }
+
+    /**
+     * Returns the MCP server name to use in the injected config.
+     */
+    @NotNull
+    default String getMcpServerName() {
+        return "intellij-code-tools";
+    }
+
+    /**
+     * Returns whether the agent requires MCP server registration in mcpServers array of session/new.
+     */
+    default boolean requiresMcpInSessionNew() {
+        return false;
+    }
 }

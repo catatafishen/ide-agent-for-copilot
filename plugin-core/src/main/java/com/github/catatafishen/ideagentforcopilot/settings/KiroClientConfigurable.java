@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.ui.HyperlinkLabel;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBTextField;
-import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -18,7 +17,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.IOException;
 
 public final class KiroClientConfigurable implements Configurable {
 
@@ -117,7 +115,10 @@ public final class KiroClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String version = detectKiroVersion();
+            AgentProfile p = AgentProfileManager.getInstance().getProfile(AgentProfileManager.KIRO_PROFILE_ID);
+            String binary = p != null ? p.getBinaryName() : "kiro-cli";
+            String[] alternates = p != null ? p.getAlternateNames().toArray(new String[0]) : new String[]{};
+            String version = BinaryDetector.detectBinaryVersion(binary, alternates);
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {
@@ -129,29 +130,6 @@ public final class KiroClientConfigurable implements Configurable {
                 }
             });
         });
-    }
-
-    @Nullable
-    private static String detectKiroVersion() {
-        // Try kiro-cli first, then kiro
-        for (String binary : new String[]{"kiro-cli", "kiro"}) {
-            try {
-                ProcessBuilder pb = new ProcessBuilder(binary, "--version");
-                pb.redirectErrorStream(true);
-                // Use the user's actual shell environment to ensure PATH is correct
-                pb.environment().putAll(EnvironmentUtil.getEnvironmentMap());
-                Process process = pb.start();
-                String output = new String(process.getInputStream().readAllBytes()).trim();
-                int exit = process.waitFor();
-                if (exit == 0 && !output.isEmpty()) return output;
-            } catch (IOException e) {
-                // Try next binary
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
-        }
-        return null;
     }
 
     @NotNull
