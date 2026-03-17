@@ -1514,6 +1514,7 @@ class ChatToolWindowContent(
     private fun loadModelsAsync(onSuccess: (List<Model>) -> Unit) {
         val generation = ++modelLoadGeneration
         ApplicationManager.getApplication().invokeLater {
+            loadedModels = emptyList()
             modelsStatusText = MSG_LOADING
             selectedModelIndex = -1
         }

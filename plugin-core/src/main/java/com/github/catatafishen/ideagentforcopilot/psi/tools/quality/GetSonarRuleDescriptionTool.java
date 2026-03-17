@@ -46,9 +46,11 @@ public final class GetSonarRuleDescriptionTool extends QualityTool {
 
     @Override
     public @NotNull JsonObject inputSchema() {
-        return schema(new Object[][]{
+        JsonObject s = schema(new Object[][]{
             {PARAM_RULE_IDS, TYPE_ARRAY, "Array of SonarQube rule IDs to look up (e.g. [\"java:S3776\", \"kotlin:S1192\"])"}
         });
+        addArrayItems(s, PARAM_RULE_IDS);
+        return s;
     }
 
     @Override

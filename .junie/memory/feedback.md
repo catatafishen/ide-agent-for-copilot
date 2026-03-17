@@ -126,3 +126,139 @@
     "NEW INSTRUCTION": "WHEN asked to confirm startup instructions THEN explicitly state if not injected and request injection"
 }
 
+[2026-03-16 16:45] - Updated by Junie
+{
+    "TYPE": "positive",
+    "CATEGORY": "Startup instructions confirmed",
+    "EXPECTATION": "Assistant correctly recognized that default-startup-instructions.md was injected and reported its presence from initial context.",
+    "NEW INSTRUCTION": "WHEN asked to confirm startup instructions THEN report from initial context without reading files"
+}
+
+[2026-03-16 16:48] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip label and mapping",
+    "EXPECTATION": "UI should not prefix tool chips with 'Tool: ' and JunieAcpClient must map 'intellij-code-tools/git_commit' to a friendly name via normalizeToolName.",
+    "NEW INSTRUCTION": "WHEN rendering tool chips in UI THEN do not prefix labels with 'Tool: '"
+}
+
+[2026-03-16 16:53] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip prefix + mapping",
+    "EXPECTATION": "Tool chips should not show the 'Tool: ' prefix and JunieAcpClient.normalizeToolName must map 'intellij-code-tools/git_commit' to a friendly name.",
+    "NEW INSTRUCTION": "WHEN rendering chat tool chips THEN remove any leading 'Tool: ' from labels"
+}
+
+[2026-03-16 17:30] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool title prefix",
+    "EXPECTATION": "Titles from Junie like 'Tool: intellij-code-tools/list_project_files' should have the 'Tool: ' prefix stripped before display and normalization.",
+    "NEW INSTRUCTION": "WHEN request_permission title starts with 'Tool: ' THEN strip prefix before mapping and display"
+}
+
+[2026-03-16 17:35] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Slash-command parsing in messages",
+    "EXPECTATION": "Junie should not interpret '/' inside referenced code snippets or quoted input as a command; it should escape or pass the text literally, matching Copilot behavior.",
+    "NEW INSTRUCTION": "WHEN message text includes code fences or inline code THEN bypass slash-command parsing and send literal text"
+}
+
+[2026-03-16 17:39] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Slash-command parsing",
+    "EXPECTATION": "Junie should not treat '/' inside referenced code snippets as a command and should pass the text literally, matching Copilot behavior.",
+    "NEW INSTRUCTION": "WHEN message contains code fences or inline code THEN bypass slash-command parsing and send text literally"
+}
+
+[2026-03-16 20:30] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Slash-command parsing regression",
+    "EXPECTATION": "Slash commands must not be parsed inside code snippets; the text should pass through literally.",
+    "NEW INSTRUCTION": "WHEN message contains code fences or inline code THEN disable slash-command parsing and send literal text"
+}
+
+[2026-03-16 20:35] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Edit tool output",
+    "EXPECTATION": "Edit operations should use the MCP edit tools and return a diff payload so the popup renders the patch instead of 'completed with no output'.",
+    "NEW INSTRUCTION": "WHEN invoking code edits via Junie THEN call MCP edit tool and include diff output"
+}
+
+[2026-03-16 20:43] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool mapping duplication",
+    "EXPECTATION": "Eliminate duplicate entries in ChatDataModel and declare friendly names on each tool class, using the map only as a fallback for agent built-ins not provided by the plugin.",
+    "NEW INSTRUCTION": "WHEN mapping tools in ChatDataModel THEN remove duplicates, define names on tool classes, keep ChatDataModel map fallback"
+}
+
+[2026-03-16 20:46] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool mapping duplication",
+    "EXPECTATION": "Remove duplicate tool mappings and declare friendly names on each tool class; use the ChatDataModel map only as a fallback for agent built-in tools not provided by the plugin.",
+    "NEW INSTRUCTION": "WHEN mapping tools in ChatDataModel THEN remove duplicates, define names on tool classes, keep map fallback"
+}
+
+[2026-03-16 21:00] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Junie tool result mapping",
+    "EXPECTATION": "Junie tool calls should map to the correct UI renderers and display their input/output instead of falling back to the default renderer with no content.",
+    "NEW INSTRUCTION": "WHEN processing Junie tool result update THEN map normalized tool to renderer and render input/output"
+}
+
+[2026-03-16 21:05] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Follow agent with Junie",
+    "EXPECTATION": "Follow agent should work with Junie by using our MCP tools, not Junie’s built-ins.",
+    "NEW INSTRUCTION": "WHEN agent is Junie and follow-agent mode enabled THEN enforce excluding built-ins and warn if Junie ignores the setting"
+}
+
+[2026-03-16 21:14] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Junie client mapping/layering",
+    "EXPECTATION": "Do not put tool behavior in the UI; fix JunieAcpClient so Junie maps tools like other agents and uses our MCP tools instead of its built-ins.",
+    "NEW INSTRUCTION": "WHEN agent is Junie THEN normalize tool IDs and enforce excluding built-ins"
+}
+
+[2026-03-16 21:42] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Infinite scroll still broken",
+    "EXPECTATION": "Scrolling to the top should load older messages and continue until history is exhausted.",
+    "NEW INSTRUCTION": "WHEN chat scroll reaches top AND hasMore=true THEN fetch next page and prepend while preserving scroll"
+}
+
+[2026-03-16 21:43] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Infinite scroll not loading",
+    "EXPECTATION": "When reaching the top of the chat, older messages should load and continue until history is exhausted, preserving scroll position.",
+    "NEW INSTRUCTION": "WHEN chat viewport reaches top AND hasMore=true THEN fetch next page and prepend while preserving scroll"
+}
+
+[2026-03-16 21:53] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Infinite scroll pagination",
+    "EXPECTATION": "Scrolling to the top should continue loading older messages until history is exhausted, not stop early.",
+    "NEW INSTRUCTION": "WHEN chat scroll reaches top repeatedly AND hasMore=true THEN fetch next page and prepend while preserving scroll"
+}
+
+[2026-03-16 22:19] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Log tool filtering",
+    "EXPECTATION": "The read_ide_log tool should support optional grep-like filters so large logs are manageable.",
+    "NEW INSTRUCTION": "WHEN defining read_ide_log tool THEN add optional include/exclude regex and tail/limit params"
+}
+
