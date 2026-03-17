@@ -974,7 +974,7 @@ class ChatToolWindowContent(
             val supportsMultiplier = agentManager.client.supportsMultiplier()
             loadedModels.forEachIndexed { index, model ->
                 val cost = model.usage ?: "1x"
-                val label = if (supportsMultiplier && cost != "1x") "${model.name}  ($cost)" else model.name
+                val label = if (supportsMultiplier) "${model.name}  ($cost)" else model.name
                 group.add(object : AnAction(label) {
                     override fun actionPerformed(e: AnActionEvent) {
                         if (index == selectedModelIndex) return
