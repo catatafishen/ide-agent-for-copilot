@@ -61,7 +61,8 @@ export default class ToolChip extends HTMLElement {
         if (isExternal) this.classList.add('external-tool');
         let iconHtml = '';
         if (status === 'running') iconHtml = '<span class="chip-spinner"></span> ';
-        else if (status === 'failed') this.classList.add('failed');
+        // Always update failed class based on current status
+        this.classList.toggle('failed', status === 'failed');
         // Add external badge for non-MCP tools, unless it's a known safe tool
         // Extract base tool name (before any " — " subtitle)
         const baseToolName = rawLabel.split(' — ')[0].trim();

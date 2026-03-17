@@ -439,10 +439,11 @@ const ChatController = {
         // height so they are no longer pinned at scrollY=0 and can scroll up again.
         // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
         // scroll-up gestures, preventing the user from getting stuck at the absolute top.
+        // Cap at 50px to keep user near top so subsequent scroll-up can trigger more loads.
         if (prevScrollY <= 30) {
             const addedHeight = document.body.scrollHeight - prevHeight;
             if (addedHeight > 0) {
-                const targetScroll = Math.max(10, prevScrollY + addedHeight);
+                const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
                 window.scrollTo(0, targetScroll);
             }
         }
@@ -481,9 +482,10 @@ const ChatController = {
         // Compensate scroll so user stays at same visual position.
         // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
         // scroll-up gestures, preventing the user from getting stuck at the absolute top.
+        // Also cap at 50px to keep user near top so subsequent scroll-up can trigger more loads.
         const addedHeight = document.body.scrollHeight - prevHeight;
         if (addedHeight > 0) {
-            const targetScroll = Math.max(10, prevScrollY + addedHeight);
+            const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
             const container = this._container();
             if (container) {
                 container.compensateScroll(targetScroll);
@@ -492,10 +494,9 @@ const ChatController = {
             }
         }
 
-        // Continue loading if user was near top before scroll adjustment AND
-        // the compensated scroll is still near the top (within 50px).
-        // This prevents rapid auto-loading when there's enough content loaded.
-        if (wasNearTop && window.scrollY <= 30) {
+        // Continue loading if user was near top before scroll adjustment.
+        // This allows continuous loading as user scrolls up through history.
+        if (wasNearTop) {
             requestAnimationFrame(() => {
                 const lm = msgs.querySelector<HTMLElement>('load-more:not([loading])');
                 if (lm) lm.click();

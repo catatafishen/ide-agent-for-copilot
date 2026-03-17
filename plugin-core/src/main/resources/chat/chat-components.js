@@ -640,7 +640,7 @@ var __chatUI = (() => {
       if (isExternal) this.classList.add("external-tool");
       let iconHtml = "";
       if (status === "running") iconHtml = '<span class="chip-spinner"></span> ';
-      else if (status === "failed") this.classList.add("failed");
+      this.classList.toggle("failed", status === "failed");
       const baseToolName = rawLabel.split(" \u2014 ")[0].trim();
       const showWarning = isExternal && !SAFE_EXTERNAL_TOOLS.has(baseToolName);
       const externalBadge = showWarning ? '<span class="external-badge" title="Built-in agent tool (not from MCP plugin)">\u26A0</span> ' : "";
@@ -690,7 +690,7 @@ var __chatUI = (() => {
     _render() {
       const status = this.getAttribute("status") || "complete";
       if (status === "running" || status === "thinking") {
-        this.innerHTML = '<span class="thought-bubble">\u{1F4AD}</span> Thinking\u2026';
+        this.innerHTML = '<span class="thought-bubble">\u{1F4AD}</span> Thought';
         this.classList.add("thinking-active");
       } else {
         this.textContent = "\u{1F4AD} Thought";
@@ -1301,7 +1301,7 @@ var __chatUI = (() => {
       if (prevScrollY <= 30) {
         const addedHeight = document.body.scrollHeight - prevHeight;
         if (addedHeight > 0) {
-          const targetScroll = Math.max(10, prevScrollY + addedHeight);
+          const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
           window.scrollTo(0, targetScroll);
         }
       }
@@ -1333,7 +1333,7 @@ var __chatUI = (() => {
       }
       const addedHeight = document.body.scrollHeight - prevHeight;
       if (addedHeight > 0) {
-        const targetScroll = Math.max(10, prevScrollY + addedHeight);
+        const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
         const container = this._container();
         if (container) {
           container.compensateScroll(targetScroll);
@@ -1341,7 +1341,7 @@ var __chatUI = (() => {
           window.scrollTo(0, targetScroll);
         }
       }
-      if (wasNearTop && window.scrollY <= 30) {
+      if (wasNearTop) {
         requestAnimationFrame(() => {
           const lm = msgs.querySelector("load-more:not([loading])");
           if (lm) lm.click();

@@ -37,10 +37,12 @@ export default class ChatContainer extends HTMLElement {
                 // User intentionally scrolled up — disable auto-scroll
                 this._autoScroll = false;
                 // Trigger load-more when scrolled near the top.
-                // We use a threshold of 80px to give the user some room to gesture.
-                if (window.scrollY <= 80) {
+                // Use a small threshold to detect user at/near top of content.
+                if (window.scrollY <= 30) {
                     const lm = this._messages.querySelector('load-more:not([loading])');
-                    if (lm) (lm as HTMLElement).click();
+                    if (lm) {
+                        lm.click();
+                    }
                 }
             }
             this._prevScrollY = window.scrollY;
