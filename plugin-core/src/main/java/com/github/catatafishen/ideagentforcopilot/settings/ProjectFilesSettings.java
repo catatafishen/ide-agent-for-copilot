@@ -119,36 +119,18 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
     public static List<FileEntry> getDefaults() {
         List<FileEntry> entries = new ArrayList<>();
 
-        // Project-level config files
+        // Project-level config files (shared across all agents)
         entries.add(new FileEntry("TODO", "TODO.md", false, "Project"));
         entries.add(new FileEntry("CLAUDE.md", "CLAUDE.md", false, "Project"));
 
-        // Claude agent files
-        entries.add(new FileEntry("Settings", ".agent-work/claude/settings.json", false, "Claude"));
-        entries.add(new FileEntry("Instructions", ".copilot/copilot-instructions.md", false, "Claude"));
-        entries.add(new FileEntry("Agents", ".agent-work/claude/agents/*.md", true, "Claude"));
-
-        // Junie agent files (Junie expects .junie/ in project root)
-        entries.add(new FileEntry("Guidelines", ".junie/guidelines.md", false, "Junie"));
-        entries.add(new FileEntry("Agents", ".junie/AGENTS.md", false, "Junie"));
-
-        // Kiro agent files
-        entries.add(new FileEntry("Settings", ".agent-work/kiro/settings/cli.json", false, "Kiro"));
-        entries.add(new FileEntry("Steering", ".agent-work/kiro/steering/*.md", true, "Kiro"));
-        entries.add(new FileEntry("Agents", ".agent-work/kiro/agents/*.md", true, "Kiro"));
-
-        // GitHub Copilot agent files
-        entries.add(new FileEntry("Settings", ".agent-work/copilot/config.json", false, "Copilot"));
-        entries.add(new FileEntry("Instructions", ".github/copilot-instructions.md", false, "Copilot"));
-        entries.add(new FileEntry("Project Settings", ".github/copilot/settings.local.json", false, "Copilot"));
-        entries.add(new FileEntry("Agents", ".agent-work/copilot/agents/*.md", true, "Copilot"));
-
-        // OpenCode agent files
-        entries.add(new FileEntry("Config", ".agent-work/opencode/opencode.json", false, "OpenCode"));
-        entries.add(new FileEntry("Agents", ".agent-work/opencode/agents/*.md", true, "OpenCode"));
-
         // Shared agent definitions
         entries.add(new FileEntry("Agent Definitions", ".github/agents/*.md", true, "Shared"));
+
+        // Agent-specific defaults are provided by each agent client via getDefaultProjectFiles()
+        // When initializing a new project, users should:
+        // 1. Start with these project-level defaults
+        // 2. Import agent-specific files from the dropdown after selecting an agent
+        // 3. Or manually add entries as needed
 
         return entries;
     }

@@ -8,6 +8,7 @@ import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -79,6 +80,20 @@ public class KiroAcpClient extends AcpClient {
         return name;
     }
 
+    @Override
+    @NotNull
+    public List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry>
+    getDefaultProjectFiles() {
+        List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry> entries = new ArrayList<>();
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Settings", ".agent-work/kiro/settings/cli.json", false, "Kiro"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Steering", ".agent-work/kiro/steering/*.md", true, "Kiro"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Agents", ".agent-work/kiro/agents/*.md", true, "Kiro"));
+        return entries;
+    }
+
     /**
      * Kiro-specific error response handling.
      * Kiro error data format: "Encountered an error in the response stream: request_id: [uuid], error: [error message]"
@@ -98,7 +113,7 @@ public class KiroAcpClient extends AcpClient {
                 if (kiroError != null) {
                     // Log the parsed Kiro error details for better debugging
                     LOG.info("Kiro error details - Request ID: " + kiroError.requestId +
-                            ", Error type: " + kiroError.errorType);
+                        ", Error type: " + kiroError.errorType);
                 }
             }
         }

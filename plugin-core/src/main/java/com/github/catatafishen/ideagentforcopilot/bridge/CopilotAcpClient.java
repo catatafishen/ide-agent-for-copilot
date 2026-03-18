@@ -7,6 +7,7 @@ import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -69,10 +70,10 @@ public class CopilotAcpClient extends AcpClient {
     }
 
     public CopilotAcpClient(@NotNull AgentConfig config,
-                             @NotNull AgentSettings settings,
-                             @Nullable ToolRegistry registry,
-                             @Nullable String projectBasePath,
-                             int mcpPort) {
+                            @NotNull AgentSettings settings,
+                            @Nullable ToolRegistry registry,
+                            @Nullable String projectBasePath,
+                            int mcpPort) {
         super(config, settings, registry, projectBasePath, mcpPort);
     }
 
@@ -108,5 +109,21 @@ public class CopilotAcpClient extends AcpClient {
     @NotNull
     public String normalizeToolName(@NotNull String name) {
         return name.replaceFirst("^intellij-code-tools-", "");
+    }
+
+    @Override
+    @NotNull
+    public List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry>
+    getDefaultProjectFiles() {
+        List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry> entries = new ArrayList<>();
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Settings", ".agent-work/copilot/config.json", false, "Copilot"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Instructions", ".github/copilot-instructions.md", false, "Copilot"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Project Settings", ".github/copilot/settings.local.json", false, "Copilot"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Agents", ".agent-work/copilot/agents/*.md", true, "Copilot"));
+        return entries;
     }
 }

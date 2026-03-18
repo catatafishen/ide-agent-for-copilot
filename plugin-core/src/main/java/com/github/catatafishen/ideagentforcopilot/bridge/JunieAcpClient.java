@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -90,6 +91,18 @@ public class JunieAcpClient extends AcpClient {
         return name.trim()
             .replaceFirst("Tool: intellij-code-tools/", "")
             .replaceFirst("Tool: ", "");
+    }
+
+    @Override
+    @NotNull
+    public List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry>
+    getDefaultProjectFiles() {
+        List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry> entries = new ArrayList<>();
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Guidelines", ".junie/guidelines.md", false, "Junie"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Agents", ".junie/AGENTS.md", false, "Junie"));
+        return entries;
     }
 
     @NotNull

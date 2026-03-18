@@ -7,6 +7,7 @@ import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -172,5 +173,17 @@ public class OpenCodeAcpClient extends AcpClient {
     @NotNull
     public String normalizeToolName(@NotNull String name) {
         return name.replaceFirst("^intellij-code-tools_", "");
+    }
+
+    @Override
+    @NotNull
+    public List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry>
+        getDefaultProjectFiles() {
+        List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry> entries = new ArrayList<>();
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Config", ".agent-work/opencode/opencode.json", false, "OpenCode"));
+        entries.add(new com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry(
+            "Agents", ".agent-work/opencode/agents/*.md", true, "OpenCode"));
+        return entries;
     }
 }

@@ -260,6 +260,27 @@ public interface AgentClient extends Closeable {
     }
 
     /**
+     * Returns the default project file shortcuts for this agent.
+     * Each entry describes a file path and display label that appears in the Project Files dropdown menu.
+     * Implementations should organize files under their agent's group name.
+     *
+     * <p>Example:
+     * <pre>
+     *   new FileEntry("Settings", ".agent-work/claude/settings.json", false, "Claude"),
+     *   new FileEntry("Instructions", ".github/copilot-instructions.md", false, "Claude"),
+     * </pre>
+     * <p>
+     * Default: empty — override for agents that define default project files.
+     *
+     * @return list of default file entries for this agent
+     */
+    @NotNull
+    default List<com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings.FileEntry>
+    getDefaultProjectFiles() {
+        return List.of();
+    }
+
+    /**
      * Closes and releases all resources.
      */
     @Override
