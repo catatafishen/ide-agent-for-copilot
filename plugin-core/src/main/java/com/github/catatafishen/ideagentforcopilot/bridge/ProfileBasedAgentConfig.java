@@ -189,7 +189,11 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
 
         switch (agentId) {
             case "claude" -> pb.environment().put("CLAUDE_CONFIG_DIR", agentWorkDir);
-            case "copilot" -> pb.environment().put("COPILOT_HOME", agentWorkDir);
+            case "copilot" -> {
+                // Don't override COPILOT_HOME - let Copilot CLI use its default ~/.copilot
+                // for authentication while still using agent-work for logs/temp files
+                // pb.environment().put("COPILOT_HOME", agentWorkDir);
+            }
             case "opencode" -> {
                 // OpenCode uses OPENCODE_CONFIG pointing to the config.json file
                 String configJsonPath = Path.of(agentWorkDir, "opencode.json").toString();
@@ -452,6 +456,7 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         try {
             String content = Files.readString(configPath);
             JsonObject root = JsonParser.parseString(content).getAsJsonObject();
+            // User config files use object format: {"mcpServers": {"name": {...}}}
             JsonObject servers = root.has(MCP_SERVERS_KEY) && root.get(MCP_SERVERS_KEY).isJsonObject()
                 ? root.getAsJsonObject(MCP_SERVERS_KEY)
                 : root;
@@ -612,7 +617,8 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
 
     @Override
     public boolean requiresMcpInSessionNew() {
-        return profile.getMcpMethod() == McpInjectionMethod.SESSION_NEW;
+        return profile.getMcpMethod() == McpInjectionMethod.SESSION_NEW
+            || profile.isForceMcpInSessionNew();
     }
 
     @Override
