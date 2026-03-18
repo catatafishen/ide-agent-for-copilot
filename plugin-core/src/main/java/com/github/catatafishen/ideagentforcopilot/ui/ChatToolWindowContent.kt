@@ -53,6 +53,7 @@ class ChatToolWindowContent(
     private var selectedModelIndex = -1
     private var modelsStatusText: String? = MSG_LOADING
     private lateinit var controlsToolbar: ActionToolbar
+    private var restartSessionGroup: RestartSessionGroup? = null
     private lateinit var promptTextArea: EditorTextField
     private var isSending = false
     private lateinit var processingTimerPanel: ProcessingTimerPanel
@@ -119,15 +120,22 @@ class ChatToolWindowContent(
         }
         mainPanel.add(connectPanel, CARD_CONNECT)
 
+        // Always start on connect panel; auto-connect will proceed automatically
+        cardLayout.show(mainPanel, CARD_CONNECT)
         if (agentManager.isAutoConnect) {
-            buildAndShowChatPanel()
-            loadModelsAsync { models ->
-                loadedModels = models
-                restoreModelSelection(models)
-                statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
-            }
-        } else {
-            cardLayout.show(mainPanel, CARD_CONNECT)
+            // Show "Connecting…" state and trigger auto-connect flow
+            connectPanel.showConnecting()
+            loadModelsAsync(
+                onSuccess = { models ->
+                    loadedModels = models
+                    buildAndShowChatPanel()
+                    restoreModelSelection(models)
+                    statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
+                },
+                onFailure = { error ->
+                    connectPanel.showError(error.message ?: "Auto-connect failed")
+                }
+            )
         }
     }
 
@@ -164,7 +172,8 @@ class ChatToolWindowContent(
 
     /**
      * Called from AcpConnectPanel when the user clicks Connect.
-     * Switches the active agent, builds the chat panel, and loads models.
+     * Keeps showing the connect panel spinner until session is fully established,
+     * then switches to the chat view.
      */
     private fun connectToAgent(profileId: String, customCommand: String?) {
         if (customCommand != null) {
@@ -173,13 +182,19 @@ class ChatToolWindowContent(
         if (agentManager.activeProfileId != profileId) {
             agentManager.switchAgent(profileId)
         }
-        buildAndShowChatPanel()
-
-        loadModelsAsync { models ->
-            loadedModels = models
-            restoreModelSelection(models)
-            statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
-        }
+        // Stay on connect panel while spinner shows "Connecting…"
+        // loadModelsAsync triggers agent.start() via getClient() — wait for it to complete
+        loadModelsAsync(
+            onSuccess = { models ->
+                loadedModels = models
+                buildAndShowChatPanel()
+                restoreModelSelection(models)
+                statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
+            },
+            onFailure = { error ->
+                connectPanel.showError(error.message ?: "Connection failed")
+            }
+        )
     }
 
     private fun promptPlaceholder(): String {
@@ -205,6 +220,8 @@ class ChatToolWindowContent(
         connectPanel.resetConnectButton()
         connectPanel.refreshMcpStatus()
         cardLayout.show(mainPanel, CARD_CONNECT)
+        // Reset toolbar icon to default when disconnecting
+        restartSessionGroup?.updateIconForDisconnect()
     }
 
     private fun updateSessionInfo() {
@@ -408,7 +425,7 @@ class ChatToolWindowContent(
         northStack.layout = BoxLayout(northStack, BoxLayout.Y_AXIS)
 
         fun loadModels() {
-            loadModelsAsync { models -> loadedModels = models }
+            loadModelsAsync(onSuccess = { models -> loadedModels = models })
         }
 
         copilotBanner = createCopilotSetupBanner {
@@ -643,7 +660,8 @@ class ChatToolWindowContent(
         leftGroup.add(AgentSelectorAction())
         leftGroup.add(SessionOptionsGroup())
         leftGroup.addSeparator()
-        leftGroup.add(RestartSessionGroup())
+        restartSessionGroup = RestartSessionGroup()
+        leftGroup.add(restartSessionGroup!!)
 
         controlsToolbar = ActionManager.getInstance().createActionToolbar(
             "AgentControls", leftGroup, true
@@ -802,7 +820,7 @@ class ChatToolWindowContent(
         "Restart Session", true
     ) {
         init {
-            templatePresentation.icon = AllIcons.Actions.Restart
+            updateIconForActiveAgent()
             templatePresentation.text = "Restart Session"
             templatePresentation.description = "Restart the agent session"
 
@@ -834,6 +852,25 @@ class ChatToolWindowContent(
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
             })
+
+            // Listen for agent switches and update icon
+            agentManager.addSwitchListener {
+                updateIconForActiveAgent()
+            }
+        }
+
+        private fun updateIconForActiveAgent() {
+            if (!agentManager.isConnected) {
+                updateIconForDisconnect()
+                return
+            }
+            val profileId = agentManager.getActiveProfileId()
+            val agentIcon = AgentIconProvider.getIconForProfile(profileId)
+            templatePresentation.icon = agentIcon ?: AllIcons.Actions.Restart
+        }
+
+        fun updateIconForDisconnect() {
+            templatePresentation.icon = AgentIconProvider.getDefaultIcon() ?: AllIcons.Actions.Restart
         }
 
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -1526,7 +1563,10 @@ class ChatToolWindowContent(
         if (models.isNotEmpty()) selectedModelIndex = 0
     }
 
-    private fun loadModelsAsync(onSuccess: (List<Model>) -> Unit) {
+    private fun loadModelsAsync(
+        onSuccess: (List<Model>) -> Unit,
+        onFailure: ((Exception) -> Unit)? = null
+    ) {
         val generation = ++modelLoadGeneration
         ApplicationManager.getApplication().invokeLater {
             loadedModels = emptyList()
@@ -1547,7 +1587,10 @@ class ChatToolWindowContent(
                 val errorMsg = e.message ?: MSG_UNKNOWN_ERROR
                 LOG.warn("Failed to load models: $errorMsg")
                 ApplicationManager.getApplication().invokeLater {
-                    if (generation == modelLoadGeneration) onModelsLoadFailed(e)
+                    if (generation == modelLoadGeneration) {
+                        onModelsLoadFailed(e)
+                        onFailure?.invoke(e)
+                    }
                 }
             }
         }

@@ -564,6 +564,15 @@ class AcpConnectPanel(
         }
     }
 
+    /** Shows "Connecting…" state for auto-connect scenarios. */
+    fun showConnecting() {
+        ApplicationManager.getApplication().invokeLater {
+            statusBanner.dismissCurrent()
+            connectButton.isEnabled = false
+            connectButton.text = "Connecting\u2026"
+        }
+    }
+
     fun refreshMcpStatus() {
         refreshMcpState()
     }
