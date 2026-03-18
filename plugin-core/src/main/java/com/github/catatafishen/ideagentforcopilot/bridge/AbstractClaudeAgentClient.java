@@ -2,11 +2,13 @@ package com.github.catatafishen.ideagentforcopilot.bridge;
 
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -123,6 +125,20 @@ abstract class AbstractClaudeAgentClient implements AgentClient {
             return name.substring("mcp__agentbridge__".length());
         }
         return name;
+    }
+
+    // ── Project files configuration ───────────────────────────────────────────
+
+    /**
+     * Returns Claude-specific default project files (CLAUDE.md).
+     */
+    @Override
+    @NotNull
+    public List<ProjectFilesSettings.FileEntry> getDefaultProjectFiles() {
+        List<ProjectFilesSettings.FileEntry> entries = new ArrayList<>();
+        entries.add(new ProjectFilesSettings.FileEntry(
+            "CLAUDE.md", "CLAUDE.md", false, "Claude"));
+        return entries;
     }
 
     // ── sessionUpdate emission ───────────────────────────────────────────────

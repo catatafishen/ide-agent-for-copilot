@@ -121,16 +121,11 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
 
         // Project-level config files (shared across all agents)
         entries.add(new FileEntry("TODO", "TODO.md", false, "Project"));
-        entries.add(new FileEntry("CLAUDE.md", "CLAUDE.md", false, "Project"));
 
         // Shared agent definitions
         entries.add(new FileEntry("Agent Definitions", ".github/agents/*.md", true, "Shared"));
 
         // Agent-specific defaults are provided by each agent client via getDefaultProjectFiles()
-        // When initializing a new project, users should:
-        // 1. Start with these project-level defaults
-        // 2. Import agent-specific files from the dropdown after selecting an agent
-        // 3. Or manually add entries as needed
 
         return entries;
     }
