@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.State;
@@ -21,7 +20,8 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
     private State myState = new State();
 
     public static ProjectFilesSettings getInstance() {
-        return ApplicationManager.getApplication().getService(ProjectFilesSettings.class);
+        return com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat
+            .getApplicationService(ProjectFilesSettings.class);
     }
 
     public List<FileEntry> getEntries() {
