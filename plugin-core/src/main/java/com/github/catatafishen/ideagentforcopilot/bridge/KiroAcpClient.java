@@ -4,10 +4,14 @@ import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * ACP client for Kiro.
@@ -73,5 +77,69 @@ public class KiroAcpClient extends AcpClient {
             return name.substring(slashPrefix.length());
         }
         return name;
+    }
+
+    /**
+     * Kiro-specific error response handling.
+     * Kiro error data format: "Encountered an error in the response stream: request_id: [uuid], error: [error message]"
+     * This extracts the request_id and error type for better diagnostics.
+     */
+    @Override
+    protected void handleErrorResponse(JsonObject msg, long id, CompletableFuture<JsonObject> future) {
+        // Let the parent do the initial processing
+        super.handleErrorResponse(msg, id, future);
+
+        // Additionally parse Kiro-specific error format from the errorData
+        if (msg.has("error")) {
+            JsonObject error = msg.getAsJsonObject("error");
+            if (error.has("data") && error.get("data").isJsonPrimitive()) {
+                String errorData = error.get("data").getAsString();
+                KiroErrorContext kiroError = parseKiroErrorData(errorData);
+                if (kiroError != null) {
+                    // Log the parsed Kiro error details for better debugging
+                    LOG.info("Kiro error details - Request ID: " + kiroError.requestId +
+                            ", Error type: " + kiroError.errorType);
+                }
+            }
+        }
+    }
+
+    /**
+     * Parses Kiro-specific error format.
+     * Expected format: "Encountered an error in the response stream: request_id: [uuid], error: [error message]"
+     */
+    @Nullable
+    private KiroErrorContext parseKiroErrorData(@NotNull String errorData) {
+        try {
+            // Extract request_id
+            Pattern requestIdPattern = Pattern.compile("request_id:\\s*([a-f0-9\\-]+)");
+            Matcher requestIdMatcher = requestIdPattern.matcher(errorData);
+            String requestId = requestIdMatcher.find() ? requestIdMatcher.group(1) : null;
+
+            // Extract error type (e.g., "AccessDeniedException")
+            Pattern errorTypePattern = Pattern.compile("error:\\s*[^:]*:\\s*(\\w+(?:Exception|Error)?)");
+            Matcher errorTypeMatcher = errorTypePattern.matcher(errorData);
+            String errorType = errorTypeMatcher.find() ? errorTypeMatcher.group(1) : null;
+
+            if (requestId != null || errorType != null) {
+                return new KiroErrorContext(requestId, errorType);
+            }
+        } catch (Exception e) {
+            LOG.debug("Failed to parse Kiro error data", e);
+        }
+        return null;
+    }
+
+    /**
+     * Container for parsed Kiro error information.
+     */
+    private static class KiroErrorContext {
+        final String requestId;
+        final String errorType;
+
+        KiroErrorContext(String requestId, String errorType) {
+            this.requestId = requestId;
+            this.errorType = errorType;
+        }
     }
 }

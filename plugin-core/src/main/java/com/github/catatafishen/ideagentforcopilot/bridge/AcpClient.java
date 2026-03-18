@@ -41,7 +41,7 @@ import java.util.function.Consumer;
  * to the {@link AgentConfig} strategy provided at construction time.
  */
 public abstract class AcpClient implements AgentClient {
-    private static final Logger LOG = Logger.getInstance(AcpClient.class);
+    protected static final Logger LOG = Logger.getInstance(AcpClient.class);
     private static final long REQUEST_TIMEOUT_SECONDS = 30;
     private static final long INITIALIZE_TIMEOUT_SECONDS = 90;
 
@@ -1360,7 +1360,7 @@ public abstract class AcpClient implements AgentClient {
         }
     }
 
-    private void handleErrorResponse(JsonObject msg, long id, CompletableFuture<JsonObject> future) {
+    protected void handleErrorResponse(JsonObject msg, long id, CompletableFuture<JsonObject> future) {
         JsonObject error = msg.getAsJsonObject(ERROR);
         int code = error.has("code") ? error.get("code").getAsInt() : 0;
         String message = error.has(MESSAGE) ? error.get(MESSAGE).getAsString() : "Unknown error";
@@ -1398,8 +1398,25 @@ public abstract class AcpClient implements AgentClient {
                         detailedMessage = dataObj.get("message").getAsString();
                     }
 
+                    // For Kiro errors, include the error code and additional details
                     if (detailedMessage != null && !detailedMessage.isEmpty()) {
-                        data = detailedMessage;
+                        StringBuilder detailsBuilder = new StringBuilder(detailedMessage);
+
+                        // Include Kiro-specific error code if present (e.g., AccessDeniedException)
+                        if (dataObj.has("code") && dataObj.get("code").isJsonPrimitive()) {
+                            String errorCode = dataObj.get("code").getAsString();
+                            if (!errorCode.isEmpty() && !detailedMessage.contains(errorCode)) {
+                                detailsBuilder.insert(0, "[" + errorCode + "] ");
+                            }
+                        }
+
+                        // Include AWS request ID if present for debugging
+                        if (dataObj.has("aws_request_id")) {
+                            String requestId = dataObj.get("aws_request_id").getAsString();
+                            detailsBuilder.append(" (Request ID: ").append(requestId).append(")");
+                        }
+
+                        data = detailsBuilder.toString();
                     } else {
                         data = gson.toJson(dataElem);
                     }
