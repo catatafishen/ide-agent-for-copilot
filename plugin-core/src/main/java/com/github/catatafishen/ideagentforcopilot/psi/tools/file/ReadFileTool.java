@@ -71,6 +71,9 @@ public class ReadFileTool extends FileTool {
         int startLine = args.has(PARAM_START_LINE) ? args.get(PARAM_START_LINE).getAsInt() : -1;
         int endLine = args.has(PARAM_END_LINE) ? args.get(PARAM_END_LINE).getAsInt() : -1;
 
+        // Use a separate container to capture the actual line range for highlighting
+        int[] effectiveRange = new int[]{startLine, endLine};
+
         String result = ReadAction.compute(() -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
             if (vf == null) return ToolUtils.ERROR_FILE_NOT_FOUND + pathStr;
@@ -82,11 +85,17 @@ public class ReadFileTool extends FileTool {
                 return extractLineRange(content, startLine, endLine);
             }
 
+            // If no range specified, we highlight the whole file (or the read portion)
+            // Splitting by \n to count lines accurately
+            String[] lines = content.split("\n", -1);
+            effectiveRange[0] = 1;
+            effectiveRange[1] = Math.min(lines.length, MAX_READ_LINES);
+
             String hint = getDirectoryMarkingHint(vf);
             return applyReadHintAndTruncate(content, hint);
         });
 
-        followFileIfEnabled(project, pathStr, startLine > 0 ? startLine : -1, endLine > 0 ? endLine : -1,
+        followFileIfEnabled(project, pathStr, effectiveRange[0], effectiveRange[1],
             HIGHLIGHT_READ, agentLabel(project) + " is reading");
         FileAccessTracker.recordRead(project, pathStr);
         return result;
