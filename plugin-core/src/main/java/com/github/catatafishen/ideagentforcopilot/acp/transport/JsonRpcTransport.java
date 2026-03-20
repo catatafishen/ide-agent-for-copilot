@@ -236,6 +236,10 @@ public class JsonRpcTransport {
             }
         } finally {
             alive.set(false);
+            // Fail all pending requests so callers don't wait for the full timeout
+            IOException cause = new IOException("Agent process exited unexpectedly");
+            pendingRequests.forEach((id, future) -> future.completeExceptionally(cause));
+            pendingRequests.clear();
         }
     }
 

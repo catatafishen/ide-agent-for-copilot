@@ -67,7 +67,6 @@ public final class KiroClientConfigurable implements Configurable {
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));
-        reset();
         return panel;
     }
 

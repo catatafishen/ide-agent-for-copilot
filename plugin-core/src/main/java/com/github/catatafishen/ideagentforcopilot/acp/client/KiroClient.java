@@ -34,7 +34,7 @@ public final class KiroClient extends AcpClient {
 
     @Override
     protected List<String> buildCommand(String cwd, int mcpPort) {
-        return List.of("kiro-cli", "agent", "--cwd", cwd);
+        return List.of("kiro-cli", "acp");
     }
 
     @Override
@@ -72,7 +72,7 @@ public final class KiroClient extends AcpClient {
                 int quoteEnd = args.indexOf('"', quoteStart + 1);
                 if (quoteStart >= 0 && quoteEnd > quoteStart) {
                     toolPurposes.put(tc.toolCallId(),
-                            args.substring(quoteStart + 1, quoteEnd));
+                        args.substring(quoteStart + 1, quoteEnd));
                 }
             }
         }
@@ -80,6 +80,6 @@ public final class KiroClient extends AcpClient {
 
     private String buildInstructions() {
         return "You have access to IntelliJ IDE tools via the @agentbridge MCP server. " +
-                "Use these tools for file operations, code navigation, git, and terminal access.";
+            "Use these tools for file operations, code navigation, git, and terminal access.";
     }
 }

@@ -33,7 +33,7 @@ public final class OpenCodeClient extends AcpClient {
 
     @Override
     protected List<String> buildCommand(String cwd, int mcpPort) {
-        return List.of("opencode", "agent", "--cwd", cwd);
+        return List.of("opencode", "acp");
     }
 
     @Override

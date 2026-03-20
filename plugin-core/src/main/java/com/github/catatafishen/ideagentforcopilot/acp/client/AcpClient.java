@@ -1,6 +1,18 @@
 package com.github.catatafishen.ideagentforcopilot.acp.client;
 
-import com.github.catatafishen.ideagentforcopilot.acp.model.*;
+import com.github.catatafishen.ideagentforcopilot.acp.model.ContentBlock;
+import com.github.catatafishen.ideagentforcopilot.acp.model.InitializeRequest;
+import com.github.catatafishen.ideagentforcopilot.acp.model.InitializeResponse;
+import com.github.catatafishen.ideagentforcopilot.acp.model.Location;
+import com.github.catatafishen.ideagentforcopilot.acp.model.Model;
+import com.github.catatafishen.ideagentforcopilot.acp.model.NewSessionResponse;
+import com.github.catatafishen.ideagentforcopilot.acp.model.PlanEntry;
+import com.github.catatafishen.ideagentforcopilot.acp.model.PromptRequest;
+import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
+import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
+import com.github.catatafishen.ideagentforcopilot.acp.model.ToolCallContent;
+import com.github.catatafishen.ideagentforcopilot.acp.model.ToolCallStatus;
+import com.github.catatafishen.ideagentforcopilot.acp.model.ToolKind;
 import com.github.catatafishen.ideagentforcopilot.acp.transport.JsonRpcTransport;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentConnector;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentPromptException;
@@ -305,6 +317,9 @@ public abstract class AcpClient implements AgentConnector {
         pb.directory(new File(cwd));
         pb.redirectErrorStream(false);
 
+        // Inject shell environment so CLIs installed via nvm/sdkman/homebrew are found
+        pb.environment().putAll(com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.getEnvironment());
+
         Map<String, String> env = buildEnvironment(mcpPort);
         if (!env.isEmpty()) {
             pb.environment().putAll(env);
@@ -329,8 +344,12 @@ public abstract class AcpClient implements AgentConnector {
         JsonElement result = future.get(INITIALIZE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         InitializeResponse response = gson.fromJson(result, InitializeResponse.class);
 
-        LOG.info(displayName() + " initialized: " + response.agentInfo().name()
-            + " v" + response.agentInfo().version());
+        if (response.agentInfo() != null) {
+            LOG.info(displayName() + " initialized: " + response.agentInfo().name()
+                + " v" + response.agentInfo().version());
+        } else {
+            LOG.info(displayName() + " initialized (no agentInfo in response)");
+        }
         return response;
     }
 

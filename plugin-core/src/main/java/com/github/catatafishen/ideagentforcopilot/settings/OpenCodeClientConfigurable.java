@@ -8,17 +8,14 @@ import com.intellij.openapi.project.Project;
 import com.intellij.ui.HyperlinkLabel;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
-import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.IOException;
 
 /**
  * Settings page for the OpenCode client (ACP transport).
@@ -73,7 +70,6 @@ public final class OpenCodeClientConfigurable implements Configurable {
 
         JBScrollPane scroll = new JBScrollPane(mainPanel);
         scroll.setBorder(null);
-        reset();
         return scroll;
     }
 

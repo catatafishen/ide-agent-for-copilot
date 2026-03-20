@@ -32,7 +32,7 @@ public final class JunieClient extends AcpClient {
 
     @Override
     protected List<String> buildCommand(String cwd, int mcpPort) {
-        return List.of("junie", "agent", "--cwd", cwd);
+        return List.of("junie", "--acp=true");
     }
 
     @Override
@@ -72,6 +72,6 @@ public final class JunieClient extends AcpClient {
 
     private String buildInstructions() {
         return "You have access to IntelliJ IDE tools via the agentbridge MCP server. " +
-                "Use these tools for file operations, code navigation, git, and terminal access.";
+            "Use these tools for file operations, code navigation, git, and terminal access.";
     }
 }
