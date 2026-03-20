@@ -670,3 +670,83 @@
     "NEW INSTRUCTION": "WHEN invoking any tool in this workspace THEN use names starting with 'agentbridge-'"
 }
 
+[2026-03-19 17:47] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip denial info",
+    "EXPECTATION": "Tool chips should clearly indicate when a tool call was denied so the UI makes it obvious.",
+    "NEW INSTRUCTION": "WHEN rendering a tool chip for a denied call THEN show a Denied label and reason"
+}
+
+[2026-03-20 08:35] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip denial info",
+    "EXPECTATION": "Tool chips should clearly indicate when a call was denied, not just show a generic warning.",
+    "NEW INSTRUCTION": "WHEN tool call permission is denied THEN display 'Denied' badge and show denial reason"
+}
+
+[2026-03-20 09:16] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool prefix requirement",
+    "EXPECTATION": "Use only IDE MCP tools with the 'agentbridge-' prefix so calls are not denied.",
+    "NEW INSTRUCTION": "WHEN invoking any tool here THEN use names starting with 'agentbridge-'"
+}
+
+[2026-03-20 09:18] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "POJO field naming schema",
+    "EXPECTATION": "Use a single, project-wide naming schema in ACP POJOs and map different JSON field names to the same model field instead of creating duplicate fields.",
+    "NEW INSTRUCTION": "WHEN modeling ACP tool-call JSON THEN map JSON aliases to one canonical field; avoid duplicates"
+}
+
+[2026-03-20 09:22] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Typed updates over JSON",
+    "EXPECTATION": "Use the existing SessionUpdate typed models and stop passing raw JsonObject payloads in AcpClient.",
+    "NEW INSTRUCTION": "WHEN building agent→UI updates in AcpClient THEN emit SessionUpdate instances, not JsonObject"
+}
+
+[2026-03-20 09:26] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Use typed models",
+    "EXPECTATION": "Stop passing raw JsonObject in AcpClient and use existing SessionUpdate records for tool events.",
+    "NEW INSTRUCTION": "WHEN building session updates in AcpClient THEN construct and emit SessionUpdate instances instead of JsonObject"
+}
+
+[2026-03-20 09:31] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Typed model over JsonObject",
+    "EXPECTATION": "Use the existing SessionUpdate typed records and pass real Java instances through AcpClient instead of raw JsonObjects.",
+    "NEW INSTRUCTION": "WHEN emitting session updates in AcpClient THEN construct and pass SessionUpdate instances"
+}
+
+[2026-03-20 09:36] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Typed session updates",
+    "EXPECTATION": "Use existing SessionUpdate models and avoid passing raw JsonObject payloads in AcpClient.",
+    "NEW INSTRUCTION": "WHEN emitting agent → UI updates THEN construct SessionUpdate instances instead of JsonObject"
+}
+
+[2026-03-20 09:50] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Typed session models",
+    "EXPECTATION": "AcpClient should emit and pass strongly-typed SessionUpdate ToolCall/ToolCallUpdate instances instead of ad-hoc JsonObjects.",
+    "NEW INSTRUCTION": "WHEN creating tool_call or tool_call_update events THEN build SessionUpdate records not JsonObjects"
+}
+
+[2026-03-20 09:54] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Typed SessionUpdate usage",
+    "EXPECTATION": "Use the existing SessionUpdate models and pass real Java instances instead of raw JsonObjects through AcpClient and the UI pipeline.",
+    "NEW INSTRUCTION": "WHEN emitting agent→UI updates THEN use SessionUpdate records, not JsonObject"
+}
+

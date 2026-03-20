@@ -13,6 +13,8 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
 import com.github.catatafishen.ideagentforcopilot.acp.model.ToolCallContent;
 import com.github.catatafishen.ideagentforcopilot.acp.model.ToolCallStatus;
 import com.github.catatafishen.ideagentforcopilot.acp.model.ToolKind;
+import com.github.catatafishen.ideagentforcopilot.acp.transport.JsonRpcErrorCodes;
+import com.github.catatafishen.ideagentforcopilot.acp.transport.JsonRpcException;
 import com.github.catatafishen.ideagentforcopilot.acp.transport.JsonRpcTransport;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentConnector;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentPromptException;
@@ -402,8 +404,8 @@ public abstract class AcpClient implements AgentConnector {
             future.get(AUTH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             LOG.info(displayName() + " authenticated with method: " + methodId);
         } catch (java.util.concurrent.ExecutionException e) {
-            if (e.getCause() instanceof com.github.catatafishen.ideagentforcopilot.acp.transport.JsonRpcException jre
-                && jre.getCode() == -32601) {
+            if (e.getCause() instanceof JsonRpcException jre
+                && jre.getCode() == JsonRpcErrorCodes.METHOD_NOT_FOUND) {
                 // Agent does not implement the authenticate method — treat as already authenticated.
                 LOG.info(displayName() + " does not support authenticate (method not found) — skipping");
             } else {
@@ -622,10 +624,10 @@ public abstract class AcpClient implements AgentConnector {
             case "session/request_permission" -> handlePermissionRequest(id);
             case "fs/read_text_file", "fs/write_text_file",
                  "terminal/create", "terminal/output" ->
-                transport.sendError(id, -32603, request.method() + " not yet implemented");
+                transport.sendError(id, JsonRpcErrorCodes.INTERNAL_ERROR, request.method() + " not yet implemented");
             default -> {
                 LOG.warn("Unknown agent request: " + request.method());
-                transport.sendError(id, -32601, "Method not found: " + request.method());
+                transport.sendError(id, JsonRpcErrorCodes.METHOD_NOT_FOUND, "Method not found: " + request.method());
             }
         }
     }
