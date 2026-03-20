@@ -130,6 +130,7 @@ public abstract class AcpClient implements AgentConnector {
     @Override
     public final String createSession(String cwd) throws AgentSessionException {
         try {
+            beforeCreateSession(cwd);
             int mcpPort = resolveMcpPort();
 
             JsonObject params = new JsonObject();
@@ -182,10 +183,30 @@ public abstract class AcpClient implements AgentConnector {
             Thread.currentThread().interrupt();
             throw new AgentPromptException("Prompt interrupted for " + displayName(), e);
         } catch (Exception e) {
+            PromptResponse recovery = tryRecoverPromptException(e);
+            if (recovery != null) return recovery;
             throw new AgentPromptException("Prompt failed for " + displayName(), e);
         } finally {
             updateConsumer = null;
         }
+    }
+
+    /**
+     * Called when {@code sendPrompt} catches an exception.
+     * Override to return a synthetic {@link PromptResponse} if the failure is recoverable
+     * (e.g. a known agent-side deserialization bug where streaming updates already rendered
+     * the response). Returning {@code null} causes the default exception to be thrown.
+     */
+    protected @Nullable PromptResponse tryRecoverPromptException(Exception cause) {
+        return null;
+    }
+
+    /**
+     * Called at the very start of {@code createSession}, before the {@code session/new} RPC.
+     * Override to perform per-session setup, e.g. restarting a poisoned process.
+     */
+    protected void beforeCreateSession(String cwd) throws Exception {
+        // default: no-op
     }
 
     @Override
@@ -745,7 +766,7 @@ public abstract class AcpClient implements AgentConnector {
         return null;
     }
 
-    private void destroyProcess() {
+    protected void destroyProcess() {
         if (agentProcess == null || !agentProcess.isAlive()) {
             return;
         }
