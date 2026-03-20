@@ -67,11 +67,9 @@ public final class CopilotClient extends AcpClient {
     }
 
     @Override
-    protected Map<String, String> buildEnvironment(int mcpPort) {
-        String basePath = project.getBasePath();
-        if (basePath == null) return Map.of();
+    protected Map<String, String> buildEnvironment(int mcpPort, String cwd) {
         // COPILOT_HOME points to the project-specific Copilot config directory
-        String copilotHome = basePath + File.separator + ".agent-work" + File.separator + AGENT_ID;
+        String copilotHome = cwd + File.separator + ".agent-work" + File.separator + AGENT_ID;
         return Map.of("COPILOT_HOME", copilotHome);
     }
 

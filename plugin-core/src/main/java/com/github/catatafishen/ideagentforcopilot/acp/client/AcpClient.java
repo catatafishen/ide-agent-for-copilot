@@ -18,7 +18,6 @@ import com.github.catatafishen.ideagentforcopilot.agent.AgentConnector;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentPromptException;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentSessionException;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentStartException;
-import com.github.catatafishen.ideagentforcopilot.permissions.PermissionDefaults;
 import com.github.catatafishen.ideagentforcopilot.services.McpServerControl;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -74,6 +73,7 @@ public abstract class AcpClient implements AgentConnector {
     private @Nullable Process agentProcess;
     private @Nullable InitializeResponse capabilities;
     private @Nullable String currentSessionId;
+    private @Nullable String launchCwd;
     private final List<Model> availableModels = new ArrayList<>();
     private volatile @Nullable Consumer<SessionUpdate> updateConsumer;
 
@@ -94,6 +94,7 @@ public abstract class AcpClient implements AgentConnector {
             registerHandlers();
             capabilities = initialize();
             authenticate();
+            eagerFetchModels();
             LOG.info(displayName() + " agent started successfully");
         } catch (Exception e) {
             stop();
@@ -108,6 +109,7 @@ public abstract class AcpClient implements AgentConnector {
         agentProcess = null;
         capabilities = null;
         currentSessionId = null;
+        launchCwd = null;
         availableModels.clear();
         updateConsumer = null;
     }
@@ -228,9 +230,10 @@ public abstract class AcpClient implements AgentConnector {
      * Extra environment variables for the agent process.
      *
      * @param mcpPort the MCP server port for this session
+     * @param cwd     working directory for the agent process
      */
     @SuppressWarnings("unused")
-    protected Map<String, String> buildEnvironment(int mcpPort) {
+    protected Map<String, String> buildEnvironment(int mcpPort, String cwd) {
         return Map.of();
     }
 
@@ -277,13 +280,6 @@ public abstract class AcpClient implements AgentConnector {
         return update;
     }
 
-    /**
-     * Default permission levels for each tool category.
-     */
-    protected PermissionDefaults permissionDefaults() {
-        return PermissionDefaults.STANDARD;
-    }
-
     // ═══════════════════════════════════════════════════
     // MCP port resolution
     // ═══════════════════════════════════════════════════
@@ -320,6 +316,7 @@ public abstract class AcpClient implements AgentConnector {
         if (cwd == null) {
             cwd = System.getProperty("user.home");
         }
+        launchCwd = cwd;
 
         List<String> command = buildCommand(cwd, mcpPort);
 
@@ -335,7 +332,7 @@ public abstract class AcpClient implements AgentConnector {
         // Inject shell environment so CLIs installed via nvm/sdkman/homebrew are found
         pb.environment().putAll(com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.getEnvironment());
 
-        Map<String, String> env = buildEnvironment(mcpPort);
+        Map<String, String> env = buildEnvironment(mcpPort, cwd);
         if (!env.isEmpty()) {
             pb.environment().putAll(env);
         }
@@ -398,11 +395,40 @@ public abstract class AcpClient implements AgentConnector {
         JsonObject params = new JsonObject();
         params.addProperty("methodId", methodId);
 
-        CompletableFuture<JsonElement> future = transport.sendRequest(
-            "authenticate", params, AUTH_TIMEOUT_SECONDS, TimeUnit.SECONDS
-        );
-        future.get(AUTH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        LOG.info(displayName() + " authenticated with method: " + methodId);
+        try {
+            CompletableFuture<JsonElement> future = transport.sendRequest(
+                "authenticate", params, AUTH_TIMEOUT_SECONDS, TimeUnit.SECONDS
+            );
+            future.get(AUTH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            LOG.info(displayName() + " authenticated with method: " + methodId);
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof com.github.catatafishen.ideagentforcopilot.acp.transport.JsonRpcException jre
+                && jre.getCode() == -32601) {
+                // Agent does not implement the authenticate method — treat as already authenticated.
+                LOG.info(displayName() + " does not support authenticate (method not found) — skipping");
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * Creates a temporary session immediately after startup to populate the available-models
+     * list. The session is cancelled right after so it does not interfere with the first
+     * real user session. If the call fails, the failure is logged and swallowed — the agent
+     * is still usable, just without pre-loaded models.
+     */
+    private void eagerFetchModels() {
+        String cwd = launchCwd != null ? launchCwd : project.getBasePath();
+        if (cwd == null) return;
+        try {
+            String sessionId = createSession(cwd);
+            cancelSession(sessionId);
+            currentSessionId = null;
+            LOG.info(displayName() + ": eagerly loaded " + availableModels.size() + " model(s)");
+        } catch (Exception e) {
+            LOG.warn(displayName() + ": eager model fetch failed (models will be empty): " + e.getMessage());
+        }
     }
 
     private void registerHandlers() {

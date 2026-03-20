@@ -11,33 +11,39 @@ import org.jetbrains.annotations.Nullable;
  * @see <a href="https://agentclientprotocol.com/protocol/initialization">ACP Initialization</a>
  */
 public record InitializeRequest(
-        int protocolVersion,
-        ClientInfo clientInfo,
-        @Nullable ClientCapabilities clientCapabilities
+    int protocolVersion,
+    ClientInfo clientInfo,
+    @Nullable ClientCapabilities clientCapabilities
 ) {
 
-    public record ClientInfo(String name, String version) {}
+    public record ClientInfo(String name, String version) {
+    }
 
     public record ClientCapabilities(
-            @Nullable FsCapabilities fs,
-            @Nullable Boolean terminal
+        @Nullable FsCapabilities fs,
+        @Nullable Boolean terminal
     ) {
-        /** Advertise read/write file and terminal capabilities. */
+        /**
+         * Advertise read/write file and terminal capabilities.
+         */
         public static ClientCapabilities standard() {
             return new ClientCapabilities(
-                    new FsCapabilities(true, true),
-                    true
+                new FsCapabilities(true, true),
+                true
             );
         }
 
-        /** Empty capabilities — use when the agent rejects unknown capability fields. */
+        /**
+         * Empty capabilities — use when the agent rejects unknown capability fields.
+         */
         public static ClientCapabilities empty() {
             return new ClientCapabilities(null, null);
         }
     }
 
     public record FsCapabilities(
-            @Nullable Boolean readTextFile,
-            @Nullable Boolean writeTextFile
-    ) {}
+        @Nullable Boolean readTextFile,
+        @Nullable Boolean writeTextFile
+    ) {
+    }
 }
