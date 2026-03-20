@@ -3,19 +3,20 @@ package com.github.catatafishen.ideagentforcopilot.acp.model;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Agent → Client: response to session creation with session ID, models, and capabilities.
  * <p>
- * {@code models} and {@code modes} are object maps (keyed by ID), not arrays.
+ * Deserialization is handled by {@link NewSessionResponseDeserializer} which normalises the
+ * various wire formats sent by different agents (array vs. map for models; string vs. object
+ * values in modes).
  *
  * @see <a href="https://agentclientprotocol.com/protocol/sessions">ACP Sessions</a>
  */
 public record NewSessionResponse(
     String sessionId,
-    @Nullable Map<String, Model> models,
-    @Nullable Map<String, AvailableMode> modes,
+    @Nullable List<Model> models,
+    @Nullable List<AvailableMode> modes,
     @Nullable List<AvailableCommand> commands,
     @Nullable List<SessionConfigOption> configOptions
 ) {

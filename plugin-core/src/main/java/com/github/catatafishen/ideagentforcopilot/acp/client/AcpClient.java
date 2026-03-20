@@ -6,6 +6,7 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.InitializeResponse;
 import com.github.catatafishen.ideagentforcopilot.acp.model.Location;
 import com.github.catatafishen.ideagentforcopilot.acp.model.Model;
 import com.github.catatafishen.ideagentforcopilot.acp.model.NewSessionResponse;
+import com.github.catatafishen.ideagentforcopilot.acp.model.NewSessionResponseDeserializer;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PlanEntry;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptRequest;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
@@ -69,7 +70,9 @@ public abstract class AcpClient implements AgentConnector {
     private static final String KEY_STATUS = "status";
     private static final String KEY_RESULT = "result";
 
-    protected final Gson gson = new GsonBuilder().create();
+    protected final Gson gson = new GsonBuilder()
+            .registerTypeAdapter(NewSessionResponse.class, new NewSessionResponseDeserializer())
+            .create();
     protected final JsonRpcTransport transport = new JsonRpcTransport();
     protected final Project project;
 
@@ -139,14 +142,7 @@ public abstract class AcpClient implements AgentConnector {
 
             if (response.models() != null) {
                 availableModels.clear();
-                for (Map.Entry<String, Model> entry : response.models().entrySet()) {
-                    Model m = entry.getValue();
-                    // The id may be null if it's only present as the map key, not in the value
-                    if (m.id() == null) {
-                        m = new Model(entry.getKey(), m.name(), m.description(), m._meta());
-                    }
-                    availableModels.add(m);
-                }
+                availableModels.addAll(response.models());
             }
 
             onSessionCreated(currentSessionId);
