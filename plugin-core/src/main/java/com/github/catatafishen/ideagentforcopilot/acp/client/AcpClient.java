@@ -139,7 +139,14 @@ public abstract class AcpClient implements AgentConnector {
 
             if (response.models() != null) {
                 availableModels.clear();
-                availableModels.addAll(response.models());
+                for (Map.Entry<String, Model> entry : response.models().entrySet()) {
+                    Model m = entry.getValue();
+                    // The id may be null if it's only present as the map key, not in the value
+                    if (m.id() == null) {
+                        m = new Model(entry.getKey(), m.name(), m.description(), m._meta());
+                    }
+                    availableModels.add(m);
+                }
             }
 
             onSessionCreated(currentSessionId);

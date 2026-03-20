@@ -1,6 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.acp.client;
 
 import com.github.catatafishen.ideagentforcopilot.bridge.McpServerJarLocator;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.Nullable;
@@ -69,6 +71,18 @@ public final class OpenCodeClient extends AcpClient {
     protected boolean supportsAuthenticate() {
         // OpenCode returns -32603 "Authentication not implemented" — skip the call entirely.
         return false;
+    }
+
+    @Override
+    protected void customizeNewSession(String cwd, int mcpPort, JsonObject params) {
+        // OpenCode requires mcpServers in session/new; uses http/sse transport (not local stdio)
+        JsonObject server = new JsonObject();
+        server.addProperty("name", "agentbridge");
+        server.addProperty("type", "sse");
+        server.addProperty("url", "http://127.0.0.1:" + mcpPort + "/sse");
+        JsonArray servers = new JsonArray();
+        servers.add(server);
+        params.add("mcpServers", servers);
     }
 
     /**
