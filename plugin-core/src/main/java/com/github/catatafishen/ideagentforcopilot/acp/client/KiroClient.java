@@ -16,6 +16,8 @@ import java.util.List;
  */
 public final class KiroClient extends AcpClient {
 
+    private static final String KEY_RAW_INPUT = "rawInput";
+
     public KiroClient(Project project) {
         super(project);
     }
@@ -50,6 +52,14 @@ public final class KiroClient extends AcpClient {
     @Override
     protected String resolveToolId(String protocolTitle) {
         return protocolTitle.replaceFirst("^Running: @agentbridge/", "");
+    }
+
+    @Override
+    protected JsonObject parseToolCallArguments(JsonObject update) {
+        // Kiro sends args in "rawInput" (object) instead of "content" (array)
+        return update.has(KEY_RAW_INPUT) && update.get(KEY_RAW_INPUT).isJsonObject()
+            ? update.getAsJsonObject(KEY_RAW_INPUT)
+            : null;
     }
 
     @Override
