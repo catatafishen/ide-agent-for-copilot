@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.acp.client;
 
 import com.github.catatafishen.ideagentforcopilot.acp.model.Model;
+import com.github.catatafishen.ideagentforcopilot.agent.AgentConnector;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
@@ -26,7 +27,7 @@ import java.util.Map;
 public final class CopilotClient extends AcpClient {
 
     private static final String AGENT_ID = "copilot";
-    private static final String DEFAULT_MODE_SLUG = "intellij-default";
+    private static final String DEFAULT_AGENT_SLUG = "intellij-default";
     private static final String MCP_SERVER_NAME = "agentbridge";
     private static final String MCP_TYPE_HTTP = "http";
 
@@ -119,8 +120,20 @@ public final class CopilotClient extends AcpClient {
     }
 
     @Override
-    public @Nullable String defaultModeSlug() {
-        return DEFAULT_MODE_SLUG;
+    public @Nullable String defaultAgentSlug() {
+        return DEFAULT_AGENT_SLUG;
+    }
+
+    @Override
+    public List<AgentConnector.AgentMode> getAvailableAgents() {
+        return List.of(
+            new AgentConnector.AgentMode("intellij-default", "Intellij-Default",
+                "Full IntelliJ toolset with abuse-detection instructions"),
+            new AgentConnector.AgentMode("intellij-explore", "Intellij-Explore",
+                "Read-only code navigation, no file edits or shell execution"),
+            new AgentConnector.AgentMode("intellij-edit", "Intellij-Edit",
+                "Focused editing and refactoring tools, no system shell")
+        );
     }
 
     // ─── Process ─────────────────────────────────────

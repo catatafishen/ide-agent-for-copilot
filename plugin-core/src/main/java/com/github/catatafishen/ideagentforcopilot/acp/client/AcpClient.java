@@ -86,6 +86,7 @@ public abstract class AcpClient implements AgentConnector {
     private final List<Model> availableModels = new ArrayList<>();
     private final List<AgentConnector.AgentMode> availableModes = new ArrayList<>();
     private @Nullable String currentModeSlug = null;
+    private @Nullable String currentAgentSlug = null;
     private volatile @Nullable Consumer<SessionUpdate> updateConsumer;
 
     protected AcpClient(Project project) {
@@ -124,6 +125,7 @@ public abstract class AcpClient implements AgentConnector {
         availableModels.clear();
         availableModes.clear();
         currentModeSlug = null;
+        currentAgentSlug = null;
         updateConsumer = null;
     }
 
@@ -162,6 +164,9 @@ public abstract class AcpClient implements AgentConnector {
                 }
                 if (currentModeSlug == null) {
                     currentModeSlug = defaultModeSlug();
+                }
+                if (currentAgentSlug == null) {
+                    currentAgentSlug = defaultAgentSlug();
                 }
             }
 
@@ -242,6 +247,16 @@ public abstract class AcpClient implements AgentConnector {
     @Override
     public final void setCurrentModeSlug(@Nullable String slug) {
         currentModeSlug = slug;
+    }
+
+    @Override
+    public final @Nullable String getCurrentAgentSlug() {
+        return currentAgentSlug != null ? currentAgentSlug : defaultAgentSlug();
+    }
+
+    @Override
+    public final void setCurrentAgentSlug(@Nullable String slug) {
+        currentAgentSlug = slug;
     }
 
     @Override

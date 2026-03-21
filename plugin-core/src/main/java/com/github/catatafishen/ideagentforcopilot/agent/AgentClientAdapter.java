@@ -65,7 +65,7 @@ public class AgentClientAdapter implements AgentClient {
                              @Nullable Runnable onRequest) throws AcpException {
         try {
             List<ContentBlock> contentBlocks = buildContentBlocks(prompt, references);
-            PromptRequest request = new PromptRequest(sessionId, contentBlocks, model, connector.getCurrentModeSlug());
+            PromptRequest request = new PromptRequest(sessionId, contentBlocks, model, connector.getEffectiveModeSlug());
 
             Consumer<com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate> bridgeConsumer =
                 newUpdate -> dispatchUpdate(newUpdate, onChunk, onUpdate);
@@ -126,23 +126,41 @@ public class AgentClientAdapter implements AgentClient {
     @NotNull
     @Override
     public List<com.github.catatafishen.ideagentforcopilot.bridge.SessionOption> listSessionOptions() {
-        List<AgentConnector.AgentMode> modes = connector.getAvailableModes();
-        if (modes.isEmpty()) return List.of();
+        List<com.github.catatafishen.ideagentforcopilot.bridge.SessionOption> options = new ArrayList<>();
 
-        List<String> values = new ArrayList<>();
-        values.add(""); // "Default" — lets the agent choose its built-in default
-        Map<String, String> labels = new LinkedHashMap<>();
-        for (AgentConnector.AgentMode mode : modes) {
-            values.add(mode.slug());
-            labels.put(mode.slug(), mode.name());
+        List<AgentConnector.AgentMode> modes = connector.getAvailableModes();
+        if (!modes.isEmpty()) {
+            List<String> values = new ArrayList<>();
+            values.add("");
+            Map<String, String> labels = new LinkedHashMap<>();
+            for (AgentConnector.AgentMode mode : modes) {
+                values.add(mode.slug());
+                labels.put(mode.slug(), mode.name());
+            }
+            options.add(new com.github.catatafishen.ideagentforcopilot.bridge.SessionOption("mode", "Mode", values, labels));
         }
-        return List.of(new com.github.catatafishen.ideagentforcopilot.bridge.SessionOption("mode", "Agent", values, labels));
+
+        List<AgentConnector.AgentMode> agents = connector.getAvailableAgents();
+        if (!agents.isEmpty()) {
+            List<String> values = new ArrayList<>();
+            values.add("");
+            Map<String, String> labels = new LinkedHashMap<>();
+            for (AgentConnector.AgentMode agent : agents) {
+                values.add(agent.slug());
+                labels.put(agent.slug(), agent.name());
+            }
+            options.add(new com.github.catatafishen.ideagentforcopilot.bridge.SessionOption("agent", "Agent", values, labels));
+        }
+
+        return options;
     }
 
     @Override
     public void setSessionOption(@NotNull String sessionId, @NotNull String key, @NotNull String value) {
         if ("mode".equals(key)) {
             connector.setCurrentModeSlug(value.isEmpty() ? null : value);
+        } else if ("agent".equals(key)) {
+            connector.setCurrentAgentSlug(value.isEmpty() ? null : value);
         }
     }
 

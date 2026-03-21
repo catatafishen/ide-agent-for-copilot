@@ -63,12 +63,14 @@ public interface AgentConnector {
     PromptResponse sendPrompt(PromptRequest request,
                               Consumer<SessionUpdate> onUpdate) throws AgentPromptException;
 
-    /** Mode slug to activate by default when sending a prompt, or null to use the agent's own default. */
+    // ─── Modes (built-in interaction modes, e.g. default/agent/plan/autopilot) ──
+
+    /** Built-in mode slug to activate by default, or null for the agent's own default. */
     default @Nullable String defaultModeSlug() {
         return null;
     }
 
-    /** Available modes/agents for this connector (populated after session creation). */
+    /** Available built-in modes (populated from session/new after connection). */
     default List<AgentMode> getAvailableModes() {
         return List.of();
     }
@@ -81,6 +83,38 @@ public interface AgentConnector {
     /** Sets the current mode slug. No-op for agents that don't support mode selection. */
     default void setCurrentModeSlug(@Nullable String slug) {
         // no-op
+    }
+
+    // ─── Agents (custom agent definitions, e.g. intellij-default/intellij-explore) ──
+
+    /** Custom agent slug to activate by default, or null to skip custom agent selection. */
+    default @Nullable String defaultAgentSlug() {
+        return null;
+    }
+
+    /** Available custom agents for this connector. Override to expose agent selection. */
+    default List<AgentMode> getAvailableAgents() {
+        return List.of();
+    }
+
+    /** Returns the currently selected custom agent slug (user override or default). */
+    default @Nullable String getCurrentAgentSlug() {
+        return defaultAgentSlug();
+    }
+
+    /** Sets the current custom agent slug. No-op for agents that don't support agent selection. */
+    default void setCurrentAgentSlug(@Nullable String slug) {
+        // no-op
+    }
+
+    /**
+     * Returns the effective slug to send as {@code modeSlug} in session/prompt.
+     * Custom agent slug takes priority over built-in mode slug.
+     */
+    default @Nullable String getEffectiveModeSlug() {
+        String agent = getCurrentAgentSlug();
+        if (agent != null && !agent.isEmpty()) return agent;
+        return getCurrentModeSlug();
     }
 
     // ─── Models ──────────────────────────────────────
