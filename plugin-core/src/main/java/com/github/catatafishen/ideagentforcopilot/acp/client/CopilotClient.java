@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.acp.client;
 
 import com.github.catatafishen.ideagentforcopilot.acp.model.Model;
+import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentConnector;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 /**
  * GitHub Copilot ACP client.
@@ -178,6 +180,22 @@ public final class CopilotClient extends AcpClient {
     }
 
     // ─── Models ──────────────────────────────────────
+
+    /**
+     * Copilot delivers its entire response via {@code session/update} streaming notifications
+     * and often never sends the final JSON-RPC response to {@code session/prompt}.
+     * When a timeout occurs we treat it as a successful end-of-turn since the UI has already
+     * received and rendered all the content.
+     */
+    @Override
+    protected @Nullable PromptResponse tryRecoverPromptException(Exception cause) {
+        Throwable root = cause;
+        while (root.getCause() != null) root = root.getCause();
+        if (root instanceof TimeoutException) {
+            return new PromptResponse("end_turn", null);
+        }
+        return null;
+    }
 
     @Override
     public ModelDisplayMode modelDisplayMode() {
