@@ -1534,6 +1534,8 @@ class ChatToolWindowContent(
     }
 
     fun resetSession() {
+        // Clear the persisted resume ID so the next session/new starts completely fresh.
+        agentManager.settings.setResumeSessionId(null)
         resetSessionState()
         consolePanel.clear()
         consolePanel.showPlaceholder("New conversation started.")

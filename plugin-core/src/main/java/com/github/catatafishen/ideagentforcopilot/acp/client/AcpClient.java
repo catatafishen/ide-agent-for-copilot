@@ -22,6 +22,7 @@ import com.github.catatafishen.ideagentforcopilot.agent.AgentStartException;
 import com.github.catatafishen.ideagentforcopilot.bridge.McpServerJarLocator;
 import com.github.catatafishen.ideagentforcopilot.bridge.SessionOption;
 import com.github.catatafishen.ideagentforcopilot.services.McpServerControl;
+import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -161,6 +162,14 @@ public abstract class AcpClient extends AbstractAgentClient {
             params.addProperty("cwd", cwd);
             customizeNewSession(cwd, mcpPort, params);
 
+            // Request continuation of the previous conversation if one was saved.
+            // Cleared only on explicit "Clear and Restart". Ignored if the agent doesn't support it.
+            String savedResumeId = loadResumeSessionId();
+            if (savedResumeId != null) {
+                params.addProperty("resumeSessionId", savedResumeId);
+                LOG.info(displayName() + ": requesting resume of session " + savedResumeId);
+            }
+
             CompletableFuture<JsonElement> future = transport.sendRequest("session/new", params);
             JsonElement result = future.get(SESSION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             LOG.debug(displayName() + ": session/new raw response: " + result);
@@ -210,6 +219,7 @@ public abstract class AcpClient extends AbstractAgentClient {
             }
 
             onSessionCreated(currentSessionId);
+            persistResumeSessionId(currentSessionId);
             return currentSessionId;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -227,6 +237,27 @@ public abstract class AcpClient extends AbstractAgentClient {
         // Clear the cached session ID so the next createSession() starts a new one
         if (sessionId.equals(currentSessionId)) {
             currentSessionId = null;
+        }
+    }
+
+    // ── Session resumption helpers ───────────────────────────────────────────
+
+    private @Nullable String loadResumeSessionId() {
+        try {
+            ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
+            return manager.getSettings().getResumeSessionId();
+        } catch (Exception e) {
+            LOG.warn("Failed to load resume session ID", e);
+            return null;
+        }
+    }
+
+    private void persistResumeSessionId(@Nullable String sessionId) {
+        try {
+            ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
+            manager.getSettings().setResumeSessionId(sessionId);
+        } catch (Exception e) {
+            LOG.warn("Failed to persist resume session ID", e);
         }
     }
 

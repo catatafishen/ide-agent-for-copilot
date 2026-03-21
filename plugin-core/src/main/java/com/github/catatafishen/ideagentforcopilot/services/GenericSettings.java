@@ -179,6 +179,32 @@ public final class GenericSettings {
         PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_OUT_PREFIX + toolId));
     }
 
+    private static final String KEY_RESUME_SESSION_ID = "resumeSessionId";
+
+    // ── Session resumption ───────────────────────────────────────────────────
+
+    /**
+     * Returns the ACP session ID to pass as {@code resumeSessionId} in the next {@code session/new}
+     * request, or {@code null} if no previous session was saved.
+     */
+    @Nullable
+    public String getResumeSessionId() {
+        String val = PropertiesComponent.getInstance().getValue(key(KEY_RESUME_SESSION_ID));
+        return (val == null || val.isEmpty()) ? null : val;
+    }
+
+    /**
+     * Persists the ACP session ID for future session resumption.
+     * Pass {@code null} to clear (e.g. after a "Clear and Restart").
+     */
+    public void setResumeSessionId(@Nullable String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            PropertiesComponent.getInstance().unsetValue(key(KEY_RESUME_SESSION_ID));
+        } else {
+            PropertiesComponent.getInstance().setValue(key(KEY_RESUME_SESSION_ID), sessionId);
+        }
+    }
+
     // ── Billing persistence ──────────────────────────────────────────────────
 
     public int getMonthlyRequests() {
