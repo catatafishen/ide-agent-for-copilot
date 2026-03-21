@@ -127,7 +127,7 @@ Built-in Copilot file operations are denied so all writes go through IntelliJ's 
 
 1. Agent requests permission (kind="edit")
 2. Plugin denies the permission
-3. Agent retries using MCP tool (`intellij_write_file`)
+3. Agent retries using MCP tool (`write_file`)
 4. Write goes through Document API with undo support
 5. Auto-format runs (optimize imports + reformat)
 
@@ -148,7 +148,7 @@ Copilot CLI ──stdio──► MCP Server (JAR) ──HTTP──► PsiBridgeS
 
 ### 3. Tool Callbacks
 
-When Copilot CLI invokes a tool (e.g., `intellij_write_file`), the MCP server makes an HTTP request to the PSI bridge:
+When Copilot CLI invokes a tool (e.g., `write_file`), the MCP server makes an HTTP request to the PSI bridge:
 
 ```
 Copilot CLI → MCP Server (stdio) → PSI Bridge (HTTP) → IntelliJ APIs
@@ -156,7 +156,7 @@ Copilot CLI → MCP Server (stdio) → PSI Bridge (HTTP) → IntelliJ APIs
 
 #### Auto-Format After Write
 
-Every file write through `intellij_write_file` triggers:
+Every file write through `write_file` triggers:
 
 1. `PsiDocumentManager.commitAllDocuments()`
 2. `OptimizeImportsProcessor`
@@ -193,7 +193,7 @@ This runs inside a single undoable command group on the EDT.
      │                     │                       │
      │                     │  MCP tool call         │
      │                     │◄──────────────────────┤
-     │                     │  (intellij_write_file) │
+     │                     │  (write_file) │
      │                     ├──────────────────────►│
      │                     │                       │
 ```

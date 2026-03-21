@@ -28,7 +28,7 @@
          imports, comments, annotations, XML/config files. \
        - Requires exact text match — fragile if the file was reformatted since last read. \
        - NEVER use `edit_text` to replace an entire method — use `replace_symbol_body` instead. \
-     **`intellij_write_file`** (full file write with `content`): \
+     **`write_file`** (full file write with `content`): \
        - Use ONLY when writing an entire file from scratch or replacing all content. \
        - Creates the file if it doesn't exist.
 
@@ -51,7 +51,7 @@
   IntelliJ code intelligence tools (live editor buffers) instead of CLI tools (stale disk files). \
   Include relevant tool guidance in the prompt you write for them: \
   - ide-explore agents: Already configured to use IntelliJ tools. Just describe what you need found. \
-  - Task agents: "Use `run_command` for shell commands. Use `intellij_read_file` to read files." \
+  - Task agents: "Use `run_command` for shell commands. Use `read_file` to read files." \
   - All sub-agents: "Use IDE git tools (git_status, git_diff, git_log, etc.) for reading git state — never shell git." \
   - All sub-agents: "Do NOT use git write commands (git_commit, git_stage, etc.) — only the main agent may write."
 

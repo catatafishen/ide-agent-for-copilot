@@ -77,7 +77,7 @@ The `AcpClient` and UI code require no changes — they program against the inte
 ### Key Design: IntelliJ-Native File Operations
 
 Built-in agent file edits are **denied** at the permission level. The agent automatically retries using
-`intellij_write_file` MCP tool, which:
+`write_file` MCP tool, which:
 
 - Writes through IntelliJ's Document API (supports undo/redo)
 - Auto-runs optimize imports + reformat code after every write
@@ -106,7 +106,7 @@ intellij-copilot-plugin/
 | Category            | Tools                                                                                                                                                                                                                                                                                        |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Code Navigation** | `search_symbols`, `get_file_outline`, `get_class_outline`, `find_references`, `list_project_files`, `search_text`, `go_to_declaration`, `get_type_hierarchy`, `find_implementations`, `get_call_hierarchy`, `get_documentation`, `download_sources`                                          |
-| **File I/O**        | `intellij_read_file`, `intellij_write_file`, `edit_text`, `create_file`, `delete_file`, `rename_file`, `move_file`, `undo`, `redo`, `reload_from_disk`, `open_in_editor`, `show_diff`                                                                                                        |
+| **File I/O**        | `read_file`, `write_file`, `edit_text`, `create_file`, `delete_file`, `rename_file`, `move_file`, `undo`, `redo`, `reload_from_disk`, `open_in_editor`, `show_diff`                                                                                                                          |
 | **Code Quality**    | `get_problems`, `get_highlights`, `run_inspections`, `apply_quickfix`, `suppress_inspection`, `optimize_imports`, `format_code`, `add_to_dictionary`, `get_compilation_errors`, `run_qodana`, `run_sonarqube_analysis`*                                                                      |
 | **Refactoring**     | `refactor`, `replace_symbol_body`, `insert_before_symbol`, `insert_after_symbol`                                                                                                                                                                                                             |
 | **Testing**         | `list_tests`, `run_tests`, `get_coverage`                                                                                                                                                                                                                                                    |

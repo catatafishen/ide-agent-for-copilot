@@ -20,11 +20,17 @@ Junie is **fully spec-compliant** but provided no mechanism to filter tools unti
 - CLI flags: No `--deny-tool` or `--excluded-tools` flag existed
 - Permission system: Junie does **NOT** send `session/request_permission` (optional per spec)
 
-> **UPDATE (March 17, 2026):** According to [JUNIE-1842](https://youtrack.jetbrains.com/issue/JUNIE-1842/Toolset-configuration-profiles-allow-deny-list), toolset configuration profiles with allow/deny lists are now supported. This should allow for a native mechanism to exclude tools at launch time.
+> **UPDATE (March 17, 2026):** According
+> to [JUNIE-1842](https://youtrack.jetbrains.com/issue/JUNIE-1842/Toolset-configuration-profiles-allow-deny-list), toolset
+> configuration profiles with allow/deny lists are now supported. This should allow for a native mechanism to exclude
+> tools at launch time.
 
-> **UPDATE (March 19, 2026):** Starting from Junie v888.212, the `excludedTools` parameter in `session/new` is now respected. The plugin has been updated to send this parameter automatically when the profile has `excludeAgentBuiltInTools` enabled.
+> **UPDATE (March 19, 2026):** Starting from Junie v888.212, the `excludedTools` parameter in `session/new` is now
+> respected. The plugin has been updated to send this parameter automatically when the profile has
+`excludeAgentBuiltInTools` enabled.
 
-**Result (prior to fix):** Junie used its built-in tools (Edit, View, Read, Write, Bash, etc.) instead of IntelliJ MCP tools, bypassing
+**Result (prior to fix):** Junie used its built-in tools (Edit, View, Read, Write, Bash, etc.) instead of IntelliJ MCP
+tools, bypassing
 IntelliJ's editor buffer and causing desync.
 
 ### Fundamental Difference from Copilot
@@ -72,7 +78,7 @@ CRITICAL — TOOL SELECTION:
 - NEVER use built-in tools (Edit, View, Read, Write, Bash, search_file, etc.) — they bypass IntelliJ's editor buffer and
   cause desync
 - ALWAYS use `agentbridge/` prefixed MCP tools instead:
-  • `agentbridge/read_file` or `agentbridge/intellij_read_file` — instead of View/Read
+  • `agentbridge/read_file` — instead of View/Read
   • `agentbridge/edit_text` or `agentbridge/write_file` — instead of Edit/Write
   • `agentbridge/run_command` — instead of Bash/shell
   • `agentbridge/search_text` — instead of search_file/grep
@@ -251,7 +257,8 @@ File these with JetBrains Junie team:
 Monitor Junie releases and test the following:
 
 1. **Test:** Verify `excludedTools` session param actually filters tools (Verified working in v888.212)
-2. **Test:** Verify `session/request_permission` is sent for write tools (Still not sent as of v888.212, but `excludedTools` bypasses the need)
+2. **Test:** Verify `session/request_permission` is sent for write tools (Still not sent as of v888.212, but
+   `excludedTools` bypasses the need)
 3. **Update:** Switch from prompt engineering to proper filtering (Implemented in `AcpClient` and `JunieAcpClient`)
 4. **Remove:** This documentation file
 

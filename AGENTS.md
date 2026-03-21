@@ -24,9 +24,9 @@ BEST PRACTICES:
 
 6. NATIVE TOOLS: Do NOT use bash, glob, grep, read, write, edit, or run_command. \
   Use agentbridge equivalents instead to stay in sync with IDE buffers. \
-  Examples: intellij_read_file, intellij_write_file, intellij_search_text, intellij_run_command.
+  Examples: read_file, write_file, search_text, run_command.
 
-  7. GrazieInspection (grammar) does NOT support apply_quickfix → use intellij_write_file instead.
+  7. GrazieInspection (grammar) does NOT support apply_quickfix → use write_file instead.
 
 8. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
   a) Auto-highlights in write response → after EACH edit. Instant. Catches most errors. \
@@ -38,8 +38,8 @@ SUB-AGENT TOOL GUIDANCE:
 include relevant tool guidance in the prompt you write for them: \
                                                                    - All agents: "ONLY use agentbridge_* for file operations, git, terminal, and search — NEVER use bash, glob, grep, read, write, edit, or run_command." \
                                                                    - All sub-agents: "Do NOT use git write commands (git_commit, git_stage, etc.) — only the main agent may write." \
-                                                                   - Explore agents: "Use intellij_search_text to search code." \
-                                                                   - Task agents: "Use intellij_run_command for shell commands."
+                                                                   - Explore agents: "Use search_text to search code." \
+                                                                   - Task agents: "Use run_command for shell commands."
 
 QUICK-REPLY BUTTONS:
 You may append a `[quick-reply: ...]` tag at the end of your response to render clickable buttons. \
@@ -70,7 +70,7 @@ name: ide-explore
 description: "Fast codebase explorer using IntelliJ code intelligence"
 model: claude-haiku-4.5
 tools:
-  - agentbridge/intellij_read_file
+  - agentbridge/read_file
   - agentbridge/search_text
   - agentbridge/search_symbols
   - agentbridge/get_file_outline
@@ -181,8 +181,8 @@ See [JUNIE-TOOL-WORKAROUND.md](docs/JUNIE-TOOL-WORKAROUND.md).
 
 ## Summary Table
 
-| Agent    | MCP Tool Prefix         | Agent Definition Support         | Tool Filtering Format                                      | Permission Requests  | Bundled Agents               | Status                     |
-|----------|-------------------------|----------------------------------|------------------------------------------------------------|----------------------|------------------------------|----------------------------|
+| Agent    | MCP Tool Prefix | Agent Definition Support         | Tool Filtering Format                                      | Permission Requests  | Bundled Agents               | Status                     |
+|----------|-----------------|----------------------------------|------------------------------------------------------------|----------------------|------------------------------|----------------------------|
 | Copilot  | `agentbridge-`  | ✅ `~/.copilot/agents/*.md`       | YAML array: `tools: [tool1, tool2]`                        | ✅ For write tools    | 2 (ide-explore, ide-task)    | Working (filtering broken) |
 | OpenCode | `agentbridge_`  | ✅ `.opencode/agent/*.md` or JSON | YAML object: `permission: {"*": "deny", "tool1": "allow"}` | ✅ Yes                | 2 (ide-general, ide-explore) | ✅ Working                  |
 | Junie    | `agentbridge-`  | ❌ No support                     | N/A                                                        | ❌ No (auto-executes) | 0                            | Prompt workaround only     |

@@ -250,13 +250,13 @@ File operations are the most architecturally significant tools in the plugin. Al
 go through IntelliJ's Document API, providing undo support, live buffer access, and proper VFS
 integration.
 
-### `intellij_read_file` / `read_file`
+### `read_file` / `read_file`
 
 Reads file content from the IntelliJ editor buffer with optional line range filtering. Returns the
 live buffer content (including unsaved changes), not the on-disk version. Parameters: `path`,
 `start_line`, `end_line`. Using line ranges is strongly encouraged to save tokens on large files.
 
-### `intellij_write_file` / `write_file`
+### `write_file` / `write_file`
 
 The primary editing tool. Supports three modes:
 
@@ -708,13 +708,13 @@ with three tiers: **Deny**, **Ask**, and **Allow**.
 
 Five built-in Copilot CLI tool permissions are **always denied** at runtime:
 
-| Denied Tool     | Reason                 | Redirect To                                 |
-|-----------------|------------------------|---------------------------------------------|
-| `edit`          | Reads stale disk files | `intellij_write_file` (live buffers + undo) |
-| `create`        | Bypasses VFS indexing  | `create_file` (VFS-integrated)              |
-| `read`          | Reads stale disk files | `intellij_read_file` (live buffers)         |
-| `execute`       | No output capture      | `run_command` (paginated output)            |
-| `runInTerminal` | No integration         | `run_in_terminal` (IDE terminal)            |
+| Denied Tool     | Reason                 | Redirect To                        |
+|-----------------|------------------------|------------------------------------|
+| `edit`          | Reads stale disk files | `write_file` (live buffers + undo) |
+| `create`        | Bypasses VFS indexing  | `create_file` (VFS-integrated)     |
+| `read`          | Reads stale disk files | `read_file` (live buffers)         |
+| `execute`       | No output capture      | `run_command` (paginated output)   |
+| `runInTerminal` | No integration         | `run_in_terminal` (IDE terminal)   |
 
 **Why?** GitHub Copilot CLI has a known bug (#556) where tool filtering doesn't work in ACP mode.
 The plugin works around this by denying permissions at runtime and sending corrective guidance to

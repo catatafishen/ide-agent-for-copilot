@@ -43,9 +43,9 @@ Since we can't filter tools at the CLI level, we enforce it at runtime via **per
 
 ```java
 private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
-        "edit",          // CLI built-in view tool - deny to force intellij_write_file
-        "create",        // CLI built-in create tool - deny to force intellij_write_file
-        "read",          // CLI built-in view tool - deny to force intellij_read_file
+        "edit",          // CLI built-in view tool - deny to force write_file
+        "create",        // CLI built-in create tool - deny to force write_file
+        "read",          // CLI built-in view tool - deny to force read_file
         "execute",       // Generic execute - doesn't exist, agent invents it
         "runInTerminal"  // Generic name - actual tool is run_in_terminal
 );
@@ -62,7 +62,7 @@ private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
 1. Agent tries CLI built-in tool (e.g., `view`)
 2. Plugin denies permission request
 3. Agent receives simple guidance: "Use agentbridge- prefix"
-4. Agent retries with correct tool (e.g., `agentbridge-intellij_read_file`)
+4. Agent retries with correct tool (e.g., `agentbridge-read_file`)
 
 ### Benefits of IntelliJ Tools
 

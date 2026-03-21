@@ -44,19 +44,17 @@ graph TB
         Custom["Custom agents"]
     end
 
-    PSI -->|"HTTP/JSON-RPC"| CS
-    CS -->|"ACP Protocol"| CLI
-    Agent -->|"stdio (JSON-RPC 2.0)"| Entry
+    PSI -->|" HTTP/JSON-RPC "| CS
+    CS -->|" ACP Protocol "| CLI
+    Agent -->|" stdio (JSON-RPC 2.0) "| Entry
     Entry --> Proto --> Exec
-    Exec -->|"HTTP POST /tool-name"| PSI
-
+    Exec -->|" HTTP POST /tool-name "| PSI
     Http --> Handler
     Handler --> StreamableT
     Handler --> SseT
-    StreamableT -->|"tool calls"| PSI
-    SseT -->|"tool calls"| PSI
-
-    Clients -->|"HTTP"| Http
+    StreamableT -->|" tool calls "| PSI
+    SseT -->|" tool calls "| PSI
+    Clients -->|" HTTP "| Http
 ```
 
 ---
@@ -193,15 +191,15 @@ custom MCP clients) that cannot use the stdio-based subprocess model.
 
 **Key classes:**
 
-| Class                          | Role                                                             |
-|--------------------------------|------------------------------------------------------------------|
-| `McpHttpServer`                | Starts `com.sun.net.httpserver.HttpServer`, registers endpoints  |
-| `McpProtocolHandler`           | Stateless JSON-RPC handler (shared by all transports)            |
-| `McpSseTransport`              | SSE session management, `/sse` and `/message` endpoints          |
-| `SseSession`                   | Single SSE client connection (event stream, keep-alive)          |
-| `McpServerSettings`            | Persistent settings: port, auto-start, transport mode            |
-| `McpServerGeneralConfigurable` | Settings UI (port, transport mode, auto-start, follow agent)     |
-| `McpServerToggleAction`        | Toolbar toggle to start/stop the server                          |
+| Class                          | Role                                                            |
+|--------------------------------|-----------------------------------------------------------------|
+| `McpHttpServer`                | Starts `com.sun.net.httpserver.HttpServer`, registers endpoints |
+| `McpProtocolHandler`           | Stateless JSON-RPC handler (shared by all transports)           |
+| `McpSseTransport`              | SSE session management, `/sse` and `/message` endpoints         |
+| `SseSession`                   | Single SSE client connection (event stream, keep-alive)         |
+| `McpServerSettings`            | Persistent settings: port, auto-start, transport mode           |
+| `McpServerGeneralConfigurable` | Settings UI (port, transport mode, auto-start, follow agent)    |
+| `McpServerToggleAction`        | Toolbar toggle to start/stop the server                         |
 
 #### Transport Modes
 
@@ -211,12 +209,13 @@ Configured in **Settings → Tools → IDE Agent for Copilot → MCP Server → 
 
 Single request/response model — the simplest transport for MCP.
 
-| Endpoint      | Method  | Description                            |
-|---------------|---------|----------------------------------------|
-| `/mcp`        | POST    | JSON-RPC request → JSON-RPC response   |
-| `/health`     | GET     | Server status check                    |
+| Endpoint  | Method | Description                          |
+|-----------|--------|--------------------------------------|
+| `/mcp`    | POST   | JSON-RPC request → JSON-RPC response |
+| `/health` | GET    | Server status check                  |
 
 Client config:
+
 ```json
 {
   "mcpServers": {
@@ -231,11 +230,11 @@ Client config:
 
 Long-lived event stream — required by some MCP clients (e.g., older Claude Desktop versions).
 
-| Endpoint              | Method | Description                                    |
-|-----------------------|--------|------------------------------------------------|
-| `/sse`                | GET    | Opens SSE stream; sends `endpoint` event       |
-| `/message?sessionId=` | POST   | Receives JSON-RPC; response via SSE stream     |
-| `/health`             | GET    | Server status check                            |
+| Endpoint              | Method | Description                                |
+|-----------------------|--------|--------------------------------------------|
+| `/sse`                | GET    | Opens SSE stream; sends `endpoint` event   |
+| `/message?sessionId=` | POST   | Receives JSON-RPC; response via SSE stream |
+| `/health`             | GET    | Server status check                        |
 
 **SSE protocol flow:**
 
@@ -246,6 +245,7 @@ Long-lived event stream — required by some MCP clients (e.g., older Claude Des
 4. A keep-alive comment (`: keepalive`) is sent every 30 seconds to prevent timeouts
 
 Client config:
+
 ```json
 {
   "mcpServers": {
@@ -297,8 +297,8 @@ The MCP server exposes **60 tools** organized into 11 categories:
 
 ### 5. Code Editing (4 tools)
 
-- `intellij_read_file` - Read file via IntelliJ buffer (supports unsaved changes)
-- `intellij_write_file` - Write file via Document API (undo support, VCS tracking)
+- `read_file` - Read file via IntelliJ buffer (supports unsaved changes)
+- `write_file` - Write file via Document API (undo support, VCS tracking)
 - `optimize_imports` - Organize imports per code style
 - `format_code` - Format code per code style
 
@@ -342,13 +342,12 @@ sequenceDiagram
     participant MCP as MCP Server
     participant PSI as PSI Bridge HTTP
     participant IJ as IntelliJ API
-
-    Agent->>MCP: 1. tools/call {search_symbols}
-    MCP->>PSI: 2. HTTP POST /search_symbols<br/>{query: "MyClass"}
-    PSI->>IJ: 3. PsiJavaFacade.findClass()
-    IJ-->>PSI: 4. Results
-    PSI-->>MCP: 5. HTTP Response {results: [...]}
-    MCP-->>Agent: 6. JSON-RPC result {content: [...]}
+    Agent ->> MCP: 1. tools/call {search_symbols}
+    MCP ->> PSI: 2. HTTP POST /search_symbols<br/>{query: "MyClass"}
+    PSI ->> IJ: 3. PsiJavaFacade.findClass()
+    IJ -->> PSI: 4. Results
+    PSI -->> MCP: 5. HTTP Response {results: [...]}
+    MCP -->> Agent: 6. JSON-RPC result {content: [...]}
 ```
 
 ### Streamable HTTP Transport
@@ -359,13 +358,12 @@ sequenceDiagram
     participant Http as McpHttpServer
     participant Handler as McpProtocolHandler
     participant PSI as PSI Bridge
-
-    Client->>Http: POST /mcp (JSON-RPC request)
-    Http->>Handler: handleMessage(body)
-    Handler->>PSI: callTool(name, args)
-    PSI-->>Handler: result text
-    Handler-->>Http: JSON-RPC response
-    Http-->>Client: 200 OK (JSON body)
+    Client ->> Http: POST /mcp (JSON-RPC request)
+    Http ->> Handler: handleMessage(body)
+    Handler ->> PSI: callTool(name, args)
+    PSI -->> Handler: result text
+    Handler -->> Http: JSON-RPC response
+    Http -->> Client: 200 OK (JSON body)
 ```
 
 ### SSE Transport
@@ -376,21 +374,20 @@ sequenceDiagram
     participant SSE as McpSseTransport
     participant Handler as McpProtocolHandler
     participant PSI as PSI Bridge
-
-    Client->>SSE: GET /sse
-    SSE-->>Client: event: endpoint<br/>data: /message?sessionId=abc
+    Client ->> SSE: GET /sse
+    SSE -->> Client: event: endpoint<br/>data: /message?sessionId=abc
 
     loop Keep-alive (every 30s)
-        SSE-->>Client: : keepalive
+        SSE -->> Client: : keepalive
     end
 
-    Client->>SSE: POST /message?sessionId=abc<br/>(JSON-RPC request)
-    SSE-->>Client: 202 Accepted
-    SSE->>Handler: handleMessage(body)
-    Handler->>PSI: callTool(name, args)
-    PSI-->>Handler: result text
-    Handler-->>SSE: JSON-RPC response
-    SSE-->>Client: event: message<br/>data: {JSON-RPC response}
+    Client ->> SSE: POST /message?sessionId=abc<br/>(JSON-RPC request)
+    SSE -->> Client: 202 Accepted
+    SSE ->> Handler: handleMessage(body)
+    Handler ->> PSI: callTool(name, args)
+    PSI -->> Handler: result text
+    Handler -->> SSE: JSON-RPC response
+    SSE -->> Client: event: message<br/>data: {JSON-RPC response}
 ```
 
 ### Execution Steps
@@ -500,11 +497,11 @@ The MCP server includes usage instructions in the `initialize` response:
 
 ```
 IMPORTANT TOOL USAGE RULES:
-1. ALWAYS use 'intellij_write_file' for ALL file writes and edits.
+1. ALWAYS use 'write_file' for ALL file writes and edits.
    This writes through IntelliJ's Document API, supporting undo (Ctrl+Z),
    VCS tracking, and editor sync.
 
-2. ALWAYS use 'intellij_read_file' for ALL file reads.
+2. ALWAYS use 'read_file' for ALL file reads.
    This reads IntelliJ's live editor buffer, which may have unsaved changes.
 
 3. After making ANY code changes, ALWAYS run 'optimize_imports' and
