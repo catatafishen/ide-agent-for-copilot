@@ -203,7 +203,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 ToolChipRegistry.ChipState.FAILED -> "failed"
                 else -> return@addKindStateListener
             }
-            updateToolCall(chipId, jsState, kind)
+            // Use named parameter to avoid mapping kind to details
+            updateToolCall(chipId, jsState, details = null, description = null, kind = kind)
             if (state != ToolChipRegistry.ChipState.RUNNING) {
                 toolJustCompleted = true
             }
