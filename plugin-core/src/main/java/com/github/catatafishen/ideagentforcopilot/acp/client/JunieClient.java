@@ -51,7 +51,9 @@ public final class JunieClient extends AcpClient {
     protected void customizeNewSession(String cwd, int mcpPort, JsonObject params) {
         // Junie injects MCP via session/new mcpServers array using stdio (command + args)
         JsonObject server = buildMcpStdioServer("agentbridge", mcpPort);
-        if (server == null) return;
+        if (server == null) {
+            throw new IllegalStateException("Cannot configure Junie MCP server — Java binary or mcp-server.jar not found");
+        }
         JsonArray servers = new JsonArray();
         servers.add(server);
         params.add("mcpServers", servers);
