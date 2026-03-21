@@ -6,6 +6,8 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpException;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.ResourceReference;
+import com.github.catatafishen.ideagentforcopilot.services.ToolExecutionCorrelator;
+import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,9 +27,16 @@ import java.util.function.Consumer;
 public class AgentClientAdapter implements AgentClient {
 
     private final AgentConnector connector;
+    @Nullable
+    private final Project project;
 
     public AgentClientAdapter(AgentConnector connector) {
+        this(connector, null);
+    }
+
+    public AgentClientAdapter(AgentConnector connector, @Nullable Project project) {
         this.connector = Objects.requireNonNull(connector);
+        this.project = project;
     }
 
     @Override
@@ -258,7 +267,7 @@ public class AgentClientAdapter implements AgentClient {
     }
 
     @Nullable
-    private static com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate convertUpdate(
+    private com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate convertUpdate(
         com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate update) {
         return switch (update) {
             case com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate.ToolCall tc -> convertToolCall(tc);
@@ -278,7 +287,7 @@ public class AgentClientAdapter implements AgentClient {
         };
     }
 
-    private static com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolCall convertToolCall(
+    private com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolCall convertToolCall(
         com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate.ToolCall tc) {
         List<String> filePaths = List.of();
         if (tc.locations() != null) {
@@ -292,6 +301,12 @@ public class AgentClientAdapter implements AgentClient {
             tc.kind() != null
                 ? com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolKind.fromString(tc.kind().name().toLowerCase())
                 : com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolKind.OTHER;
+
+        // Register ACP tool call in correlator for primary ID-based correlation
+        if (project != null) {
+            ToolExecutionCorrelator.getInstance(project)
+                .registerAcpToolCall(tc.toolCallId(), tc.title());
+        }
 
         return new com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolCall(
             tc.toolCallId(), tc.title(), kind, tc.arguments(),

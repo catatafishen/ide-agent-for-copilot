@@ -206,13 +206,13 @@ const ChatController = {
         this._collapseThinkingFor(ctx);
     },
 
-    addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string, isExternal?: boolean): void {
+    addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string, isExternal?: boolean, initialStatus?: string): void {
         this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
         const chip = document.createElement('tool-chip');
         chip.setAttribute('label', title);
-        chip.setAttribute('status', 'running');
+        chip.setAttribute('status', initialStatus || 'running');
         if (kind) chip.setAttribute('kind', kind);
         if (isExternal) chip.setAttribute('external', 'true');
         chip.dataset.chipFor = id;
@@ -222,10 +222,33 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
+    markMcpHandled(id: string): void {
+        const chip = document.querySelector('[data-chip-for="' + id + '"]');
+        if (chip && chip.getAttribute('status') === 'pending') {
+            chip.setAttribute('status', 'running');
+        }
+    },
+
     updateToolCall(id: string, status: string, resultHtml?: string): void {
         this._resetWorkingTimer();
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
-        if (chip) chip.setAttribute('status', status === 'failed' ? 'failed' : 'complete');
+        if (!chip) return;
+        if (status === 'failed') {
+            chip.setAttribute('status', 'failed');
+        } else if (status === 'unverified') {
+            chip.setAttribute('status', 'unverified');
+        } else {
+            chip.setAttribute('status', 'complete');
+        }
+    },
+
+    addOrphanMcpCall(turnId: string, agentId: string, toolName: string): void {
+        const ctx = this._ensureMsg(turnId, agentId);
+        const chip = document.createElement('tool-chip');
+        chip.setAttribute('label', toolName);
+        chip.setAttribute('status', 'orphan');
+        ctx.meta!.appendChild(chip);
+        ctx.meta!.classList.add('show');
     },
 
     addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptText?: string): void {

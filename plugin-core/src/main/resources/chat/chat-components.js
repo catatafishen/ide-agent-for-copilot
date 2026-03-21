@@ -635,16 +635,20 @@ var __chatUI = (() => {
       const paramsStr = this.dataset.params || void 0;
       const display = toolDisplayName(rawLabel, paramsStr);
       const truncated = display.length > 50 ? display.substring(0, 47) + "\u2026" : display;
-      this.className = this.className.replaceAll(/\bkind-\S+/g, "").trim();
-      this.classList.add("turn-chip", "tool", `kind-${kind}`);
+      this.className = this.className.replaceAll(/\bkind-\S+/g, "").replaceAll(/\bstatus-\S+/g, "").trim();
+      this.classList.add("turn-chip", "tool", `kind-${kind}`, `status-${status}`);
       if (isExternal) this.classList.add("external-tool");
       let iconHtml = "";
       if (status === "running") iconHtml = '<span class="chip-spinner"></span> ';
+      if (status === "pending") iconHtml = '<span class="chip-spinner"></span> ';
+      let statusBadge = "";
+      if (status === "unverified") statusBadge = '<span class="unverified-badge" title="Tool call was requested but not handled by our MCP">\u26A0</span> ';
+      if (status === "orphan") statusBadge = '<span class="orphan-badge" title="Tool called by another connected client">?</span> ';
       this.classList.toggle("failed", status === "failed");
       const baseToolName = rawLabel.split(" \u2014 ")[0].trim();
       const showWarning = isExternal && !SAFE_EXTERNAL_TOOLS.has(baseToolName);
       const externalBadge = showWarning ? '<span class="external-badge" title="Built-in agent tool (not from MCP plugin)">\u26A0</span> ' : "";
-      this.innerHTML = iconHtml + externalBadge + escHtml(truncated);
+      this.innerHTML = iconHtml + statusBadge + externalBadge + escHtml(truncated);
       if (display.length > 50) this.dataset.tip = display;
       else if (rawLabel !== display) this.dataset.tip = rawLabel;
       if (this.dataset.tip) this.setAttribute("title", this.dataset.tip);
@@ -1103,13 +1107,13 @@ var __chatUI = (() => {
       const ctx = this._getCtx(turnId, agentId);
       this._collapseThinkingFor(ctx);
     },
-    addToolCall(turnId, agentId, id, title, paramsJson, kind, isExternal) {
+    addToolCall(turnId, agentId, id, title, paramsJson, kind, isExternal, initialStatus) {
       this._resetWorkingTimer();
       const ctx = this._ensureMsg(turnId, agentId);
       this._collapseThinkingFor(ctx);
       const chip = document.createElement("tool-chip");
       chip.setAttribute("label", title);
-      chip.setAttribute("status", "running");
+      chip.setAttribute("status", initialStatus || "running");
       if (kind) chip.setAttribute("kind", kind);
       if (isExternal) chip.setAttribute("external", "true");
       chip.dataset.chipFor = id;
@@ -1118,10 +1122,31 @@ var __chatUI = (() => {
       ctx.meta.classList.add("show");
       this._container()?.scrollIfNeeded();
     },
+    markMcpHandled(id) {
+      const chip = document.querySelector('[data-chip-for="' + id + '"]');
+      if (chip && chip.getAttribute("status") === "pending") {
+        chip.setAttribute("status", "running");
+      }
+    },
     updateToolCall(id, status, resultHtml) {
       this._resetWorkingTimer();
       const chip = document.querySelector('[data-chip-for="' + id + '"]');
-      if (chip) chip.setAttribute("status", status === "failed" ? "failed" : "complete");
+      if (!chip) return;
+      if (status === "failed") {
+        chip.setAttribute("status", "failed");
+      } else if (status === "unverified") {
+        chip.setAttribute("status", "unverified");
+      } else {
+        chip.setAttribute("status", "complete");
+      }
+    },
+    addOrphanMcpCall(turnId, agentId, toolName) {
+      const ctx = this._ensureMsg(turnId, agentId);
+      const chip = document.createElement("tool-chip");
+      chip.setAttribute("label", toolName);
+      chip.setAttribute("status", "orphan");
+      ctx.meta.appendChild(chip);
+      ctx.meta.classList.add("show");
     },
     addSubAgent(turnId, agentId, sectionId, displayName, colorIndex, promptText) {
       this._resetWorkingTimer();

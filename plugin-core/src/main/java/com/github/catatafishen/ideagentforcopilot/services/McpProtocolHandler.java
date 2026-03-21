@@ -141,12 +141,27 @@ public final class McpProtocolHandler {
         JsonObject arguments = params.has("arguments")
             ? params.getAsJsonObject("arguments") : new JsonObject();
 
-        LOG.info("MCP tool call: " + toolName);
+        // Extract progressToken from _meta — may equal the ACP toolCallId for direct correlation
+        String progressToken = null;
+        if (params.has("_meta") && params.get("_meta").isJsonObject()) {
+            JsonObject meta = params.getAsJsonObject("_meta");
+            if (meta.has("progressToken")) {
+                progressToken = meta.get("progressToken").getAsString();
+            }
+        }
+
+        if (settings.isDebugLoggingEnabled()) {
+            LOG.info("MCP >>> tools/call: " + toolName +
+                (progressToken != null ? " [progressToken=" + progressToken + "]" : ""));
+        } else {
+            LOG.info("MCP tool call: " + toolName);
+        }
 
         // Delegate to PsiBridgeService
+        final String finalProgressToken = progressToken;
         try {
             PsiBridgeService bridge = PsiBridgeService.getInstance(project);
-            String resultText = bridge.callTool(toolName, arguments);
+            String resultText = bridge.callTool(toolName, arguments, finalProgressToken);
 
             JsonObject content = new JsonObject();
             content.addProperty("type", "text");

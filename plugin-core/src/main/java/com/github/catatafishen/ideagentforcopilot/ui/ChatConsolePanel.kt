@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolExecutionCorrelator
 import com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ArgumentAwareRenderer
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers
@@ -291,7 +292,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val paramsJson = if (!arguments.isNullOrBlank() && !hasCustomRenderer) escJs(arguments) else ""
         val safeKind = escJs(resolvedKind)
         val isExternal = def == null  // Not from our MCP plugin
-        executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind',$isExternal)")
+        val correlator = ToolExecutionCorrelator.getInstance(project)
+        val isAcpCall = correlator.isAcpRegistered(id)
+        val initialStatus = if (isAcpCall) "pending" else "running"
+        executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind',$isExternal,'$initialStatus')")
+
+        // When MCP handles this ACP-registered tool call, transition chip to "running"
+        if (isAcpCall) {
+            correlator.registerMcpHandledCallback(id) {
+                ApplicationManager.getApplication().invokeLater {
+                    executeJs("ChatController.markMcpHandled('$did')")
+                }
+            }
+        }
     }
 
     override fun updateToolCall(id: String, status: String, details: String?, description: String?) {
@@ -304,9 +317,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             it.status = status
             if (description != null) it.description = description
         }
-        val jsStatus = when (status) {
-            "failed" -> "failed"
-            "running" -> "running"
+        val correlator = ToolExecutionCorrelator.getInstance(project)
+        val jsStatus = when {
+            status == "failed" -> "failed"
+            status == "running" -> "running"
+            // ACP-registered but MCP never handled it and no inline result → unverified
+            correlator.isAcpRegistered(id) && !correlator.wasHandledByMcp(id) && details == null -> "unverified"
             else -> "completed"
         }
         executeJs("ChatController.updateToolCall('$did','$jsStatus','$jsStatus')")
@@ -452,6 +468,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         finalizeCurrentText()
         collapseThinking()
         val statsJson = """{"tools":$toolCallCount,"model":"${escJs(modelId)}","mult":"${escJs(multiplier)}"}"""
+
+        // Show orphan chips for MCP tool calls that our ACP agent didn't request
+        val correlator = ToolExecutionCorrelator.getInstance(project)
+        val orphans = correlator.drainOrphanMcpCalls()
+        for (orphanName in orphans) {
+            executeJs("ChatController.addOrphanMcpCall('$currentTurnId','main','${escJs(orphanName)}')")
+        }
+
         executeJs("ChatController.finalizeTurn('$currentTurnId',$statsJson)")
         ApplicationManager.getApplication().invokeLater { browser?.component?.repaint() }
     }

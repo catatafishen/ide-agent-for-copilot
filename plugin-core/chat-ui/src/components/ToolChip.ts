@@ -55,20 +55,24 @@ export default class ToolChip extends HTMLElement {
         const paramsStr = this.dataset.params || undefined;
         const display = toolDisplayName(rawLabel, paramsStr);
         const truncated = display.length > 50 ? display.substring(0, 47) + '\u2026' : display;
-        // Remove any previous kind class and apply current one
-        this.className = this.className.replaceAll(/\bkind-\S+/g, '').trim();
-        this.classList.add('turn-chip', 'tool', `kind-${kind}`);
+        // Remove any previous kind/status class and apply current one
+        this.className = this.className.replaceAll(/\bkind-\S+/g, '').replaceAll(/\bstatus-\S+/g, '').trim();
+        this.classList.add('turn-chip', 'tool', `kind-${kind}`, `status-${status}`);
         if (isExternal) this.classList.add('external-tool');
         let iconHtml = '';
         if (status === 'running') iconHtml = '<span class="chip-spinner"></span> ';
+        if (status === 'pending') iconHtml = '<span class="chip-spinner"></span> ';
+        // Status-based badge
+        let statusBadge = '';
+        if (status === 'unverified') statusBadge = '<span class="unverified-badge" title="Tool call was requested but not handled by our MCP">⚠</span> ';
+        if (status === 'orphan') statusBadge = '<span class="orphan-badge" title="Tool called by another connected client">?</span> ';
         // Always update failed class based on current status
         this.classList.toggle('failed', status === 'failed');
         // Add external badge for non-MCP tools, unless it's a known safe tool
-        // Extract base tool name (before any " — " subtitle)
         const baseToolName = rawLabel.split(' — ')[0].trim();
         const showWarning = isExternal && !SAFE_EXTERNAL_TOOLS.has(baseToolName);
         const externalBadge = showWarning ? '<span class="external-badge" title="Built-in agent tool (not from MCP plugin)">⚠</span> ' : '';
-        this.innerHTML = iconHtml + externalBadge + escHtml(truncated);
+        this.innerHTML = iconHtml + statusBadge + externalBadge + escHtml(truncated);
         if (display.length > 50) this.dataset.tip = display;
         else if (rawLabel !== display) this.dataset.tip = rawLabel;
         if (this.dataset.tip) this.setAttribute('title', this.dataset.tip);

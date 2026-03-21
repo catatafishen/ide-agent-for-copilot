@@ -312,7 +312,7 @@ public final class ActiveAgentManager implements Disposable {
         AgentConnector connector = AgentRegistry.create(profileId, project);
         if (connector != null) {
             LOG.info("Using AgentBridge2 client for profile: " + profileId);
-            return new AgentClientAdapter(connector);
+            return new AgentClientAdapter(connector, project);
         }
 
         LOG.info("Falling back to legacy AcpClient for profile: " + profileId);

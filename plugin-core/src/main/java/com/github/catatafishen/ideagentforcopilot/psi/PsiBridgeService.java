@@ -152,6 +152,10 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public String callTool(String toolName, JsonObject arguments) {
+        return callTool(toolName, arguments, null);
+    }
+
+    public String callTool(String toolName, JsonObject arguments, @Nullable String progressToken) {
         LOG.info("PSI Bridge: calling " + toolName + " with args: " + arguments);
         ToolDefinition def = registry.findDefinition(toolName);
         if (def == null || !def.hasExecutionHandler()) {
@@ -206,7 +210,7 @@ public final class PsiBridgeService implements Disposable {
             // This replaces the direct def.execute() call and handles:
             // 1. Per-tool synchronization for file/git/editing tools
             // 2. Recording execution (tool name, args, result) for later matching with agent updates
-            String result = correlator.executeAndRecord(toolName, arguments, def, requiresSync);
+            String result = correlator.executeAndRecord(toolName, arguments, def, requiresSync, progressToken);
 
             // Piggyback highlights after successful write operations
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {
