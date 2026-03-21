@@ -1,7 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolChipRegistry;
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
-import com.github.catatafishen.ideagentforcopilot.services.ToolExecutionCorrelator;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonElement;
@@ -18,7 +18,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Executes MCP tool calls inside IntelliJ, providing PSI/AST-backed code intelligence.
@@ -63,6 +66,9 @@ public final class PsiBridgeService implements Disposable {
      * A single-permit semaphore ensures only one such operation runs at a time.
      */
     private final java.util.concurrent.Semaphore writeToolSemaphore = new java.util.concurrent.Semaphore(1);
+
+    private static final Set<String> SYNC_TOOL_CATEGORIES = Set.of("FILE", "EDITING", "REFACTOR", "GIT");
+    private final Map<String, ReentrantLock> toolLocks = new ConcurrentHashMap<>();
 
     private final Project project;
     private final ToolRegistry registry;
@@ -170,9 +176,7 @@ public final class PsiBridgeService implements Disposable {
         boolean chatWasActive = isChatToolWindowActive();
 
         // Determine if this tool requires synchronous execution (file/git/editing tools).
-        // ToolExecutionCorrelator handles per-tool locking and result recording for correlation.
-        ToolExecutionCorrelator correlator = ToolExecutionCorrelator.getInstance(project);
-        boolean requiresSync = correlator.requiresSync(def);
+        boolean requiresSync = def.category() != null && SYNC_TOOL_CATEGORIES.contains(def.category().name());
 
         // For backward compatibility: still use global write semaphore for slow operations
         // that aren't in the sync categories. This prevents EDT flooding from concurrent
@@ -206,11 +210,19 @@ public final class PsiBridgeService implements Disposable {
                 return denied;
             }
 
-            // Execute tool with optional synchronization and record result for correlation.
-            // This replaces the direct def.execute() call and handles:
-            // 1. Per-tool synchronization for file/git/editing tools
-            // 2. Recording execution (tool name, args, result) for later matching with agent updates
-            String result = correlator.executeAndRecord(toolName, arguments, def, requiresSync, progressToken);
+            // Acquire per-tool sync lock if needed, register with chip registry, then execute.
+            ReentrantLock syncLock = requiresSync
+                ? toolLocks.computeIfAbsent(toolName, k -> new ReentrantLock())
+                : null;
+            if (syncLock != null) syncLock.lock();
+            String result;
+            try {
+                // Register with chip registry BEFORE executing so the chip can transition to "running"
+                ToolChipRegistry.getInstance(project).registerMcp(toolName, arguments);
+                result = def.execute(arguments);
+            } finally {
+                if (syncLock != null) syncLock.unlock();
+            }
 
             // Piggyback highlights after successful write operations
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {

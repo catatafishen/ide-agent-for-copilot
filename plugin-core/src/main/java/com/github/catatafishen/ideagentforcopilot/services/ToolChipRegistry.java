@@ -1,0 +1,263 @@
+package com.github.catatafishen.ideagentforcopilot.services;
+
+import com.google.gson.JsonObject;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.components.Service;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.function.BiConsumer;
+
+/**
+ * Correlates tool chips across the ACP (or Claude streaming) and MCP channels.
+ *
+ * <h2>Correlation key</h2>
+ * Both sides compute {@code hex8(args.hashCode())} over sorted key→value pairs of the tool
+ * arguments. This gives a stable shared ID with no agent cooperation required.
+ *
+ * <h2>Chip lifecycle</h2>
+ * <ol>
+ *   <li>Client-side ({@link #registerClientSide}) arrives: chip created at {@link ChipState#PENDING}.</li>
+ *   <li>MCP-side ({@link #registerMcp}) arrives: state listener fires {@link ChipState#RUNNING}.</li>
+ *   <li>Client-side completion ({@link #completeClientSide}): fires {@link ChipState#COMPLETE},
+ *       {@link ChipState#EXTERNAL} (MCP never came), or {@link ChipState#FAILED}.</li>
+ * </ol>
+ *
+ * <h2>MCP-first case</h2>
+ * If MCP arrives before ACP, the registry stores the entry internally. When client-side
+ * arrives, {@link #registerClientSide} returns {@link ChipState#RUNNING} immediately, and
+ * {@link #addToolCallEntry} creates the chip at "running" without needing a transition.
+ *
+ * <h2>Turn scope</h2>
+ * All entries are turn-scoped. Call {@link #clearTurn()} when a new agent response starts.
+ * Duplicate args within a turn use newest-wins: MCP matches the most recently registered
+ * unmatched client-side chip with that hash.
+ */
+@Service(Service.Level.PROJECT)
+public final class ToolChipRegistry {
+    private static final Logger LOG = Logger.getInstance(ToolChipRegistry.class);
+
+    public enum ChipState { PENDING, RUNNING, COMPLETE, EXTERNAL, FAILED }
+
+    public record ChipRegistration(@NotNull String chipId, @NotNull ChipState initialState) {}
+
+    record ChipEntry(
+        @NotNull String chipId,
+        @NotNull String displayName,
+        @Nullable String clientId,
+        boolean mcpHandled,
+        long createdAt
+    ) {
+        ChipEntry withMcp() {
+            return new ChipEntry(chipId, displayName, clientId, true, createdAt);
+        }
+        ChipEntry withClientId(@NotNull String id, @NotNull String name) {
+            return new ChipEntry(chipId, name, id, mcpHandled, createdAt);
+        }
+    }
+
+    // Insertion-ordered map of chipId → entry (newest entry with a given hash is last)
+    private final LinkedHashMap<String, ChipEntry> chips = new LinkedHashMap<>();
+    // clientId → chipId for completion routing
+    private final Map<String, String> clientToChip = new LinkedHashMap<>();
+    // base hash → count, for collision disambiguation
+    private final Map<String, Integer> hashCounts = new LinkedHashMap<>();
+
+    private final List<BiConsumer<String, ChipState>> listeners = new ArrayList<>();
+
+    public static ToolChipRegistry getInstance(@NotNull Project project) {
+        return project.getService(ToolChipRegistry.class);
+    }
+
+    // ── Client-side registration (ACP or Claude) ─────────────────────────────
+
+    /**
+     * Called when ACP or Claude reports a tool_call/tool_use event.
+     * Returns a {@link ChipRegistration} with the chipId and the initial state to display.
+     * The caller (ChatConsolePanel.addToolCallEntry) creates the DOM chip using this info.
+     */
+    public synchronized @NotNull ChipRegistration registerClientSide(
+        @NotNull String displayTitle,
+        @Nullable JsonObject args,
+        @NotNull String clientId
+    ) {
+        // If no args, use the clientId as chipId (can't correlate with MCP, always PENDING)
+        if (args == null || args.isEmpty()) {
+            String chipId = "c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-");
+            ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
+            chips.put(chipId, entry);
+            clientToChip.put(clientId, chipId);
+            LOG.debug("ToolChipRegistry: no-args chip " + chipId + " (" + displayTitle + ")");
+            return new ChipRegistration(chipId, ChipState.PENDING);
+        }
+
+        String baseHash = computeBaseHash(args);
+
+        // Look for a MCP-first chip (mcpHandled=true, clientId=null) with this hash
+        ChipEntry mcpFirst = findMcpFirstChip(baseHash);
+        if (mcpFirst != null) {
+            ChipEntry updated = mcpFirst.withClientId(clientId, displayTitle);
+            chips.put(mcpFirst.chipId(), updated);
+            clientToChip.put(clientId, mcpFirst.chipId());
+            LOG.debug("ToolChipRegistry: client claimed MCP-first chip " + mcpFirst.chipId() + " (" + displayTitle + ")");
+            return new ChipRegistration(mcpFirst.chipId(), ChipState.RUNNING);
+        }
+
+        // New chip — assign chipId with collision counter
+        int count = hashCounts.merge(baseHash, 1, Integer::sum);
+        String chipId = count == 1 ? baseHash : baseHash + "-" + count;
+        ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
+        chips.put(chipId, entry);
+        clientToChip.put(clientId, chipId);
+        LOG.debug("ToolChipRegistry: client-first chip " + chipId + " (" + displayTitle + ")");
+        return new ChipRegistration(chipId, ChipState.PENDING);
+    }
+
+    // ── MCP-side registration ─────────────────────────────────────────────────
+
+    /**
+     * Called by PsiBridgeService immediately before executing a tool.
+     * Finds the newest unmatched client-side chip with this args hash and transitions it to RUNNING.
+     * If no client-side chip exists yet (MCP arrived first), stores a pending entry.
+     */
+    public synchronized void registerMcp(@NotNull String toolName, @NotNull JsonObject args) {
+        String baseHash = computeBaseHash(args);
+
+        // Find the newest unmatched client-side chip (newest = last in insertion order)
+        ChipEntry target = findNewestUnmatchedClientChip(baseHash);
+        if (target != null) {
+            chips.put(target.chipId(), target.withMcp());
+            LOG.debug("ToolChipRegistry: MCP matched " + target.chipId() + " (" + toolName + ")");
+            fireState(target.chipId(), ChipState.RUNNING);
+            return;
+        }
+
+        // MCP arrived first — store for when client-side arrives
+        ChipEntry entry = new ChipEntry(baseHash, toolName, null, true, System.currentTimeMillis());
+        chips.put(baseHash, entry);
+        // Don't fire a state event — no DOM chip exists yet
+        LOG.debug("ToolChipRegistry: MCP-first " + baseHash + " (" + toolName + ")");
+    }
+
+    // ── Completion ────────────────────────────────────────────────────────────
+
+    /**
+     * Called when ACP or Claude reports tool completion.
+     * Fires COMPLETE, EXTERNAL (MCP never handled it), or FAILED.
+     */
+    public synchronized void completeClientSide(@NotNull String clientId, boolean success) {
+        String chipId = clientToChip.get(clientId);
+        if (chipId == null) {
+            LOG.debug("ToolChipRegistry: no chip for clientId=" + clientId);
+            return;
+        }
+        ChipEntry entry = chips.get(chipId);
+        ChipState state;
+        if (!success) {
+            state = ChipState.FAILED;
+        } else if (entry != null && entry.mcpHandled()) {
+            state = ChipState.COMPLETE;
+        } else {
+            state = ChipState.EXTERNAL;
+        }
+        LOG.debug("ToolChipRegistry: complete " + chipId + " → " + state);
+        fireState(chipId, state);
+    }
+
+    // ── Listeners ─────────────────────────────────────────────────────────────
+
+    /** Register a state-change listener. Fired on EDT for RUNNING, COMPLETE, EXTERNAL, FAILED. */
+    public synchronized void addStateListener(@NotNull BiConsumer<String, ChipState> listener) {
+        listeners.add(listener);
+    }
+
+    public synchronized void removeStateListener(@NotNull BiConsumer<String, ChipState> listener) {
+        listeners.remove(listener);
+    }
+
+    // ── Turn management ───────────────────────────────────────────────────────
+
+    /** Clear current-turn state. Call when a new agent response starts. */
+    public synchronized void clearTurn() {
+        int count = chips.size();
+        chips.clear();
+        clientToChip.clear();
+        hashCounts.clear();
+        if (count > 0) LOG.debug("ToolChipRegistry: cleared " + count + " chips");
+    }
+
+    /** Full reset (session end). */
+    public void clear() {
+        clearTurn();
+    }
+
+    // ── Lookup ────────────────────────────────────────────────────────────────
+
+    public synchronized @Nullable String findChipIdByClientId(@NotNull String clientId) {
+        return clientToChip.get(clientId);
+    }
+
+    // ── Internal ─────────────────────────────────────────────────────────────
+
+    /** Find a MCP-first chip (mcpHandled=true, clientId=null) with the given base hash. */
+    private @Nullable ChipEntry findMcpFirstChip(@NotNull String baseHash) {
+        for (var entry : chips.values()) {
+            if (entry.clientId() == null && entry.mcpHandled() && isMatchingHash(entry.chipId(), baseHash)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    /** Find the newest (last in insertion order) client-side chip not yet MCP-matched. */
+    private @Nullable ChipEntry findNewestUnmatchedClientChip(@NotNull String baseHash) {
+        ChipEntry result = null;
+        for (var entry : chips.values()) {
+            if (!entry.mcpHandled() && entry.clientId() != null && isMatchingHash(entry.chipId(), baseHash)) {
+                result = entry; // keep iterating — last match wins (newest)
+            }
+        }
+        return result;
+    }
+
+    private static boolean isMatchingHash(@NotNull String chipId, @NotNull String baseHash) {
+        return chipId.equals(baseHash) || chipId.startsWith(baseHash + "-");
+    }
+
+    private void fireState(@NotNull String chipId, @NotNull ChipState state) {
+        List<BiConsumer<String, ChipState>> snapshot;
+        synchronized (this) {
+            snapshot = new ArrayList<>(listeners);
+        }
+        if (snapshot.isEmpty()) return;
+        ApplicationManager.getApplication().invokeLater(() -> {
+            for (var listener : snapshot) {
+                try {
+                    listener.accept(chipId, state);
+                } catch (Exception e) {
+                    LOG.warn("ToolChipRegistry listener error", e);
+                }
+            }
+        });
+    }
+
+    static @NotNull String computeBaseHash(@NotNull JsonObject args) {
+        try {
+            TreeMap<String, String> sorted = new TreeMap<>();
+            for (String key : args.keySet()) {
+                sorted.put(key, args.get(key).toString());
+            }
+            return String.format("%08x", sorted.toString().hashCode());
+        } catch (Exception e) {
+            LOG.warn("ToolChipRegistry: hash error", e);
+            return "00000000";
+        }
+    }
+}

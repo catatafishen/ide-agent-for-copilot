@@ -16,7 +16,7 @@ import java.util.List;
  * Tool prefix: {@code Tool: agentbridge/read_file} → strip {@code Tool: agentbridge/}
  * MCP: injected via session/new mcpServers array
  * Model display: token count
- * Special: ToolExecutionCorrelator for matching MCP results with natural-language summaries
+ * Correlation: ToolChipRegistry handles chip correlation via args hash
  */
 public final class JunieClient extends AcpClient {
 
@@ -85,7 +85,7 @@ public final class JunieClient extends AcpClient {
 
     @Override
     protected SessionUpdate processUpdate(SessionUpdate update) {
-        // TODO: Wire up ToolExecutionCorrelator for Junie-specific result matching
+        // No extra processing needed — ToolChipRegistry handles correlation via args hash
         return update;
     }
 

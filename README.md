@@ -191,11 +191,6 @@ be removed and the entry marked as ✅.
 | Blocking viable?           | ✅ Deny + retry               | ❌ No permission    | ❓ Unknown | ✅ Config + permissions    |
 | Workaround                 | Permission denial            | Prompt engineering | N/A       | None needed               |
 
-¹ Agent-specific mechanisms — NOT part of ACP protocol  
-² Copilot CLI has `--excluded-tools` and `--available-tools` flags, but they're ignored in ACP
-mode ([bug #556](https://github.com/github/copilot-cli/issues/556))  
-³ `session/request_permission` is **optional per ACP spec** — agents may auto-execute tools without asking
-
 See [PERMISSIONS.md](docs/PERMISSIONS.md) for the full architecture.
 
 ## Documentation
@@ -233,5 +228,3 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 See [LICENSE](LICENSE) for the full text.
-
-Hello world

@@ -207,48 +207,47 @@ const ChatController = {
     },
 
     addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string, isExternal?: boolean, initialStatus?: string): void {
+        this.upsertToolChip(turnId, agentId, id, title, paramsJson, kind, initialStatus || 'pending');
+    },
+
+    upsertToolChip(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string, initialStatus?: string): void {
         this._resetWorkingTimer();
-        const ctx = this._ensureMsg(turnId, agentId);
-        this._collapseThinkingFor(ctx);
-        const chip = document.createElement('tool-chip');
+        let chip = document.querySelector('[data-chip-for="' + id + '"]') as HTMLElement | null;
+        if (!chip) {
+            const ctx = this._ensureMsg(turnId, agentId);
+            this._collapseThinkingFor(ctx);
+            chip = document.createElement('tool-chip');
+            chip.dataset.chipFor = id;
+            ctx.meta!.appendChild(chip);
+            ctx.meta!.classList.add('show');
+            this._container()?.scrollIfNeeded();
+        }
         chip.setAttribute('label', title);
-        chip.setAttribute('status', initialStatus || 'running');
+        chip.setAttribute('status', initialStatus || 'pending');
         if (kind) chip.setAttribute('kind', kind);
-        if (isExternal) chip.setAttribute('external', 'true');
-        chip.dataset.chipFor = id;
         if (paramsJson) chip.dataset.params = paramsJson;
-        ctx.meta!.appendChild(chip);
-        ctx.meta!.classList.add('show');
-        this._container()?.scrollIfNeeded();
     },
 
     markMcpHandled(id: string): void {
+        this.setToolChipState(id, 'running');
+    },
+
+    setToolChipState(id: string, state: string): void {
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
-        if (chip && chip.getAttribute('status') === 'pending') {
-            chip.setAttribute('status', 'running');
+        if (!chip) return;
+        chip.setAttribute('status', state);
+        if (state !== 'pending' && state !== 'running') {
+            this._resetWorkingTimer();
         }
     },
 
     updateToolCall(id: string, status: string, resultHtml?: string): void {
-        this._resetWorkingTimer();
-        const chip = document.querySelector('[data-chip-for="' + id + '"]');
-        if (!chip) return;
-        if (status === 'failed') {
-            chip.setAttribute('status', 'failed');
-        } else if (status === 'unverified') {
-            chip.setAttribute('status', 'unverified');
-        } else {
-            chip.setAttribute('status', 'complete');
-        }
+        const jsStatus = status === 'failed' ? 'failed' : status === 'unverified' ? 'external' : 'complete';
+        this.setToolChipState(id, jsStatus);
     },
 
-    addOrphanMcpCall(turnId: string, agentId: string, toolName: string): void {
-        const ctx = this._ensureMsg(turnId, agentId);
-        const chip = document.createElement('tool-chip');
-        chip.setAttribute('label', toolName);
-        chip.setAttribute('status', 'orphan');
-        ctx.meta!.appendChild(chip);
-        ctx.meta!.classList.add('show');
+    addOrphanMcpCall(_turnId: string, _agentId: string, _toolName: string): void {
+        // No-op: orphan handling removed; replaced by ToolChipRegistry correlation
     },
 
     addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptText?: string): void {

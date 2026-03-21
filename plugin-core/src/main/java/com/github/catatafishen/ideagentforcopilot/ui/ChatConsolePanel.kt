@@ -1,7 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
-import com.github.catatafishen.ideagentforcopilot.services.ToolExecutionCorrelator
+import com.github.catatafishen.ideagentforcopilot.services.ToolChipRegistry
 import com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings
+import com.google.gson.JsonParser
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ArgumentAwareRenderer
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers
 import com.intellij.openapi.application.ApplicationManager
@@ -39,8 +40,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var currentAgent = ""
     private val toolCallNames = mutableMapOf<String, String>() // domId → tool baseName
     private val toolCallEntries = mutableMapOf<String, EntryData.ToolCall>() // domId → entry
-    private val toolCallIsExternal = mutableMapOf<String, Boolean>() // domId → isExternal (not from our MCP)
     private val toolRegistry = com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getInstance(project)
+    private val registry: ToolChipRegistry by lazy { ToolChipRegistry.getInstance(project) }
 
     private val fileNavigator = FileNavigator(project)
 
@@ -190,6 +191,24 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             add(JBScrollPane(fallbackArea), BorderLayout.CENTER)
         }
         instances[project] = this
+        registerChipStateListener()
+    }
+
+    private fun registerChipStateListener() {
+        registry.addStateListener { chipId, state ->
+            val did = "t-$chipId"
+            val jsState = when (state) {
+                ToolChipRegistry.ChipState.RUNNING -> "running"
+                ToolChipRegistry.ChipState.COMPLETE -> "complete"
+                ToolChipRegistry.ChipState.EXTERNAL -> "external"
+                ToolChipRegistry.ChipState.FAILED -> "failed"
+                else -> return@addStateListener
+            }
+            executeJs("ChatController.setToolChipState('$did','$jsState')")
+            if (state != ToolChipRegistry.ChipState.RUNNING) {
+                toolJustCompleted = true
+            }
+        }
     }
 
     // ── Public API ─────────────────────────────────────────────────
@@ -280,9 +299,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val resolvedKind = kind ?: "other"
         val entry = EntryData.ToolCall(title, arguments, resolvedKind, null, null, timestamp(), currentAgent)
         entries.add(entry)
-        val did = domId(id)
-        toolCallNames[did] = title
-        toolCallEntries[did] = entry
 
         val def = toolRegistry?.findById(title)
         val info = TOOL_DISPLAY_INFO[title]
@@ -292,45 +308,40 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val hasCustomRenderer = ToolRenderers.hasRenderer(title, toolRegistry)
         val paramsJson = if (!arguments.isNullOrBlank() && !hasCustomRenderer) escJs(arguments) else ""
         val safeKind = escJs(resolvedKind)
-        val isExternal = def == null  // Not from our MCP plugin
-        toolCallIsExternal[did] = isExternal
-        val correlator = ToolExecutionCorrelator.getInstance(project)
-        val isAcpCall = correlator.isAcpRegistered(id)
-        val initialStatus = if (isAcpCall) "pending" else "running"
-        executeJs("ChatController.addToolCall('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind',$isExternal,'$initialStatus')")
 
-        // When MCP handles this ACP-registered tool call, transition chip to "running"
-        if (isAcpCall) {
-            correlator.registerMcpHandledCallback(id) {
-                ApplicationManager.getApplication().invokeLater {
-                    executeJs("ChatController.markMcpHandled('$did')")
-                }
-            }
+        // Parse args for correlation
+        val argsObj = arguments?.let {
+            try { JsonParser.parseString(it).takeIf { e -> e.isJsonObject }?.asJsonObject } catch (_: Exception) { null }
         }
+
+        // Register with chip registry — returns chipId and whether MCP already handled it
+        val registration = registry.registerClientSide(title, argsObj, id)
+        val chipId = registration.chipId()
+        val did = "t-$chipId"
+        toolCallNames[did] = title
+        toolCallEntries[did] = entry
+
+        val initialStatus = when (registration.initialState()) {
+            ToolChipRegistry.ChipState.RUNNING -> "running"
+            else -> "pending"
+        }
+        executeJs("ChatController.upsertToolChip('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind','$initialStatus')")
     }
 
     override fun updateToolCall(id: String, status: String, details: String?, description: String?) {
-        val did = domId(id)
-        val toolName = toolCallNames[did]
+        val chipId = registry.findChipIdByClientId(id)
+        val did = if (chipId != null) "t-$chipId" else domId(id)
         val resultLen = details?.length ?: 0
-        LOG.debug("updateToolCall: id=$id, toolName=$toolName, status=$status, resultLen=$resultLen, hasDesc=${description != null}")
+        LOG.debug("updateToolCall: id=$id, chipId=$chipId, status=$status, resultLen=$resultLen, hasDesc=${description != null}")
         toolCallEntries[did]?.let {
             it.result = details
             it.status = status
             if (description != null) it.description = description
         }
-        val correlator = ToolExecutionCorrelator.getInstance(project)
-        val isMcpTool = toolCallIsExternal[did] == false  // false = from our MCP plugin
-        val jsStatus = when {
-            status == "failed" -> "failed"
-            status == "running" -> "running"
-            // Only flag "unverified" for our own MCP tools that ACP expected MCP to handle
-            isMcpTool && correlator.isAcpRegistered(id) && !correlator.wasHandledByMcp(id) -> "unverified"
-            else -> "completed"
-        }
-        executeJs("ChatController.updateToolCall('$did','$jsStatus','$jsStatus')")
-        if (jsStatus != "running") {
-            toolJustCompleted = true
+        when (status) {
+            "failed" -> registry.completeClientSide(id, false)
+            "running" -> { /* intermediate — chip already shows as running or pending */ }
+            else -> registry.completeClientSide(id, true) // "completed" or any other
         }
     }
 
@@ -461,7 +472,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         entries.clear()
         currentTextData = null; currentThinkingData = null; nextSubAgentColor = 0
         turnCounter = 0; currentTurnId = ""; toolJustCompleted = false
-        toolCallNames.clear(); toolCallEntries.clear(); toolCallIsExternal.clear()
+        toolCallNames.clear(); toolCallEntries.clear()
+        registry.clear()
         executeJs("ChatController.clear()")
         fallbackArea?.let { ApplicationManager.getApplication().invokeLater { it.text = "" } }
     }
@@ -473,12 +485,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         collapseThinking()
         val statsJson = """{"tools":$toolCallCount,"model":"${escJs(modelId)}","mult":"${escJs(multiplier)}"}"""
 
-        // Show orphan chips for MCP tool calls that our ACP agent didn't request
-        val correlator = ToolExecutionCorrelator.getInstance(project)
-        val orphans = correlator.drainOrphanMcpCalls()
-        for (orphanName in orphans) {
-            executeJs("ChatController.addOrphanMcpCall('$currentTurnId','main','${escJs(orphanName)}')")
-        }
+        // Clear the chip registry for this turn
+        registry.clearTurn()
 
         executeJs("ChatController.finalizeTurn('$currentTurnId',$statsJson)")
         ApplicationManager.getApplication().invokeLater { browser?.component?.repaint() }

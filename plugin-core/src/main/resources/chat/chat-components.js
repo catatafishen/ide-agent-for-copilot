@@ -580,29 +580,6 @@ var __chatUI = (() => {
   }
 
   // src/components/ToolChip.ts
-  var SAFE_EXTERNAL_TOOLS = /* @__PURE__ */ new Set([
-    // OpenCode / Claude agent tools - read/search operations
-    "todowrite",
-    "TodoWrite",
-    "codesearch",
-    "CodeSearch",
-    "webfetch",
-    "WebFetch",
-    "websearch",
-    "WebSearch",
-    "skill",
-    "Skill",
-    "task",
-    "Task",
-    // Built-in CLI read-only tools
-    "view",
-    "View",
-    "Read",
-    "grep",
-    "Grep",
-    "glob",
-    "Glob"
-  ]);
   var ToolChip = class extends HTMLElement {
     static get observedAttributes() {
       return ["label", "status", "expanded", "kind", "external"];
@@ -631,24 +608,16 @@ var __chatUI = (() => {
       const rawLabel = this.getAttribute("label") || "";
       const status = this.getAttribute("status") || "running";
       const kind = this.getAttribute("kind") || "other";
-      const isExternal = this.getAttribute("external") === "true";
       const paramsStr = this.dataset.params || void 0;
       const display = toolDisplayName(rawLabel, paramsStr);
       const truncated = display.length > 50 ? display.substring(0, 47) + "\u2026" : display;
       this.className = this.className.replaceAll(/\bkind-\S+/g, "").replaceAll(/\bstatus-\S+/g, "").trim();
       this.classList.add("turn-chip", "tool", `kind-${kind}`, `status-${status}`);
-      if (isExternal) this.classList.add("external-tool");
       let iconHtml = "";
       if (status === "running") iconHtml = '<span class="chip-spinner"></span> ';
       if (status === "pending") iconHtml = '<span class="chip-spinner"></span> ';
-      let statusBadge = "";
-      if (status === "unverified") statusBadge = '<span class="unverified-badge" title="Tool call was requested but not handled by our MCP">\u26A0</span> ';
-      if (status === "orphan") statusBadge = '<span class="orphan-badge" title="Tool called by another connected client">?</span> ';
       this.classList.toggle("failed", status === "failed");
-      const baseToolName = rawLabel.split(" \u2014 ")[0].trim();
-      const showWarning = isExternal && !SAFE_EXTERNAL_TOOLS.has(baseToolName);
-      const externalBadge = showWarning ? '<span class="external-badge" title="Built-in agent tool (not from MCP plugin)">\u26A0</span> ' : "";
-      this.innerHTML = iconHtml + statusBadge + externalBadge + escHtml(truncated);
+      this.innerHTML = iconHtml + escHtml(truncated);
       if (display.length > 50) this.dataset.tip = display;
       else if (rawLabel !== display) this.dataset.tip = rawLabel;
       if (this.dataset.tip) this.setAttribute("title", this.dataset.tip);
@@ -1108,45 +1077,41 @@ var __chatUI = (() => {
       this._collapseThinkingFor(ctx);
     },
     addToolCall(turnId, agentId, id, title, paramsJson, kind, isExternal, initialStatus) {
+      this.upsertToolChip(turnId, agentId, id, title, paramsJson, kind, initialStatus || "pending");
+    },
+    upsertToolChip(turnId, agentId, id, title, paramsJson, kind, initialStatus) {
       this._resetWorkingTimer();
-      const ctx = this._ensureMsg(turnId, agentId);
-      this._collapseThinkingFor(ctx);
-      const chip = document.createElement("tool-chip");
+      let chip = document.querySelector('[data-chip-for="' + id + '"]');
+      if (!chip) {
+        const ctx = this._ensureMsg(turnId, agentId);
+        this._collapseThinkingFor(ctx);
+        chip = document.createElement("tool-chip");
+        chip.dataset.chipFor = id;
+        ctx.meta.appendChild(chip);
+        ctx.meta.classList.add("show");
+        this._container()?.scrollIfNeeded();
+      }
       chip.setAttribute("label", title);
-      chip.setAttribute("status", initialStatus || "running");
+      chip.setAttribute("status", initialStatus || "pending");
       if (kind) chip.setAttribute("kind", kind);
-      if (isExternal) chip.setAttribute("external", "true");
-      chip.dataset.chipFor = id;
       if (paramsJson) chip.dataset.params = paramsJson;
-      ctx.meta.appendChild(chip);
-      ctx.meta.classList.add("show");
-      this._container()?.scrollIfNeeded();
     },
     markMcpHandled(id) {
+      this.setToolChipState(id, "running");
+    },
+    setToolChipState(id, state) {
       const chip = document.querySelector('[data-chip-for="' + id + '"]');
-      if (chip && chip.getAttribute("status") === "pending") {
-        chip.setAttribute("status", "running");
+      if (!chip) return;
+      chip.setAttribute("status", state);
+      if (state !== "pending" && state !== "running") {
+        this._resetWorkingTimer();
       }
     },
     updateToolCall(id, status, resultHtml) {
-      this._resetWorkingTimer();
-      const chip = document.querySelector('[data-chip-for="' + id + '"]');
-      if (!chip) return;
-      if (status === "failed") {
-        chip.setAttribute("status", "failed");
-      } else if (status === "unverified") {
-        chip.setAttribute("status", "unverified");
-      } else {
-        chip.setAttribute("status", "complete");
-      }
+      const jsStatus = status === "failed" ? "failed" : status === "unverified" ? "external" : "complete";
+      this.setToolChipState(id, jsStatus);
     },
-    addOrphanMcpCall(turnId, agentId, toolName) {
-      const ctx = this._ensureMsg(turnId, agentId);
-      const chip = document.createElement("tool-chip");
-      chip.setAttribute("label", toolName);
-      chip.setAttribute("status", "orphan");
-      ctx.meta.appendChild(chip);
-      ctx.meta.classList.add("show");
+    addOrphanMcpCall(_turnId, _agentId, _toolName) {
     },
     addSubAgent(turnId, agentId, sectionId, displayName, colorIndex, promptText) {
       this._resetWorkingTimer();

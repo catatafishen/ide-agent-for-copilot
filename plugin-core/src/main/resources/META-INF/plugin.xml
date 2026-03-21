@@ -256,6 +256,8 @@
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolRegistry"/>
     <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolChipRegistry"/>
+    <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings"/>

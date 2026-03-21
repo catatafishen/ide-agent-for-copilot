@@ -6,7 +6,7 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
 import com.github.catatafishen.ideagentforcopilot.bridge.AcpException;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.ResourceReference;
-import com.github.catatafishen.ideagentforcopilot.services.ToolExecutionCorrelator;
+
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -302,12 +302,7 @@ public class AgentClientAdapter implements AgentClient {
                 ? com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolKind.fromString(tc.kind().name().toLowerCase())
                 : com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolKind.OTHER;
 
-        // Register ACP tool call in correlator for primary ID-based correlation
-        if (project != null) {
-            ToolExecutionCorrelator.getInstance(project)
-                .registerAcpToolCall(tc.toolCallId(), tc.title());
-        }
-
+        // Register ACP tool call — no longer needed; correlation is hash-based via ToolChipRegistry
         return new com.github.catatafishen.ideagentforcopilot.bridge.SessionUpdate.ToolCall(
             tc.toolCallId(), tc.title(), kind, tc.arguments(),
             filePaths, null, null, null

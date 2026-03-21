@@ -762,7 +762,13 @@ public abstract class AcpClient implements AgentConnector {
             }
         }
 
-        String arguments = params.has("arguments") ? params.get("arguments").toString() : null;
+        JsonObject argumentsObj = null;
+        if (params.has("arguments") && params.get("arguments").isJsonObject()) {
+            argumentsObj = params.getAsJsonObject("arguments");
+        } else if (params.has("rawInput") && params.get("rawInput").isJsonObject()) {
+            argumentsObj = params.getAsJsonObject("rawInput");
+        }
+        String arguments = argumentsObj != null ? argumentsObj.toString() : null;
 
         List<Location> locations = null;
         if (params.has("locations")) {
