@@ -4,7 +4,6 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.Model
 import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate
 import com.github.catatafishen.ideagentforcopilot.agent.AgentException
 import com.github.catatafishen.ideagentforcopilot.bridge.ConversationStore
-import com.github.catatafishen.ideagentforcopilot.bridge.SessionOption
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
 import com.github.catatafishen.ideagentforcopilot.settings.BillingSettings
 import com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings
@@ -662,9 +661,7 @@ class ChatToolWindowContent(
         leftGroup.addSeparator()
         leftGroup.add(AttachContextDropdownAction())
         leftGroup.addSeparator()
-        leftGroup.add(AgentSelectorAction())
         leftGroup.add(ModelSelectorAction())
-        leftGroup.add(SessionOptionsGroup())
         leftGroup.addSeparator()
         restartSessionGroup = RestartSessionGroup()
         leftGroup.add(restartSessionGroup!!)
@@ -863,6 +860,68 @@ class ChatToolWindowContent(
             val component = inputEvent.source as? Component ?: return
 
             val group = DefaultActionGroup()
+
+            // ── Agent selection ──────────────────────────────────────
+            val agents = try {
+                agentManager.client.availableAgents
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (agents.isNotEmpty()) {
+                group.addSeparator("Agent")
+                val currentSlug = try {
+                    agentManager.client.currentAgentSlug
+                } catch (_: Exception) {
+                    null
+                }
+                agents.forEach { agent ->
+                    group.add(object : AnAction(agent.name()) {
+                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                        override fun update(e: AnActionEvent) {
+                            e.presentation.icon = if (agent.slug() == currentSlug) AllIcons.Actions.Checked else null
+                        }
+
+                        override fun actionPerformed(e: AnActionEvent) {
+                            if (agent.slug() != currentSlug) restartWithNewAgent(agent.slug())
+                        }
+                    })
+                }
+            }
+
+            // ── Session options (modes, etc.) ────────────────────────
+            val options = try {
+                agentManager.client.listSessionOptions()
+            } catch (_: Exception) {
+                emptyList()
+            }
+            for (option in options) {
+                group.addSeparator(option.displayName)
+                val stored = agentManager.settings.getSessionOptionValue(option.key)
+                val current = stored.ifEmpty { option.initialValue ?: "" }
+                for (value in option.values) {
+                    group.add(object : AnAction(option.labelFor(value)) {
+                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                        override fun update(e: AnActionEvent) {
+                            e.presentation.icon = if (value == current) AllIcons.Actions.Checked else null
+                        }
+
+                        override fun actionPerformed(e: AnActionEvent) {
+                            agentManager.settings.setSessionOptionValue(option.key, value)
+                            val sessionId = promptOrchestrator.currentSessionId ?: return
+                            ApplicationManager.getApplication().executeOnPooledThread {
+                                try {
+                                    agentManager.client.setSessionOption(sessionId, option.key, value)
+                                } catch (ex: Exception) {
+                                    LOG.warn("Failed to set session option ${option.key}=$value", ex)
+                                }
+                            }
+                        }
+                    })
+                }
+            }
+
+            // ── Session management ───────────────────────────────────
+            if (agents.isNotEmpty() || options.isNotEmpty()) group.addSeparator()
             group.add(object : AnAction(
                 "Restart (Keep History)",
                 "Start a new agent session while keeping the conversation visible",
@@ -871,7 +930,6 @@ class ChatToolWindowContent(
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) = resetSessionKeepingHistory()
             })
-
             group.add(object : AnAction(
                 "Clear and Restart",
                 "Clear the conversation and start a completely fresh session",
@@ -880,9 +938,7 @@ class ChatToolWindowContent(
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) = resetSession()
             })
-
             group.addSeparator()
-
             group.add(object : AnAction(
                 "Disconnect",
                 "Stop the ACP process and return to the connection screen",
@@ -1098,122 +1154,6 @@ class ChatToolWindowContent(
             // Hide entirely when models loaded successfully but list is empty
             // (agent uses configOptions for model selection instead)
             e.presentation.isVisible = modelsStatusText != null || loadedModels.isNotEmpty()
-        }
-    }
-
-    /**
-     * Inline action group that dynamically renders one [SessionOptionSelectorAction] dropdown
-     * per option declared by the active client's [AgentClient.listSessionOptions].
-     * Invisible when the client exposes no options or the agent is disconnected.
-     *
-     * Extends [DefaultActionGroup] with popup=false so children appear inline in the toolbar.
-     */
-    private inner class SessionOptionsGroup : DefaultActionGroup() {
-        init {
-            isPopup = false
-        }
-
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        private var cachedOptions: List<SessionOption> = emptyList()
-        private var cachedChildren: Array<AnAction> = EMPTY_ARRAY
-
-        override fun getChildren(e: AnActionEvent?): Array<AnAction> {
-            if (!agentManager.isConnected) return EMPTY_ARRAY
-            val options = try {
-                agentManager.client.listSessionOptions()
-            } catch (ex: Exception) {
-                LOG.warn("Failed to retrieve session options for toolbar", ex)
-                return EMPTY_ARRAY
-            }
-            if (options.isEmpty()) return EMPTY_ARRAY
-            if (options != cachedOptions) {
-                cachedOptions = options
-                cachedChildren = options.map { SessionOptionSelectorAction(it) }.toTypedArray()
-            }
-            return cachedChildren
-        }
-    }
-
-    /** ComboBox dropdown for a single [SessionOption] — mirrors the pattern of [ModelSelectorAction]. */
-    private inner class SessionOptionSelectorAction(
-        private val option: SessionOption
-    ) : ComboBoxAction() {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
-            val group = DefaultActionGroup()
-            for (value in option.values) {
-                val label = option.labelFor(value)
-                group.add(object : AnAction(label) {
-                    override fun actionPerformed(e: AnActionEvent) {
-                        agentManager.settings.setSessionOptionValue(option.key, value)
-                        val sessionId = promptOrchestrator.currentSessionId ?: return
-                        ApplicationManager.getApplication().executeOnPooledThread {
-                            try {
-                                agentManager.client.setSessionOption(sessionId, option.key, value)
-                            } catch (ex: Exception) {
-                                LOG.warn("Failed to set session option ${option.key}=$value", ex)
-                            }
-                        }
-                    }
-
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                })
-            }
-            return group
-        }
-
-        override fun update(e: AnActionEvent) {
-            val stored = agentManager.settings.getSessionOptionValue(option.key)
-            val displayValue = if (stored.isEmpty()) option.initialValue ?: "" else stored
-            e.presentation.text = "${option.displayName}: ${option.labelFor(displayValue)}"
-        }
-    }
-
-    /**
-     * ComboBox dropdown for selecting the active custom agent (e.g. intellij-default, intellij-explore).
-     * Only visible when the active client exposes agents via [AbstractAgentClient.getAvailableAgents][com.github.catatafishen.ideagentforcopilot.agent.AbstractAgentClient.getAvailableAgents].
-     * Selecting an agent persists the choice and restarts the agent process so the CLI picks it up.
-     */
-    private inner class AgentSelectorAction : ComboBoxAction() {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-        override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
-            val group = DefaultActionGroup()
-            val agents = agentManager.client.availableAgents
-            agents.forEach { agent ->
-                group.add(object : AnAction(agent.name()) {
-                    override fun actionPerformed(e: AnActionEvent) {
-                        val currentSlug = agentManager.client.currentAgentSlug
-                        if (agent.slug() == currentSlug) return
-                        restartWithNewAgent(agent.slug())
-                    }
-
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                })
-            }
-            return group
-        }
-
-        override fun update(e: AnActionEvent) {
-            val agents = try {
-                agentManager.client.availableAgents
-            } catch (_: Exception) {
-                emptyList()
-            }
-            if (agents.isEmpty()) {
-                e.presentation.isVisible = false
-                return
-            }
-            e.presentation.isVisible = true
-            val currentSlug = try {
-                agentManager.client.currentAgentSlug
-            } catch (_: Exception) {
-                null
-            }
-            val current = agents.firstOrNull { it.slug() == currentSlug } ?: agents.firstOrNull()
-            e.presentation.text = current?.name() ?: "Agent"
         }
     }
 
