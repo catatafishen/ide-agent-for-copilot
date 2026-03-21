@@ -63,7 +63,7 @@ public class AgentClientAdapter implements AgentClient {
                              @Nullable Runnable onRequest) throws AcpException {
         try {
             List<ContentBlock> contentBlocks = buildContentBlocks(prompt, references);
-            PromptRequest request = new PromptRequest(sessionId, contentBlocks, model, connector.defaultModeSlug());
+            PromptRequest request = new PromptRequest(sessionId, contentBlocks, model, connector.getCurrentModeSlug());
 
             Consumer<com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate> bridgeConsumer =
                 newUpdate -> dispatchUpdate(newUpdate, onChunk, onUpdate);
@@ -119,6 +119,27 @@ public class AgentClientAdapter implements AgentClient {
             }
         }
         return "1x";
+    }
+
+    @NotNull
+    @Override
+    public List<com.github.catatafishen.ideagentforcopilot.bridge.SessionOption> listSessionOptions() {
+        List<AgentConnector.AgentMode> modes = connector.getAvailableModes();
+        if (modes.isEmpty()) return List.of();
+
+        List<String> values = new ArrayList<>();
+        values.add(""); // "Default" — lets the agent choose its built-in default
+        for (AgentConnector.AgentMode mode : modes) {
+            values.add(mode.slug());
+        }
+        return List.of(new com.github.catatafishen.ideagentforcopilot.bridge.SessionOption("mode", "Agent", values));
+    }
+
+    @Override
+    public void setSessionOption(@NotNull String sessionId, @NotNull String key, @NotNull String value) {
+        if ("mode".equals(key)) {
+            connector.setCurrentModeSlug(value.isEmpty() ? null : value);
+        }
     }
 
     @Override

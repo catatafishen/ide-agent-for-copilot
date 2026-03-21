@@ -5,6 +5,7 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.Model;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptRequest;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
 import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -67,6 +68,21 @@ public interface AgentConnector {
         return null;
     }
 
+    /** Available modes/agents for this connector (populated after session creation). */
+    default List<AgentMode> getAvailableModes() {
+        return List.of();
+    }
+
+    /** Returns the currently selected mode slug (user override or default). */
+    default @Nullable String getCurrentModeSlug() {
+        return defaultModeSlug();
+    }
+
+    /** Sets the current mode slug. No-op for agents that don't support mode selection. */
+    default void setCurrentModeSlug(@Nullable String slug) {
+        // no-op
+    }
+
     // ─── Models ──────────────────────────────────────
 
     /** Available models for this agent. Empty list if not supported. */
@@ -96,6 +112,15 @@ public interface AgentConnector {
     }
 
     // ─── Display ─────────────────────────────────────
+
+    /**
+     * A mode (agent persona) available for this connector.
+     *
+     * @param slug        the mode identifier used in protocol requests
+     * @param name        human-readable display name
+     * @param description optional description of what this mode does
+     */
+    record AgentMode(@NotNull String slug, @NotNull String name, @Nullable String description) {}
 
     /**
      * How model information is shown in the UI.

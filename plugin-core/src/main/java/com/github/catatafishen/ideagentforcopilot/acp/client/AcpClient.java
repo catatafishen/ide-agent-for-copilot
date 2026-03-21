@@ -84,6 +84,8 @@ public abstract class AcpClient implements AgentConnector {
     private @Nullable String currentSessionId;
     private @Nullable String launchCwd;
     private final List<Model> availableModels = new ArrayList<>();
+    private final List<AgentConnector.AgentMode> availableModes = new ArrayList<>();
+    private @Nullable String currentModeSlug = null;
     private volatile @Nullable Consumer<SessionUpdate> updateConsumer;
 
     protected AcpClient(Project project) {
@@ -120,6 +122,8 @@ public abstract class AcpClient implements AgentConnector {
         currentSessionId = null;
         launchCwd = null;
         availableModels.clear();
+        availableModes.clear();
+        currentModeSlug = null;
         updateConsumer = null;
     }
 
@@ -149,6 +153,16 @@ public abstract class AcpClient implements AgentConnector {
             if (response.models() != null) {
                 availableModels.clear();
                 availableModels.addAll(response.models());
+            }
+
+            if (response.modes() != null) {
+                availableModes.clear();
+                for (NewSessionResponse.AvailableMode m : response.modes()) {
+                    availableModes.add(new AgentConnector.AgentMode(m.slug(), m.name(), m.description()));
+                }
+                if (currentModeSlug == null) {
+                    currentModeSlug = defaultModeSlug();
+                }
             }
 
             onSessionCreated(currentSessionId);
@@ -213,6 +227,21 @@ public abstract class AcpClient implements AgentConnector {
     @Override
     public final List<Model> getAvailableModels() {
         return Collections.unmodifiableList(availableModels);
+    }
+
+    @Override
+    public final List<AgentConnector.AgentMode> getAvailableModes() {
+        return Collections.unmodifiableList(availableModes);
+    }
+
+    @Override
+    public final @Nullable String getCurrentModeSlug() {
+        return currentModeSlug != null ? currentModeSlug : defaultModeSlug();
+    }
+
+    @Override
+    public final void setCurrentModeSlug(@Nullable String slug) {
+        currentModeSlug = slug;
     }
 
     @Override
@@ -578,7 +607,7 @@ public abstract class AcpClient implements AgentConnector {
         String type = params.has(KEY_SESSION_UPDATE)
             ? params.get(KEY_SESSION_UPDATE).getAsString() : null;
         if (type == null) {
-            LOG.debug(displayName() + ": session/update has no '" + KEY_SESSION_UPDATE + "' field after normalization");
+            LOG.warn(displayName() + ": session/update has no '" + KEY_SESSION_UPDATE + "' field after normalization");
             return null;
         }
 
@@ -591,7 +620,7 @@ public abstract class AcpClient implements AgentConnector {
             case "turn_usage" -> parseTurnUsage(params);
             case "banner" -> parseBanner(params);
             default -> {
-                LOG.debug(displayName() + ": unknown session update type: '" + type + "'");
+                LOG.warn(displayName() + ": unknown session update type: '" + type + "'");
                 yield null;
             }
         };
