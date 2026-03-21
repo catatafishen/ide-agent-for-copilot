@@ -68,7 +68,7 @@ public final class AgentProfileManager {
 
     private void ensureDefaults() {
         for (String id : List.of(COPILOT_PROFILE_ID, OPENCODE_PROFILE_ID, CLAUDE_CODE_PROFILE_ID,
-                                  CLAUDE_CLI_PROFILE_ID, JUNIE_PROFILE_ID, KIRO_PROFILE_ID)) {
+            CLAUDE_CLI_PROFILE_ID, JUNIE_PROFILE_ID, KIRO_PROFILE_ID)) {
             if (!profiles.containsKey(id)) {
                 AgentProfile profile = createDefaultProfile(id);
                 if (profile != null) profiles.put(id, profile);
@@ -133,6 +133,8 @@ public final class AgentProfileManager {
         p.setAlternateNames(List.of("kiro"));
         p.setInstallHint("Install Kiro CLI and ensure it's available on your PATH.");
         p.setInstallUrl("https://kiro.dev/docs/cli/acp/");
+        p.setAgentsDirectory(".agent-work/.kiro/agents");
+        p.setBundledAgentFiles(List.of("kiro-intellij-explore.json", "kiro-intellij-task.json"));
         return p;
     }
 
