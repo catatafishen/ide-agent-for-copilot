@@ -52,11 +52,6 @@ public final class KiroClient extends AcpClient {
     }
 
     @Override
-    protected void onSessionCreated(String sessionId) {
-        sendSessionMessage(sessionId, buildInstructions());
-    }
-
-    @Override
     protected String resolveToolId(String protocolTitle) {
         return protocolTitle.replaceFirst("^Running: @agentbridge/", "");
     }
@@ -90,10 +85,5 @@ public final class KiroClient extends AcpClient {
                 }
             }
         }
-    }
-
-    private String buildInstructions() {
-        return "You have access to IntelliJ IDE tools via the @agentbridge MCP server. " +
-            "Use these tools for file operations, code navigation, git, and terminal access.";
     }
 }
