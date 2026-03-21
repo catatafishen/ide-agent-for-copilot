@@ -37,9 +37,13 @@ public sealed interface SessionUpdate
 
         private final String value;
 
-        ToolKind(String value) { this.value = value; }
+        ToolKind(String value) {
+            this.value = value;
+        }
 
-        public String value() { return value; }
+        public String value() {
+            return value;
+        }
 
         public static ToolKind fromString(@Nullable String s) {
             if (s == null) return OTHER;
@@ -69,9 +73,13 @@ public sealed interface SessionUpdate
 
         private final String value;
 
-        ToolCallStatus(String value) { this.value = value; }
+        ToolCallStatus(String value) {
+            this.value = value;
+        }
 
-        public String value() { return value; }
+        public String value() {
+            return value;
+        }
 
         public static ToolCallStatus fromString(@Nullable String s) {
             if (s == null) return FAILED;
@@ -90,9 +98,13 @@ public sealed interface SessionUpdate
 
         private final String value;
 
-        BannerLevel(String value) { this.value = value; }
+        BannerLevel(String value) {
+            this.value = value;
+        }
 
-        public String value() { return value; }
+        public String value() {
+            return value;
+        }
 
         public static BannerLevel fromString(@Nullable String s) {
             if (s == null) return WARNING;
@@ -109,9 +121,13 @@ public sealed interface SessionUpdate
 
         private final String value;
 
-        ClearOn(String value) { this.value = value; }
+        ClearOn(String value) {
+            this.value = value;
+        }
 
-        public String value() { return value; }
+        public String value() {
+            return value;
+        }
 
         public static ClearOn fromString(@Nullable String s) {
             if (s == null) return MANUAL;
@@ -124,9 +140,13 @@ public sealed interface SessionUpdate
 
     // ── Event records ────────────────────────────────────────────────────────
 
-    /** Streamed text chunk from the agent's response. */
+    /**
+     * Streamed text chunk from the agent's response.
+     */
     record AgentMessageChunk(List<ContentBlock> content) implements SessionUpdate {
-        /** Extracts all text content as a plain string. */
+        /**
+         * Extracts all text content as a plain string.
+         */
         public String text() {
             StringBuilder sb = new StringBuilder();
             for (ContentBlock block : content) {
@@ -136,9 +156,13 @@ public sealed interface SessionUpdate
         }
     }
 
-    /** Agent's internal reasoning (thinking/chain-of-thought). */
+    /**
+     * Agent's internal reasoning (thinking/chain-of-thought).
+     */
     record AgentThoughtChunk(List<ContentBlock> content) implements SessionUpdate {
-        /** Extracts all text content as a plain string. */
+        /**
+         * Extracts all text content as a plain string.
+         */
         public String text() {
             StringBuilder sb = new StringBuilder();
             for (ContentBlock block : content) {
@@ -159,22 +183,30 @@ public sealed interface SessionUpdate
      * @param agentType           non-null when this is a Task/sub-agent tool call
      * @param subAgentDescription short description of the sub-agent task, or null
      * @param subAgentPrompt      the prompt sent to the sub-agent, or null
+     * @param purpose             human-readable purpose from __tool_use_purpose, or null
      */
     record ToolCall(
-            @NotNull String toolCallId,
-            @NotNull String title,
-            @Nullable ToolKind kind,
-            @Nullable String arguments,
-            @Nullable List<Location> locations,
-            @Nullable String agentType,
-            @Nullable String subAgentDescription,
-            @Nullable String subAgentPrompt
+        @NotNull String toolCallId,
+        @NotNull String title,
+        @Nullable ToolKind kind,
+        @Nullable String arguments,
+        @Nullable List<Location> locations,
+        @Nullable String agentType,
+        @Nullable String subAgentDescription,
+        @Nullable String subAgentPrompt,
+        @Nullable String purpose
     ) implements SessionUpdate {
 
-        /** Returns true when this is a sub-agent (Task tool) call. */
-        public boolean isSubAgent() { return agentType != null; }
+        /**
+         * Returns true when this is a sub-agent (Task tool) call.
+         */
+        public boolean isSubAgent() {
+            return agentType != null;
+        }
 
-        /** Returns file paths from locations for follow-agent file navigation. */
+        /**
+         * Returns file paths from locations for follow-agent file navigation.
+         */
         public List<String> filePaths() {
             if (locations == null || locations.isEmpty()) return List.of();
             return locations.stream()
@@ -194,38 +226,54 @@ public sealed interface SessionUpdate
      * @param description optional natural language explanation of the result (may be null)
      */
     record ToolCallUpdate(
-            @NotNull String toolCallId,
-            @NotNull ToolCallStatus status,
-            @Nullable String result,
-            @Nullable String error,
-            @Nullable String description
-    ) implements SessionUpdate {}
+        @NotNull String toolCallId,
+        @NotNull ToolCallStatus status,
+        @Nullable String result,
+        @Nullable String error,
+        @Nullable String description
+    ) implements SessionUpdate {
+    }
 
-    /** Agent's execution plan with task entries. */
-    record Plan(List<PlanEntry> entries) implements SessionUpdate {}
+    /**
+     * Agent's execution plan with task entries.
+     */
+    record Plan(List<PlanEntry> entries) implements SessionUpdate {
+    }
 
-    /** Available commands have changed. */
+    /**
+     * Available commands have changed.
+     */
     record AvailableCommandsChanged(
-            List<NewSessionResponse.AvailableCommand> commands
-    ) implements SessionUpdate {}
+        List<NewSessionResponse.AvailableCommand> commands
+    ) implements SessionUpdate {
+    }
 
-    /** Available modes have changed. */
+    /**
+     * Available modes have changed.
+     */
     record AvailableModesChanged(
-            List<NewSessionResponse.AvailableMode> modes,
-            @Nullable String activeSlug
-    ) implements SessionUpdate {}
+        List<NewSessionResponse.AvailableMode> modes,
+        @Nullable String activeSlug
+    ) implements SessionUpdate {
+    }
 
-    /** Turn-level token and cost statistics. */
+    /**
+     * Turn-level token and cost statistics.
+     */
     record TurnUsage(
-            int inputTokens,
-            int outputTokens,
-            double costUsd
-    ) implements SessionUpdate {}
+        int inputTokens,
+        int outputTokens,
+        double costUsd
+    ) implements SessionUpdate {
+    }
 
-    /** Agent-initiated banner notification. */
+    /**
+     * Agent-initiated banner notification.
+     */
     record Banner(
-            @NotNull String message,
-            @NotNull BannerLevel level,
-            @NotNull ClearOn clearOn
-    ) implements SessionUpdate {}
+        @NotNull String message,
+        @NotNull BannerLevel level,
+        @NotNull ClearOn clearOn
+    ) implements SessionUpdate {
+    }
 }

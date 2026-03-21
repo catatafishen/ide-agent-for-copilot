@@ -4,9 +4,8 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
-
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Tests Kiro's __tool_use_purpose extraction logic.
@@ -19,7 +18,7 @@ class KiroToolPurposeTest {
     @DisplayName("extracts purpose from tool call arguments")
     void extractsPurpose() throws Exception {
         String args = "{\"path\": \"src/main.java\", \"__tool_use_purpose\": \"Reading file to understand structure\"}";
-        SessionUpdate.ToolCall tc = new SessionUpdate.ToolCall("tc-1", "read_file", null, args, null, null, null, null);
+        SessionUpdate.ToolCall tc = new SessionUpdate.ToolCall("tc-1", "read_file", null, args, null, null, null, null, null);
 
         // Simulate the extraction logic (same as KiroClient.extractPurpose)
         String purpose = extractPurpose(args);

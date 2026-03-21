@@ -134,7 +134,7 @@ abstract class AbstractClaudeAgentClient extends AbstractAgentClient {
         }
         onUpdate.accept(new SessionUpdate.ToolCall(
             toolUseId, normalized, kind, args, null,
-            agentType, subAgentDesc, subAgentPrompt));
+            agentType, subAgentDesc, subAgentPrompt, null));
     }
 
     protected void emitToolCallEnd(@NotNull String toolUseId, @NotNull String result,
