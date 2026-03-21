@@ -55,7 +55,7 @@ sealed class EntryData {
     class ToolCall(
         val title: String,
         val arguments: String? = null,
-        val kind: String = "other",
+        var kind: String = "other",
         var result: String? = null,
         var status: String? = null,
         var description: String? = null,

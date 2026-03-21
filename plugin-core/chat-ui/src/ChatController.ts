@@ -246,6 +246,13 @@ const ChatController = {
         this.setToolChipState(id, jsStatus);
     },
 
+    updateToolCallKind(id: string, kind: string): void {
+        const chip = document.querySelector('[data-chip-for="' + id + '"]');
+        if (chip) {
+            chip.setAttribute('kind', kind);
+        }
+    },
+
     addOrphanMcpCall(_turnId: string, _agentId: string, _toolName: string): void {
         // No-op: orphan handling removed; replaced by ToolChipRegistry correlation
     },

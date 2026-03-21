@@ -332,7 +332,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.upsertToolChip('$currentTurnId','main','$did','${escJs(label)}','$paramsJson','$safeKind','$initialStatus')")
     }
 
-    override fun updateToolCall(id: String, status: String, details: String?, description: String?) {
+    override fun updateToolCall(id: String, status: String, details: String?, description: String?, kind: String?) {
         val chipId = registry.findChipIdByClientId(id)
         val did = if (chipId != null) "t-$chipId" else domId(id)
         val resultLen = details?.length ?: 0
@@ -341,13 +341,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             it.result = details
             it.status = status
             if (description != null) it.description = description
+            if (kind != null) it.kind = kind
         }
+        val jsKind = kind ?: ""
         when (status) {
             "failed" -> registry.completeClientSide(id, false)
             "running" -> { /* intermediate — chip already shows as running or pending */
             }
 
             else -> registry.completeClientSide(id, true) // "completed" or any other
+        }
+        // If kind is provided, update the chip on the JS side
+        if (kind != null) {
+            executeJs("ChatController.updateToolCallKind('$did','$jsKind')")
         }
     }
 

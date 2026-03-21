@@ -968,6 +968,12 @@ var __chatUI = (() => {
       const jsStatus = status === "failed" ? "failed" : status === "unverified" ? "external" : "complete";
       this.setToolChipState(id, jsStatus);
     },
+    updateToolCallKind(id, kind) {
+      const chip = document.querySelector('[data-chip-for="' + id + '"]');
+      if (chip) {
+        chip.setAttribute("kind", kind);
+      }
+    },
     addOrphanMcpCall(_turnId, _agentId, _toolName) {
     },
     addSubAgent(turnId, agentId, sectionId, displayName, colorIndex, promptText) {

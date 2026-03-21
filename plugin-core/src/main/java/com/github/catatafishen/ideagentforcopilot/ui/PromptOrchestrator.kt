@@ -373,17 +373,7 @@ class PromptOrchestrator(
     private fun handleStreamingToolCall(toolCall: SessionUpdate.ToolCall) {
         val title = toolCall.title()
         val toolCallId = toolCall.toolCallId()
-        val rawKind = toolCall.kind()?.value() ?: "other"
-        val kind = if (rawKind == "other") {
-            val toolName = title.removePrefix("agentbridge-").removePrefix("@agentbridge/")
-            val def = com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getInstance(project).findById(toolName)
-            when {
-                def == null -> "other"
-                def.isReadOnly() -> "read"
-                def.isDestructive() -> "execute"
-                else -> "edit"
-            }
-        } else rawKind
+        val kind = toolCall.kind()?.value() ?: "other"
         val arguments = toolCall.arguments()
         if (toolCallId.isEmpty()) return
         if (toolCall.isSubAgent()) {
@@ -426,6 +416,20 @@ class PromptOrchestrator(
         val callType = toolCallTitles[toolCallId]
         val isSubAgent = callType == "task"
         val isInternal = callType == "subagent_internal"
+        val kind =
+            if (status == SessionUpdate.ToolCallStatus.COMPLETED || status == SessionUpdate.ToolCallStatus.FAILED) {
+                val title = toolCallTitles[toolCallId] ?: ""
+                val toolName = title.removePrefix("agentbridge-").removePrefix("@agentbridge/")
+                val def = com.github.catatafishen.ideagentforcopilot.services.ToolRegistry.getInstance(project)
+                    .findById(toolName)
+                when {
+                    def == null -> null
+                    def.isReadOnly() -> "read"
+                    def.isDestructive() -> "execute"
+                    else -> "edit"
+                }
+            } else null
+
         if (status == SessionUpdate.ToolCallStatus.COMPLETED) {
             if (isSubAgent) {
                 activeSubAgentId = null
@@ -435,7 +439,7 @@ class PromptOrchestrator(
             } else if (isInternal) {
                 consolePanel().updateSubAgentToolCall(toolCallId, "completed", result, description)
             } else {
-                consolePanel().updateToolCall(toolCallId, "completed", result, description)
+                consolePanel().updateToolCall(toolCallId, "completed", result, description, kind)
             }
         } else if (status == SessionUpdate.ToolCallStatus.FAILED) {
             val error = update.error() ?: result ?: "Unknown error"
@@ -447,7 +451,7 @@ class PromptOrchestrator(
             } else if (isInternal) {
                 consolePanel().updateSubAgentToolCall(toolCallId, "failed", error, description)
             } else {
-                consolePanel().updateToolCall(toolCallId, "failed", error, description)
+                consolePanel().updateToolCall(toolCallId, "failed", error, description, kind)
             }
         } else if (status == SessionUpdate.ToolCallStatus.IN_PROGRESS) {
             // Keep the "running" state in UI without marking it as success or failure yet.

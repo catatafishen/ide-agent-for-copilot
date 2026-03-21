@@ -44,7 +44,14 @@ interface ChatPanelApi : Disposable {
         arguments: String? = null,
         kind: String? = null
     )
-    fun updateToolCall(id: String, status: String, details: String? = null, description: String? = null)
+
+    fun updateToolCall(
+        id: String,
+        status: String,
+        details: String? = null,
+        description: String? = null,
+        kind: String? = null
+    )
 
     // ── Sub-agents ─────────────────────────────────────────────────
 
