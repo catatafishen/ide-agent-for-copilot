@@ -748,6 +748,19 @@ public abstract class AcpClient implements AgentConnector {
         return new SessionUpdate.AgentThoughtChunk(blocks);
     }
 
+    /**
+     * Extract tool call arguments from a {@code tool_call} params object.
+     * The standard ACP field is {@code arguments} (a JSON object).
+     * Override in subclasses for agent-specific field names.
+     */
+    @Nullable
+    protected JsonObject parseToolCallArguments(@NotNull JsonObject params) {
+        if (params.has("arguments") && params.get("arguments").isJsonObject()) {
+            return params.getAsJsonObject("arguments");
+        }
+        return null;
+    }
+
     private SessionUpdate.ToolCall parseToolCall(JsonObject params) {
         String toolCallId = getStringOrEmpty(params, "toolCallId");
         String title = getStringOrEmpty(params, "title");
@@ -762,12 +775,7 @@ public abstract class AcpClient implements AgentConnector {
             }
         }
 
-        JsonObject argumentsObj = null;
-        if (params.has("arguments") && params.get("arguments").isJsonObject()) {
-            argumentsObj = params.getAsJsonObject("arguments");
-        } else if (params.has("rawInput") && params.get("rawInput").isJsonObject()) {
-            argumentsObj = params.getAsJsonObject("rawInput");
-        }
+        JsonObject argumentsObj = parseToolCallArguments(params);
         String arguments = argumentsObj != null ? argumentsObj.toString() : null;
 
         List<Location> locations = null;

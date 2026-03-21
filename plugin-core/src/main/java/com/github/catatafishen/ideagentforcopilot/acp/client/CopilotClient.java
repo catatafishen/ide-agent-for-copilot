@@ -203,6 +203,24 @@ public final class CopilotClient extends AcpClient {
         return protocolTitle.replaceFirst("^agentbridge-", "");
     }
 
+    /**
+     * Copilot sends tool arguments in a non-standard {@code rawInput} field instead of
+     * the spec-compliant {@code arguments} field. Fall back to {@code rawInput} if
+     * {@code arguments} is absent.
+     *
+     * <b>Why extracted:</b> This is a Copilot-specific deviation from the ACP spec.
+     * Other clients use the standard {@code arguments} field provided by the base class.
+     */
+    @Override
+    protected com.google.gson.JsonObject parseToolCallArguments(com.google.gson.JsonObject params) {
+        com.google.gson.JsonObject standard = super.parseToolCallArguments(params);
+        if (standard != null) return standard;
+        if (params.has("rawInput") && params.get("rawInput").isJsonObject()) {
+            return params.getAsJsonObject("rawInput");
+        }
+        return null;
+    }
+
     @Override
     public boolean requiresInlineReferences() {
         return true;
