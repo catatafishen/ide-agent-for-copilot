@@ -123,6 +123,7 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
     }
 
     @Override
+    @SuppressWarnings("RedundantThrows") // Required by AgentConfig interface, other implementations do throw
     public @NotNull ProcessBuilder buildAcpProcess(@NotNull String binaryPath,
                                                    @Nullable String projectBasePath,
                                                    int mcpPort) throws AgentException {
@@ -184,6 +185,7 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
 
     @Override
     public @Nullable String getMcpConfigTemplate() {
+        // Always returns non-null in this impl, but interface requires @Nullable for other implementations
         return profile.getMcpConfigTemplate();
     }
 
@@ -265,21 +267,28 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
             String finalConfig = fixOpenCodeConfigForFile(configWithPermissions);
 
             // Pretty-print the JSON for readability
-            String formattedConfig;
-            try {
-                formattedConfig = new com.google.gson.GsonBuilder()
-                    .setPrettyPrinting()
-                    .create()
-                    .toJson(JsonParser.parseString(finalConfig));
-            } catch (Exception e) {
-                LOG.warn("Failed to format OpenCode config JSON (invalid JSON?), using raw content. Config: " + finalConfig, e);
-                formattedConfig = finalConfig;
-            }
+            String formattedConfig = formatJsonSafely(finalConfig);
 
             Files.writeString(configPath, formattedConfig, StandardCharsets.UTF_8);
             LOG.info("OpenCode config written to " + configPath + " (length: " + formattedConfig.length() + ")");
         } catch (Exception e) {
             LOG.warn("Failed to write OpenCode config file", e);
+        }
+    }
+
+    /**
+     * Format JSON with pretty printing, falling back to raw content if formatting fails.
+     */
+    @NotNull
+    private String formatJsonSafely(@NotNull String json) {
+        try {
+            return new com.google.gson.GsonBuilder()
+                .setPrettyPrinting()
+                .create()
+                .toJson(JsonParser.parseString(json));
+        } catch (Exception e) {
+            LOG.warn("Failed to format JSON (invalid JSON?), using raw content. JSON: " + json, e);
+            return json;
         }
     }
 
@@ -538,10 +547,14 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
             // OpenCode uses "mcp", others use "mcpServers" or root
             String mcpKey = AGENT_ID_OPENCODE.equals(profile.getId()) ? "mcp" : MCP_SERVERS_KEY;
 
-            JsonObject servers = root.has(mcpKey) && root.get(mcpKey).isJsonObject()
-                ? root.getAsJsonObject(mcpKey)
-                : (root.has(MCP_SERVERS_KEY) && root.get(MCP_SERVERS_KEY).isJsonObject()
-                ? root.getAsJsonObject(MCP_SERVERS_KEY) : root);
+            JsonObject servers;
+            if (root.has(mcpKey) && root.get(mcpKey).isJsonObject()) {
+                servers = root.getAsJsonObject(mcpKey);
+            } else if (root.has(MCP_SERVERS_KEY) && root.get(MCP_SERVERS_KEY).isJsonObject()) {
+                servers = root.getAsJsonObject(MCP_SERVERS_KEY);
+            } else {
+                servers = root;
+            }
 
             for (Map.Entry<String, JsonElement> entry : servers.entrySet()) {
                 if (!entry.getValue().isJsonObject()) continue;
