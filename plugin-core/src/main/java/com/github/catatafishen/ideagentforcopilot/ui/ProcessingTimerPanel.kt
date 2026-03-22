@@ -7,7 +7,6 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
-import java.awt.Component
 import java.awt.Cursor
 import javax.swing.Box
 import javax.swing.BoxLayout

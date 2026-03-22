@@ -158,12 +158,18 @@ public final class ReadIdeLogTool extends InfrastructureTool {
 
     // ── Per-line processing ───────────────────────────────────────────────────
 
-    /** Bundles all filter criteria and output state for the line loop. */
+    /**
+     * Bundles all filter criteria and output state for the line loop.
+     */
     private static final class LineProcessor {
-        @Nullable final Pattern filterPattern;
-        @Nullable final LocalDateTime since;
-        @Nullable final LocalDateTime until;
-        @Nullable final List<String> levels;
+        @Nullable
+        final Pattern filterPattern;
+        @Nullable
+        final LocalDateTime since;
+        @Nullable
+        final LocalDateTime until;
+        @Nullable
+        final List<String> levels;
         final Deque<String> outputBuffer;
         final int maxLines;
         StringBuilder pending = null;
