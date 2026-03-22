@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.AsyncProcessIcon
@@ -25,13 +26,19 @@ internal class ProcessingTimerPanel(
     private val doneIcon = JBLabel(AllIcons.Actions.Checked)
     private val timerLabel = JBLabel("")
     private val toolsLabel = JBLabel("")
+    private val addedLabel = JBLabel("")
+    private val removedLabel = JBLabel("")
     private val requestsLabel = JBLabel("")
     private var startedAt = 0L
     private var toolCallCount = 0
+    private var addedLineCount = 0
+    private var removedLineCount = 0
     private val ticker = Timer(1000) { refreshDisplay() }
 
     private var sessionTotalTimeMs = 0L
     private var sessionTotalToolCalls = 0
+    private var sessionTotalAddedLines = 0
+    private var sessionTotalRemovedLines = 0
     private var sessionTurnCount = 0
     private var isRunning = false
 
@@ -50,7 +57,7 @@ internal class ProcessingTimerPanel(
         layout = BoxLayout(this, BoxLayout.X_AXIS)
         isOpaque = false
         border = JBUI.Borders.emptyRight(6)
-        alignmentY = Component.CENTER_ALIGNMENT
+        alignmentY = CENTER_ALIGNMENT
         val smallGray = JBUI.Fonts.smallFont()
         spinner.isVisible = false
         doneIcon.isVisible = false
@@ -61,6 +68,12 @@ internal class ProcessingTimerPanel(
         toolsLabel.foreground = JBUI.CurrentTheme.Label.disabledForeground()
         toolsLabel.font = smallGray
         toolsLabel.isVisible = false
+        addedLabel.foreground = JBColor.GREEN.darker()
+        addedLabel.font = smallGray
+        addedLabel.isVisible = false
+        removedLabel.foreground = JBColor.RED
+        removedLabel.font = smallGray
+        removedLabel.isVisible = false
         requestsLabel.foreground = JBUI.CurrentTheme.Label.disabledForeground()
         requestsLabel.font = smallGray
         requestsLabel.isVisible = false
@@ -71,6 +84,10 @@ internal class ProcessingTimerPanel(
         add(timerLabel)
         add(Box.createHorizontalStrut(JBUI.scale(4)))
         add(toolsLabel)
+        add(Box.createHorizontalStrut(JBUI.scale(4)))
+        add(addedLabel)
+        add(Box.createHorizontalStrut(JBUI.scale(2)))
+        add(removedLabel)
         add(Box.createHorizontalStrut(JBUI.scale(4)))
         add(requestsLabel)
         isVisible = false
@@ -87,6 +104,8 @@ internal class ProcessingTimerPanel(
     fun start() {
         startedAt = System.currentTimeMillis()
         toolCallCount = 0
+        addedLineCount = 0
+        removedLineCount = 0
         turnInputTokens = 0
         turnOutputTokens = 0
         turnCostUsd = 0.0
@@ -94,12 +113,16 @@ internal class ProcessingTimerPanel(
         displayMode = modeTurn
         timerLabel.text = "0s"
         toolsLabel.text = ""
+        addedLabel.text = ""
+        removedLabel.text = ""
         requestsLabel.text = ""
         spinner.isVisible = true
         spinner.resume()
         doneIcon.isVisible = false
         timerLabel.isVisible = true
         toolsLabel.isVisible = false
+        addedLabel.isVisible = false
+        removedLabel.isVisible = false
         requestsLabel.isVisible = false
         isVisible = true
         ticker.start()
@@ -111,6 +134,8 @@ internal class ProcessingTimerPanel(
         isRunning = false
         sessionTotalTimeMs += System.currentTimeMillis() - startedAt
         sessionTotalToolCalls += toolCallCount
+        sessionTotalAddedLines += addedLineCount
+        sessionTotalRemovedLines += removedLineCount
         sessionTurnCount++
         refreshDisplay()
         spinner.suspend()
@@ -132,6 +157,8 @@ internal class ProcessingTimerPanel(
     fun resetSession() {
         sessionTotalTimeMs = 0L
         sessionTotalToolCalls = 0
+        sessionTotalAddedLines = 0
+        sessionTotalRemovedLines = 0
         sessionTurnCount = 0
         sessionTotalInputTokens = 0L
         sessionTotalOutputTokens = 0L
@@ -149,6 +176,12 @@ internal class ProcessingTimerPanel(
         refreshDisplay()
     }
 
+    fun setCodeChangeStats(added: Int, removed: Int) {
+        addedLineCount = added
+        removedLineCount = removed
+        refreshDisplay()
+    }
+
     private fun refreshDisplay() {
         when (displayMode) {
             modeTurn -> refreshTurnMode()
@@ -162,6 +195,12 @@ internal class ProcessingTimerPanel(
         updateLabel()
         toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
         toolsLabel.isVisible = toolCallCount > 0
+
+        addedLabel.text = if (addedLineCount > 0) "+$addedLineCount" else ""
+        addedLabel.isVisible = addedLineCount > 0
+        removedLabel.text = if (removedLineCount > 0) "-$removedLineCount" else ""
+        removedLabel.isVisible = removedLineCount > 0
+
         if (!isRunning && turnCostUsd > 0.0 || (turnInputTokens + turnOutputTokens) > 0) {
             requestsLabel.text =
                 "\u2022 ${BillingManager.formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)}"
@@ -181,6 +220,14 @@ internal class ProcessingTimerPanel(
         val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
         toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
         toolsLabel.isVisible = totalTools > 0
+
+        val totalAdded = sessionTotalAddedLines + if (isRunning) addedLineCount else 0
+        val totalRemoved = sessionTotalRemovedLines + if (isRunning) removedLineCount else 0
+        addedLabel.text = if (totalAdded > 0) "+$totalAdded" else ""
+        addedLabel.isVisible = totalAdded > 0
+        removedLabel.text = if (totalRemoved > 0) "-$totalRemoved" else ""
+        removedLabel.isVisible = totalRemoved > 0
+
         toolTipText = "Session totals · Click for turn"
         doneIcon.icon = null; doneIcon.text = "\u2211"
         if (supportsMultiplier()) {

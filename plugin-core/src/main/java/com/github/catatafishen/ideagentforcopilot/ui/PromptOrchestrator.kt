@@ -28,6 +28,7 @@ data class PromptOrchestratorCallbacks(
     val requestFocusAfterTurn: () -> Unit,
     val onTimerIncrementToolCalls: () -> Unit,
     val onTimerRecordUsage: (inputTokens: Int, outputTokens: Int, costUsd: Double) -> Unit,
+    val onTimerSetCodeChangeStats: (added: Int, removed: Int) -> Unit,
     /** Called for plan-tree and file-tracking side-effects (remains in ChatToolWindowContent). */
     val onClientUpdate: (SessionUpdate) -> Unit,
 )
@@ -200,6 +201,7 @@ class PromptOrchestrator(
                 val changes = CodeChangeTracker.get()
                 if (changes[0] > 0 || changes[1] > 0) {
                     consolePanel().setCodeChangeStats(changes[0], changes[1])
+                    callbacks.onTimerSetCodeChangeStats(changes[0], changes[1])
                 }
             }
         }

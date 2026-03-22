@@ -545,6 +545,9 @@ class ChatToolWindowContent(
                 onTimerRecordUsage = { i, o, c ->
                     if (::processingTimerPanel.isInitialized) processingTimerPanel.recordUsage(i, o, c)
                 },
+                onTimerSetCodeChangeStats = { a, r ->
+                    if (::processingTimerPanel.isInitialized) processingTimerPanel.setCodeChangeStats(a, r)
+                },
                 onClientUpdate = ::handleClientUpdate,
             )
         )
@@ -1501,6 +1504,7 @@ class ChatToolWindowContent(
         billing.billingCycleStartUsed = -1
         billing.resetLocalCounter()
         if (::processingTimerPanel.isInitialized) processingTimerPanel.resetSession()
+        com.github.catatafishen.ideagentforcopilot.psi.CodeChangeTracker.clearSession()
         com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project).clearSessionAllowedTools()
     }
 
