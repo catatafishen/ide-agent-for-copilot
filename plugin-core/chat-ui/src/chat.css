@@ -207,32 +207,26 @@ body {
     max-width: 94%;
     word-break: break-word;
     overflow-wrap: anywhere;
-    border-left: 3px solid var(--agent);
 }
 
 /* Client-specific colors */
 chat-message.client-copilot .agent-bubble {
-    border-left-color: #7c3aed;
     background: rgba(124, 58, 237, 0.05);
 }
 
 chat-message.client-claude .agent-bubble {
-    border-left-color: #d97706;
     background: rgba(217, 119, 6, 0.05);
 }
 
 chat-message.client-opencode .agent-bubble {
-    border-left-color: #0891b2;
     background: rgba(8, 145, 178, 0.05);
 }
 
 chat-message.client-junie .agent-bubble {
-    border-left-color: #dc2626;
     background: rgba(220, 38, 38, 0.05);
 }
 
 chat-message.client-kiro .agent-bubble {
-    border-left-color: #059669;
     background: rgba(5, 150, 105, 0.05);
 }
 
