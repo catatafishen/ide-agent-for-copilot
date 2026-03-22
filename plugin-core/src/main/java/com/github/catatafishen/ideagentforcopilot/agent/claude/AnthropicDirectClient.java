@@ -5,6 +5,7 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.PromptRequest;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
 import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentException;
+import com.github.catatafishen.ideagentforcopilot.bridge.ProfileBasedAgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.SessionOption;
 import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
@@ -141,6 +142,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
     private static final String FIELD_INDEX = "index";
 
     private final AgentProfile profile;
+    private final ProfileBasedAgentConfig config;
     @Nullable
     private final Project project;
 
@@ -157,6 +159,7 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
                                  @Nullable Project project) {
         super(registry);
         this.profile = profile;
+        this.config = new ProfileBasedAgentConfig(profile, registry);
         this.project = project;
         this.httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -200,6 +203,10 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
         String sessionId = UUID.randomUUID().toString();
         sessions.put(sessionId, new ArrayList<>());
         sessionCancelled.put(sessionId, new AtomicBoolean(false));
+
+        // Inject default startup instructions
+        injectStartupInstructions(sessionId);
+
         if (cwd != null) {
             injectProjectInstructions(sessionId, cwd);
         }
@@ -767,6 +774,26 @@ public final class AnthropicDirectClient extends AbstractClaudeAgentClient {
     }
 
     // ── Project instruction injection ────────────────────────────────────────
+
+    private void injectStartupInstructions(@NotNull String sessionId) {
+        List<JsonObject> messages = sessions.get(sessionId);
+        if (messages == null) return;
+
+        String instructions = config.getSessionInstructions();
+        if (instructions == null || instructions.isEmpty()) return;
+
+        JsonObject instructionMsg = new JsonObject();
+        instructionMsg.addProperty("role", ROLE_USER);
+        instructionMsg.addProperty(FIELD_CONTENT, instructions);
+        messages.add(instructionMsg);
+
+        JsonObject ack = new JsonObject();
+        ack.addProperty("role", ROLE_ASSISTANT);
+        ack.addProperty(FIELD_CONTENT, "Understood. I'll follow these startup instructions.");
+        messages.add(ack);
+
+        LOG.info("Injected startup instructions for session " + sessionId + " (" + instructions.length() + " chars)");
+    }
 
     private void injectProjectInstructions(@NotNull String sessionId, @NotNull String cwd) {
         List<JsonObject> messages = sessions.get(sessionId);

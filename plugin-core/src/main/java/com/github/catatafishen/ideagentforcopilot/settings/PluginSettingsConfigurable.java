@@ -21,6 +21,7 @@ public final class PluginSettingsConfigurable implements Configurable {
     private ScratchTypesConfigurable scratchTypesConfigurable;
     private ProjectFilesConfigurable projectFilesConfigurable;
     private ChatHistoryConfigurable chatHistoryConfigurable;
+    private StartupInstructionsConfigurable startupInstructionsConfigurable;
 
     public PluginSettingsConfigurable(@NotNull Project project) {
         this.project = project;
@@ -43,12 +44,14 @@ public final class PluginSettingsConfigurable implements Configurable {
         scratchTypesConfigurable = new ScratchTypesConfigurable();
         projectFilesConfigurable = new ProjectFilesConfigurable();
         chatHistoryConfigurable = new ChatHistoryConfigurable(project);
+        startupInstructionsConfigurable = new StartupInstructionsConfigurable();
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("About", buildAboutPanel());
         tabs.addTab("Scratch File Types", scratchTypesConfigurable.createComponent());
         tabs.addTab("Project Files", projectFilesConfigurable.createComponent());
         tabs.addTab("Chat History", chatHistoryConfigurable.createComponent());
+        tabs.addTab("Agent Instructions", startupInstructionsConfigurable.createComponent());
 
         reset();
 
@@ -101,7 +104,8 @@ public final class PluginSettingsConfigurable implements Configurable {
     public boolean isModified() {
         return (scratchTypesConfigurable != null && scratchTypesConfigurable.isModified())
             || (projectFilesConfigurable != null && projectFilesConfigurable.isModified())
-            || (chatHistoryConfigurable != null && chatHistoryConfigurable.isModified());
+            || (chatHistoryConfigurable != null && chatHistoryConfigurable.isModified())
+            || (startupInstructionsConfigurable != null && startupInstructionsConfigurable.isModified());
     }
 
     @Override
@@ -109,6 +113,7 @@ public final class PluginSettingsConfigurable implements Configurable {
         if (scratchTypesConfigurable != null) scratchTypesConfigurable.apply();
         if (projectFilesConfigurable != null) projectFilesConfigurable.apply();
         if (chatHistoryConfigurable != null) chatHistoryConfigurable.apply();
+        if (startupInstructionsConfigurable != null) startupInstructionsConfigurable.apply();
     }
 
     @Override
@@ -116,6 +121,7 @@ public final class PluginSettingsConfigurable implements Configurable {
         if (scratchTypesConfigurable != null) scratchTypesConfigurable.reset();
         if (projectFilesConfigurable != null) projectFilesConfigurable.reset();
         if (chatHistoryConfigurable != null) chatHistoryConfigurable.reset();
+        if (startupInstructionsConfigurable != null) startupInstructionsConfigurable.reset();
     }
 
     @Override
@@ -131,6 +137,10 @@ public final class PluginSettingsConfigurable implements Configurable {
         if (chatHistoryConfigurable != null) {
             chatHistoryConfigurable.disposeUIResources();
             chatHistoryConfigurable = null;
+        }
+        if (startupInstructionsConfigurable != null) {
+            startupInstructionsConfigurable.disposeUIResources();
+            startupInstructionsConfigurable = null;
         }
     }
 }

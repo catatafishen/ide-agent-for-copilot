@@ -7,6 +7,7 @@ import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.github.catatafishen.ideagentforcopilot.settings.StartupInstructionsSettings;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -376,17 +377,7 @@ public final class ProfileBasedAgentConfig implements AgentConfig {
         }
 
         StringBuilder sb = new StringBuilder();
-        try (java.io.InputStream is = getClass().getResourceAsStream("/default-startup-instructions.md")) {
-            if (is != null) {
-                sb.append(new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
-            } else {
-                LOG.warn("Resource /default-startup-instructions.md not found in classpath");
-                sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.");
-            }
-        } catch (IOException e) {
-            LOG.error("Failed to read /default-startup-instructions.md from classpath", e);
-            sb.append("You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.");
-        }
+        sb.append(StartupInstructionsSettings.getInstance().getInstructions());
         String additional = profile.getAdditionalInstructions();
         if (!additional.isBlank()) {
             if (!sb.isEmpty()) sb.append("\n\n");
