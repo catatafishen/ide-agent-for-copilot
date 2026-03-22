@@ -302,7 +302,9 @@ public final class ToolChipRegistry {
         try {
             TreeMap<String, String> sorted = new TreeMap<>();
             for (String key : args.keySet()) {
-                sorted.put(key, args.get(key).toString());
+                if (!"__tool_use_purpose".equals(key)) {
+                    sorted.put(key, args.get(key).toString());
+                }
             }
             return String.format("%08x", sorted.toString().hashCode());
         } catch (Exception e) {
