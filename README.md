@@ -29,50 +29,49 @@ new agents can be added by implementing two small interfaces without touching th
 
 ```mermaid
 graph TD
-    subgraph ij["IntelliJ IDEA Plugin"]
+    subgraph IDE["IntelliJ IDEA Plugin"]
         subgraph ui["UI Layer"]
-            TW["Tool Window\n(Swing / JCEF chat)"]
+            TW["Tool Window<br/>(JCEF Chat)"]
         end
-        subgraph acp["ACP Layer (agent-agnostic)"]
-            AS["AgentService\n(lifecycle)"]
-            AC["AcpClient\n(JSON-RPC 2.0)"]
-            AS --> AC
+        subgraph services["Services"]
+            AAM["ActiveAgentManager"]
+            APM["AgentProfileManager"]
         end
-        subgraph agents["Agent Backends"]
-            CS["CopilotService"]
-            OC["OpenCodeService"]
-            CP["Custom Profiles"]
+        subgraph clients["Agent Clients"]
+            AC["AcpClient<br/>(Copilot/Junie/Kiro/OpenCode)"]
+            CC["ClaudeClient<br/>(Claude Code/Anthropic API)"]
         end
         subgraph mcp["MCP Layer"]
-            PSI["PsiBridgeService\n(HTTP server)\n92 MCP tools"]
+            PSI["PsiBridgeService<br/>(HTTP server, 92 tools)"]
         end
-        TW -->|" prompts /\ncontext "| AS
-        AC -->|" streaming\nresponses "| TW
+        TW --> AAM
+        AAM --> clients
     end
 
-    AC <-->|" stdin / stdout "| CLI["Agent CLI\n(Copilot, opencode, etc.)"]
-    CLI -->|stdio| MCP["MCP Server (JAR)\nintelij-code-tools"]
-    MCP -->|HTTP| PSI
+    AC <-->|"stdin/stdout<br/>JSON-RPC 2.0"| CLI["Agent CLI"]
+    CC <-->|"stdin/stdout<br/>or HTTP"| CAPI["Claude API"]
+    CLI <-->|"API"| LLM["Cloud LLM"]
+    CLI -->|"stdio"| MCP["MCP Server (JAR)"]
+    MCP -->|"HTTP"| PSI
 ```
 
 ### Three Layers
 
-| Layer   | Package               | Purpose                                                                                                                                  |
-|---------|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| **UI**  | `ui/`                 | Tool window, chat panel, model selector — agent-agnostic                                                                                 |
-| **ACP** | `bridge/`             | Generic Agent Client Protocol: `AcpClient` (JSON-RPC), `AgentService` (lifecycle), `AgentConfig` / `AgentSettings` (strategy interfaces) |
-| **MCP** | `mcp-server/`, `psi/` | IDE tools exposed via Model Context Protocol over stdio + HTTP                                                                           |
+| Layer       | Package                  | Purpose                                                                         |
+|-------------|--------------------------|---------------------------------------------------------------------------------|
+| **UI**      | `ui/`                    | Tool window, chat panel, model selector — agent-agnostic                        |
+| **Clients** | `acp/client/`, `agent/`  | Agent-specific clients: `CopilotClient`, `JunieClient`, `ClaudeCliClient`, etc. |
+| **MCP**     | `mcp-server/`, `psi/`    | IDE tools exposed via Model Context Protocol over stdio + HTTP                  |
 
 ### Extending for New Agents
 
-To add a new agent backend, implement two interfaces and extend one base class:
+To add a new ACP-based agent, extend `AcpClient` and add a profile type:
 
-1. **`AgentConfig`** — Agent binary discovery, process building, initialize response parsing, auth
-2. **`AgentSettings`** — Runtime settings: prompt timeout, max tool calls per turn, permission resolution
-3. **`AgentService`** (extend) — Provides `createAgentConfig()` + `createAgentSettings()`, inherits full lifecycle (
-   start/stop/restart/dispose)
+1. **Create `YourAgentClient`** — Extend `AcpClient`, override parsing methods for agent-specific quirks
+2. **Add profile type** — Register in `AgentProfile.AgentType` enum
+3. **Add to `AgentRegistry`** — Map the type to your client class
 
-The `AcpClient` and UI code require no changes — they program against the interfaces.
+The `ActiveAgentManager` and UI code require no changes — they program against `AbstractAgentClient`.
 
 ### Key Design: IntelliJ-Native File Operations
 

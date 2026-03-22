@@ -2,57 +2,66 @@
 
 ## System Architecture
 
+```mermaid
+graph TB
+    subgraph IDE["IntelliJ IDEA IDE"]
+        subgraph Plugin["AgentBridge Plugin (Java 21)"]
+            UI["Tool Window<br/>(JCEF Chat)"]
+            
+            subgraph Services["Services Layer"]
+                AAM["ActiveAgentManager"]
+                APM["AgentProfileManager"]
+                PSI["PsiBridgeService<br/>(92 MCP tools)"]
+                TCR["ToolChipRegistry"]
+            end
+            
+            subgraph Clients["Agent Clients"]
+                ACP["AcpClient (abstract)"]
+                COP["CopilotClient"]
+                JUN["JunieClient"]
+                KIR["KiroClient"]
+                OPC["OpenCodeClient"]
+                CLC["ClaudeCliClient"]
+                ADC["AnthropicDirectClient"]
+            end
+        end
+    end
+    
+    subgraph External["External Processes"]
+        CLI["Agent CLI<br/>(Copilot/Junie/Kiro/OpenCode/Claude)"]
+        MCP["MCP Server (JAR)<br/>agentbridge"]
+        LLM["Cloud LLM<br/>(OpenAI/Anthropic/etc)"]
+    end
+    
+    UI --> AAM
+    AAM --> Clients
+    Clients -->|"stdin/stdout<br/>JSON-RPC 2.0"| CLI
+    CLI -->|"API calls"| LLM
+    LLM -->|"tool_call"| CLI
+    CLI -->|"stdio"| MCP
+    MCP -->|"HTTP POST"| PSI
+    PSI -->|"result"| MCP
+    MCP -->|"stdio"| CLI
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     IntelliJ IDEA IDE                            │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │              AgentBridge Plugin (Java 21)              │    │
-│  │                                                          │    │
-│  │  ┌──────────────┐  ┌───────────────────────────────┐  │    │
-│  │  │ Tool Window  │  │  Services Layer               │  │    │
-│  │  │  (JCEF Chat) │  │                               │  │    │
-│  │  │              │  │  - ActiveAgentManager         │  │    │
-│  │  │ • Chat panel │◄─┤  - AgentProfileManager        │  │    │
-│  │  │ • Toolbar    │  │  - PsiBridgeService           │  │    │
-│  │  │ • Prompt     │  │  - ToolChipRegistry           │  │    │
-│  │  │              │  │                               │  │    │
-│  │  └──────────────┘  └─────┬─────────────────────────┘  │    │
-│  │                           │                             │    │
-│  │  ┌────────────────────────▼──────────────────────┐    │    │
-│  │  │     Agent Clients (AbstractAgentClient)       │    │    │
-│  │  │                                               │    │    │
-│  │  │  ACP-based:              Claude-based:        │    │    │
-│  │  │  ├─ CopilotClient        ├─ ClaudeCliClient   │    │    │
-│  │  │  ├─ JunieClient          └─ AnthropicDirect   │    │    │
-│  │  │  ├─ KiroClient                                │    │    │
-│  │  │  └─ OpenCodeClient                            │    │    │
-│  │  └────────────────────┬──────────────────────────┘    │    │
-│  │                       │                                │    │
-│  │  ┌────────────────────▼──────────────────────┐        │    │
-│  │  │     PSI Bridge (PsiBridgeService)         │        │    │
-│  │  │  • HTTP server inside IntelliJ process    │        │    │
-│  │  │  • 92 MCP tools via IntelliJ APIs         │        │    │
-│  │  └────────────────────┬──────────────────────┘        │    │
-│  └───────────────────────┼───────────────────────────────┘    │
-│                          │ stdin/stdout or HTTP                │
-└──────────────────────────┼────────────────────────────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │   Agent CLI / API       │
-              │   (Copilot/Junie/Kiro/  │
-              │    OpenCode/Claude)     │
-              └────────────┬────────────┘
-                           │ stdio
-              ┌────────────▼────────────┐
-              │   MCP Server (JAR)      │
-              │   (routes to PSI Bridge)│
-              └────────────┬────────────┘
-                           │ HTTP
-              ┌────────────▼────────────┐
-              │   Cloud LLM Provider    │
-              │   (OpenAI/Anthropic/etc)│
-              └─────────────────────────┘
+
+## Tool Call Round-Trip
+
+```mermaid
+sequenceDiagram
+    participant LLM as Cloud LLM
+    participant CLI as Agent CLI
+    participant MCP as MCP Server (JAR)
+    participant PSI as PSI Bridge (IDE)
+    
+    Note over LLM,PSI: Agent decides to call a tool
+    LLM->>CLI: tool_call: write_file
+    CLI->>MCP: tools/call (stdio)
+    MCP->>PSI: HTTP POST /write_file
+    PSI->>PSI: Execute via IntelliJ API
+    PSI-->>MCP: HTTP response (result)
+    MCP-->>CLI: JSON-RPC result (stdio)
+    CLI-->>LLM: tool_result
+    Note over LLM,PSI: Agent continues reasoning
 ```
 
 ---
@@ -140,52 +149,56 @@ For Anthropic Claude agents (different protocol):
 
 ### 4. MCP Tool Bridge
 
-```
-Agent CLI ──stdio──► MCP Server (JAR) ──HTTP──► PsiBridgeService
-                     agentbridge               (IntelliJ process)
+The MCP Server is a **pass-through** that routes tool calls from the Agent CLI to the PSI Bridge:
+
+```mermaid
+graph LR
+    CLI["Agent CLI"] -->|"stdio<br/>JSON-RPC"| MCP["MCP Server<br/>(JAR)"]
+    MCP -->|"HTTP POST<br/>localhost:port"| PSI["PsiBridgeService<br/>(IntelliJ)"]
 ```
 
-- **MCP Server** (`mcp-server/`): Standalone JAR, stdio protocol, routes tool calls to PSI bridge
-- **PSI Bridge** (`PsiBridgeService`): HTTP server inside IntelliJ process, accesses PSI/VFS/Document APIs
-- **Bridge file**: `~/.copilot/psi-bridge.json` contains port for HTTP connection
+- **MCP Server** (`mcp-server/`): Standalone JAR spawned by Agent CLI, receives tool calls via stdio, forwards to PSI Bridge via HTTP
+- **PSI Bridge** (`PsiBridgeService`): HTTP server inside IntelliJ process, executes tools using IntelliJ APIs
+- **Bridge file**: `~/.copilot/psi-bridge.json` contains the dynamic port
 
 ---
 
 ## Data Flow
 
-### Typical Prompt Flow
+### Prompt Flow
 
-```
-┌─────────┐            ┌────────┐           ┌─────────────┐
-│  User   │            │ Plugin │           │  Agent CLI  │
-└────┬────┘            └───┬────┘           └──────┬──────┘
-     │                     │                       │
-     │  Type prompt        │                       │
-     ├────────────────────►│                       │
-     │                     │  session/prompt        │
-     │                     ├──────────────────────►│
-     │                     │                       │
-     │                     │  session/update        │
-     │                     │◄──────────────────────┤
-     │                     │  (streaming chunks)    │
-     │  Display response   │                       │
-     │◄────────────────────┤                       │
-     │                     │                       │
-     │                     │  MCP tool call         │
-     │                     │◄──────────────────────┤
-     │                     │  (write_file)          │
-     │                     ├──────────────────────►│
-     │                     │                       │
+```mermaid
+sequenceDiagram
+    participant User
+    participant Plugin
+    participant CLI as Agent CLI
+    participant LLM as Cloud LLM
+    
+    User->>Plugin: Type prompt
+    Plugin->>CLI: session/prompt
+    CLI->>LLM: API request
+    LLM-->>CLI: Streaming response
+    CLI-->>Plugin: session/update (chunks)
+    Plugin-->>User: Display response
 ```
 
 ### Permission Flow (ACP agents with permissions)
 
-```
-Agent requests permission (kind="edit")
-    → Plugin denies (forces MCP tool usage)
-    → Agent retries with MCP tool (write_file)
-    → Write goes through Document API
-    → Auto-format runs
+```mermaid
+sequenceDiagram
+    participant CLI as Agent CLI
+    participant Plugin
+    participant MCP as MCP Server
+    participant PSI as PSI Bridge
+    
+    CLI->>Plugin: request_permission (kind="edit")
+    Plugin-->>CLI: DENY (forces MCP tool)
+    CLI->>MCP: tools/call write_file
+    MCP->>PSI: HTTP POST /write_file
+    PSI->>PSI: Document API write
+    PSI->>PSI: Auto-format
+    PSI-->>MCP: Success
+    MCP-->>CLI: Result
 ```
 
 ---
