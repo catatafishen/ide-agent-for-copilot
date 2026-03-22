@@ -790,3 +790,19 @@
     "NEW INSTRUCTION": "WHEN configuring Kiro/Junie tool filtering THEN allow web_fetch/search; deny all other built-ins"
 }
 
+[2026-03-22 16:43] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Toolbar stats visibility",
+    "EXPECTATION": "After the tool count, the toolbar should display total removed lines in red and added lines in green, either accumulated for the whole session or for the current turn (with real-time updates in current-turn mode).",
+    "NEW INSTRUCTION": "WHEN rendering toolbar stats THEN append red removed and green added line counts"
+}
+
+[2026-03-22 16:47] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool result mapping",
+    "EXPECTATION": "The 'Get Compilation Errors' MCP tool call should map to the correct renderer instead of showing as grey with a dotted border.",
+    "NEW INSTRUCTION": "WHEN a known MCP tool renders as unmapped THEN compare tool_call id/hash with tool_result and normalize tool ID from logs"
+}
+

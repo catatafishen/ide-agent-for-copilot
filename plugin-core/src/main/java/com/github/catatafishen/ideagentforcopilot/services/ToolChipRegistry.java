@@ -95,13 +95,15 @@ public final class ToolChipRegistry {
         @Nullable JsonObject args,
         @NotNull String clientId
     ) {
-        // If no args, use the clientId as chipId (can't correlate with MCP, always PENDING)
-        if (args == null || args.isEmpty()) {
+        // If args is null, we cannot compute a hash — fall back to a clientId-based chip
+        // that cannot correlate with MCP. Empty args ({}) DO go through the hash path because
+        // the MCP side always hashes them the same way (hash of "{}").
+        if (args == null) {
             String chipId = "c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-");
             ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
             chips.put(chipId, entry);
             clientToChip.put(clientId, chipId);
-            LOG.debug("ToolChipRegistry: no-args chip " + chipId + " (" + displayTitle + ")");
+            LOG.debug("ToolChipRegistry: null-args chip " + chipId + " (" + displayTitle + ")");
             return new ChipRegistration(chipId, ChipState.PENDING);
         }
 
