@@ -17,4 +17,4 @@ You should receive an acknowledgment within 48 hours. We will work with you to u
 
 ## Scope
 
-This policy applies to the IDE Agent for Copilot plugin code. Security issues in upstream dependencies (GitHub Copilot CLI, IntelliJ Platform SDK) should be reported to their respective maintainers.
+This policy applies to the AgentBridge plugin code. Security issues in upstream dependencies (GitHub Copilot CLI, IntelliJ Platform SDK, other agent CLIs) should be reported to their respective maintainers.

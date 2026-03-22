@@ -3,8 +3,8 @@
 ## Prerequisites
 
 1. **JDK 21** — Install via your package manager or SDKMAN
-2. **GitHub Copilot CLI** — Must be installed and authenticated (`copilot auth`)
-3. **IntelliJ IDEA 2025.1+** — Ultimate or Community Edition (through 2025.3)
+2. **An ACP-compatible agent CLI** — e.g., GitHub Copilot CLI (`copilot auth`), OpenCode, Junie, or Kiro
+3. **IntelliJ IDEA 2025.1+** — Any JetBrains IDE (Ultimate, Community, WebStorm, PyCharm, etc.)
 
 ## Setup
 
@@ -39,7 +39,7 @@ org.gradle.java.home=C:\\Users\\YOU\\.jdks\\temurin-21.0.6
 ./gradlew :plugin-core:buildPlugin
 ```
 
-Output: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
+Output: `plugin-core/build/distributions/ide-agent-for-copilot-<version>.zip`
 
 ### 3. Install
 
@@ -49,7 +49,7 @@ Output: `plugin-core/build/distributions/plugin-core-0.1.0-SNAPSHOT.zip`
 # Linux (Toolbox-managed: no /plugins parent)
 PLUGIN_DIR=~/.local/share/JetBrains/IntelliJIdea2025.3
 rm -rf "$PLUGIN_DIR/plugin-core"
-unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
+unzip -q plugin-core/build/distributions/ide-agent-for-copilot-*.zip -d "$PLUGIN_DIR"
 ```
 
 **Option B — Sandbox IDE (recommended for development):**
@@ -62,8 +62,8 @@ unzip -q plugin-core/build/distributions/plugin-core-*.zip -d "$PLUGIN_DIR"
 ### 4. Verify
 
 1. Open IntelliJ and a project
-2. **View → Tool Windows → IDE Agent for Copilot**
-3. Models dropdown should load available Copilot models
+2. **View → Tool Windows → AgentBridge**
+3. Select an agent profile from the dropdown
 4. Type a prompt and click Run
 
 ## Development Workflow
@@ -83,13 +83,13 @@ restarting.
 
 ## What's Included
 
-- **83 MCP tools** — File I/O, PSI analysis, refactoring, git, testing, terminal, documentation
-- **ACP protocol** — Direct integration with GitHub Copilot CLI
-- **Multi-turn chat** — Session-based conversations with context awareness
+- **92 MCP tools** — File I/O, PSI analysis, refactoring, git, testing, terminal, documentation
+- **ACP protocol** — Direct integration with ACP-compatible agent CLIs
+- **Multi-agent support** — Switch between Copilot, OpenCode, Junie, Kiro, or custom profiles
 - **Permission routing** — File edits routed through IntelliJ Document API with auto-format
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for full architecture and debugging guide.
 
 ---
 
-*Last Updated: 2026-03-05*
+*Last Updated: 2026-03-22*

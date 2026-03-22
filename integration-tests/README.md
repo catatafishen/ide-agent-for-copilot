@@ -9,7 +9,7 @@ This module contains integration tests that validate the full plugin stack:
 
 **These tests are NOT run in CI** because they require:
 1. Running IntelliJ sandbox IDE
-2. External Copilot CLI service
+2. External agent CLI service
 3. Real project files and IDE state
 
 ## Running Tests
@@ -19,7 +19,7 @@ This module contains integration tests that validate the full plugin stack:
 1. **Start the sandbox IDE:**
    ```bash
    cd /path/to/intellij-copilot-plugin
-   ./restart-sandbox.sh
+   ./gradlew :plugin-core:runIde
    ```
 
 2. **Wait for IDE to fully load** (~30-60 seconds)
@@ -79,7 +79,7 @@ The `callTool()` helper:
 
 **Do NOT add these tests to CI pipelines** because:
 - Require IntelliJ IDE running (heavyweight, slow)
-- Depend on external Copilot CLI service
+- Depend on external agent CLI service
 - Results may vary by environment/timing
 - Not reproducible in isolated containers
 
@@ -110,15 +110,9 @@ For CI, use unit tests in `plugin-core/src/test/` instead.
    open integration-tests/build/reports/tests/test/index.html
    ```
 
-## Future Enhancements
+## Available Tools
 
-- [ ] Test all 36 MCP tools systematically
-- [ ] Test error handling (invalid args, missing files, etc.)
-- [ ] Test concurrent tool calls
-- [ ] Test with different project types
-- [ ] Performance benchmarks
-- [ ] Stress tests (many rapid calls)
-- [ ] Test tool interactions (read → write → read)
+The plugin exposes 92 MCP tools. See [FEATURES.md](../FEATURES.md) for the complete list.
 
 ## Notes
 
@@ -129,4 +123,4 @@ For CI, use unit tests in `plugin-core/src/test/` instead.
 
 ---
 
-*Last Updated: 2026-02-14*
+*Last Updated: 2026-03-22*

@@ -5,7 +5,7 @@
 The **Model Context Protocol (MCP)** integration in this IntelliJ plugin provides a standardized way for AI agents (via
 GitHub Copilot) to interact with IntelliJ IDEA's code intelligence, project structure, and development tools.
 
-The MCP server acts as a bridge between the Copilot agent and IntelliJ's internal APIs, exposing 60 tools through a
+The MCP server acts as a bridge between ACP-compatible agents and IntelliJ's internal APIs, exposing 92 tools through a
 JSON-RPC stdio interface.
 
 ---
@@ -75,7 +75,7 @@ graph TB
 **Responsibilities:**
 
 - Starts HTTP server on dynamic port (localhost only)
-- Exposes 60 tools as HTTP endpoints
+- Exposes 92 tools as HTTP endpoints
 - Translates HTTP requests into IntelliJ API calls
 - Returns results as JSON responses
 - Manages per-project instance lifecycle
@@ -268,7 +268,7 @@ Client config:
 
 ## Tool Categories
 
-The MCP server exposes **60 tools** organized into 11 categories:
+The MCP server exposes **92 tools** organized into 12 categories. See [FEATURES.md](../FEATURES.md) for the complete tool documentation. Summary of categories:
 
 ### 1. Code Navigation (5 tools)
 
