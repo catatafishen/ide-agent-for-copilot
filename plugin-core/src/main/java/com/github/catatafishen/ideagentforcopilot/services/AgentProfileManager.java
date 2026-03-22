@@ -107,6 +107,7 @@ public final class AgentProfileManager {
         p.setInstallHint("Install with: npm install -g @github/copilot-cli");
         p.setInstallUrl("https://github.com/github/copilot-cli#installation");
         p.setSupportsOAuthSignIn(true);
+        p.setPrependInstructionsTo(".github/copilot-instructions.md");
         return p;
     }
 
