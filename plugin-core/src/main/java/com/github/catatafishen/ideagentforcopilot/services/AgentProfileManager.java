@@ -128,7 +128,6 @@ public final class AgentProfileManager {
         p.setId(KIRO_PROFILE_ID);
         p.setDisplayName("Kiro");
         p.setBuiltIn(true);
-        p.setExperimental(true);
         p.setTransportType(TransportType.ACP);
         p.setBinaryName("kiro-cli");
         p.setAlternateNames(List.of("kiro"));
@@ -144,7 +143,6 @@ public final class AgentProfileManager {
         p.setId(OPENCODE_PROFILE_ID);
         p.setDisplayName("OpenCode");
         p.setBuiltIn(true);
-        p.setExperimental(true);
         p.setBinaryName(OPENCODE_PROFILE_ID);
         p.setInstallHint("Install with: npm i -g opencode-ai");
         return p;

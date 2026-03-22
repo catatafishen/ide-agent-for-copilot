@@ -782,3 +782,11 @@
     "NEW INSTRUCTION": "WHEN modifying chat-ui UI THEN change TypeScript only; never edit generated JS"
 }
 
+[2026-03-22 16:35] - Updated by Junie
+{
+    "TYPE": "preference",
+    "CATEGORY": "Tool exclusion policy",
+    "EXPECTATION": "Exclude or deny all built-in tools except web_fetch and web_search; verify against official online specs, update project documentation, and implement runtime guards.",
+    "NEW INSTRUCTION": "WHEN configuring Kiro/Junie tool filtering THEN allow web_fetch/search; deny all other built-ins"
+}
+
