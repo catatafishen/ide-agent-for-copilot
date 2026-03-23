@@ -76,6 +76,9 @@ jobs:
       - name: Run plugin tests
         run: ./gradlew :plugin-core:test --no-daemon
 
+      - name: Create pluginVerifier cache directory
+        run: mkdir -p ~/.pluginVerifier/extracted-plugins
+
       - name: Verify plugins (marketplace compatibility)
         run: ./gradlew :plugin-core:verifyPlugin :standalone-mcp:verifyPlugin --no-daemon
 
