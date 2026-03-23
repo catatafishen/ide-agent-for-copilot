@@ -125,6 +125,8 @@ public final class CopilotClient extends AcpClient {
 
     public CopilotClient(Project project) {
         super(project);
+        // Force refresh to pick up charset fix for non-ASCII usernames
+        com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.refresh();
     }
 
     @Override
