@@ -536,6 +536,17 @@ class PromptOrchestrator(
         val isCancelled = e is InterruptedException || e.cause is InterruptedException
         var msg = if (isCancelled) "Request cancelled" else e.message ?: "Unknown error"
 
+        // Check if the root cause is an authentication error
+        var cause: Throwable? = e
+        while (cause != null) {
+            val causeMsg = cause.message ?: ""
+            if (authService.isAuthenticationError(causeMsg)) {
+                msg = causeMsg
+                break
+            }
+            cause = cause.cause
+        }
+
         // For ACP errors, ensure the message is descriptive
         if (e is AgentException && msg.startsWith("(") && msg.contains(")")) {
             // Keep the enhanced message format: (code) Message: Data
