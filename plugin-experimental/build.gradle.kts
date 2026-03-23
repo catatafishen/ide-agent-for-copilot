@@ -59,15 +59,6 @@ val repackagePluginCore by tasks.registering(Jar::class) {
     }
 }
 
-// plugin-core classes (without plugin.xml) must be on the runtime classpath so that
-// buildSearchableOptions can instantiate configurables that reference plugin-core types.
-// IPP's buildSearchableOptions uses a fresh sandbox separate from the regular prepareSandbox
-// output, so it does not pick up the jar copied via doLast — it needs the jar on the runtime
-// configuration so IPP bundles it automatically.
-dependencies {
-    runtimeOnly(files(repackagePluginCore))
-}
-
 // Generate plugin.xml by merging plugin-core's descriptor with macro extensions
 val generatePluginXml by tasks.registering {
     val corePluginXml = project(":plugin-core").file("src/main/resources/META-INF/plugin.xml")
@@ -113,19 +104,19 @@ tasks.named("patchPluginXml") {
     dependsOn(generatePluginXml)
 }
 
-// Include plugin-core classes in the sandbox
+// Include plugin-core classes in the plugin sandbox.
+// IPP 2.x places the sandbox at <rootProject>/.intellijPlatform/sandbox/<module>/<IDE-version>/
+// The doLast runs after prepareSandbox has created the sandbox structure, so the lib dir exists.
 tasks.named("prepareSandbox") {
     dependsOn(repackagePluginCore)
     doLast {
         val coreJar = repackagePluginCore.get().outputs.files.singleFile
-        val ideDirs = File(
-            layout.buildDirectory.asFile.get(),
-            "idea-sandbox"
-        ).listFiles { f -> f.isDirectory && f.name.startsWith("IU-") }
-        ideDirs?.forEach { ideDir ->
-            val sandboxLib = File(ideDir, "plugins/plugin-experimental/lib")
-            sandboxLib.mkdirs()
-            coreJar.copyTo(File(sandboxLib, "plugin-core.jar"), overwrite = true)
+        val sandboxBase = project.rootProject.projectDir.resolve(".intellijPlatform/sandbox/${project.name}")
+        sandboxBase.listFiles { f -> f.isDirectory }?.forEach { ideVersionDir ->
+            val libDir = ideVersionDir.resolve("plugins/${project.name}/lib")
+            if (libDir.exists()) {
+                coreJar.copyTo(libDir.resolve("plugin-core.jar"), overwrite = true)
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ with IntelliJ-native tools for code intelligence, formatting, and file operation
 
 ## ✅ Phase 1: Foundation (COMPLETE)
 
-- ✅ Multi-module Gradle project (plugin-core, mcp-server, integration-tests, standalone-mcp)
+- ✅ Multi-module Gradle project (plugin-core, mcp-server, integration-tests)
 - ✅ Tool Window UI with chat panel
 - ✅ Infrastructure prototype (later replaced with direct ACP integration)
 

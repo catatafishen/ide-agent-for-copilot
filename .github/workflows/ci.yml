@@ -78,7 +78,7 @@ jobs:
         working-directory: plugin-core/js-tests
 
       - name: Build plugins
-        run: ./gradlew :plugin-core:buildPlugin :standalone-mcp:buildPlugin :plugin-experimental:buildPlugin --no-daemon --quiet
+        run: ./gradlew :plugin-core:buildPlugin :plugin-experimental:buildPlugin --no-daemon --quiet
 
       - name: Run plugin tests
         run: ./gradlew :plugin-core:test --no-daemon --quiet
@@ -87,20 +87,12 @@ jobs:
         run: mkdir -p ~/.pluginVerifier/extracted-plugins
 
       - name: Verify plugins (marketplace compatibility)
-        run: ./gradlew :plugin-core:verifyPlugin :standalone-mcp:verifyPlugin --no-daemon --quiet
+        run: ./gradlew :plugin-core:verifyPlugin --no-daemon --quiet
 
       - name: Upload plugin-core artifact
         uses: actions/upload-artifact@v4
         with:
           name: plugin-core-pr-${{ github.event.pull_request.number }}
           path: plugin-core/build/distributions/*.zip
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload standalone-mcp artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: standalone-mcp-pr-${{ github.event.pull_request.number }}
-          path: standalone-mcp/build/distributions/*.zip
           if-no-files-found: error
           retention-days: 7

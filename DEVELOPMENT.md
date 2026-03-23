@@ -25,15 +25,14 @@ Output: `plugin-core/build/distributions/ide-agent-for-copilot-<version>.zip`
 
 ### Build Artifacts
 
-The project produces three independent plugin ZIPs, each installable via **Settings → Plugins → ⚙ → Install from Disk**.
+The project produces two independent plugin ZIPs, each installable via **Settings → Plugins → ⚙ → Install from Disk**.
 
 ```bash
-# Build all three
+# Build all
 ./gradlew buildPlugin
 
 # Build individually
 ./gradlew :plugin-core:buildPlugin
-./gradlew :standalone-mcp:buildPlugin
 ./gradlew :plugin-experimental:buildPlugin
 ```
 
@@ -51,26 +50,7 @@ directory. This is the plugin published to the JetBrains Marketplace.
 
 **Contents:** plugin-core classes + `mcp-server.jar` + chat-ui assets + icons
 
-#### 2. IDE MCP Server (Standalone)
-
-|               |                                                                   |
-|---------------|-------------------------------------------------------------------|
-| **Module**    | `standalone-mcp`                                                  |
-| **Plugin ID** | `com.github.catatafishen.idemcpserver`                            |
-| **Output**    | `standalone-mcp/build/distributions/ide-mcp-server-<version>.zip` |
-
-A standalone plugin that exposes the IDE as an MCP HTTP server — no agent chat integration.
-Any MCP client (Claude Code, Claude Desktop, Cursor, custom agents) can connect via HTTP and use
-92 IDE tools. Includes its own settings UI, toolbar toggle, and server lifecycle management.
-Supports both Streamable HTTP and SSE transport modes.
-
-**Contents:** standalone-mcp classes + repackaged `plugin-core.jar` (without plugin-core's `plugin.xml`) +
-`mcp-server.jar`
-
-> **Note:** `plugin-core.jar` is repackaged with its `META-INF/plugin.xml` excluded to avoid
-> duplicate descriptor conflicts. The standalone plugin has its own `plugin.xml`.
-
-#### 3. IDE Agent for Copilot (Experimental)
+#### 2. IDE Agent for Copilot (Experimental)
 
 |               |                                                                                            |
 |---------------|--------------------------------------------------------------------------------------------|

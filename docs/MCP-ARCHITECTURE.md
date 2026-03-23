@@ -184,7 +184,7 @@ plugin when launching the Copilot CLI.
 
 ### 4. Standalone MCP HTTP Server
 
-**Location:** `standalone-mcp/src/main/java/com/github/catatafishen/idemcpserver/`
+**Location:** `plugin-core/src/main/java/com/github/catatafishen/idemcpserver/`
 
 **Purpose:** Exposes the same MCP tools over HTTP for external AI agents (Claude Desktop, Cursor,
 custom MCP clients) that cannot use the stdio-based subprocess model.
@@ -268,7 +268,8 @@ Client config:
 
 ## Tool Categories
 
-The MCP server exposes **92 tools** organized into 12 categories. See [FEATURES.md](../FEATURES.md) for the complete tool documentation. Summary of categories:
+The MCP server exposes **92 tools** organized into 12 categories. See [FEATURES.md](../FEATURES.md) for the complete
+tool documentation. Summary of categories:
 
 ### 1. Code Navigation (5 tools)
 
