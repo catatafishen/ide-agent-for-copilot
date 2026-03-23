@@ -310,7 +310,7 @@ public final class AgentProfile {
 
     @NotNull
     public String getBinaryName() {
-        return binaryName;
+        return binaryName != null ? binaryName : "";
     }
 
     public void setBinaryName(@NotNull String binaryName) {

@@ -7,6 +7,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   release:
     name: Version, Tag & Build
@@ -30,7 +33,7 @@ jobs:
           cache-dependency-path: plugin-core/chat-ui/package-lock.json
 
       - name: Install chat-ui dependencies
-        run: npm ci
+        run: npm ci --silent
         working-directory: plugin-core/chat-ui
 
       - name: Setup Gradle
@@ -92,7 +95,7 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         env:
           PLUGIN_VERSION: ${{ steps.version.outputs.version }}
-        run: ./gradlew :plugin-core:buildPlugin :standalone-mcp:buildPlugin :plugin-experimental:buildPlugin --no-daemon
+        run: ./gradlew :plugin-core:buildPlugin :standalone-mcp:buildPlugin :plugin-experimental:buildPlugin --no-daemon --quiet
 
       - name: Create tag and GitHub release
         if: steps.version.outputs.skip != 'true'

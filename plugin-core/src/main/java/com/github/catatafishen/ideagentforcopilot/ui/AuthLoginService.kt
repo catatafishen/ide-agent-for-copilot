@@ -273,7 +273,7 @@ class AuthLoginService(private val project: Project) {
 
             // Kiro CLI manages its own credentials — delegate to `kiro-cli logout`
             if (agentId == AgentProfileManager.KIRO_PROFILE_ID) {
-                val binary = profile.binaryName ?: "kiro-cli"
+                val binary = profile.binaryName.ifEmpty { "kiro-cli" }
                 val result = ProcessBuilder(binary, "logout")
                     .redirectErrorStream(true)
                     .start()

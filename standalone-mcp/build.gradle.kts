@@ -20,7 +20,6 @@ dependencies {
         } else {
             intellijIdeaUltimate("2025.3")
         }
-        instrumentationTools()
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
