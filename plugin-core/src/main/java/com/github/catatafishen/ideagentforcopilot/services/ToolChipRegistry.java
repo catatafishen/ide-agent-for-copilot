@@ -1,6 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
@@ -306,20 +309,8 @@ public final class ToolChipRegistry {
             TreeMap<String, String> sorted = new TreeMap<>();
             for (String key : args.keySet()) {
                 if (!"__tool_use_purpose".equals(key)) {
-                    com.google.gson.JsonElement value = args.get(key);
-                    // Use a stable JSON representation for the value to ensure consistency
-                    // regardless of internal GSON representation or property order in nested objects.
-                    String stableValue = (value == null || value.isJsonNull()) ? "null" : value.toString();
-
-                    // Normalize numbers: "1.0" -> "1"
-                    if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
-                        double d = value.getAsDouble();
-                        if (d == (long) d) {
-                            stableValue = String.valueOf((long) d);
-                        }
-                    }
-
-                    sorted.put(key, stableValue);
+                    JsonElement value = args.get(key);
+                    sorted.put(key, computeStableValue(value));
                 }
             }
             String toHash = sorted.toString();
@@ -330,5 +321,35 @@ public final class ToolChipRegistry {
             LOG.warn("ToolChipRegistry: hash error", e);
             return "00000000";
         }
+    }
+
+    private static String computeStableValue(JsonElement value) {
+        if (value == null || value.isJsonNull()) return "null";
+        if (value.isJsonObject()) {
+            JsonObject obj = value.getAsJsonObject();
+            TreeMap<String, String> sorted = new TreeMap<>();
+            for (String key : obj.keySet()) {
+                sorted.put(key, computeStableValue(obj.get(key)));
+            }
+            return sorted.toString();
+        }
+        if (value.isJsonArray()) {
+            JsonArray arr = value.getAsJsonArray();
+            ArrayList<String> items = new ArrayList<>();
+            for (JsonElement item : arr) {
+                items.add(computeStableValue(item));
+            }
+            return items.toString();
+        }
+        if (value.isJsonPrimitive()) {
+            JsonPrimitive p = value.getAsJsonPrimitive();
+            if (p.isNumber()) {
+                double d = p.getAsDouble();
+                if (d == (long) d) {
+                    return String.valueOf((long) d);
+                }
+            }
+        }
+        return value.toString();
     }
 }

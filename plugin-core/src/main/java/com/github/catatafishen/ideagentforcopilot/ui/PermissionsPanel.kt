@@ -275,16 +275,18 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
 
     private fun addToolRow(content: JBPanel<*>, gbc: GridBagConstraints, row: ToolRow) {
         gbc.gridwidth = 1; gbc.gridx = 0
-        gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
+        gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
         val nameLabel = SimpleColoredComponent().apply {
             append(row.tool.displayName(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
             if (row.tool.description().isNotEmpty()) toolTipText = row.tool.description()
-            border = JBUI.Borders.emptyLeft(4)
+            border = JBUI.Borders.empty(4, 4, 4, 8)
         }
         content.add(nameLabel, gbc)
-        gbc.gridx = 1; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
         if (row.permCombo != null) {
-            content.add(row.permCombo, gbc)
+            val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+            wrapper.add(row.permCombo, BorderLayout.WEST)
+            content.add(wrapper, gbc)
         } else {
             content.add(JBLabel("Runs silently", AllIcons.Actions.Suspend, SwingConstants.LEFT).apply {
                 foreground = JBUI.CurrentTheme.Label.disabledForeground()
@@ -299,13 +301,15 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         labelText: String, combo: ComboBox<String>
     ) {
         gbc.gridwidth = 1; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE; gbc.gridx = 0
-        gbc.insets = JBUI.insets(0, 24, 0, 0)
+        gbc.insets = JBUI.insets(0, 24, 0, 8)
         panel.add(JBLabel(labelText).apply {
             font = JBUI.Fonts.smallFont()
             foreground = JBUI.CurrentTheme.Label.disabledForeground()
         }, gbc)
-        gbc.gridx = 1; gbc.insets = JBUI.insets(1, 0)
-        panel.add(combo, gbc)
+        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = JBUI.insets(1, 0)
+        val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+        wrapper.add(combo, BorderLayout.WEST)
+        panel.add(wrapper, gbc)
         gbc.gridy++
         gbc.insets = JBUI.insets(2, 0)
     }

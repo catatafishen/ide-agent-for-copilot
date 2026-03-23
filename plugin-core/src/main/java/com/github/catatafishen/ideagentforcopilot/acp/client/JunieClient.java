@@ -204,6 +204,12 @@ public final class JunieClient extends AcpClient {
     protected JsonObject parseToolCallArguments(@NotNull JsonObject params) {
         JsonObject standard = super.parseToolCallArguments(params);
         if (standard != null) return standard;
+
+        // Try rawInput (Junie sometimes puts arguments there for built-in tools)
+        if (params.has("rawInput") && params.get("rawInput").isJsonObject()) {
+            return params.getAsJsonObject("rawInput");
+        }
+
         if (params.has("toolCallId")) {
             return permissionArgs.remove(params.get("toolCallId").getAsString());
         }
