@@ -5,7 +5,7 @@ import java.util.zip.ZipInputStream
 plugins {
     id("java")
     kotlin("jvm") version "2.3.10"
-    id("org.jetbrains.intellij.platform") version "2.11.0"
+    id("org.jetbrains.intellij.platform") version "2.13.1"
 }
 
 sourceSets {

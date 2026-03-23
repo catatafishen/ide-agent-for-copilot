@@ -30,7 +30,7 @@ jobs:
           cache-disabled: true
 
       - name: Run MCP server tests
-        run: ./gradlew :mcp-server:test --no-daemon --quiet
+        run: ./gradlew :mcp-server:test --no-daemon --quiet --build-cache
 
   build-and-test:
     name: Build, Test & Verify
