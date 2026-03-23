@@ -5,7 +5,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -108,8 +107,9 @@ public class ShellEnvironment {
     @NotNull
     private static Map<String, String> captureWindowsEnvironment() {
         try {
-            // Use PowerShell instead of cmd.exe for better Unicode support
-            ProcessBuilder pb = new ProcessBuilder("powershell.exe", "-Command", "Get-ChildItem Env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }");
+            // Use PowerShell with simpler output format for better Unicode support
+            ProcessBuilder pb = new ProcessBuilder("powershell.exe", "-NoProfile", "-Command",
+                "[Environment]::GetEnvironmentVariables('Process') | ForEach-Object { $_.GetEnumerator() } | ForEach-Object { \"$($_.Key)=$($_.Value)\" }");
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
