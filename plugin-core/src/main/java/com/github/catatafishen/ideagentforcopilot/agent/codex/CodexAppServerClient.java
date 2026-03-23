@@ -226,7 +226,9 @@ public final class CodexAppServerClient extends AbstractAgentClient {
         resolvedBinaryPath = resolveBinary();
         CodexCredentials creds = CodexCredentials.read();
         if (!creds.isLoggedIn()) {
-            LOG.warn("Codex credentials not found — prompts will fail until 'codex login' is run");
+            throw new AgentException(
+                "Not authenticated with Codex. Run 'codex login' in a terminal, then retry.",
+                null, false);
         }
         launchAppServer();
         LOG.info("CodexAppServerClient started" +

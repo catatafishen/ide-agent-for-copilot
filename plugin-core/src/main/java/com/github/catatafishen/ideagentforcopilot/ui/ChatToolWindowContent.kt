@@ -451,6 +451,11 @@ class ChatToolWindowContent(
             promptOrchestrator.currentSessionId = null
             loadModels()
         }
+        agentManager.addSwitchListener {
+            ApplicationManager.getApplication().invokeLater {
+                copilotBanner?.triggerCheck()
+            }
+        }
         val cb = copilotBanner!!
         northStack.add(cb)
         val ghBanner = createGhSetupBanner { billing.loadBillingData() }
