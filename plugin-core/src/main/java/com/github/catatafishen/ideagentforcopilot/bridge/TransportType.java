@@ -24,5 +24,12 @@ public enum TransportType {
      * ({@code ~/.claude/.credentials.json}) — no Anthropic API key required.
      * Requires {@code claude} to be installed and logged in ({@code claude auth login}).
      */
-    CLAUDE_CLI
+    CLAUDE_CLI,
+
+    /**
+     * Long-lived subprocess running {@code codex app-server} with bidirectional JSON-RPC 2.0
+     * over stdio. Requires {@code codex} to be installed and authenticated ({@code codex login}).
+     * Supports streaming text, graceful tool-approval denial, and multi-turn threads.
+     */
+    CODEX_APP_SERVER
 }

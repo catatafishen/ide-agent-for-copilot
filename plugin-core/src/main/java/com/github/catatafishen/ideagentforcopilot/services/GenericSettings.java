@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -19,6 +20,7 @@ public final class GenericSettings {
     private static final String TOOL_PERM_OUT_PREFIX = "tool.perm.out.";
 
     private final String prefix;
+    private final Project project;
     private volatile String activeAgentLabel;
 
     /**
@@ -26,7 +28,21 @@ public final class GenericSettings {
      *               Keys are stored as {@code prefix.selectedModel}, {@code prefix.sessionMode}, etc.
      */
     public GenericSettings(@NotNull String prefix) {
+        this(prefix, null);
+    }
+
+    /**
+     * @param prefix  settings key prefix (e.g., "copilot", "opencode").
+     * @param project optional project for project-level persistence.
+     *                If null, uses application-level persistence.
+     */
+    public GenericSettings(@NotNull String prefix, @Nullable Project project) {
         this.prefix = prefix + ".";
+        this.project = project;
+    }
+
+    private PropertiesComponent getProperties() {
+        return project != null ? PropertiesComponent.getInstance(project) : PropertiesComponent.getInstance();
     }
 
     /**
@@ -45,7 +61,7 @@ public final class GenericSettings {
 
     @Nullable
     public String getSelectedModel() {
-        String model = PropertiesComponent.getInstance().getValue(key("selectedModel"));
+        String model = getProperties().getValue(key("selectedModel"));
         if (model == null || model.isEmpty()) {
             return activeAgentLabel;
         }
@@ -53,7 +69,7 @@ public final class GenericSettings {
     }
 
     public void setSelectedModel(@NotNull String modelId) {
-        PropertiesComponent.getInstance().setValue(key("selectedModel"), modelId);
+        getProperties().setValue(key("selectedModel"), modelId);
     }
 
     // ── Agent selection ──────────────────────────────────────────────────────
@@ -63,11 +79,11 @@ public final class GenericSettings {
      */
     @NotNull
     public String getSelectedAgent() {
-        return PropertiesComponent.getInstance().getValue(key("selectedAgent"), "");
+        return getProperties().getValue(key("selectedAgent"), "");
     }
 
     public void setSelectedAgent(@NotNull String agentName) {
-        PropertiesComponent.getInstance().setValue(key("selectedAgent"), agentName, "");
+        getProperties().setValue(key("selectedAgent"), agentName, "");
     }
 
     // ── Session options ──────────────────────────────────────────────────────
@@ -77,11 +93,11 @@ public final class GenericSettings {
      */
     @NotNull
     public String getSessionOptionValue(@NotNull String optionKey) {
-        return PropertiesComponent.getInstance().getValue(key("sessionOpt." + optionKey), "");
+        return getProperties().getValue(key("sessionOpt." + optionKey), "");
     }
 
     public void setSessionOptionValue(@NotNull String optionKey, @NotNull String value) {
-        PropertiesComponent.getInstance().setValue(key("sessionOpt." + optionKey), value, "");
+        getProperties().setValue(key("sessionOpt." + optionKey), value, "");
     }
 
     // ── Active agent label (runtime-only) ────────────────────────────────────
@@ -98,26 +114,26 @@ public final class GenericSettings {
     // ── Timeouts & limits ────────────────────────────────────────────────────
 
     public int getPromptTimeout() {
-        return PropertiesComponent.getInstance().getInt(key("promptTimeout"), DEFAULT_PROMPT_TIMEOUT);
+        return getProperties().getInt(key("promptTimeout"), DEFAULT_PROMPT_TIMEOUT);
     }
 
     public void setPromptTimeout(int seconds) {
-        PropertiesComponent.getInstance().setValue(key("promptTimeout"), seconds, DEFAULT_PROMPT_TIMEOUT);
+        getProperties().setValue(key("promptTimeout"), seconds, DEFAULT_PROMPT_TIMEOUT);
     }
 
     public int getMaxToolCallsPerTurn() {
-        return PropertiesComponent.getInstance().getInt(key("maxToolCallsPerTurn"), DEFAULT_MAX_TOOL_CALLS);
+        return getProperties().getInt(key("maxToolCallsPerTurn"), DEFAULT_MAX_TOOL_CALLS);
     }
 
     public void setMaxToolCallsPerTurn(int count) {
-        PropertiesComponent.getInstance().setValue(key("maxToolCallsPerTurn"), count, DEFAULT_MAX_TOOL_CALLS);
+        getProperties().setValue(key("maxToolCallsPerTurn"), count, DEFAULT_MAX_TOOL_CALLS);
     }
 
     // ── Per-tool permissions ─────────────────────────────────────────────────
 
     @NotNull
     public ToolPermission getToolPermission(@NotNull String toolId) {
-        String stored = PropertiesComponent.getInstance().getValue(key("tool.perm." + toolId));
+        String stored = getProperties().getValue(key("tool.perm." + toolId));
         if (stored == null) return ToolPermission.ALLOW;
         try {
             return ToolPermission.valueOf(stored);
@@ -127,12 +143,12 @@ public final class GenericSettings {
     }
 
     public void setToolPermission(@NotNull String toolId, @NotNull ToolPermission perm) {
-        PropertiesComponent.getInstance().setValue(key("tool.perm." + toolId), perm.name());
+        getProperties().setValue(key("tool.perm." + toolId), perm.name());
     }
 
     @NotNull
     public ToolPermission getToolPermissionInsideProject(@NotNull String toolId) {
-        String stored = PropertiesComponent.getInstance().getValue(key(TOOL_PERM_IN_PREFIX + toolId));
+        String stored = getProperties().getValue(key(TOOL_PERM_IN_PREFIX + toolId));
         if (stored == null) return getToolPermission(toolId);
         try {
             return ToolPermission.valueOf(stored);
@@ -142,12 +158,12 @@ public final class GenericSettings {
     }
 
     public void setToolPermissionInsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
-        PropertiesComponent.getInstance().setValue(key(TOOL_PERM_IN_PREFIX + toolId), perm.name());
+        getProperties().setValue(key(TOOL_PERM_IN_PREFIX + toolId), perm.name());
     }
 
     @NotNull
     public ToolPermission getToolPermissionOutsideProject(@NotNull String toolId) {
-        String stored = PropertiesComponent.getInstance().getValue(key(TOOL_PERM_OUT_PREFIX + toolId));
+        String stored = getProperties().getValue(key(TOOL_PERM_OUT_PREFIX + toolId));
         if (stored == null) return getToolPermission(toolId);
         try {
             return ToolPermission.valueOf(stored);
@@ -157,7 +173,7 @@ public final class GenericSettings {
     }
 
     public void setToolPermissionOutsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
-        PropertiesComponent.getInstance().setValue(key(TOOL_PERM_OUT_PREFIX + toolId), perm.name());
+        getProperties().setValue(key(TOOL_PERM_OUT_PREFIX + toolId), perm.name());
     }
 
     @NotNull
@@ -175,8 +191,8 @@ public final class GenericSettings {
     }
 
     public void clearToolSubPermissions(@NotNull String toolId) {
-        PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_IN_PREFIX + toolId));
-        PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_OUT_PREFIX + toolId));
+        getProperties().unsetValue(key(TOOL_PERM_IN_PREFIX + toolId));
+        getProperties().unsetValue(key(TOOL_PERM_OUT_PREFIX + toolId));
     }
 
     private static final String KEY_RESUME_SESSION_ID = "resumeSessionId";
@@ -189,7 +205,7 @@ public final class GenericSettings {
      */
     @Nullable
     public String getResumeSessionId() {
-        String val = PropertiesComponent.getInstance().getValue(key(KEY_RESUME_SESSION_ID));
+        String val = getProperties().getValue(key(KEY_RESUME_SESSION_ID));
         return (val == null || val.isEmpty()) ? null : val;
     }
 
@@ -199,24 +215,24 @@ public final class GenericSettings {
      */
     public void setResumeSessionId(@Nullable String sessionId) {
         if (sessionId == null || sessionId.isEmpty()) {
-            PropertiesComponent.getInstance().unsetValue(key(KEY_RESUME_SESSION_ID));
+            getProperties().unsetValue(key(KEY_RESUME_SESSION_ID));
         } else {
-            PropertiesComponent.getInstance().setValue(key(KEY_RESUME_SESSION_ID), sessionId);
+            getProperties().setValue(key(KEY_RESUME_SESSION_ID), sessionId);
         }
     }
 
     // ── Billing persistence ──────────────────────────────────────────────────
 
     public int getMonthlyRequests() {
-        return PropertiesComponent.getInstance().getInt(key("monthlyRequests"), 0);
+        return getProperties().getInt(key("monthlyRequests"), 0);
     }
 
     public void setMonthlyRequests(int count) {
-        PropertiesComponent.getInstance().setValue(key("monthlyRequests"), count, 0);
+        getProperties().setValue(key("monthlyRequests"), count, 0);
     }
 
     public double getMonthlyCost() {
-        String val = PropertiesComponent.getInstance().getValue(key("monthlyCost"));
+        String val = getProperties().getValue(key("monthlyCost"));
         if (val == null) return 0.0;
         try {
             return Double.parseDouble(val);
@@ -226,15 +242,15 @@ public final class GenericSettings {
     }
 
     public void setMonthlyCost(double cost) {
-        PropertiesComponent.getInstance().setValue(key("monthlyCost"), String.valueOf(cost));
+        getProperties().setValue(key("monthlyCost"), String.valueOf(cost));
     }
 
     @NotNull
     public String getUsageResetMonth() {
-        return PropertiesComponent.getInstance().getValue(key("usageResetMonth"), "");
+        return getProperties().getValue(key("usageResetMonth"), "");
     }
 
     public void setUsageResetMonth(@NotNull String month) {
-        PropertiesComponent.getInstance().setValue(key("usageResetMonth"), month, "");
+        getProperties().setValue(key("usageResetMonth"), month, "");
     }
 }
