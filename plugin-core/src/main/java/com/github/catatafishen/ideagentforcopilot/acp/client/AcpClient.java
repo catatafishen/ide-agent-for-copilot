@@ -695,16 +695,14 @@ public abstract class AcpClient extends AbstractAgentClient {
         pb.directory(new File(cwd));
         pb.redirectErrorStream(false);
 
-        // Start with shell environment (don't inherit Java process environment which may have corrupted values)
-        Map<String, String> processEnv = pb.environment();
-        processEnv.clear();
-        processEnv.putAll(com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.getEnvironment());
+        // Merge shell environment (for PATH, etc.)
+        pb.environment().putAll(com.github.catatafishen.ideagentforcopilot.settings.ShellEnvironment.getEnvironment());
 
-        // Override with custom environment
+        // Override with custom environment (these take precedence)
         Map<String, String> env = buildEnvironment(mcpPort, cwd);
         if (!env.isEmpty()) {
             LOG.info("Setting custom environment for " + displayName() + ": " + env);
-            processEnv.putAll(env);
+            pb.environment().putAll(env);
         }
 
         LOG.info("Launching " + displayName() + ": " + String.join(" ", resolvedCommand));

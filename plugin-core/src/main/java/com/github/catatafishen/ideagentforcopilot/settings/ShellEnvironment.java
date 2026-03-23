@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -117,7 +118,9 @@ public class ShellEnvironment {
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), Charset.defaultCharset()))) {
                 String line;
+                int lineCount = 0;
                 while ((line = reader.readLine()) != null) {
+                    lineCount++;
                     int idx = line.indexOf('=');
                     if (idx > 0) {
                         String key = line.substring(0, idx);
@@ -125,6 +128,7 @@ public class ShellEnvironment {
                         env.put(key, value);
                     }
                 }
+                LOG.info("Read " + lineCount + " lines from cmd.exe, captured " + env.size() + " variables");
             }
 
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
