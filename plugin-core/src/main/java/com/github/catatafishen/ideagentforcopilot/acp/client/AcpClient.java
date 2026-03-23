@@ -887,7 +887,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         transport.onRequest(this::handleAgentRequest);
 
         transport.onStderr(line ->
-            LOG.debug("[" + agentId() + " stderr] " + line));
+            LOG.warn("[" + agentId() + " stderr] " + line));
     }
 
     protected void handleSessionUpdate(@Nullable JsonObject params) {
