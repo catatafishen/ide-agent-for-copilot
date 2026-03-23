@@ -235,7 +235,12 @@ class PromptOrchestrator(
             conversationSummaryInjected = true
             val summary = consolePanel().getCompressedSummary()
             if (summary.isNotEmpty()) {
-                effective = "$summary\n\n$effective"
+                // If prompt starts with /, put summary after to preserve slash command detection
+                effective = if (prompt.trimStart().startsWith("/")) {
+                    "$effective\n\n$summary"
+                } else {
+                    "$summary\n\n$effective"
+                }
             }
         }
         return effective
@@ -423,7 +428,7 @@ class PromptOrchestrator(
         val arguments = toolCall.arguments()
         if (toolCallId.isEmpty()) return
         if (toolCall.isSubAgent()) {
-            val agentType = toolCall.agentType()!!
+            val agentType = toolCall.agentType() ?: return
             turnToolCallCount++
             callbacks.onTimerIncrementToolCalls()
             toolCallTitles[toolCallId] = "task"

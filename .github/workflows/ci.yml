@@ -60,15 +60,15 @@ jobs:
         run: npm run build
         working-directory: plugin-core/chat-ui
 
-      - name: Run chat-ui tests
-        run: npm test
-        working-directory: plugin-core/js-tests
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build plugins
         run: ./gradlew :plugin-core:buildPlugin :standalone-mcp:buildPlugin --no-daemon
+
+      - name: Run chat-ui tests
+        run: npm test
+        working-directory: plugin-core/js-tests
 
       - name: Run plugin tests
         run: ./gradlew :plugin-core:test --no-daemon
