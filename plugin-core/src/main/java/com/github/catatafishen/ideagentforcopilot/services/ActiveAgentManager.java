@@ -4,6 +4,7 @@ import com.github.catatafishen.ideagentforcopilot.agent.AbstractAgentClient;
 import com.github.catatafishen.ideagentforcopilot.agent.AgentRegistry;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliClient;
+import com.github.catatafishen.ideagentforcopilot.agent.codex.CodexAppServerClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
@@ -177,6 +178,10 @@ public final class ActiveAgentManager implements Disposable {
                 int mcpPort = resolveMcpPort();
                 AgentConfig config = resolveStartConfig();
                 acpClient = new ClaudeCliClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
+            } else if (CodexAppServerClient.PROFILE_ID.equals(agentId)) {
+                int mcpPort = resolveMcpPort();
+                AgentConfig config = resolveStartConfig();
+                acpClient = new CodexAppServerClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
             } else {
                 acpClient = createAcpClient(agentId);
             }
@@ -290,7 +295,7 @@ public final class ActiveAgentManager implements Disposable {
     private void ensureSettingsForActiveProfile() {
         String profileId = getActiveProfileId();
         if (cachedSettings == null || !cachedSettings.getPrefix().equals(profileId + ".")) {
-            cachedSettings = new GenericSettings(profileId);
+            cachedSettings = new GenericSettings(profileId, project);
             cachedUiSettings = new GenericAgentUiSettings(cachedSettings);
         }
     }

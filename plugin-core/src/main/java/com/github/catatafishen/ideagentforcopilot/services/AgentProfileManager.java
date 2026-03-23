@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.services;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliClient;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliCredentials;
+import com.github.catatafishen.ideagentforcopilot.agent.codex.CodexAppServerClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -25,6 +26,7 @@ public final class AgentProfileManager {
     public static final String CLAUDE_CLI_PROFILE_ID = ClaudeCliClient.PROFILE_ID;
     public static final String JUNIE_PROFILE_ID = "junie";
     public static final String KIRO_PROFILE_ID = "kiro";
+    public static final String CODEX_PROFILE_ID = CodexAppServerClient.PROFILE_ID;
 
     private final Map<String, AgentProfile> profiles = new LinkedHashMap<>();
 
@@ -68,7 +70,7 @@ public final class AgentProfileManager {
 
     private void ensureDefaults() {
         for (String id : List.of(COPILOT_PROFILE_ID, OPENCODE_PROFILE_ID, CLAUDE_CODE_PROFILE_ID,
-            CLAUDE_CLI_PROFILE_ID, JUNIE_PROFILE_ID, KIRO_PROFILE_ID)) {
+            CLAUDE_CLI_PROFILE_ID, JUNIE_PROFILE_ID, KIRO_PROFILE_ID, CODEX_PROFILE_ID)) {
             if (!profiles.containsKey(id)) {
                 AgentProfile profile = createDefaultProfile(id);
                 if (profile != null) profiles.put(id, profile);
@@ -85,6 +87,7 @@ public final class AgentProfileManager {
             case CLAUDE_CLI_PROFILE_ID -> ClaudeCliClient.createDefaultProfile();
             case JUNIE_PROFILE_ID -> buildJunieProfile();
             case KIRO_PROFILE_ID -> buildKiroProfile();
+            case CODEX_PROFILE_ID -> CodexAppServerClient.createDefaultProfile();
             default -> null;
         };
     }
