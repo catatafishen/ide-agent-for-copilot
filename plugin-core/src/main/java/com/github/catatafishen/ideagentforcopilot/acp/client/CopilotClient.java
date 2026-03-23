@@ -196,7 +196,11 @@ public final class CopilotClient extends AcpClient {
     @Override
     protected Map<String, String> buildEnvironment(int mcpPort, String cwd) {
         String copilotHome = cwd + File.separator + AGENT_WORK_DIR + File.separator + AGENT_ID;
-        return Map.of("COPILOT_HOME", copilotHome);
+        // Set USERPROFILE to avoid issues with non-ASCII Windows usernames
+        return Map.of(
+            "COPILOT_HOME", copilotHome,
+            "USERPROFILE", copilotHome
+        );
     }
 
     // ─── Session ─────────────────────────────────────
