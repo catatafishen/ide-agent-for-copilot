@@ -202,6 +202,35 @@ public abstract class AcpClient extends AbstractAgentClient {
     }
 
     @Override
+    public String checkAuthentication() {
+        if (!isHealthy()) {
+            return "Agent not started";
+        }
+        // For ACP agents, try to create a session to check if authentication is required
+        // This catches auth errors early instead of waiting for the first message
+        try {
+            String cwd = project.getBasePath();
+            if (cwd == null) {
+                cwd = System.getProperty("user.home");
+            }
+            createSession(cwd);
+            return null; // Auth successful
+        } catch (AgentSessionException e) {
+            // Check if it's an auth error
+            Throwable cause = e;
+            while (cause != null) {
+                String msg = cause.getMessage();
+                if (msg != null && (msg.toLowerCase().contains("auth") || msg.toLowerCase().contains("sign in"))) {
+                    return msg;
+                }
+                cause = cause.getCause();
+            }
+            // Not an auth error, agent is healthy
+            return null;
+        }
+    }
+
+    @Override
     public final void stop() {
         transport.stop();
         destroyProcess();
