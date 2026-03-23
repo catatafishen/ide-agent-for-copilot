@@ -81,7 +81,7 @@ jobs:
         run: ./gradlew :plugin-core:buildPlugin :plugin-experimental:buildPlugin --no-daemon --quiet
 
       - name: Run plugin tests
-        run: ./gradlew :plugin-core:test --no-daemon --quiet
+        run: ./gradlew :plugin-core:test --no-daemon
 
       - name: Create pluginVerifier cache directory
         run: mkdir -p ~/.pluginVerifier/extracted-plugins
