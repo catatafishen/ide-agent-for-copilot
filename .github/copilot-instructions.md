@@ -54,7 +54,7 @@
   - Use `intellij-explore` instead of `explore` for code exploration \
   - Use `intellij-edit` instead of `task` for code changes \
   - Use `intellij-default` for general-purpose tasks \
-  
+
   Include relevant tool guidance in the prompt you write for them: \
   - intellij-explore agents: Already configured to use IntelliJ tools. Just describe what you need found. \
   - Task agents: "Use `run_command` for shell commands. Use `read_file` to read files." \
@@ -203,8 +203,10 @@ comments like `// === Rendering ===` or `// --- Utilities ---` to stay navigable
 
 The following paths contain **generated build output** — never edit them directly:
 
-- `plugin-core/src/main/resources/chat/chat-components.js` — built from `plugin-core/chat-ui/src/` via `npm run build`
-- `plugin-core/src/main/resources/chat/chat.css` — copied from `plugin-core/chat-ui/src/chat.css` at build time
+- `plugin-core/build/generated/resources/chat-ui/chat/chat-components.js` — built from `plugin-core/chat-ui/src/` via
+  `npm run build`
+- `plugin-core/build/generated/resources/chat-ui/chat/chat.css` — copied from `plugin-core/chat-ui/src/chat.css` at
+  build time
 - `plugin-core/out/production/` — IntelliJ incremental build output
 
 Always edit the **source** files in `plugin-core/chat-ui/src/` and run the build to regenerate.
