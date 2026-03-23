@@ -194,7 +194,11 @@ public final class ActiveAgentManager implements Disposable {
             LOG.info(profile.getDisplayName() + " agent client started");
         } catch (Exception e) {
             LOG.warn("Failed to start agent client", e);
-            throw new IllegalStateException(e.getMessage(), e);
+            String message = e.getMessage();
+            if (e.getCause() != null && e.getCause().getMessage() != null) {
+                message = e.getCause().getMessage();
+            }
+            throw new IllegalStateException(message, e);
         }
     }
 

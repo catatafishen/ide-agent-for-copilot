@@ -237,10 +237,12 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
         // Return the first auth method from capabilities
         var method = capabilities.authMethods().getFirst();
-        return new com.github.catatafishen.ideagentforcopilot.bridge.AuthMethod(
-            method.command(),
-            method.args() != null ? method.args().toArray(new String[0]) : null
-        );
+        LOG.info(displayName() + ": ACP authMethod = " + method + ", id=" + method.id() + ", name=" + method.name());
+        var authMethod = new com.github.catatafishen.ideagentforcopilot.bridge.AuthMethod();
+        authMethod.setId(method.id());
+        authMethod.setName(method.name());
+        authMethod.setDescription(method.description());
+        return authMethod;
     }
 
     @Override
@@ -932,8 +934,30 @@ public abstract class AcpClient extends AbstractAgentClient {
             LOG.info(displayName() + ": eagerly loaded " + availableModels.size() + " model(s), session=" + currentSessionId);
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            LOG.warn(displayName() + ": eager session creation failed (models will be empty): "
-                + e.getMessage() + (cause != e ? " — caused by: " + cause.getMessage() : ""));
+            String errorMsg = e.getMessage() + (cause != e ? " — caused by: " + cause.getMessage() : "");
+
+            // Check if this is an auth error - if so, re-throw it so startup fails immediately
+            Throwable current = e;
+            while (current != null) {
+                String msg = current.getMessage();
+                if (msg != null && (msg.toLowerCase().contains("auth") || msg.toLowerCase().contains("sign in"))) {
+                    LOG.warn(displayName() + ": authentication required during session creation");
+                    // Extract clean message from JsonRpcException format: "JsonRpcException{code=-32000, message='Authentication required'}"
+                    String cleanMsg = msg;
+                    if (msg.contains("message='") && msg.contains("'}")) {
+                        int start = msg.indexOf("message='") + 9;
+                        int end = msg.indexOf("'}", start);
+                        if (end > start) {
+                            cleanMsg = msg.substring(start, end);
+                        }
+                    }
+                    throw new RuntimeException(cleanMsg, e);
+                }
+                current = current.getCause();
+            }
+
+            // Not an auth error - log and continue (models will be empty but agent can still work)
+            LOG.warn(displayName() + ": eager session creation failed (models will be empty): " + errorMsg);
         }
     }
 
@@ -967,7 +991,9 @@ public abstract class AcpClient extends AbstractAgentClient {
         SessionUpdate update = messageParser.parse(updateObj);
         if (update != null) {
             update = processUpdate(update);
-            consumer.accept(update);
+            if (update != null) {
+                consumer.accept(update);
+            }
         }
     }
 
