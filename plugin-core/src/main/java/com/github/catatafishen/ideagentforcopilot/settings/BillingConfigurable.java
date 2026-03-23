@@ -54,11 +54,17 @@ public final class BillingConfigurable implements Configurable {
 
         showCopilotUsageCb = new JBCheckBox("Show Copilot usage graph in toolbar");
 
+        JButton recheckButton = new JButton("Recheck");
+        recheckButton.addActionListener(e -> refreshGhCliStatusAsync());
+        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        statusPanel.add(statusLabel);
+        statusPanel.add(recheckButton);
+
         mainPanel = FormBuilder.createFormBuilder()
             .addComponent(new JBLabel(
                 "<html>Configure how billing and usage data is displayed in the IDE.</html>"))
             .addSeparator(8)
-            .addLabeledComponent("GitHub CLI Status:", statusLabel)
+            .addLabeledComponent("GitHub CLI Status:", statusPanel)
             .addComponent(explanationLabel, 2)
             .addComponent(installNote, 2)
             .addComponent(installLink, 2)
