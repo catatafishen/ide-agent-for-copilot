@@ -183,6 +183,7 @@ class ChatToolWindowContent(
         agentManager.isConnected = true
         restartSessionGroup?.updateIconForActiveAgent()
         updatePromptPlaceholder()
+        authService.clearPendingAuthError()  // Clear any auth error from a previous agent
         setSendingState(false)  // Ensure send button is enabled
     }
 
