@@ -108,15 +108,15 @@ public class ShellEnvironment {
     @NotNull
     private static Map<String, String> captureWindowsEnvironment() {
         try {
-            // On Windows, use cmd.exe to capture environment
-            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", "set");
+            // Use PowerShell instead of cmd.exe for better Unicode support
+            ProcessBuilder pb = new ProcessBuilder("powershell.exe", "-Command", "Get-ChildItem Env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }");
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
             Map<String, String> env = new HashMap<>();
 
             try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), Charset.defaultCharset()))) {
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 int lineCount = 0;
                 while ((line = reader.readLine()) != null) {
@@ -128,7 +128,7 @@ public class ShellEnvironment {
                         env.put(key, value);
                     }
                 }
-                LOG.info("Read " + lineCount + " lines from cmd.exe, captured " + env.size() + " variables");
+                LOG.info("Read " + lineCount + " lines from PowerShell, captured " + env.size() + " variables");
             }
 
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
@@ -142,7 +142,7 @@ public class ShellEnvironment {
                 return System.getenv();
             }
 
-            LOG.info("Captured Windows environment with PATH: " + env.get("PATH"));
+            LOG.info("Captured Windows environment with PATH: " + env.get("PATH") + ", Path: " + env.get("Path"));
             return Collections.unmodifiableMap(env);
 
         } catch (Exception e) {
