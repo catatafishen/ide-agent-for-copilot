@@ -691,6 +691,21 @@ public abstract class AcpClient extends AbstractAgentClient {
         // does not search PATH the same way a shell does.
         List<String> resolvedCommand = resolveCommand(command);
 
+        // Check if binary exists before trying to launch
+        String binaryPath = resolvedCommand.getFirst();
+        File binaryFile = new File(binaryPath);
+        if (!binaryPath.contains("/") && !binaryPath.contains("\\")) {
+            // Relative name - check if it's in PATH
+            String foundPath = com.github.catatafishen.ideagentforcopilot.settings.BinaryDetector.findBinaryPath(binaryPath);
+            if (foundPath == null) {
+                throw new IOException(displayName() + " binary '" + binaryPath + "' not found in PATH. " +
+                    "Please install it or configure the path in Settings → Tools → AgentBridge → " + displayName());
+            }
+        } else if (!binaryFile.exists()) {
+            throw new IOException(displayName() + " binary not found at: " + binaryPath + ". " +
+                "Please install it or configure the correct path in Settings → Tools → AgentBridge → " + displayName());
+        }
+
         ProcessBuilder pb = new ProcessBuilder(resolvedCommand);
         pb.directory(new File(cwd));
         pb.redirectErrorStream(false);
