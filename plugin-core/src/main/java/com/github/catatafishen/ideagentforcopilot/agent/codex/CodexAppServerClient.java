@@ -264,6 +264,20 @@ public final class CodexAppServerClient extends AbstractAgentClient {
 
     @Override
     public @Nullable String checkAuthentication() {
+        return checkAuthenticationPreStart();
+    }
+
+    @Override
+    public @Nullable String checkAuthenticationPreStart() {
+        return checkCredentials();
+    }
+
+    /**
+     * Static credential check — usable without instantiating the client.
+     * Reads {@code ~/.codex/auth.json} to determine login state.
+     */
+    @Nullable
+    public static String checkCredentials() {
         CodexCredentials creds = CodexCredentials.read();
         return creds.isLoggedIn() ? null
             : "Not authenticated with Codex. Run 'codex login' in a terminal, then retry.";

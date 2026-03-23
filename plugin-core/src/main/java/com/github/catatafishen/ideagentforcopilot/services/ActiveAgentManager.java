@@ -16,6 +16,7 @@ import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -150,6 +151,27 @@ public final class ActiveAgentManager implements Disposable {
             start();
         }
         return acpClient;
+    }
+
+    /**
+     * Checks authentication without starting the agent process.
+     * Uses {@link AbstractAgentClient#checkAuthenticationPreStart()} if the client isn't running,
+     * or {@link AbstractAgentClient#checkAuthentication()} if it is.
+     *
+     * @return {@code null} if authenticated, or a human-readable error message
+     */
+    @Nullable
+    public String checkAuthentication() {
+        if (started && acpClient != null && acpClient.isHealthy()) {
+            return acpClient.checkAuthentication();
+        }
+        // Client not running — try a pre-start credential check without launching the process.
+        // For Codex, check credentials directly; for other agents, start the client.
+        String agentId = getActiveProfileId();
+        if (CodexAppServerClient.PROFILE_ID.equals(agentId)) {
+            return CodexAppServerClient.checkCredentials();
+        }
+        return getClient().checkAuthentication();
     }
 
     /**

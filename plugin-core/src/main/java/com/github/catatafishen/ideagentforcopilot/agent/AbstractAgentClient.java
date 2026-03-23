@@ -292,6 +292,18 @@ public abstract class AbstractAgentClient {
         return isHealthy() ? null : "Agent not started";
     }
 
+    /**
+     * Checks authentication state without requiring the agent process to be started.
+     * Override in subclasses that can determine auth state from local credential files.
+     * Default returns {@code null} (no pre-start check available).
+     *
+     * @return {@code null} if credentials look valid (or unknown), or a human-readable error message
+     */
+    @Nullable
+    public String checkAuthenticationPreStart() {
+        return null;
+    }
+
     // ─── Auth ────────────────────────────────────────
 
     /**

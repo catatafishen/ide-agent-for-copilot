@@ -846,3 +846,19 @@
     "NEW INSTRUCTION": "WHEN rendering project files dropdown THEN hide empty groups; use IntelliJ Markdown icon"
 }
 
+[2026-03-23 19:35] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Tool chip border/correlation",
+    "EXPECTATION": "Tool chips should get proper solid borders by correctly correlating MCP updates to chips, especially for Junie where arguments/hashes may differ; investigation should use IDE logs.",
+    "NEW INSTRUCTION": "WHEN Junie tool chips lack borders THEN inspect IDE logs and align correlation via stable arg hash"
+}
+
+[2026-03-23 19:36] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Settings persistence",
+    "EXPECTATION": "Tool permission selections should persist across IntelliJ restarts and not revert.",
+    "NEW INSTRUCTION": "WHEN plugin starts after IDE restart THEN load and apply saved tool permission settings"
+}
+
