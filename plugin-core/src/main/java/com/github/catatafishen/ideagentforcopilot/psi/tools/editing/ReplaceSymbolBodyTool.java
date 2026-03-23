@@ -1,12 +1,13 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.editing;
 
+import com.github.catatafishen.ideagentforcopilot.psi.CodeChangeTracker;
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.FileAccessTracker;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.file.FileTool;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.ReplaceSymbolRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -14,7 +15,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocumentManager;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -48,18 +48,23 @@ public final class ReplaceSymbolBodyTool extends EditingTool {
     }
 
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+
+    @Override
     public @NotNull String permissionTemplate() {
         return "Replace {symbol} in {file}";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Absolute or project-relative path to the file containing the symbol"},
             {"symbol", TYPE_STRING, "Name of the symbol to replace (method, class, function, or field)"},
-            {"new_body", TYPE_STRING, "The complete new definition to replace the symbol with"},
+            {PARAM_NEW_BODY, TYPE_STRING, "The complete new definition to replace the symbol with"},
             {"line", TYPE_INTEGER, "Optional: line number hint to disambiguate if multiple symbols share the same name"}
-        }, "file", "symbol", "new_body");
+        }, "file", "symbol", PARAM_NEW_BODY);
     }
 
     @Override
@@ -68,7 +73,7 @@ public final class ReplaceSymbolBodyTool extends EditingTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String error = validateArgs(args, PARAM_NEW_BODY);
         if (error != null) return error;
 
@@ -104,20 +109,14 @@ public final class ReplaceSymbolBodyTool extends EditingTool {
                 }
 
                 int startOffset = doc.getLineStartOffset(loc.startLine() - 1);
-                int endOffset = doc.getLineEndOffset(loc.endLine() - 1);
-                if (endOffset < doc.getTextLength() && doc.getText().charAt(endOffset) == '\n') {
-                    endOffset++;
-                }
-                String normalized = newBody.replace("\r\n", "\n").replace("\r", "\n");
-                if (!normalized.isEmpty() && !normalized.endsWith("\n")) {
-                    normalized += "\n";
-                }
+                int endOffset = calculateEndOffset(doc, loc);
+                String normalized = prepareNormalizedBody(newBody);
 
                 final int fStart = startOffset;
                 final int fEnd = endOffset;
                 final String fNew = normalized;
 
-                ApplicationManager.getApplication().runWriteAction(() ->
+                WriteAction.run(() ->
                     CommandProcessor.getInstance().executeCommand(
                         project, () -> doc.replaceString(fStart, fEnd, fNew),
                         "Replace Symbol Body", null)
@@ -128,9 +127,10 @@ public final class ReplaceSymbolBodyTool extends EditingTool {
                 FileDocumentManager.getInstance().saveDocument(doc);
 
                 int replacedLines = loc.endLine() - loc.startLine() + 1;
-                int newLineCount = (int) fNew.chars().filter(c -> c == '\n').count();
+                int newLineCount = (int) fNew.chars().filter(c -> c == '\n').count() + 1;
+                CodeChangeTracker.recordChange(newLineCount, replacedLines);
                 result.complete("Replaced lines " + loc.startLine() + "-" + loc.endLine()
-                    + " (" + replacedLines + " lines) with " + newLineCount + " lines in " + pathStr
+                    + " (" + replacedLines + " lines) with " + (newLineCount - 1) + " lines in " + pathStr
                     + FORMATTED_SUFFIX);
             } catch (Exception e) {
                 result.complete(ToolUtils.ERROR_PREFIX + e.getMessage());
@@ -145,5 +145,21 @@ public final class ReplaceSymbolBodyTool extends EditingTool {
             FileAccessTracker.recordWrite(project, pathStr);
         }
         return resultStr;
+    }
+
+    private static int calculateEndOffset(Document doc, SymbolLocation loc) {
+        int endOffset = doc.getLineEndOffset(loc.endLine() - 1);
+        if (endOffset < doc.getTextLength() && doc.getText().charAt(endOffset) == '\n') {
+            endOffset++;
+        }
+        return endOffset;
+    }
+
+    private static String prepareNormalizedBody(String body) {
+        String normalized = body.replace("\r\n", "\n").replace("\r", "\n");
+        if (!normalized.isEmpty() && !normalized.endsWith("\n")) {
+            normalized += "\n";
+        }
+        return normalized;
     }
 }

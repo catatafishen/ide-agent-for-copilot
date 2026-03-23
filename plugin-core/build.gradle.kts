@@ -1,10 +1,25 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
+import java.util.zip.ZipInputStream
 
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "2.3.10"
+    kotlin("jvm") version "2.3.10"
     id("org.jetbrains.intellij.platform") version "2.11.0"
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs("src/main/java")
+        }
+        kotlin {
+            srcDirs("src/main/java")
+        }
+        resources {
+            srcDir(layout.buildDirectory.dir("generated/resources/chat-ui"))
+        }
+    }
 }
 
 repositories {
@@ -22,7 +37,6 @@ dependencies {
         } else {
             intellijIdeaUltimate("2025.3")
         }
-        instrumentationTools()
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         bundledPlugin("com.intellij.java")
         bundledPlugin("Git4Idea")
@@ -33,7 +47,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
     // Force annotations version to match the platform (TYPE_USE support required for lambdas)
-    implementation("org.jetbrains:annotations:26.0.2")
+    implementation("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
@@ -50,7 +64,7 @@ dependencies {
 
 // Ensure annotations 26.x is used everywhere (needed for TYPE_USE @NotNull on functional interfaces)
 configurations.all {
-    resolutionStrategy.force("org.jetbrains:annotations:26.0.2")
+    resolutionStrategy.force("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 }
 
 // Copy MCP server JAR into plugin lib for bundling
@@ -100,9 +114,17 @@ tasks.named("prepareSandbox") {
                     val extractedDir = File(pluginsDir, pluginName)
                     if (!extractedDir.exists()) {
                         logger.lifecycle("Extracting marketplace plugin: ${zipFile.name}")
-                        project.copy {
-                            from(project.zipTree(zipFile))
-                            into(pluginsDir)
+                        ZipInputStream(zipFile.inputStream()).use { zis: ZipInputStream ->
+                            var entry = zis.nextEntry
+                            while (entry != null) {
+                                val dest = File(pluginsDir, entry.name)
+                                if (entry.isDirectory) dest.mkdirs()
+                                else {
+                                    dest.parentFile.mkdirs(); dest.outputStream().use { zis.copyTo(it) }
+                                }
+                                zis.closeEntry()
+                                entry = zis.nextEntry
+                            }
                         }
                     }
                 }
@@ -160,26 +182,30 @@ val nvmNodeBin: String? by lazy {
 // system PATH before our environment override takes effect.
 val npmCmd: String by lazy { nvmNodeBin?.let { "$it/npm" } ?: "npm" }
 
-fun ExecSpec.withNvmNode() {
-    nvmNodeBin?.let { binDir ->
-        environment("PATH", "$binDir:${System.getenv("PATH")}")
-    }
+fun runProcess(workDir: File, vararg cmd: String) {
+    val pb = ProcessBuilder(*cmd).directory(workDir).inheritIO()
+    nvmNodeBin?.let { bin -> pb.environment()["PATH"] = "$bin:${System.getenv("PATH")}" }
+    val exit = pb.start().waitFor()
+    if (exit != 0) error("Command failed (exit $exit): ${cmd.joinToString(" ")}")
 }
 
 // Build chat-ui TypeScript → bundled JS + copy static assets
 val buildChatUi by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/resources/chat-ui/chat")
     inputs.dir("chat-ui/src")
-    outputs.dir("src/main/resources/chat")
+    outputs.dir(outputDir)
 
     doLast {
-        exec {
-            workingDir = file("chat-ui")
-            commandLine(npmCmd, "run", "build")
-            withNvmNode()
-        }
+        // Ensure dist exists
+        file("chat-ui/dist").mkdirs()
+
+        runProcess(file("chat-ui"), npmCmd, "run", "build")
+
+        // Sync to generated resources directory
         copy {
+            from("chat-ui/dist")
             from("chat-ui/src/chat.css")
-            into("src/main/resources/chat")
+            into(outputDir)
         }
     }
 }
@@ -192,11 +218,7 @@ val jsTest by tasks.registering {
     inputs.dir("js-tests")
 
     doLast {
-        exec {
-            workingDir = file("js-tests")
-            commandLine(npmCmd, "test")
-            withNvmNode()
-        }
+        runProcess(file("js-tests"), npmCmd, "test")
     }
 }
 
@@ -221,6 +243,8 @@ tasks.named<Zip>("buildPlugin") {
 
 // Deploy built plugin to the main (outer) IDE installation
 tasks.register("deployToMainIde") {
+    group = "deployment"
+    description = "Builds the plugin ZIP and installs it into the running IDE's plugin directory."
     dependsOn("buildPlugin")
     doLast {
         val distDir = layout.buildDirectory.dir("distributions").get().asFile
@@ -234,9 +258,17 @@ tasks.register("deployToMainIde") {
         val installDir = detectPluginInstallDir()
         logger.lifecycle("📂 Target: $installDir")
         if (installDir.exists()) installDir.deleteRecursively()
-        project.copy {
-            from(project.zipTree(latestZip))
-            into(installDir.parentFile)
+        ZipInputStream(latestZip.inputStream()).use { zis: ZipInputStream ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val dest = File(installDir.parentFile, entry.name)
+                if (entry.isDirectory) dest.mkdirs()
+                else {
+                    dest.parentFile.mkdirs(); dest.outputStream().use { zis.copyTo(it) }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
         }
         logger.lifecycle("✅ Plugin deployed to $installDir")
         logger.lifecycle("⚠️  Restart IntelliJ to apply the new version.")
@@ -315,6 +347,7 @@ intellijPlatform {
         // isPluginInstalled("com.intellij.modules.java") + NoClassDefFoundError catch.
         // TODO: Move psi.java classes to a separate Gradle module (separate JAR) so the
         //       verifier only checks them against IDEs with Java support.
+        //
         failureLevel.set(
             listOf(
                 FailureLevel.INVALID_PLUGIN,
@@ -342,6 +375,7 @@ tasks {
     // Generate build info properties file
     val generateBuildInfo by registering {
         val outputDir = layout.buildDirectory.dir("generated/buildinfo")
+        val pluginVersion = project.version.toString()
         outputs.dir(outputDir)
         outputs.upToDateWhen { false }
         doLast {
@@ -354,7 +388,7 @@ tasks {
                 "unknown"
             }
             val timestamp = System.currentTimeMillis().toString()
-            propsFile.writeText("build.timestamp=$timestamp\nbuild.git.hash=$gitHash\nbuild.version=${project.version}\n")
+            propsFile.writeText("build.timestamp=$timestamp\nbuild.git.hash=$gitHash\nbuild.version=$pluginVersion\n")
         }
     }
 

@@ -2,7 +2,9 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
@@ -15,7 +17,6 @@ import com.intellij.openapi.roots.SourceFolder;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,13 +51,19 @@ public final class MarkDirectoryTool extends ProjectTool {
         return "Mark a directory as source root, test root, resources, excluded, etc.";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public @NotNull String permissionTemplate() {
         return "Mark {path} as {type}";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Directory path (absolute or project-relative)"},
             {"type", TYPE_STRING, "Directory type: 'sources', 'test_sources', 'resources', 'test_resources', 'generated_sources', 'excluded', or 'unmark' to remove marking"}
@@ -69,7 +76,7 @@ public final class MarkDirectoryTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String pathStr = args.get("path").getAsString();
         String type = args.get("type").getAsString();
 
@@ -98,8 +105,8 @@ public final class MarkDirectoryTool extends ProjectTool {
         CompletableFuture<String> future = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {
-                String result = ApplicationManager.getApplication().runWriteAction(
-                    (Computable<String>) () -> applyDirectoryMarking(absolutePath, vDir, type));
+                String result = WriteAction.compute(
+                    () -> applyDirectoryMarking(absolutePath, vDir, type));
                 future.complete(result);
             } catch (Exception e) {
                 future.completeExceptionally(e);
@@ -112,32 +119,35 @@ public final class MarkDirectoryTool extends ProjectTool {
     private String applyDirectoryMarking(String absolutePath, VirtualFile vDir, String type) {
         Module[] modules = ModuleManager.getInstance(project).getModules();
         for (Module module : modules) {
-            ModifiableRootModel model = ModuleRootManager.getInstance(module).getModifiableModel();
-            try {
-                for (ContentEntry entry : model.getContentEntries()) {
-                    VirtualFile contentRoot = entry.getFile();
-                    if (contentRoot == null) continue;
-                    if (!absolutePath.startsWith(contentRoot.getPath())) continue;
-
-                    if ("unmark".equals(type)) {
-                        return unmarkDirectory(entry, model, module, vDir.getUrl(), absolutePath);
-                    }
-
-                    if ("excluded".equals(type)) {
-                        entry.addExcludeFolder(vDir);
-                        model.commit();
-                        return "Marked '" + absolutePath + "' as excluded in module '" + module.getName() + "'";
-                    }
-
-                    return addSourceRoot(entry, model, module, vDir, absolutePath, type);
-                }
-            } finally {
-                if (!model.isDisposed() && model.isWritable()) {
-                    model.dispose();
-                }
-            }
+            String result = tryMarkInModule(module, absolutePath, vDir, type);
+            if (result != null) return result;
         }
         return "Error: directory '" + absolutePath + "' is not under any module's content root";
+    }
+
+    private @Nullable String tryMarkInModule(Module module, String absolutePath, VirtualFile vDir, String type) {
+        ModifiableRootModel model = ModuleRootManager.getInstance(module).getModifiableModel();
+        try {
+            for (ContentEntry entry : model.getContentEntries()) {
+                VirtualFile contentRoot = entry.getFile();
+                if (contentRoot == null || !absolutePath.startsWith(contentRoot.getPath())) continue;
+
+                if ("unmark".equals(type)) {
+                    return unmarkDirectory(entry, model, module, vDir.getUrl(), absolutePath);
+                }
+                if ("excluded".equals(type)) {
+                    entry.addExcludeFolder(vDir);
+                    model.commit();
+                    return "Marked '" + absolutePath + "' as excluded in module '" + module.getName() + "'";
+                }
+                return addSourceRoot(entry, model, module, vDir, absolutePath, type);
+            }
+        } finally {
+            if (!model.isDisposed() && model.isWritable()) {
+                model.dispose();
+            }
+        }
+        return null;
     }
 
     private static String addSourceRoot(ContentEntry entry, ModifiableRootModel model,

@@ -377,5 +377,40 @@ describe('ChatController', () => {
             CC().removeLoadMore();
             expect(document.querySelector('load-more')).toBeNull();
         });
+
+        it('restoreBatch with segmented HTML produces correct ordering', () => {
+            // Simulates what the Kotlin appendAgentTurn now produces when restoring
+            // a turn with the pattern: text_before → tool → text_after.
+            // The Kotlin fix emits TWO chat-messages (like the live session):
+            //   segment 1: tool chip in meta + "Before tool" bubble
+            //   segment 2: "After tool" bubble
+            const html =
+                '<chat-message type="user"><message-bubble type="user">Q</message-bubble></chat-message>' +
+                '<chat-message type="agent">' +
+                '  <message-meta class="show"><tool-chip label="Read File" status="complete" kind="read" data-chip-for="t1"></tool-chip></message-meta>' +
+                '  <turn-details></turn-details>' +
+                '  <message-bubble>Before tool</message-bubble>' +
+                '</chat-message>' +
+                '<chat-message type="agent">' +
+                '  <message-meta></message-meta>' +
+                '  <turn-details></turn-details>' +
+                '  <message-bubble>After tool</message-bubble>' +
+                '</chat-message>';
+            CC().restoreBatch(btoa(html));
+
+            const agentMsgs = getMessages().querySelectorAll('chat-message[type="agent"]');
+            expect(agentMsgs.length).toBe(2);
+
+            // First segment: has tool chip and pre-tool text
+            const chips = agentMsgs[0].querySelectorAll('tool-chip');
+            expect(chips.length).toBe(1);
+            const bubble0 = agentMsgs[0].querySelector('message-bubble');
+            expect(bubble0.textContent).toContain('Before tool');
+
+            // Second segment: just post-tool text, no tool chip
+            expect(agentMsgs[1].querySelectorAll('tool-chip').length).toBe(0);
+            const bubble1 = agentMsgs[1].querySelector('message-bubble');
+            expect(bubble1.textContent).toContain('After tool');
+        });
     });
 });

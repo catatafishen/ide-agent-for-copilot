@@ -1,6 +1,6 @@
 # Tool Permissions Architecture
 
-This document explains every layer of tool permission control in the IDE Agent for Copilot plugin — what each setting
+This document explains every layer of tool permission control in the AgentBridge plugin — what each setting
 does, which code enforces it, and how the layers interact for each supported agent.
 
 ---

@@ -1,9 +1,8 @@
 import {escHtml} from '../helpers';
-import {toolDisplayName} from '../toolDisplayName';
 
 export default class ToolChip extends HTMLElement {
     static get observedAttributes(): string[] {
-        return ['label', 'status', 'expanded', 'kind'];
+        return ['label', 'status', 'expanded', 'kind', 'external'];
     }
 
     private _init = false;
@@ -12,6 +11,10 @@ export default class ToolChip extends HTMLElement {
         if (this._init) return;
         this._init = true;
         this.classList.add('turn-chip', 'tool');
+        // Check if this tool was handled by MCP (from restored history)
+        if (this.dataset.mcpHandled === 'true') {
+            this.classList.add('is-agentbridge-tool');
+        }
         this.setAttribute('role', 'button');
         this.setAttribute('tabindex', '0');
         this.setAttribute('aria-expanded', 'false');
@@ -29,22 +32,23 @@ export default class ToolChip extends HTMLElement {
     }
 
     private _render(): void {
-        const rawLabel = this.getAttribute('label') || '';
+        const label = this.getAttribute('label') || '';
         const status = this.getAttribute('status') || 'running';
         const kind = this.getAttribute('kind') || 'other';
-        const paramsStr = this.dataset.params || undefined;
-        const display = toolDisplayName(rawLabel, paramsStr);
-        const truncated = display.length > 50 ? display.substring(0, 47) + '\u2026' : display;
-        // Remove any previous kind class and apply current one
-        this.className = this.className.replace(/\bkind-\S+/g, '').trim();
-        this.classList.add('turn-chip', 'tool', `kind-${kind}`);
+        const truncated = label.length > 50 ? label.substring(0, 47) + '\u2026' : label;
+        // Remove any previous kind/status class and apply current one
+        this.className = this.className.replaceAll(/\bkind-\S+/g, '').replaceAll(/\bstatus-\S+/g, '').trim();
+        this.classList.add('turn-chip', 'tool', `kind-${kind}`, `status-${status}`);
         let iconHtml = '';
         if (status === 'running') iconHtml = '<span class="chip-spinner"></span> ';
-        else if (status === 'failed') this.classList.add('failed');
+        if (status === 'pending') iconHtml = '<span class="chip-spinner"></span> ';
+        if (status === 'denied') iconHtml = '<span style="color:var(--error);margin-right:4px">\u2716</span>';
+        this.classList.toggle('failed', status === 'failed' || status === 'denied');
         this.innerHTML = iconHtml + escHtml(truncated);
-        if (display.length > 50) this.dataset.tip = display;
-        else if (rawLabel !== display) this.dataset.tip = rawLabel;
-        if (this.dataset.tip) this.setAttribute('title', this.dataset.tip);
+        if (label.length > 50) {
+            this.dataset.tip = label;
+            this.setAttribute('title', label);
+        }
     }
 
     private _showPopup(): void {

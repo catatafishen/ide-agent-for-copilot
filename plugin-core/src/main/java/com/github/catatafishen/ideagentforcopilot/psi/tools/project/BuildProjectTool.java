@@ -1,10 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.BuildResultRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.BuildResultRenderer;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -37,15 +36,21 @@ public final class BuildProjectTool extends ProjectTool {
         return "Trigger incremental compilation of the project or a specific module";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public @NotNull String permissionTemplate() {
         return "Build project";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"module", TYPE_STRING, "Optional: build only a specific module (e.g., 'plugin-core')"}
+            {JSON_MODULE, TYPE_STRING, "Optional: build only a specific module (e.g., 'plugin-core')"}
         });
     }
 
@@ -55,7 +60,7 @@ public final class BuildProjectTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!buildInProgress.compareAndSet(false, true)) {
             return "Build already in progress. Please wait for the current build to complete before requesting another.";
         }

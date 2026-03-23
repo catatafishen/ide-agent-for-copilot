@@ -6,12 +6,11 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Unit tests for {@link MacroToolSettings.MacroRegistration} — equality, copy, and
- * basic settings list operations. Pure unit tests, no IntelliJ platform context needed.
- */
 class MacroRegistrationTest {
 
     // ── copy ─────────────────────────────────────────────────────────────────
@@ -30,11 +29,11 @@ class MacroRegistrationTest {
         MacroRegistration original = new MacroRegistration("myMacro", "macro_my_macro", "desc", true);
         MacroRegistration copy = original.copy();
 
-        copy.toolName = "macro_changed";
-        copy.enabled = false;
+        copy.setToolName("macro_changed");
+        copy.setEnabled(false);
 
-        assertEquals("macro_my_macro", original.toolName);
-        assertTrue(original.enabled);
+        assertEquals("macro_my_macro", original.getToolName());
+        assertTrue(original.isEnabled());
     }
 
     // ── equals / hashCode ─────────────────────────────────────────────────────
@@ -80,10 +79,10 @@ class MacroRegistrationTest {
     @Test
     void defaultConstructor_allEmptyOrEnabled() {
         MacroRegistration reg = new MacroRegistration();
-        assertEquals("", reg.macroName);
-        assertEquals("", reg.toolName);
-        assertEquals("", reg.description);
-        assertTrue(reg.enabled);
+        assertEquals("", reg.getMacroName());
+        assertEquals("", reg.getToolName());
+        assertEquals("", reg.getDescription());
+        assertTrue(reg.isEnabled());
     }
 
     // ── settings list operations ──────────────────────────────────────────────
@@ -94,7 +93,7 @@ class MacroRegistrationTest {
         list.add(new MacroRegistration("Macro A", "macro_a", "", true));
         list.add(new MacroRegistration("Macro B", "macro_b", "", false));
 
-        long enabledCount = list.stream().filter(r -> r.enabled).count();
+        long enabledCount = list.stream().filter(MacroRegistration::isEnabled).count();
         assertEquals(1, enabledCount);
     }
 
@@ -103,7 +102,7 @@ class MacroRegistrationTest {
         MacroRegistration source = new MacroRegistration("m", "macro_m", "d", true);
         List<MacroRegistration> copies = List.of(source.copy());
 
-        copies.get(0).toolName = "changed";
-        assertEquals("macro_m", source.toolName);
+        copies.get(0).setToolName("changed");
+        assertEquals("macro_m", source.getToolName());
     }
 }

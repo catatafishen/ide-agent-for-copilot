@@ -1,11 +1,10 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
 import com.github.catatafishen.ideagentforcopilot.psi.RunConfigurationService;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.RunConfigCrudRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.RunConfigCrudRenderer;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Edits an existing run configuration's arguments, environment, or working directory.
@@ -34,8 +33,14 @@ public final class EditRunConfigurationTool extends ProjectTool {
         return "Edit an existing run configuration's arguments, environment, or working directory";
     }
 
+
+
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
+    public @NotNull JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
             {"name", TYPE_STRING, "Name of the run configuration to edit"},
             {"jvm_args", TYPE_STRING, "Optional: new JVM arguments"},
@@ -55,7 +60,7 @@ public final class EditRunConfigurationTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         return runConfigService.editRunConfiguration(args);
     }
 }

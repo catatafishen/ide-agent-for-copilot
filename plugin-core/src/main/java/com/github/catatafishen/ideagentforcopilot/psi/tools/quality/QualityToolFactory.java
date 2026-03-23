@@ -25,8 +25,10 @@ public final class QualityToolFactory {
         var tools = new ArrayList<Tool>();
         tools.add(new GetProblemsTool(project));
         tools.add(new GetHighlightsTool(project));
-        tools.add(new RunInspectionsTool(project));
+        tools.add(new GetAvailableActionsTool(project));
+        tools.add(new GetActionOptionsTool(project));
         tools.add(new ApplyQuickfixTool(project));
+        tools.add(new ApplyActionTool(project));
         tools.add(new SuppressInspectionTool(project));
         tools.add(new OptimizeImportsTool(project));
         tools.add(new FormatCodeTool(project));
@@ -41,6 +43,7 @@ public final class QualityToolFactory {
 
         if (hasSonar) {
             tools.add(new RunSonarQubeAnalysisTool(project));
+            tools.add(new GetSonarRuleDescriptionTool(project));
         }
 
         return List.copyOf(tools);

@@ -1,23 +1,29 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
+import com.github.catatafishen.ideagentforcopilot.services.ToolChipRegistry;
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.ComponentManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Executes MCP tool calls inside IntelliJ, providing PSI/AST-backed code intelligence.
@@ -37,10 +43,27 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
+     * Listener notified to request focus restoration to the chat input.
+     */
+    public interface FocusRestoreListener {
+        void restoreFocus();
+    }
+
+    /**
      * Project-level message bus topic for tool call events (fire-and-forget notifications).
      */
     public static final Topic<ToolCallListener> TOOL_CALL_TOPIC =
         Topic.create("PsiBridgeService.ToolCall", ToolCallListener.class);
+
+    /**
+     * Project-level message bus topic for requesting focus restoration to chat input.
+     */
+    public static final Topic<FocusRestoreListener> FOCUS_RESTORE_TOPIC =
+        Topic.create("PsiBridgeService.FocusRestore", FocusRestoreListener.class);
+
+    private static final Set<String> SYNC_TOOL_CATEGORIES = Set.of("FILE", "EDITING", "REFACTOR", "GIT");
+    private final Map<String, ReentrantLock> toolLocks = new ConcurrentHashMap<>();
+    private final java.util.concurrent.Semaphore writeToolSemaphore = new java.util.concurrent.Semaphore(1);
 
     private final Project project;
     private final ToolRegistry registry;
@@ -70,6 +93,36 @@ public final class PsiBridgeService implements Disposable {
         allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.terminal.TerminalToolFactory.create(project));
         allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.editor.EditorToolFactory.create(project));
         registry.registerAll(allTools);
+
+        // Subscribe to tool call events to restore focus to chat input after each tool call
+        PlatformApiCompat.subscribeToolCallListener(project, this, (toolName, durationMs, success) ->
+            restoreChatFocus()
+        );
+    }
+
+    /**
+     * Requests focus restoration to the chat input after a tool call completes.
+     * This prevents focus from staying in the editor when files are opened in follow mode.
+     * Adds a small delay to allow editor scrolling/navigation to complete first.
+     */
+    private void restoreChatFocus() {
+        // Wait for editor operations (scrolling, navigation) to complete
+        // before stealing focus back to the chat input by listening for the action to finish
+        var connection = com.intellij.openapi.application.ApplicationManager.getApplication().getMessageBus().connect();
+        connection.subscribe(com.intellij.openapi.actionSystem.ex.AnActionListener.TOPIC, new com.intellij.openapi.actionSystem.ex.AnActionListener() {
+            @Override
+            public void afterActionPerformed(@NotNull com.intellij.openapi.actionSystem.AnAction action,
+                                             @NotNull com.intellij.openapi.actionSystem.AnActionEvent event,
+                                             @NotNull com.intellij.openapi.actionSystem.AnActionResult result) {
+                try {
+                    PlatformApiCompat.syncPublisher(project, FOCUS_RESTORE_TOPIC).restoreFocus();
+                } catch (Exception e) {
+                    LOG.debug("Failed to request focus restoration", e);
+                } finally {
+                    connection.disconnect();
+                }
+            }
+        });
     }
 
     @SuppressWarnings("java:S1905") // Cast needed: IDE doesn't resolve Project→ComponentManager supertype
@@ -100,6 +153,11 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public String callTool(String toolName, JsonObject arguments) {
+        return callTool(toolName, arguments, null);
+    }
+
+    public String callTool(String toolName, JsonObject arguments, @Nullable String progressToken) {
+        LOG.info("PSI Bridge: calling " + toolName + " with args: " + arguments);
         ToolDefinition def = registry.findDefinition(toolName);
         if (def == null || !def.hasExecutionHandler()) {
             fireToolCallEvent(toolName, System.currentTimeMillis(), false);
@@ -107,6 +165,25 @@ public final class PsiBridgeService implements Disposable {
         }
         long startMs = System.currentTimeMillis();
         boolean success = true;
+
+        String argumentsHash = ToolChipRegistry.computeBaseHash(arguments);
+
+        // Track if chat tool window is active before the tool call
+        // Only restore focus afterward if it was active before (don't steal focus if user switched away)
+        boolean chatWasActive = isChatToolWindowActive();
+
+        // Determine if this tool requires synchronous execution (file/git/editing tools).
+        boolean requiresSync = def.category() != null && SYNC_TOOL_CATEGORIES.contains(def.category().name());
+
+        // Global write semaphore: serialize all non-readonly tools to prevent EDT flooding
+        // and race conditions. Multiple concurrent write/heavy operations each posting lambdas
+        // via invokeLater can saturate the EDT queue and cause the IDE to freeze.
+        // Sync-category tools (FILE, EDITING, REFACTOR, GIT) also use per-tool locks for ordering.
+        boolean needsGlobalLock = !def.isReadOnly();
+        if (needsGlobalLock) {
+            String lockError = acquireWriteLock(toolName, startMs);
+            if (lockError != null) return lockError;
+        }
 
         // Subscribe to daemon events BEFORE the write to avoid the race where
         // the daemon finishes before we subscribe and we miss the event entirely.
@@ -131,7 +208,20 @@ public final class PsiBridgeService implements Disposable {
                 return denied;
             }
 
-            String result = def.execute(arguments);
+            // Acquire per-tool sync lock if needed, register with chip registry, then execute.
+            ReentrantLock syncLock = requiresSync
+                ? toolLocks.computeIfAbsent(toolName, k -> new ReentrantLock())
+                : null;
+            if (syncLock != null) syncLock.lock();
+            String result;
+            try {
+                // Register with chip registry BEFORE executing so the chip can transition to "running"
+                // Pass the resolved kind so the chip can update its color immediately.
+                ToolChipRegistry.getInstance(project).registerMcp(toolName, arguments, def.kind());
+                result = def.execute(arguments, argumentsHash);
+            } finally {
+                if (syncLock != null) syncLock.unlock();
+            }
 
             // Piggyback highlights after successful write operations
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {
@@ -147,7 +237,12 @@ public final class PsiBridgeService implements Disposable {
             success = false;
             return "Error: " + e.getMessage();
         } finally {
+            if (needsGlobalLock) writeToolSemaphore.release();
             fireToolCallEvent(toolName, startMs, success);
+            // Only restore focus if chat was active before the tool call
+            if (chatWasActive) {
+                fireFocusRestoreEvent();
+            }
         }
     }
 
@@ -166,6 +261,25 @@ public final class PsiBridgeService implements Disposable {
         registry.unregister(id);
     }
 
+    /**
+     * Acquires the global write lock to serialize all non-readonly tool calls.
+     * Returns null if acquired successfully, or an error message if the lock could not be acquired.
+     */
+    @Nullable
+    private String acquireWriteLock(String toolName, long startTimeMs) {
+        try {
+            if (!writeToolSemaphore.tryAcquire(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                fireToolCallEvent(toolName, startTimeMs, false);
+                return "Error: IDE is busy processing another tool call. Please retry shortly.";
+            }
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            fireToolCallEvent(toolName, startTimeMs, false);
+            return "Error: Interrupted waiting for write lock.";
+        }
+    }
+
     private void fireToolCallEvent(String toolName, long startTimeMs, boolean success) {
         long duration = System.currentTimeMillis() - startTimeMs;
         try {
@@ -173,6 +287,31 @@ public final class PsiBridgeService implements Disposable {
                 .toolCalled(toolName, duration, success);
         } catch (Exception e) {
             LOG.debug("Failed to fire tool call event", e);
+        }
+    }
+
+    private void fireFocusRestoreEvent() {
+        try {
+            PlatformApiCompat.syncPublisher(project, FOCUS_RESTORE_TOPIC)
+                .restoreFocus();
+        } catch (Exception e) {
+            LOG.debug("Failed to fire focus restore event", e);
+        }
+    }
+
+    /**
+     * Checks if the AgentBridge chat tool window is currently active.
+     * Used to determine whether to restore focus after a tool call.
+     */
+    private boolean isChatToolWindowActive() {
+        try {
+            com.intellij.openapi.wm.ToolWindowManager toolWindowManager =
+                com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+            com.intellij.openapi.wm.ToolWindow toolWindow = toolWindowManager.getToolWindow("AgentBridge");
+            return toolWindow != null && toolWindow.isActive();
+        } catch (Exception e) {
+            LOG.debug("Failed to check chat tool window state", e);
+            return false;
         }
     }
 
@@ -208,7 +347,7 @@ public final class PsiBridgeService implements Disposable {
         String displayName = entry != null ? entry.displayName() : toolName;
         String reqId = java.util.UUID.randomUUID().toString();
 
-        // Build a structured context JSON for the permission bubble: {question, args}
+        // Build a structured context JSON for the permission bubble, containing question and args
         String resolvedQuestion = entry != null ? entry.resolvePermissionQuestion(arguments) : null;
         com.google.gson.JsonObject context = new com.google.gson.JsonObject();
         context.addProperty("question", resolvedQuestion != null ? resolvedQuestion
@@ -339,17 +478,16 @@ public final class PsiBridgeService implements Disposable {
      */
     private static boolean isWriteToolName(String toolName) {
         return switch (toolName) {
-            case "write_file", "intellij_write_file", "edit_text",
-                 "create_file", "replace_symbol_body",
-                 "insert_before_symbol", "insert_after_symbol" -> true;
+            case "write_file", "edit_text", "create_file",
+                 "replace_symbol_body", "insert_before_symbol",
+                 "insert_after_symbol" -> true;
             default -> false;
         };
     }
 
     private static boolean isSuccessfulWrite(String toolName, String result) {
         return switch (toolName) {
-            case "write_file", "intellij_write_file", "edit_text" ->
-                result.startsWith("Edited:") || result.startsWith("Written:");
+            case "write_file", "edit_text" -> result.startsWith("Edited:") || result.startsWith("Written:");
             case "create_file" -> result.startsWith("✓ Created file:");
             case "replace_symbol_body" -> result.startsWith("Replaced lines ");
             case "insert_before_symbol" -> result.startsWith("Inserted ") && result.contains(" before ");
@@ -372,13 +510,11 @@ public final class PsiBridgeService implements Disposable {
      */
     private static long getDocumentStamp(@Nullable com.intellij.openapi.vfs.VirtualFile vf) {
         if (vf == null) return -1L;
-        // Cast required for overload disambiguation: runReadAction(Computable) vs runReadAction(ThrowableComputable)
-        return com.intellij.openapi.application.ApplicationManager.getApplication()
-            .runReadAction((com.intellij.openapi.util.Computable<Long>) () -> {
-                com.intellij.openapi.editor.Document doc =
-                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf);
-                return doc != null ? doc.getModificationStamp() : -1L;
-            });
+        return ApplicationManager.getApplication().runReadAction((Computable<Long>) () -> {
+            com.intellij.openapi.editor.Document doc =
+                com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf);
+            return doc != null ? doc.getModificationStamp() : -1L;
+        });
     }
 
     private String appendAutoHighlights(String writeResult, String path, DaemonWaiter preWriteWaiter) {

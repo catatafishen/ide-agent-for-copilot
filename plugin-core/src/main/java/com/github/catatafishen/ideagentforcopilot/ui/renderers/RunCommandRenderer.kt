@@ -65,7 +65,7 @@ object RunCommandRenderer : ToolResultRenderer {
             .trim()
 
         if (body.isNotEmpty()) {
-            panel.add(ToolRenderers.codeBlock(body))
+            panel.add(ToolRenderers.codeOrScratchPanel(body))
         }
 
         return panel

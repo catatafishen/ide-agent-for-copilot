@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.ui
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.util.EnvironmentUtil
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -48,7 +49,10 @@ internal class CopilotBillingClient {
     fun findGhCli(): String? {
         try {
             val cmd = if (System.getProperty(OS_NAME_PROPERTY).lowercase().contains("win")) "where" else "which"
-            val check = ProcessBuilder(cmd, "gh").start()
+            val pb = ProcessBuilder(cmd, "gh")
+            // Use the user's actual shell environment to ensure PATH is correct
+            pb.environment().putAll(EnvironmentUtil.getEnvironmentMap())
+            val check = pb.start()
             if (check.waitFor() == 0) return "gh"
         } catch (_: Exception) {
             // gh CLI detection is best-effort
@@ -78,7 +82,11 @@ internal class CopilotBillingClient {
      * Returns `true` when the `gh` CLI is authenticated with a valid session.
      */
     fun isGhAuthenticated(ghCli: String): Boolean {
-        val process = ProcessBuilder(ghCli, "auth", "status").redirectErrorStream(true).start()
+        val pb = ProcessBuilder(ghCli, "auth", "status")
+        pb.redirectErrorStream(true)
+        // Use the user's actual shell environment to ensure PATH is correct
+        pb.environment().putAll(EnvironmentUtil.getEnvironmentMap())
+        val process = pb.start()
         val authOutput = process.inputStream.bufferedReader().readText()
         process.waitFor(AUTH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         return process.exitValue() == 0
@@ -102,7 +110,10 @@ internal class CopilotBillingClient {
             return null
         }
 
-        val apiProcess = ProcessBuilder(ghCli, "api", API_ENDPOINT).redirectErrorStream(true).start()
+        val pb = ProcessBuilder(ghCli, "api", API_ENDPOINT)
+        pb.redirectErrorStream(true)
+        pb.environment().putAll(EnvironmentUtil.getEnvironmentMap())
+        val apiProcess = pb.start()
         val json = apiProcess.inputStream.bufferedReader().readText()
         val exited = apiProcess.waitFor(GH_CLI_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         val exitCode = if (exited) apiProcess.exitValue() else -1

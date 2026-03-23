@@ -33,7 +33,7 @@ dependencies {
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
     // Force annotations version to match the platform
-    implementation("org.jetbrains:annotations:26.0.2")
+    implementation("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 
     testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
     testImplementation("junit:junit:${providers.gradleProperty("junit4Version").get()}")
@@ -42,7 +42,7 @@ dependencies {
 }
 
 configurations.all {
-    resolutionStrategy.force("org.jetbrains:annotations:26.0.2")
+    resolutionStrategy.force("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 }
 
 // Repackage plugin-core without its plugin.xml descriptor.
@@ -54,7 +54,16 @@ val repackagePluginCore by tasks.registering(Jar::class) {
     from(provider {
         zipTree(project(":plugin-core").tasks.named("jar").get().outputs.files.singleFile)
     }) {
+        // Exclude plugin-core's plugin descriptor and optional-dependency feature XMLs.
+        // standalone-mcp declares its own plugin.xml and feature XMLs so they resolve
+        // correctly from the primary JAR when the plugin verifier scans config-file attributes.
         exclude("META-INF/plugin.xml")
+        exclude("META-INF/git-features.xml")
+        exclude("META-INF/java-features.xml")
+        exclude("META-INF/gradle-features.xml")
+        exclude("META-INF/maven-features.xml")
+        exclude("META-INF/sonarlint-features.xml")
+        exclude("META-INF/terminal-features.xml")
     }
 }
 

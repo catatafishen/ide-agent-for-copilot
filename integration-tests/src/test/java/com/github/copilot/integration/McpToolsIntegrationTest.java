@@ -98,13 +98,13 @@ class McpToolsIntegrationTest {
     }
 
     /**
-     * Test intellij_read_file tool
+     * Test read_file tool
      */
     @Test
     @Order(3)
     void testReadFile() throws Exception {
         String args = "{\"path\":\"README.md\"}";
-        String result = callTool("intellij_read_file", args);
+        String result = callTool("read_file", args);
 
         Assertions.assertTrue(result.contains("IntelliJ"),
             "README.md should contain 'IntelliJ'");

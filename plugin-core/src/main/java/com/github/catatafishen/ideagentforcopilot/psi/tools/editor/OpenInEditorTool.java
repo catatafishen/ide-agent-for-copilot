@@ -15,15 +15,13 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Opens a file in the editor, optionally navigating to a specific line.
- */
 public final class OpenInEditorTool extends EditorTool {
+
+    private static final String PARAM_FOCUS = "focus";
 
     public OpenInEditorTool(Project project) {
         super(project);
@@ -44,17 +42,23 @@ public final class OpenInEditorTool extends EditorTool {
         return "Open a file in the editor, optionally navigating to a specific line";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Path to the file to open"},
             {"line", TYPE_INTEGER, "Optional: line number to navigate to after opening"},
-            {"focus", TYPE_BOOLEAN, "Optional: if true (default), the editor gets focus. Set to false to open without stealing focus"}
+            {PARAM_FOCUS, TYPE_BOOLEAN, "Optional: if true (default), the editor gets focus. Set to false to open without stealing focus"}
         }, "file");
     }
 
@@ -64,13 +68,13 @@ public final class OpenInEditorTool extends EditorTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("file")) {
             return "Error: 'file' parameter is required";
         }
         String pathStr = args.get("file").getAsString();
         int line = args.has("line") ? args.get("line").getAsInt() : -1;
-        boolean requestedFocus = !args.has("focus") || args.get("focus").getAsBoolean();
+        boolean requestedFocus = !args.has(PARAM_FOCUS) || args.get(PARAM_FOCUS).getAsBoolean();
         boolean focus = requestedFocus && ToolLayerSettings.getInstance(project).getFollowAgentFiles();
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();

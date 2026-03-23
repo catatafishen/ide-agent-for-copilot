@@ -9,13 +9,15 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Shows commit history with configurable format, author, date, and path filters.
- */
 @SuppressWarnings("java:S112")
 public final class GitLogTool extends GitTool {
 
     private static final int DEFAULT_MAX_COUNT = 20;
+    private static final String PARAM_MAX_COUNT = "max_count";
+    private static final String PARAM_FORMAT = "format";
+    private static final String PARAM_AUTHOR = "author";
+    private static final String PARAM_SINCE = "since";
+    private static final String PARAM_BRANCH = "branch";
 
     public GitLogTool(Project project) {
         super(project);
@@ -36,36 +38,42 @@ public final class GitLogTool extends GitTool {
         return "Show commit history";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"max_count", TYPE_INTEGER, "Maximum number of commits to show (default: 10)"},
-            {"format", TYPE_STRING, "Output format: 'oneline', 'short', 'medium', 'full'"},
-            {"author", TYPE_STRING, "Filter commits by author name or email"},
-            {"since", TYPE_STRING, "Show commits after this date (e.g., '2024-01-01')"},
+            {PARAM_MAX_COUNT, TYPE_INTEGER, "Maximum number of commits to show (default: 10)"},
+            {PARAM_FORMAT, TYPE_STRING, "Output format: 'oneline', 'short', 'medium', 'full'"},
+            {PARAM_AUTHOR, TYPE_STRING, "Filter commits by author name or email"},
+            {PARAM_SINCE, TYPE_STRING, "Show commits after this date (e.g., '2024-01-01')"},
             {"path", TYPE_STRING, "Show only commits touching this file"},
-            {"branch", TYPE_STRING, "Show commits from this branch (default: current)"}
+            {PARAM_BRANCH, TYPE_STRING, "Show commits from this branch (default: current)"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("log");
 
-        int maxCount = args.has("max_count")
-            ? args.get("max_count").getAsInt()
+        int maxCount = args.has(PARAM_MAX_COUNT)
+            ? args.get(PARAM_MAX_COUNT).getAsInt()
             : DEFAULT_MAX_COUNT;
         cmdArgs.add("-n");
         cmdArgs.add(String.valueOf(maxCount));
 
-        String format = args.has("format")
-            ? args.get("format").getAsString()
+        String format = args.has(PARAM_FORMAT)
+            ? args.get(PARAM_FORMAT).getAsString()
             : "medium";
         cmdArgs.add("--format=" + switch (format) {
             case "oneline" -> "oneline";
@@ -74,16 +82,16 @@ public final class GitLogTool extends GitTool {
             default -> "medium";
         });
 
-        if (args.has("author") && !args.get("author").getAsString().isEmpty()) {
-            cmdArgs.add("--author=" + args.get("author").getAsString());
+        if (args.has(PARAM_AUTHOR) && !args.get(PARAM_AUTHOR).getAsString().isEmpty()) {
+            cmdArgs.add("--author=" + args.get(PARAM_AUTHOR).getAsString());
         }
 
-        if (args.has("since") && !args.get("since").getAsString().isEmpty()) {
-            cmdArgs.add("--since=" + args.get("since").getAsString());
+        if (args.has(PARAM_SINCE) && !args.get(PARAM_SINCE).getAsString().isEmpty()) {
+            cmdArgs.add("--since=" + args.get(PARAM_SINCE).getAsString());
         }
 
-        if (args.has("branch") && !args.get("branch").getAsString().isEmpty()) {
-            cmdArgs.add(2, args.get("branch").getAsString());
+        if (args.has(PARAM_BRANCH) && !args.get(PARAM_BRANCH).getAsString().isEmpty()) {
+            cmdArgs.add(2, args.get(PARAM_BRANCH).getAsString());
         }
 
         if (args.has("path") && !args.get("path").getAsString().isEmpty()) {

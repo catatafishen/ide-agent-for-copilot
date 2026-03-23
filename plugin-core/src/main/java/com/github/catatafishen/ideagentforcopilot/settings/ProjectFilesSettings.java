@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.State;
@@ -21,7 +20,8 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
     private State myState = new State();
 
     public static ProjectFilesSettings getInstance() {
-        return ApplicationManager.getApplication().getService(ProjectFilesSettings.class);
+        return com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat
+            .getApplicationService(ProjectFilesSettings.class);
     }
 
     public List<FileEntry> getEntries() {
@@ -43,38 +43,90 @@ public final class ProjectFilesSettings implements PersistentStateComponent<Proj
     }
 
     public static class State {
-        public List<FileEntry> entries = getDefaults();
+        private List<FileEntry> entries = getDefaults();
+
+        public List<FileEntry> getEntries() {
+            return entries;
+        }
+
+        public void setEntries(List<FileEntry> entries) {
+            this.entries = entries;
+        }
     }
 
     /**
      * A single file shortcut entry.
      *
-     * @see #label   Display name in the menu
-     * @see #path    Relative path from project root (supports glob for directory scanning)
-     * @see #isGlob  If true, path is a glob pattern (e.g., ".github/agents/*.md") and
-     *               matching files are listed individually in the menu
+     * @see #getLabel()   Display name in the menu
+     * @see #getPath()    Relative path from project root (supports glob for directory scanning)
+     * @see #isGlob()     If true, path is a glob pattern (e.g., ".github/agents/*.md") and
+     * matching files are listed individually in the menu
+     * @see #getGroup()   Display group/category for organizing in dropdown menu (e.g., "Claude", "Junie")
      */
     public static class FileEntry {
-        public String label = "";
-        public String path = "";
-        public boolean isGlob = false;
+        private String label = "";
+        private String path = "";
+        private boolean glob = false;
+        private String group = "";
 
         public FileEntry() {
         }
 
         public FileEntry(String label, String path, boolean isGlob) {
+            this(label, path, isGlob, "");
+        }
+
+        public FileEntry(String label, String path, boolean isGlob, String group) {
             this.label = label;
             this.path = path;
-            this.isGlob = isGlob;
+            this.glob = isGlob;
+            this.group = group;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public void setLabel(String label) {
+            this.label = label;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path;
+        }
+
+        public boolean isGlob() {
+            return glob;
+        }
+
+        public void setGlob(boolean glob) {
+            this.glob = glob;
+        }
+
+        public String getGroup() {
+            return group;
+        }
+
+        public void setGroup(String group) {
+            this.group = group;
         }
     }
 
     public static List<FileEntry> getDefaults() {
         List<FileEntry> entries = new ArrayList<>();
-        entries.add(new FileEntry("Instructions", ".copilot/copilot-instructions.md", false));
-        entries.add(new FileEntry("Instructions (GitHub)", ".github/copilot-instructions.md", false));
-        entries.add(new FileEntry("TODO", "TODO.md", false));
-        entries.add(new FileEntry("Agent Definitions", ".github/agents/*.md", true));
+
+        // Project-level config files (shared across all agents)
+        entries.add(new FileEntry("TODO", "TODO.md", false, "Project"));
+
+        // Shared agent definitions
+        entries.add(new FileEntry("Agent Definitions", ".github/agents/*.md", true, "Shared"));
+
+        // Agent-specific defaults are provided by each agent client via getDefaultProjectFiles()
+
         return entries;
     }
 }

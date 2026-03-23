@@ -94,9 +94,19 @@ final class McpSseTransport {
         try {
             session.sendEvent("endpoint", endpointUrl);
             LOG.info("SSE session opened: " + session.getSessionId());
+            // Block the handler thread to keep the HTTP exchange open until the client
+            // disconnects or the server is shut down. Without this, HttpServer closes the
+            // exchange as soon as the handler returns, immediately dropping the SSE stream.
+            session.awaitClose();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            removeSession(session.getSessionId());
         } catch (IOException e) {
             LOG.warn("Failed to send endpoint event", e);
             removeSession(session.getSessionId());
+        } finally {
+            removeSession(session.getSessionId());
+            LOG.info("SSE session handler exiting: " + session.getSessionId());
         }
     }
 

@@ -1,13 +1,12 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.refactoring;
 
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.SearchResultRenderer;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Finds all implementations of a class/interface or overrides of a method.
@@ -36,13 +35,19 @@ public final class FindImplementationsTool extends RefactoringTool {
         return "Find all implementations of a class/interface or overrides of a method";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {PARAM_SYMBOL, TYPE_STRING, "Class, interface, or method name to find implementations for"},
             {"file", TYPE_STRING, "Optional: file path for method context (required when searching for method overrides)"},
@@ -56,7 +61,7 @@ public final class FindImplementationsTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has(PARAM_SYMBOL)) return "Error: 'symbol' parameter is required";
         String symbolName = args.get(PARAM_SYMBOL).getAsString();
         String filePath = args.has("file") ? args.get("file").getAsString() : null;

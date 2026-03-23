@@ -1,30 +1,27 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
+import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBLabel;
+import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.*;
 
-/**
- * Parent settings group: Settings > Tools > IDE Agent for Copilot.
- * Child pages (Tool Permissions, Macro Tools, MCP Server) appear as sub-nodes.
- */
 public final class PluginSettingsConfigurable implements Configurable {
 
     public static final String ID = "com.github.catatafishen.ideagentforcopilot.settings";
     public static final String DISPLAY_NAME = "AgentBridge";
 
-    private final Project project;
+    private JComboBox<String> triggerCharCombo;
 
-    public PluginSettingsConfigurable(@NotNull Project project) {
-        this.project = project;
+    @SuppressWarnings("unused")
+    public PluginSettingsConfigurable(@NotNull Project ignoredProject) {
     }
 
     /**
@@ -40,34 +37,73 @@ public final class PluginSettingsConfigurable implements Configurable {
     }
 
     @Override
-    public @Nullable JComponent createComponent() {
-        JPanel panel = new JPanel(new BorderLayout());
-        JBLabel label = new JBLabel(
-            "<html><b>" + DISPLAY_NAME + "</b><br><br>"
-                + "Configure the plugin using the sections in the tree on the left:<br><br>"
-                + "<b>MCP</b> — MCP server, PSI Bridge, and tool registration<br>"
-                + "<b>ACP</b> — agent settings, profiles, and tool permissions<br>"
-                + "<b>Other</b> — scratch file types and project file shortcuts</html>");
-        label.setBorder(JBUI.Borders.empty(12));
-        panel.add(label, BorderLayout.NORTH);
+    public @NotNull JComponent createComponent() {
+        triggerCharCombo = new JComboBox<>(new String[]{"# (VS Code style)", "@ (AI Assistant style)", "Disabled"});
 
         String version = com.github.catatafishen.ideagentforcopilot.BuildInfo.getVersion();
         String hash = com.github.catatafishen.ideagentforcopilot.BuildInfo.getGitHash();
+
+        JBLabel descLabel = new JBLabel(
+            "<html>"
+                + "AgentBridge connects IntelliJ IDE with AI coding agents via the "
+                + "<b>Agent Coding Protocol (ACP)</b>. Agents gain live access to code intelligence, "
+                + "refactoring, search, file editing, and build tools through the MCP server built "
+                + "into the IDE.<br><br>"
+                + "Supported clients: <b>GitHub Copilot</b>, <b>OpenCode</b>, <b>Claude Code</b>, "
+                + "<b>Claude CLI</b>, <b>Junie</b>, <b>Kiro</b>."
+                + "</html>");
+        descLabel.setForeground(UIUtil.getContextHelpForeground());
+
         JBLabel versionLabel = new JBLabel("Version " + version + "  ·  " + hash);
         versionLabel.setForeground(JBUI.CurrentTheme.Label.disabledForeground());
         versionLabel.setFont(JBUI.Fonts.smallFont());
-        versionLabel.setBorder(JBUI.Borders.empty(8, 12));
-        panel.add(versionLabel, BorderLayout.SOUTH);
+
+        JPanel panel = FormBuilder.createFormBuilder()
+            .addLabeledComponent("File search trigger:", triggerCharCombo)
+            .addTooltip("Character that opens the file search popup in the chat input.")
+            .addSeparator(12)
+            .addComponent(descLabel)
+            .addVerticalGap(8)
+            .addComponent(versionLabel)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
+        panel.setBorder(JBUI.Borders.empty(8));
+
+        reset();
         return panel;
+    }
+
+    private String selectedTriggerChar() {
+        int idx = triggerCharCombo == null ? 0 : triggerCharCombo.getSelectedIndex();
+        return switch (idx) {
+            case 1 -> "@";
+            case 2 -> "";
+            default -> "#";
+        };
+    }
+
+    private void selectTriggerChar(String value) {
+        if (triggerCharCombo == null) return;
+        triggerCharCombo.setSelectedIndex(switch (value) {
+            case "@" -> 1;
+            case "" -> 2;
+            default -> 0;
+        });
     }
 
     @Override
     public boolean isModified() {
-        return false;
+        return triggerCharCombo != null
+            && !selectedTriggerChar().equals(ActiveAgentManager.getAttachTriggerChar());
     }
 
     @Override
     public void apply() {
-        // No settings on the parent page itself
+        ActiveAgentManager.setAttachTriggerChar(selectedTriggerChar());
+    }
+
+    @Override
+    public void reset() {
+        selectTriggerChar(ActiveAgentManager.getAttachTriggerChar());
     }
 }

@@ -110,7 +110,7 @@ class McpToolsExtendedTest {
     @Test
     @Order(10)
     void testReadFileWithLineRange() throws Exception {
-        String result = callTool("intellij_read_file",
+        String result = callTool("read_file",
             "{\"path\":\"build.gradle.kts\",\"start_line\":1,\"end_line\":10}");
 
         assertNotNull(result);
@@ -122,7 +122,7 @@ class McpToolsExtendedTest {
     @Order(11)
     void testReadNonExistentFile() throws Exception {
         try {
-            String result = callTool("intellij_read_file",
+            String result = callTool("read_file",
                 "{\"path\":\"nonexistent/file/that/does/not/exist.java\"}");
             // Should return error message, not throw
             assertTrue(result.toLowerCase().contains("not found") || result.toLowerCase().contains("error")
@@ -268,7 +268,7 @@ class McpToolsExtendedTest {
     void testMalformedArguments() throws Exception {
         try {
             // Send request with missing required field
-            String result = callTool("intellij_read_file", "{}");
+             String result = callTool("read_file", "{}");
             // Should return error about missing path
             assertNotNull(result);
         } catch (RuntimeException e) {
@@ -419,7 +419,7 @@ class McpToolsExtendedTest {
             "Should confirm file creation: " + createResult);
 
         // Verify it exists by reading it
-        String readResult = callTool("intellij_read_file",
+        String readResult = callTool("read_file",
             "{\"path\":\"" + testPath + "\"}");
 
         assertTrue(readResult.contains("integration tests"),

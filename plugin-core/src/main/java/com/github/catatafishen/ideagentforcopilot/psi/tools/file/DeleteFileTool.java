@@ -4,13 +4,12 @@ import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -41,7 +40,13 @@ public final class DeleteFileTool extends FileTool {
         return "Delete a file from the project via IntelliJ";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "execute";
+    }
+@Override
     public boolean isDestructive() {
         return true;
     }
@@ -52,7 +57,7 @@ public final class DeleteFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path to the file to delete (absolute or project-relative)"}
         }, "path");
@@ -64,7 +69,7 @@ public final class DeleteFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("path")) return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
 
@@ -95,7 +100,7 @@ public final class DeleteFileTool extends FileTool {
     private void scheduleFileDeletion(VirtualFile vf, String pathStr, CompletableFuture<String> resultFuture) {
         final DeleteFileTool requestor = this;
         EdtUtil.invokeLater(() ->
-            ApplicationManager.getApplication().runWriteAction(() -> {
+            WriteAction.run(() -> {
                 try {
                     com.intellij.openapi.command.CommandProcessor.getInstance().executeCommand(
                         project,

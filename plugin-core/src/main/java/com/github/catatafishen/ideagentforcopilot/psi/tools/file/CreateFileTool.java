@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.file;
 
+import com.github.catatafishen.ideagentforcopilot.psi.CodeChangeTracker;
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.psi.FileAccessTracker;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.WriteFileRenderer;
@@ -7,7 +8,6 @@ import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,13 +15,11 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Creates a new file and registers it in IntelliJ's VFS.
- */
 @SuppressWarnings("java:S112")
 public final class CreateFileTool extends FileTool {
 
     private static final String FORMAT_CHARS_SUFFIX = " chars)";
+    private static final String PARAM_CONTENT = "content";
 
     public CreateFileTool(Project project) {
         super(project);
@@ -43,16 +41,21 @@ public final class CreateFileTool extends FileTool {
     }
 
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+
+    @Override
     public @NotNull String permissionTemplate() {
         return "Create {path}";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Path for the new file (absolute or project-relative). File must not already exist"},
-            {"content", TYPE_STRING, "Content to write to the file"}
-        }, "path", "content");
+            {PARAM_CONTENT, TYPE_STRING, "Content to write to the file"}
+        }, "path", PARAM_CONTENT);
     }
 
     @Override
@@ -61,12 +64,12 @@ public final class CreateFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
-        if (!args.has("path") || !args.has("content")) {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
+        if (!args.has("path") || !args.has(PARAM_CONTENT)) {
             return "Error: 'path' and 'content' parameters are required";
         }
         String pathStr = args.get("path").getAsString();
-        String content = args.get("content").getAsString();
+        String content = args.get(PARAM_CONTENT).getAsString();
 
         String basePath = project.getBasePath();
         Path pathObj = Path.of(pathStr);
@@ -102,6 +105,7 @@ public final class CreateFileTool extends FileTool {
         });
 
         String result = resultFuture.get(10, TimeUnit.SECONDS);
+        CodeChangeTracker.recordChange(lineCount, 0);
         followFileIfEnabled(project, pathStr, 1, lineCount, HIGHLIGHT_EDIT, agentLabel(project) + " created");
         FileAccessTracker.recordWrite(project, pathStr);
         return result;

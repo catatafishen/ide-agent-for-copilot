@@ -10,9 +10,9 @@ import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -39,7 +39,7 @@ public final class McpToolsConfigurable implements Configurable {
     }
 
     @Override
-    public @Nullable JComponent createComponent() {
+    public @NotNull JComponent createComponent() {
         McpServerSettings settings = McpServerSettings.getInstance(project);
 
         JPanel toolsPanel = new JPanel();
@@ -58,10 +58,18 @@ public final class McpToolsConfigurable implements Configurable {
             }
 
             JBCheckBox cb = new JBCheckBox(tool.displayName(), settings.isToolEnabled(tool.id()));
-            cb.setToolTipText(tool.description());
-            cb.setBorder(JBUI.Borders.empty(1, 16, 1, 0));
+            cb.setBorder(JBUI.Borders.empty(1, 16, 0, 0));
             toolCheckboxes.put(tool.id(), cb);
             toolsPanel.add(cb);
+
+            String desc = tool.description();
+            if (!desc.isBlank()) {
+                JBLabel descLabel = new JBLabel(desc);
+                descLabel.setFont(descLabel.getFont().deriveFont((float) (JBUI.Fonts.label().getSize() - 1)));
+                descLabel.setForeground(UIUtil.getContextHelpForeground());
+                descLabel.setBorder(JBUI.Borders.empty(0, 36, 3, 0));
+                toolsPanel.add(descLabel);
+            }
         }
 
         toolsPanel.add(Box.createVerticalGlue());

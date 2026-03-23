@@ -24,7 +24,7 @@ import javax.swing.JComponent
  * [UsageGraphPanel].  Maintains local session counters that are overlaid on
  * the last-polled API data so the UI stays responsive between API calls.
  */
-internal class BillingManager {
+class BillingManager {
 
     val usageLabel: JBLabel = JBLabel("").apply {
         cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
@@ -67,7 +67,7 @@ internal class BillingManager {
 
     internal val client = CopilotBillingClient()
 
-    private companion object {
+    companion object {
         private val LOG = Logger.getInstance(BillingManager::class.java)
         private val ERROR_COLOR: Color
             get() = JBUI.CurrentTheme.Label.errorForeground()
@@ -78,19 +78,34 @@ internal class BillingManager {
         }
 
         private const val OVERAGE_COST_PER_REQ = 0.04
+
+        /**
+         * Formats token counts and cost for display in usage chips and toolbar stats.
+         * Returns an empty string if no usage data is available.
+         * Examples: "1.2k tok · $0.004", "850 tok · $0.001"
+         */
+        fun formatUsageChip(inputTokens: Int, outputTokens: Int, costUsd: Double): String {
+            if (inputTokens == 0 && outputTokens == 0 && costUsd == 0.0) return ""
+            val totalTokens = inputTokens + outputTokens
+            val tokStr = if (totalTokens >= 1000) "${totalTokens / 1000}.${(totalTokens % 1000) / 100}k tok"
+            else "$totalTokens tok"
+            return if (costUsd > 0.0) "$tokStr · \$${String.format("%.4f", costUsd).trimEnd('0').trimEnd('.')}"
+            else tokStr
+        }
     }
 
     /**
      * Records a turn completion — increments the local request counter
      * and updates the UI immediately (no API call needed).
-     * @param multiplier the model's cost multiplier string (e.g., "1x", "3x", "0.33x")
+     * @param multiplier the model's cost multiplier string (e.g., "1x", "3x", "0.33x"),
+     *   or {@code null} if unknown (falls back to 1x for internal accounting).
      */
-    fun recordTurnCompleted(multiplier: String = "1x") {
+    fun recordTurnCompleted(multiplier: String? = null) {
         localSessionRequests++
-        localSessionPremiumRequests += parseMultiplier(multiplier)
+        localSessionPremiumRequests += parseMultiplier(multiplier ?: "1x")
         LOG.info("recordTurnCompleted: localSessionRequests=$localSessionRequests, premium=$localSessionPremiumRequests (mult=$multiplier)")
         val estimated = estimatedUsed()
-        val shouldAnimate = previousUsedCount >= 0 && estimated > previousUsedCount
+        val shouldAnimate = previousUsedCount in 0..<estimated
         previousUsedCount = estimated
         ApplicationManager.getApplication().invokeLater {
             refreshUsageDisplay()
@@ -167,7 +182,7 @@ internal class BillingManager {
         if (billingCycleStartUsed < 0) billingCycleStartUsed = snapshot.used
 
         val estimated = estimatedUsed()
-        val shouldAnimate = previousUsedCount >= 0 && estimated > previousUsedCount
+        val shouldAnimate = previousUsedCount in 0..<estimated
         previousUsedCount = estimated
 
         ApplicationManager.getApplication().invokeLater {
@@ -250,7 +265,7 @@ internal class BillingManager {
             if (overage > 0) {
                 val cost = overage * OVERAGE_COST_PER_REQ
                 append(
-                    "<font color='${errorHex()}'>Overage: $overage reqs (\$${
+                    "<font color='${errorHex()}'>Overage: $overage reqs ($${
                         String.format(
                             "%.2f",
                             cost
@@ -262,7 +277,7 @@ internal class BillingManager {
             if (projectedOverage > 0) {
                 val projCost = projectedOverage * OVERAGE_COST_PER_REQ
                 append(
-                    "<font color='${errorHex()}'>Projected overage: ~$projectedOverage (\$${
+                    "<font color='${errorHex()}'>Projected overage: ~$projectedOverage ($${
                         String.format(
                             "%.2f",
                             projCost

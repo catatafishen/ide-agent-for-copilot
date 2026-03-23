@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.content.Content;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -15,6 +14,8 @@ import java.util.concurrent.TimeUnit;
  * Reads output from an integrated terminal tab.
  */
 public final class ReadTerminalOutputTool extends TerminalTool {
+
+    private static final String PARAM_MAX_LINES = "max_lines";
 
     public ReadTerminalOutputTool(Project project) {
         super(project);
@@ -35,23 +36,29 @@ public final class ReadTerminalOutputTool extends TerminalTool {
         return "Read output from an integrated terminal tab";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"tab_name", TYPE_STRING, "Name of the terminal tab to read from"},
-            {"max_lines", TYPE_INTEGER, "Maximum number of lines to return from the end of the terminal buffer (default: 50). Use 0 for the full buffer."}
+            {PARAM_MAX_LINES, TYPE_INTEGER, "Maximum number of lines to return from the end of the terminal buffer (default: 50). Use 0 for the full buffer."}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
-        int maxLines = args.has("max_lines") ? args.get("max_lines").getAsInt() : DEFAULT_MAX_LINES;
+        int maxLines = args.has(PARAM_MAX_LINES) ? args.get(PARAM_MAX_LINES).getAsInt() : DEFAULT_MAX_LINES;
 
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
 

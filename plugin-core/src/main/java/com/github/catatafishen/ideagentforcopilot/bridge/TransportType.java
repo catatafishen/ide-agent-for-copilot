@@ -1,0 +1,28 @@
+package com.github.catatafishen.ideagentforcopilot.bridge;
+
+/**
+ * Transport layer used to communicate with an AI agent.
+ */
+public enum TransportType {
+
+    /**
+     * JSON-RPC 2.0 over stdin/stdout to a locally-installed CLI subprocess (ACP protocol).
+     * Used by GitHub Copilot, OpenCode, and similar tool-wrapped agents.
+     */
+    ACP,
+
+    /**
+     * Direct HTTPS calls to the Anthropic Messages API with SSE streaming.
+     * Used for Claude Code accounts that have a direct Anthropic API key.
+     * No local CLI binary required.
+     */
+    ANTHROPIC_DIRECT,
+
+    /**
+     * Subprocess calls to the {@code claude} CLI binary in {@code --print} mode with
+     * {@code --output-format stream-json}. Uses the Claude subscription stored by the CLI
+     * ({@code ~/.claude/.credentials.json}) — no Anthropic API key required.
+     * Requires {@code claude} to be installed and logged in ({@code claude auth login}).
+     */
+    CLAUDE_CLI
+}

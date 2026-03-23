@@ -45,4 +45,9 @@ public final class GenericAgentSettings implements AgentSettings {
     public @NotNull ToolPermission getToolPermission(@NotNull String toolId) {
         return settings.getToolPermission(toolId);
     }
+
+    @Override
+    public void setActiveAgentLabel(@Nullable String label) {
+        settings.setActiveAgentLabel(label);
+    }
 }

@@ -1,6 +1,9 @@
-# CLI Bug #556 Workaround
+# Copilot CLI Tool Filtering Workaround
 
-## The Bug
+> **See Also:** [Junie Built-In Tool Workaround](JUNIE-TOOL-WORKAROUND.md) — A similar but more severe limitation where
+> Junie doesn't send permission requests at all, making protocol-level blocking impossible.
+
+## The Issue
 
 **GitHub Issue:** https://github.com/github/copilot-cli/issues/556  
 **Title:** Copilot CLI --agent use does not respect tool filtering  
@@ -10,13 +13,18 @@
 
 ### Description
 
-Tool filtering does not work in Copilot CLI's `--acp` mode (or `--agent` mode):
+**Important:** `excludedTools` in `session/new` is **NOT part of the official ACP spec
+** ([session-setup](https://agentclientprotocol.com/protocol/session-setup))
+— it's a custom extension that some agents support (e.g., OpenCode). However, Copilot CLI's own filtering mechanisms
+also don't work:
 
 - CLI flags: `--available-tools`, `--excluded-tools` - IGNORED
 - Session params: `availableTools`, `excludedTools` in `session/new` - IGNORED
 - Agent configs: `tools: ["read"]` in agent Markdown files - IGNORED
 
 **Result:** Agent receives ALL tools regardless of filtering attempts.
+
+While ignoring `excludedTools` is technically spec-compliant, the CLI's own documented flags also failing is a bug.
 
 ### Affects All SDKs
 
@@ -35,9 +43,9 @@ Since we can't filter tools at the CLI level, we enforce it at runtime via **per
 
 ```java
 private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
-        "edit",          // CLI built-in view tool - deny to force intellij_write_file
-        "create",        // CLI built-in create tool - deny to force intellij_write_file
-        "read",          // CLI built-in view tool - deny to force intellij_read_file
+        "edit",          // CLI built-in view tool - deny to force write_file
+        "create",        // CLI built-in create tool - deny to force write_file
+        "read",          // CLI built-in view tool - deny to force read_file
         "execute",       // Generic execute - doesn't exist, agent invents it
         "runInTerminal"  // Generic name - actual tool is run_in_terminal
 );
@@ -46,15 +54,15 @@ private static final Set<String> DENIED_PERMISSION_KINDS = Set.of(
 **Retry Message:**
 
 ```
-❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.
+❌ Tool denied. Use tools with 'agentbridge-' prefix instead.
 ```
 
 ### Why This Works
 
 1. Agent tries CLI built-in tool (e.g., `view`)
 2. Plugin denies permission request
-3. Agent receives simple guidance: "Use intellij-code-tools- prefix"
-4. Agent retries with correct tool (e.g., `intellij-code-tools-intellij_read_file`)
+3. Agent receives simple guidance: "Use agentbridge- prefix"
+4. Agent retries with correct tool (e.g., `agentbridge-read_file`)
 
 ### Benefits of IntelliJ Tools
 
@@ -99,16 +107,17 @@ Added to `buildAcpCommand()` in `CopilotAcpClient.java`.
 
 Results from live testing:
 
-| Tool | Has permission step? | Blocked by `--deny-tool`? | Blocked by our workaround? |
-|------|---------------------|--------------------------|---------------------------|
-| `bash` | ✅ Yes | ❌ No | ✅ Yes — `DENIED_PERMISSION_KINDS` |
-| `edit` | ✅ Yes | ❌ No | ✅ Yes — `DENIED_PERMISSION_KINDS` |
-| `create` | ✅ Yes | ❌ No | ✅ Yes — `DENIED_PERMISSION_KINDS` |
-| `view` | ❌ No — auto-executes | ❌ No | ❌ No — post-execution guidance only |
-| `grep` | ❌ No — auto-executes | ❌ No | ❌ No — post-execution guidance only |
-| `glob` | ❌ No — auto-executes | ❌ No | ❌ No — post-execution guidance only |
+| Tool     | Has permission step? | Blocked by `--deny-tool`? | Blocked by our workaround?          |
+|----------|----------------------|---------------------------|-------------------------------------|
+| `bash`   | ✅ Yes                | ❌ No                      | ✅ Yes — `DENIED_PERMISSION_KINDS`   |
+| `edit`   | ✅ Yes                | ❌ No                      | ✅ Yes — `DENIED_PERMISSION_KINDS`   |
+| `create` | ✅ Yes                | ❌ No                      | ✅ Yes — `DENIED_PERMISSION_KINDS`   |
+| `view`   | ❌ No — auto-executes | ❌ No                      | ❌ No — post-execution guidance only |
+| `grep`   | ❌ No — auto-executes | ❌ No                      | ❌ No — post-execution guidance only |
+| `glob`   | ❌ No — auto-executes | ❌ No                      | ❌ No — post-execution guidance only |
 
 **Key finding:** The CLI has two classes of built-in tools:
+
 1. **Write/Execute tools** (`bash`, `edit`, `create`) — require `request_permission` → our
    `DENIED_PERMISSION_KINDS` catches them ✅
 2. **Read-only tools** (`view`, `grep`, `glob`) — auto-execute without permission → unblockable ❌
@@ -118,6 +127,7 @@ and `--additional-mcp-config` likely caused the CLI to consume those flags as to
 breaking MCP server registration entirely (MCP tools disappeared from the agent's tool set).
 
 **Decision:**
+
 - **Removed** `--deny-tool` flags (no effect + breaks MCP registration)
 - **Removed** `DENIED_PERMISSION_KINDS` static set (replaced by per-tool ToolPermission settings)
 - **Removed** `tool_call` interception for read-only tools (see below)
@@ -147,6 +157,7 @@ own internal context within the CLI. They do **not** receive:
 ### Why It Failed
 
 `session/message` is a fire-and-forget JSON-RPC notification. It either:
+
 - Gets silently discarded by the CLI
 - Goes to the main agent's message queue, not the sub-agent's execution context
 - Gets queued for a future turn, not the current one
@@ -202,12 +213,12 @@ The CLI has since reached v1.0.3 GA. We retested all four tool filtering mechani
 
 ### Test Results
 
-| Mechanism | How tested | Result |
-|-----------|-----------|--------|
-| `excludedTools` in `session/new` params | Sent `["view","edit","create","bash","grep","glob"]` | ❌ **IGNORED** — all 6 tools still present |
-| `--excluded-tools` CLI flag | `copilot --acp --stdio --excluded-tools view edit create bash grep glob` | ❌ **IGNORED** — all 6 tools still present |
-| `--available-tools` CLI flag (whitelist) | `copilot --acp --stdio --available-tools task web_fetch report_intent update_todo` | ❌ **IGNORED** — all 105 tools still present |
-| `--agent` with `allowed-tools` frontmatter | `.github/agents/ide-task.md` with `allowed-tools: [Intellij-*]` | ❌ **IGNORED** — all 105 tools still present |
+| Mechanism                                  | How tested                                                                         | Result                                      |
+|--------------------------------------------|------------------------------------------------------------------------------------|---------------------------------------------|
+| `excludedTools` in `session/new` params    | Sent `["view","edit","create","bash","grep","glob"]`                               | ❌ **IGNORED** — all 6 tools still present   |
+| `--excluded-tools` CLI flag                | `copilot --acp --stdio --excluded-tools view edit create bash grep glob`           | ❌ **IGNORED** — all 6 tools still present   |
+| `--available-tools` CLI flag (whitelist)   | `copilot --acp --stdio --available-tools task web_fetch report_intent update_todo` | ❌ **IGNORED** — all 105 tools still present |
+| `--agent` with `allowed-tools` frontmatter | `.github/agents/ide-task.md` with `allowed-tools: [Intellij-*]`                    | ❌ **IGNORED** — all 105 tools still present |
 
 ### Conclusion
 
@@ -226,6 +237,7 @@ This prevents sub-agents from writing through the CLI's built-in tools (which by
 editor buffer), forcing them to use MCP tools or fail gracefully.
 
 Combined with the existing `detectSubAgentGitWrite()`, sub-agents are now blocked from:
+
 - All file write operations via built-in tools ✅
 - All git write operations via MCP tools ✅
 - Read-only built-in tools (`view`, `grep`, `glob`) — still unblockable ❌

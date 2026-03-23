@@ -53,8 +53,8 @@ Run the same inspections you see in the editor — plus Qodana and SonarQube —
 All file operations go through IntelliJ's Document API and Virtual File System — every edit is
 undoable, auto-formatted, and instantly visible in the editor.
 
-- **`intellij_read_file`** — Read file content from IntelliJ's editor buffer (always reflects unsaved changes)
-- **`intellij_write_file`** — Write full file content or create a new file
+- **`read_file`** — Read file content from IntelliJ's editor buffer (always reflects unsaved changes)
+- **`write_file`** — Write full file content or create a new file
 - **`edit_text`** — Surgical find-and-replace within a file (exact string matching)
 - **`create_file`** — Create a new file registered in IntelliJ's VFS
 - **`delete_file`** — Delete a file from the project
@@ -67,7 +67,7 @@ undoable, auto-formatted, and instantly visible in the editor.
 - **`redo`** — Redo previously undone edits
 
 **Key behavior:** Built-in agent file edits are automatically intercepted and redirected
-through `intellij_write_file` — so you always get proper undo, formatting, and no
+through `write_file` — so you always get proper undo, formatting, and no
 "file changed externally" dialogs.
 
 ---
@@ -177,7 +177,9 @@ Access the editor state, create scratch files for quick prototyping, and inspect
 - **`get_open_editors`** — List all open editor tabs
 - **`create_scratch_file`** — Create a scratch file with any extension and content
 - **`list_scratch_files`** — List all existing scratch files
-- **`run_scratch_file`** — Execute a scratch file. Works reliably with Kotlin Script (.kts), Java (.java — filename must match class name), Groovy (.groovy), and JavaScript (.js). TypeScript (.ts) needs Node 22.6+ or tsx. Python (.py) needs the Python plugin.
+- **`run_scratch_file`** — Execute a scratch file. Works reliably with Kotlin Script (.kts), Java (.java — filename must
+  match class name), Groovy (.groovy), and JavaScript (.js). TypeScript (.ts) needs Node 22.6+ or tsx. Python (.py)
+  needs the Python plugin.
 - **`list_themes`** / **`set_theme`** — List available IDE themes or switch themes
 - **`get_chat_html`** — Retrieve the live DOM of the chat panel (for debugging)
 - **`search_conversation_history`** — Search and recall past conversations across sessions
@@ -246,6 +248,7 @@ Choose the right model for the task and track usage in real time.
 
 ## Requirements
 
-- **An ACP-compatible agent CLI** (e.g., GitHub Copilot CLI, opencode, Claude Code via [claude-code-acp](https://www.npmjs.com/package/@zed-industries/claude-code-acp))
+- **An ACP-compatible agent CLI** (e.g., GitHub Copilot CLI, opencode, Claude Code
+  via [claude-code-acp](https://www.npmjs.com/package/@zed-industries/claude-code-acp))
 - **IntelliJ IDEA 2025.3** or later (compatible with any JetBrains IDE)
 - **Java 21+** runtime

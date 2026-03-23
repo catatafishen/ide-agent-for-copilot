@@ -28,7 +28,7 @@
          imports, comments, annotations, XML/config files. \
        - Requires exact text match — fragile if the file was reformatted since last read. \
        - NEVER use `edit_text` to replace an entire method — use `replace_symbol_body` instead. \
-     **`intellij_write_file`** (full file write with `content`): \
+     **`write_file`** (full file write with `content`): \
        - Use ONLY when writing an entire file from scratch or replacing all content. \
        - Creates the file if it doesn't exist.
 
@@ -38,20 +38,26 @@
   6. GIT: Use built-in git tools (git_status, git_diff, git_log, git_commit, etc.). \
      NEVER use run_command for git — shell git bypasses IntelliJ's VCS layer and causes editor buffer desync.
 
-  7. GrazieInspection (grammar) does NOT support apply_quickfix → use edit_text instead.
+  7. FILE REFERENCES: When referencing specific lines in files, use the format `FileName.ext:123-456` \
+     instead of "FileName.ext lines 123-456". The colon format creates clickable links in the UI.
 
-  8. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
+  8. GrazieInspection (grammar) does NOT support apply_quickfix → use edit_text instead.
+
+  9. VERIFICATION HIERARCHY (use the lightest tool that suffices): \
      a) Auto-highlights in write response → after EACH edit. Instant. Catches most errors. \
      b) get_compilation_errors() → after editing multiple files. Fast scan of open files. \
      c) build_project. Full incremental compilation. If "Build already in progress", wait and retry.
 
   SUB-AGENT TOOL GUIDANCE:
   Sub-agents do not see these instructions. When launching sub-agents via the Task tool, \
-  PREFER the custom `@ide-explore` agent over the built-in `explore` agent — it uses \
-  IntelliJ code intelligence tools (live editor buffers) instead of CLI tools (stale disk files). \
+  ALWAYS prefer custom intellij-* agents over built-in ones: \
+  - Use `intellij-explore` instead of `explore` for code exploration \
+  - Use `intellij-edit` instead of `task` for code changes \
+  - Use `intellij-default` for general-purpose tasks \
+
   Include relevant tool guidance in the prompt you write for them: \
-  - ide-explore agents: Already configured to use IntelliJ tools. Just describe what you need found. \
-  - Task agents: "Use `run_command` for shell commands. Use `intellij_read_file` to read files." \
+  - intellij-explore agents: Already configured to use IntelliJ tools. Just describe what you need found. \
+  - Task agents: "Use `run_command` for shell commands. Use `read_file` to read files." \
   - All sub-agents: "Use IDE git tools (git_status, git_diff, git_log, etc.) for reading git state — never shell git." \
   - All sub-agents: "Do NOT use git write commands (git_commit, git_stage, etc.) — only the main agent may write."
 
@@ -197,8 +203,10 @@ comments like `// === Rendering ===` or `// --- Utilities ---` to stay navigable
 
 The following paths contain **generated build output** — never edit them directly:
 
-- `plugin-core/src/main/resources/chat/chat-components.js` — built from `plugin-core/chat-ui/src/` via `npm run build`
-- `plugin-core/src/main/resources/chat/chat.css` — copied from `plugin-core/chat-ui/src/chat.css` at build time
+- `plugin-core/build/generated/resources/chat-ui/chat/chat-components.js` — built from `plugin-core/chat-ui/src/` via
+  `npm run build`
+- `plugin-core/build/generated/resources/chat-ui/chat/chat.css` — copied from `plugin-core/chat-ui/src/chat.css` at
+  build time
 - `plugin-core/out/production/` — IntelliJ incremental build output
 
 Always edit the **source** files in `plugin-core/chat-ui/src/` and run the build to regenerate.

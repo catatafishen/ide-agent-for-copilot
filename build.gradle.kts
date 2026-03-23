@@ -17,6 +17,9 @@ idea {
 }
 
 val baseVersion = "1.5.0"
+val buildTimestamp = providers.exec {
+    commandLine("date", "+%Y%m%d-%H%M")
+}.standardOutput.asText.get().trim()
 val ciVersion = providers.environmentVariable("PLUGIN_VERSION").orNull
 val gitHash: String = try {
     providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
@@ -27,7 +30,8 @@ val gitHash: String = try {
 
 allprojects {
     group = "com.github.catatafishen.ideagentforcopilot"
-    version = ciVersion ?: if (providers.gradleProperty("release").isPresent) baseVersion else "$baseVersion-$gitHash"
+    version = ciVersion
+        ?: if (providers.gradleProperty("release").isPresent) baseVersion else "$baseVersion-dev-$buildTimestamp-$gitHash"
 
     repositories {
         mavenCentral()

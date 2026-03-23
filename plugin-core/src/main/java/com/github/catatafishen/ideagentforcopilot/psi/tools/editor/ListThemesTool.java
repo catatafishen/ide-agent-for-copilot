@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Lists all available IDE themes with their dark/light type.
@@ -31,7 +30,13 @@ public final class ListThemesTool extends EditorTool {
         return "List all available IDE themes with their dark/light type";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
@@ -42,7 +47,7 @@ public final class ListThemesTool extends EditorTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         var lafManager = LafManager.getInstance();
         var current = lafManager.getCurrentUIThemeLookAndFeel();
         String currentName = current != null ? current.getName() : "";

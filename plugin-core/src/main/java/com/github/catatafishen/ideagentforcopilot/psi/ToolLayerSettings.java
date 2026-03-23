@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
  * settings class, keeping the tool layer agent-agnostic.
  *
  * <p>Each agent plugin registers its own implementation as a project service
- * (e.g., {@code CopilotToolLayerSettings}). The standalone MCP plugin registers
+ * (e.g., {@code ActiveAgentToolLayerSettings}). The standalone MCP plugin registers
  * {@link DefaultToolLayerSettings}.</p>
  */
 public interface ToolLayerSettings {
@@ -21,16 +21,17 @@ public interface ToolLayerSettings {
      * Shared across implementations so the setting is consistent regardless of
      * which agent plugin is active.
      */
-    String FOLLOW_AGENT_FILES_KEY = "copilot.followAgentFiles";
+    String FOLLOW_AGENT_FILES_KEY = "agent.followAgentFiles";
 
-    /**
-     * Look up the project-level {@link ToolLayerSettings} service.
-     * Falls back to {@link DefaultToolLayerSettings} defaults if no implementation is registered.
-     */
     @NotNull
     static ToolLayerSettings getInstance(@NotNull Project project) {
-        ToolLayerSettings service = PlatformApiCompat.getService(project, ToolLayerSettings.class);
-        return service != null ? service : DefaultToolLayerSettings.FALLBACK;
+        ToolLayerSettings service = (ToolLayerSettings) PlatformApiCompat.getServiceByRawClass(project, ToolLayerSettings.class);
+        if (service == null) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(ToolLayerSettings.class)
+                .warn("ToolLayerSettings service not found, using DefaultToolLayerSettings.FALLBACK");
+            return DefaultToolLayerSettings.FALLBACK;
+        }
+        return service;
     }
 
     /**

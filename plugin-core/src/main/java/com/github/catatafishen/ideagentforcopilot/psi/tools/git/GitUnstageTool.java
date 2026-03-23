@@ -3,7 +3,6 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,23 +34,29 @@ public final class GitUnstageTool extends GitTool {
         return "Unstage files that were previously staged";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public @NotNull String permissionTemplate() {
         return "Unstage {path}";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
             {"path", TYPE_STRING, "Single file path to unstage"},
-            {"paths", TYPE_ARRAY, "Multiple file paths to unstage"}
+            {PARAM_PATHS, TYPE_ARRAY, "Multiple file paths to unstage"}
         });
-        addArrayItems(s, "paths");
+        addArrayItems(s, PARAM_PATHS);
         return s;
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("restore");
         cmdArgs.add("--staged");

@@ -1,6 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AcpException;
+import com.github.catatafishen.ideagentforcopilot.agent.AgentException;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.AuthMethod;
 import com.google.gson.JsonObject;
@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Decorator that overrides binary discovery and process building with a user-provided
  * command string, while delegating all other agent-specific concerns (display name,
- * notification group, init parsing, auth, modes) to the wrapped config.
+ * notification group, init parsing, auth, modes, tool config) to the wrapped config.
  *
  * <p>Used when the user edits the start command in the connect panel away from
  * the agent's default.</p>
@@ -47,14 +47,14 @@ final class CommandOverrideAgentConfig implements AgentConfig {
     }
 
     @Override
-    public @NotNull String findAgentBinary() throws AcpException {
+    public @NotNull String findAgentBinary() throws AgentException {
         List<String> tokens = parseCommand();
         if (tokens.isEmpty()) {
-            throw new AcpException("No start command configured.", null, false);
+            throw new AgentException("No start command configured.", null, false);
         }
-        String binary = tokens.get(0);
+        String binary = tokens.getFirst();
         if (new File(binary).isAbsolute() && !new File(binary).exists()) {
-            throw new AcpException("Binary not found: " + binary, null, false);
+            throw new AgentException("Binary not found: " + binary, null, false);
         }
         resolvedBinaryPath = binary;
         return binary;
@@ -101,8 +101,68 @@ final class CommandOverrideAgentConfig implements AgentConfig {
         return delegate.requiresResourceContentDuplication();
     }
 
+    @Override
+    public @NotNull com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod getPermissionInjectionMethod() {
+        return delegate.getPermissionInjectionMethod();
+    }
+
+    @Override
+    public @NotNull String getEffectiveMcpServerName() {
+        return delegate.getEffectiveMcpServerName();
+    }
+
+    @Override
+    public @Nullable String getToolNameRegex() {
+        return delegate.getToolNameRegex();
+    }
+
+    @Override
+    public @Nullable String getToolNameReplacement() {
+        return delegate.getToolNameReplacement();
+    }
+
+    @Override
+    public boolean requiresResourceDuplication() {
+        return delegate.requiresResourceDuplication();
+    }
+
+    @Override
+    public boolean sendResourceReferences() {
+        return delegate.sendResourceReferences();
+    }
+
+    @Override
+    public boolean supportsSessionMessage() {
+        return delegate.supportsSessionMessage();
+    }
+
+    @Override
+    public @Nullable String getSessionInstructions() {
+        return delegate.getSessionInstructions();
+    }
+
+    @Override
+    public void clearSavedModel() {
+        delegate.clearSavedModel();
+    }
+
+    @Override
+    public @NotNull String getMcpConfigTemplate() {
+        return delegate.getMcpConfigTemplate();
+    }
+
+    @Override
+    public @NotNull String getMcpServerName() {
+        return delegate.getMcpServerName();
+    }
+
+    @Override
+    public boolean requiresMcpInSessionNew() {
+        return delegate.requiresMcpInSessionNew();
+    }
+
     private List<String> parseCommand() {
-        if (rawCommand == null || rawCommand.isBlank()) {
+        if (rawCommand.isBlank()) {
             return List.of();
         }
         return new ArrayList<>(Arrays.asList(rawCommand.trim().split("\\s+")));

@@ -38,13 +38,19 @@ public final class GetCoverageTool extends TestingTool {
         return "Retrieve code coverage data, optionally filtered by file or class";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Optional file or class name to filter coverage results", ""}
         });
@@ -56,7 +62,7 @@ public final class GetCoverageTool extends TestingTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         String file = args.has("file") ? args.get("file").getAsString() : "";
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;

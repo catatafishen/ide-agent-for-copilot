@@ -1,6 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
-import com.github.catatafishen.ideagentforcopilot.bridge.AcpClient;
+import com.github.catatafishen.ideagentforcopilot.agent.AbstractAgentClient;
+import com.github.catatafishen.ideagentforcopilot.agent.AgentRegistry;
+import com.github.catatafishen.ideagentforcopilot.agent.claude.AnthropicDirectClient;
+import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliClient;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentConfig;
 import com.github.catatafishen.ideagentforcopilot.bridge.AgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
@@ -41,7 +44,7 @@ public final class ActiveAgentManager implements Disposable {
     private final Project project;
     private volatile boolean acpConnected;
 
-    private AcpClient acpClient;
+    private AbstractAgentClient acpClient;
     private AgentConfig cachedConfig;
     private GenericSettings cachedSettings;
     private GenericAgentUiSettings cachedUiSettings;
@@ -138,10 +141,10 @@ public final class ActiveAgentManager implements Disposable {
     }
 
     /**
-     * Returns the ACP client, starting it if necessary.
+     * Returns the agent client, starting it if necessary.
      */
     @NotNull
-    public AcpClient getClient() {
+    public AbstractAgentClient getClient() {
         if (!started || acpClient == null || !acpClient.isHealthy()) {
             start();
         }
@@ -149,37 +152,53 @@ public final class ActiveAgentManager implements Disposable {
     }
 
     /**
-     * Start the ACP process for the active profile.
+     * Start the agent process for the active profile.
      */
     public synchronized void start() {
         if (started && acpClient != null && acpClient.isHealthy()) {
-            LOG.debug("ACP client already running for " + getActiveProfile().getDisplayName());
+            LOG.debug("Agent client already running for " + getActiveProfile().getDisplayName());
             return;
         }
 
         try {
+            String agentId = getActiveProfileId();
             AgentProfile profile = getActiveProfile();
-            LOG.info("Starting " + profile.getDisplayName() + " ACP client for project: " + project.getName());
+            LOG.info("Starting agent " + agentId + " (" + profile.getDisplayName() + ") for project: " + project.getName());
 
             if (acpClient != null) {
                 acpClient.close();
             }
 
             clearCachedConfig();
-            String projectPath = project.getBasePath();
-            int mcpPort = resolveMcpPort();
 
-            AgentConfig config = resolveStartConfig();
-            AgentSettings agentSettings = createAgentSettings();
+            if (AnthropicDirectClient.PROFILE_ID.equals(agentId)) {
+                acpClient = new AnthropicDirectClient(profile, ToolRegistry.getInstance(project), project);
+            } else if (ClaudeCliClient.PROFILE_ID.equals(agentId)) {
+                int mcpPort = resolveMcpPort();
+                AgentConfig config = resolveStartConfig();
+                acpClient = new ClaudeCliClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
+            } else {
+                acpClient = createAcpClient(agentId);
+            }
 
-            acpClient = new AcpClient(config, agentSettings, ToolRegistry.getInstance(project), projectPath, mcpPort);
+            // Apply persisted agent selection before start() builds the launch command.
+            // Must happen before acpClient.start() since buildCommand() reads getCurrentAgentSlug().
+            String savedAgent = getSettings().getSelectedAgent();
+            if (!savedAgent.isEmpty()) {
+                acpClient.setCurrentAgentSlug(savedAgent);
+            }
+
             acpClient.start();
             started = true;
 
-            LOG.info(profile.getDisplayName() + " ACP client started");
+            LOG.info(profile.getDisplayName() + " agent client started");
         } catch (Exception e) {
-            LOG.error("Failed to start ACP client", e);
-            throw new RuntimeException("Failed to start ACP client", e);
+            LOG.warn("Failed to start agent client", e);
+            String message = e.getMessage();
+            if (e.getCause() != null && e.getCause().getMessage() != null) {
+                message = e.getCause().getMessage();
+            }
+            throw new IllegalStateException(message, e);
         }
     }
 
@@ -276,6 +295,16 @@ public final class ActiveAgentManager implements Disposable {
         }
     }
 
+    @NotNull
+    private AbstractAgentClient createAcpClient(@NotNull String profileId) {
+        AbstractAgentClient client = AgentRegistry.create(profileId, project);
+        if (client != null) {
+            return client;
+        }
+        LOG.warn("Unknown ACP profile ID: " + profileId + " — no client registered in AgentRegistry");
+        throw new IllegalArgumentException("Unknown ACP agent profile: " + profileId);
+    }
+
     private void clearCachedConfig() {
         cachedConfig = null;
         cachedSettings = null;
@@ -303,11 +332,11 @@ public final class ActiveAgentManager implements Disposable {
 
     // ── ACP connection state ─────────────────────────────────────────────────
 
-    public boolean isAcpConnected() {
+    public boolean isConnected() {
         return acpConnected;
     }
 
-    public void setAcpConnected(boolean connected) {
+    public void setConnected(boolean connected) {
         this.acpConnected = connected;
     }
 

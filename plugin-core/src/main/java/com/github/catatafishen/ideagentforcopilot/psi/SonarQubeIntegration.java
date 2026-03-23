@@ -2,8 +2,10 @@ package com.github.catatafishen.ideagentforcopilot.psi;
 
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 
 import java.lang.reflect.Field;
@@ -11,6 +13,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,7 +35,7 @@ public final class SonarQubeIntegration {
     private static final String UNKNOWN = "unknown";
     private static final String FINDING_FORMAT = "%s:%d [%s/%s] %s";
     private static final int POLL_INTERVAL_MS = 500;
-    private static final int MAX_WAIT_SECONDS = 120;
+    private static final int MAX_WAIT_SECONDS = 60;
 
     private final Project project;
 
@@ -68,11 +71,6 @@ public final class SonarQubeIntegration {
         return false;
     }
 
-    /**
-     * Trigger SonarQube analysis and collect results.
-     * The trigger is fire-and-forget — no arbitrary timeout.
-     * Completion is detected via RunningAnalysesTracker polling.
-     */
     public String runAnalysis(String scope, int limit, int offset) {
         if (!isInstalled()) {
             return "Error: SonarQube for IDE plugin is not installed.";
@@ -81,15 +79,21 @@ public final class SonarQubeIntegration {
         try {
             String basePath = project.getBasePath();
 
+            // Always trigger a fresh analysis — never return stale cached data from a prior run.
+            // If analysis is already running, wait for it to finish before triggering a new one.
             if (isAnalysisRunning()) {
-                LOG.info("SonarQube analysis already in progress, waiting for completion");
-                List<String> findings = waitForNewResults(basePath, null);
-                return formatOutput(findings, limit, offset);
+                LOG.info("SonarQube analysis already in progress, waiting for it to complete first");
+                List<String> current = waitForNewResults(basePath, null);
+                // After it finishes, trigger a new one so results reflect latest code
+                String actionId = resolveActionId(scope);
+                CompletableFuture<Boolean> triggerResult = triggerAction(actionId);
+                List<String> findings = waitForNewResults(basePath, triggerResult);
+                return formatOutput(findings.isEmpty() ? current : findings, limit, offset);
             }
 
+            LOG.info("Triggering fresh SonarLint analysis for scope: " + scope);
             String actionId = resolveActionId(scope);
             CompletableFuture<Boolean> triggerResult = triggerAction(actionId);
-
             List<String> findings = waitForNewResults(basePath, triggerResult);
             return formatOutput(findings, limit, offset);
         } catch (Exception e) {
@@ -270,12 +274,34 @@ public final class SonarQubeIntegration {
         }
     }
 
-    private List<String> collectAllFindings(String basePath) {
-        List<String> results = collectFromReportTab(basePath);
-        if (results.isEmpty()) {
-            results = collectFromOnTheFlyHolder(basePath);
+    /**
+     * Path prefixes that are always excluded from findings — these are build output or
+     * IDE-generated folders, not source files. SonarLint standalone mode does not honour
+     * sonar.exclusions from sonar.properties, so we filter here.
+     */
+    private static final List<String> EXCLUDED_PATH_PREFIXES = List.of(
+        "out/", "build/", "plugin-core/out/", "plugin-core/build/",
+        "mcp-server/build/", "standalone-mcp/build/", "plugin-experimental/build/"
+    );
+
+    private static boolean isExcludedFinding(String finding) {
+        for (String prefix : EXCLUDED_PATH_PREFIXES) {
+            if (finding.startsWith(prefix)) return true;
         }
-        return results;
+        return false;
+    }
+
+    private List<String> collectAllFindings(String basePath) {
+        List<String> reportResults = collectFromReportTab(basePath);
+        List<String> onTheFlyResults = collectFromOnTheFlyHolder(basePath);
+
+        // Merge and deduplicate: report tab findings take precedence
+        LinkedHashSet<String> merged = new LinkedHashSet<>(reportResults);
+        merged.addAll(onTheFlyResults);
+
+        // Filter out build output and IDE-generated paths
+        merged.removeIf(SonarQubeIntegration::isExcludedFinding);
+        return new ArrayList<>(merged);
     }
 
     /**
@@ -364,36 +390,30 @@ public final class SonarQubeIntegration {
                                            List<String> results, Set<String> seen)
         throws ReflectiveOperationException {
         Method getIssuesMethod = liveFindings.getClass().getMethod("getIssuesPerFile");
-        Map<?, ?> issuesPerFile = (Map<?, ?>) getIssuesMethod.invoke(liveFindings);
-        if (issuesPerFile == null) return;
-
-        for (Map.Entry<?, ?> entry : issuesPerFile.entrySet()) {
-            Collection<?> issues = (Collection<?>) entry.getValue();
-            for (Object issue : issues) {
-                String formatted = formatLiveFinding(issue, basePath);
-                if (formatted != null && seen.add(formatted)) results.add(formatted);
-            }
-        }
+        collectFromPerFileMap(getIssuesMethod.invoke(liveFindings), basePath, results, seen);
     }
 
     private void collectHotspotsFromFindings(Object liveFindings, String basePath,
                                              List<String> results, Set<String> seen) {
         try {
             Method getHotspotsMethod = liveFindings.getClass().getMethod("getSecurityHotspotsPerFile");
-            Map<?, ?> hotspotsPerFile = (Map<?, ?>) getHotspotsMethod.invoke(liveFindings);
-            if (hotspotsPerFile == null) return;
-
-            for (Map.Entry<?, ?> entry : hotspotsPerFile.entrySet()) {
-                Collection<?> hotspots = (Collection<?>) entry.getValue();
-                for (Object hotspot : hotspots) {
-                    String formatted = formatLiveFinding(hotspot, basePath);
-                    if (formatted != null && seen.add(formatted)) results.add(formatted);
-                }
-            }
+            collectFromPerFileMap(getHotspotsMethod.invoke(liveFindings), basePath, results, seen);
         } catch (NoSuchMethodException e) {
             LOG.info("getSecurityHotspotsPerFile not available");
         } catch (Exception e) {
             LOG.debug("Error collecting hotspots: " + e.getMessage());
+        }
+    }
+
+    private void collectFromPerFileMap(Object perFileMap, String basePath,
+                                       List<String> results, Set<String> seen) {
+        if (!(perFileMap instanceof Map<?, ?> map)) return;
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getValue() instanceof Collection<?> findings)) continue;
+            for (Object finding : findings) {
+                String formatted = formatLiveFinding(finding, basePath);
+                if (formatted != null && seen.add(formatted)) results.add(formatted);
+            }
         }
     }
 
@@ -527,7 +547,7 @@ public final class SonarQubeIntegration {
             if (getRangeMethod != null) {
                 Object rangeObj = getRangeMethod.invoke(finding);
                 if (rangeObj instanceof com.intellij.openapi.editor.RangeMarker rm && rm.isValid()) {
-                    return com.intellij.openapi.application.ApplicationManager.getApplication().runReadAction((com.intellij.openapi.util.Computable<Integer>) () ->
+                    return ApplicationManager.getApplication().runReadAction((Computable<Integer>) () ->
                         rm.getDocument().getLineNumber(rm.getStartOffset()) + 1
                     );
                 }
@@ -583,8 +603,8 @@ public final class SonarQubeIntegration {
         }
 
         int total = findings.size();
-        int end = Math.min(offset + limit, total);
         int start = Math.min(offset, total);
+        int end = Math.min(offset + limit, total);
 
         StringBuilder sb = new StringBuilder();
         sb.append("SonarQube findings (").append(total).append(" total");
@@ -593,13 +613,13 @@ public final class SonarQubeIntegration {
         }
         sb.append("):\n\n");
 
-        for (int i = start; i < end; i++) {
-            sb.append(findings.get(i)).append('\n');
+        for (String finding : findings.subList(start, end)) {
+            sb.append(finding).append('\n');
         }
 
         if (end < total) {
-            sb.append("\nWARNING: ").append(total - end).append(" more findings not shown. Use offset=")
-                .append(end).append(" to see more.");
+            sb.append("\nWARNING: ").append(total - end)
+                .append(" more findings not shown. Use offset=").append(end).append(" to see more.");
         }
 
         return sb.toString();

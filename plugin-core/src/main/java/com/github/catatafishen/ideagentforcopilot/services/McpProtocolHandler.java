@@ -23,6 +23,11 @@ public final class McpProtocolHandler {
     private static final Logger LOG = Logger.getInstance(McpProtocolHandler.class);
     private static final Gson GSON = new GsonBuilder().create();
 
+    /**
+     * Hard cap on tool result size. Keeps output below client-side truncation thresholds.
+     */
+    private static final int MAX_RESULT_CHARS = 80_000;
+
     private static final String SERVER_NAME = "ide-mcp-server";
     private static final String SERVER_VERSION = "1.0.0";
     private static final String PROTOCOL_VERSION = "2025-03-26";
@@ -72,6 +77,7 @@ public final class McpProtocolHandler {
         JsonObject serverInfo = new JsonObject();
         serverInfo.addProperty("name", SERVER_NAME);
         serverInfo.addProperty("version", SERVER_VERSION);
+        serverInfo.addProperty("description", "Code Intelligence tools for IntelliJ IDEA");
 
         JsonObject capabilities = new JsonObject();
         JsonObject toolsCap = new JsonObject();
@@ -83,10 +89,7 @@ public final class McpProtocolHandler {
         result.add("capabilities", capabilities);
         result.add("serverInfo", serverInfo);
 
-        String instructions = loadInstructions();
-        if (instructions != null) {
-            result.addProperty("instructions", instructions);
-        }
+        result.addProperty("instructions", loadInstructions());
 
         return respondResult(msg, result);
     }
@@ -95,11 +98,13 @@ public final class McpProtocolHandler {
         try (java.io.InputStream is = McpProtocolHandler.class.getResourceAsStream("/default-startup-instructions.md")) {
             if (is != null) {
                 return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            } else {
+                LOG.warn("Resource /default-startup-instructions.md not found in classpath for MCP initialize");
             }
         } catch (java.io.IOException e) {
-            LOG.warn("Failed to load default-startup-instructions.md for MCP initialize", e);
+            LOG.error("Failed to read /default-startup-instructions.md from classpath for MCP initialize", e);
         }
-        return null;
+        return "You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.";
     }
 
     private JsonObject handleToolsList(JsonObject msg) {
@@ -142,12 +147,30 @@ public final class McpProtocolHandler {
         JsonObject arguments = params.has("arguments")
             ? params.getAsJsonObject("arguments") : new JsonObject();
 
-        LOG.info("MCP tool call: " + toolName);
+        // Extract progressToken from _meta — may equal the ACP toolCallId for direct correlation
+        String progressToken = null;
+        if (params.has("_meta") && params.get("_meta").isJsonObject()) {
+            JsonObject meta = params.getAsJsonObject("_meta");
+            if (meta.has("progressToken")) {
+                progressToken = meta.get("progressToken").getAsString();
+            }
+        }
+
+        // Always log with [MCP] prefix for easy filtering alongside [ACP] logs.
+        // Include progressToken when debug logging is on — this is the key for ACP↔MCP correlation.
+        String tokenSuffix = progressToken != null ? " [progressToken=" + progressToken + "]" : " [no progressToken]";
+        if (settings.isDebugLoggingEnabled()) {
+            LOG.info("[MCP] >>> tools/call: " + toolName + tokenSuffix);
+        } else {
+            LOG.info("[MCP] tools/call: " + toolName);
+        }
 
         // Delegate to PsiBridgeService
+        final String finalProgressToken = progressToken;
         try {
             PsiBridgeService bridge = PsiBridgeService.getInstance(project);
-            String resultText = bridge.callTool(toolName, arguments);
+            String resultText = bridge.callTool(toolName, arguments, finalProgressToken);
+            resultText = truncateIfNeeded(resultText);
 
             JsonObject content = new JsonObject();
             content.addProperty("type", "text");
@@ -162,7 +185,7 @@ public final class McpProtocolHandler {
 
             return respondResult(msg, result);
         } catch (Exception e) {
-            LOG.warn("MCP tool error: " + toolName, e);
+            LOG.warn("[MCP] tool error: " + toolName, e);
             JsonObject content = new JsonObject();
             content.addProperty("type", "text");
             content.addProperty("text", "Error: " + e.getMessage());
@@ -176,6 +199,15 @@ public final class McpProtocolHandler {
 
             return respondResult(msg, result);
         }
+    }
+
+    private static String truncateIfNeeded(String text) {
+        if (text == null || text.length() <= MAX_RESULT_CHARS) return text;
+        int removed = text.length() - MAX_RESULT_CHARS;
+        return text.substring(0, MAX_RESULT_CHARS)
+            + "\n\n[Output truncated: " + removed + " characters omitted."
+            + " Use the tool's pagination parameters (e.g. start_line/end_line, offset/max_chars)"
+            + " to read specific sections.]";
     }
 
     private static JsonObject respondResult(JsonObject request, JsonObject result) {

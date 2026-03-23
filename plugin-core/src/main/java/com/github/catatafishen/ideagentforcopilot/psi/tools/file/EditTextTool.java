@@ -1,10 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.file;
 
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.WriteFileRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Surgical find-and-replace edit within a file.
@@ -33,13 +31,19 @@ public final class EditTextTool extends WriteFileTool {
             + "(controlled by auto_format_and_optimize_imports param)";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public @NotNull String permissionTemplate() {
         return "Edit {path}";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to edit"},
             {"old_str", TYPE_STRING, "Exact string to find and replace. Must match exactly one location in the file"},
@@ -48,14 +52,10 @@ public final class EditTextTool extends WriteFileTool {
                 "Auto-format code AND optimize imports after editing (default: true). "
                     + "Formatting is DEFERRED until the end of the current turn or before git commit — "
                     + "safe for multi-step edits within a single turn. "
-                    + "\u26A0\uFE0F Import optimization REMOVES imports it considers unused — "
+                    + "⚠️ Import optimization REMOVES imports it considers unused — "
                     + "if you add imports in one edit and reference them in a later edit, "
                     + "set this to false or combine both changes in one edit"}
         }, "path", "old_str", "new_str");
     }
 
-    @Override
-    public @NotNull Object resultRenderer() {
-        return WriteFileRenderer.INSTANCE;
-    }
 }

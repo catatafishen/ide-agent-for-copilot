@@ -1,11 +1,10 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure;
 
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.HttpRequestRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.HttpRequestRenderer;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -42,7 +41,13 @@ public final class HttpRequestTool extends InfrastructureTool {
         return "Make an HTTP request (GET/POST/PUT/PATCH/DELETE) to a URL";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public boolean isOpenWorld() {
         return true;
     }
@@ -53,7 +58,7 @@ public final class HttpRequestTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         JsonObject s = schema(new Object[][]{
             {"url", TYPE_STRING, "Full URL to request (e.g., http://localhost:8080/api)"},
             {PARAM_METHOD, TYPE_STRING, "HTTP method: GET (default), POST, PUT, PATCH, DELETE"},
@@ -65,7 +70,7 @@ public final class HttpRequestTool extends InfrastructureTool {
 
     @Override
     @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String urlStr = args.get("url").getAsString();
         String method = args.has(PARAM_METHOD) ? args.get(PARAM_METHOD).getAsString().toUpperCase() : "GET";
         String body = args.has("body") ? args.get("body").getAsString() : null;

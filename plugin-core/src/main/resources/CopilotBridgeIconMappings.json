@@ -1,8 +1,18 @@
 {
   "icons": {
     "expui": {
+      "agentbridge.svg": "icons/agentbridge.svg",
+      "agentbridge_dark.svg": "icons/agentbridge_dark.svg",
       "copilot.svg": "icons/copilot.svg",
-      "copilot_v2.svg": "icons/copilot_v2.svg"
+      "copilot_dark.svg": "icons/copilot_dark.svg",
+      "claude.svg": "icons/claude.svg",
+      "claude_dark.svg": "icons/claude_dark.svg",
+      "junie.svg": "icons/junie.svg",
+      "junie_dark.svg": "icons/junie_dark.svg",
+      "kiro.svg": "icons/kiro.svg",
+      "kiro_dark.svg": "icons/kiro_dark.svg",
+      "opencode.svg": "icons/opencode.svg",
+      "opencode_dark.svg": "icons/opencode_dark.svg"
     }
   }
 }

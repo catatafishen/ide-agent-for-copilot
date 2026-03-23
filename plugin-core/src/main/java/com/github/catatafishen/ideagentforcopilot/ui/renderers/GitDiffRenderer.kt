@@ -71,7 +71,7 @@ object GitDiffRenderer : ToolResultRenderer {
         }
     }
 
-    private fun renderUnifiedDiff(lines: List<String>): JComponent {
+    private fun renderUnifiedDiff(lines: List<String>): JComponent? {
         val panel = ToolRenderers.listPanel()
         val currentFileLines = mutableListOf<String>()
         var currentFile = ""
@@ -84,16 +84,18 @@ object GitDiffRenderer : ToolResultRenderer {
         }
 
         for (line in lines) {
-            val diffMatch = DIFF_GIT.find(line)
+            val trimmedLine = line.trim()
+            val diffMatch = DIFF_GIT.find(trimmedLine)
             if (diffMatch != null) {
                 flushFile()
                 currentFile = diffMatch.groupValues[2]
-            } else if (currentFile.isNotEmpty() && !isMetaLine(line)) {
+            } else if (currentFile.isNotEmpty() && !isMetaLine(trimmedLine)) {
                 currentFileLines.add(line)
             }
         }
         flushFile()
-        return panel
+        // Return null if no diff sections were found — lets callers fall back to raw text display
+        return if (panel.componentCount > 0) panel else null
     }
 
     private fun addFileSection(panel: javax.swing.JPanel, filePath: String, lines: List<String>) {
@@ -104,7 +106,8 @@ object GitDiffRenderer : ToolResultRenderer {
         section.add(ToolRenderers.fileLink(filePath, filePath).apply {
             alignmentX = JComponent.LEFT_ALIGNMENT
         })
-        section.add(ToolRenderers.codeBlock(lines.joinToString("\n")))
+        val diffText = lines.joinToString("\n")
+        section.add(ToolRenderers.codeOrScratchPanel(diffText, "diff"))
         panel.add(section)
     }
 

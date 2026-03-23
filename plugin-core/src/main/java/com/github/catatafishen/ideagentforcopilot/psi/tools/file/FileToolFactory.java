@@ -19,9 +19,7 @@ public final class FileToolFactory {
     public static @NotNull List<Tool> create(@NotNull Project project) {
         return List.of(
             new ReadFileTool(project),
-            new ReadFileAliasTool(project),
             new WriteFileTool(project),
-            new WriteFileAliasTool(project),
             new EditTextTool(project),
             new CreateFileTool(project),
             new DeleteFileTool(project),

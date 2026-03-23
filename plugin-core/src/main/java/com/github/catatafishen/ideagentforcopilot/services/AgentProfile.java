@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.services;
 
+import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,6 +27,23 @@ public final class AgentProfile {
     private boolean experimental;
     private String description;
 
+    // ── Transport ─────────────────────────────────────────────────────────────
+
+    private TransportType transportType;
+
+    /**
+     * URL to open when the user clicks the "Install" button in the setup banner.
+     * Empty string means no install URL is available (install button hidden).
+     */
+    private String installUrl = "";
+
+    /**
+     * Whether this agent supports the plugin's inline OAuth sign-in flow.
+     * When {@code true}, a "Sign In" button is shown in the auth error banner.
+     * When {@code false}, the user must authenticate externally (e.g. run a CLI command).
+     */
+    private boolean supportsOAuthSignIn = false;
+
     // ── Binary Discovery ─────────────────────────────────────────────────────
 
     private String binaryName;
@@ -41,15 +59,14 @@ public final class AgentProfile {
 
     private McpInjectionMethod mcpMethod;
     private String mcpConfigTemplate;
-    private String mcpEnvVarName;
+    private String mcpServerName = "agentbridge";
 
     // ── Feature Flags ────────────────────────────────────────────────────────
 
     private boolean supportsModelFlag;
     private boolean supportsConfigDir;
     private boolean supportsMcpConfigFlag;
-    private boolean requiresResourceDuplication;
-    private String modelUsageField;
+    private boolean sendResourceReferences = true;
 
     // ── Modes ────────────────────────────────────────────────────────────────
 
@@ -71,16 +88,41 @@ public final class AgentProfile {
     private PermissionInjectionMethod permissionInjectionMethod = PermissionInjectionMethod.NONE;
 
     /**
+     * Whether this agent supports {@code session/message} JSON-RPC notifications.
+     * When {@code true}, startup instructions are sent via {@code session/message}.
+     * When {@code false}, instructions must come from config files or MCP prompt field.
+     * Defaults to {@code true} for backwards compatibility (Junie, Copilot support it).
+     */
+    private boolean supportsSessionMessage = true;
+
+    /**
      * Relative path (from project root) to the agent-instructions file that plugin context
      * should be prepended to on launch (e.g. {@code ".copilot/copilot-instructions.md"} or
      * {@code "CLAUDE.md"}). Empty/null means skip file injection (rely on MCP instructions field).
      */
     private String prependInstructionsTo;
-    private boolean ensureCopilotAgents;
+    private List<String> bundledAgentFiles = new ArrayList<>();
+    private String additionalInstructions = "";
+
+    /**
+     * Custom model list for CLI-mode profiles.
+     *
+     * <p>Each entry is {@code "model-id=Display Name"}, e.g.
+     * {@code "claude-opus-4-6=Claude Opus 4.6"}.  When non-empty this list
+     * is returned by {@code ClaudeCliClient.listModels()} instead of the
+     * built-in defaults.  Empty means "use defaults".</p>
+     *
+     * <p>This field exists because the Claude CLI has no stable
+     * {@code models} subcommand — {@code claude models} is treated as a
+     * plain user prompt that makes a full API call and returns an LLM
+     * response, so programmatic discovery is unreliable.</p>
+     */
+    private List<String> customCliModels = new ArrayList<>();
 
     public AgentProfile() {
         this.id = UUID.randomUUID().toString();
         this.displayName = "New Agent";
+        this.transportType = TransportType.ACP;
         this.binaryName = "";
         this.alternateNames = new ArrayList<>();
         this.installHint = "";
@@ -88,19 +130,12 @@ public final class AgentProfile {
         this.acpArgs = List.of("--acp", "--stdio");
         this.mcpMethod = McpInjectionMethod.CONFIG_FLAG;
         this.mcpConfigTemplate = "";
-        this.mcpEnvVarName = "";
         this.supportsModelFlag = true;
         this.supportsConfigDir = true;
         this.supportsMcpConfigFlag = true;
-        this.requiresResourceDuplication = false;
-        this.modelUsageField = "";
         this.agentsDirectory = null;
     }
 
-    /**
-     * Creates a deep copy of this profile with a new ID.
-     */
-    @NotNull
     public AgentProfile duplicate() {
         AgentProfile copy = new AgentProfile();
         copy.id = UUID.randomUUID().toString();
@@ -108,6 +143,9 @@ public final class AgentProfile {
         copy.builtIn = false;
         copy.experimental = false;
         copy.description = description;
+        copy.transportType = transportType;
+        copy.installUrl = installUrl;
+        copy.supportsOAuthSignIn = supportsOAuthSignIn;
         copy.binaryName = binaryName;
         copy.alternateNames = new ArrayList<>(alternateNames);
         copy.installHint = installHint;
@@ -115,27 +153,23 @@ public final class AgentProfile {
         copy.acpArgs = new ArrayList<>(acpArgs);
         copy.mcpMethod = mcpMethod;
         copy.mcpConfigTemplate = mcpConfigTemplate;
-        copy.mcpEnvVarName = mcpEnvVarName;
+        copy.mcpServerName = mcpServerName;
         copy.supportsModelFlag = supportsModelFlag;
         copy.supportsConfigDir = supportsConfigDir;
         copy.supportsMcpConfigFlag = supportsMcpConfigFlag;
-        copy.requiresResourceDuplication = requiresResourceDuplication;
-        copy.modelUsageField = modelUsageField;
+        copy.sendResourceReferences = sendResourceReferences;
         copy.agentsDirectory = agentsDirectory;
         copy.usePluginPermissions = usePluginPermissions;
         copy.excludeAgentBuiltInTools = excludeAgentBuiltInTools;
         copy.permissionInjectionMethod = permissionInjectionMethod;
+        copy.supportsSessionMessage = supportsSessionMessage;
         copy.prependInstructionsTo = prependInstructionsTo;
-        copy.ensureCopilotAgents = ensureCopilotAgents;
+        copy.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
+        copy.additionalInstructions = additionalInstructions;
+        copy.customCliModels = new ArrayList<>(customCliModels);
         return copy;
     }
 
-    /**
-     * Creates an independent deep copy preserving all fields including ID, name, and builtIn.
-     * Use this for settings UI working copies. Use {@link #duplicate()} for user-initiated
-     * "Duplicate Profile" which assigns a new ID and appends "(Copy)" to the name.
-     */
-    @NotNull
     public AgentProfile copyForEditing() {
         AgentProfile copy = new AgentProfile();
         copy.id = this.id;
@@ -143,6 +177,9 @@ public final class AgentProfile {
         copy.builtIn = this.builtIn;
         copy.experimental = this.experimental;
         copy.description = this.description;
+        copy.transportType = this.transportType;
+        copy.installUrl = this.installUrl;
+        copy.supportsOAuthSignIn = this.supportsOAuthSignIn;
         copy.binaryName = binaryName;
         copy.alternateNames = new ArrayList<>(alternateNames);
         copy.installHint = installHint;
@@ -150,18 +187,20 @@ public final class AgentProfile {
         copy.acpArgs = new ArrayList<>(acpArgs);
         copy.mcpMethod = mcpMethod;
         copy.mcpConfigTemplate = mcpConfigTemplate;
-        copy.mcpEnvVarName = mcpEnvVarName;
+        copy.mcpServerName = mcpServerName;
         copy.supportsModelFlag = supportsModelFlag;
         copy.supportsConfigDir = supportsConfigDir;
         copy.supportsMcpConfigFlag = supportsMcpConfigFlag;
-        copy.requiresResourceDuplication = requiresResourceDuplication;
-        copy.modelUsageField = modelUsageField;
+        copy.sendResourceReferences = sendResourceReferences;
         copy.agentsDirectory = agentsDirectory;
         copy.usePluginPermissions = usePluginPermissions;
         copy.excludeAgentBuiltInTools = excludeAgentBuiltInTools;
         copy.permissionInjectionMethod = permissionInjectionMethod;
+        copy.supportsSessionMessage = supportsSessionMessage;
         copy.prependInstructionsTo = prependInstructionsTo;
-        copy.ensureCopilotAgents = ensureCopilotAgents;
+        copy.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
+        copy.additionalInstructions = additionalInstructions;
+        copy.customCliModels = new ArrayList<>(customCliModels);
         return copy;
     }
 
@@ -172,6 +211,9 @@ public final class AgentProfile {
         this.displayName = other.displayName;
         this.experimental = other.experimental;
         this.description = other.description;
+        this.transportType = other.transportType;
+        this.installUrl = other.installUrl;
+        this.supportsOAuthSignIn = other.supportsOAuthSignIn;
         this.binaryName = other.binaryName;
         this.alternateNames = new ArrayList<>(other.alternateNames);
         this.installHint = other.installHint;
@@ -179,18 +221,20 @@ public final class AgentProfile {
         this.acpArgs = new ArrayList<>(other.acpArgs);
         this.mcpMethod = other.mcpMethod;
         this.mcpConfigTemplate = other.mcpConfigTemplate;
-        this.mcpEnvVarName = other.mcpEnvVarName;
+        this.mcpServerName = other.mcpServerName;
         this.supportsModelFlag = other.supportsModelFlag;
         this.supportsConfigDir = other.supportsConfigDir;
         this.supportsMcpConfigFlag = other.supportsMcpConfigFlag;
-        this.requiresResourceDuplication = other.requiresResourceDuplication;
-        this.modelUsageField = other.modelUsageField;
+        this.sendResourceReferences = other.sendResourceReferences;
         this.agentsDirectory = other.agentsDirectory;
         this.usePluginPermissions = other.usePluginPermissions;
         this.excludeAgentBuiltInTools = other.excludeAgentBuiltInTools;
         this.permissionInjectionMethod = other.permissionInjectionMethod;
+        this.supportsSessionMessage = other.supportsSessionMessage;
         this.prependInstructionsTo = other.prependInstructionsTo;
-        this.ensureCopilotAgents = other.ensureCopilotAgents;
+        this.bundledAgentFiles = new ArrayList<>(other.bundledAgentFiles);
+        this.additionalInstructions = other.additionalInstructions;
+        this.customCliModels = new ArrayList<>(other.customCliModels);
     }
 
     // ── Getters / Setters ────────────────────────────────────────────────────
@@ -236,6 +280,32 @@ public final class AgentProfile {
 
     public void setDescription(@Nullable String description) {
         this.description = description;
+    }
+
+    @NotNull
+    public TransportType getTransportType() {
+        return transportType != null ? transportType : TransportType.ACP;
+    }
+
+    @NotNull
+    public String getInstallUrl() {
+        return installUrl != null ? installUrl : "";
+    }
+
+    public void setInstallUrl(@NotNull String installUrl) {
+        this.installUrl = installUrl;
+    }
+
+    public boolean isSupportsOAuthSignIn() {
+        return supportsOAuthSignIn;
+    }
+
+    public void setSupportsOAuthSignIn(boolean supportsOAuthSignIn) {
+        this.supportsOAuthSignIn = supportsOAuthSignIn;
+    }
+
+    public void setTransportType(@NotNull TransportType transportType) {
+        this.transportType = transportType;
     }
 
     @NotNull
@@ -302,12 +372,12 @@ public final class AgentProfile {
     }
 
     @NotNull
-    public String getMcpEnvVarName() {
-        return mcpEnvVarName;
+    public String getMcpServerName() {
+        return mcpServerName;
     }
 
-    public void setMcpEnvVarName(@NotNull String mcpEnvVarName) {
-        this.mcpEnvVarName = mcpEnvVarName;
+    public void setMcpServerName(@NotNull String mcpServerName) {
+        this.mcpServerName = mcpServerName;
     }
 
     public boolean isSupportsModelFlag() {
@@ -334,21 +404,12 @@ public final class AgentProfile {
         this.supportsMcpConfigFlag = supportsMcpConfigFlag;
     }
 
-    public boolean isRequiresResourceDuplication() {
-        return requiresResourceDuplication;
+    public boolean isSendResourceReferences() {
+        return sendResourceReferences;
     }
 
-    public void setRequiresResourceDuplication(boolean requiresResourceDuplication) {
-        this.requiresResourceDuplication = requiresResourceDuplication;
-    }
-
-    @Nullable
-    public String getModelUsageField() {
-        return modelUsageField;
-    }
-
-    public void setModelUsageField(@Nullable String modelUsageField) {
-        this.modelUsageField = modelUsageField != null ? modelUsageField : "";
+    public void setSendResourceReferences(boolean sendResourceReferences) {
+        this.sendResourceReferences = sendResourceReferences;
     }
 
     @Nullable
@@ -385,6 +446,14 @@ public final class AgentProfile {
         this.permissionInjectionMethod = permissionInjectionMethod;
     }
 
+    public boolean isSupportsSessionMessage() {
+        return supportsSessionMessage;
+    }
+
+    public void setSupportsSessionMessage(boolean supportsSessionMessage) {
+        this.supportsSessionMessage = supportsSessionMessage;
+    }
+
     @Nullable
     public String getPrependInstructionsTo() {
         return prependInstructionsTo;
@@ -395,11 +464,56 @@ public final class AgentProfile {
     }
 
     public boolean isEnsureCopilotAgents() {
-        return ensureCopilotAgents;
+        return !bundledAgentFiles.isEmpty();
     }
 
+    /**
+     * @deprecated Use {@link #getBundledAgentFiles()} instead.
+     */
+    @Deprecated
     public void setEnsureCopilotAgents(boolean ensureCopilotAgents) {
-        this.ensureCopilotAgents = ensureCopilotAgents;
+        // no-op: replaced by bundledAgentFiles
+    }
+
+    @NotNull
+    public List<String> getBundledAgentFiles() {
+        return bundledAgentFiles;
+    }
+
+    public void setBundledAgentFiles(@NotNull List<String> bundledAgentFiles) {
+        this.bundledAgentFiles = new ArrayList<>(bundledAgentFiles);
+    }
+
+    @NotNull
+    public String getAdditionalInstructions() {
+        return additionalInstructions;
+    }
+
+    public void setAdditionalInstructions(@NotNull String additionalInstructions) {
+        this.additionalInstructions = additionalInstructions;
+    }
+
+    @NotNull
+    public List<String> getCustomCliModels() {
+        return customCliModels;
+    }
+
+    public void setCustomCliModels(@NotNull List<String> customCliModels) {
+        this.customCliModels = new ArrayList<>(customCliModels);
+    }
+
+    /**
+     * Returns a CSS-friendly client identifier for styling agent bubbles.
+     */
+    @NotNull
+    public String getClientCssClass() {
+        String name = binaryName.toLowerCase();
+        if (name.contains("copilot")) return "copilot";
+        if (name.contains("claude")) return "claude";
+        if (name.contains("opencode")) return "opencode";
+        if (name.contains("junie")) return "junie";
+        if (name.contains("kiro")) return "kiro";
+        return "";
     }
 
     /**

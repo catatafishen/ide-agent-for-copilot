@@ -31,6 +31,31 @@ public interface AgentUiSettings {
 
     void setSelectedAgent(@NotNull String agentName);
 
+    // ── Session options ──────────────────────────────────────────────────────
+
+    /**
+     * Returns the persisted value for a named session option (e.g. "effort"), or empty string.
+     */
+    @NotNull
+    String getSessionOptionValue(@NotNull String optionKey);
+
+    void setSessionOptionValue(@NotNull String optionKey, @NotNull String value);
+
+    // ── Session resumption ───────────────────────────────────────────────────
+
+    /**
+     * Returns the saved ACP session ID to be passed as {@code resumeSessionId} in the next
+     * {@code session/new} request, or {@code null} if none was saved.
+     */
+    @Nullable
+    String getResumeSessionId();
+
+    /**
+     * Persists an ACP session ID for future resumption. Pass {@code null} to clear
+     * (e.g. when the user explicitly requests a fresh conversation via "Clear and Restart").
+     */
+    void setResumeSessionId(@Nullable String sessionId);
+
     // ── Active sub-agent label (runtime-only) ────────────────────────────────
 
     @Nullable

@@ -1,6 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
-import com.github.catatafishen.ideagentforcopilot.bridge.ResourceReference
+import com.github.catatafishen.ideagentforcopilot.acp.model.ResourceReference
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.project.Project
@@ -74,6 +74,7 @@ class PromptContextManager(
     fun clearInlineChips(editor: EditorEx) {
         val inlays = editor.inlayModel
             .getInlineElementsInRange(0, editor.document.textLength, ContextChipRenderer::class.java)
+            .toList()
         if (inlays.isEmpty()) return
         com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
             for (inlay in inlays.sortedByDescending { it.offset }) {
@@ -115,17 +116,15 @@ class PromptContextManager(
         }
     }
 
-    /**
-     * Checks whether the clipboard text matches the current editor's selection.
-     * Returns a [ContextItemData] referencing the source file + line range if found,
-     * or null if the active editor doesn't have a matching selection.
-     */
     fun findClipboardSourceInProject(clipText: String): ContextItemData? {
         val fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
         val selectedEditor = fileEditorManager.selectedTextEditor ?: return null
         val selectedFile = fileEditorManager.selectedFiles.firstOrNull() ?: return null
 
-        if (!com.intellij.openapi.roots.ProjectFileIndex.getInstance(project).isInContent(selectedFile)) return null
+        val isInContent = ApplicationManager.getApplication().runReadAction<Boolean> {
+            com.intellij.openapi.roots.ProjectFileIndex.getInstance(project).isInContent(selectedFile)
+        }
+        if (!isInContent) return null
 
         return matchEditorSelection(selectedEditor, selectedFile, clipText)
     }

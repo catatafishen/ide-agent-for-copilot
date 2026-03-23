@@ -37,6 +37,26 @@ final class GenericAgentUiSettings implements AgentUiSettings {
     }
 
     @Override
+    public @NotNull String getSessionOptionValue(@NotNull String optionKey) {
+        return settings.getSessionOptionValue(optionKey);
+    }
+
+    @Override
+    public void setSessionOptionValue(@NotNull String optionKey, @NotNull String value) {
+        settings.setSessionOptionValue(optionKey, value);
+    }
+
+    @Override
+    public @Nullable String getResumeSessionId() {
+        return settings.getResumeSessionId();
+    }
+
+    @Override
+    public void setResumeSessionId(@Nullable String sessionId) {
+        settings.setResumeSessionId(sessionId);
+    }
+
+    @Override
     public @Nullable String getActiveAgentLabel() {
         return settings.getActiveAgentLabel();
     }

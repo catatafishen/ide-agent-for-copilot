@@ -234,27 +234,29 @@
     <toolWindow id="AgentBridge"
                 secondary="false"
                 anchor="right"
-                icon="/icons/copilot.svg"
-                factoryClass="com.github.catatafishen.ideagentforcopilot.ui.AgenticCopilotToolWindowFactory"/>
+                icon="/icons/agentbridge.svg"
+                factoryClass="com.github.catatafishen.ideagentforcopilot.ui.ChatToolWindowFactory"/>
 
     <!-- Application Services -->
     <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgenticCopilotService"/>
-    <applicationService
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.IdeAgentService"/>
     <applicationService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypeSettings"/>
     <applicationService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesSettings"/>
+    <applicationService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.StartupInstructionsSettings"/>
 
     <!-- Project Services -->
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager"/>
     <projectService
       serviceInterface="com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings"
-      serviceImplementation="com.github.catatafishen.ideagentforcopilot.bridge.CopilotToolLayerSettings"/>
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.bridge.ActiveAgentToolLayerSettings"/>
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolRegistry"/>
+    <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ToolChipRegistry"/>
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService"/>
     <projectService
@@ -271,6 +273,31 @@
       instance="com.github.catatafishen.ideagentforcopilot.settings.PluginSettingsConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.settings"
       displayName="IDE Agent for Copilot"/>
+
+    <!-- ── General sub-pages ── -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.StartupInstructionsConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.agentInstructions"
+      displayName="Agent Instructions"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.projectFiles"
+      displayName="Project Files"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.scratchTypes"
+      displayName="Scratch File Types"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ChatHistoryConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.chatHistory"
+      displayName="Chat History"/>
 
     <!-- ── MCP section ── -->
     <projectConfigurable
@@ -291,61 +318,55 @@
       id="com.github.catatafishen.ideagentforcopilot.mcp.tools"
       displayName="Tools"/>
 
-    <!-- ── ACP section ── -->
+    <!-- ── Agents section ── -->
     <projectConfigurable
       parentId="com.github.catatafishen.ideagentforcopilot.settings"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.AcpGroupConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.acp"
-      displayName="ACP"/>
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ClientAgentsGroupConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      displayName="Agents"/>
 
     <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.acp"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.AgentSettingsConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.agentSettings"
-      displayName="Agent Settings"/>
+      parentId="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.CopilotClientConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents.copilot"
+      displayName="GitHub Copilot"/>
 
     <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.acp"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.AgentProfilesConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.agentProfiles"
-      displayName="Agent Profiles"/>
+      parentId="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.OpenCodeClientConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents.opencode"
+      displayName="OpenCode"/>
 
     <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.acp"
+      parentId="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.AnthropicDirectClientConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents.anthropicDirect"
+      displayName="Claude Code"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ClaudeCliClientConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents.claudeCli"
+      displayName="Claude CLI"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.JunieClientConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents.junie"
+      displayName="Junie"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.clientAgents"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.KiroClientConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.clientAgents.kiro"
+      displayName="Kiro"/>
+
+    <!-- ── Tool Permissions ── -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
       instance="com.github.catatafishen.ideagentforcopilot.settings.ToolPermissionsConfigurable"
       id="com.github.catatafishen.ideagentforcopilot.toolPermissions"
       displayName="Tool Permissions"/>
-
-    <!-- ── Other section ── -->
-    <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.settings"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.OtherGroupConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.other"
-      displayName="Other"/>
-
-    <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.other"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypesConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.scratchTypes"
-      displayName="Scratch File Types"/>
-
-    <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.other"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.projectFiles"
-      displayName="Project Files"/>
-
-    <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.other"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.ChatHistoryConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.chatHistory"
-      displayName="Chat History"/>
-
-    <projectConfigurable
-      parentId="com.github.catatafishen.ideagentforcopilot.other"
-      instance="com.github.catatafishen.ideagentforcopilot.settings.BillingConfigurable"
-      id="com.github.catatafishen.ideagentforcopilot.billing"
-      displayName="Billing Data"/>
 
     <!-- Start PSI Bridge when the project opens -->
     <postStartupActivity

@@ -3,12 +3,11 @@ package com.github.catatafishen.ideagentforcopilot.psi.tools.quality;
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiDocumentManager;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -37,22 +36,28 @@ public final class OptimizeImportsTool extends QualityTool {
         return "Manually remove unused imports and organize them according to code style";
     }
 
+
+
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to optimize imports"}
         }, "path");
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String pathStr = args.get("path").getAsString();
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {
                 FilePair pair = resolveFilePair(pathStr, resultFuture);
                 if (pair == null) return;
-                ApplicationManager.getApplication().runWriteAction(() ->
+                WriteAction.run(() ->
                     CommandProcessor.getInstance().executeCommand(project, () -> {
                         PsiDocumentManager.getInstance(project).commitAllDocuments();
                         new com.intellij.codeInsight.actions.OptimizeImportsProcessor(project, pair.psiFile()).run();

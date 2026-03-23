@@ -11,12 +11,12 @@ import java.util.StringJoiner;
 /**
  * Utility for substituting placeholders in permission question templates.
  */
-final class PermissionTemplateUtil {
+public final class PermissionTemplateUtil {
 
     private PermissionTemplateUtil() {
     }
 
-    static String substituteArgs(@NotNull String template, @NotNull JsonObject args) {
+    public static String substituteArgs(@NotNull String template, @NotNull JsonObject args) {
         String q = template;
         for (Map.Entry<String, JsonElement> e : args.entrySet()) {
             q = q.replace("{" + e.getKey() + "}", formatArgValue(e.getValue()));
@@ -25,7 +25,7 @@ final class PermissionTemplateUtil {
     }
 
     @Nullable
-    static String stripPlaceholders(@NotNull String text) {
+    public static String stripPlaceholders(@NotNull String text) {
         String q = text.replaceAll("\\{[^}]+}", "").replaceAll("\\(\\s*\\)", "")
                 .replaceAll("\\s+", " ").trim();
         return q.isEmpty() ? null : q;

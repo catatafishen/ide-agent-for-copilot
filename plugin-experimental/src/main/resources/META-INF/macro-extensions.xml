@@ -9,4 +9,4 @@
       id="com.github.catatafishen.ideagentforcopilot.macroTools"
       displayName="Macro Tools"/>
     <postStartupActivity
-      implementation="com.github.catatafishen.ideagentforcopilot.experimental.MacroStartupActivity"/>
+      implementation="com.github.catatafishen.ideagentforcopilot.experimental.ExperimentalStartupActivity"/>

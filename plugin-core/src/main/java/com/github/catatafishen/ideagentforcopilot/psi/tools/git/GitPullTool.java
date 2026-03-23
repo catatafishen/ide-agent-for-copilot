@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
 
+import com.github.catatafishen.ideagentforcopilot.services.PermissionTemplateUtil;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -8,11 +9,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Fetches from a remote and integrates changes into the current branch.
- */
 @SuppressWarnings("java:S112")
 public final class GitPullTool extends GitTool {
+
+    private static final String PARAM_REBASE = "rebase";
+    private static final String PARAM_REMOTE = "remote";
+    private static final String PARAM_BRANCH = "branch";
+    private static final String PARAM_FF_ONLY = "ff_only";
 
     public GitPullTool(Project project) {
         super(project);
@@ -33,7 +36,13 @@ public final class GitPullTool extends GitTool {
         return "Fetch and integrate changes into the current branch";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public boolean isOpenWorld() {
         return true;
     }
@@ -44,36 +53,59 @@ public final class GitPullTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @Nullable String resolvePermissionQuestion(@Nullable JsonObject args) {
+        JsonObject enriched = args != null ? args.deepCopy() : new JsonObject();
+        if (!enriched.has(PARAM_REMOTE)) {
+            enriched.addProperty(PARAM_REMOTE, "origin");
+        }
+        if (!enriched.has(PARAM_BRANCH)) {
+            String branch = detectCurrentBranch();
+            enriched.addProperty(PARAM_BRANCH, branch != null ? branch : "current");
+        }
+        String resolved = PermissionTemplateUtil.substituteArgs(permissionTemplate(), enriched);
+        return PermissionTemplateUtil.stripPlaceholders(resolved);
+    }
+
+    @Nullable
+    private String detectCurrentBranch() {
+        try {
+            return runGit("rev-parse", "--abbrev-ref", "HEAD").trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"remote", TYPE_STRING, "Remote name (default: origin)"},
-            {"branch", TYPE_STRING, "Branch to pull (default: current tracking branch)"},
-            {"rebase", TYPE_BOOLEAN, "If true, rebase instead of merge when pulling"},
-            {"ff_only", TYPE_BOOLEAN, "If true, only fast-forward (abort if not possible)"}
+            {PARAM_REMOTE, TYPE_STRING, "Remote name (default: origin)"},
+            {PARAM_BRANCH, TYPE_STRING, "Branch to pull (default: current tracking branch)"},
+            {PARAM_REBASE, TYPE_BOOLEAN, "If true, rebase instead of merge when pulling"},
+            {PARAM_FF_ONLY, TYPE_BOOLEAN, "If true, only fast-forward (abort if not possible)"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         flushAndSave();
 
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("pull");
 
-        if (args.has("rebase") && args.get("rebase").getAsBoolean()) {
+        if (args.has(PARAM_REBASE) && args.get(PARAM_REBASE).getAsBoolean()) {
             cmdArgs.add("--rebase");
         }
 
-        if (args.has("ff_only") && args.get("ff_only").getAsBoolean()) {
+        if (args.has(PARAM_FF_ONLY) && args.get(PARAM_FF_ONLY).getAsBoolean()) {
             cmdArgs.add("--ff-only");
         }
 
-        if (args.has("remote") && !args.get("remote").getAsString().isEmpty()) {
-            cmdArgs.add(args.get("remote").getAsString());
+        if (args.has(PARAM_REMOTE) && !args.get(PARAM_REMOTE).getAsString().isEmpty()) {
+            cmdArgs.add(args.get(PARAM_REMOTE).getAsString());
         }
 
-        if (args.has("branch") && !args.get("branch").getAsString().isEmpty()) {
-            cmdArgs.add(args.get("branch").getAsString());
+        if (args.has(PARAM_BRANCH) && !args.get(PARAM_BRANCH).getAsString().isEmpty()) {
+            cmdArgs.add(args.get(PARAM_BRANCH).getAsString());
         }
 
         return runGit(cmdArgs.toArray(String[]::new));

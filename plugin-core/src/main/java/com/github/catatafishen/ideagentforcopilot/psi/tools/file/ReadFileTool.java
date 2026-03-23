@@ -11,7 +11,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -33,7 +32,7 @@ public class ReadFileTool extends FileTool {
 
     @Override
     public @NotNull String id() {
-        return "intellij_read_file";
+        return "read_file";
     }
 
     @Override
@@ -46,17 +45,23 @@ public class ReadFileTool extends FileTool {
         return "Read a file via IntelliJ's editor buffer -- always returns the current in-memory content";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"path", TYPE_STRING, "Absolute or project-relative path to the file to read"},
-            {"start_line", TYPE_INTEGER, "Optional: first line to read (1-based, inclusive)"},
-            {"end_line", TYPE_INTEGER, "Optional: last line to read (1-based, inclusive). Use with start_line to read a range"}
+            {PARAM_START_LINE, TYPE_INTEGER, "Optional: first line to read (1-based, inclusive)"},
+            {PARAM_END_LINE, TYPE_INTEGER, "Optional: last line to read (1-based, inclusive). Use with start_line to read a range"}
         }, "path");
     }
 
@@ -66,12 +71,15 @@ public class ReadFileTool extends FileTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         if (!args.has("path") || args.get("path").isJsonNull())
             return ToolUtils.ERROR_PATH_REQUIRED;
         String pathStr = args.get("path").getAsString();
         int startLine = args.has(PARAM_START_LINE) ? args.get(PARAM_START_LINE).getAsInt() : -1;
         int endLine = args.has(PARAM_END_LINE) ? args.get(PARAM_END_LINE).getAsInt() : -1;
+
+        // Use a separate container to capture the actual line range for highlighting
+        int[] effectiveRange = new int[]{startLine, endLine};
 
         String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
             VirtualFile vf = resolveVirtualFile(pathStr);
@@ -84,11 +92,17 @@ public class ReadFileTool extends FileTool {
                 return extractLineRange(content, startLine, endLine);
             }
 
+            // If no range specified, we highlight the whole file (or the read portion)
+            // Splitting by \n to count lines accurately
+            String[] lines = content.split("\n", -1);
+            effectiveRange[0] = 1;
+            effectiveRange[1] = Math.min(lines.length, MAX_READ_LINES);
+
             String hint = getDirectoryMarkingHint(vf);
             return applyReadHintAndTruncate(content, hint);
         });
 
-        followFileIfEnabled(project, pathStr, startLine > 0 ? startLine : -1, endLine > 0 ? endLine : -1,
+        followFileIfEnabled(project, pathStr, effectiveRange[0], effectiveRange[1],
             HIGHLIGHT_READ, agentLabel(project) + " is reading");
         FileAccessTracker.recordRead(project, pathStr);
         return result;
@@ -125,13 +139,28 @@ public class ReadFileTool extends FileTool {
 
     private String applyReadHintAndTruncate(String content, String hint) {
         String[] lines = content.split("\n", -1);
-        if (lines.length > MAX_READ_LINES) {
-            String truncated = String.join("\n", Arrays.copyOfRange(lines, 0, MAX_READ_LINES));
-            String header = "[Large file: " + lines.length + " lines total — showing first " + MAX_READ_LINES
-                + " lines. Use start_line/end_line to read specific sections.]\n";
-            return (hint != null ? hint + "\n" : "") + header + truncated;
+        int totalLines = lines.length;
+        StringBuilder sb = new StringBuilder();
+
+        // Always show total line count
+        if (totalLines > 0) {
+            sb.append("[").append(totalLines).append(" lines total]\n");
         }
-        return hint != null ? hint + "\n" + content : content;
+
+        if (hint != null) {
+            sb.append(hint).append("\n");
+        }
+
+        if (totalLines > MAX_READ_LINES) {
+            String truncated = String.join("\n", Arrays.copyOfRange(lines, 0, MAX_READ_LINES));
+            sb.append("[Showing first ").append(MAX_READ_LINES)
+                .append(" lines. Use start_line/end_line to read specific sections.]\n");
+            sb.append(truncated);
+        } else {
+            sb.append(content);
+        }
+
+        return sb.toString();
     }
 
     private static String extractLineRange(String content, int startLine, int endLine) {

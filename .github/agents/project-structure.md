@@ -31,7 +31,7 @@ dependencies, SDKs, content roots, facets, and compiler settings.
 - Tools must be **safe by default**: read operations need no confirmation, writes should validate inputs
 - Error messages must be **actionable**: tell the user what went wrong AND how to fix it
 - Parameters should use **simple types** (string, boolean) — no complex JSON objects
-- Tool names follow `snake_case` convention with `intellij-code-tools-` prefix in MCP
+- Tool names follow `snake_case` convention with `agentbridge-` prefix in MCP
 - Every tool needs a clear **description** and per-parameter **descriptions**
 
 ### Threading & Safety Rules

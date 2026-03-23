@@ -24,8 +24,10 @@ interface ChatPanelApi : Disposable {
     )
 
     fun setPromptStats(modelId: String, multiplier: String)
+    fun setCodeChangeStats(linesAdded: Int, linesRemoved: Int)
     fun setCurrentModel(modelId: String)
     fun setCurrentProfile(profileId: String)
+    fun setCurrentAgent(agentName: String, profileId: String, clientType: String = "")
     fun addContextFilesEntry(files: List<Pair<String, String>>)
 
     // ── Agent text (streaming) ─────────────────────────────────────
@@ -37,22 +39,50 @@ interface ChatPanelApi : Disposable {
 
     // ── Tool calls ─────────────────────────────────────────────────
 
-    fun addToolCallEntry(id: String, title: String, arguments: String? = null, kind: String? = null)
-    fun updateToolCall(id: String, status: String, details: String? = null)
+    fun addToolCallEntry(
+        id: String,
+        title: String,
+        arguments: String? = null,
+        kind: String? = null
+    )
+
+    fun updateToolCall(
+        id: String,
+        status: String,
+        details: String? = null,
+        description: String? = null,
+        kind: String? = null,
+        autoDenied: Boolean = false,
+        denialReason: String? = null
+    )
 
     // ── Sub-agents ─────────────────────────────────────────────────
 
     fun addSubAgentEntry(
         id: String, agentType: String, description: String, prompt: String?,
-        initialResult: String? = null, initialStatus: String? = null
+        initialResult: String? = null, initialStatus: String? = null, initialDescription: String? = null,
+        autoDenied: Boolean = false, denialReason: String? = null
     )
 
-    fun updateSubAgentResult(id: String, status: String, result: String?)
+    fun updateSubAgentResult(
+        id: String, status: String, result: String?, description: String? = null,
+        autoDenied: Boolean = false, denialReason: String? = null
+    )
 
     // ── Sub-agent internal tool calls ──────────────────────────────
 
-    fun addSubAgentToolCall(subAgentId: String, toolId: String, title: String, arguments: String? = null, kind: String? = null)
-    fun updateSubAgentToolCall(toolId: String, status: String, details: String? = null)
+    fun addSubAgentToolCall(
+        subAgentId: String,
+        toolId: String,
+        title: String,
+        arguments: String? = null,
+        kind: String? = null
+    )
+
+    fun updateSubAgentToolCall(
+        toolId: String, status: String, details: String? = null, description: String? = null,
+        autoDenied: Boolean = false, denialReason: String? = null
+    )
 
     // ── Status / errors ────────────────────────────────────────────
 
@@ -82,8 +112,6 @@ interface ChatPanelApi : Disposable {
     fun getCompressedSummary(maxChars: Int = 8000): String
     fun getConversationHtml(): String
     fun getLastResponseText(): String
-    fun serializeEntries(): String
-    fun restoreEntries(json: String)
 
     // ── Debug / introspection ──────────────────────────────────────
 

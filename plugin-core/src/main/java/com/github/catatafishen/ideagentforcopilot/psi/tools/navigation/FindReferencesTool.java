@@ -13,7 +13,6 @@ import com.intellij.psi.search.PsiSearchHelper;
 import com.intellij.psi.search.UsageSearchContext;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,13 +41,19 @@ public final class FindReferencesTool extends NavigationTool {
         return "Find all usages of a symbol throughout the project";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"symbol", TYPE_STRING, "The exact symbol name to search for"},
             {"file_pattern", TYPE_STRING, "Optional glob pattern to filter files (e.g., '*.java')", ""}
@@ -61,7 +66,7 @@ public final class FindReferencesTool extends NavigationTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         if (!args.has(PARAM_SYMBOL) || args.get(PARAM_SYMBOL).isJsonNull())
             return "Error: 'symbol' parameter is required";
         String symbol = args.get(PARAM_SYMBOL).getAsString();
@@ -74,24 +79,26 @@ public final class FindReferencesTool extends NavigationTool {
             GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
 
             PsiElement definition = findDefinition(symbol, scope);
-
             if (definition != null) {
-                for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
-                    if (results.size() >= 100) break;
-                    String entry = buildReferenceEntry(ref, filePattern, basePath);
-                    if (entry != null) results.add(entry);
-                }
+                collectDefinitionReferences(definition, scope, filePattern, basePath, results);
             }
-
             if (results.isEmpty()) {
                 collectWordReferences(symbol, scope, filePattern, basePath, results);
             }
-
             if (results.isEmpty()) return "No references found for '" + symbol + "'";
             return results.size() + " references found:\n" + String.join("\n", results);
         });
         showSearchFeedback("✓ Reference search complete: " + symbol);
         return result;
+    }
+
+    private void collectDefinitionReferences(PsiElement definition, GlobalSearchScope scope,
+                                             String filePattern, String basePath, List<String> results) {
+        for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
+            if (results.size() >= 100) break;
+            String entry = buildReferenceEntry(ref, filePattern, basePath);
+            if (entry != null) results.add(entry);
+        }
     }
 
     private void collectWordReferences(String symbol, GlobalSearchScope scope,

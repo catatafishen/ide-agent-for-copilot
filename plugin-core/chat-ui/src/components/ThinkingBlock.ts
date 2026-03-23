@@ -5,7 +5,9 @@ export default class ThinkingBlock extends HTMLElement {
         if (this._init) return;
         this._init = true;
         this.classList.add('thinking-section');
-        this.innerHTML = `<div class="thinking-content"></div>`;
+        if (!this.querySelector('.thinking-content')) {
+            this.innerHTML = `<div class="thinking-content"></div>`;
+        }
     }
 
     get contentEl(): Element | null {

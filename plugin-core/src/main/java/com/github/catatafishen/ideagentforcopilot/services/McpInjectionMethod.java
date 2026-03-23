@@ -18,6 +18,19 @@ public enum McpInjectionMethod {
     ENV_VAR,
 
     /**
+     * Write a JSON config file named {@code mcp.json} inside a temporary directory
+     * and pass that directory via {@code --mcp-location <dir>}.
+     * Used by agents like Junie that discover MCP configs from a folder.
+     */
+    MCP_LOCATION_FLAG,
+
+    /**
+     * Inject via MCP servers array in {@code session/new} request.
+     * Used by agents that expect MCP server definitions in the session creation call.
+     */
+    SESSION_NEW,
+
+    /**
      * No MCP injection — the agent either doesn't support MCP or handles it externally.
      */
     NONE

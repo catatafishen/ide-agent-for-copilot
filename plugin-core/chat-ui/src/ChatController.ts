@@ -1,11 +1,6 @@
 import {b64, escHtml} from './helpers';
 import type {TurnContext} from './types';
 
-interface TurnStats {
-    model?: string;
-    mult?: string;
-}
-
 const ChatController = {
     _msgs(): HTMLElement {
         return document.querySelector('#messages')!;
@@ -14,9 +9,15 @@ const ChatController = {
     _container(): HTMLElement & {
         scrollIfNeeded(): void;
         forceScroll(): void;
+        compensateScroll(targetY: number): void;
         workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
     } | null {
-        return document.querySelector('chat-container') as any;
+        return document.querySelector<HTMLElement & {
+            scrollIfNeeded(): void;
+            forceScroll(): void;
+            compensateScroll(targetY: number): void;
+            workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
+        }>('chat-container');
     },
 
     _resetWorkingTimer(): void {
@@ -25,9 +26,8 @@ const ChatController = {
     },
 
     _thinkingCounter: 0,
-    _profileColors: {} as Record<string, number>,
-    _nextProfileColor: 0,
     _currentProfile: '',
+    _currentClientType: '',
     _ctx: {} as Record<string, TurnContext & { thinkingMsg?: HTMLElement | null; thinkingChip?: HTMLElement | null }>,
 
     _getCtx(turnId: string, agentId: string): TurnContext & {
@@ -53,13 +53,6 @@ const ChatController = {
         if (!ctx.msg) {
             const msg = document.createElement('chat-message');
             msg.setAttribute('type', 'agent');
-            // Apply profile-based color class for main agent messages
-            if (this._currentProfile && agentId === 'main') {
-                if (!(this._currentProfile in this._profileColors)) {
-                    this._profileColors[this._currentProfile] = this._nextProfileColor++ % 6;
-                }
-                msg.classList.add('model-c' + this._profileColors[this._currentProfile]);
-            }
             const meta = document.createElement('message-meta');
             meta.className = 'meta';
             const now = new Date();
@@ -75,6 +68,10 @@ const ChatController = {
             ctx.msg = msg;
             ctx.meta = meta;
             ctx.details = details;
+
+            if (agentId === 'main' && this._currentClientType) {
+                msg.classList.add('client-' + this._currentClientType);
+            }
         }
         return ctx;
     },
@@ -205,25 +202,57 @@ const ChatController = {
         this._collapseThinkingFor(ctx);
     },
 
-    addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string): void {
+    addToolCall(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string, isExternal?: boolean, initialStatus?: string): void {
+        this.upsertToolChip(turnId, agentId, id, title, paramsJson, kind, initialStatus || 'pending');
+    },
+
+    upsertToolChip(turnId: string, agentId: string, id: string, title: string, paramsJson?: string, kind?: string, initialStatus?: string): void {
         this._resetWorkingTimer();
-        const ctx = this._ensureMsg(turnId, agentId);
-        this._collapseThinkingFor(ctx);
-        const chip = document.createElement('tool-chip');
+        let chip = document.querySelector('[data-chip-for="' + id + '"]') as HTMLElement | null;
+        if (!chip) {
+            const ctx = this._ensureMsg(turnId, agentId);
+            this._collapseThinkingFor(ctx);
+            chip = document.createElement('tool-chip');
+            chip.dataset.chipFor = id;
+            ctx.meta!.appendChild(chip);
+            ctx.meta!.classList.add('show');
+            this._container()?.scrollIfNeeded();
+        }
         chip.setAttribute('label', title);
-        chip.setAttribute('status', 'running');
+        chip.setAttribute('status', initialStatus || 'pending');
         if (kind) chip.setAttribute('kind', kind);
-        (chip as HTMLElement).dataset.chipFor = id;
-        if (paramsJson) (chip as HTMLElement).dataset.params = paramsJson;
-        ctx.meta!.appendChild(chip);
-        ctx.meta!.classList.add('show');
-        this._container()?.scrollIfNeeded();
+        if (paramsJson) chip.dataset.params = paramsJson;
+    },
+
+    markMcpHandled(id: string): void {
+        const chip = document.querySelector('[data-chip-for="' + id + '"]');
+        if (chip) chip.classList.add('is-agentbridge-tool');
+        this.setToolChipState(id, 'running');
+    },
+
+    setToolChipState(id: string, state: string): void {
+        const chip = document.querySelector('[data-chip-for="' + id + '"]');
+        if (!chip) return;
+        chip.setAttribute('status', state);
+        if (state !== 'pending' && state !== 'running') {
+            this._resetWorkingTimer();
+        }
     },
 
     updateToolCall(id: string, status: string, resultHtml?: string): void {
-        this._resetWorkingTimer();
+        const jsStatus = status === 'failed' ? 'failed' : 'complete';
+        this.setToolChipState(id, jsStatus);
+    },
+
+    updateToolCallKind(id: string, kind: string): void {
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
-        if (chip) chip.setAttribute('status', status === 'failed' ? 'failed' : 'complete');
+        if (chip) {
+            chip.setAttribute('kind', kind);
+        }
+    },
+
+    addOrphanMcpCall(_turnId: string, _agentId: string, _toolName: string): void {
+        // No-op: orphan handling removed; replaced by ToolChipRegistry correlation
     },
 
     addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptText?: string): void {
@@ -235,7 +264,7 @@ const ChatController = {
         chip.setAttribute('label', displayName);
         chip.setAttribute('status', 'running');
         chip.setAttribute('color-index', String(colorIndex));
-        (chip as HTMLElement).dataset.chipFor = 'sa-' + sectionId;
+        chip.dataset.chipFor = 'sa-' + sectionId;
         ctx.meta!.appendChild(chip);
         ctx.meta!.classList.add('show');
         const promptBubble = document.createElement('message-bubble');
@@ -279,7 +308,7 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
-    addSubAgentToolCall(subAgentDomId: string, toolDomId: string, title: string, paramsJson?: string, kind?: string): void {
+    addSubAgentToolCall(subAgentDomId: string, toolDomId: string, title: string, paramsJson?: string, kind?: string, isExternal?: boolean): void {
         const msg = document.getElementById('sa-' + subAgentDomId);
         if (!msg) return;
         const meta = msg.querySelector('message-meta');
@@ -287,6 +316,7 @@ const ChatController = {
         chip.setAttribute('label', title);
         chip.setAttribute('status', 'running');
         if (kind) chip.setAttribute('kind', kind);
+        if (isExternal) chip.setAttribute('external', 'true');
         chip.dataset.chipFor = toolDomId;
         if (paramsJson) chip.dataset.params = paramsJson;
         if (meta) {
@@ -313,8 +343,6 @@ const ChatController = {
         this._msgs().innerHTML = '';
         this._ctx = {};
         this._thinkingCounter = 0;
-        this._profileColors = {};
-        this._nextProfileColor = 0;
         this._currentProfile = '';
     },
 
@@ -324,19 +352,14 @@ const ChatController = {
         if (ctx?.textBubble && !ctx.textBubble.textContent?.trim()) {
             ctx.textBubble.remove();
         }
-        let meta: Element | null = ctx?.meta ?? null;
-        if (!meta) {
-            const rows = this._msgs().querySelectorAll('chat-message[type="agent"]:not(.subagent-indent)');
-            if (rows.length) meta = rows[rows.length - 1].querySelector('message-meta');
-        }
-        if (statsJson && meta) {
-            const stats: TurnStats = typeof statsJson === 'string' ? JSON.parse(statsJson) : statsJson;
-            // Model multiplier is shown on the user prompt only, not on agent responses
-        }
         if (ctx) {
             ctx.thinkingBlock = null;
             ctx.textBubble = null;
         }
+        // Mark any still-running sub-agent chips as complete (not failed)
+        document.querySelectorAll('subagent-chip[status="running"]').forEach(c => c.setAttribute('status', 'complete'));
+        // Mark any still-running tool chips as complete (not failed)
+        document.querySelectorAll('tool-chip[status="running"]').forEach(c => c.setAttribute('status', 'complete'));
         this._container()?.scrollIfNeeded();
         this._trimMessages();
     },
@@ -409,12 +432,29 @@ const ChatController = {
         meta.appendChild(chip);
     },
 
+    setCodeChangeStats(added: number, removed: number): void {
+        const rows = document.querySelectorAll('.prompt-row');
+        const row = rows[rows.length - 1];
+        if (!row) return;
+        let meta = row.querySelector('message-meta');
+        if (!meta) {
+            meta = document.createElement('message-meta');
+            row.insertBefore(meta, row.firstChild);
+        }
+        meta.classList.add('show');
+        (meta as any).setCodeChangeStats(added, removed);
+    },
+
     setCurrentProfile(profileId: string): void {
         this._currentProfile = profileId;
     },
 
+    setClientType(type: string): void {
+        this._currentClientType = type;
+    },
+
     setCurrentModel(modelId: string): void {
-        // Kept for stats display compatibility; coloring is now profile-based.
+        // Kept for stats display compatibility
     },
 
     restoreBatch(encodedHtml: string): void {
@@ -425,8 +465,29 @@ const ChatController = {
         // Insert after the load-more banner (if present), otherwise before existing messages
         const loadMore = msgs.querySelector('load-more');
         const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
+
+        // Measure before insertion so we can restore the visual scroll position.
+        // JCEF does not implement CSS scroll anchoring, so inserting content above the
+        // viewport leaves scrollY at 0, pinning the user to the top and preventing a
+        // second scroll-up trigger.
+        const prevScrollY = window.scrollY;
+        const prevHeight = document.body.scrollHeight;
+
         while (temp.firstChild) {
             msgs.insertBefore(temp.firstChild, insertBefore);
+        }
+
+        // If the user was near the top when load-more fired, compensate for the added
+        // height so they are no longer pinned at scrollY=0 and can scroll up again.
+        // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
+        // scroll-up gestures, preventing the user from getting stuck at the absolute top.
+        // Cap at 50px to keep user near top so subsequent scroll-up can trigger more loads.
+        if (prevScrollY <= 30) {
+            const addedHeight = document.body.scrollHeight - prevHeight;
+            if (addedHeight > 0) {
+                const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
+                window.scrollTo(0, targetScroll);
+            }
         }
     },
 
@@ -444,9 +505,56 @@ const ChatController = {
         document.querySelector('load-more')?.remove();
     },
 
+    prependBatch(encodedHtml: string): void {
+        const html = b64(encodedHtml);
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        const msgs = this._msgs();
+        const loadMore = msgs.querySelector('load-more');
+        const insertBefore = loadMore ? loadMore.nextSibling : msgs.firstChild;
+
+        const prevHeight = document.body.scrollHeight;
+        const prevScrollY = window.scrollY;
+        const wasNearTop = prevScrollY <= 30;
+
+        while (temp.firstChild) {
+            msgs.insertBefore(temp.firstChild, insertBefore);
+        }
+
+        // Compensate scroll so user stays at same visual position.
+        // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
+        // scroll-up gestures, preventing the user from getting stuck at the absolute top.
+        // Also cap at 50px to keep user near top so subsequent scroll-up can trigger more loads.
+        const addedHeight = document.body.scrollHeight - prevHeight;
+        if (addedHeight > 0) {
+            const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
+            const container = this._container();
+            if (container) {
+                container.compensateScroll(targetScroll);
+            } else {
+                window.scrollTo(0, targetScroll);
+            }
+        }
+
+        // Continue loading if user was near top before scroll adjustment.
+        // This allows continuous loading as user scrolls up through history.
+        if (wasNearTop) {
+            requestAnimationFrame(() => {
+                const lm = msgs.querySelector<HTMLElement>('load-more:not([loading])');
+                if (lm) lm.click();
+            });
+        }
+    },
+
     showWorkingIndicator(): void {
-        this._container()?.workingIndicator?.show();
-        this._container()?.scrollIfNeeded();
+        const container = this._container();
+        const wi = container?.workingIndicator;
+        if (wi) {
+            wi.classList.remove('client-copilot', 'client-claude', 'client-opencode', 'client-junie', 'client-kiro');
+            if (this._currentClientType) wi.classList.add('client-' + this._currentClientType);
+        }
+        wi?.show();
+        container?.scrollIfNeeded();
     },
 
     hideWorkingIndicator(): void {

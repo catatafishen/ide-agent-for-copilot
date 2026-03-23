@@ -1,6 +1,12 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliClient
+import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliCredentials
+import com.github.catatafishen.ideagentforcopilot.bridge.ProfileBasedAgentConfig
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager
+import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry
+import com.github.catatafishen.ideagentforcopilot.settings.BinaryDetector
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -10,7 +16,7 @@ import com.intellij.openapi.ui.Messages
  * Encapsulates all authentication login logic for Copilot CLI and GitHub CLI.
  * Extracted from AgenticCopilotToolWindowContent to keep the tool window lean.
  */
-internal class AuthLoginService(private val project: Project) {
+class AuthLoginService(private val project: Project) {
 
     private companion object {
         private val LOG = Logger.getInstance(AuthLoginService::class.java)
@@ -41,19 +47,27 @@ internal class AuthLoginService(private val project: Project) {
 
     // ── Diagnostics ──────────────────────────────────────────────────────────
 
-    /** Returns null if Copilot CLI is installed and authenticated, or an error description. */
+    /** Returns null if the active agent is installed and authenticated, or an error description. */
     fun copilotSetupDiagnostics(): String? {
-        // If there's a pending auth error, return it immediately
-        // without calling getClient() — which would auto-restart the ACP process.
-        // Cleared by the sign-in flow (onAuthComplete) or by clearPendingAuthError().
-        pendingAuthError?.let { return it }
+        // If there's a pending auth error that hasn't been cleared, return it
+        // BUT give it a chance to recover by checking fresh auth periodically
+        val agentManager = ActiveAgentManager.getInstance(project)
 
+        // Always attempt fresh auth check - don't rely solely on sticky pendingAuthError
         return try {
-            val client = ActiveAgentManager.getInstance(project).client
-            client.listModels()
-            null
+            val authCheck = agentManager.client.checkAuthentication()
+            // If auth check succeeds (returns null), clear any stale pending error
+            if (authCheck == null) {
+                pendingAuthError = null
+            }
+            authCheck
         } catch (e: Exception) {
-            e.message ?: "Failed to connect to Copilot CLI"
+            val errorMsg = e.message ?: "Failed to connect to agent"
+            // Only set pendingAuthError for auth-related failures, not network/process issues
+            if (errorMsg.lowercase().contains("auth") || errorMsg.lowercase().contains("sign in")) {
+                pendingAuthError = errorMsg
+            }
+            errorMsg
         }
     }
 
@@ -85,33 +99,51 @@ internal class AuthLoginService(private val project: Project) {
     data class DeviceCodeInfo(val code: String, val url: String)
 
     /**
-     * Resolves the auth command from the ACP `authMethod` or falls back to `copilot auth login`.
-     * Splits the result into a list suitable for [ProcessBuilder].
+     * Resolves the auth command for the active agent profile.
+     * Returns the full path to the binary and login args.
+     *
+     * Binary path resolution is done independently of the running client so that
+     * the auth command can be built even when the client has not started yet (e.g.
+     * because it failed with "Authentication required" before we could show the login
+     * button).
      */
     private fun resolveAuthCommand(): List<String> {
-        var command = "copilot auth login"
-        try {
-            val authMethod = ActiveAgentManager.getInstance(project).client.authMethod
-            if (authMethod?.command != null) {
-                val args = authMethod.args?.joinToString(" ") ?: ""
-                command = "${authMethod.command} $args".trim()
+        val agentManager = ActiveAgentManager.getInstance(project)
+        val profile = agentManager.getActiveProfile()
+        val config = ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project))
+
+        // Resolve binary path without relying on the running client
+        val binaryPath = config.agentBinaryPath
+            ?: try {
+                config.findAgentBinary()
+            } catch (e: Exception) {
+                LOG.warn("AuthLoginService: findAgentBinary failed, trying BinaryDetector", e)
+                BinaryDetector.findBinaryPath(profile.binaryName)
+                    ?: profile.binaryName.also {
+                        LOG.warn("AuthLoginService: BinaryDetector could not find '${profile.binaryName}', using bare name as last resort")
+                    }
             }
-        } catch (_: Exception) { /* best-effort */
+
+        // Determine the login subcommand from the running client if available;
+        // fall back to "login" if the client hasn't started (auth failure during startup).
+        val loginArgs = try {
+            val authMethod = agentManager.client.authMethod
+            LOG.info("AuthLoginService: authMethod = $authMethod, id = ${authMethod?.id}")
+            when {
+                authMethod?.id?.contains("copilot") == true -> listOf("login")
+                authMethod?.id?.contains("github") == true -> listOf("login")
+                authMethod?.id != null -> authMethod.id.replace("-", " ").split(" ").drop(1)
+                else -> listOf("login")
+            }
+        } catch (e: Exception) {
+            LOG.info("AuthLoginService: client not available (${e.message}), defaulting to 'login'")
+            listOf("login")
         }
-        return command.split(" ").filter { it.isNotEmpty() }
+
+        LOG.info("AuthLoginService: resolved command = '$binaryPath ${loginArgs.joinToString(" ")}'")
+        return listOf(binaryPath) + loginArgs
     }
 
-    /**
-     * Attempts to run the auth command via [ProcessBuilder], capturing stdout line-by-line
-     * to extract the device code and verification URL.
-     *
-     * @param onDeviceCode  called on EDT when a device code + URL are parsed from stdout
-     * @param onAuthComplete called on EDT when the process exits successfully (auth done)
-     * @param onFallback     called on EDT if we cannot parse or the process fails — caller
-     *                       should open the embedded terminal as a fallback
-     * @return the spawned [Process], or null if it could not be started.  Callers should
-     *         [Process.destroy] it when no longer needed (e.g. banner dismissed).
-     */
     fun startInlineAuth(
         onDeviceCode: (DeviceCodeInfo) -> Unit,
         onAuthComplete: () -> Unit,
@@ -122,6 +154,10 @@ internal class AuthLoginService(private val project: Project) {
         try {
             val pb = ProcessBuilder(cmd)
             pb.redirectErrorStream(true)
+
+            // Configure agent-specific environment (e.g., COPILOT_HOME for copilot CLI)
+            configureAuthEnvironment(pb)
+
             process = pb.start()
         } catch (e: Exception) {
             LOG.warn("Inline auth: could not start process, falling back to terminal", e)
@@ -131,41 +167,50 @@ internal class AuthLoginService(private val project: Project) {
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                var foundCode = false
-                var pendingCode: String? = null
-                var pendingUrl: String? = null
-
-                process.inputStream.bufferedReader().use { reader ->
-                    reader.forEachLine { line ->
-                        val parsed = parseDeviceCode(line, pendingCode, pendingUrl)
-                        if (parsed.code != null) pendingCode = parsed.code
-                        if (parsed.url != null) pendingUrl = parsed.url
-
-                        if (pendingCode != null && pendingUrl != null && !foundCode) {
-                            foundCode = true
-                            val info = DeviceCodeInfo(pendingCode, pendingUrl)
-                            ApplicationManager.getApplication().invokeLater { onDeviceCode(info) }
-                        }
-                    }
-                }
-
+                val foundCode = readAuthProcessOutput(process, onDeviceCode)
                 val exitCode = process.waitFor()
                 ApplicationManager.getApplication().invokeLater {
-                    if (exitCode == 0) {
-                        onAuthComplete()
-                    } else if (!foundCode) {
-                        LOG.info("Inline auth: process exited with $exitCode, no device code found — falling back")
-                        onFallback()
-                    }
-                    // If we did show a code but exit != 0, user probably cancelled — do nothing
+                    handleAuthProcessExit(exitCode, foundCode, onAuthComplete, onFallback)
                 }
             } catch (e: Exception) {
-                if (!process.isAlive) return@executeOnPooledThread // killed intentionally
+                if (!process.isAlive) return@executeOnPooledThread
                 LOG.warn("Inline auth: reader failed, falling back", e)
                 ApplicationManager.getApplication().invokeLater { onFallback() }
             }
         }
         return process
+    }
+
+    private fun readAuthProcessOutput(process: Process, onDeviceCode: (DeviceCodeInfo) -> Unit): Boolean {
+        var foundCode = false
+        var pendingCode: String? = null
+        var pendingUrl: String? = null
+        process.inputStream.bufferedReader().use { reader ->
+            reader.forEachLine { line ->
+                val parsed = parseDeviceCode(line, pendingCode, pendingUrl)
+                if (parsed.code != null) pendingCode = parsed.code
+                if (parsed.url != null) pendingUrl = parsed.url
+                if (pendingCode != null && pendingUrl != null && !foundCode) {
+                    foundCode = true
+                    val info = DeviceCodeInfo(pendingCode, pendingUrl)
+                    ApplicationManager.getApplication().invokeLater { onDeviceCode(info) }
+                }
+            }
+        }
+        return foundCode
+    }
+
+    private fun handleAuthProcessExit(
+        exitCode: Int, foundCode: Boolean,
+        onAuthComplete: () -> Unit, onFallback: () -> Unit
+    ) {
+        if (exitCode == 0) {
+            onAuthComplete()
+        } else if (!foundCode) {
+            LOG.info("Inline auth: process exited with $exitCode, no device code found — falling back")
+            onFallback()
+        }
+        // If we did show a code but exit != 0, user probably cancelled — do nothing
     }
 
     private data class ParseResult(val code: String?, val url: String?)
@@ -190,9 +235,11 @@ internal class AuthLoginService(private val project: Project) {
     }
 
     fun startCopilotLogin() {
-        val resolvedCommand = resolveAuthCommand().joinToString(" ")
-        runAuthInEmbeddedTerminal(project, resolvedCommand, "Copilot Sign In") {
-            startCopilotLoginExternal(resolvedCommand)
+        val command = resolveAuthCommand().joinToString(" ")
+        val envVars = getAuthEnvironmentVars()
+        LOG.info("AuthLoginService: starting copilot login with command='$command', envVars=$envVars")
+        runAuthInEmbeddedTerminal(project, command, envVars, "Copilot Sign In") {
+            startCopilotLoginExternal(command)
         }
     }
 
@@ -206,12 +253,60 @@ internal class AuthLoginService(private val project: Project) {
         }
     }
 
+    /**
+     * Logs out the active agent by deleting its authentication data.
+     * For Copilot, this removes the entire .agent-work/copilot/ directory.
+     */
+    fun logout(): Boolean {
+        return try {
+            val agentManager = ActiveAgentManager.getInstance(project)
+            val profile = agentManager.getActiveProfile()
+            val agentId = profile.id
+
+            // Claude CLI stores credentials at ~/.claude/.credentials.json, not in .agent-work/
+            if (agentId == ClaudeCliClient.PROFILE_ID) {
+                val deleted = ClaudeCliCredentials.logout()
+                LOG.info("Claude CLI logout: credentials deleted=$deleted")
+                clearPendingAuthError()
+                return true
+            }
+
+            // Kiro CLI manages its own credentials — delegate to `kiro-cli logout`
+            if (agentId == AgentProfileManager.KIRO_PROFILE_ID) {
+                val binary = profile.binaryName ?: "kiro-cli"
+                val result = ProcessBuilder(binary, "logout")
+                    .redirectErrorStream(true)
+                    .start()
+                    .waitFor()
+                LOG.info("Kiro logout exit code: $result")
+                clearPendingAuthError()
+                return true
+            }
+
+            val projectBasePath = project.basePath ?: return false
+            val agentWorkDir = java.nio.file.Path.of(projectBasePath, ".agent-work", agentId)
+            if (java.nio.file.Files.exists(agentWorkDir)) {
+                agentWorkDir.toFile().deleteRecursively()
+                LOG.info("Deleted auth data for agent '$agentId' at $agentWorkDir")
+                clearPendingAuthError()
+                true
+            } else {
+                LOG.info("No auth data found for agent '$agentId' at $agentWorkDir")
+                false
+            }
+        } catch (e: Exception) {
+            LOG.warn("Failed to logout", e)
+            false
+        }
+    }
+
     // ── External-terminal fallbacks (used only when terminal plugin is absent) ──
 
     private fun startCopilotLoginExternal(command: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                launchExternalTerminal(command)
+                val envVars = getAuthEnvironmentVars()
+                launchExternalTerminal(command, envVars)
             } catch (e: Exception) {
                 LOG.warn("Could not open external terminal for Copilot auth", e)
                 ApplicationManager.getApplication().invokeLater {
@@ -229,7 +324,7 @@ internal class AuthLoginService(private val project: Project) {
     private fun startGhLoginExternal() {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                launchExternalTerminal("gh auth login")
+                launchExternalTerminal("gh auth login", emptyMap())
             } catch (e: Exception) {
                 LOG.warn("Could not open external terminal for GitHub auth", e)
                 ApplicationManager.getApplication().invokeLater {
@@ -244,26 +339,82 @@ internal class AuthLoginService(private val project: Project) {
         }
     }
 
-    private fun launchExternalTerminal(command: String) {
+    private fun launchExternalTerminal(command: String, envVars: Map<String, String>) {
         val os = System.getProperty(OS_NAME_PROPERTY).lowercase()
+        val fullCommand = buildCommandWithEnvironment(command, envVars)
+
         when {
             os.contains("win") ->
-                ProcessBuilder("cmd", "/c", "start", "cmd", "/k", command).start()
+                ProcessBuilder("cmd", "/c", "start", "cmd", "/k", fullCommand).start()
 
             os.contains("mac") ->
                 ProcessBuilder(
                     "osascript", "-e",
-                    "tell application \"Terminal\" to do script \"$command\"",
+                    "tell application \"Terminal\" to do script \"$fullCommand\"",
                 ).start()
 
             else ->
                 ProcessBuilder(
                     "sh", "-c",
-                    "x-terminal-emulator -e '$command' || " +
-                        "gnome-terminal -- $command || " +
-                        "konsole -e $command || " +
-                        "xterm -e $command",
+                    "x-terminal-emulator -e '$fullCommand' || " +
+                        "gnome-terminal -- bash -c '$fullCommand' || " +
+                        "konsole -e bash -c '$fullCommand' || " +
+                        "xterm -e bash -c '$fullCommand'",
                 ).start()
+        }
+    }
+
+    /**
+     * Configures environment variables for auth commands to use the same
+     * home directories as the main ACP agent processes.
+     */
+    private fun configureAuthEnvironment(pb: ProcessBuilder) {
+        try {
+            val agentManager = ActiveAgentManager.getInstance(project)
+            val profile = agentManager.getActiveProfile()
+            val config = ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project))
+            // Use login-specific env so HOME is NOT overridden (overriding HOME breaks copilot npm wrapper)
+            config.configureLoginCommandEnvironment(pb.environment(), project.basePath)
+        } catch (e: Exception) {
+            LOG.warn("Failed to configure auth environment", e)
+        }
+    }
+
+    /**
+     * Gets environment variables for auth (login) commands.
+     * Only sets agent-specific credential-directory vars; does NOT override HOME.
+     */
+    private fun getAuthEnvironmentVars(): Map<String, String> {
+        return try {
+            val agentManager = ActiveAgentManager.getInstance(project)
+            val profile = agentManager.getActiveProfile()
+            val config = ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project))
+            val envMap = mutableMapOf<String, String>()
+            config.configureLoginCommandEnvironment(envMap, project.basePath)
+            envMap
+        } catch (e: Exception) {
+            LOG.warn("Failed to get auth environment variables", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Builds a shell command that exports environment variables before running the main command.
+     * Handles both Unix-like and Windows shells.
+     */
+    private fun buildCommandWithEnvironment(command: String, envVars: Map<String, String>): String {
+        if (envVars.isEmpty()) return command
+
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+
+        return if (isWindows) {
+            // Windows cmd: set VAR=value && command
+            val exports = envVars.entries.joinToString(" && ") { (key, value) -> "set $key=$value" }
+            "$exports && $command"
+        } else {
+            // Unix shells: export VAR=value; command
+            val exports = envVars.entries.joinToString("; ") { (key, value) -> "export $key='$value'" }
+            "$exports; $command"
         }
     }
 }

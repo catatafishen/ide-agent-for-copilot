@@ -12,10 +12,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
 import java.awt.Dimension
-import javax.swing.Box
-import javax.swing.BoxLayout
-import javax.swing.JComponent
-import javax.swing.JSeparator
+import javax.swing.*
 
 internal object ToolCallPopup {
 
@@ -36,23 +33,46 @@ internal object ToolCallPopup {
     /**
      * Shows a popup with tool result and optional parameters.
      *
-     * @param kind         tool kind ("read", "edit", "execute", etc.) — drives the background tint
-     * @param paramsPanel  Swing component for the parameters section, or null to omit
-     * @param resultPanel  Swing component for the result section
+     * @param kind            tool kind ("read", "edit", "execute", etc.) — drives the background tint
+     * @param paramsPanel     Swing component for the parameters section, or null to omit
+     * @param resultPanel     Swing component for the result section
+     * @param toolDescription optional one-liner description for MCP tools, shown at the top of the popup
+     * @param autoDenied      true if the tool was automatically denied by the plugin (security/policy)
+     * @param denialReason    human-readable reason for the auto-denial, or null
      */
-    fun show(project: Project, title: String, kind: String, paramsPanel: JComponent?, resultPanel: JComponent) {
+    fun show(
+        project: Project,
+        title: String,
+        kind: String,
+        paramsPanel: JComponent?,
+        resultPanel: JComponent,
+        toolDescription: String? = null,
+        autoDenied: Boolean = false,
+        denialReason: String? = null
+    ) {
         currentPopup?.cancel()
 
         val kindColor = KIND_COLORS[kind] ?: KIND_COLORS["other"]!!
         val panelBg = UIUtil.getPanelBackground()
         val tintedBg = ToolRenderers.blendColor(kindColor, panelBg, 0.07)
 
-        val contentPanel = buildContentPanel(tintedBg, resultPanel, paramsPanel)
+        val contentPanel = buildContentPanel(
+            tintedBg,
+            resultPanel,
+            paramsPanel,
+            toolDescription,
+            autoDenied,
+            denialReason
+        )
 
         val width = popupWidth()
         val height = popupHeight()
 
-        val scrollPane = JBScrollPane(contentPanel).apply {
+        val scrollPane = JBScrollPane(
+            contentPanel,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER,
+        ).apply {
             preferredSize = Dimension(width, height)
             border = JBUI.Borders.empty()
         }
@@ -86,11 +106,72 @@ internal object ToolCallPopup {
         }
     }
 
-    private fun buildContentPanel(bg: Color, resultPanel: JComponent, paramsPanel: JComponent?): JBPanel<JBPanel<*>> {
-        val panel = JBPanel<JBPanel<*>>().apply {
+    private fun buildContentPanel(
+        bg: Color,
+        resultPanel: JComponent,
+        paramsPanel: JComponent?,
+        toolDescription: String? = null,
+        autoDenied: Boolean = false,
+        denialReason: String? = null,
+    ): JBPanel<JBPanel<*>> {
+        val panel = object : JBPanel<JBPanel<*>>(), Scrollable {
+            override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
+            override fun getScrollableUnitIncrement(visibleRect: java.awt.Rectangle, orientation: Int, direction: Int) =
+                16
+
+            override fun getScrollableBlockIncrement(
+                visibleRect: java.awt.Rectangle,
+                orientation: Int,
+                direction: Int,
+            ) = height
+
+            override fun getScrollableTracksViewportWidth() = true
+            override fun getScrollableTracksViewportHeight() = false
+        }.apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             background = bg
             border = JBUI.Borders.empty(8, 12)
+        }
+
+        if (autoDenied) {
+            val denialPanel = JBPanel<JBPanel<*>>().apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                background = bg
+                border = JBUI.Borders.compound(
+                    JBUI.Borders.customLine(JBColor.RED, 1),
+                    JBUI.Borders.empty(8)
+                )
+                alignmentX = JComponent.LEFT_ALIGNMENT
+
+                add(JBLabel("Tool call was automatically denied by the plugin.").apply {
+                    foreground = JBColor.RED
+                    font = JBUI.Fonts.label().asBold()
+                    alignmentX = JComponent.LEFT_ALIGNMENT
+                })
+                if (denialReason != null) {
+                    add(Box.createVerticalStrut(JBUI.scale(4)))
+                    add(JBLabel("<html><body style='width:580px'>Reason: $denialReason</body></html>").apply {
+                        foreground = JBColor.RED
+                        alignmentX = JComponent.LEFT_ALIGNMENT
+                    })
+                }
+            }
+            panel.add(denialPanel)
+            panel.add(Box.createVerticalStrut(JBUI.scale(12)))
+        }
+
+        if (toolDescription != null) {
+            val descLabel = JBLabel("<html><body style='width:580px'>$toolDescription</body></html>").apply {
+                foreground = UIUtil.getContextHelpForeground()
+                border = JBUI.Borders.empty(0, 0, 6, 0)
+                alignmentX = JComponent.LEFT_ALIGNMENT
+            }
+            panel.add(descLabel)
+            panel.add(JSeparator().apply {
+                alignmentX = JComponent.LEFT_ALIGNMENT
+                maximumSize = Dimension(Int.MAX_VALUE, 1)
+            })
+            panel.add(Box.createVerticalStrut(JBUI.scale(4)))
         }
 
         if (paramsPanel != null) {
@@ -98,11 +179,10 @@ internal object ToolCallPopup {
             paramsPanel.alignmentX = JComponent.LEFT_ALIGNMENT
             panel.add(paramsPanel)
             panel.add(Box.createVerticalStrut(JBUI.scale(6)))
-            val separator = JSeparator().apply {
+            panel.add(JSeparator().apply {
                 alignmentX = JComponent.LEFT_ALIGNMENT
                 maximumSize = Dimension(Int.MAX_VALUE, 1)
-            }
-            panel.add(separator)
+            })
         }
 
         panel.add(sectionLabel("Result"))

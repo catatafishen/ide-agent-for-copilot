@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.git;
 
+import com.github.catatafishen.ideagentforcopilot.services.PermissionTemplateUtil;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -13,6 +14,10 @@ import java.util.List;
  */
 @SuppressWarnings("java:S112")
 public final class GitFetchTool extends GitTool {
+
+    private static final String PARAM_REMOTE = "remote";
+    private static final String PARAM_BRANCH = "branch";
+    private static final String PARAM_PRUNE = "prune";
 
     public GitFetchTool(Project project) {
         super(project);
@@ -33,7 +38,13 @@ public final class GitFetchTool extends GitTool {
         return "Download objects and refs from a remote";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public boolean isOpenWorld() {
         return true;
     }
@@ -44,21 +55,31 @@ public final class GitFetchTool extends GitTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @Nullable String resolvePermissionQuestion(@Nullable JsonObject args) {
+        JsonObject enriched = args != null ? args.deepCopy() : new JsonObject();
+        if (!enriched.has(PARAM_REMOTE)) {
+            enriched.addProperty(PARAM_REMOTE, "origin");
+        }
+        String resolved = PermissionTemplateUtil.substituteArgs(permissionTemplate(), enriched);
+        return PermissionTemplateUtil.stripPlaceholders(resolved);
+    }
+
+    @Override
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"remote", TYPE_STRING, "Remote name (default: origin)"},
-            {"branch", TYPE_STRING, "Specific branch to fetch"},
-            {"prune", TYPE_BOOLEAN, "Remove remote-tracking refs that no longer exist on the remote"},
+            {PARAM_REMOTE, TYPE_STRING, "Remote name (default: origin)"},
+            {PARAM_BRANCH, TYPE_STRING, "Specific branch to fetch"},
+            {PARAM_PRUNE, TYPE_BOOLEAN, "Remove remote-tracking refs that no longer exist on the remote"},
             {"tags", TYPE_BOOLEAN, "Fetch all tags from the remote"}
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("fetch");
 
-        if (args.has("prune") && args.get("prune").getAsBoolean()) {
+        if (args.has(PARAM_PRUNE) && args.get(PARAM_PRUNE).getAsBoolean()) {
             cmdArgs.add("--prune");
         }
 
@@ -66,12 +87,12 @@ public final class GitFetchTool extends GitTool {
             cmdArgs.add("--tags");
         }
 
-        if (args.has("remote") && !args.get("remote").getAsString().isEmpty()) {
-            cmdArgs.add(args.get("remote").getAsString());
+        if (args.has(PARAM_REMOTE) && !args.get(PARAM_REMOTE).getAsString().isEmpty()) {
+            cmdArgs.add(args.get(PARAM_REMOTE).getAsString());
         }
 
-        if (args.has("branch") && !args.get("branch").getAsString().isEmpty()) {
-            cmdArgs.add(args.get("branch").getAsString());
+        if (args.has(PARAM_BRANCH) && !args.get(PARAM_BRANCH).getAsString().isEmpty()) {
+            cmdArgs.add(args.get(PARAM_BRANCH).getAsString());
         }
 
         String result = runGit(cmdArgs.toArray(String[]::new));

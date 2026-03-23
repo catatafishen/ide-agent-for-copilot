@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -19,6 +20,7 @@ final class SseSession {
     private final HttpExchange exchange;
     private final OutputStream outputStream;
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final CountDownLatch closedLatch = new CountDownLatch(1);
 
     SseSession(HttpExchange exchange) {
         this.sessionId = UUID.randomUUID().toString();
@@ -59,10 +61,19 @@ final class SseSession {
     }
 
     /**
+     * Blocks until this session is closed, or the calling thread is interrupted.
+     * Used by the SSE handler thread to keep the HTTP exchange alive.
+     */
+    void awaitClose() throws InterruptedException {
+        closedLatch.await();
+    }
+
+    /**
      * Closes the SSE stream and the underlying HTTP exchange.
      */
     void close() {
         if (closed.compareAndSet(false, true)) {
+            closedLatch.countDown();
             try {
                 outputStream.close();
             } catch (IOException ignored) {

@@ -2,237 +2,219 @@
 
 ## System Architecture
 
+```mermaid
+graph TB
+    subgraph IDE["IntelliJ IDEA IDE"]
+        subgraph Plugin["AgentBridge Plugin (Java 21)"]
+            UI["Tool Window<br/>(JCEF Chat)"]
+            
+            subgraph Services["Services Layer"]
+                AAM["ActiveAgentManager"]
+                APM["AgentProfileManager"]
+                PSI["PsiBridgeService<br/>(92 MCP tools)"]
+                TCR["ToolChipRegistry"]
+            end
+            
+            subgraph Clients["Agent Clients"]
+                ACP["AcpClient (abstract)"]
+                COP["CopilotClient"]
+                JUN["JunieClient"]
+                KIR["KiroClient"]
+                OPC["OpenCodeClient"]
+                CLC["ClaudeCliClient"]
+                ADC["AnthropicDirectClient"]
+            end
+        end
+    end
+    
+    subgraph External["External Processes"]
+        CLI["Agent CLI<br/>(Copilot/Junie/Kiro/OpenCode/Claude)"]
+        MCP["MCP Server (JAR)<br/>agentbridge"]
+        LLM["Cloud LLM<br/>(OpenAI/Anthropic/etc)"]
+    end
+    
+    UI --> AAM
+    AAM --> Clients
+    Clients -->|"stdin/stdout<br/>JSON-RPC 2.0"| CLI
+    CLI -->|"API calls"| LLM
+    LLM -->|"tool_call"| CLI
+    CLI -->|"stdio"| MCP
+    MCP -->|"HTTP POST"| PSI
+    PSI -->|"result"| MCP
+    MCP -->|"stdio"| CLI
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     IntelliJ IDEA IDE                            │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │           Agentic Copilot Plugin (Java 21)             │    │
-│  │                                                          │    │
-│  │  ┌──────────────┐  ┌───────────────────────────────┐  │    │
-│  │  │ Tool Window  │  │  Services Layer               │  │    │
-│  │  │  (Swing UI)  │  │                               │  │    │
-│  │  │              │  │  - CopilotService             │  │    │
-│  │  │ • Chat       │◄─┤  - AgenticCopilotService     │  │    │
-│  │  │ • Context    │  │  - GitService                 │  │    │
-│  │  │ • Session    │  │  - FormatService              │  │    │
-│  │  │ • Settings   │  │  - SettingsService            │  │    │
-│  │  └──────────────┘  └─────┬─────────────────────────┘  │    │
-│  │                           │                             │    │
-│  │  ┌────────────────────────▼──────────────────────┐    │    │
-│  │  │     Bridge Layer (CopilotAcpClient)          │    │    │
-│  │  │  • JSON-RPC 2.0 over stdin/stdout            │    │    │
-│  │  │  • Permission handler (deny + retry)         │    │    │
-│  │  │  • Streaming response handling               │    │    │
-│  │  └────────────────────┬──────────────────────────┘    │    │
-│  │                       │                                │    │
-│  │  ┌────────────────────▼──────────────────────┐        │    │
-│  │  │     PSI Bridge (PsiBridgeService)         │        │    │
-│  │  │  • HTTP server inside IntelliJ process    │        │    │
-│  │  │  • 55 MCP tools via IntelliJ APIs         │        │    │
-│  │  └────────────────────┬──────────────────────┘        │    │
-│  └───────────────────────┼───────────────────────────────┘    │
-│                          │ stdin/stdout (ACP)                  │
-└──────────────────────────┼────────────────────────────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │   GitHub Copilot CLI    │
-              │   (ACP protocol)        │
-              └────────────┬────────────┘
-                           │ stdio
-              ┌────────────▼────────────┐
-              │   MCP Server (JAR)      │
-              │   (routes to PSI Bridge)│
-              └────────────┬────────────┘
-                           │ HTTP
-              ┌────────────▼────────────┐
-              │  Copilot API Service    │
-              │  (cloud LLM)            │
-              └─────────────────────────┘
+
+## Tool Call Round-Trip
+
+```mermaid
+sequenceDiagram
+    participant LLM as Cloud LLM
+    participant CLI as Agent CLI
+    participant MCP as MCP Server (JAR)
+    participant PSI as PSI Bridge (IDE)
+    
+    Note over LLM,PSI: Agent decides to call a tool
+    LLM->>CLI: tool_call: write_file
+    CLI->>MCP: tools/call (stdio)
+    MCP->>PSI: HTTP POST /write_file
+    PSI->>PSI: Execute via IntelliJ API
+    PSI-->>MCP: HTTP response (result)
+    MCP-->>CLI: JSON-RPC result (stdio)
+    CLI-->>LLM: tool_result
+    Note over LLM,PSI: Agent continues reasoning
 ```
 
 ---
 
 ## Component Details
 
-### 1. Plugin Layer (Java 21)
+### 1. Services Layer
 
-#### Tool Window
+#### ActiveAgentManager (Project-level)
 
-- **Framework**: Swing (JPanel-based)
-- **Layout**: Single-panel with chat console, toolbar, and prompt input
-- **Responsibilities**:
-    - Render UI components
-    - Handle user input
-    - Display plans/timeline
-    - Show approval dialogs
+Central service that manages the active agent profile and client lifecycle:
 
-#### Services
-
-All services implement `Disposable` for proper cleanup.
-
-**CopilotService** (Application-level):
-
-- Manages ACP client lifecycle
-- Starts Copilot CLI process
-- Auto-restarts on crashes (with backoff)
-
-**AgenticCopilotService** (Project-level):
-
-- High-level API for UI components
-- Session management (create/close)
-- Message sending with context
-- Event stream handling
-
-**GitService** (Project-level):
-
-- Wraps IntelliJ Git4Idea APIs
-- Conventional commit formatting
-- Branch operations
-- Safety checks for destructive operations
-
-**FormatService** (Project-level):
-
-- Code formatting after agent edits
-- Import optimization
-- Changed-range detection
-
-**SettingsService** (Project-level):
-
-- Load/save plugin configuration
-- JSON serialization to `.idea/copilot-agent.json`
-- Tool permission management
-
-#### Bridge Layer
-
-**CopilotAcpClient**:
+- Stores which `AgentProfile` is currently active
+- Creates and owns the `AbstractAgentClient` for the active profile
+- Handles client start/stop/restart/dispose
+- Provides shared UI preferences (attach trigger, follow-agent-files)
 
 ```java
-public class CopilotAcpClient {
-    // Communicates with Copilot CLI via ACP (JSON-RPC 2.0 over stdin/stdout)
-
-    public void initialize();
-
-    public SessionResponse createSession();
-
-    public void sendPrompt(String sessionId, String prompt);
-
-    public void cancelSession(String sessionId);
+@Service(Service.Level.PROJECT)
+public final class ActiveAgentManager implements Disposable {
+    private AbstractAgentClient acpClient;
+    private AgentConfig cachedConfig;
+    
+    public void setActiveProfile(AgentProfile profile);
+    public AbstractAgentClient getClient();
+    public void startAgent();
+    public void stopAgent();
 }
 ```
 
-**Permission Handler**:
+#### AgentProfileManager (Application-level)
 
-Built-in Copilot file operations are denied so all writes go through IntelliJ's Document API:
+Manages the collection of available agent profiles:
 
-1. Agent requests permission (kind="edit")
-2. Plugin denies the permission
-3. Agent retries using MCP tool (`intellij_write_file`)
-4. Write goes through Document API with undo support
-5. Auto-format runs (optimize imports + reformat)
+- Built-in profiles: GitHub Copilot, OpenCode, Junie, Kiro, Claude Code
+- Custom user-defined profiles
+- Profile persistence and serialization
 
----
+#### PsiBridgeService (Project-level)
 
-### 2. MCP Tool Bridge
+HTTP server exposing 92 IntelliJ-native MCP tools:
 
+- Starts on dynamic localhost port
+- Handles tool invocations from MCP server
+- Accesses PSI, VFS, Document API, Git4Idea, etc.
+
+### 2. Agent Clients
+
+All agent clients extend `AbstractAgentClient`, which provides common functionality:
+
+- Session management (create, prompt, cancel)
+- Model selection
+- Event streaming and listeners
+- Connection lifecycle
+
+#### ACP-Based Clients
+
+For agents that use the Agent Client Protocol (JSON-RPC 2.0 over stdio):
+
+| Client | Agent | Notes |
+|--------|-------|-------|
+| `CopilotClient` | GitHub Copilot CLI | Full ACP, permission requests |
+| `JunieClient` | JetBrains Junie | ACP without permissions |
+| `KiroClient` | Amazon Kiro | ACP with tool filtering |
+| `OpenCodeClient` | OpenCode | ACP with config-based permissions |
+
+#### Claude-Based Clients
+
+For Anthropic Claude agents (different protocol):
+
+| Client | Agent | Notes |
+|--------|-------|-------|
+| `ClaudeCliClient` | Claude Code CLI | Uses claude-code-acp wrapper |
+| `AnthropicDirectClient` | Anthropic API | Direct API calls, no CLI |
+
+### 3. Profile-Based Configuration
+
+`ProfileBasedAgentConfig` creates agent configuration from an `AgentProfile`:
+
+- CLI command and arguments
+- Environment variables (MCP server config, API keys)
+- Tool filtering (excludedTools parameter)
+- Permission injection method (CLI flags, JSON config, or none)
+- Session instructions
+
+### 4. MCP Tool Bridge
+
+The MCP Server is a **pass-through** that routes tool calls from the Agent CLI to the PSI Bridge:
+
+```mermaid
+graph LR
+    CLI["Agent CLI"] -->|"stdio<br/>JSON-RPC"| MCP["MCP Server<br/>(JAR)"]
+    MCP -->|"HTTP POST<br/>localhost:port"| PSI["PsiBridgeService<br/>(IntelliJ)"]
 ```
-Copilot CLI ──stdio──► MCP Server (JAR) ──HTTP──► PsiBridgeService
-                       intellij-code-tools         (IntelliJ process)
-```
 
-- **MCP Server** (`mcp-server/`): Standalone JAR, stdio protocol, routes tool calls to PSI bridge
-- **PSI Bridge** (`PsiBridgeService`): HTTP server inside IntelliJ process, accesses PSI/VFS/Document APIs
-- **Bridge file**: `~/.copilot/psi-bridge.json` contains port for HTTP connection
-
----
-
-### 3. Tool Callbacks
-
-When Copilot CLI invokes a tool (e.g., `intellij_write_file`), the MCP server makes an HTTP request to the PSI bridge:
-
-```
-Copilot CLI → MCP Server (stdio) → PSI Bridge (HTTP) → IntelliJ APIs
-```
-
-#### Auto-Format After Write
-
-Every file write through `intellij_write_file` triggers:
-
-1. `PsiDocumentManager.commitAllDocuments()`
-2. `OptimizeImportsProcessor`
-3. `ReformatCodeProcessor`
-
-This runs inside a single undoable command group on the EDT.
+- **MCP Server** (`mcp-server/`): Standalone JAR spawned by Agent CLI, receives tool calls via stdio, forwards to PSI Bridge via HTTP
+- **PSI Bridge** (`PsiBridgeService`): HTTP server inside IntelliJ process, executes tools using IntelliJ APIs
+- **Bridge file**: `~/.copilot/psi-bridge.json` contains the dynamic port
 
 ---
 
 ## Data Flow
 
-### Typical Prompt Flow
+### Prompt Flow
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant Plugin
+    participant CLI as Agent CLI
+    participant LLM as Cloud LLM
+    
+    User->>Plugin: Type prompt
+    Plugin->>CLI: session/prompt
+    CLI->>LLM: API request
+    LLM-->>CLI: Streaming response
+    CLI-->>Plugin: session/update (chunks)
+    Plugin-->>User: Display response
 ```
-┌─────────┐            ┌────────┐           ┌─────────────┐
-│  User   │            │ Plugin │           │ Copilot CLI │
-└────┬────┘            └───┬────┘           └──────┬──────┘
-     │                     │                       │
-     │  Type prompt        │                       │
-     ├────────────────────►│                       │
-     │                     │  session/prompt        │
-     │                     ├──────────────────────►│
-     │                     │                       │
-     │                     │  session/update        │
-     │                     │◄──────────────────────┤
-     │                     │  (streaming chunks)    │
-     │  Display response   │                       │
-     │◄────────────────────┤                       │
-     │                     │                       │
-     │                     │  request_permission    │
-     │                     │◄──────────────────────┤
-     │                     │  (deny built-in edit)  │
-     │                     ├──────────────────────►│
-     │                     │                       │
-     │                     │  MCP tool call         │
-     │                     │◄──────────────────────┤
-     │                     │  (intellij_write_file) │
-     │                     ├──────────────────────►│
-     │                     │                       │
+
+### Permission Flow (ACP agents with permissions)
+
+```mermaid
+sequenceDiagram
+    participant CLI as Agent CLI
+    participant Plugin
+    participant MCP as MCP Server
+    participant PSI as PSI Bridge
+    
+    CLI->>Plugin: request_permission (kind="edit")
+    Plugin-->>CLI: DENY (forces MCP tool)
+    CLI->>MCP: tools/call write_file
+    MCP->>PSI: HTTP POST /write_file
+    PSI->>PSI: Document API write
+    PSI->>PSI: Auto-format
+    PSI-->>MCP: Success
+    MCP-->>CLI: Result
 ```
 
 ---
 
-## Configuration
+## Key Files
 
-### Plugin Settings (JSON)
-
-```json
-{
-  "model": "gpt-4o",
-  "mode": "agent",
-  "formatting": {
-    "optimizeImportsOnSave": true,
-    "formatAfterAgentEdits": true,
-    "preCommitReformat": true
-  },
-  "conventionalCommits": {
-    "enabled": true,
-    "defaultType": "chore",
-    "enforceScopes": false,
-    "allowedTypes": [
-      "feat",
-      "fix",
-      "docs",
-      "style",
-      "refactor",
-      "perf",
-      "test",
-      "build",
-      "ci",
-      "chore",
-      "revert"
-    ]
-  }
-}
-```
+| File | Purpose |
+|------|---------|
+| `services/ActiveAgentManager.java` | Active profile and client lifecycle |
+| `services/AgentProfileManager.java` | Profile collection management |
+| `acp/client/AcpClient.java` | Base ACP client (JSON-RPC 2.0) |
+| `acp/client/CopilotClient.java` | GitHub Copilot implementation |
+| `acp/client/JunieClient.java` | JetBrains Junie implementation |
+| `agent/claude/ClaudeCliClient.java` | Claude Code CLI implementation |
+| `bridge/ProfileBasedAgentConfig.java` | Profile → AgentConfig conversion |
+| `psi/PsiBridgeService.java` | 92 MCP tools via IntelliJ APIs |
 
 ---
 
@@ -241,111 +223,17 @@ This runs inside a single undoable command group on the EDT.
 ### Tool Permissions
 
 - **deny**: Never execute (fail immediately)
-- **ask**: Prompt user for approval (default for dangerous ops)
-- **allow**: Execute without prompt (for safe ops only)
+- **ask**: Prompt user for approval
+- **allow**: Execute without prompt
 
 ### Sensitive Operations
 
 Always require approval:
-
-- `git.push --force`
-- `exec.run` (shell commands)
+- `git_push --force`
+- `run_command` (shell commands)
 - File deletions
 - Operations outside project root
 
-### Token Storage
-
-- GitHub auth tokens stored in IntelliJ's `PasswordSafe`
-- Never logged or exposed in UI
-- Cleared on logout
-
 ---
 
-## Error Handling
-
-### Plugin Layer
-
-```java
-try{
-        client.sendPrompt(sessionId, prompt);
-}catch(
-AcpException e){
-        if(e.
-
-isRecoverable()){
-
-// Auto-restart ACP process
-restartAcpClient();
-    }else{
-            Notifications.Bus.
-
-notify(
-            new Notification("Copilot", "Error",e.getMessage(),NotificationType.ERROR)
-        );
-        }
-        }
-```
-
-### SDK Errors
-
-- Network timeouts: Retry with exponential backoff
-- Rate limits: Queue requests, show progress
-- Auth failures: Re-authenticate via `copilot auth`
-
----
-
-## Testing Strategy
-
-### Unit Tests (Plugin)
-
-- `CopilotAcpClient`: Mock stdin/stdout protocol
-- `GitService`: Mock VCS API
-- `FormatService`: Test on sample code
-- `SettingsService`: Test JSON serialization
-
-### Integration Tests (Plugin)
-
-- Start real Copilot CLI process
-- Create session, send message
-- Verify ACP communication
-- Test event streaming
-
-### E2E Tests
-
-- Full workflow: Prompt → Plan → Git commit
-- Error scenarios: Process crash, network failure
-- Permission flows: Approve/deny dialogs
-
----
-
-## Performance Optimization
-
-### Plugin
-
-- Lazy-load ACP client (on first use)
-- Cache model list (5 min TTL)
-- Debounce UI updates (50ms)
-- Use background threads for I/O
-
-### Memory
-
-- Close sessions promptly
-- Limit concurrent sessions (default: 5)
-- Clear old timeline events (keep last 100)
-
----
-
-## Future Enhancements (Post-v1)
-
-### Plugin
-
-- Multiple simultaneous agents (parallel tasks)
-- Workspace-level context (search across files)
-- Custom tool registration (user-defined)
-- Inline code suggestions (like Copilot Chat)
-
-### Integration
-
-- GitHub PR generation
-- Jira/Linear issue creation
-- CI/CD pipeline integration
+*Last Updated: 2026-03-22*

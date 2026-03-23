@@ -48,8 +48,8 @@ public final class MacroToolRegistrar {
         // Collect which tool IDs should be registered
         Set<String> desiredIds = new HashSet<>();
         for (MacroRegistration reg : registrations) {
-            if (reg.enabled && !reg.toolName.isEmpty() && !reg.macroName.isEmpty()) {
-                desiredIds.add(reg.toolName);
+            if (reg.isEnabled() && !reg.getToolName().isEmpty() && !reg.getMacroName().isEmpty()) {
+                desiredIds.add(reg.getToolName());
             }
         }
 
@@ -66,12 +66,12 @@ public final class MacroToolRegistrar {
 
         // Register new or updated tools
         for (MacroRegistration reg : registrations) {
-            if (!reg.enabled || reg.toolName.isEmpty() || reg.macroName.isEmpty()) {
+            if (!reg.isEnabled() || reg.getToolName().isEmpty() || reg.getMacroName().isEmpty()) {
                 continue;
             }
-            bridge.registerTool(new MacroToolHandler(project, reg.toolName, reg.macroName));
-            registeredToolIds.add(reg.toolName);
-            LOG.info("Registered macro tool: " + reg.toolName + " → macro '" + reg.macroName + "'");
+            bridge.registerTool(new MacroToolHandler(project, reg.getToolName(), reg.getMacroName()));
+            registeredToolIds.add(reg.getToolName());
+            LOG.info("Registered macro tool: " + reg.getToolName() + " → macro '" + reg.getMacroName() + "'");
         }
     }
 

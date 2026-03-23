@@ -16,16 +16,11 @@ export default class MessageBubble extends HTMLElement {
         this.classList.add(isUser ? 'prompt-bubble' : 'agent-bubble');
 
         if (isUser) {
-            this.setAttribute('tabindex', '0');
-            this.setAttribute('role', 'button');
-            this.setAttribute('aria-label', 'Toggle message details');
+            this.onclick = (e: MouseEvent) => {
+                if ((e.target as Element).closest('a,.turn-chip')) return;
+                collapseAllChips(parent);
+            };
         }
-        this.onclick = (e: MouseEvent) => {
-            if ((e.target as Element).closest('a,.turn-chip')) return;
-            collapseAllChips(parent);
-            const meta = parent?.querySelector('message-meta');
-            if (meta) meta.classList.toggle('show');
-        };
 
         if (this.hasAttribute('streaming')) this._setupStreaming();
     }
@@ -41,7 +36,11 @@ export default class MessageBubble extends HTMLElement {
 
     appendStreamingText(text: string): void {
         if (!this._pre) this._setupStreaming();
-        this._pre!.textContent += text;
+        // Append a new text node instead of `textContent +=` to avoid O(n²) behaviour:
+        // textContent= reads all existing content then replaces it, making each token
+        // append O(n) in total accumulated length. With long responses this saturates
+        // the renderer thread and causes the whole JCEF panel to appear frozen.
+        this._pre!.appendChild(document.createTextNode(text));
     }
 
     finalize(html: string): void {

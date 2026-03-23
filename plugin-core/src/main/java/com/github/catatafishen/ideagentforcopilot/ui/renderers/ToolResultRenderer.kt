@@ -1,9 +1,17 @@
 package com.github.catatafishen.ideagentforcopilot.ui.renderers
 
+import com.intellij.diff.DiffContentFactory
+import com.intellij.diff.DiffManager
+import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.icons.AllIcons
+import com.intellij.ide.scratch.ScratchFileService
+import com.intellij.ide.scratch.ScratchRootType
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.util.Computable
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
@@ -56,20 +64,59 @@ object ToolIcons {
 object ToolRenderers {
 
     /**
-     * Resolves a renderer for a tool by looking up its definition in the registry.
-     * Falls back to null if the tool has no custom renderer.
+     * Best-effort renderers for built-in Copilot CLI tools that are not registered
+     * in our MCP ToolRegistry. Keyed by the bare tool name (after prefix stripping).
+     * Renderers are defensive: they return null when output doesn't match expectations,
+     * and the caller falls back to codePanel().
      */
-    fun get(toolName: String, registry: com.github.catatafishen.ideagentforcopilot.services.ToolRegistry?): ToolResultRenderer? {
-        val def = registry?.findById(toolName) ?: return null
-        return def.resultRenderer() as? ToolResultRenderer
+    private val BUILTIN_RENDERERS: Map<String, ToolResultRenderer> = mapOf(
+        // Copilot CLI built-in tools
+        "update_todo" to TodoRenderer,
+        "glob" to GlobRenderer,
+        "Glob" to GlobRenderer,
+        "view" to WriteFileRenderer,
+        "View" to WriteFileRenderer,
+        "edit" to WriteFileRenderer,
+        "Edit" to WriteFileRenderer,
+        "write" to WriteFileRenderer,
+        "Write" to WriteFileRenderer,
+        "Read" to ReadFileRenderer,
+        "edit_text" to WriteFileRenderer,
+        "read_file" to ReadFileRenderer,
+        "write_file" to WriteFileRenderer,
+        "create_file" to WriteFileRenderer,
+        // OpenCode / Claude built-in tools
+        "todowrite" to TodoRenderer,
+        "TodoWrite" to TodoRenderer,
+        "grep" to GlobRenderer,  // similar list output format
+        "Grep" to GlobRenderer,
+    )
+
+    /**
+     * Resolves a renderer for a tool. Checks the MCP registry first, then falls
+     * back to the built-in renderer map for Copilot CLI tools.
+     * Returns null if no renderer is found.
+     */
+    fun get(
+        toolName: String,
+        registry: com.github.catatafishen.ideagentforcopilot.services.ToolRegistry?
+    ): ToolResultRenderer? {
+        val def = registry?.findById(toolName)
+        if (def != null) return def.resultRenderer() as? ToolResultRenderer
+        return BUILTIN_RENDERERS[toolName]
     }
 
     /**
-     * Checks whether a tool has a custom renderer via its definition.
+     * Checks whether a tool has a custom renderer, either via its registry
+     * definition or via the built-in renderer map.
      */
-    fun hasRenderer(toolName: String, registry: com.github.catatafishen.ideagentforcopilot.services.ToolRegistry?): Boolean {
-        val def = registry?.findById(toolName) ?: return false
-        return def.resultRenderer() != null
+    fun hasRenderer(
+        toolName: String,
+        registry: com.github.catatafishen.ideagentforcopilot.services.ToolRegistry?
+    ): Boolean {
+        val def = registry?.findById(toolName)
+        if (def != null) return def.resultRenderer() != null
+        return BUILTIN_RENDERERS.containsKey(toolName)
     }
 
     // ── Semantic colors — shared across all renderers ────────
@@ -230,7 +277,8 @@ object ToolRenderers {
             background = scheme.defaultBackground
             foreground = scheme.defaultForeground
             border = JBUI.Borders.empty(6)
-            lineWrap = false
+            lineWrap = true
+            wrapStyleWord = false
             alignmentX = JComponent.LEFT_ALIGNMENT
         }
     }
@@ -245,6 +293,84 @@ object ToolRenderers {
             background = scheme.defaultBackground
             foreground = scheme.defaultForeground
             border = JBUI.Borders.empty(6, 8)
+        }
+    }
+
+    /** Lines at or below this count are rendered inline; above it a scratch link is offered instead. */
+    const val CODE_SCRATCH_THRESHOLD = 10
+
+    /**
+     * Renders text inline when short (≤ CODE_SCRATCH_THRESHOLD lines), or shows a truncated preview
+     * plus a "View in scratch file" hyperlink when long.
+     */
+    fun codeOrScratchPanel(text: String, extension: String = "txt"): JComponent {
+        val lines = text.lines()
+        if (lines.size <= CODE_SCRATCH_THRESHOLD) return codePanel(text)
+
+        val panel = listPanel().apply { alignmentX = JComponent.LEFT_ALIGNMENT }
+        val previewText = lines.take(CODE_SCRATCH_THRESHOLD).joinToString("\n")
+        panel.add(codePanel(previewText))
+        val row = rowPanel()
+        row.add(mutedLabel("⋯ ${lines.size - CODE_SCRATCH_THRESHOLD} more lines  "))
+        row.add(scratchLink("Open in scratch file", text, extension).apply {
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        })
+        panel.add(row)
+        return panel
+    }
+
+    /**
+     * Creates a hyperlink that opens [content] as a scratch file with the given [extension].
+     */
+    fun scratchLink(label: String, content: String, extension: String = "txt"): HyperlinkLabel {
+        return HyperlinkLabel(label).apply {
+            toolTipText = "Open full content in a scratch file"
+            addHyperlinkListener {
+                val project = ProjectManager.getInstance().openProjects
+                    .firstOrNull { !it.isDisposed } ?: return@addHyperlinkListener
+                val name = "snippet.$extension"
+                ApplicationManager.getApplication().invokeLater {
+                    val scratchService = ScratchFileService.getInstance()
+                    val scratchRoot = ScratchRootType.getInstance()
+                    val file = ApplicationManager.getApplication().runWriteAction(Computable {
+                        try {
+                            val f = scratchService.findFile(
+                                scratchRoot, name, ScratchFileService.Option.create_new_always
+                            )
+                            f?.getOutputStream(null)?.use { out -> out.write(content.toByteArray(Charsets.UTF_8)) }
+                            f
+                        } catch (_: Exception) {
+                            null
+                        }
+                    })
+                    if (file != null) FileEditorManager.getInstance(project).openFile(file, true)
+                }
+            }
+        }
+    }
+
+    /**
+     * Creates a hyperlink that opens a two-panel diff viewer with [leftContent] vs [rightContent].
+     */
+    fun diffViewerLink(
+        label: String,
+        leftTitle: String,
+        leftContent: String,
+        rightTitle: String,
+        rightContent: String,
+    ): HyperlinkLabel {
+        return HyperlinkLabel(label).apply {
+            toolTipText = "Open in diff viewer"
+            addHyperlinkListener {
+                val project = ProjectManager.getInstance().openProjects
+                    .firstOrNull { !it.isDisposed } ?: return@addHyperlinkListener
+                ApplicationManager.getApplication().invokeLater {
+                    val left = DiffContentFactory.getInstance().create(leftContent)
+                    val right = DiffContentFactory.getInstance().create(rightContent)
+                    val request = SimpleDiffRequest(label, left, right, leftTitle, rightTitle)
+                    DiffManager.getInstance().showDiff(project, request)
+                }
+            }
         }
     }
 

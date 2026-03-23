@@ -1,5 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
+import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ProjectInfoRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.execution.RunManager;
 import com.intellij.openapi.application.ApplicationInfo;
@@ -12,10 +14,7 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.ProjectInfoRenderer;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,7 +45,13 @@ public final class GetProjectInfoTool extends ProjectTool {
         return "Get project name, SDK, modules, and overall structure";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
@@ -57,7 +62,7 @@ public final class GetProjectInfoTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
             StringBuilder sb = new StringBuilder();
             String basePath = project.getBasePath();

@@ -42,6 +42,14 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         myState.autoStart = autoStart;
     }
 
+    public boolean isDebugLoggingEnabled() {
+        return myState.debugLoggingEnabled;
+    }
+
+    public void setDebugLoggingEnabled(boolean enabled) {
+        myState.debugLoggingEnabled = enabled;
+    }
+
     public Set<String> getDisabledToolIds() {
         return myState.disabledToolIds;
     }
@@ -93,10 +101,59 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
     }
 
     public static class State {
-        public int port = DEFAULT_PORT;
-        public boolean autoStart = false;
-        public TransportMode transportMode = TransportMode.STREAMABLE_HTTP;
-        public Set<String> disabledToolIds = new LinkedHashSet<>();
-        public boolean defaultsApplied = false;
+        private int port = DEFAULT_PORT;
+        private boolean autoStart = false;
+        private boolean debugLoggingEnabled = false;
+        private TransportMode transportMode = TransportMode.STREAMABLE_HTTP;
+        private Set<String> disabledToolIds = new LinkedHashSet<>();
+        private boolean defaultsApplied = false;
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public boolean isAutoStart() {
+            return autoStart;
+        }
+
+        public void setAutoStart(boolean autoStart) {
+            this.autoStart = autoStart;
+        }
+
+        public boolean isDebugLoggingEnabled() {
+            return debugLoggingEnabled;
+        }
+
+        public void setDebugLoggingEnabled(boolean debugLoggingEnabled) {
+            this.debugLoggingEnabled = debugLoggingEnabled;
+        }
+
+        public TransportMode getTransportMode() {
+            return transportMode;
+        }
+
+        public void setTransportMode(TransportMode transportMode) {
+            this.transportMode = transportMode;
+        }
+
+        public Set<String> getDisabledToolIds() {
+            return disabledToolIds;
+        }
+
+        public void setDisabledToolIds(Set<String> disabledToolIds) {
+            this.disabledToolIds = disabledToolIds;
+        }
+
+        public boolean isDefaultsApplied() {
+            return defaultsApplied;
+        }
+
+        public void setDefaultsApplied(boolean defaultsApplied) {
+            this.defaultsApplied = defaultsApplied;
+        }
     }
 }

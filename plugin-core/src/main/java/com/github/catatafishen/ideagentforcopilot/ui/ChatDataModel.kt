@@ -33,21 +33,38 @@ internal val QUICK_REPLY_TAG_REGEX = Regex("""\[quick-reply:\s*([^\]]+)]""", Reg
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
-internal sealed class EntryData {
+sealed class EntryData {
     class Prompt(
         val text: String,
         val timestamp: String = "",
         val contextFiles: List<Triple<String, String, Int>>? = null
     ) : EntryData()
 
-    class Text(val raw: StringBuilder = StringBuilder()) : EntryData()
-    class Thinking(val raw: StringBuilder = StringBuilder()) : EntryData()
+    class Text(
+        val raw: StringBuilder = StringBuilder(),
+        val timestamp: String = "",
+        val agent: String = ""
+    ) : EntryData()
+
+    class Thinking(
+        val raw: StringBuilder = StringBuilder(),
+        val timestamp: String = "",
+        val agent: String = ""
+    ) : EntryData()
+
     class ToolCall(
         val title: String,
         val arguments: String? = null,
-        val kind: String = "other",
+        var kind: String = "other",
         var result: String? = null,
-        var status: String? = null
+        var status: String? = null,
+        var description: String? = null,
+        var filePath: String? = null,
+        var autoDenied: Boolean = false,
+        var denialReason: String? = null,
+        var mcpHandled: Boolean = false,
+        val timestamp: String = "",
+        val agent: String = ""
     ) : EntryData()
 
     class SubAgent(
@@ -57,7 +74,11 @@ internal sealed class EntryData {
         var result: String? = null,
         var status: String? = null,
         var colorIndex: Int = 0,
-        val callId: String? = null
+        val callId: String? = null,
+        var autoDenied: Boolean = false,
+        var denialReason: String? = null,
+        val timestamp: String = "",
+        val agent: String = ""
     ) : EntryData()
 
     class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
@@ -75,20 +96,28 @@ internal data class SubAgentInfo(val displayName: String)
 internal const val AGENT_TYPE_GENERAL = "general-purpose"
 
 internal val SUB_AGENT_INFO = mapOf(
-    "explore" to SubAgentInfo("Explore Agent"),
+    // Built-in Claude Code agents (current casing from docs)
+    "Explore" to SubAgentInfo("Explore"),
+    "Plan" to SubAgentInfo("Plan"),
+    AGENT_TYPE_GENERAL to SubAgentInfo("General"),
+    // Legacy / lowercase aliases
+    "explore" to SubAgentInfo("Explore"),
     "task" to SubAgentInfo("Task Agent"),
-    AGENT_TYPE_GENERAL to SubAgentInfo("General Agent"),
-    "code-review" to SubAgentInfo("Code Review Agent"),
-    "ui-reviewer" to SubAgentInfo("UI Review Agent"),
+    // Custom intellij-* agents (recommended in startup instructions)
+    "intellij-explore" to SubAgentInfo("Explore"),
+    "intellij-edit" to SubAgentInfo("Edit Agent"),
+    "intellij-default" to SubAgentInfo("Agent"),
+    // Other custom agents
+    "code-review" to SubAgentInfo("Code Review"),
+    "ui-reviewer" to SubAgentInfo("UI Review"),
 )
 
 /** JSON key to use as subtitle in the chip label for specific tools */
 internal val TOOL_SUBTITLE_KEY = mapOf(
     // File operations
     "read_file" to "path",
-    "intellij_read_file" to "path",
     "write_file" to "path",
-    "intellij_write_file" to "path",
+    "edit_text" to "path",
     "create_file" to "path",
     "delete_file" to "path",
     "open_in_editor" to "file",
@@ -123,7 +152,7 @@ internal val TOOL_SUBTITLE_KEY = mapOf(
     // Agent meta
     "report_intent" to "intent",
     "task" to "description",
-    // Built-in CLI tools
+    // Built-in CLI tools - lowercase
     "view" to "path",
     "edit" to "path",
     "create" to "path",
@@ -132,100 +161,34 @@ internal val TOOL_SUBTITLE_KEY = mapOf(
     "bash" to "description",
     "web_search" to "query",
     "web_fetch" to "url",
+    // Built-in CLI tools - PascalCase variants
+    "View" to "path",
+    "Read" to "path",
+    "Write" to "path",
+    "Edit" to "path",
+    "Create" to "path",
+    "Grep" to "pattern",
+    "Glob" to "pattern",
+    "Bash" to "description",
+    // OpenCode / Claude agent tools
+    "todowrite" to "todos",
+    "TodoWrite" to "todos",
+    "codesearch" to "query",
+    "CodeSearch" to "query",
+    "websearch" to "query",
+    "WebSearch" to "query",
+    "webfetch" to "url",
+    "WebFetch" to "url",
+    "Task" to "description",
 )
 
-private val MCP_PREFIX_REGEX = Regex("^(?i)(intellij-code-tools|github-mcp-server)[-_]")
-
-/** Strips MCP server name prefixes from a raw tool name, handling both dash and underscore separators. */
-internal fun stripMcpPrefix(title: String): String = title.replace(MCP_PREFIX_REGEX, "")
-
+/**
+ * Display info for EXTERNAL tools only (not from our MCP plugin).
+ * Our MCP tools define displayName() and description() in their tool classes.
+ * This map is used as a fallback when the tool is not in the registry.
+ */
 internal val TOOL_DISPLAY_INFO = mapOf(
-    // Code Navigation
-    "search_symbols" to ToolInfo(
-        "Search Symbols",
-        "Search for classes, methods, and fields across the project"
-    ),
-    "get_file_outline" to ToolInfo(
-        "File Outline",
-        "Get the structure outline of a file (classes, methods, fields)"
-    ),
-    "find_references" to ToolInfo("Find References", "Find all usages of a symbol across the project"),
-    "list_project_files" to ToolInfo("List Project Files", "List files and directories in the project tree"),
-    // File Operations
-    "read_file" to ToolInfo("Read File", "Read the contents of a file"),
-    "intellij_read_file" to ToolInfo("Read File", "Read the contents of a file via IntelliJ"),
-    "write_file" to ToolInfo("Write File", "Write or overwrite the contents of a file"),
-    "intellij_write_file" to ToolInfo("Write File", "Write or overwrite file contents via IntelliJ"),
-    "create_file" to ToolInfo("Create File", "Create a new file with the given content"),
-    "delete_file" to ToolInfo("Delete File", "Delete a file from the project"),
-    // Code Quality
-    "get_problems" to ToolInfo("Get Problems", "Get current problems/warnings from the Problems panel"),
-    "get_highlights" to ToolInfo("Get Highlights", "Get cached editor highlights for open files"),
-    "run_inspections" to ToolInfo("Run Inspections", "Run the full IntelliJ inspection engine on the project"),
-    "get_compilation_errors" to ToolInfo(
-        "Check Compilation",
-        "Fast compilation error check using cached daemon results"
-    ),
-    "apply_quickfix" to ToolInfo("Apply Quick Fix", "Apply an IntelliJ quick-fix to resolve an issue"),
-    "suppress_inspection" to ToolInfo("Suppress Inspection", "Suppress an inspection warning"),
-    "optimize_imports" to ToolInfo("Optimize Imports", "Remove unused imports and organize remaining ones"),
-    "format_code" to ToolInfo("Format Code", "Reformat code according to project style settings"),
-    "add_to_dictionary" to ToolInfo("Add to Dictionary", "Add a word to the spell-check dictionary"),
-    "run_qodana" to ToolInfo("Run Qodana", "Run Qodana static analysis on the project"),
-    "run_sonarqube_analysis" to ToolInfo("Run SonarQube", "Run SonarQube for IDE analysis on the project"),
-    // Refactoring
-    "refactor" to ToolInfo("Refactor", "Refactor code (rename, extract method, inline, safe delete)"),
-    "go_to_declaration" to ToolInfo("Go to Declaration", "Navigate to the declaration of a symbol"),
-    "get_type_hierarchy" to ToolInfo("Type Hierarchy", "Show supertypes and subtypes of a class"),
-    "get_documentation" to ToolInfo("Get Documentation", "Retrieve documentation for a symbol"),
-    // Tests
-    "list_tests" to ToolInfo("List Tests", "List available test classes and methods"),
-    "run_tests" to ToolInfo("Run Tests", "Execute tests and return results"),
-    "get_test_results" to ToolInfo("Test Results", "Get results from the last test run"),
-    "get_coverage" to ToolInfo("Get Coverage", "Get code coverage data from the last run"),
-    // Git
-    "git_status" to ToolInfo("Git Status", "Show working tree status"),
-    "git_diff" to ToolInfo("Git Diff", "Show changes between commits, working tree, etc."),
-    "git_log" to ToolInfo("Git Log", "Show commit history"),
-    "git_blame" to ToolInfo("Git Blame", "Show line-by-line authorship of a file"),
-    "git_commit" to ToolInfo("Git Commit", "Record changes to the repository"),
-    "git_stage" to ToolInfo("Git Stage", "Stage files for commit"),
-    "git_unstage" to ToolInfo("Git Unstage", "Unstage files from the index"),
-    "git_branch" to ToolInfo("Git Branch", "List, create, or switch branches"),
-    "git_stash" to ToolInfo("Git Stash", "Stash changes in working directory"),
-    "git_show" to ToolInfo("Git Show", "Show details of a commit"),
-    // Project
-    "get_project_info" to ToolInfo("Project Info", "Get project name, SDK, modules, and settings"),
-    "build_project" to ToolInfo("Build Project", "Trigger incremental compilation of the project"),
-    "get_indexing_status" to ToolInfo("Indexing Status", "Check if IntelliJ is currently indexing"),
-    "download_sources" to ToolInfo("Download Sources", "Download source jars for dependencies"),
-    // Infrastructure
-    "http_request" to ToolInfo("HTTP Request", "Make an HTTP request"),
-    "run_command" to ToolInfo("Run Command", "Run a shell command"),
-    "read_ide_log" to ToolInfo("Read IDE Log", "Read recent entries from the IDE log"),
-    "get_notifications" to ToolInfo("Get Notifications", "Get IDE notification messages"),
-    "read_run_output" to ToolInfo("Read Run Output", "Read output from a run configuration"),
-    // Terminal
-    "run_in_terminal" to ToolInfo("Run in Terminal", "Run a command in the IDE terminal"),
-    "read_terminal_output" to ToolInfo("Terminal Output", "Read output from a terminal session"),
-    "list_terminals" to ToolInfo("List Terminals", "List active terminal sessions"),
-    // Editor
-    "open_in_editor" to ToolInfo("Open in Editor", "Open a file in the editor"),
-    "show_diff" to ToolInfo("Show Diff", "Show a diff view between two contents"),
-    "create_scratch_file" to ToolInfo("Create Scratch", "Create a scratch file for quick experiments"),
-    "list_scratch_files" to ToolInfo("List Scratches", "List available scratch files"),
-    // Run Configurations
-    "list_run_configurations" to ToolInfo("List Run Configs", "List available run/debug configurations"),
-    "run_configuration" to ToolInfo("Run Configuration", "Execute a run/debug configuration"),
-    "create_run_configuration" to ToolInfo("Create Run Config", "Create a new run/debug configuration"),
-    "edit_run_configuration" to ToolInfo("Edit Run Config", "Modify an existing run/debug configuration"),
-    // Display / Presentation
-    "show_file" to ToolInfo("Show File", "Display a file to the user"),
-    // Agent Meta
-    "update_todo" to ToolInfo("Update TODO", "Update the agent's task checklist"),
-    "report_intent" to ToolInfo("Intent", "Report current task intent"),
-    "task" to ToolInfo("Sub-Agent Task", "Launch a specialized sub-agent for a task"),
-    // Built-in CLI tools (Copilot agent)
+    // ── Copilot CLI built-in tools ──
     "view" to ToolInfo("View", "View file or directory contents"),
     "edit" to ToolInfo("Edit", "Make string replacements in a file"),
     "create" to ToolInfo("Create", "Create a new file"),
@@ -236,27 +199,49 @@ internal val TOOL_DISPLAY_INFO = mapOf(
     "write_bash" to ToolInfo("Write Bash", "Send input to an async shell command"),
     "stop_bash" to ToolInfo("Stop Bash", "Stop a running shell command"),
     "list_bash" to ToolInfo("List Bash", "List active shell sessions"),
-    "web_search" to ToolInfo("Web Search", "AI-powered web search with citations"),
-    "web_fetch" to ToolInfo("Fetch URL", "Fetch a web page and return its content"),
-    // GitHub MCP tools
-    "actions_get" to ToolInfo("GitHub Actions", "Get details about a GitHub Actions resource"),
-    "actions_list" to ToolInfo("GitHub Actions", "List GitHub Actions workflows, runs, or jobs"),
-    "get_commit" to ToolInfo("Get Commit", "Get details for a GitHub commit"),
-    "get_file_contents" to ToolInfo("Get File", "Get file contents from a GitHub repository"),
-    "get_job_logs" to ToolInfo("Job Logs", "Get logs for GitHub Actions workflow jobs"),
-    "issue_read" to ToolInfo("Read Issue", "Get information about a GitHub issue"),
-    "list_branches" to ToolInfo("List Branches", "List branches in a GitHub repository"),
-    "list_commits" to ToolInfo("List Commits", "List commits in a GitHub repository"),
-    "list_issues" to ToolInfo("List Issues", "List issues in a GitHub repository"),
-    "list_pull_requests" to ToolInfo("List PRs", "List pull requests in a GitHub repository"),
-    "pull_request_read" to ToolInfo("Read PR", "Get information about a GitHub pull request"),
-    "search_code" to ToolInfo("Search Code", "Search code across GitHub repositories"),
-    "search_issues" to ToolInfo("Search Issues", "Search for GitHub issues"),
-    "search_pull_requests" to ToolInfo("Search PRs", "Search for GitHub pull requests"),
-    "search_repositories" to ToolInfo("Search Repos", "Search for GitHub repositories"),
-    "search_users" to ToolInfo("Search Users", "Search for GitHub users"),
-    // IntelliJ extras
-    "get_class_outline" to ToolInfo("Class Outline", "Show constructors, methods, and fields of a class"),
-    "search_text" to ToolInfo("Search Text", "Search text or regex patterns across project files"),
-    "undo" to ToolInfo("Undo", "Undo last edit action on a file"),
+    "web_search" to ToolInfo("Web Search", "AI-powered web search"),
+    "web_fetch" to ToolInfo("Fetch URL", "Fetch a web page"),
+    "update_todo" to ToolInfo("Update TODO", "Update the agent's task checklist"),
+    "report_intent" to ToolInfo("Intent", "Report current task intent"),
+    "task" to ToolInfo("Sub-Agent Task", "Launch a sub-agent"),
+    // PascalCase variants (some agents use these)
+    "View" to ToolInfo("View", "View file or directory contents"),
+    "Read" to ToolInfo("Read", "Read file contents"),
+    "Write" to ToolInfo("Write", "Write file contents"),
+    "Edit" to ToolInfo("Edit", "Make string replacements in a file"),
+    "Create" to ToolInfo("Create", "Create a new file"),
+    "Grep" to ToolInfo("Grep", "Search file contents"),
+    "Glob" to ToolInfo("Glob", "Find files by pattern"),
+    "Bash" to ToolInfo("Bash", "Run a shell command"),
+    "Task" to ToolInfo("Sub-Agent Task", "Launch a sub-agent"),
+
+    // ── OpenCode / Claude built-in tools ──
+    "todowrite" to ToolInfo("Update TODO", "Update the agent's task list"),
+    "TodoWrite" to ToolInfo("Update TODO", "Update the agent's task list"),
+    "codesearch" to ToolInfo("Code Search", "Search external code libraries"),
+    "CodeSearch" to ToolInfo("Code Search", "Search external code libraries"),
+    "webfetch" to ToolInfo("Fetch URL", "Fetch a web page"),
+    "WebFetch" to ToolInfo("Fetch URL", "Fetch a web page"),
+    "websearch" to ToolInfo("Web Search", "Search the web"),
+    "WebSearch" to ToolInfo("Web Search", "Search the web"),
+    "skill" to ToolInfo("Skill", "Use an agent skill"),
+    "Skill" to ToolInfo("Skill", "Use an agent skill"),
+
+    // ── GitHub MCP tools (external server) ──
+    "actions_get" to ToolInfo("GitHub Actions", "Get GitHub Actions resource"),
+    "actions_list" to ToolInfo("GitHub Actions", "List GitHub Actions"),
+    "get_commit" to ToolInfo("Get Commit", "Get GitHub commit details"),
+    "get_file_contents" to ToolInfo("Get File", "Get GitHub file contents"),
+    "get_job_logs" to ToolInfo("Job Logs", "Get GitHub Actions logs"),
+    "issue_read" to ToolInfo("Read Issue", "Get GitHub issue"),
+    "list_branches" to ToolInfo("List Branches", "List GitHub branches"),
+    "list_commits" to ToolInfo("List Commits", "List GitHub commits"),
+    "list_issues" to ToolInfo("List Issues", "List GitHub issues"),
+    "list_pull_requests" to ToolInfo("List PRs", "List GitHub PRs"),
+    "pull_request_read" to ToolInfo("Read PR", "Get GitHub PR"),
+    "search_code" to ToolInfo("Search Code", "Search GitHub code"),
+    "search_issues" to ToolInfo("Search Issues", "Search GitHub issues"),
+    "search_pull_requests" to ToolInfo("Search PRs", "Search GitHub PRs"),
+    "search_repositories" to ToolInfo("Search Repos", "Search GitHub repos"),
+    "search_users" to ToolInfo("Search Users", "Search GitHub users"),
 )

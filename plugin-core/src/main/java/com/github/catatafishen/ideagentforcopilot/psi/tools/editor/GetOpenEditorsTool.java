@@ -37,7 +37,13 @@ public final class GetOpenEditorsTool extends EditorTool {
         return "List all currently open editor tabs";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
@@ -48,7 +54,7 @@ public final class GetOpenEditorsTool extends EditorTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         EdtUtil.invokeLater(() -> {
             try {

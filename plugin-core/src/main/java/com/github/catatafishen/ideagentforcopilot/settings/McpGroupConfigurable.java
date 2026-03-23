@@ -5,9 +5,9 @@ import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
@@ -19,11 +19,7 @@ public final class McpGroupConfigurable implements Configurable {
 
     public static final String ID = "com.github.catatafishen.ideagentforcopilot.mcp";
 
-    @SuppressWarnings("unused") // injected by the platform via projectConfigurable
-    private final Project project;
-
-    public McpGroupConfigurable(@NotNull Project project) {
-        this.project = project;
+    public McpGroupConfigurable(@NotNull Project ignoredProject) {
     }
 
     @Override
@@ -32,16 +28,14 @@ public final class McpGroupConfigurable implements Configurable {
     }
 
     @Override
-    public @Nullable JComponent createComponent() {
+    public @NotNull JComponent createComponent() {
+        JBLabel descLabel = new JBLabel(
+            "<html>Configure the <b>MCP server</b> that exposes IDE tools to agents, "
+                + "and manage which tools are available to them.</html>");
+        descLabel.setForeground(UIUtil.getContextHelpForeground());
+
         JPanel panel = FormBuilder.createFormBuilder()
-            .addComponent(new JBLabel(
-                "<html>"
-                    + "<b>Model Context Protocol (MCP)</b><br><br>"
-                    + "Configure the MCP server that exposes IDE tools to the agent.<br><br>"
-                    + "Use the sub-pages to manage:<br>"
-                    + "&#8226; <b>Server</b> \u2014 port, transport mode, auto-start<br>"
-                    + "&#8226; <b>Tools</b> \u2014 enable or disable individual tools"
-                    + "</html>"))
+            .addComponent(descLabel)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));

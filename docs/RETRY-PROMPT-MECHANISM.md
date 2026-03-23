@@ -40,7 +40,7 @@ if (DENIED_PERMISSION_KINDS.contains(permKind)) {
     
     // THEN reject
     fireDebugEvent("PERMISSION_DENIED", "Built-in " + permKind + " denied", 
-        "Will retry with intellij-code-tools- prefix");
+        "Will retry with agentbridge- prefix");
     builtInActionDeniedDuringTurn = true;
     lastDeniedKind = permKind;
     sendPermissionResponse(reqId, rejectOptionId);
@@ -126,12 +126,12 @@ To test if pre-rejection guidance is working:
 3. **Check Debug Tab sequence:**
    ```
    PERMISSION_REQUEST    → read - path/to/file
-   PRE_REJECTION_GUIDANCE → ❌ Tool denied. Use tools with 'intellij-code-tools-' prefix instead.
+   PRE_REJECTION_GUIDANCE → ❌ Tool denied. Use tools with 'agentbridge-' prefix instead.
    PERMISSION_DENIED     → Built-in read denied
    ```
 
 4. **Check agent behavior:**
-    - Does it retry with `intellij-code-tools-` prefix?
+    - Does it retry with `agentbridge-` prefix?
     - Or does it give up / try wrong tool?
 
 ## Related Issues
@@ -151,7 +151,7 @@ To test if pre-rejection guidance is working:
    ```
 
 4. **Check agent behavior:**
-    - Does it retry with `intellij-code-tools-` prefix?
+    - Does it retry with `agentbridge-` prefix?
     - Or does it give up / try wrong tool?
 
 ## Code Locations

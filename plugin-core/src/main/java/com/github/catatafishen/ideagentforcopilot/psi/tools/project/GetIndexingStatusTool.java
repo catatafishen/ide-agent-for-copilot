@@ -1,11 +1,10 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.project;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -38,16 +37,22 @@ public final class GetIndexingStatusTool extends ProjectTool {
         return "Check whether IntelliJ indexing is in progress; optionally wait until it finishes";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"wait", TYPE_BOOLEAN, "If true, blocks until indexing finishes"},
-            {"timeout", TYPE_INTEGER, "Max seconds to wait when wait=true (default: 30)"}
+            {PARAM_TIMEOUT, TYPE_INTEGER, "Max seconds to wait when wait=true (default: 30)"}
         });
     }
 
@@ -57,7 +62,7 @@ public final class GetIndexingStatusTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         boolean wait = args.has("wait") && args.get("wait").getAsBoolean();
         int timeoutSec = args.has(PARAM_TIMEOUT) ? args.get(PARAM_TIMEOUT).getAsInt() : 60;
 

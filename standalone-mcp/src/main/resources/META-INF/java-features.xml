@@ -1,0 +1,5 @@
+<idea-plugin>
+    <!-- Extensions requiring com.intellij.modules.java -->
+    <!-- Java-specific tool support classes are in psi.java package,
+         loaded only when this module is present (see isPluginInstalled guards). -->
+</idea-plugin>

@@ -18,7 +18,6 @@ import com.intellij.psi.PsiNamedElement;
 import com.intellij.psi.PsiRecursiveElementWalkingVisitor;
 import com.intellij.psi.PsiReference;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,13 +50,19 @@ public final class GoToDeclarationTool extends RefactoringTool {
         return "Navigate to the declaration of a symbol at a given file and line";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"file", TYPE_STRING, "Path to the file containing the symbol usage"},
             {PARAM_SYMBOL, TYPE_STRING, "Name of the symbol to look up"},
@@ -71,7 +76,7 @@ public final class GoToDeclarationTool extends RefactoringTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         if (!args.has("file") || !args.has(PARAM_SYMBOL) || !args.has("line")) {
             return "Error: 'file', 'symbol', and 'line' parameters are required";
         }

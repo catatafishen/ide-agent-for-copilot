@@ -11,7 +11,6 @@ import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,10 +18,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-/**
- * Searches for text or regex patterns across project files using IntelliJ's editor buffers.
- */
 public final class SearchTextTool extends NavigationTool {
+
+    private static final String PARAM_REGEX = "regex";
+    private static final String PARAM_CASE_SENSITIVE = "case_sensitive";
+    private static final String PARAM_MAX_RESULTS = "max_results";
 
     public SearchTextTool(Project project) {
         super(project);
@@ -43,19 +43,25 @@ public final class SearchTextTool extends NavigationTool {
         return "Search for text or regex patterns across project files using IntelliJ's editor buffers";
     }
 
+
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"query", TYPE_STRING, "Text or regex pattern to search for"},
             {"file_pattern", TYPE_STRING, "Optional glob pattern to filter files (e.g., '*.kt', '*.java')", ""},
-            {"regex", TYPE_BOOLEAN, "If true, treat query as regex. Default: false (literal match)"},
-            {"case_sensitive", TYPE_BOOLEAN, "Case-sensitive search. Default: true"},
-            {"max_results", TYPE_INTEGER, "Maximum results to return (default: 100)"}
+            {PARAM_REGEX, TYPE_BOOLEAN, "If true, treat query as regex. Default: false (literal match)"},
+            {PARAM_CASE_SENSITIVE, TYPE_BOOLEAN, "Case-sensitive search. Default: true"},
+            {PARAM_MAX_RESULTS, TYPE_INTEGER, "Maximum results to return (default: 100)"}
         }, "query");
     }
 
@@ -65,14 +71,14 @@ public final class SearchTextTool extends NavigationTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         if (!args.has(PARAM_QUERY) || args.get(PARAM_QUERY).isJsonNull())
             return "Error: 'query' parameter is required";
         String query = args.get(PARAM_QUERY).getAsString();
         String filePattern = args.has(PARAM_FILE_PATTERN) ? args.get(PARAM_FILE_PATTERN).getAsString() : "";
-        boolean isRegex = args.has("regex") && args.get("regex").getAsBoolean();
-        boolean caseSensitive = !args.has("case_sensitive") || args.get("case_sensitive").getAsBoolean();
-        int maxResults = args.has("max_results") ? args.get("max_results").getAsInt() : 100;
+        boolean isRegex = args.has(PARAM_REGEX) && args.get(PARAM_REGEX).getAsBoolean();
+        boolean caseSensitive = !args.has(PARAM_CASE_SENSITIVE) || args.get(PARAM_CASE_SENSITIVE).getAsBoolean();
+        int maxResults = args.has(PARAM_MAX_RESULTS) ? args.get(PARAM_MAX_RESULTS).getAsInt() : 100;
 
         showSearchFeedback("🔍 Searching text: " + query);
         String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () ->

@@ -7,7 +7,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -38,15 +37,21 @@ public final class AddToDictionaryTool extends QualityTool {
         return "Add a word to the project spell-check dictionary";
     }
 
+
+
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"word", TYPE_STRING, "The word to add to the project dictionary"}
         }, "word");
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String word = args.get("word").getAsString().trim().toLowerCase();
         if (word.isEmpty()) {
             return "Error: word cannot be empty";

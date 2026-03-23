@@ -55,7 +55,14 @@ export default class MessageMeta extends HTMLElement {
         append(this._navRight);
         append(this._badge);
 
-        for (const chip of existingChips) this._strip.appendChild(chip);
+        // Thinking chips go outside the strip (always visible), tool chips go inside
+        for (const chip of existingChips) {
+            if (chip.tagName === 'THINKING-CHIP') {
+                this.insertBefore(chip, this._navLeft);
+            } else {
+                this._strip.appendChild(chip);
+            }
+        }
 
         this._strip.addEventListener('scroll', () => this.scheduleNavUpdate(), {passive: true});
         stripToMeta.set(this._strip, this);
@@ -77,11 +84,16 @@ export default class MessageMeta extends HTMLElement {
 
     appendChild<T extends Node>(node: T): T {
         if (this._strip && node instanceof HTMLElement && CHIP_TAGS.has(node.tagName)) {
-            this._strip.appendChild(node);
-            this._scrollToEnd();
+            // Thinking chips go before nav buttons (always visible), tool chips go in strip
+            if (node.tagName === 'THINKING-CHIP') {
+                this.insertBefore(node, this._navLeft);
+            } else {
+                this._strip.appendChild(node);
+                this._scrollToEnd();
+            }
             return node;
         }
-        return Node.prototype.appendChild.call(this, node) as T;
+        return super.appendChild(node);
     }
 
     /** Schedule a nav update coalesced via requestAnimationFrame. */
@@ -91,6 +103,31 @@ export default class MessageMeta extends HTMLElement {
             this._navRAF = null;
             this._updateNav();
         });
+    }
+
+    setCodeChangeStats(added: number, removed: number): void {
+        const strip = this._strip;
+        if (!strip) return;
+        let chip = strip.querySelector('.diff-stat') as HTMLElement;
+        if (!chip) {
+            chip = document.createElement('span');
+            chip.className = 'turn-chip stats diff-stat';
+            strip.appendChild(chip);
+        }
+        chip.innerHTML = '';
+        if (added > 0) {
+            const add = document.createElement('span');
+            add.className = 'diff-add';
+            add.textContent = '+' + added;
+            chip.appendChild(add);
+        }
+        if (removed > 0) {
+            const del = document.createElement('span');
+            del.className = 'diff-del';
+            del.textContent = '−' + removed;
+            chip.appendChild(del);
+        }
+        this.scheduleNavUpdate();
     }
 
     private _createNav(label: string, direction: number): HTMLElement {

@@ -41,12 +41,12 @@ IDEs with `com.intellij.modules.java`. The plugin must:
 The plugin uses three strategies to handle optional dependencies, chosen based on how the
 dependency is accessed:
 
-| Strategy | When to Use | Example |
-|----------|-------------|---------|
-| **`isPluginInstalled()` + separate class** | Java PSI, Compiler API — types in method signatures | `psi/java/` package |
-| **`isPluginInstalled()` + same class** | Features that don't use the plugin's types in signatures | Terminal tools |
-| **Reflection (`Class.forName`)** | Metadata discovery, no compile-time reference needed | Gradle/Maven detection |
-| **`NoClassDefFoundError` catch + fallback** | Inner class loaded on first reference | Git4Idea (`IdeGitSupport`) |
+| Strategy                                    | When to Use                                              | Example                    |
+|---------------------------------------------|----------------------------------------------------------|----------------------------|
+| **`isPluginInstalled()` + separate class**  | Java PSI, Compiler API — types in method signatures      | `psi/java/` package        |
+| **`isPluginInstalled()` + same class**      | Features that don't use the plugin's types in signatures | Terminal tools             |
+| **Reflection (`Class.forName`)**            | Metadata discovery, no compile-time reference needed     | Gradle/Maven detection     |
+| **`NoClassDefFoundError` catch + fallback** | Inner class loaded on first reference                    | Git4Idea (`IdeGitSupport`) |
 
 ---
 
@@ -58,7 +58,7 @@ The JVM loads classes lazily, but the **plugin verifier** (and the JVM's own cla
 scans all bytecode in the JAR. A method signature like:
 
 ```java
-String computeClassOutline(PsiClass psiClass) { ... }
+String computeClassOutline(PsiClass psiClass) { ...}
 ```
 
 contains a bytecode reference to `com.intellij.psi.PsiClass`. When verifying against PyCharm
@@ -90,19 +90,21 @@ Each tool handler follows the same pattern:
 
 ```java
 // In the constructor — tool is only registered when Java is available
-if (isPluginInstalled("com.intellij.modules.java")) {
-    register("build_project", this::buildProject);
+if(isPluginInstalled("com.intellij.modules.java")){
+
+register("build_project",this::buildProject);
 }
 
 // In the handler method — fully-qualified reference prevents class loading until invocation.
 // No try/catch needed: the constructor guard ensures this code is unreachable without Java.
 private String buildProject(JsonObject args) {
     return com.github.catatafishen.ideagentforcopilot.psi.java
-        .ProjectBuildSupport.buildProject(project, moduleName, buildInProgress);
+            .ProjectBuildSupport.buildProject(project, moduleName, buildInProgress);
 }
 ```
 
 **Key rules for this pattern:**
+
 1. The `psi.java` class is referenced via **fully-qualified name** in the method body
 2. There are **no import statements** for `psi.java` classes in the tool handler
 3. The handler method is only reachable if the constructor guard passed
@@ -116,55 +118,55 @@ private String buildProject(JsonObject args) {
 
 These use only `com.intellij.modules.platform` APIs:
 
-| Tool | Handler |
-|------|---------|
-| `intellij_read_file` / `intellij_write_file` | FileTools |
-| `create_file` / `delete_file` / `undo` | FileTools |
-| `reload_from_disk` | FileTools |
-| `search_symbols` / `get_file_outline` | CodeNavigationTools |
-| `find_references` / `list_project_files` / `search_text` | CodeNavigationTools |
-| `refactor` / `go_to_declaration` / `get_documentation` | RefactoringTools |
-| `get_problems` / `get_highlights` / `get_compilation_errors` | CodeQualityTools |
-| `run_inspections` / `apply_quickfix` | CodeQualityTools |
-| `suppress_inspection` / `add_to_dictionary` | CodeQualityTools |
-| `optimize_imports` / `format_code` | CodeQualityTools |
-| `open_in_editor` / `show_diff` / `get_active_file` / `get_open_editors` | EditorTools |
-| `create_scratch_file` / `list_scratch_files` / `run_scratch_file` | EditorTools |
-| `list_themes` / `set_theme` | EditorTools |
-| `get_project_info` / `get_indexing_status` / `mark_directory` | ProjectTools |
-| `download_sources` | ProjectTools |
-| `list_tests` / `run_tests` / `get_coverage` | TestTools |
-| `run_command` / `http_request` | InfrastructureTools |
-| `read_ide_log` / `get_notifications` / `read_run_output` | InfrastructureTools |
-| `list_run_configurations` / `run_configuration` | InfrastructureTools |
+| Tool                                                                               | Handler             |
+|------------------------------------------------------------------------------------|---------------------|
+| `read_file` / `write_file`                                                         | FileTools           |
+| `create_file` / `delete_file` / `undo`                                             | FileTools           |
+| `reload_from_disk`                                                                 | FileTools           |
+| `search_symbols` / `get_file_outline`                                              | CodeNavigationTools |
+| `find_references` / `list_project_files` / `search_text`                           | CodeNavigationTools |
+| `refactor` / `go_to_declaration` / `get_documentation`                             | RefactoringTools    |
+| `get_problems` / `get_highlights` / `get_compilation_errors`                       | CodeQualityTools    |
+| `run_inspections` / `apply_quickfix`                                               | CodeQualityTools    |
+| `suppress_inspection` / `add_to_dictionary`                                        | CodeQualityTools    |
+| `optimize_imports` / `format_code`                                                 | CodeQualityTools    |
+| `open_in_editor` / `show_diff` / `get_active_file` / `get_open_editors`            | EditorTools         |
+| `create_scratch_file` / `list_scratch_files` / `run_scratch_file`                  | EditorTools         |
+| `list_themes` / `set_theme`                                                        | EditorTools         |
+| `get_project_info` / `get_indexing_status` / `mark_directory`                      | ProjectTools        |
+| `download_sources`                                                                 | ProjectTools        |
+| `list_tests` / `run_tests` / `get_coverage`                                        | TestTools           |
+| `run_command` / `http_request`                                                     | InfrastructureTools |
+| `read_ide_log` / `get_notifications` / `read_run_output`                           | InfrastructureTools |
+| `list_run_configurations` / `run_configuration`                                    | InfrastructureTools |
 | `create_run_configuration` / `edit_run_configuration` / `delete_run_configuration` | InfrastructureTools |
 
 ### Java-Only Tools (3 tools)
 
 Only registered when `com.intellij.modules.java` is present (IntelliJ IDEA):
 
-| Tool | Handler | Java Support Class | Fallback for Agents |
-|------|---------|-------------------|-------------------|
-| `build_project` | ProjectTools | `ProjectBuildSupport` | Use `run_command` (e.g., `npm run build`, `cargo build`) |
-| `get_class_outline` | CodeNavigationTools | `CodeNavigationJavaSupport` | Use `get_file_outline` (works for all languages) |
-| `get_type_hierarchy` | RefactoringTools | `RefactoringJavaSupport` | Use `search_symbols` + manual navigation |
+| Tool                 | Handler             | Java Support Class          | Fallback for Agents                                      |
+|----------------------|---------------------|-----------------------------|----------------------------------------------------------|
+| `build_project`      | ProjectTools        | `ProjectBuildSupport`       | Use `run_command` (e.g., `npm run build`, `cargo build`) |
+| `get_class_outline`  | CodeNavigationTools | `CodeNavigationJavaSupport` | Use `get_file_outline` (works for all languages)         |
+| `get_type_hierarchy` | RefactoringTools    | `RefactoringJavaSupport`    | Use `search_symbols` + manual navigation                 |
 
 ### Java-Enhanced Tools (1 tool)
 
 Registered everywhere but has Java-specific behavior:
 
-| Tool | Handler | Java Behavior | Non-Java Behavior |
-|------|---------|--------------|-------------------|
+| Tool                  | Handler          | Java Behavior                                                    | Non-Java Behavior                       |
+|-----------------------|------------------|------------------------------------------------------------------|-----------------------------------------|
 | `suppress_inspection` | CodeQualityTools | Adds `@SuppressWarnings` annotation via `CodeQualityJavaSupport` | Falls back to `// noinspection` comment |
 
 ### Optional-Plugin Tools
 
-| Tool(s) | Required Plugin | Guard | Fallback |
-|---------|----------------|-------|----------|
-| 20× git tools (git_status, git_commit, etc.) | `Git4Idea` | `NoClassDefFoundError` → ProcessBuilder | Full git via command-line |
-| `run_in_terminal`, `write_terminal_input`, `read_terminal_output`, `list_terminals` | `org.jetbrains.plugins.terminal` | `isPluginInstalled()` | Not registered (use `run_command`) |
-| `run_sonarqube_analysis` | `org.sonarlint.idea` | `SonarQubeIntegration.isInstalled()` (reflection) | Not registered |
-| `run_qodana` | `org.jetbrains.qodana` | `isPluginInstalled()` | Not registered |
+| Tool(s)                                                                             | Required Plugin                  | Guard                                             | Fallback                           |
+|-------------------------------------------------------------------------------------|----------------------------------|---------------------------------------------------|------------------------------------|
+| 20× git tools (git_status, git_commit, etc.)                                        | `Git4Idea`                       | `NoClassDefFoundError` → ProcessBuilder           | Full git via command-line          |
+| `run_in_terminal`, `write_terminal_input`, `read_terminal_output`, `list_terminals` | `org.jetbrains.plugins.terminal` | `isPluginInstalled()`                             | Not registered (use `run_command`) |
+| `run_sonarqube_analysis`                                                            | `org.sonarlint.idea`             | `SonarQubeIntegration.isInstalled()` (reflection) | Not registered                     |
+| `run_qodana`                                                                        | `org.jetbrains.qodana`           | `isPluginInstalled()`                             | Not registered                     |
 
 ---
 
@@ -191,6 +193,7 @@ git tools still work via the command line.
 
 **After write operations** (`commit`, `push`, `merge`, `rebase`, `stage`, etc.), the handler
 calls `refreshVcsState()` which triggers:
+
 - `LocalFileSystem.getInstance().refreshAndFindFileByPath()` — VFS refresh
 - `VcsDirtyScopeManager.getInstance(project).markEverythingDirty()` — marks VCS state stale
 - `ChangeListManager.getInstance(project).scheduleUpdate()` — schedules change list refresh
@@ -205,13 +208,15 @@ In `plugin-core/build.gradle.kts`:
 
 ```kotlin
 pluginVerification {
-    failureLevel.set(listOf(
-        FailureLevel.INVALID_PLUGIN,
-        FailureLevel.INTERNAL_API_USAGES,
-        FailureLevel.OVERRIDE_ONLY_API_USAGES,
-        FailureLevel.NON_EXTENDABLE_API_USAGES,
-        FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
-    ))
+    failureLevel.set(
+        listOf(
+            FailureLevel.INVALID_PLUGIN,
+            FailureLevel.INTERNAL_API_USAGES,
+            FailureLevel.OVERRIDE_ONLY_API_USAGES,
+            FailureLevel.NON_EXTENDABLE_API_USAGES,
+            FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
+        )
+    )
     ides {
         recommended()                                                // IU-253, IU-261
         create(IntelliJPlatformType.PyCharmProfessional, "2025.3")   // PY-253
@@ -233,47 +238,47 @@ the build. The reports are saved to `plugin-core/build/reports/pluginVerifier/<I
 
 ### Expected Verification Results
 
-| IDE | Verdict | Details |
-|-----|---------|---------|
-| **IU-253** | ✅ Compatible | 2 experimental API usages (`LafManager.getInstalledThemes`) |
-| **IU-261** | ✅ Compatible | Same 2 experimental API usages |
-| **PY-253** | ⚠️ 45 problems | All from `psi.java` package — expected, safe at runtime |
-| **WS-253** | ⚠️ 45 problems | Same as PY |
-| **GO-253** | ⚠️ 45 problems | Same as PY |
+| IDE        | Verdict        | Details                                                     |
+|------------|----------------|-------------------------------------------------------------|
+| **IU-253** | ✅ Compatible   | 2 experimental API usages (`LafManager.getInstalledThemes`) |
+| **IU-261** | ✅ Compatible   | Same 2 experimental API usages                              |
+| **PY-253** | ⚠️ 45 problems | All from `psi.java` package — expected, safe at runtime     |
+| **WS-253** | ⚠️ 45 problems | Same as PY                                                  |
+| **GO-253** | ⚠️ 45 problems | Same as PY                                                  |
 
 ### Known Accepted Problems (PY/WS/GO)
 
 All 45 problems are "Access to unresolved class" in `psi.java.*` classes:
 
-| Unresolved Class | Used By |
-|-----------------|---------|
-| `com.intellij.psi.JavaPsiFacade` | CodeNavigationJavaSupport, RefactoringJavaSupport |
-| `com.intellij.psi.PsiClass` | All 4 support classes |
-| `com.intellij.psi.PsiMethod` | CodeNavigationJavaSupport, CodeQualityJavaSupport |
-| `com.intellij.psi.PsiField` | CodeNavigationJavaSupport, CodeQualityJavaSupport |
-| `com.intellij.psi.PsiModifierListOwner` | CodeQualityJavaSupport |
-| `com.intellij.psi.PsiAnnotation` | CodeQualityJavaSupport |
-| `com.intellij.psi.PsiStatement` | CodeQualityJavaSupport |
-| `com.intellij.psi.PsiLocalVariable` | CodeQualityJavaSupport |
-| `com.intellij.psi.PsiArrayInitializerMemberValue` | CodeQualityJavaSupport |
-| `com.intellij.psi.PsiReferenceList` | CodeNavigationJavaSupport |
-| `com.intellij.psi.PsiClassType` | CodeNavigationJavaSupport |
-| `com.intellij.psi.PsiModifierList` | CodeNavigationJavaSupport |
-| `com.intellij.psi.PsiParameterList` | CodeNavigationJavaSupport |
-| `com.intellij.psi.PsiParameter` | CodeNavigationJavaSupport |
-| `com.intellij.psi.PsiType` | CodeNavigationJavaSupport |
-| `com.intellij.psi.PsiAnnotationMemberValue` | CodeQualityJavaSupport |
-| `com.intellij.psi.search.PsiShortNamesCache` | CodeNavigationJavaSupport, RefactoringJavaSupport |
-| `com.intellij.psi.search.searches.ClassInheritorsSearch` | RefactoringJavaSupport |
-| `com.intellij.openapi.compiler.*` (5 classes) | ProjectBuildSupport |
-| `com.intellij.compiler.CompilerMessageImpl` | ProjectBuildSupport |
+| Unresolved Class                                         | Used By                                           |
+|----------------------------------------------------------|---------------------------------------------------|
+| `com.intellij.psi.JavaPsiFacade`                         | CodeNavigationJavaSupport, RefactoringJavaSupport |
+| `com.intellij.psi.PsiClass`                              | All 4 support classes                             |
+| `com.intellij.psi.PsiMethod`                             | CodeNavigationJavaSupport, CodeQualityJavaSupport |
+| `com.intellij.psi.PsiField`                              | CodeNavigationJavaSupport, CodeQualityJavaSupport |
+| `com.intellij.psi.PsiModifierListOwner`                  | CodeQualityJavaSupport                            |
+| `com.intellij.psi.PsiAnnotation`                         | CodeQualityJavaSupport                            |
+| `com.intellij.psi.PsiStatement`                          | CodeQualityJavaSupport                            |
+| `com.intellij.psi.PsiLocalVariable`                      | CodeQualityJavaSupport                            |
+| `com.intellij.psi.PsiArrayInitializerMemberValue`        | CodeQualityJavaSupport                            |
+| `com.intellij.psi.PsiReferenceList`                      | CodeNavigationJavaSupport                         |
+| `com.intellij.psi.PsiClassType`                          | CodeNavigationJavaSupport                         |
+| `com.intellij.psi.PsiModifierList`                       | CodeNavigationJavaSupport                         |
+| `com.intellij.psi.PsiParameterList`                      | CodeNavigationJavaSupport                         |
+| `com.intellij.psi.PsiParameter`                          | CodeNavigationJavaSupport                         |
+| `com.intellij.psi.PsiType`                               | CodeNavigationJavaSupport                         |
+| `com.intellij.psi.PsiAnnotationMemberValue`              | CodeQualityJavaSupport                            |
+| `com.intellij.psi.search.PsiShortNamesCache`             | CodeNavigationJavaSupport, RefactoringJavaSupport |
+| `com.intellij.psi.search.searches.ClassInheritorsSearch` | RefactoringJavaSupport                            |
+| `com.intellij.openapi.compiler.*` (5 classes)            | ProjectBuildSupport                               |
+| `com.intellij.compiler.CompilerMessageImpl`              | ProjectBuildSupport                               |
 
 ### Known Experimental API Usages (all IDEs)
 
-| API | Used By | Risk |
-|-----|---------|------|
+| API                               | Used By                    | Risk                                                        |
+|-----------------------------------|----------------------------|-------------------------------------------------------------|
 | `LafManager.getInstalledThemes()` | `EditorTools.listThemes()` | Low — stable in practice, annotated for contractual reasons |
-| `LafManager.getInstalledThemes()` | `EditorTools.setTheme()` | Same |
+| `LafManager.getInstalledThemes()` | `EditorTools.setTheme()`   | Same                                                        |
 
 ---
 
@@ -297,16 +302,19 @@ is functionally correct and sufficient for marketplace publication.
 ## Adding a New Tool: Checklist
 
 ### If the tool uses only platform APIs:
+
 1. Add it to the appropriate `*Tools.java` handler
 2. Register it in the constructor with `register("tool_name", this::handler)`
 3. No special compatibility work needed
 
 ### If the tool requires an optional plugin (Git, Terminal, etc.):
+
 1. Guard registration: `if (isPluginInstalled("plugin.id")) { register(...); }`
 2. Use the plugin's APIs directly in the handler method
 3. If possible, add a `NoClassDefFoundError` catch with a meaningful fallback
 
 ### If the tool requires Java PSI or Compiler APIs:
+
 1. Create the implementation in `psi/java/NewJavaSupport.java`
 2. Make the class and entry-point methods `public`
 3. Guard registration in the tool handler constructor:

@@ -45,7 +45,11 @@ public final class GenericSettings {
 
     @Nullable
     public String getSelectedModel() {
-        return PropertiesComponent.getInstance().getValue(key("selectedModel"));
+        String model = PropertiesComponent.getInstance().getValue(key("selectedModel"));
+        if (model == null || model.isEmpty()) {
+            return activeAgentLabel;
+        }
+        return model;
     }
 
     public void setSelectedModel(@NotNull String modelId) {
@@ -64,6 +68,20 @@ public final class GenericSettings {
 
     public void setSelectedAgent(@NotNull String agentName) {
         PropertiesComponent.getInstance().setValue(key("selectedAgent"), agentName, "");
+    }
+
+    // ── Session options ──────────────────────────────────────────────────────
+
+    /**
+     * Returns the persisted value for a session option (e.g. "effort"), or empty string.
+     */
+    @NotNull
+    public String getSessionOptionValue(@NotNull String optionKey) {
+        return PropertiesComponent.getInstance().getValue(key("sessionOpt." + optionKey), "");
+    }
+
+    public void setSessionOptionValue(@NotNull String optionKey, @NotNull String value) {
+        PropertiesComponent.getInstance().setValue(key("sessionOpt." + optionKey), value, "");
     }
 
     // ── Active agent label (runtime-only) ────────────────────────────────────
@@ -159,6 +177,32 @@ public final class GenericSettings {
     public void clearToolSubPermissions(@NotNull String toolId) {
         PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_IN_PREFIX + toolId));
         PropertiesComponent.getInstance().unsetValue(key(TOOL_PERM_OUT_PREFIX + toolId));
+    }
+
+    private static final String KEY_RESUME_SESSION_ID = "resumeSessionId";
+
+    // ── Session resumption ───────────────────────────────────────────────────
+
+    /**
+     * Returns the ACP session ID to pass as {@code resumeSessionId} in the next {@code session/new}
+     * request, or {@code null} if no previous session was saved.
+     */
+    @Nullable
+    public String getResumeSessionId() {
+        String val = PropertiesComponent.getInstance().getValue(key(KEY_RESUME_SESSION_ID));
+        return (val == null || val.isEmpty()) ? null : val;
+    }
+
+    /**
+     * Persists the ACP session ID for future session resumption.
+     * Pass {@code null} to clear (e.g. after a "Clear and Restart").
+     */
+    public void setResumeSessionId(@Nullable String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            PropertiesComponent.getInstance().unsetValue(key(KEY_RESUME_SESSION_ID));
+        } else {
+            PropertiesComponent.getInstance().setValue(key(KEY_RESUME_SESSION_ID), sessionId);
+        }
     }
 
     // ── Billing persistence ──────────────────────────────────────────────────

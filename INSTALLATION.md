@@ -2,8 +2,9 @@
 
 ## Prerequisites
 
-- IntelliJ IDEA 2025.1 or later
+- IntelliJ IDEA 2025.1 or later (any JetBrains IDE)
 - Java 21 installed
+- An ACP-compatible agent CLI (e.g., GitHub Copilot CLI, OpenCode, Junie, Kiro)
 
 ## Installation Steps
 
@@ -12,11 +13,11 @@
 The plugin has been built and is located at:
 
 ```
-plugin-core\build\distributions\plugin-core-0.2.0-<hash>.zip
+plugin-core/build/distributions/ide-agent-for-copilot-<version>.zip
 ```
 
-**Size:** ~2.7 MB  
-**Contents:** Plugin JAR, metadata, icon
+**Size:** ~3 MB  
+**Contents:** Plugin JAR, metadata, icon, mcp-server JAR
 
 ---
 
@@ -28,8 +29,8 @@ plugin-core\build\distributions\plugin-core-0.2.0-<hash>.zip
 2. Go to **File → Settings** (or **IntelliJ IDEA → Settings** on macOS)
 3. Navigate to **Plugins**
 4. Click the **⚙️ (gear icon)** → **Install Plugin from Disk...**
-5. Browse to `plugin-core\build\distributions\`
-6. Select `plugin-core-0.2.0-<hash>.zip`
+5. Browse to `plugin-core/build/distributions/`
+6. Select the ZIP file
 7. Click **OK**
 8. Click **Restart IDE** when prompted
 
@@ -48,17 +49,17 @@ After restart:
 
 1. Check if plugin is loaded:
     - **Settings → Plugins → Installed**
-    - Look for **"IDE Agent for Copilot"** in the list
+    - Look for **"AgentBridge"** in the list
     - Status should be **✓ Enabled**
 
 2. Check for tool window:
-    - Look for **"IDE Agent for Copilot"** in the right sidebar
-    - Or go to **View → Tool Windows → IDE Agent for Copilot**
+    - Look for **"AgentBridge"** in the right sidebar
+    - Or go to **View → Tool Windows → AgentBridge**
 
 3. Check IDE logs for errors:
     - **Help → Show Log in Explorer**
     - Open `idea.log`
-    - Search for "IDE Agent for Copilot" or "Copilot"
+    - Search for "AgentBridge" or "AcpClient"
     - Look for any ERROR or WARN messages
 
 ---
@@ -67,33 +68,23 @@ After restart:
 
 #### 4.1 Open Tool Window
 
-1. Click **IDE Agent for Copilot** in the right sidebar
-2. Tool window should open with a single-panel chat interface:
+1. Click **AgentBridge** in the right sidebar
+2. Tool window should open with:
     - **Chat console** (conversation area)
-    - **Toolbar** (model selector, mode toggle, settings)
+    - **Toolbar** (agent selector, model selector, settings)
     - **Prompt input** with file attachment support
 
-#### 4.2 Check ACP Connection
+#### 4.2 Select an Agent
 
-When the tool window opens and you send your first prompt, the plugin automatically starts the Copilot CLI.
+1. Choose an agent profile from the dropdown (e.g., GitHub Copilot, OpenCode)
+2. If using Copilot, ensure CLI is authenticated (`copilot auth`)
+3. The status indicator shows connection state
 
-**Check IDE logs** (`Help → Show Log in Explorer → idea.log`):
+#### 4.3 Send a Test Prompt
 
-```
-INFO - Starting Copilot CLI process...
-INFO - ACP client initialized
-INFO - MCP tools registered
-```
-
-If you see errors:
-
-- Verify Copilot CLI is installed and authenticated
-- Check error details in logs
-- Verify port is not in use
-
-#### 4.3 Test Health Check
-
-Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to see if any actions are registered.
+1. Type a simple prompt like "What files are in this project?"
+2. Click Run or press Enter
+3. The agent should respond using IntelliJ MCP tools
 
 ---
 
@@ -101,11 +92,11 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 
 ### Plugin Not Appearing in Tool Windows
 
-**Symptom:** No "IDE Agent for Copilot" tool window visible
+**Symptom:** No "AgentBridge" tool window visible
 
 **Solutions:**
 
-1. Check if plugin is enabled: **Settings → Plugins → IDE Agent for Copilot** (should have checkmark)
+1. Check if plugin is enabled: **Settings → Plugins → AgentBridge** (should have checkmark)
 2. Restart IDE: **File → Invalidate Caches and Restart → Just Restart**
 3. Check logs for errors: `Help → Show Log in Explorer`
 
@@ -116,28 +107,27 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 **Solutions:**
 
 1. **Rebuild the plugin:**
-   ```powershell
-   $env:JAVA_HOME = "C:\path\to\jdk21"
-   .\gradlew.bat :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
+   ```bash
+   ./gradlew :plugin-core:clean :plugin-core:buildPlugin
    ```
 
 2. **Check ZIP is not corrupted:**
-    - File size should be ~2.7 MB
-    - Can extract with 7-Zip to verify contents
+    - File size should be ~3 MB
+    - Can extract with unzip/7-Zip to verify contents
 
 3. **Check IDE version:**
     - Plugin requires IntelliJ 2025.1 or later
     - Check: **Help → About** → Build number should be 251.x or higher
 
-### Tool Window Opens But Shows Errors
+### Agent Connection Fails
 
-**Symptom:** Tool window visible but UI is broken
+**Symptom:** "Error loading models" or connection timeout
 
 **Solutions:**
 
-1. Check for Java exceptions in logs
-2. Verify Kotlin runtime is available
-3. Check for classpath conflicts (look for "NoClassDefFoundError")
+1. Verify agent CLI is installed and authenticated
+2. Check agent-specific setup (e.g., `copilot auth` for Copilot)
+3. Review IDE logs for detailed error messages
 
 ---
 
@@ -146,7 +136,7 @@ Open **Find Action** (Ctrl+Shift+A or Cmd+Shift+A) and search for "copilot" to s
 To remove the plugin:
 
 1. **Settings → Plugins**
-2. Find **IDE Agent for Copilot**
+2. Find **AgentBridge**
 3. Click **⚙️ → Uninstall**
 4. Restart IDE
 
@@ -158,27 +148,29 @@ If you're actively developing and want to test changes:
 
 ### Quick Rebuild & Reinstall
 
-```powershell
+```bash
 # 1. Rebuild plugin
-$env:JAVA_HOME = "C:\path\to\jdk21"
-.\gradlew.bat :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
+./gradlew :plugin-core:buildPlugin -x buildSearchableOptions
 
-# 2. Uninstall old version in IDE
-# Settings → Plugins → IDE Agent for Copilot → Uninstall
+# 2. Remove old version (Linux)
+rm -rf ~/.local/share/JetBrains/IntelliJIdea2025.3/plugin-core
 
-# 3. Reinstall new version
-# Settings → Plugins → ⚙️ → Install Plugin from Disk → select new ZIP
+# 3. Install new version
+unzip -q plugin-core/build/distributions/ide-agent-for-copilot-*.zip \
+    -d ~/.local/share/JetBrains/IntelliJIdea2025.3/
 
 # 4. Restart IDE
 ```
 
-### Faster Iteration
+### Sandbox Development
 
-For faster development cycles:
+For faster iteration without affecting your main IDE:
 
-1. Make plugin changes
-2. Rebuild and reinstall
-3. Restart IDE
+```bash
+./gradlew :plugin-core:runIde
+```
+
+This launches a sandboxed IntelliJ with the plugin pre-installed.
 
 ---
 
@@ -186,29 +178,6 @@ For faster development cycles:
 
 Once installation is successful:
 
-### Testing Checklist
-
-- [ ] Tool window opens without errors
-- [ ] ACP client connects on first prompt
-- [ ] Chat console and toolbar are visible
-- [ ] No errors in IDE logs
-- [ ] Prompt input works
-- [ ] Model selection works
-- [ ] IDE remains responsive
-
----
-
-## Support
-
-If you encounter issues not covered here:
-
-1. **Check logs:** `Help → Show Log in Explorer → idea.log`
-2. **Verify versions:**
-    - IntelliJ IDEA: 2025.1+
-    - Java: 21
-    - Copilot CLI installed and authenticated
-3. **Rebuild from scratch:**
-   ```bash
-   ./gradlew clean
-   ./gradlew :plugin-core:buildPlugin --no-daemon -x buildSearchableOptions
-   ```
+- [Quick Start Guide](QUICK-START.md) — Development workflow
+- [Features](FEATURES.md) — All 92 MCP tools documented
+- [Development Guide](DEVELOPMENT.md) — Architecture and debugging

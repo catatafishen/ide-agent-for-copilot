@@ -30,13 +30,19 @@ public final class GetNotificationsTool extends InfrastructureTool {
         return "Get recent IntelliJ balloon notifications";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "read";
+    }
+@Override
     public boolean isReadOnly() {
         return true;
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) {
+    public @NotNull String execute(@NotNull JsonObject args) {
         StringBuilder result = new StringBuilder();
         try {
             var notifications = com.intellij.notification.NotificationsManager.getNotificationsManager()

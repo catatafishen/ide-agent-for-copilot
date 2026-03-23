@@ -34,13 +34,19 @@ public final class RunConfigurationTool extends ProjectTool {
         return "Execute an existing run configuration by name";
     }
 
+    
+
     @Override
+    public @NotNull String kind() {
+        return "edit";
+    }
+@Override
     public @NotNull String permissionTemplate() {
         return "Run: {name}";
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
             {"name", TYPE_STRING, "Exact name of the run configuration"}
         }, "name");
@@ -52,7 +58,7 @@ public final class RunConfigurationTool extends ProjectTool {
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws Exception {
+    public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         return runConfigService.runConfiguration(args);
     }
 }

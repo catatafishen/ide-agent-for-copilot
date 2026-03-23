@@ -1,22 +1,60 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.infrastructure;
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
- * Reads recent IntelliJ IDE log entries, optionally filtered by level or text.
+ * MCP tool that reads recent IntelliJ IDE log entries with filtering and compact output.
+ *
+ * <h2>Design for coding-agent use</h2>
+ * <ul>
+ *   <li><b>filter</b> is always treated as a case-insensitive regex. Use {@code |} for OR
+ *       without any extra flag.</li>
+ *   <li><b>since / until</b> accept relative durations ({@code "5m"}, {@code "30s"}) or
+ *       absolute times ({@code "HH:mm:ss"} or {@code "yyyy-MM-dd HH:mm:ss"}).</li>
+ *   <li>Output is compact: date and thread-id are stripped; the logger is shortened to its
+ *       simple class name.</li>
+ * </ul>
  */
 public final class ReadIdeLogTool extends InfrastructureTool {
 
     private static final String IDEA_LOG_FILENAME = "idea.log";
+
+    private static final String PARAM_LINES = "lines";
+    private static final String PARAM_FILTER = "filter";
+    private static final String PARAM_LEVEL = "level";
+    private static final String PARAM_SINCE = "since";
+    private static final String PARAM_UNTIL = "until";
+
+    // Matches: 2026-03-22 16:58:04,345 [  49065]   INFO - #com.example.Foo - message
+    private static final Pattern LOG_LINE_PATTERN = Pattern.compile(
+        "^(\\d{4}-\\d{2}-\\d{2}) (\\d{2}:\\d{2}:\\d{2}),(\\d{3}) \\[[^]]+]\\s+(\\w+)\\s+- #?([^\\s-][^-]*)\\s*-\\s*(.*)$"
+    );
+
+    private static final Pattern RELATIVE_TIME_PATTERN =
+        Pattern.compile("^(\\d+)(m|min|minutes?|s|sec|seconds?)$", Pattern.CASE_INSENSITIVE);
+
+    private static final DateTimeFormatter DATETIME_FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public ReadIdeLogTool(Project project) {
         super(project);
@@ -34,7 +72,25 @@ public final class ReadIdeLogTool extends InfrastructureTool {
 
     @Override
     public @NotNull String description() {
-        return "Read recent IntelliJ IDE log entries, optionally filtered by level or text";
+        return """
+            Read recent IntelliJ IDE log entries with compact output.
+
+            FILTER is always a case-insensitive regex — use | for OR:
+              filter="ToolChipRegistry|git_diff"
+
+            SINCE / UNTIL narrow to a time window:
+              Relative: "5m", "30s", "2min"
+              Absolute time today: "16:57:30"
+              Absolute datetime: "2026-03-22 16:57:30"
+
+            Output format: HH:mm:ss.SSS  LEVEL  ShortClass: message
+            (date and thread-id stripped; logger shortened to simple class name)
+            """;
+    }
+
+    @Override
+    public @NotNull String kind() {
+        return "read";
     }
 
     @Override
@@ -43,49 +99,210 @@ public final class ReadIdeLogTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable JsonObject inputSchema() {
+    public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"lines", TYPE_INTEGER, "Number of recent lines to return (default: 50)"},
-            {"filter", TYPE_STRING, "Only return lines containing this text"},
-            {"level", TYPE_STRING, "Filter by log level: INFO, WARN, ERROR"}
+            {PARAM_FILTER, TYPE_STRING,
+                "Case-insensitive regex. Use | for OR: \"ToolChipRegistry|git_diff\""},
+            {PARAM_SINCE, TYPE_STRING,
+                "Show entries at or after: \"5m\", \"30s\", \"16:57:30\", \"2026-03-22 16:57:30\""},
+            {PARAM_UNTIL, TYPE_STRING,
+                "Show entries at or before. Same formats as since."},
+            {PARAM_LEVEL, TYPE_STRING,
+                "Filter by level: INFO, WARN, ERROR (comma-separated). Default: all levels."},
+            {PARAM_LINES, TYPE_INTEGER,
+                "Max matching lines to return from the end (default: 200)."},
         });
     }
 
     @Override
-    public @Nullable String execute(@NotNull JsonObject args) throws IOException {
-        int lines = args.has("lines") ? args.get("lines").getAsInt() : 50;
-        String filter = args.has("filter") ? args.get("filter").getAsString() : null;
-        String level = args.has("level") ? args.get("level").getAsString().toUpperCase() : null;
+    public @NotNull String execute(@NotNull JsonObject args) throws IOException {
+        int maxLines = args.has(PARAM_LINES) ? args.get(PARAM_LINES).getAsInt() : 200;
+        String filterStr = args.has(PARAM_FILTER) ? args.get(PARAM_FILTER).getAsString() : null;
+        String sinceStr = args.has(PARAM_SINCE) ? args.get(PARAM_SINCE).getAsString() : null;
+        String untilStr = args.has(PARAM_UNTIL) ? args.get(PARAM_UNTIL).getAsString() : null;
+        String levelParam = args.has(PARAM_LEVEL) ? args.get(PARAM_LEVEL).getAsString().toUpperCase() : null;
 
         Path logFile = findIdeLogFile();
-        if (logFile == null) {
-            return "Could not locate idea.log";
+        if (logFile == null) return "Could not locate idea.log";
+
+        Pattern filterPattern = compileFilter(filterStr);
+        if (filterPattern == null && filterStr != null && !filterStr.isBlank()) {
+            // compileFilter returns null on bad regex and logs the error as a string here
+            return "Invalid filter regex — check syntax";
         }
 
-        List<String> filtered = Files.readAllLines(logFile);
-
-        if (level != null) {
-            final String lvl = level;
-            filtered = filtered.stream()
-                .filter(l -> l.contains(lvl))
-                .toList();
+        LocalDateTime since = parseTimeArgOrError(sinceStr);
+        if (since == null && sinceStr != null) {
+            return "Invalid since value: \"" + sinceStr + "\". Use \"5m\", \"30s\", \"HH:mm:ss\", or \"yyyy-MM-dd HH:mm:ss\"";
         }
-        if (filter != null) {
-            final String f = filter;
-            filtered = filtered.stream()
-                .filter(l -> l.contains(f))
-                .toList();
+        LocalDateTime until = parseTimeArgOrError(untilStr);
+        if (until == null && untilStr != null) {
+            return "Invalid until value: \"" + untilStr + "\". Use \"5m\", \"30s\", \"HH:mm:ss\", or \"yyyy-MM-dd HH:mm:ss\"";
         }
 
-        int start = Math.max(0, filtered.size() - lines);
-        List<String> result = filtered.subList(start, filtered.size());
-        return String.join("\n", result);
+        List<String> levels = parseLevels(levelParam);
+
+        Deque<String> outputBuffer = new ArrayDeque<>(maxLines + 1);
+        LineProcessor processor = new LineProcessor(filterPattern, since, until, levels, outputBuffer, maxLines);
+
+        try (var stream = Files.lines(logFile)) {
+            for (String raw : (Iterable<String>) stream::iterator) {
+                processor.accept(raw);
+            }
+        }
+        processor.flush();
+
+        if (outputBuffer.isEmpty()) return "No matching log entries found.";
+        return String.join("\n", outputBuffer);
     }
 
-    @Override
-    public @NotNull Object resultRenderer() {
-        return IdeInfoRenderer.INSTANCE;
+    // ── Per-line processing ───────────────────────────────────────────────────
+
+    /**
+     * Bundles all filter criteria and output state for the line loop.
+     */
+    private static final class LineProcessor {
+        @Nullable
+        final Pattern filterPattern;
+        @Nullable
+        final LocalDateTime since;
+        @Nullable
+        final LocalDateTime until;
+        @Nullable
+        final List<String> levels;
+        final Deque<String> outputBuffer;
+        final int maxLines;
+        StringBuilder pending = null;
+
+        LineProcessor(
+            @Nullable Pattern filterPattern,
+            @Nullable LocalDateTime since,
+            @Nullable LocalDateTime until,
+            @Nullable List<String> levels,
+            Deque<String> outputBuffer,
+            int maxLines
+        ) {
+            this.filterPattern = filterPattern;
+            this.since = since;
+            this.until = until;
+            this.levels = levels;
+            this.outputBuffer = outputBuffer;
+            this.maxLines = maxLines;
+        }
+
+        void accept(String raw) {
+            Matcher m = LOG_LINE_PATTERN.matcher(raw);
+            if (!m.matches()) {
+                if (pending != null) pending.append("\n  ").append(raw);
+                return;
+            }
+            flush();
+            String compact = buildCompact(m);
+            if (compact != null) pending = new StringBuilder(compact);
+        }
+
+        void flush() {
+            if (pending == null) return;
+            if (outputBuffer.size() >= maxLines) outputBuffer.removeFirst();
+            outputBuffer.addLast(pending.toString());
+            pending = null;
+        }
+
+        private static final int MAX_LINE_CHARS = 2000;
+
+        private @Nullable String buildCompact(Matcher m) {
+            String level = m.group(4);
+            if (levels != null && !levels.contains(level)) return null;
+            if (!isInTimeRange(m.group(1), m.group(2))) return null;
+
+            String message = m.group(6);
+            String compact = m.group(2) + "." + m.group(3)
+                + "  " + level
+                + "  " + shortLogger(m.group(5).trim())
+                + ": " + message;
+            if (filterPattern != null && !filterPattern.matcher(compact).find()) return null;
+            if (compact.length() > MAX_LINE_CHARS) {
+                compact = compact.substring(0, MAX_LINE_CHARS) + "... [+" + (compact.length() - MAX_LINE_CHARS) + "]";
+            }
+            return compact;
+        }
+
+        private boolean isInTimeRange(String date, String time) {
+            if (since == null && until == null) return true;
+            LocalDateTime lineTime = parseLogTimestamp(date, time);
+            if (lineTime == null) return true;
+            return (since == null || !lineTime.isBefore(since))
+                && (until == null || !lineTime.isAfter(until));
+        }
+
+        private static @Nullable LocalDateTime parseLogTimestamp(String date, String time) {
+            try {
+                return LocalDateTime.parse(date + " " + time, DATETIME_FMT);
+            } catch (DateTimeParseException e) {
+                return null;
+            }
+        }
+
+        private static @NotNull String shortLogger(@NotNull String logger) {
+            int dot = logger.lastIndexOf('.');
+            return dot >= 0 ? logger.substring(dot + 1) : logger;
+        }
     }
+
+    private static @Nullable Pattern compileFilter(@Nullable String filterStr) {
+        if (filterStr == null || filterStr.isBlank()) return null;
+        try {
+            return Pattern.compile(filterStr, Pattern.CASE_INSENSITIVE);
+        } catch (PatternSyntaxException e) {
+            return null;
+        }
+    }
+
+    private static @Nullable List<String> parseLevels(@Nullable String levelParam) {
+        if (levelParam == null) return null;
+        List<String> result = new ArrayList<>();
+        for (String s : levelParam.split(",")) {
+            String t = s.trim();
+            if (!t.isEmpty()) result.add(t);
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    /**
+     * Parses a time argument, returning {@code null} if the string is {@code null}
+     * (no argument) and throwing an exception if the format is unrecognised (error case).
+     * Returns a non-null value on success.
+     */
+    private static @Nullable LocalDateTime parseTimeArgOrError(@Nullable String value) {
+        if (value == null) return null;
+        String v = value.trim();
+
+        // Relative: "5m", "30s", "2min", "90sec"
+        Matcher rel = RELATIVE_TIME_PATTERN.matcher(v);
+        if (rel.matches()) {
+            long amount = Long.parseLong(rel.group(1));
+            String unit = rel.group(2).toLowerCase();
+            LocalDateTime now = LocalDateTime.now();
+            return unit.startsWith("m") ? now.minusMinutes(amount) : now.minusSeconds(amount);
+        }
+
+        // Absolute time today: "HH:mm:ss"
+        try {
+            LocalTime t = LocalTime.parse(v.replace(",", ":"),
+                DateTimeFormatter.ofPattern("HH:mm:ss"));
+            return LocalDate.now().atTime(t);
+        } catch (DateTimeParseException ignored) { /* fall through */ }
+
+        // Absolute datetime: "2026-03-22 16:57:30"
+        try {
+            return LocalDateTime.parse(v, DATETIME_FMT);
+        } catch (DateTimeParseException ignored) { /* fall through */ }
+
+        // Unknown format — signal error by returning null when input was non-null
+        return null;
+    }
+
+    // ── Log file location ─────────────────────────────────────────────────────
 
     private static @Nullable Path findIdeLogFile() {
         Path logFile = Path.of(System.getProperty("idea.log.path", ""), IDEA_LOG_FILENAME);
@@ -107,5 +324,10 @@ public final class ReadIdeLogTool extends InfrastructureTool {
         }
 
         return null;
+    }
+
+    @Override
+    public @NotNull Object resultRenderer() {
+        return IdeInfoRenderer.INSTANCE;
     }
 }

@@ -13,7 +13,9 @@ import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -31,7 +33,8 @@ public class ProjectBuildSupport {
     private ProjectBuildSupport() {
     }
 
-    public static String buildProject(Project project, String moduleName, AtomicBoolean buildInProgress) throws Exception {
+    public static String buildProject(Project project, String moduleName, AtomicBoolean buildInProgress)
+        throws ExecutionException, InterruptedException, TimeoutException {
         CompletableFuture<String> resultFuture = new CompletableFuture<>();
         long startTime = System.currentTimeMillis();
 
@@ -70,7 +73,7 @@ public class ProjectBuildSupport {
 
         try {
             return resultFuture.get(300, TimeUnit.SECONDS);
-        } catch (Exception e) {
+        } catch (ExecutionException | InterruptedException | TimeoutException e) {
             buildInProgress.set(false);
             throw e;
         }

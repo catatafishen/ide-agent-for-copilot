@@ -26,30 +26,20 @@ import javax.swing.tree.*
 
 // Permission options
 private val PLUGIN_PERM_OPTIONS = arrayOf("Allow", "Ask")
-private val BUILTIN_PERM_OPTIONS = arrayOf("Allow", "Ask", "Deny")
 
 private fun ToolPermission.toPluginIndex() = when (this) {
     ToolPermission.ASK -> 1; else -> 0
 }
 
-private fun ToolPermission.toBuiltinIndex() = when (this) {
-    ToolPermission.ALLOW -> 0; ToolPermission.ASK -> 1; else -> 2
-}
-
 private fun Int.toPluginPermission() = if (this == 1) ToolPermission.ASK else ToolPermission.ALLOW
-private fun Int.toBuiltinPermission() = when (this) {
-    0 -> ToolPermission.ALLOW; 1 -> ToolPermission.ASK; else -> ToolPermission.DENY
-}
 
-private const val BUILTIN_TOOLTIP =
-    "<html>Cannot be disabled — GitHub Copilot CLI injects these tools regardless of settings</html>"
 private const val SILENT_TOOLTIP =
     "<html>This tool runs without a permission request — no control available</html>"
 
 /** Navigation node user-object for the tree. */
 private sealed class NavNode(val label: String) {
     class Section(val isBuiltIn: Boolean) :
-        NavNode(if (isBuiltIn) "Built-in Tools" else "IntelliJ Plugin Tools")
+        NavNode(if (isBuiltIn) "Built-in Tools" else "Plugin Tools")
 
     class Cat(val category: Category, val isBuiltIn: Boolean) : NavNode(category.displayName)
 
@@ -101,7 +91,6 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
 
     private data class ToolRow(
         val tool: ToolDefinition,
-        val isPlugin: Boolean,
         val permCombo: ComboBox<String>?,
         val inProjectCombo: ComboBox<String>?,
         val outProjectCombo: ComboBox<String>?,
@@ -120,24 +109,16 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
 
     private fun buildAllRows() {
         for (tool in registry.getAllTools()) {
-            val permCombo: ComboBox<String>? = when {
-                !tool.isBuiltIn() -> ComboBox(PLUGIN_PERM_OPTIONS).apply {
-                    setMinimumAndPreferredWidth(JBUI.scale(108))
-                    selectedIndex = settings.getToolPermission(tool.id()).toPluginIndex()
-                    toolTipText = "Permission when agent requests this tool"
-                }
+            if (tool.isBuiltIn()) continue
 
-                tool.hasDenyControl() -> ComboBox(BUILTIN_PERM_OPTIONS).apply {
-                    setMinimumAndPreferredWidth(JBUI.scale(108))
-                    selectedIndex = settings.getToolPermission(tool.id()).toBuiltinIndex()
-                    toolTipText = BUILTIN_TOOLTIP
-                }
-
-                else -> null
+            val permCombo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
+                setMinimumAndPreferredWidth(JBUI.scale(108))
+                selectedIndex = settings.getToolPermission(tool.id()).toPluginIndex()
+                toolTipText = "Permission when agent requests this tool"
             }
 
             val (inProjectCombo, outProjectCombo) = buildSubPermCombos(tool, permCombo)
-            rows.add(ToolRow(tool, !tool.isBuiltIn(), permCombo, inProjectCombo, outProjectCombo))
+            rows.add(ToolRow(tool, permCombo, inProjectCombo, outProjectCombo))
         }
     }
 
@@ -184,12 +165,6 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     private fun buildMainComponent(): JComponent {
         val root = DefaultMutableTreeNode("root")
 
-        // Built-in section
-        val builtinRoot = DefaultMutableTreeNode(NavNode.Section(isBuiltIn = true))
-        val builtinCats = rows.filter { it.tool.isBuiltIn() }.map { it.tool.category() }.distinct()
-        for (cat in builtinCats) builtinRoot.add(DefaultMutableTreeNode(NavNode.Cat(cat, isBuiltIn = true)))
-        root.add(builtinRoot)
-
         // IntelliJ plugin tools section
         val pluginRoot = DefaultMutableTreeNode(NavNode.Section(isBuiltIn = false))
         val pluginCats = rows.filter { !it.tool.isBuiltIn() }.map { it.tool.category() }.distinct()
@@ -203,7 +178,6 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         tree.border = JBUI.Borders.emptyLeft(4)
         tree.cellRenderer = NavTreeCellRenderer()
         tree.background = UIUtil.SIDE_PANEL_BACKGROUND
-        tree.expandPath(TreePath(arrayOf(root, builtinRoot)))
         tree.expandPath(TreePath(arrayOf(root, pluginRoot)))
 
         TreeUIHelper.getInstance().installTreeSpeedSearch(tree)
@@ -269,37 +243,10 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         for (row in filtered) {
             if (row.tool.category() != lastCategory) {
                 lastCategory = row.tool.category()
-                gbc.gridx = 0; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
-                gbc.insets = JBUI.insets(12, 0, 4, 0)
-                content.add(TitledSeparator(row.tool.category().displayName), gbc)
-                gbc.gridy++
-                gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
-                gbc.insets = JBUI.insets(2, 0)
+                addCategoryHeader(content, gbc, row.tool.category())
             }
-
-            // [name] [perm combo or silent label]
-            gbc.gridwidth = 1; gbc.gridx = 0
-            gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
-            val nameLabel = SimpleColoredComponent().apply {
-                append(row.tool.displayName(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                if (row.tool.description().isNotEmpty()) toolTipText = row.tool.description()
-                border = JBUI.Borders.emptyLeft(4)
-            }
-            content.add(nameLabel, gbc)
-
-            gbc.gridx = 1; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
-            if (row.permCombo != null) {
-                content.add(row.permCombo, gbc)
-            } else {
-                content.add(JBLabel("Runs silently", AllIcons.Actions.Suspend, SwingConstants.LEFT).apply {
-                    foreground = JBUI.CurrentTheme.Label.disabledForeground()
-                    font = JBUI.Fonts.smallFont()
-                    toolTipText = SILENT_TOOLTIP
-                }, gbc)
-            }
-
+            addToolRow(content, gbc, row)
             gbc.gridy++
-
             if (row.inProjectCombo != null && row.outProjectCombo != null) {
                 addSubPermRow(content, gbc, "▸ Inside project:", row.inProjectCombo)
                 addSubPermRow(content, gbc, "▸ Outside project:", row.outProjectCombo)
@@ -317,18 +264,52 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         }
     }
 
+    private fun addCategoryHeader(content: JBPanel<*>, gbc: GridBagConstraints, category: Category) {
+        gbc.gridx = 0; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
+        gbc.insets = JBUI.insets(12, 0, 4, 0)
+        content.add(TitledSeparator(category.displayName), gbc)
+        gbc.gridy++
+        gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+        gbc.insets = JBUI.insets(2, 0)
+    }
+
+    private fun addToolRow(content: JBPanel<*>, gbc: GridBagConstraints, row: ToolRow) {
+        gbc.gridwidth = 1; gbc.gridx = 0
+        gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+        val nameLabel = SimpleColoredComponent().apply {
+            append(row.tool.displayName(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
+            if (row.tool.description().isNotEmpty()) toolTipText = row.tool.description()
+            border = JBUI.Borders.empty(4, 4, 4, 8)
+        }
+        content.add(nameLabel, gbc)
+        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
+        if (row.permCombo != null) {
+            val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+            wrapper.add(row.permCombo, BorderLayout.WEST)
+            content.add(wrapper, gbc)
+        } else {
+            content.add(JBLabel("Runs silently", AllIcons.Actions.Suspend, SwingConstants.LEFT).apply {
+                foreground = JBUI.CurrentTheme.Label.disabledForeground()
+                font = JBUI.Fonts.smallFont()
+                toolTipText = SILENT_TOOLTIP
+            }, gbc)
+        }
+    }
+
     private fun addSubPermRow(
         panel: JBPanel<*>, gbc: GridBagConstraints,
         labelText: String, combo: ComboBox<String>
     ) {
         gbc.gridwidth = 1; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE; gbc.gridx = 0
-        gbc.insets = JBUI.insets(0, 24, 0, 0)
+        gbc.insets = JBUI.insets(0, 24, 0, 8)
         panel.add(JBLabel(labelText).apply {
             font = JBUI.Fonts.smallFont()
             foreground = JBUI.CurrentTheme.Label.disabledForeground()
         }, gbc)
-        gbc.gridx = 1; gbc.insets = JBUI.insets(1, 0)
-        panel.add(combo, gbc)
+        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = JBUI.insets(1, 0)
+        val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
+        wrapper.add(combo, BorderLayout.WEST)
+        panel.add(wrapper, gbc)
         gbc.gridy++
         gbc.insets = JBUI.insets(2, 0)
     }
@@ -338,21 +319,14 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     fun isModified(): Boolean {
         for (row in rows) {
             val id = row.tool.id()
-            if (row.isPlugin) {
-                row.permCombo?.let { combo ->
-                    if (combo.selectedIndex.toPluginPermission() != settings.getToolPermission(id)) return true
-                    if (combo.selectedIndex == 0) {
-                        row.inProjectCombo?.let {
-                            if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionInsideProject(id)) return true
-                        }
-                        row.outProjectCombo?.let {
-                            if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionOutsideProject(id)) return true
-                        }
-                    }
+            val combo = row.permCombo ?: return false
+            if (combo.selectedIndex.toPluginPermission() != settings.getToolPermission(id)) return true
+            if (combo.selectedIndex == 0) {
+                row.inProjectCombo?.let {
+                    if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionInsideProject(id)) return true
                 }
-            } else {
-                row.permCombo?.let {
-                    if (it.selectedIndex.toBuiltinPermission() != settings.getToolPermission(id)) return true
+                row.outProjectCombo?.let {
+                    if (it.selectedIndex.toPluginPermission() != settings.getToolPermissionOutsideProject(id)) return true
                 }
             }
         }
@@ -371,24 +345,20 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     fun save() {
         for (row in rows) {
             val id = row.tool.id()
-            if (row.isPlugin) {
-                row.permCombo?.let { combo ->
-                    val perm = combo.selectedIndex.toPluginPermission()
-                    settings.setToolPermission(id, perm)
+            row.permCombo?.let { combo ->
+                val perm = combo.selectedIndex.toPluginPermission()
+                settings.setToolPermission(id, perm)
 
-                    if (perm == ToolPermission.ALLOW) {
-                        row.inProjectCombo?.let {
-                            settings.setToolPermissionInsideProject(id, it.selectedIndex.toPluginPermission())
-                        }
-                        row.outProjectCombo?.let {
-                            settings.setToolPermissionOutsideProject(id, it.selectedIndex.toPluginPermission())
-                        }
-                    } else {
-                        settings.clearToolSubPermissions(id)
+                if (perm == ToolPermission.ALLOW) {
+                    row.inProjectCombo?.let {
+                        settings.setToolPermissionInsideProject(id, it.selectedIndex.toPluginPermission())
                     }
+                    row.outProjectCombo?.let {
+                        settings.setToolPermissionOutsideProject(id, it.selectedIndex.toPluginPermission())
+                    }
+                } else {
+                    settings.clearToolSubPermissions(id)
                 }
-            } else {
-                row.permCombo?.let { settings.setToolPermission(id, it.selectedIndex.toBuiltinPermission()) }
             }
         }
     }

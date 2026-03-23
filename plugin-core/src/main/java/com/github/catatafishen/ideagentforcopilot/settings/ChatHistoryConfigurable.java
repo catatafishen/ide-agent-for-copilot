@@ -92,10 +92,7 @@ public final class ChatHistoryConfigurable implements Configurable {
         tableModel = new ConversationTableModel();
         table = new JBTable(tableModel);
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        table.getEmptyText().setText("No conversations found");
-        table.getEmptyText().appendSecondaryText(
-            "Start a chat to create conversation history",
-            SimpleTextAttributes.GRAYED_ATTRIBUTES, null);
+        table.getEmptyText().setText("Start a chat to create conversation history");
         table.getAccessibleContext().setAccessibleName("Conversation history files");
 
         table.getColumnModel().getColumn(0).setPreferredWidth(JBUI.scale(200));
@@ -132,8 +129,6 @@ public final class ChatHistoryConfigurable implements Configurable {
             .addExtraAction(createRevealInFinderAction())
             .createPanel();
 
-        loadConversations();
-
         JPanel panel = FormBuilder.createFormBuilder()
             .addComponent(new JBLabel(
                 "<html>Conversation files stored in this project's "
@@ -142,6 +137,10 @@ public final class ChatHistoryConfigurable implements Configurable {
             .addComponentFillVertically(decorated, 0)
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));
+
+        // Load conversations in background after component creation to avoid blocking EDT
+        ApplicationManager.getApplication().invokeLater(this::loadConversations);
+
         return panel;
     }
 
