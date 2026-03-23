@@ -274,6 +274,31 @@
       id="com.github.catatafishen.ideagentforcopilot.settings"
       displayName="IDE Agent for Copilot"/>
 
+    <!-- ── General sub-pages ── -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.StartupInstructionsConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.agentInstructions"
+      displayName="Agent Instructions"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ProjectFilesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.projectFiles"
+      displayName="Project Files"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ScratchTypesConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.scratchTypes"
+      displayName="Scratch File Types"/>
+
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ChatHistoryConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.chatHistory"
+      displayName="Chat History"/>
+
     <!-- ── MCP section ── -->
     <projectConfigurable
       parentId="com.github.catatafishen.ideagentforcopilot.settings"

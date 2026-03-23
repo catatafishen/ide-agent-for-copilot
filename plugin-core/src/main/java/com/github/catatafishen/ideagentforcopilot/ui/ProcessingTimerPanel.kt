@@ -1,8 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.ui.renderers.ToolRenderers
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.AsyncProcessIcon
@@ -67,11 +67,13 @@ internal class ProcessingTimerPanel(
         toolsLabel.foreground = JBUI.CurrentTheme.Label.disabledForeground()
         toolsLabel.font = smallGray
         toolsLabel.isVisible = false
-        addedLabel.foreground = JBColor.GREEN.darker()
+        addedLabel.foreground = ToolRenderers.SUCCESS_COLOR
         addedLabel.font = smallGray
+        addedLabel.toolTipText = "Lines added"
         addedLabel.isVisible = false
-        removedLabel.foreground = JBColor.RED
+        removedLabel.foreground = ToolRenderers.FAIL_COLOR
         removedLabel.font = smallGray
+        removedLabel.toolTipText = "Lines removed"
         removedLabel.isVisible = false
         requestsLabel.foreground = JBUI.CurrentTheme.Label.disabledForeground()
         requestsLabel.font = smallGray

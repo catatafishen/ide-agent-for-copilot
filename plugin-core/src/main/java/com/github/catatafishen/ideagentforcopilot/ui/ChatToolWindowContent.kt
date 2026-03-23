@@ -580,7 +580,10 @@ class ChatToolWindowContent(
 
         promptTextArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
-                ApplicationManager.getApplication().invokeLater { promptTextArea.revalidate() }
+                ApplicationManager.getApplication().invokeLater {
+                    promptTextArea.revalidate()
+                    checkSlashCommandAutocomplete()
+                }
             }
         })
 
@@ -805,25 +808,6 @@ class ChatToolWindowContent(
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(ev: AnActionEvent) = pasteToScratchHandler.handleCreateScratch()
             })
-            group.addSeparator()
-
-            val triggerGroup = DefaultActionGroup("File Search Trigger", true)
-            triggerGroup.templatePresentation.icon = AllIcons.General.Settings
-            for ((label, value) in listOf(
-                "# (VS Code style)" to "#",
-                "@ (AI Assistant style)" to "@",
-                "Disabled" to ""
-            )) {
-                triggerGroup.add(object : ToggleAction(label) {
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                    override fun isSelected(e: AnActionEvent) = ActiveAgentManager.getAttachTriggerChar() == value
-                    override fun setSelected(e: AnActionEvent, state: Boolean) {
-                        if (state) ActiveAgentManager.setAttachTriggerChar(value)
-                    }
-                })
-            }
-            group.add(triggerGroup)
-
             val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance().createActionGroupPopup(
                 null, group, e.dataContext,
                 com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false
@@ -996,7 +980,6 @@ class ChatToolWindowContent(
         }
     }
 
-
     /** Open a project-root file in the editor if it exists. */
     private fun openProjectFile(fileName: String) {
         val base = project.basePath ?: return
@@ -1111,7 +1094,13 @@ class ChatToolWindowContent(
                 .getFileTypeByExtension(extension).icon ?: AllIcons.FileTypes.Text
         }
 
-        private fun addGlobSection(group: DefaultActionGroup, base: String, dirPath: String, pattern: String, label: String) {
+        private fun addGlobSection(
+            group: DefaultActionGroup,
+            base: String,
+            dirPath: String,
+            pattern: String,
+            label: String
+        ) {
             val dir = java.io.File(base, dirPath)
             val files = findMatchingFiles(dir, pattern)
 
@@ -1498,6 +1487,7 @@ class ChatToolWindowContent(
     private fun sendPromptDirectly(prompt: String) {
         val trimmed = prompt.trim()
         if (trimmed.isEmpty()) return
+
         statusBanner?.dismissCurrent()
         setSendingState(true)
         consolePanel.addPromptEntry(trimmed, null)
@@ -1505,6 +1495,60 @@ class ChatToolWindowContent(
         ApplicationManager.getApplication().executeOnPooledThread {
             promptOrchestrator.execute(trimmed, emptyList(), selectedModelId)
         }
+    }
+
+    private var autocompletePopup: com.intellij.openapi.ui.popup.JBPopup? = null
+
+    private fun checkSlashCommandAutocomplete() {
+        val client = agentManager.getClient()
+        if (client !is com.github.catatafishen.ideagentforcopilot.acp.client.KiroClient) {
+            autocompletePopup?.cancel()
+            return
+        }
+
+        val text = promptTextArea.text
+        if (!text.startsWith("/") || text.contains("\n")) {
+            autocompletePopup?.cancel()
+            return
+        }
+
+        val commands = client.getAvailableCommands()
+        if (commands.size() == 0) return
+
+        val matches = mutableListOf<String>()
+        for (i in 0 until commands.size()) {
+            val cmdObj = commands[i].asJsonObject
+            val cmd = cmdObj.get("name")?.asString ?: continue
+            if (cmd.startsWith(text, ignoreCase = true)) {
+                matches.add(cmd)
+            }
+        }
+
+        if (matches.isEmpty()) {
+            autocompletePopup?.cancel()
+            return
+        }
+
+        showAutocompletePopup(matches)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun showAutocompletePopup(commands: List<String>) {
+        autocompletePopup?.cancel()
+
+        val list = com.intellij.ui.components.JBList(commands)
+        list.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        list.selectedIndex = 0
+
+        autocompletePopup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
+            .createListPopupBuilder(list)
+            .setItemChosenCallback(Runnable {
+                val selected = list.selectedValue
+                if (selected != null) promptTextArea.text = selected
+            })
+            .createPopup()
+
+        autocompletePopup?.showInBestPositionFor(promptTextArea.editor ?: return)
     }
 
     private fun onLoadMoreHistory() {

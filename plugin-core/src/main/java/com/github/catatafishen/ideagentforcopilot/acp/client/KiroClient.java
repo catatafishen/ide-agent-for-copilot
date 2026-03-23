@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.acp.client;
 import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
@@ -10,10 +11,114 @@ import java.util.List;
 
 public final class KiroClient extends AcpClient {
 
+    private static final Logger LOG = Logger.getInstance(KiroClient.class);
     private static final String KEY_RAW_INPUT = "rawInput";
 
     public KiroClient(Project project) {
         super(project);
+    }
+
+    @Override
+    protected void registerHandlers() {
+        // Register combined handler for both standard and Kiro-specific notifications
+        transport.onNotification(notification -> {
+            String method = notification.method();
+            if ("session/update".equals(method)) {
+                // Delegate to parent's session update handler
+                handleSessionUpdate(notification.params());
+            } else if (method.startsWith("_kiro.dev/") || method.equals("_session/terminate")) {
+                handleKiroNotification(method, notification.params());
+            }
+        });
+
+        // Register request and stderr handlers from parent
+        transport.onRequest(this::handleAgentRequest);
+        transport.onStderr(line ->
+            LOG.debug("[" + agentId() + " stderr] " + line));
+    }
+
+    private void handleKiroNotification(String method, JsonObject params) {
+        switch (method) {
+            case "_kiro.dev/commands/available" -> handleCommandsAvailable(params);
+            case "_kiro.dev/mcp/oauth_request" -> handleMcpOAuthRequest(params);
+            case "_kiro.dev/mcp/server_initialized" -> handleMcpServerInitialized(params);
+            case "_kiro.dev/compaction/status" -> handleCompactionStatus(params);
+            case "_kiro.dev/clear/status" -> handleClearStatus(params);
+            case "_session/terminate" -> handleSessionTerminate(params);
+            default -> LOG.debug("Unhandled Kiro notification: " + method);
+        }
+    }
+
+    private JsonArray availableCommands = new JsonArray();
+
+    private void handleCommandsAvailable(JsonObject params) {
+        if (params != null && params.has("commands")) {
+            availableCommands = params.getAsJsonArray("commands");
+            LOG.info("Kiro slash commands available: " + availableCommands.size());
+        }
+    }
+
+    public void executeSlashCommand(String command, java.util.function.Consumer<Boolean> callback) {
+        JsonObject params = new JsonObject();
+        params.addProperty("command", command);
+        transport.sendRequest("_kiro.dev/commands/execute", params).thenAccept(response -> {
+            boolean success = response != null && response.isJsonObject()
+                && response.getAsJsonObject().has("success")
+                && response.getAsJsonObject().get("success").getAsBoolean();
+            callback.accept(success);
+        });
+    }
+
+    public void getCommandOptions(String partial, java.util.function.Consumer<JsonArray> callback) {
+        JsonObject params = new JsonObject();
+        params.addProperty("partial", partial);
+        transport.sendRequest("_kiro.dev/commands/options", params).thenAccept(response -> {
+            JsonArray options = (response != null && response.isJsonObject()
+                && response.getAsJsonObject().has("options"))
+                ? response.getAsJsonObject().getAsJsonArray("options")
+                : new JsonArray();
+            callback.accept(options);
+        });
+    }
+
+    public JsonArray getAvailableCommands() {
+        return availableCommands;
+    }
+
+    private void handleMcpOAuthRequest(JsonObject params) {
+        if (params != null && params.has("url")) {
+            String oauthUrl = params.get("url").getAsString();
+            LOG.info("MCP OAuth required: " + oauthUrl);
+            // TODO: Show notification with clickable link
+        }
+    }
+
+    private void handleMcpServerInitialized(JsonObject params) {
+        if (params != null && params.has("serverName")) {
+            String serverName = params.get("serverName").getAsString();
+            LOG.info("MCP server initialized: " + serverName);
+        }
+    }
+
+    private void handleCompactionStatus(JsonObject params) {
+        if (params != null && params.has("status")) {
+            String status = params.get("status").getAsString();
+            LOG.debug("Context compaction: " + status);
+        }
+    }
+
+    private void handleClearStatus(JsonObject params) {
+        if (params != null && params.has("status")) {
+            String status = params.get("status").getAsString();
+            LOG.debug("Clear session: " + status);
+        }
+    }
+
+    private void handleSessionTerminate(JsonObject params) {
+        if (params != null && params.has("sessionId")) {
+            String sessionId = params.get("sessionId").getAsString();
+            LOG.info("Subagent session terminated: " + sessionId);
+        }
     }
 
     @Override
@@ -53,28 +158,28 @@ public final class KiroClient extends AcpClient {
     @Override
     protected void beforeLaunch(String cwd, int mcpPort) throws java.io.IOException {
         java.nio.file.Path kiroDir = java.nio.file.Path.of(cwd, ".agent-work", ".kiro", "agents");
-            java.nio.file.Files.createDirectories(kiroDir);
-            java.nio.file.Path agentPath = kiroDir.resolve("intellij-task.json");
+        java.nio.file.Files.createDirectories(kiroDir);
+        java.nio.file.Path agentPath = kiroDir.resolve("intellij-task.json");
 
-            JsonObject agent = new JsonObject();
-            agent.addProperty("name", "intellij-task");
-            agent.addProperty("description", "IDE-only agent");
+        JsonObject agent = new JsonObject();
+        agent.addProperty("name", "intellij-task");
+        agent.addProperty("description", "IDE-only agent");
 
-            JsonArray tools = new JsonArray();
-            tools.add("@agentbridge/*");
-            tools.add("web_fetch");
-            tools.add("web_search");
-            agent.add("tools", tools);
+        JsonArray tools = new JsonArray();
+        tools.add("@agentbridge/*");
+        tools.add("web_fetch");
+        tools.add("web_search");
+        agent.add("tools", tools);
 
-            JsonArray allowedTools = new JsonArray();
-            allowedTools.add("@agentbridge/*");
-            agent.add("allowedTools", allowedTools);
+        JsonArray allowedTools = new JsonArray();
+        allowedTools.add("@agentbridge/*");
+        agent.add("allowedTools", allowedTools);
 
-            try (java.io.Writer writer = java.nio.file.Files.newBufferedWriter(agentPath)) {
-                gson.toJson(agent, writer);
-                com.intellij.openapi.diagnostic.Logger.getInstance(KiroClient.class)
-                    .info("Kiro: wrote agent definition to " + agentPath + " to restrict built-in tools");
-            }
+        try (java.io.Writer writer = java.nio.file.Files.newBufferedWriter(agentPath)) {
+            gson.toJson(agent, writer);
+            com.intellij.openapi.diagnostic.Logger.getInstance(KiroClient.class)
+                .info("Kiro: wrote agent definition to " + agentPath + " to restrict built-in tools");
+        }
     }
 
     @Override

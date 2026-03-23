@@ -5,11 +5,9 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextArea;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.Nls;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.*;
 
 /**
  * Settings UI for customizing agent startup instructions.
@@ -19,7 +17,7 @@ public final class StartupInstructionsConfigurable implements Configurable {
     private JPanel rootPanel;
     private JBTextArea instructionsArea;
     private JCheckBox useCustomCheckBox;
-    
+
     private final StartupInstructionsSettings settings = StartupInstructionsSettings.getInstance();
 
     @Override
@@ -29,52 +27,41 @@ public final class StartupInstructionsConfigurable implements Configurable {
 
     @Override
     public @Nullable JComponent createComponent() {
-        rootPanel = new JPanel(new BorderLayout());
-        rootPanel.setBorder(JBUI.Borders.empty(12));
-
-        // Header
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        
-        useCustomCheckBox = new JCheckBox("Use custom startup instructions (uncheck to use default template)");
+        useCustomCheckBox = new JCheckBox("Use custom startup instructions");
         useCustomCheckBox.addActionListener(e -> updateUIState());
-        headerPanel.add(useCustomCheckBox, BorderLayout.NORTH);
-        
-        // Info label
-        JLabel infoLabel = new JLabel(
-            "<html><i>These instructions are sent to all agents at session start. " +
-            "Changes apply to new sessions only.</i></html>");
-        infoLabel.setForeground(JBUI.CurrentTheme.Label.disabledForeground());
-        infoLabel.setBorder(JBUI.Borders.emptyTop(8));
-        headerPanel.add(infoLabel, BorderLayout.SOUTH);
-        
-        rootPanel.add(headerPanel, BorderLayout.NORTH);
 
-        // Text area
+        JLabel infoLabel = new JLabel(
+            "<html><i>Sent to all agents at the start of each session. "
+                + "Changes take effect for new sessions only.</i></html>");
+        infoLabel.setForeground(JBUI.CurrentTheme.Label.disabledForeground());
+
         instructionsArea = new JBTextArea();
         instructionsArea.setFont(JBUI.Fonts.create("monospace", 12));
         instructionsArea.setRows(20);
         instructionsArea.setWrapStyleWord(true);
         instructionsArea.setLineWrap(true);
-        
+
         JBScrollPane scrollPane = new JBScrollPane(instructionsArea);
         scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        scrollPane.setBorder(JBUI.Borders.emptyTop(12));
-        
-        rootPanel.add(scrollPane, BorderLayout.CENTER);
 
-        // Button panel
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 8));
-        
         JButton resetButton = new JButton("Reset to Default");
         resetButton.addActionListener(e -> resetToDefault());
+
+        JPanel buttonPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 4));
         buttonPanel.add(resetButton);
-        
-        JButton previewButton = new JButton("Preview Default");
-        previewButton.addActionListener(e -> previewDefault());
-        buttonPanel.add(previewButton);
-        
-        rootPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        rootPanel = new JPanel(new java.awt.BorderLayout());
+        rootPanel.setBorder(JBUI.Borders.empty(8));
+
+        JPanel headerPanel = new JPanel(new java.awt.BorderLayout(0, 4));
+        headerPanel.add(useCustomCheckBox, java.awt.BorderLayout.NORTH);
+        headerPanel.add(infoLabel, java.awt.BorderLayout.CENTER);
+        headerPanel.setBorder(JBUI.Borders.emptyBottom(8));
+
+        rootPanel.add(headerPanel, java.awt.BorderLayout.NORTH);
+        rootPanel.add(scrollPane, java.awt.BorderLayout.CENTER);
+        rootPanel.add(buttonPanel, java.awt.BorderLayout.SOUTH);
 
         return rootPanel;
     }
@@ -82,7 +69,7 @@ public final class StartupInstructionsConfigurable implements Configurable {
     private void updateUIState() {
         boolean useCustom = useCustomCheckBox.isSelected();
         instructionsArea.setEnabled(useCustom);
-        
+
         if (!useCustom) {
             // Show default template when switching to default
             instructionsArea.setText(settings.getDefaultTemplate());
@@ -100,35 +87,19 @@ public final class StartupInstructionsConfigurable implements Configurable {
         updateUIState();
     }
 
-    private void previewDefault() {
-        String current = instructionsArea.getText();
-        String defaultText = settings.getDefaultTemplate();
-        
-        instructionsArea.setText(defaultText);
-        instructionsArea.setCaretPosition(0);
-        
-        JOptionPane.showMessageDialog(rootPanel, 
-            "Default template shown in editor. Your changes are preserved and will be restored when you close this dialog.",
-            "Preview Default Template", 
-            JOptionPane.INFORMATION_MESSAGE);
-        
-        // Restore previous content
-        instructionsArea.setText(current);
-    }
-
     @Override
     public boolean isModified() {
         if (useCustomCheckBox.isSelected() != settings.isUsingCustomInstructions()) {
             return true;
         }
-        
+
         if (useCustomCheckBox.isSelected()) {
             String current = instructionsArea.getText().trim();
             String stored = settings.getCustomInstructions();
             stored = stored != null ? stored.trim() : "";
             return !current.equals(stored);
         }
-        
+
         return false;
     }
 
@@ -146,13 +117,13 @@ public final class StartupInstructionsConfigurable implements Configurable {
     public void reset() {
         boolean usingCustom = settings.isUsingCustomInstructions();
         useCustomCheckBox.setSelected(usingCustom);
-        
+
         if (usingCustom) {
             instructionsArea.setText(settings.getCustomInstructions());
         } else {
             instructionsArea.setText(settings.getDefaultTemplate());
         }
-        
+
         updateUIState();
     }
 

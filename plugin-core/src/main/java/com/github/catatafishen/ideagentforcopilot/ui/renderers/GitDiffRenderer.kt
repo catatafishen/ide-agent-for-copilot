@@ -106,7 +106,8 @@ object GitDiffRenderer : ToolResultRenderer {
         section.add(ToolRenderers.fileLink(filePath, filePath).apply {
             alignmentX = JComponent.LEFT_ALIGNMENT
         })
-        section.add(ToolRenderers.codeBlock(lines.joinToString("\n")))
+        val diffText = lines.joinToString("\n")
+        section.add(ToolRenderers.codeOrScratchPanel(diffText, "diff"))
         panel.add(section)
     }
 

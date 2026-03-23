@@ -45,14 +45,10 @@ BEST PRACTICES:
 
 SUB-AGENT TOOL GUIDANCE:
 Sub-agents do not see these instructions. When launching sub-agents via the Task tool, \
-ALWAYS prefer custom intellij-* agents over built-in ones: \
-- Use `intellij-explore` instead of `explore` for code exploration \
-- Use `intellij-edit` instead of `task` for code changes \
-- Use `intellij-default` for general-purpose tasks \
+include relevant tool guidance in the prompt you write for them: \
 
-Include relevant tool guidance in the prompt you write for them: \
-- Explore agents: "Use `read_file` to read files, `search_text` to search code." \
-- Task agents: "Use `run_command` for shell commands. Use `read_file` to read files." \
+- Explore agents: "Use `agentbridge/read_file` to read files, `agentbridge/search_text` to search code." \
+- Task agents: "Use `agentbridge/run_command` for shell commands. Use `agentbridge/read_file` to read files." \
 - All sub-agents: "Use IDE git tools (git_status, git_diff, git_log, etc.) for reading git state — never shell git." \
 - All sub-agents: "Do NOT use git write commands (git_commit, git_stage, etc.) — only the main agent may write."
 

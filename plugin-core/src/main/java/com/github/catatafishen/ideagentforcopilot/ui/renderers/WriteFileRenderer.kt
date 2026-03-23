@@ -154,7 +154,22 @@ object WriteFileRenderer : ArgumentAwareRenderer {
         panel.add(row)
     }
 
+    private val DIFF_INLINE_THRESHOLD = 8
+
     private fun addDiffBlock(panel: JPanel, diff: DiffContent) {
+        val oldLines = diff.oldStr.lines()
+        val newLines = diff.newStr.lines()
+        val totalLines = oldLines.size + newLines.size
+
+        // For large diffs, skip inline rendering and offer the diff viewer instead
+        if (totalLines > DIFF_INLINE_THRESHOLD) {
+            val statsRow = ToolRenderers.rowPanel()
+            statsRow.add(ToolRenderers.mutedLabel("-${oldLines.size} lines  +${newLines.size} lines  "))
+            statsRow.add(ToolRenderers.diffViewerLink("Open diff viewer", "Before", diff.oldStr, "After", diff.newStr))
+            panel.add(statsRow)
+            return
+        }
+
         val scheme = EditorColorsManager.getInstance().globalScheme
         val monoFont = JBUI.Fonts.create("JetBrains Mono", UIUtil.getLabelFont().size)
         val sc = StyleContext.getDefaultStyleContext()
@@ -181,9 +196,6 @@ object WriteFileRenderer : ArgumentAwareRenderer {
             StyleConstants.setForeground(this, ADD_FG)
             StyleConstants.setBackground(this, ADD_BG)
         }
-
-        val oldLines = diff.oldStr.lines()
-        val newLines = diff.newStr.lines()
 
         for (line in oldLines) {
             doc.insertString(doc.length, "- $line\n", delStyle)

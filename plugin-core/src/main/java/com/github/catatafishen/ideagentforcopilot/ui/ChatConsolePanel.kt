@@ -1000,11 +1000,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
         }
 
-        // 4. Fallback: monospace code or JSON editor
+        // 4. Fallback: monospace code or JSON editor; long text gets a scratch-file link
         val fallbackContent = if (isJson(finalDetails)) {
             ToolRenderers.jsonEditor(prettyJson(finalDetails), project)
         } else {
-            ToolRenderers.codePanel(finalDetails)
+            ToolRenderers.codeOrScratchPanel(finalDetails)
         }
         container.add(fallbackContent)
 
@@ -1143,7 +1143,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val paramsPanel = if (!arguments.isNullOrBlank()) {
             ToolRenderers.jsonEditor(prettyJson(arguments), project)
         } else null
-        val filePath = entry?.filePath
         ApplicationManager.getApplication().invokeLater {
             ToolCallPopup.show(
                 project,
@@ -1152,7 +1151,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 paramsPanel,
                 resultPanel,
                 mcpDescription,
-                filePath,
                 autoDenied,
                 denialReason
             )

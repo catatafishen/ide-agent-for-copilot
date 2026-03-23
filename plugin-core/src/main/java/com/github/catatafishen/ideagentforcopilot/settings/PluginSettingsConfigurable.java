@@ -1,30 +1,27 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
+import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBLabel;
+import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import java.awt.*;
 
 public final class PluginSettingsConfigurable implements Configurable {
 
     public static final String ID = "com.github.catatafishen.ideagentforcopilot.settings";
     public static final String DISPLAY_NAME = "AgentBridge";
 
-    private final Project project;
+    private JComboBox<String> triggerCharCombo;
 
-    private ScratchTypesConfigurable scratchTypesConfigurable;
-    private ProjectFilesConfigurable projectFilesConfigurable;
-    private ChatHistoryConfigurable chatHistoryConfigurable;
-    private StartupInstructionsConfigurable startupInstructionsConfigurable;
-
-    public PluginSettingsConfigurable(@NotNull Project project) {
-        this.project = project;
+    @SuppressWarnings("unused")
+    public PluginSettingsConfigurable(@NotNull Project ignoredProject) {
     }
 
     /**
@@ -41,106 +38,72 @@ public final class PluginSettingsConfigurable implements Configurable {
 
     @Override
     public @NotNull JComponent createComponent() {
-        scratchTypesConfigurable = new ScratchTypesConfigurable();
-        projectFilesConfigurable = new ProjectFilesConfigurable();
-        chatHistoryConfigurable = new ChatHistoryConfigurable(project);
-        startupInstructionsConfigurable = new StartupInstructionsConfigurable();
+        triggerCharCombo = new JComboBox<>(new String[]{"# (VS Code style)", "@ (AI Assistant style)", "Disabled"});
 
-        JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("About", buildAboutPanel());
-        tabs.addTab("Scratch File Types", scratchTypesConfigurable.createComponent());
-        tabs.addTab("Project Files", projectFilesConfigurable.createComponent());
-        tabs.addTab("Chat History", chatHistoryConfigurable.createComponent());
-        tabs.addTab("Agent Instructions", startupInstructionsConfigurable.createComponent());
-
-        reset();
-
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.add(tabs, BorderLayout.NORTH);
-        return wrapper;
-    }
-
-    private @NotNull JPanel buildAboutPanel() {
         String version = com.github.catatafishen.ideagentforcopilot.BuildInfo.getVersion();
         String hash = com.github.catatafishen.ideagentforcopilot.BuildInfo.getGitHash();
 
         JBLabel descLabel = new JBLabel(
             "<html>"
-                + "<b>" + DISPLAY_NAME + "</b> bridges your IntelliJ IDE with AI coding agents.<br><br>"
-                + "Agents connect via the <b>Agent Coding Protocol (ACP)</b> and gain access to<br>"
-                + "live code intelligence, refactoring, search, file editing, and build tools<br>"
-                + "through the <b>MCP server</b> running inside the IDE.<br><br>"
-                + "Supported clients: <b>GitHub Copilot</b>, <b>OpenCode</b>, <b>Claude Code</b>, <b>Claude CLI</b>, <b>Junie</b>."
+                + "AgentBridge connects IntelliJ IDE with AI coding agents via the "
+                + "<b>Agent Coding Protocol (ACP)</b>. Agents gain live access to code intelligence, "
+                + "refactoring, search, file editing, and build tools through the MCP server built "
+                + "into the IDE.<br><br>"
+                + "Supported clients: <b>GitHub Copilot</b>, <b>OpenCode</b>, <b>Claude Code</b>, "
+                + "<b>Claude CLI</b>, <b>Junie</b>, <b>Kiro</b>."
                 + "</html>");
-        descLabel.setBorder(JBUI.Borders.empty(4, 0, 12, 0));
+        descLabel.setForeground(UIUtil.getContextHelpForeground());
 
         JBLabel versionLabel = new JBLabel("Version " + version + "  ·  " + hash);
         versionLabel.setForeground(JBUI.CurrentTheme.Label.disabledForeground());
         versionLabel.setFont(JBUI.Fonts.smallFont());
 
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(JBUI.Borders.empty(12));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.NORTH;
-        panel.add(descLabel, gbc);
+        JPanel panel = FormBuilder.createFormBuilder()
+            .addLabeledComponent("File search trigger:", triggerCharCombo)
+            .addTooltip("Character that opens the file search popup in the chat input.")
+            .addSeparator(12)
+            .addComponent(descLabel)
+            .addVerticalGap(8)
+            .addComponent(versionLabel)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
+        panel.setBorder(JBUI.Borders.empty(8));
 
-        gbc.gridy = 1;
-        panel.add(versionLabel, gbc);
-
-        // Add a filler at the bottom to push everything to the top
-        gbc.gridy = 2;
-        gbc.weighty = 1.0;
-        gbc.fill = GridBagConstraints.BOTH;
-        panel.add(new JPanel(), gbc);
-
+        reset();
         return panel;
+    }
+
+    private String selectedTriggerChar() {
+        int idx = triggerCharCombo == null ? 0 : triggerCharCombo.getSelectedIndex();
+        return switch (idx) {
+            case 1 -> "@";
+            case 2 -> "";
+            default -> "#";
+        };
+    }
+
+    private void selectTriggerChar(String value) {
+        if (triggerCharCombo == null) return;
+        triggerCharCombo.setSelectedIndex(switch (value) {
+            case "@" -> 1;
+            case "" -> 2;
+            default -> 0;
+        });
     }
 
     @Override
     public boolean isModified() {
-        return (scratchTypesConfigurable != null && scratchTypesConfigurable.isModified())
-            || (projectFilesConfigurable != null && projectFilesConfigurable.isModified())
-            || (chatHistoryConfigurable != null && chatHistoryConfigurable.isModified())
-            || (startupInstructionsConfigurable != null && startupInstructionsConfigurable.isModified());
+        return triggerCharCombo != null
+            && !selectedTriggerChar().equals(ActiveAgentManager.getAttachTriggerChar());
     }
 
     @Override
     public void apply() {
-        if (scratchTypesConfigurable != null) scratchTypesConfigurable.apply();
-        if (projectFilesConfigurable != null) projectFilesConfigurable.apply();
-        if (chatHistoryConfigurable != null) chatHistoryConfigurable.apply();
-        if (startupInstructionsConfigurable != null) startupInstructionsConfigurable.apply();
+        ActiveAgentManager.setAttachTriggerChar(selectedTriggerChar());
     }
 
     @Override
     public void reset() {
-        if (scratchTypesConfigurable != null) scratchTypesConfigurable.reset();
-        if (projectFilesConfigurable != null) projectFilesConfigurable.reset();
-        if (chatHistoryConfigurable != null) chatHistoryConfigurable.reset();
-        if (startupInstructionsConfigurable != null) startupInstructionsConfigurable.reset();
-    }
-
-    @Override
-    public void disposeUIResources() {
-        if (scratchTypesConfigurable != null) {
-            scratchTypesConfigurable.disposeUIResources();
-            scratchTypesConfigurable = null;
-        }
-        if (projectFilesConfigurable != null) {
-            projectFilesConfigurable.disposeUIResources();
-            projectFilesConfigurable = null;
-        }
-        if (chatHistoryConfigurable != null) {
-            chatHistoryConfigurable.disposeUIResources();
-            chatHistoryConfigurable = null;
-        }
-        if (startupInstructionsConfigurable != null) {
-            startupInstructionsConfigurable.disposeUIResources();
-            startupInstructionsConfigurable = null;
-        }
+        selectTriggerChar(ActiveAgentManager.getAttachTriggerChar());
     }
 }

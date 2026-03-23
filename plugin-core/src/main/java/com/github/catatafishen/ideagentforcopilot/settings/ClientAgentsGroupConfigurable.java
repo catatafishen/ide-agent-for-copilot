@@ -4,7 +4,6 @@ import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.services.AgentUiSettings;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
-import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
@@ -43,29 +42,13 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
         maxToolCallsSpinner.setMaximumSize(spinnerSize);
 
         JBLabel introLabel = new JBLabel(
-            "<html>Configure agent clients below. Each client connects to a different AI backend:</html>");
+            "<html>Global behavior settings for all agent sessions. "
+                + "Configure individual agent clients in the sub-pages below.</html>");
         introLabel.setForeground(UIUtil.getContextHelpForeground());
-
-        JBLabel clientsOverview = new JBLabel(
-            "<html>" +
-            "<b>ACP-based Clients</b> — Run local CLI tools that implement the Agent Communication Protocol:<br>" +
-            "• <b>GitHub Copilot</b> — Premium multi-model agent with billing<br>" +
-            "• <b>OpenCode</b> — Community-maintained experimental agent<br>" +
-            "• <b>Junie</b> — JetBrains AI agent with JetBrains Account auth<br>" +
-            "• <b>Kiro</b> — Kiro CLI agent<br><br>" +
-            "<b>Direct API Clients</b> — Connect directly to API providers:<br>" +
-            "• <b>Claude Code</b> — Anthropic's Claude via direct API<br><br>" +
-            "<b>CLI Clients</b> — Specialized command-line tools:<br>" +
-            "• <b>Claude CLI</b> — Official Anthropic CLI agent" +
-            "</html>");
-        clientsOverview.setFont(JBUI.Fonts.smallFont());
-        clientsOverview.setForeground(UIUtil.getContextHelpForeground());
 
         panel = FormBuilder.createFormBuilder()
             .addComponent(introLabel)
-            .addVerticalGap(8)
-            .addComponent(clientsOverview)
-            .addComponent(new TitledSeparator("Agent Behavior"))
+            .addSeparator(8)
             .addLabeledComponent("Prompt timeout (seconds):", timeoutSpinner)
             .addTooltip("Time before an inactive agent session is considered timed out (30–3600).")
             .addLabeledComponent("Max tool calls per turn:", maxToolCallsSpinner)
@@ -107,7 +90,9 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
         panel = null;
     }
 
-    /** Built-in agent pages are registered statically in plugin.xml — no dynamic children needed. */
+    /**
+     * Built-in agent pages are registered statically in plugin.xml — no dynamic children needed.
+     */
     @Override
     public Configurable @NotNull [] getConfigurables() {
         return new Configurable[0];

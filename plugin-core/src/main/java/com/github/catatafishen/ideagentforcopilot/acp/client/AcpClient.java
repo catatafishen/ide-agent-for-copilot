@@ -4,11 +4,9 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.ContentBlock;
 import com.github.catatafishen.ideagentforcopilot.acp.model.ContentBlockSerializer;
 import com.github.catatafishen.ideagentforcopilot.acp.model.InitializeRequest;
 import com.github.catatafishen.ideagentforcopilot.acp.model.InitializeResponse;
-import com.github.catatafishen.ideagentforcopilot.acp.model.Location;
 import com.github.catatafishen.ideagentforcopilot.acp.model.Model;
 import com.github.catatafishen.ideagentforcopilot.acp.model.NewSessionResponse;
 import com.github.catatafishen.ideagentforcopilot.acp.model.NewSessionResponseDeserializer;
-import com.github.catatafishen.ideagentforcopilot.acp.model.PlanEntry;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptRequest;
 import com.github.catatafishen.ideagentforcopilot.acp.model.PromptResponse;
 import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate;
@@ -75,11 +73,8 @@ public abstract class AcpClient extends AbstractAgentClient {
     private static final String CLIENT_TITLE = "AgentBridge for IntelliJ";
     private static final String CLIENT_VERSION = "2.0.0";
     private static final String KEY_SESSION_ID = "sessionId";
-    private static final String KEY_SESSION_UPDATE = "sessionUpdate";
-    private static final String KEY_CONTENT = "content";
-    private static final String KEY_STATUS = "status";
-    private static final String KEY_RESULT = "result";
     private static final String KEY_UPDATE = "update";
+    private static final String KEY_CONTENT = "content";
     private static final String KEY_ARGUMENTS = "arguments";
     private static final String KEY_OPTIONS = "options";
     private static final String KEY_OPTION_ID = "optionId";
@@ -112,6 +107,26 @@ public abstract class AcpClient extends AbstractAgentClient {
      * Nanotime of the last {@code session/update} notification received; used for inactivity detection.
      */
     private volatile long lastActivityNanos = System.nanoTime();
+
+    private final AcpMessageParser messageParser = new AcpMessageParser(
+        new AcpMessageParser.Delegate() {
+            @Override
+            public String resolveToolId(String t) {
+                return AcpClient.this.resolveToolId(t);
+            }
+
+            @Override
+            public @Nullable JsonObject parseToolCallArguments(@NotNull JsonObject p) {
+                return AcpClient.this.parseToolCallArguments(p);
+            }
+
+            @Override
+            public @Nullable String extractSubAgentType(@NotNull JsonObject p, @NotNull String t, @Nullable JsonObject a) {
+                return AcpClient.this.extractSubAgentType(p, t, a);
+            }
+        },
+        this::displayName
+    );
 
     protected AcpClient(Project project) {
         this.project = project;
@@ -817,7 +832,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
     }
 
-    private void registerHandlers() {
+    protected void registerHandlers() {
         transport.onNotification(notification -> {
             if ("session/update".equals(notification.method())) {
                 handleSessionUpdate(notification.params());
@@ -830,7 +845,7 @@ public abstract class AcpClient extends AbstractAgentClient {
             LOG.debug("[" + agentId() + " stderr] " + line));
     }
 
-    private void handleSessionUpdate(@Nullable JsonObject params) {
+    protected void handleSessionUpdate(@Nullable JsonObject params) {
         if (params == null) return;
 
         // Reset inactivity clock on every update so long turns with active streaming never time out.
@@ -844,7 +859,7 @@ public abstract class AcpClient extends AbstractAgentClient {
             return;
         }
 
-        SessionUpdate update = parseSessionUpdate(updateObj);
+        SessionUpdate update = messageParser.parse(updateObj);
         if (update != null) {
             update = processUpdate(update);
             consumer.accept(update);
@@ -866,42 +881,6 @@ public abstract class AcpClient extends AbstractAgentClient {
     }
 
     /**
-     * Parse a session/update notification into a typed SessionUpdate.
-     */
-    private @Nullable SessionUpdate parseSessionUpdate(JsonObject params) {
-        String type = params.has(KEY_SESSION_UPDATE)
-            ? params.get(KEY_SESSION_UPDATE).getAsString() : null;
-        if (type == null) {
-            LOG.warn(displayName() + ": session/update has no '" + KEY_SESSION_UPDATE + "' field after normalization");
-            return null;
-        }
-
-        return switch (type) {
-            case "agent_message_chunk" -> parseMessageChunk(params);
-            case "agent_thought_chunk" -> parseThoughtChunk(params);
-            case "tool_call" -> parseToolCall(params);
-            case "tool_call_update" -> parseToolCallUpdate(params);
-            case "plan" -> parsePlan(params);
-            case "turn_usage" -> parseTurnUsage(params);
-            case "banner" -> parseBanner(params);
-            default -> {
-                LOG.warn(displayName() + ": unknown session update type: '" + type + "'");
-                yield null;
-            }
-        };
-    }
-
-    private SessionUpdate.AgentMessageChunk parseMessageChunk(JsonObject params) {
-        List<ContentBlock> blocks = parseContentBlocks(params);
-        return new SessionUpdate.AgentMessageChunk(blocks);
-    }
-
-    private SessionUpdate.AgentThoughtChunk parseThoughtChunk(JsonObject params) {
-        List<ContentBlock> blocks = parseContentBlocks(params);
-        return new SessionUpdate.AgentThoughtChunk(blocks);
-    }
-
-    /**
      * Extract tool call arguments from a {@code tool_call} params object.
      * The standard ACP field is {@code arguments} (a JSON object).
      * Override in subclasses for agent-specific field names.
@@ -912,42 +891,6 @@ public abstract class AcpClient extends AbstractAgentClient {
             return params.getAsJsonObject(KEY_ARGUMENTS);
         }
         return null;
-    }
-
-    private SessionUpdate.ToolCall parseToolCall(JsonObject params) {
-        String toolCallId = getStringOrEmpty(params, KEY_TOOL_CALL_ID);
-        String title = getStringOrEmpty(params, "title");
-        String resolvedTitle = resolveToolId(title);
-
-        SessionUpdate.ToolKind kind = null;
-        if (params.has("kind")) {
-            kind = SessionUpdate.ToolKind.fromString(params.get("kind").getAsString());
-        }
-
-        JsonObject argumentsObj = parseToolCallArguments(params);
-        String arguments = argumentsObj != null ? argumentsObj.toString() : null;
-
-        List<Location> locations = null;
-        if (params.has("locations")) {
-            locations = new ArrayList<>();
-            for (JsonElement locEl : params.getAsJsonArray("locations")) {
-                JsonObject locObj = locEl.getAsJsonObject();
-                String uri = getStringOrEmpty(locObj, "uri");
-                if (uri.isEmpty()) uri = getStringOrEmpty(locObj, "path");
-                locations.add(new Location(uri, null));
-            }
-        }
-
-        // Sub-agent detection: check explicit agentType fields, then fall back to client-specific logic
-        String agentType = extractSubAgentType(params, resolvedTitle, argumentsObj);
-        String subAgentDesc = null;
-        String subAgentPrompt = null;
-        if (agentType != null && argumentsObj != null) {
-            subAgentDesc = argumentsObj.has("description") ? argumentsObj.get("description").getAsString() : null;
-            subAgentPrompt = argumentsObj.has("prompt") ? argumentsObj.get("prompt").getAsString() : null;
-        }
-
-        return new SessionUpdate.ToolCall(toolCallId, resolvedTitle, kind, arguments, locations, agentType, subAgentDesc, subAgentPrompt, null);
     }
 
     /**
@@ -978,122 +921,12 @@ public abstract class AcpClient extends AbstractAgentClient {
         return null;
     }
 
-    private SessionUpdate.ToolCallUpdate parseToolCallUpdate(JsonObject params) {
-        String toolCallId = getStringOrEmpty(params, KEY_TOOL_CALL_ID);
-
-        SessionUpdate.ToolCallStatus status = SessionUpdate.ToolCallStatus.COMPLETED;
-        if (params.has(KEY_STATUS)) {
-            status = SessionUpdate.ToolCallStatus.fromString(params.get(KEY_STATUS).getAsString());
-        }
-
-        String error = params.has("error") ? params.get("error").getAsString() : null;
-        String description = params.has("description") ? params.get("description").getAsString() : null;
-        String result = extractResultText(params);
-
-        return new SessionUpdate.ToolCallUpdate(toolCallId, status, result, error, description);
-    }
-
-    private @Nullable String extractResultText(JsonObject params) {
-        if (params.has(KEY_RESULT)) {
-            return params.get(KEY_RESULT).isJsonPrimitive()
-                ? params.get(KEY_RESULT).getAsString()
-                : params.get(KEY_RESULT).toString();
-        }
-        if (params.has(KEY_CONTENT)) {
-            List<ContentBlock> blocks = parseContentBlocks(params);
-            StringBuilder sb = new StringBuilder();
-            for (ContentBlock block : blocks) {
-                if (block instanceof ContentBlock.Text(String text)) sb.append(text);
-            }
-            return sb.isEmpty() ? null : sb.toString();
-        }
-        return null;
-    }
-
-    private SessionUpdate.Plan parsePlan(JsonObject params) {
-        List<PlanEntry> entries = new ArrayList<>();
-        if (params.has("entries")) {
-            for (JsonElement entryEl : params.getAsJsonArray("entries")) {
-                JsonObject entryObj = entryEl.getAsJsonObject();
-                String content = getStringOrEmpty(entryObj, KEY_CONTENT);
-                String status = entryObj.has(KEY_STATUS) ? entryObj.get(KEY_STATUS).getAsString() : null;
-                String priority = entryObj.has("priority") ? entryObj.get("priority").getAsString() : null;
-                entries.add(new PlanEntry(content, status, priority));
-            }
-        }
-        return new SessionUpdate.Plan(entries);
-    }
-
-    private SessionUpdate.TurnUsage parseTurnUsage(JsonObject params) {
-        int inputTokens = params.has("inputTokens") ? params.get("inputTokens").getAsInt() : 0;
-        int outputTokens = params.has("outputTokens") ? params.get("outputTokens").getAsInt() : 0;
-        double costUsd = params.has("costUsd") ? params.get("costUsd").getAsDouble() : 0.0;
-        return new SessionUpdate.TurnUsage(inputTokens, outputTokens, costUsd);
-    }
-
-    private SessionUpdate.Banner parseBanner(JsonObject params) {
-        String message = getStringOrEmpty(params, "message");
-        String levelStr = params.has("level") ? params.get("level").getAsString() : "warning";
-        String clearOnStr = params.has("clearOn") ? params.get("clearOn").getAsString() : null;
-        return new SessionUpdate.Banner(
-            message,
-            SessionUpdate.BannerLevel.fromString(levelStr),
-            SessionUpdate.ClearOn.fromString(clearOnStr)
-        );
-    }
-
-    private List<ContentBlock> parseContentBlocks(JsonObject params) {
-        if (params.has(KEY_CONTENT) && params.get(KEY_CONTENT).isJsonArray()) {
-            return parseContentArray(params.getAsJsonArray(KEY_CONTENT));
-        }
-        if (params.has(KEY_CONTENT) && params.get(KEY_CONTENT).isJsonObject()) {
-            // Single content object: {"type":"text","text":"..."} — treat as one-element array
-            JsonArray arr = new JsonArray();
-            arr.add(params.get(KEY_CONTENT));
-            return parseContentArray(arr);
-        }
-        if (params.has(KEY_CONTENT) && params.get(KEY_CONTENT).isJsonPrimitive()) {
-            return List.of(new ContentBlock.Text(params.get(KEY_CONTENT).getAsString()));
-        }
-        if (params.has("text")) {
-            return List.of(new ContentBlock.Text(params.get("text").getAsString()));
-        }
-        return List.of();
-    }
-
-    private List<ContentBlock> parseContentArray(JsonArray array) {
-        List<ContentBlock> blocks = new ArrayList<>();
-        for (JsonElement el : array) {
-            if (el.isJsonObject()) {
-                blocks.add(parseContentBlock(el.getAsJsonObject()));
-            } else if (el.isJsonPrimitive()) {
-                blocks.add(new ContentBlock.Text(el.getAsString()));
-            }
-        }
-        return blocks;
-    }
-
-    @SuppressWarnings("java:S125") // Line below is a spec documentation comment, not commented-out code
-    private ContentBlock parseContentBlock(JsonObject block) {
-        String blockType = block.has("type") ? block.get("type").getAsString() : "text";
-        if ("text".equals(blockType) && block.has("text")) {
-            return new ContentBlock.Text(block.get("text").getAsString());
-        } else if (KEY_CONTENT.equals(blockType) && block.has(KEY_CONTENT)) {
-            // Spec: tool_call_update content items wrap blocks as {type:"content", content:{type,text}}
-            JsonElement inner = block.get(KEY_CONTENT);
-            if (inner.isJsonObject() && inner.getAsJsonObject().has("text")) {
-                return new ContentBlock.Text(inner.getAsJsonObject().get("text").getAsString());
-            }
-        }
-        return new ContentBlock.Text(""); // Or some kind of empty block
-    }
-
     private static String getStringOrEmpty(JsonObject obj, String key) {
         return obj.has(key) && obj.get(key).isJsonPrimitive()
             ? obj.get(key).getAsString() : "";
     }
 
-    private void handleAgentRequest(JsonElement id, JsonRpcTransport.IncomingRequest request) {
+    protected void handleAgentRequest(JsonElement id, JsonRpcTransport.IncomingRequest request) {
         switch (request.method()) {
             case "session/request_permission" -> handlePermissionRequest(id, request.params());
             case "fs/read_text_file", "fs/write_text_file",
