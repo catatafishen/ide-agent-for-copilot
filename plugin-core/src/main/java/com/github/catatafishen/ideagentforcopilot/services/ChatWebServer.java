@@ -798,9 +798,29 @@ public final class ChatWebServer implements Disposable {
     }
 
     private String buildInfoJson() {
+        List<String> certIps = new ArrayList<>();
+        if (sslKeyStore != null) {
+            try {
+                java.security.cert.Certificate cert = sslKeyStore.getCertificate("agentbridge");
+                if (cert instanceof X509Certificate x509) {
+                    Collection<List<?>> sans = x509.getSubjectAlternativeNames();
+                    if (sans != null) {
+                        for (List<?> san : sans) {
+                            // SAN type 7 = iPAddress
+                            if (san.get(0) instanceof Integer type && type == 7) {
+                                certIps.add((String) san.get(1));
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warn("[ChatWebServer] Could not read cert SANs for /info", e);
+            }
+        }
         return "{\"project\":" + GSON.toJson(projectName)
             + ",\"model\":" + GSON.toJson(currentModel)
-            + ",\"running\":" + agentRunning + "}";
+            + ",\"running\":" + agentRunning
+            + ",\"certIps\":" + GSON.toJson(certIps) + "}";
     }
 
     private static int parseFromQuery(@Nullable String query) {
