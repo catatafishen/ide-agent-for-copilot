@@ -57,6 +57,14 @@ class PromptOrchestrator(
     internal var conversationSummaryInjected: Boolean = false
     private var currentPromptThread: Thread? = null
 
+    /**
+     * True while a stop has been requested for the current turn. Set before cancelling/interrupting,
+     * cleared at the start of the next execute() call. Volatile so the background thread sees it
+     * immediately even if the future resolved before Thread.interrupt() fired.
+     */
+    @Volatile
+    private var stopped = false
+
     private var turnToolCallCount = 0
     private var turnInputTokens = 0
     private var turnOutputTokens = 0
@@ -69,6 +77,10 @@ class PromptOrchestrator(
 
     /** Executes a prompt on the calling thread (must be called from a background thread). */
     fun execute(prompt: String, contextItems: List<ContextItemData>, selectedModelId: String) {
+        stopped = false
+        // Clear any stale interrupt flag left by a previous stop() call so it doesn't fire
+        // immediately on the first blocking operation in the new turn.
+        Thread.interrupted()
         currentPromptThread = Thread.currentThread()
         try {
             executePrompt(prompt, contextItems, selectedModelId)
@@ -80,6 +92,9 @@ class PromptOrchestrator(
 
     /** Cancels the running prompt: interrupts the thread and cancels the remote session. */
     fun stop() {
+        // Set the flag FIRST so the background thread sees it even if the remote session
+        // completes the turn before Thread.interrupt() fires.
+        stopped = true
         val sessionId = currentSessionId
         if (sessionId != null) {
             try {
@@ -115,6 +130,10 @@ class PromptOrchestrator(
             addContextEntries(references, contextItems)
 
             dispatchPromptWithRetry(client, sessionId, effectivePrompt, modelId, references)
+            // If stop() was called, the remote turn may have ended cleanly (via turn/interrupt
+            // response) without throwing. Treat it as a cancellation so handlePromptCompletion
+            // is not invoked and the stale thread interrupt doesn't leak into the next turn.
+            if (stopped) throw InterruptedException("Stopped by user")
             handlePromptCompletion(prompt)
         } catch (e: Exception) {
             handlePromptError(e)
@@ -377,7 +396,7 @@ class PromptOrchestrator(
             is SessionUpdate.AgentMessageChunk -> {
                 val text = update.text()
                 ApplicationManager.getApplication().invokeLater {
-                    if (currentPromptThread != null) consolePanel().appendText(text)
+                    if (!stopped) consolePanel().appendText(text)
                 }
             }
 
@@ -391,7 +410,7 @@ class PromptOrchestrator(
                 handleClientUpdate(update)
             }
 
-            is SessionUpdate.AgentThoughtChunk -> consolePanel().appendThinkingText(update.text())
+            is SessionUpdate.AgentThoughtChunk -> if (!stopped) consolePanel().appendThinkingText(update.text())
             is SessionUpdate.TurnUsage -> {
                 turnInputTokens = update.inputTokens()
                 turnOutputTokens = update.outputTokens()
@@ -576,7 +595,10 @@ class PromptOrchestrator(
             callbacks.updateSessionInfo()
         }
 
-        consolePanel().addErrorEntry("Error: $msg")
+        // stop() already added "Stopped by user" — don't add a redundant error entry.
+        if (!stopped) {
+            consolePanel().addErrorEntry("Error: $msg")
+        }
         if (!isCancelled) {
             statusBanner()?.showError(msg, "Reconnect") { reconnectAfterError() }
         }
