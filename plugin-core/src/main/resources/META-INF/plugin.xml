@@ -76,31 +76,24 @@
     ]]></description>
 
   <change-notes><![CDATA[
-    <h3>1.16.0 &mdash; Codex, Nudge &amp; Android PWA</h3>
+    <h3>1.16.0 &mdash; Codex, Nudge &amp; PWA</h3>
 
     <h4>OpenAI Codex Support</h4>
-    <p>Full support for OpenAI Codex agents via the ACP protocol. Routes user input requests to the
-    built-in <code>ask_user</code> flow; shows a window notification when a prompt arrives while the IDE is
-    unfocused.</p>
+    <p>Full support for OpenAI Codex agents &mdash; drives the locally-installed <code>codex</code> CLI via
+    JSON-RPC 2.0 over stdio. Routes user input requests to the built-in <code>ask_user</code> flow; shows a
+    window notification when a prompt arrives while the IDE is unfocused.</p>
 
     <h4>Nudge While the Agent Works</h4>
     <p>New <b>Nudge</b> action (<code>Ctrl+Enter</code>) lets you guide or redirect the agent mid-turn without
     stopping it. The nudge waits in a queue and is injected at the next opportunity. Cancel with the ✕ button
     if you change your mind.</p>
 
-    <h4>Install the Chat as a PWA on Android</h4>
+    <h4>Install the Chat as a PWA</h4>
     <ul>
-        <li>Browse to the chat web UI on your Android device and install it as a home-screen app</li>
+        <li>Open the chat web UI in any browser and install it as a home-screen app</li>
         <li>Download the self-signed certificate from <code>/cert.crt</code> and install it once to trust HTTPS
         over your local network</li>
         <li>Certificate automatically includes your machine's LAN IP &mdash; no manual SAN editing needed</li>
-    </ul>
-
-    <h4>Bug Fixes &amp; Polish</h4>
-    <ul>
-        <li>Queued messages always appear at the bottom of the chat</li>
-        <li>&ldquo;Thought complete&rdquo; label appears on thinking chips after reasoning finishes</li>
-        <li>Tool chips show correct borders and status labels throughout a turn</li>
     </ul>
 
     <h3>1.15.0 &mdash; AgentBridge: New Agents &amp; Rebranding</h3>

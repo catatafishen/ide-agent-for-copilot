@@ -4,23 +4,17 @@
 
 ### OpenAI Codex Support
 
-Full support for OpenAI Codex agents — connects via the ACP protocol, routes user input requests to the built-in `ask_user` flow, and shows a window notification when a prompt arrives while the IDE is unfocused.
+Full support for OpenAI Codex agents — drives the locally-installed `codex` CLI via JSON-RPC 2.0 over stdio, routes user input requests to the built-in `ask_user` flow, and shows a window notification when a prompt arrives while the IDE is unfocused.
 
 ### Nudge While the Agent Works
 
 New **Nudge** action (`Ctrl+Enter`) lets you guide or redirect the agent mid-turn without stopping it. The nudge message waits in a queue and is injected at the next opportunity. Cancel it with the ✕ button if you change your mind.
 
-### Install the Chat as a PWA on Android
+### Install the Chat as a PWA
 
-- Browse to the chat web UI on your Android device and install it as a home-screen app
-- Download the self-signed certificate from `/cert.crt` and install it on your device once to trust the HTTPS connection
+- Open the chat web UI in any browser and install it as a home-screen app
+- Download the self-signed certificate from `/cert.crt` and install it on your device once to trust the HTTPS connection over your local network
 - The certificate automatically includes your machine's current LAN IP, so no manual setup is needed
-
-### Bug Fixes & Polish
-
-- Queued messages always appear at the bottom of the chat
-- "Thought complete" label now appears on thinking chips after reasoning finishes
-- Tool chips show correct borders and status labels throughout a turn
 
 ---
 
