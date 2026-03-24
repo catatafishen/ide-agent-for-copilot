@@ -9,13 +9,18 @@ class ActiveAgentManagerTest {
     @Test
     void normalizeSharedTurnTimeoutMinutesUsesStoredMinutesAndClamps() {
         assertEquals(1440, ActiveAgentManager.normalizeSharedTurnTimeoutMinutes("2000", 300));
-        assertEquals(5, ActiveAgentManager.normalizeSharedTurnTimeoutMinutes("bad", 3600));
+        assertEquals(120, ActiveAgentManager.normalizeSharedTurnTimeoutMinutes("bad", 3600));
     }
 
     @Test
     void normalizeSharedTurnTimeoutMinutesFallsBackToLegacySecondsRoundedUp() {
         assertEquals(60, ActiveAgentManager.normalizeSharedTurnTimeoutMinutes(null, 3600));
         assertEquals(1, ActiveAgentManager.normalizeSharedTurnTimeoutMinutes(null, 1));
+    }
+
+    @Test
+    void normalizeSharedTurnTimeoutMinutesDefaultsToTwoHoursWhenLegacyUnset() {
+        assertEquals(120, ActiveAgentManager.normalizeSharedTurnTimeoutMinutes(null, GenericSettings.DEFAULT_TURN_TIMEOUT_SECONDS));
     }
 
     @Test

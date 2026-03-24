@@ -45,7 +45,7 @@ public final class ActiveAgentManager implements Disposable {
     private static final String KEY_SHARED_TURN_TIMEOUT_MINUTES = "agent.sharedTurnTimeoutMinutes";
     private static final String KEY_SHARED_INACTIVITY_TIMEOUT_SECONDS = "agent.sharedInactivityTimeoutSeconds";
     private static final String KEY_SHARED_MAX_TOOL_CALLS = "agent.sharedMaxToolCallsPerTurn";
-    private static final int DEFAULT_TURN_TIMEOUT_MINUTES = 5;
+    private static final int DEFAULT_TURN_TIMEOUT_MINUTES = 120;
     private static final int DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS_PER_TURN = 0;
 
@@ -402,7 +402,7 @@ public final class ActiveAgentManager implements Disposable {
     }
 
     private int migrateLegacyTurnTimeoutMinutes() {
-        int legacySeconds = findLegacySharedInt(GenericSettings::getTurnTimeout, DEFAULT_INACTIVITY_TIMEOUT_SECONDS);
+        int legacySeconds = findLegacySharedInt(GenericSettings::getTurnTimeout, GenericSettings.DEFAULT_TURN_TIMEOUT_SECONDS);
         return clamp((legacySeconds + 59) / 60, 1, 1440);
     }
 

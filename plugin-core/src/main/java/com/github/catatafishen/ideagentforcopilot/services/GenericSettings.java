@@ -14,8 +14,8 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class GenericSettings {
 
-    private static final int DEFAULT_TURN_TIMEOUT = 300;
-    private static final int DEFAULT_INACTIVITY_TIMEOUT = 300;
+    public static final int DEFAULT_TURN_TIMEOUT_SECONDS = 7_200;
+    public static final int DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS = 0;
     private static final String TOOL_PERM_IN_PREFIX = "tool.perm.in.";
     private static final String TOOL_PERM_OUT_PREFIX = "tool.perm.out.";
@@ -124,20 +124,20 @@ public final class GenericSettings {
 
     public int getTurnTimeout() {
         String legacy = getProperties().getValue(key("promptTimeout"));
-        int fallback = legacy != null ? parseIntOrDefault(legacy, DEFAULT_TURN_TIMEOUT) : DEFAULT_TURN_TIMEOUT;
+        int fallback = legacy != null ? parseIntOrDefault(legacy, DEFAULT_TURN_TIMEOUT_SECONDS) : DEFAULT_TURN_TIMEOUT_SECONDS;
         return getProperties().getInt(key("turnTimeout"), fallback);
     }
 
     public void setTurnTimeout(int seconds) {
-        getProperties().setValue(key("turnTimeout"), seconds, DEFAULT_TURN_TIMEOUT);
+        getProperties().setValue(key("turnTimeout"), seconds, DEFAULT_TURN_TIMEOUT_SECONDS);
     }
 
     public int getInactivityTimeout() {
-        return getProperties().getInt(key("inactivityTimeout"), DEFAULT_INACTIVITY_TIMEOUT);
+        return getProperties().getInt(key("inactivityTimeout"), DEFAULT_INACTIVITY_TIMEOUT_SECONDS);
     }
 
     public void setInactivityTimeout(int seconds) {
-        getProperties().setValue(key("inactivityTimeout"), seconds, DEFAULT_INACTIVITY_TIMEOUT);
+        getProperties().setValue(key("inactivityTimeout"), seconds, DEFAULT_INACTIVITY_TIMEOUT_SECONDS);
     }
 
     @Deprecated

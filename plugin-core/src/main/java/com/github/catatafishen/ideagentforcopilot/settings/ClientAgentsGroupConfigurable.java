@@ -34,7 +34,7 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
 
     @Override
     public @Nullable JComponent createComponent() {
-        turnTimeoutSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 1440, 1));
+        turnTimeoutSpinner = new JSpinner(new SpinnerNumberModel(120, 1, 1440, 1));
         inactivityTimeoutSpinner = new JSpinner(new SpinnerNumberModel(300, 30, 86400, 30));
         maxToolCallsSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 500, 1));
 

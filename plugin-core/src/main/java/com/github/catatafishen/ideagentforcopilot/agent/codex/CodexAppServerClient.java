@@ -14,6 +14,7 @@ import com.github.catatafishen.ideagentforcopilot.bridge.TransportType;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
+import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
@@ -400,10 +401,10 @@ public final class CodexAppServerClient extends AbstractAgentClient {
         try {
             return project != null
                 ? ActiveAgentManager.getInstance(project).getSharedTurnTimeoutSeconds()
-                : 300;
+                : GenericSettings.DEFAULT_TURN_TIMEOUT_SECONDS;
         } catch (Exception e) {
             LOG.warn("Falling back to default Codex turn timeout", e);
-            return 300;
+            return GenericSettings.DEFAULT_TURN_TIMEOUT_SECONDS;
         }
     }
 
