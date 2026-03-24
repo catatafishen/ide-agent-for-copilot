@@ -21,9 +21,36 @@ import java.util.function.BiConsumer;
 /**
  * Correlates tool chips across the ACP (or Claude streaming) and MCP channels.
  *
+ * <h2>Tool chip states and visual appearance</h2>
+ * Each tool call the agent reports is shown as a chip in the chat UI. The chip progresses
+ * through states driven by two independent channels: the ACP stream (agent-side) and the
+ * MCP server (IDE-side, where tools are actually executed).
+ *
+ * <pre>
+ * State      Border   Opacity  Meaning
+ * ─────────────────────────────────────────────────────────────────────────────
+ * PENDING    dashed   80%      ACP reported the tool call; waiting for MCP to execute it.
+ *                              Also used for agent native-tool calls that bypass our MCP.
+ * RUNNING    dashed   100%     MCP is currently executing the tool (in-progress).
+ * COMPLETE   solid    100%     MCP finished executing the tool successfully.
+ *                              Solid border = confirmed handled by AgentBridge MCP server.
+ * EXTERNAL   dashed   100%     ACP reported completion but MCP never executed it — the agent
+ *                              used its own built-in tool instead of going through our MCP.
+ *                              Dashed border = not handled by AgentBridge.
+ * FAILED     dashed   100%     Tool execution failed (MCP error or ACP-reported failure).
+ * denied     dotted   100%     Permission was denied (auto-denied by allowlist or user).
+ *                              Red border and background. Not a ChipState — set directly by
+ *                              the ACP layer when autoDenied=true.
+ * </pre>
+ *
+ * The border style is the key visual signal: <b>solid = AgentBridge handled it</b>,
+ * <b>dashed = agent handled it some other way</b> (or still pending/failed).
+ *
  * <h2>Correlation key</h2>
  * Both sides compute {@code hex8(args.hashCode())} over sorted key→value pairs of the tool
  * arguments. This gives a stable shared ID with no agent cooperation required.
+ * When the agent sends no args (e.g. Junie's {@code tool_call} with empty {@code content:[]}),
+ * the registry falls back to matching by tool display name.
  *
  * <h2>Chip lifecycle</h2>
  * <ol>
@@ -36,7 +63,7 @@ import java.util.function.BiConsumer;
  * <h2>MCP-first case</h2>
  * If MCP arrives before ACP, the registry stores the entry internally. When client-side
  * arrives, {@link #registerClientSide} returns {@link ChipState#RUNNING} immediately, and
- * {@link #addToolCallEntry} creates the chip at "running" without needing a transition.
+ * {@code addToolCallEntry} creates the chip at "running" without needing a transition.
  *
  * <h2>Turn scope</h2>
  * All entries are turn-scoped. Call {@link #clearTurn()} when a new agent response starts.
@@ -47,7 +74,23 @@ import java.util.function.BiConsumer;
 public final class ToolChipRegistry {
     private static final Logger LOG = Logger.getInstance(ToolChipRegistry.class);
 
-    public enum ChipState {PENDING, RUNNING, COMPLETE, EXTERNAL, FAILED}
+    /**
+     * Lifecycle states for a tool chip. Maps to CSS {@code status-*} classes and visual appearance.
+     *
+     * @see ToolChipRegistry class-level javadoc for the full state/border/opacity table
+     */
+    public enum ChipState {
+        /** ACP reported the call; MCP has not yet started executing it. Dashed border, 80% opacity. */
+        PENDING,
+        /** MCP is currently executing the tool. Dashed border, full opacity, spinner shown. */
+        RUNNING,
+        /** MCP finished successfully. Solid border — confirms AgentBridge handled this call. */
+        COMPLETE,
+        /** ACP reported completion but MCP never executed it (agent used a native/built-in tool). Dashed border. */
+        EXTERNAL,
+        /** Execution failed (MCP error or ACP-reported failure). Dashed border. */
+        FAILED
+    }
 
     public record ChipRegistration(@NotNull String chipId, @NotNull ChipState initialState) {
     }

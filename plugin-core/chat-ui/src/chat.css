@@ -492,8 +492,8 @@ working-indicator .working-text {
     border-color: color-mix(in srgb, var(--kind-other) 18%, transparent);
 }
 
-/* Default tool chip border is dashed — origin unknown.
-   Only chips confirmed handled by our MCP server get a solid border. */
+/* Default tool chip border is dashed — origin unknown / agent used a native tool (EXTERNAL/PENDING/FAILED).
+   Only chips confirmed handled by our MCP server get a solid border (COMPLETE). */
 .turn-chip.tool {
     border-style: dashed;
 }
