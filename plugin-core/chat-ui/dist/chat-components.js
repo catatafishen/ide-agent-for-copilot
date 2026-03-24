@@ -842,7 +842,7 @@ var __chatUI = (() => {
         msg.appendChild(meta);
         const details = document.createElement("turn-details");
         msg.appendChild(details);
-        this._msgs().appendChild(msg);
+        this._insertMsg(msg);
         ctx.msg = msg;
         ctx.meta = meta;
         ctx.details = details;
@@ -851,6 +851,15 @@ var __chatUI = (() => {
         }
       }
       return ctx;
+    },
+    _insertMsg(msg) {
+      const msgs = this._msgs();
+      const firstQueued = msgs.querySelector(".message-queued");
+      if (firstQueued) {
+        msgs.insertBefore(msg, firstQueued);
+      } else {
+        msgs.appendChild(msg);
+      }
     },
     _collapseThinkingFor(ctx) {
       if (!ctx?.thinkingBlock) return;
@@ -892,7 +901,7 @@ var __chatUI = (() => {
         bubble.textContent = text;
       }
       msg.appendChild(bubble);
-      this._msgs().appendChild(msg);
+      this._insertMsg(msg);
       this._container()?.forceScroll();
     },
     appendAgentText(turnId, agentId, text) {
@@ -1068,7 +1077,7 @@ var __chatUI = (() => {
       resultBubble.id = "result-" + sectionId;
       resultBubble.classList.add("subagent-result");
       msg.appendChild(resultBubble);
-      this._msgs().appendChild(msg);
+      this._insertMsg(msg);
       chip.linkSection(msg);
       this._container()?.scrollIfNeeded();
     },
@@ -1107,7 +1116,7 @@ var __chatUI = (() => {
       const el = document.createElement("session-divider");
       el.setAttribute("timestamp", timestamp);
       if (agent) el.setAttribute("agent", agent);
-      this._msgs().appendChild(el);
+      this._insertMsg(el);
     },
     showPlaceholder(text) {
       this.clear();
@@ -1183,7 +1192,7 @@ var __chatUI = (() => {
       if (!options?.length) return;
       const el = document.createElement("quick-replies");
       el.options = options;
-      this._msgs().appendChild(el);
+      this._insertMsg(el);
       this._container()?.scrollIfNeeded();
     },
     disableQuickReplies() {
@@ -1245,6 +1254,7 @@ var __chatUI = (() => {
       while (temp.firstChild) {
         msgs.insertBefore(temp.firstChild, insertBefore);
       }
+      this._moveQueuedToBottom();
       if (prevScrollY <= 30) {
         const addedHeight = document.body.scrollHeight - prevHeight;
         if (addedHeight > 0) {
@@ -1278,6 +1288,7 @@ var __chatUI = (() => {
       while (temp.firstChild) {
         msgs.insertBefore(temp.firstChild, insertBefore);
       }
+      this._moveQueuedToBottom();
       const addedHeight = document.body.scrollHeight - prevHeight;
       if (addedHeight > 0) {
         const targetScroll = Math.min(50, Math.max(10, prevScrollY + addedHeight));
@@ -1367,13 +1378,27 @@ var __chatUI = (() => {
       msg.classList.add("message-queued");
       const meta = document.createElement("message-meta");
       meta.innerHTML = '<span class="ts">\u23F3 Queued for end of turn</span>';
+      meta.classList.add("show");
       msg.appendChild(meta);
       const bubble = document.createElement("message-bubble");
       bubble.setAttribute("type", "user");
       bubble.textContent = text;
       msg.appendChild(bubble);
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "quick-reply-btn nudge-cancel-btn";
+      cancelBtn.textContent = "\u2715 Cancel message";
+      cancelBtn.onclick = () => globalThis._bridge?.cancelQueuedMessage(id, text);
+      msg.appendChild(cancelBtn);
       this._msgs().appendChild(msg);
       this._container()?.scrollIfNeeded();
+    },
+    _moveQueuedToBottom() {
+      const msgs = this._msgs();
+      const queued = Array.from(msgs.children).filter((c) => c.classList.contains("message-queued"));
+      for (const msg of queued) {
+        msgs.appendChild(msg);
+      }
     },
     removeQueuedMessage(id) {
       document.getElementById("queued-" + id)?.remove();
