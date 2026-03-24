@@ -271,7 +271,7 @@ object MarkdownRenderer {
         // Split into named parts so S5843 (regex complexity) analysis doesn't flag the combined form.
         val boldPattern = """\*\*(.+?)\*\*"""
         val inlineCodePattern = "`([^`]+)`"
-        val mdLinkPattern = """\[([^\]]+)]\((https?://[^)]+)\)"""
+        val mdLinkPattern = """\[([^\]]+)]\(([^)]+)\)"""
         val urlLinkPattern = """(https?://[^\s<>\[\]()]+)"""
         val combinedPattern =
             Regex("$boldPattern|$inlineCodePattern|$mdLinkPattern|$urlLinkPattern")
@@ -299,11 +299,34 @@ object MarkdownRenderer {
                     }
                 }
 
-                match.groupValues[4].isNotEmpty() -> {
+                match.groupValues[3].isNotEmpty() -> {
                     // Markdown link: [text](url)
                     val linkText = escapeHtml(match.groupValues[3])
-                    val url = escapeHtml(match.groupValues[4])
-                    result.append("<a href='$url'>$linkText</a>")
+                    val rawTarget = match.groupValues[4].trim()
+                    val resolved = resolveFileReference(rawTarget)
+                        ?: resolveFilePath(rawTarget.removePrefix("file://"))?.let { it to null }
+                    when {
+                        rawTarget.startsWith("openfile://") || rawTarget.startsWith("gitshow://") -> {
+                            result.append("<a href='${escapeHtml(rawTarget)}'>$linkText</a>")
+                        }
+
+                        resolved != null -> {
+                            val href = resolved.first + if (resolved.second != null) ":${resolved.second}" else ""
+                            result.append("<a href='openfile://${escapeHtml(href)}'>$linkText</a>")
+                        }
+
+                        GIT_SHA_REGEX.matches(rawTarget) && isGitCommit(rawTarget) -> {
+                            result.append("<a href='gitshow://${escapeHtml(rawTarget)}'>$linkText</a>")
+                        }
+
+                        rawTarget.startsWith("http://") || rawTarget.startsWith("https://") -> {
+                            result.append("<a href='${escapeHtml(rawTarget)}'>$linkText</a>")
+                        }
+
+                        else -> {
+                            result.append("[").append(linkText).append("](").append(escapeHtml(rawTarget)).append(")")
+                        }
+                    }
                 }
 
                 match.groupValues[5].isNotEmpty() -> {

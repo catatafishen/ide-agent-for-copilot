@@ -35,7 +35,7 @@ public final class CodexClientConfigurable implements Configurable {
 
     @Override
     public @Nls(capitalization = Nls.Capitalization.Title) String getDisplayName() {
-        return "Codex (Experimental)";
+        return "Codex";
     }
 
     @Override

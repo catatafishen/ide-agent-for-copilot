@@ -1,7 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
-import com.github.catatafishen.ideagentforcopilot.services.AgentUiSettings;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBLabel;
@@ -19,7 +18,8 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
 
     private final Project project;
 
-    private JSpinner timeoutSpinner;
+    private JSpinner turnTimeoutSpinner;
+    private JSpinner inactivityTimeoutSpinner;
     private JSpinner maxToolCallsSpinner;
     private JPanel panel;
 
@@ -34,11 +34,13 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
 
     @Override
     public @Nullable JComponent createComponent() {
-        timeoutSpinner = new JSpinner(new SpinnerNumberModel(300, 30, 3600, 10));
+        turnTimeoutSpinner = new JSpinner(new SpinnerNumberModel(120, 1, 1440, 1));
+        inactivityTimeoutSpinner = new JSpinner(new SpinnerNumberModel(300, 30, 86400, 30));
         maxToolCallsSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 500, 1));
 
-        Dimension spinnerSize = JBUI.size(100, timeoutSpinner.getPreferredSize().height);
-        timeoutSpinner.setMaximumSize(spinnerSize);
+        Dimension spinnerSize = JBUI.size(100, turnTimeoutSpinner.getPreferredSize().height);
+        turnTimeoutSpinner.setMaximumSize(spinnerSize);
+        inactivityTimeoutSpinner.setMaximumSize(spinnerSize);
         maxToolCallsSpinner.setMaximumSize(spinnerSize);
 
         JBLabel introLabel = new JBLabel(
@@ -49,8 +51,10 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
         panel = FormBuilder.createFormBuilder()
             .addComponent(introLabel)
             .addSeparator(8)
-            .addLabeledComponent("Prompt timeout (seconds):", timeoutSpinner)
-            .addTooltip("Time before an inactive agent session is considered timed out (30–3600).")
+            .addLabeledComponent("Turn timeout (minutes):", turnTimeoutSpinner)
+            .addTooltip("Maximum wall-clock time allowed for a turn (1–1440 minutes).")
+            .addLabeledComponent("Inactivity timeout (seconds):", inactivityTimeoutSpinner)
+            .addTooltip("Maximum silence before a turn is considered stalled (30–86400 seconds).")
             .addLabeledComponent("Max tool calls per turn:", maxToolCallsSpinner)
             .addTooltip("Limit how many tools the agent can call in a single turn. 0 = unlimited.")
             .addComponentFillVertically(new JPanel(), 0)
@@ -63,29 +67,33 @@ public final class ClientAgentsGroupConfigurable implements Configurable, Config
 
     @Override
     public boolean isModified() {
-        AgentUiSettings settings = ActiveAgentManager.getInstance(project).getSettings();
-        if ((int) timeoutSpinner.getValue() != settings.getPromptTimeout()) return true;
-        return (int) maxToolCallsSpinner.getValue() != settings.getMaxToolCallsPerTurn();
+        ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
+        if ((int) turnTimeoutSpinner.getValue() != manager.getSharedTurnTimeoutMinutes()) return true;
+        if ((int) inactivityTimeoutSpinner.getValue() != manager.getSharedInactivityTimeoutSeconds()) return true;
+        return (int) maxToolCallsSpinner.getValue() != manager.getSharedMaxToolCallsPerTurn();
     }
 
     @Override
     public void apply() {
-        AgentUiSettings settings = ActiveAgentManager.getInstance(project).getSettings();
-        settings.setPromptTimeout((int) timeoutSpinner.getValue());
-        settings.setMaxToolCallsPerTurn((int) maxToolCallsSpinner.getValue());
+        ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
+        manager.setSharedTurnTimeoutMinutes((int) turnTimeoutSpinner.getValue());
+        manager.setSharedInactivityTimeoutSeconds((int) inactivityTimeoutSpinner.getValue());
+        manager.setSharedMaxToolCallsPerTurn((int) maxToolCallsSpinner.getValue());
     }
 
     @Override
     public void reset() {
-        if (timeoutSpinner == null) return;
-        AgentUiSettings settings = ActiveAgentManager.getInstance(project).getSettings();
-        timeoutSpinner.setValue(settings.getPromptTimeout());
-        maxToolCallsSpinner.setValue(settings.getMaxToolCallsPerTurn());
+        if (turnTimeoutSpinner == null) return;
+        ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
+        turnTimeoutSpinner.setValue(manager.getSharedTurnTimeoutMinutes());
+        inactivityTimeoutSpinner.setValue(manager.getSharedInactivityTimeoutSeconds());
+        maxToolCallsSpinner.setValue(manager.getSharedMaxToolCallsPerTurn());
     }
 
     @Override
     public void disposeUIResources() {
-        timeoutSpinner = null;
+        turnTimeoutSpinner = null;
+        inactivityTimeoutSpinner = null;
         maxToolCallsSpinner = null;
         panel = null;
     }

@@ -53,7 +53,9 @@ interface ChatPanelApi : Disposable {
         description: String? = null,
         kind: String? = null,
         autoDenied: Boolean = false,
-        denialReason: String? = null
+        denialReason: String? = null,
+        arguments: String? = null,
+        title: String? = null
     )
 
     // ── Sub-agents ─────────────────────────────────────────────────
@@ -130,4 +132,26 @@ interface ChatPanelApi : Disposable {
         description: String,
         onRespond: (com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse) -> Unit
     )
+
+    /**
+     * Show an ask-user bubble with quick-reply options. The user can also type a free-form response.
+     */
+    fun showAskUserRequest(
+        reqId: String,
+        question: String,
+        options: List<String>,
+        onRespond: (String) -> Unit
+    )
+
+    fun hasPendingAskUserRequest(): Boolean
+    fun consumePendingAskUserResponse(response: String): Boolean
+    fun clearPendingAskUserRequest(reqId: String? = null)
+
+    fun showNudgeBubble(id: String, text: String)
+    fun resolveNudgeBubble(id: String)
+    fun removeNudgeBubble(id: String)
+
+    fun showQueuedMessage(id: String, text: String)
+    fun removeQueuedMessage(id: String)
+    fun removeQueuedMessageByText(text: String)
 }

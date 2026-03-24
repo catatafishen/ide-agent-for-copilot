@@ -209,6 +209,41 @@ The chat interface is a full-featured agent console built on JCEF (Chromium).
 - **Sub-agent names** shown in chat bubble headers
 - **Profile-specific coloring** for agent messages
 
+### Nudge & Message Queue
+
+Guide the agent mid-turn without interrupting its current task, or queue up tasks for later.
+
+- **Enter** — while agent is running, sends a nudge (mid-turn guidance injected at the next tool
+  call boundary); when idle, sends a normal prompt
+- **Ctrl+Enter** — force-stops the current turn and immediately sends a new prompt
+- **Ctrl+Shift+Enter** — sends the current prompt to a **message queue**. Queued messages are 
+  handled one by one automatically at the end of the current turn.
+- **Unhandled nudge** — if the agent finishes its turn before consuming the nudge, it is
+  automatically sent as a new prompt (no text lost)
+- **Prompt placeholder** changes from _Ask \<agent\>…_ to _Nudge \<agent\>…_ while a turn is in
+  progress
+
+---
+
+## Web Access (PWA)
+
+Monitor and control the agent from any device on your local network — phone, tablet, or second
+screen.
+
+- **Installable PWA** — add to home screen on Android/iOS; launches fullscreen with the AgentBridge
+  icon and splash screen
+- **Live chat mirror** — all agent messages and tool chips stream in real time via SSE
+- **Unified Send/Nudge button** — label switches to "Nudge" while the agent is running; sends a
+  prompt when idle and nudges mid-turn
+- **Quick-reply support** — `ask_user` quick-reply buttons work from the web UI
+- **Permission approvals** — approve or deny tool-use permission requests remotely
+- **Push notifications** — browser notifications when the agent needs your attention (requires
+  notification permission on the device)
+- **Auto-reconnect** — reconnects automatically on network hiccup with full event replay so no
+  messages are missed
+- **Settings** — enable/disable and configure the port under
+  _Settings → Tools → AgentBridge → Web Access_
+
 ---
 
 ## Multi-Agent Support

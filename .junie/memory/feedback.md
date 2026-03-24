@@ -862,3 +862,51 @@
     "NEW INSTRUCTION": "WHEN plugin starts after IDE restart THEN load and apply saved tool permission settings"
 }
 
+[2026-03-24 14:22] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Web UI branding label",
+    "EXPECTATION": "The web UI should not display 'IDE agent for Copilot'; it should show only 'AgentBridge'.",
+    "NEW INSTRUCTION": "WHEN rendering web UI title or header THEN display 'AgentBridge' only and remove Copilot text"
+}
+
+[2026-03-24 15:01] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "HTTPS feature restoration",
+    "EXPECTATION": "Reintroduce the HTTPS web server feature and fix all related compilation errors so it builds and runs.",
+    "NEW INSTRUCTION": "WHEN re-adding HTTPS server changes THEN ensure build passes with zero compilation errors"
+}
+
+[2026-03-24 15:04] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Build failure verification",
+    "EXPECTATION": "Even though the build was reported as successful, there are still failures; the agent should inspect the active Run window output to identify the errors.",
+    "NEW INSTRUCTION": "WHEN user mentions build errors or run window THEN read active Run output and summarize key errors"
+}
+
+[2026-03-24 15:08] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Thought chip restore",
+    "EXPECTATION": "Thought chips should display their text/content when old messages are restored, not appear blank.",
+    "NEW INSTRUCTION": "WHEN restoring messages from history THEN rehydrate thought chip text from saved payload"
+}
+
+[2026-03-24 15:20] - Updated by Junie
+{
+    "TYPE": "positive",
+    "CATEGORY": "Web UI footer update",
+    "EXPECTATION": "The footer HTML/CSS changes were applied as requested and matched the user's intent.",
+    "NEW INSTRUCTION": "WHEN user provides HTML/CSS snippet for web UI THEN implement verbatim and omit comments"
+}
+
+[2026-03-24 15:27] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Web UI font and icon",
+    "EXPECTATION": "In Firefox the web UI should use a sans-serif font, and the Send button must show the current active agent’s icon (e.g., Junie) matching the toolbar, not a generic icon.",
+    "NEW INSTRUCTION": "WHEN rendering the web UI footer THEN set font to sans-serif and use active agent icon"
+}
+

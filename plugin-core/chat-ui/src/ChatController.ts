@@ -64,7 +64,7 @@ const ChatController = {
             msg.appendChild(meta);
             const details = document.createElement('turn-details');
             msg.appendChild(details);
-            this._msgs().appendChild(msg);
+            this._insertMsg(msg);
             ctx.msg = msg;
             ctx.meta = meta;
             ctx.details = details;
@@ -76,12 +76,22 @@ const ChatController = {
         return ctx;
     },
 
+    _insertMsg(msg: HTMLElement): void {
+        const msgs = this._msgs();
+        const firstQueued = msgs.querySelector('.message-queued');
+        if (firstQueued) {
+            msgs.insertBefore(msg, firstQueued);
+        } else {
+            msgs.appendChild(msg);
+        }
+    },
+
     _collapseThinkingFor(ctx: TurnContext & {
         thinkingMsg?: HTMLElement | null;
         thinkingChip?: HTMLElement | null
     } | null): void {
         if (!ctx?.thinkingBlock) return;
-        ctx.thinkingBlock.removeAttribute('active');
+        (ctx.thinkingBlock as any).finalize();
         ctx.thinkingBlock.removeAttribute('expanded');
         ctx.thinkingBlock.classList.add('turn-hidden');
         if (ctx.thinkingChip) {
@@ -122,7 +132,7 @@ const ChatController = {
             bubble.textContent = text;
         }
         msg.appendChild(bubble);
-        this._msgs().appendChild(msg);
+        this._insertMsg(msg);
         this._container()?.forceScroll();
     },
 
@@ -220,7 +230,12 @@ const ChatController = {
         }
         chip.setAttribute('label', title);
         chip.setAttribute('status', initialStatus || 'pending');
-        if (kind) chip.setAttribute('kind', kind);
+        if (kind) {
+            const currentKind = chip.getAttribute('kind');
+            if (!currentKind || currentKind === 'other') {
+                chip.setAttribute('kind', kind);
+            }
+        }
         if (paramsJson) chip.dataset.params = paramsJson;
     },
 
@@ -228,6 +243,17 @@ const ChatController = {
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
         if (chip) chip.classList.add('is-agentbridge-tool');
         this.setToolChipState(id, 'running');
+    },
+
+    removeToolChip(id: string): void {
+        const chip = document.querySelector('[data-chip-for="' + id + '"]');
+        if (chip) {
+            chip.remove();
+        }
+        const section = document.getElementById(id);
+        if (section) {
+            section.remove();
+        }
     },
 
     setToolChipState(id: string, state: string): void {
@@ -247,7 +273,10 @@ const ChatController = {
     updateToolCallKind(id: string, kind: string): void {
         const chip = document.querySelector('[data-chip-for="' + id + '"]');
         if (chip) {
-            chip.setAttribute('kind', kind);
+            const currentKind = chip.getAttribute('kind');
+            if (!currentKind || currentKind === 'other') {
+                chip.setAttribute('kind', kind);
+            }
         }
     },
 
@@ -293,7 +322,7 @@ const ChatController = {
         resultBubble.id = 'result-' + sectionId;
         resultBubble.classList.add('subagent-result');
         msg.appendChild(resultBubble);
-        this._msgs().appendChild(msg);
+        this._insertMsg(msg);
         (chip as any).linkSection(msg);
         this._container()?.scrollIfNeeded();
     },
@@ -315,7 +344,12 @@ const ChatController = {
         const chip = document.createElement('tool-chip');
         chip.setAttribute('label', title);
         chip.setAttribute('status', 'running');
-        if (kind) chip.setAttribute('kind', kind);
+        if (kind) {
+            const currentKind = chip.getAttribute('kind');
+            if (!currentKind || currentKind === 'other') {
+                chip.setAttribute('kind', kind);
+            }
+        }
         if (isExternal) chip.setAttribute('external', 'true');
         chip.dataset.chipFor = toolDomId;
         if (paramsJson) chip.dataset.params = paramsJson;
@@ -330,7 +364,7 @@ const ChatController = {
         const el = document.createElement('session-divider');
         el.setAttribute('timestamp', timestamp);
         if (agent) el.setAttribute('agent', agent);
-        this._msgs().appendChild(el);
+        this._insertMsg(el);
     },
 
     showPlaceholder(text: string): void {
@@ -352,9 +386,17 @@ const ChatController = {
         if (ctx?.textBubble && !ctx.textBubble.textContent?.trim()) {
             ctx.textBubble.remove();
         }
+        this._collapseThinkingFor(ctx || null);
         if (ctx) {
-            ctx.thinkingBlock = null;
             ctx.textBubble = null;
+            // If the turn produced thinking but no text output, add a placeholder so the
+            // turn is not silently empty (i.e. the message exists but has no bubble).
+            if (ctx.msg && !ctx.msg.querySelector('message-bubble')) {
+                const placeholder = document.createElement('message-bubble');
+                placeholder.classList.add('no-output-placeholder');
+                placeholder.textContent = 'Completed without output';
+                ctx.msg.appendChild(placeholder);
+            }
         }
         // Mark any still-running sub-agent chips as complete (not failed)
         document.querySelectorAll('subagent-chip[status="running"]').forEach(c => c.setAttribute('status', 'complete'));
@@ -393,12 +435,32 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
+    showAskUserRequest(turnId: string, agentId: string, reqId: string, question: string, options: string[]): void {
+        this.disableQuickReplies();
+        const ctx = this._ensureMsg(turnId, agentId);
+        this._collapseThinkingFor(ctx);
+
+        const bubble = document.createElement('message-bubble');
+        bubble.dataset.reqId = reqId;
+        bubble.innerHTML = escHtml(question).replace(/\n/g, '<br/>');
+        ctx.msg!.appendChild(bubble);
+
+        if (options?.length) {
+            const replies = document.createElement('quick-replies');
+            replies.dataset.reqId = reqId;
+            (replies as any).options = options;
+            ctx.msg!.appendChild(replies);
+        }
+
+        this._container()?.scrollIfNeeded();
+    },
+
     showQuickReplies(options: string[]): void {
         this.disableQuickReplies();
         if (!options?.length) return;
         const el = document.createElement('quick-replies');
         (el as any).options = options;
-        this._msgs().appendChild(el);
+        this._insertMsg(el);
         this._container()?.scrollIfNeeded();
     },
 
@@ -476,7 +538,7 @@ const ChatController = {
         while (temp.firstChild) {
             msgs.insertBefore(temp.firstChild, insertBefore);
         }
-
+        this._moveQueuedToBottom();
         // If the user was near the top when load-more fired, compensate for the added
         // height so they are no longer pinned at scrollY=0 and can scroll up again.
         // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
@@ -520,6 +582,7 @@ const ChatController = {
         while (temp.firstChild) {
             msgs.insertBefore(temp.firstChild, insertBefore);
         }
+        this._moveQueuedToBottom();
 
         // Compensate scroll so user stays at same visual position.
         // We ensure a minimum scroll offset of 10px so JCEF always detects subsequent
@@ -570,6 +633,96 @@ const ChatController = {
         if (rows.length > 80) {
             const trimCount = rows.length - 80;
             for (let i = 0; i < trimCount; i++) rows[i].remove();
+        }
+    },
+
+    showNudgeBubble(id: string, text: string): void {
+        const existing = document.getElementById('nudge-' + id);
+        if (existing) {
+            const bubble = existing.querySelector('message-bubble');
+            if (bubble) {
+                bubble.textContent = (bubble.textContent || '') + '\n\n' + text;
+                this._container()?.scrollIfNeeded();
+            }
+            return;
+        }
+        const msg = document.createElement('chat-message');
+        msg.id = 'nudge-' + id;
+        msg.setAttribute('type', 'user');
+        msg.classList.add('nudge-pending');
+        const meta = document.createElement('message-meta');
+        meta.innerHTML = '<span class="ts nudge-label">⏳ Nudge (pending)</span>';
+        msg.appendChild(meta);
+        const bubble = document.createElement('message-bubble');
+        bubble.setAttribute('type', 'user');
+        bubble.textContent = text;
+        msg.appendChild(bubble);
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'quick-reply-btn nudge-cancel-btn';
+        cancelBtn.textContent = '✕ Cancel nudge';
+        cancelBtn.onclick = () => (globalThis as any)._bridge?.cancelNudge(id);
+        msg.appendChild(cancelBtn);
+        this._msgs().appendChild(msg);
+        this._container()?.scrollIfNeeded();
+    },
+
+    resolveNudgeBubble(id: string): void {
+        const el = document.getElementById('nudge-' + id);
+        if (!el) return;
+        el.classList.remove('nudge-pending');
+        el.classList.add('nudge-sent');
+        el.querySelector('.nudge-label')?.remove();
+        el.querySelector('.nudge-cancel-btn')?.remove();
+    },
+
+    removeNudgeBubble(id: string): void {
+        document.getElementById('nudge-' + id)?.remove();
+    },
+
+    showQueuedMessage(id: string, text: string): void {
+        const msg = document.createElement('chat-message');
+        msg.id = 'queued-' + id;
+        msg.setAttribute('type', 'user');
+        msg.classList.add('message-queued');
+        const meta = document.createElement('message-meta');
+        meta.innerHTML = '<span class="ts">⏳ Queued for end of turn</span>';
+        meta.classList.add('show');
+        msg.appendChild(meta);
+        const bubble = document.createElement('message-bubble');
+        bubble.setAttribute('type', 'user');
+        bubble.textContent = text;
+        msg.appendChild(bubble);
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'quick-reply-btn nudge-cancel-btn';
+        cancelBtn.textContent = '✕ Cancel message';
+        cancelBtn.onclick = () => (globalThis as any)._bridge?.cancelQueuedMessage(id, text);
+        msg.appendChild(cancelBtn);
+        this._msgs().appendChild(msg);
+        this._container()?.scrollIfNeeded();
+    },
+
+    _moveQueuedToBottom(): void {
+        const msgs = this._msgs();
+        const queued = Array.from(msgs.children).filter(c => c.classList.contains('message-queued'));
+        for (const msg of queued) {
+            msgs.appendChild(msg);
+        }
+    },
+
+    removeQueuedMessage(id: string): void {
+        document.getElementById('queued-' + id)?.remove();
+    },
+
+    removeQueuedMessageByText(text: string): void {
+        const msgs = this._msgs();
+        const rows = Array.from(msgs.children).filter(c => c.tagName === 'CHAT-MESSAGE' && c.classList.contains('message-queued'));
+        for (const row of rows) {
+            if (row.querySelector('message-bubble')?.textContent === text) {
+                row.remove();
+                break;
+            }
         }
     },
 

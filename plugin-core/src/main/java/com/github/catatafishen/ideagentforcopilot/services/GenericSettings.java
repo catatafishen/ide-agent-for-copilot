@@ -14,7 +14,6 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class GenericSettings {
 
-    private static final int DEFAULT_PROMPT_TIMEOUT = 300;
     private static final int DEFAULT_MAX_TOOL_CALLS = 0;
     private static final String TOOL_PERM_IN_PREFIX = "tool.perm.in.";
     private static final String TOOL_PERM_OUT_PREFIX = "tool.perm.out.";
@@ -111,15 +110,7 @@ public final class GenericSettings {
         activeAgentLabel = label;
     }
 
-    // ── Timeouts & limits ────────────────────────────────────────────────────
-
-    public int getPromptTimeout() {
-        return getProperties().getInt(key("promptTimeout"), DEFAULT_PROMPT_TIMEOUT);
-    }
-
-    public void setPromptTimeout(int seconds) {
-        getProperties().setValue(key("promptTimeout"), seconds, DEFAULT_PROMPT_TIMEOUT);
-    }
+    // ── Limits ───────────────────────────────────────────────────────────────
 
     public int getMaxToolCallsPerTurn() {
         return getProperties().getInt(key("maxToolCallsPerTurn"), DEFAULT_MAX_TOOL_CALLS);

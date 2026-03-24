@@ -492,15 +492,13 @@ working-indicator .working-text {
     border-color: color-mix(in srgb, var(--kind-other) 18%, transparent);
 }
 
-/* Default tool chip border is dashed — origin unknown.
-   Only chips confirmed handled by our MCP server get a solid border. */
+/* Default tool chip border is dashed — becomes solid once AgentBridge MCP handles the call. */
 .turn-chip.tool {
     border-style: dashed;
 }
 
 .turn-chip.tool.status-denied {
     border-color: var(--error) !important;
-    border-style: dotted !important;
     background: var(--error-a05) !important;
     color: var(--error) !important;
 }
@@ -2627,4 +2625,19 @@ chat-message[data-agent]:hover::before {
 
 chat-message[data-agent] {
     position: relative;
+}
+
+/* ── Nudge bubble ────────────────────────────────────── */
+.nudge-pending message-bubble {
+    opacity: 0.7;
+}
+
+.nudge-pending .nudge-label {
+    color: var(--warning);
+}
+
+.nudge-cancel-btn {
+    margin-top: var(--sp-2);
+    font-size: 0.82em;
+    opacity: 0.8;
 }

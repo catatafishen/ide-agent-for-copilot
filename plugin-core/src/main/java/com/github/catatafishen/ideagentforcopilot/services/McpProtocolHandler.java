@@ -12,8 +12,19 @@ import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Handles MCP (Model Context Protocol) JSON-RPC messages.
@@ -27,10 +38,15 @@ public final class McpProtocolHandler {
      * Hard cap on tool result size. Keeps output below client-side truncation thresholds.
      */
     private static final int MAX_RESULT_CHARS = 80_000;
+    private static final int RESOURCE_PAGE_SIZE = 200;
+    private static final int RESOURCE_NOT_FOUND_ERROR = -32002;
 
     private static final String SERVER_NAME = "ide-mcp-server";
     private static final String SERVER_VERSION = "1.0.0";
     private static final String PROTOCOL_VERSION = "2025-03-26";
+    private static final String STARTUP_INSTRUCTIONS_URI = "resource://default-startup-instructions.md";
+    private static final String RESOURCES_CURSOR_PREFIX = "resources:";
+    private static final String RESOURCE_TEMPLATES_CURSOR_PREFIX = "resourceTemplates:";
 
     private final Project project;
 
@@ -52,6 +68,9 @@ public final class McpProtocolHandler {
                 case "initialize" -> handleInitialize(msg);
                 case "tools/list" -> handleToolsList(msg);
                 case "tools/call" -> handleToolsCall(msg);
+                case "resources/list" -> handleResourcesList(msg);
+                case "resources/templates/list" -> handleResourceTemplatesList(msg);
+                case "resources/read" -> handleResourcesRead(msg);
                 case "ping" -> respondResult(msg, new JsonObject());
                 default -> respondError(msg, -32601, "Method not found: " + method);
             };
@@ -64,15 +83,6 @@ public final class McpProtocolHandler {
         }
     }
 
-    /**
-     * Handles the MCP initialize request.
-     *
-     * <p>The {@code instructions} field in the result is the MCP-spec mechanism for servers to
-     * inject context into the client's system prompt. Agents that properly implement MCP (e.g.
-     * OpenCode, Goose, Continue) will incorporate this into the model context automatically —
-     * no project-file mutation needed. Copilot ignores this field (known bug), so it relies on
-     * the separate {@code CopilotInstructionsManager} file-injection workaround instead.</p>
-     */
     private JsonObject handleInitialize(JsonObject msg) {
         JsonObject serverInfo = new JsonObject();
         serverInfo.addProperty("name", SERVER_NAME);
@@ -84,11 +94,14 @@ public final class McpProtocolHandler {
         toolsCap.addProperty("listChanged", false);
         capabilities.add("tools", toolsCap);
 
+        JsonObject resourcesCap = new JsonObject();
+        resourcesCap.addProperty("listChanged", false);
+        capabilities.add("resources", resourcesCap);
+
         JsonObject result = new JsonObject();
         result.addProperty("protocolVersion", PROTOCOL_VERSION);
         result.add("capabilities", capabilities);
         result.add("serverInfo", serverInfo);
-
         result.addProperty("instructions", loadInstructions());
 
         return respondResult(msg, result);
@@ -97,11 +110,10 @@ public final class McpProtocolHandler {
     private static String loadInstructions() {
         try (java.io.InputStream is = McpProtocolHandler.class.getResourceAsStream("/default-startup-instructions.md")) {
             if (is != null) {
-                return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            } else {
-                LOG.warn("Resource /default-startup-instructions.md not found in classpath for MCP initialize");
+                return new String(is.readAllBytes(), StandardCharsets.UTF_8);
             }
-        } catch (java.io.IOException e) {
+            LOG.warn("Resource /default-startup-instructions.md not found in classpath for MCP initialize");
+        } catch (IOException e) {
             LOG.error("Failed to read /default-startup-instructions.md from classpath for MCP initialize", e);
         }
         return "You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP.";
@@ -129,6 +141,267 @@ public final class McpProtocolHandler {
         JsonObject result = new JsonObject();
         result.add("tools", tools);
         return respondResult(msg, result);
+    }
+
+    private JsonObject handleResourcesList(JsonObject msg) {
+        JsonObject params = msg.has("params") ? msg.getAsJsonObject("params") : new JsonObject();
+        int offset;
+        try {
+            offset = parseCursorOffset(params.has("cursor") ? params.get("cursor") : null, RESOURCES_CURSOR_PREFIX);
+        } catch (InvalidCursorException e) {
+            return respondError(msg, -32602, e.getMessage());
+        }
+        List<JsonObject> entries = buildResourceEntries();
+
+        JsonArray resources = new JsonArray();
+        int endExclusive = Math.min(entries.size(), offset + RESOURCE_PAGE_SIZE);
+        for (int i = offset; i < endExclusive; i++) {
+            resources.add(entries.get(i));
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("resources", resources);
+        if (endExclusive < entries.size()) {
+            result.addProperty("nextCursor", encodeCursor(RESOURCES_CURSOR_PREFIX, endExclusive));
+        }
+        return respondResult(msg, result);
+    }
+
+    private JsonObject handleResourceTemplatesList(JsonObject msg) {
+        JsonObject params = msg.has("params") ? msg.getAsJsonObject("params") : new JsonObject();
+        int offset;
+        try {
+            offset = parseCursorOffset(
+                params.has("cursor") ? params.get("cursor") : null,
+                RESOURCE_TEMPLATES_CURSOR_PREFIX
+            );
+        } catch (InvalidCursorException e) {
+            return respondError(msg, -32602, e.getMessage());
+        }
+
+        List<JsonObject> templates = List.of(createResourceTemplate(
+            "file:///{path}",
+            "Project Files",
+            "Project Files",
+            "Access files in the current project directory",
+            "application/octet-stream"
+        ));
+
+        JsonArray page = new JsonArray();
+        int endExclusive = Math.min(templates.size(), offset + RESOURCE_PAGE_SIZE);
+        for (int i = offset; i < endExclusive; i++) {
+            page.add(templates.get(i));
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("resourceTemplates", page);
+        if (endExclusive < templates.size()) {
+            result.addProperty("nextCursor", encodeCursor(RESOURCE_TEMPLATES_CURSOR_PREFIX, endExclusive));
+        }
+        return respondResult(msg, result);
+    }
+
+    private JsonObject handleResourcesRead(JsonObject msg) {
+        JsonObject params = msg.has("params") ? msg.getAsJsonObject("params") : new JsonObject();
+        String uri = null;
+        if (params.has("uri") && !params.get("uri").isJsonNull()) {
+            uri = params.get("uri").getAsString();
+        } else if (params.has("resource") && params.get("resource").isJsonObject()) {
+            JsonObject resource = params.getAsJsonObject("resource");
+            if (resource.has("uri") && !resource.get("uri").isJsonNull()) {
+                uri = resource.get("uri").getAsString();
+            }
+        }
+
+        if (uri == null || uri.isEmpty()) {
+            return respondError(msg, -32602, "Missing resource URI");
+        }
+
+        ResourceReadResult readResult = readResource(uri);
+        if (readResult.errorCode() != null) {
+            String errorMessage = readResult.errorMessage() != null ? readResult.errorMessage() : "Resource not found";
+            if (RESOURCE_NOT_FOUND_ERROR == readResult.errorCode()) {
+                return respondResourceNotFound(msg, uri, errorMessage);
+            }
+            return respondError(msg, readResult.errorCode(), errorMessage);
+        }
+
+        JsonArray contents = new JsonArray();
+        contents.add(readResult.content());
+
+        JsonObject result = new JsonObject();
+        result.add("contents", contents);
+        return respondResult(msg, result);
+    }
+
+    @NotNull
+    private List<JsonObject> buildResourceEntries() {
+        return List.of(createResource(
+            STARTUP_INSTRUCTIONS_URI,
+            "default-startup-instructions",
+            "Default Startup Instructions",
+            "Default startup instructions injected during initialize",
+            "text/markdown",
+            null
+        ));
+    }
+
+    @NotNull
+    private JsonObject createResource(@NotNull String uri,
+                                      @NotNull String name,
+                                      @Nullable String title,
+                                      @Nullable String description,
+                                      @Nullable String mimeType,
+                                      @Nullable Long size) {
+        JsonObject resource = new JsonObject();
+        resource.addProperty("uri", uri);
+        resource.addProperty("name", name);
+        if (title != null && !title.isBlank()) {
+            resource.addProperty("title", title);
+        }
+        if (description != null && !description.isBlank()) {
+            resource.addProperty("description", description);
+        }
+        if (mimeType != null && !mimeType.isBlank()) {
+            resource.addProperty("mimeType", mimeType);
+        }
+        if (size != null) {
+            resource.addProperty("size", size);
+        }
+        return resource;
+    }
+
+    @NotNull
+    private static JsonObject createResourceTemplate(@NotNull String uriTemplate,
+                                                     @NotNull String name,
+                                                     @Nullable String title,
+                                                     @Nullable String description,
+                                                     @Nullable String mimeType) {
+        JsonObject template = new JsonObject();
+        template.addProperty("uriTemplate", uriTemplate);
+        template.addProperty("name", name);
+        if (title != null && !title.isBlank()) {
+            template.addProperty("title", title);
+        }
+        if (description != null && !description.isBlank()) {
+            template.addProperty("description", description);
+        }
+        if (mimeType != null && !mimeType.isBlank()) {
+            template.addProperty("mimeType", mimeType);
+        }
+        return template;
+    }
+
+    @NotNull
+    private ResourceReadResult readResource(@NotNull String uri) {
+        if (STARTUP_INSTRUCTIONS_URI.equals(uri)) {
+            JsonObject content = new JsonObject();
+            content.addProperty("uri", STARTUP_INSTRUCTIONS_URI);
+            content.addProperty("mimeType", "text/markdown");
+            content.addProperty("text", loadInstructions());
+            return ResourceReadResult.success(content);
+        }
+
+        if (!uri.startsWith("file:")) {
+            return ResourceReadResult.notFound("Resource not found");
+        }
+
+        Path projectRoot = getProjectRoot();
+        if (projectRoot == null) {
+            return ResourceReadResult.notFound("Resource not found");
+        }
+
+        Path path;
+        try {
+            path = Paths.get(new URI(uri)).toAbsolutePath().normalize();
+        } catch (URISyntaxException | InvalidPathException e) {
+            return ResourceReadResult.error(-32602, "Invalid resource URI: " + uri);
+        }
+
+        Path normalizedRoot = projectRoot.toAbsolutePath().normalize();
+        if (!path.startsWith(normalizedRoot) || !Files.exists(path) || !Files.isRegularFile(path)) {
+            return ResourceReadResult.notFound("Resource not found");
+        }
+
+        JsonObject content = new JsonObject();
+        content.addProperty("uri", path.toUri().toString());
+        content.addProperty("mimeType", guessMimeType(path));
+
+        try {
+            if (isTextResource(path)) {
+                content.addProperty("text", Files.readString(path, StandardCharsets.UTF_8));
+            } else {
+                content.addProperty("blob", Base64.getEncoder().encodeToString(Files.readAllBytes(path)));
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to read MCP resource " + path, e);
+            return ResourceReadResult.error(-32603, "Failed to read resource: " + uri);
+        }
+
+        return ResourceReadResult.success(content);
+    }
+
+    @Nullable
+    private Path getProjectRoot() {
+        if (project.getBasePath() == null || project.getBasePath().isBlank()) {
+            return null;
+        }
+        try {
+            return Paths.get(project.getBasePath()).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            LOG.warn("Invalid project base path for MCP resources: " + project.getBasePath(), e);
+            return null;
+        }
+    }
+
+    private static int parseCursorOffset(@Nullable JsonElement cursorElement,
+                                         @NotNull String expectedPrefix) throws InvalidCursorException {
+        if (cursorElement == null || cursorElement.isJsonNull()) {
+            return 0;
+        }
+        String cursor = cursorElement.getAsString();
+        if (!cursor.startsWith(expectedPrefix)) {
+            throw new InvalidCursorException("Invalid cursor");
+        }
+        try {
+            return Math.max(0, Integer.parseInt(cursor.substring(expectedPrefix.length())));
+        } catch (RuntimeException e) {
+            throw new InvalidCursorException("Invalid cursor");
+        }
+    }
+
+    @NotNull
+    private static String encodeCursor(@NotNull String prefix, int offset) {
+        return prefix + offset;
+    }
+
+    @NotNull
+    private static String guessMimeType(@NotNull Path path) {
+        try {
+            String mimeType = Files.probeContentType(path);
+            if (mimeType != null && !mimeType.isBlank()) {
+                return mimeType;
+            }
+        } catch (IOException ignored) {
+        }
+
+        String name = path.getFileName() != null ? path.getFileName().toString().toLowerCase(Locale.ROOT) : "";
+        if (name.endsWith(".md")) return "text/markdown";
+        if (name.endsWith(".java")) return "text/x-java";
+        if (name.endsWith(".kt")) return "text/x-kotlin";
+        if (name.endsWith(".json")) return "application/json";
+        if (name.endsWith(".xml")) return "application/xml";
+        if (name.endsWith(".yaml") || name.endsWith(".yml")) return "application/yaml";
+        if (name.endsWith(".txt")) return "text/plain";
+        return "application/octet-stream";
+    }
+
+    private static boolean isTextResource(@NotNull Path path) {
+        String mimeType = guessMimeType(path);
+        return mimeType.startsWith("text/")
+            || "application/json".equals(mimeType)
+            || "application/xml".equals(mimeType)
+            || "application/yaml".equals(mimeType);
     }
 
     private JsonObject handleToolsCall(JsonObject msg) {
@@ -223,8 +496,29 @@ public final class McpProtocolHandler {
     private static JsonObject respondError(JsonObject request, int code, String message) {
         return makeErrorResponse(
             request != null && request.has("id") ? request.get("id") : null,
-            code, message
+            code,
+            message
         );
+    }
+
+    private static JsonObject respondResourceNotFound(@Nullable JsonObject request,
+                                                      @NotNull String uri,
+                                                      @NotNull String message) {
+        JsonObject error = new JsonObject();
+        error.addProperty("code", RESOURCE_NOT_FOUND_ERROR);
+        error.addProperty("message", message);
+
+        JsonObject data = new JsonObject();
+        data.addProperty("uri", uri);
+        error.add("data", data);
+
+        JsonObject response = new JsonObject();
+        response.addProperty("jsonrpc", "2.0");
+        if (request != null && request.has("id")) {
+            response.add("id", request.get("id"));
+        }
+        response.add("error", error);
+        return response;
     }
 
     private static JsonObject makeErrorResponse(JsonElement id, int code, String message) {
@@ -239,5 +533,27 @@ public final class McpProtocolHandler {
         }
         response.add("error", error);
         return response;
+    }
+
+    private record ResourceReadResult(@Nullable JsonObject content,
+                                      @Nullable Integer errorCode,
+                                      @Nullable String errorMessage) {
+        private static ResourceReadResult success(@NotNull JsonObject content) {
+            return new ResourceReadResult(content, null, null);
+        }
+
+        private static ResourceReadResult notFound(@NotNull String message) {
+            return new ResourceReadResult(null, RESOURCE_NOT_FOUND_ERROR, message);
+        }
+
+        private static ResourceReadResult error(int errorCode, @NotNull String message) {
+            return new ResourceReadResult(null, errorCode, message);
+        }
+    }
+
+    private static final class InvalidCursorException extends Exception {
+        private InvalidCursorException(@NotNull String message) {
+            super(message);
+        }
     }
 }

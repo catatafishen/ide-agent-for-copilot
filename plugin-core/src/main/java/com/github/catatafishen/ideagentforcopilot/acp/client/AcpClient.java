@@ -59,12 +59,6 @@ public abstract class AcpClient extends AbstractAgentClient {
 
     private static final long INITIALIZE_TIMEOUT_SECONDS = 90;
     private static final long SESSION_TIMEOUT_SECONDS = 30;
-    /**
-     * How long a prompt may be silent (no {@code session/update} received) before it is
-     * considered stuck. Unlike a hard deadline from send time, this resets on every streaming
-     * chunk, so arbitrarily long agentic turns are fine as long as the agent keeps sending.
-     */
-    private static final long INACTIVITY_TIMEOUT_SECONDS = 300; // 5 minutes of silence
     private static final long AUTH_TIMEOUT_SECONDS = 30;
     private static final long STOP_TIMEOUT_SECONDS = 5;
 
@@ -402,16 +396,25 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
     }
 
+    private int getTurnTimeoutSeconds() {
+        return ActiveAgentManager.getInstance(project).getSharedTurnTimeoutSeconds();
+    }
+
+    private int getInactivityTimeoutSeconds() {
+        return ActiveAgentManager.getInstance(project).getSharedInactivityTimeoutSeconds();
+    }
+
     @Override
     public final PromptResponse sendPrompt(PromptRequest request,
                                            Consumer<SessionUpdate> onUpdate) throws AgentPromptException {
         try {
-            lastActivityNanos = System.nanoTime();
+            long turnStartNanos = System.nanoTime();
+            lastActivityNanos = turnStartNanos;
             updateConsumer = onUpdate;
             JsonObject params = gson.toJsonTree(request).getAsJsonObject();
             LOG.debug(displayName() + ": sending session/prompt, sessionId=" + request.sessionId());
             CompletableFuture<JsonElement> future = transport.sendRequest("session/prompt", params);
-            JsonElement result = waitForPromptResult(future);
+            JsonElement result = waitForPromptResult(future, turnStartNanos);
             return gson.fromJson(result, PromptResponse.class);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -450,25 +453,40 @@ public abstract class AcpClient extends AbstractAgentClient {
      * Rather than a hard wall-clock timeout from the time the request was sent (which
      * would prematurely kill legitimately long agentic turns), this method polls in short
      * intervals and only times out when no {@code session/update} notification has arrived
-     * for {@value #INACTIVITY_TIMEOUT_SECONDS} seconds. As long as the agent keeps streaming
+     * for the configured inactivity timeout seconds. As long as the agent keeps streaming
      * chunks — even during a multi-tool, multi-minute turn — the deadline keeps resetting.
      */
-    private JsonElement waitForPromptResult(CompletableFuture<JsonElement> future)
+    private JsonElement waitForPromptResult(CompletableFuture<JsonElement> future, long turnStartNanos)
         throws InterruptedException, java.util.concurrent.ExecutionException,
         java.util.concurrent.TimeoutException {
         long pollMs = 5_000L;
-        long inactivityLimitNanos = TimeUnit.SECONDS.toNanos(INACTIVITY_TIMEOUT_SECONDS);
+        long turnDeadlineNanos = turnStartNanos + TimeUnit.SECONDS.toNanos(getTurnTimeoutSeconds());
+        long inactivityLimitNanos = TimeUnit.SECONDS.toNanos(getInactivityTimeoutSeconds());
         while (true) {
-            try {
-                return future.get(pollMs, TimeUnit.MILLISECONDS);
-            } catch (java.util.concurrent.TimeoutException e) {
-                long silenceNanos = System.nanoTime() - lastActivityNanos;
-                if (silenceNanos >= inactivityLimitNanos) {
-                    long silenceSec = TimeUnit.NANOSECONDS.toSeconds(silenceNanos);
-                    LOG.warn(displayName() + ": inactivity timeout after " + silenceSec + "s of silence");
+            long now = System.nanoTime();
+            long lastActivity = lastActivityNanos;
+            long inactivityDeadlineNanos = lastActivity + inactivityLimitNanos;
+            long remainingNanos = Math.min(turnDeadlineNanos, inactivityDeadlineNanos) - now;
+            if (remainingNanos <= 0) {
+                if (turnDeadlineNanos <= inactivityDeadlineNanos) {
+                    long elapsedSec = TimeUnit.NANOSECONDS.toSeconds(now - turnStartNanos);
+                    LOG.warn(displayName() + ": turn timeout after " + elapsedSec + "s");
                     throw new java.util.concurrent.TimeoutException(
-                        "Agent inactive for " + silenceSec + "s (no session/update received)"
+                        "Agent turn timed out after " + elapsedSec + "s"
                     );
+                }
+                long silenceSec = TimeUnit.NANOSECONDS.toSeconds(now - lastActivity);
+                LOG.warn(displayName() + ": inactivity timeout after " + silenceSec + "s of silence");
+                throw new java.util.concurrent.TimeoutException(
+                    "Agent inactive for " + silenceSec + "s (no session/update received)"
+                );
+            }
+            long waitMillis = Math.max(1L, Math.min(pollMs, TimeUnit.NANOSECONDS.toMillis(remainingNanos)));
+            try {
+                return future.get(waitMillis, TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException e) {
+                if (future.isDone()) {
+                    return future.get();
                 }
             }
         }
@@ -1168,6 +1186,9 @@ public abstract class AcpClient extends AbstractAgentClient {
     }
 
     static boolean shouldAutoDenyBuiltInTool(@NotNull String toolId) {
+        if (isMcpResourceTool(toolId)) {
+            return false;
+        }
         if (toolId.startsWith("agentbridge-")
             || toolId.startsWith("agentbridge_")
             || toolId.startsWith("Tool: agentbridge/")
@@ -1176,6 +1197,12 @@ public abstract class AcpClient extends AbstractAgentClient {
             return false;
         }
         return !toolId.contains("/") && !toolId.contains("@") && !isAllowedBuiltInTool(toolId);
+    }
+
+    private static boolean isMcpResourceTool(@NotNull String toolId) {
+        String lower = toolId.toLowerCase();
+        return "read_mcp_resource".equals(lower)
+            || "list_mcp_resources".equals(lower);
     }
 
     protected final boolean isBuiltInTool(@NotNull String protocolTitle) {

@@ -5,6 +5,7 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate
 import com.github.catatafishen.ideagentforcopilot.agent.AgentException
 import com.github.catatafishen.ideagentforcopilot.bridge.ConversationStore
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
+import com.github.catatafishen.ideagentforcopilot.services.ChatWebServer
 import com.github.catatafishen.ideagentforcopilot.settings.BillingSettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
@@ -24,7 +25,7 @@ import java.awt.*
 import javax.swing.*
 
 /**
- * Main content for the IDE Agent for Copilot tool window.
+ * Main content for the AgentBridge tool window.
  */
 class ChatToolWindowContent(
     private val project: Project,
@@ -58,6 +59,8 @@ class ChatToolWindowContent(
     private var restartSessionGroup: RestartSessionGroup? = null
     private lateinit var promptTextArea: EditorTextField
     private var isSending = false
+    private var pendingNudgeId: String? = null
+    private var pendingNudgeText: String? = null
     private lateinit var processingTimerPanel: ProcessingTimerPanel
     private lateinit var promptOrchestrator: PromptOrchestrator
     private lateinit var pasteToScratchHandler: PasteToScratchHandler
@@ -217,7 +220,8 @@ class ChatToolWindowContent(
 
     private fun promptPlaceholder(): String {
         val name = agentManager.activeProfile.displayName
-        return "Ask $name... (Shift+Enter for new line)"
+        return if (isSending) "Nudge $name... (Shift+Enter for new line)"
+        else "Ask $name... (Shift+Enter for new line)"
     }
 
     private fun updatePromptPlaceholder() {
@@ -358,6 +362,14 @@ class ChatToolWindowContent(
                     updateState("Copilot CLI is not installed \u2014 install with: $cmd", showInstall = true)
                 }
 
+                !profile.isSupportsOAuthSignIn && profile.terminalSignInCommand != null && authService.isAuthenticationError(
+                    diag
+                ) ->
+                    updateState(
+                        "Not signed in to ${profile.displayName} \u2014 click Sign In to authenticate, then Retry.",
+                        showSignIn = true,
+                    )
+
                 !profile.isSupportsOAuthSignIn && authService.isAuthenticationError(diag) ->
                     updateState(
                         "Not signed in to ${profile.displayName} \u2014 check credentials and click Retry.",
@@ -378,24 +390,29 @@ class ChatToolWindowContent(
         }
         banner.retryHandler = { authService.clearPendingAuthError() }
         banner.signInHandler = {
-            banner.showSignInPending()
-            inlineAuthProcess?.destroy()
-            inlineAuthProcess = authService.startInlineAuth(
-                onDeviceCode = { info: AuthLoginService.DeviceCodeInfo ->
-                    banner.showDeviceCode(info.code, info.url)
-                },
-                onAuthComplete = {
-                    banner.hideDeviceCode()
-                    inlineAuthProcess = null
-                    authService.clearPendingAuthError()
-                    banner.triggerCheck()
-                },
-                onFallback = {
-                    banner.hideDeviceCode()
-                    inlineAuthProcess = null
-                    authService.startCopilotLogin()
-                },
-            )
+            val terminalCmd = agentManager.activeProfile.terminalSignInCommand
+            if (terminalCmd != null) {
+                authService.startTerminalSignIn(terminalCmd)
+            } else {
+                banner.showSignInPending()
+                inlineAuthProcess?.destroy()
+                inlineAuthProcess = authService.startInlineAuth(
+                    onDeviceCode = { info: AuthLoginService.DeviceCodeInfo ->
+                        banner.showDeviceCode(info.code, info.url)
+                    },
+                    onAuthComplete = {
+                        banner.hideDeviceCode()
+                        inlineAuthProcess = null
+                        authService.clearPendingAuthError()
+                        banner.triggerCheck()
+                    },
+                    onFallback = {
+                        banner.hideDeviceCode()
+                        inlineAuthProcess = null
+                        authService.startCopilotLogin()
+                    },
+                )
+            }
         }
         return banner
     }
@@ -552,6 +569,7 @@ class ChatToolWindowContent(
                     if (::processingTimerPanel.isInitialized) processingTimerPanel.setCodeChangeStats(a, r)
                 },
                 onClientUpdate = ::handleClientUpdate,
+                sendPromptDirectly = ::sendPromptDirectly,
             )
         )
 
@@ -605,12 +623,19 @@ class ChatToolWindowContent(
     }
 
     private fun onSendStopClicked() {
+        val rawText = promptTextArea.text.trim()
+        if (consolePanel.hasPendingAskUserRequest()) {
+            if (rawText.isNotEmpty()) {
+                consolePanel.consumePendingAskUserResponse(rawText)
+                promptTextArea.text = ""
+            }
+            return
+        }
         if (isSending) {
             promptOrchestrator.stop()
             setSendingState(false)
             return
         }
-        val rawText = promptTextArea.text.trim()
         if (rawText.isEmpty()) return
         consolePanel.disableQuickReplies()
         statusBanner?.dismissCurrent()
@@ -630,6 +655,24 @@ class ChatToolWindowContent(
         val selectedModelId = loadedModels.getOrNull(selectedModelIndex)?.id() ?: ""
         ApplicationManager.getApplication().executeOnPooledThread {
             promptOrchestrator.execute(prompt, contextItems, selectedModelId)
+        }
+    }
+
+    private fun onNudgeClicked() {
+        if (!isSending) return
+        val rawText = promptTextArea.text.trim()
+        if (rawText.isEmpty()) return
+        val id = System.currentTimeMillis().toString()
+        pendingNudgeId = id
+        pendingNudgeText = rawText
+        promptTextArea.text = ""
+        consolePanel.showNudgeBubble(id, rawText)
+        val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+        psiBridge.setPendingNudge(rawText)
+        psiBridge.setOnNudgeConsumed {
+            pendingNudgeId = null
+            pendingNudgeText = null
+            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(id) }
         }
     }
 
@@ -669,7 +712,28 @@ class ChatToolWindowContent(
 
     private fun setSendingState(sending: Boolean) {
         isSending = sending
+        ChatWebServer.getInstance(project)?.setAgentRunning(sending)
+        if (!sending) {
+            // If nudge was never consumed (no tool calls happened), remove bubble and restore text
+            val nudgeId = pendingNudgeId
+            val nudgeText = pendingNudgeText
+            if (nudgeId != null) {
+                pendingNudgeId = null
+                pendingNudgeText = null
+                val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                psiBridge.setPendingNudge(null)
+                psiBridge.setOnNudgeConsumed(null)
+                ApplicationManager.getApplication().invokeLater {
+                    consolePanel.removeNudgeBubble(nudgeId)
+                    if (nudgeText != null) {
+                        promptTextArea.text = nudgeText
+                        onSendStopClicked()
+                    }
+                }
+            }
+        }
         ApplicationManager.getApplication().invokeLater {
+            updatePromptPlaceholder()
             controlsToolbar.updateActionsAsync()
             if (::processingTimerPanel.isInitialized) {
                 if (sending) processingTimerPanel.start() else processingTimerPanel.stop()
@@ -928,6 +992,16 @@ class ChatToolWindowContent(
             // ── Session management ───────────────────────────────────
             if (agents.isNotEmpty() || options.isNotEmpty()) group.addSeparator()
             group.add(object : AnAction(
+                "Disconnect",
+                "Stop the ACP process and return to the connection screen",
+                AllIcons.Actions.Cancel
+            ) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
+            })
+
+            val dangerousActionsGroup = DefaultActionGroup("Session", true)
+            dangerousActionsGroup.add(object : AnAction(
                 "Restart (Keep History)",
                 "Start a new agent session while keeping the conversation visible",
                 AllIcons.Actions.Restart
@@ -935,7 +1009,7 @@ class ChatToolWindowContent(
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) = resetSessionKeepingHistory()
             })
-            group.add(object : AnAction(
+            dangerousActionsGroup.add(object : AnAction(
                 "Clear and Restart",
                 "Clear the conversation and start a completely fresh session",
                 AllIcons.Actions.GC
@@ -943,8 +1017,8 @@ class ChatToolWindowContent(
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) = resetSession()
             })
-            group.addSeparator()
-            group.add(object : AnAction(
+            dangerousActionsGroup.addSeparator()
+            dangerousActionsGroup.add(object : AnAction(
                 "Logout",
                 "Delete authentication tokens for the current agent",
                 AllIcons.Actions.Exit
@@ -956,14 +1030,7 @@ class ChatToolWindowContent(
                     }
                 }
             })
-            group.add(object : AnAction(
-                "Disconnect",
-                "Stop the ACP process and return to the connection screen",
-                AllIcons.Actions.Cancel
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
-            })
+            group.add(dangerousActionsGroup)
 
             val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance().createActionGroupPopup(
                 null, group, e.dataContext,
@@ -1247,8 +1314,79 @@ class ChatToolWindowContent(
         chatConsolePanel = ChatConsolePanel(project)
         consolePanel = chatConsolePanel
         chatConsolePanel.onLoadMoreRequested = ::onLoadMoreHistory
-        consolePanel.onQuickReply = { text -> ApplicationManager.getApplication().invokeLater { sendQuickReply(text) } }
+        chatConsolePanel.onCancelNudge = { id ->
+            if (pendingNudgeId == id) {
+                pendingNudgeId = null
+                pendingNudgeText = null
+                val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                psiBridge.setPendingNudge(null)
+                psiBridge.setOnNudgeConsumed(null)
+                ApplicationManager.getApplication().invokeLater { consolePanel.removeNudgeBubble(id) }
+            }
+        }
+        chatConsolePanel.onCancelQueuedMessage = { id, text ->
+            val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+            psiBridge.removeQueuedMessage(text)
+            ApplicationManager.getApplication().invokeLater { consolePanel.removeQueuedMessage(id) }
+        }
+        consolePanel.onQuickReply = { text ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!consolePanel.consumePendingAskUserResponse(text)) {
+                    sendQuickReply(text)
+                }
+            }
+        }
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
+
+        ChatWebServer.getInstance(project)?.also { ws ->
+            ws.onSendPrompt = { prompt ->
+                ApplicationManager.getApplication().invokeLater { sendPromptDirectly(prompt) }
+            }
+            ws.onQuickReply = { text ->
+                ApplicationManager.getApplication().invokeLater {
+                    if (!consolePanel.consumePendingAskUserResponse(text)) {
+                        sendQuickReply(text)
+                    }
+                }
+            }
+            ws.onNudge = { text ->
+                ApplicationManager.getApplication().invokeLater {
+                    if (isSending) {
+                        val id = System.currentTimeMillis().toString()
+                        pendingNudgeId = id
+                        pendingNudgeText = text
+                        consolePanel.showNudgeBubble(id, text)
+                        val psiBridge =
+                            com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                        psiBridge.setPendingNudge(text)
+                        psiBridge.setOnNudgeConsumed {
+                            pendingNudgeId = null
+                            pendingNudgeText = null
+                            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(id) }
+                        }
+                    }
+                }
+            }
+            ws.onStop = {
+                ApplicationManager.getApplication().invokeLater {
+                    if (isSending) {
+                        promptOrchestrator.stop()
+                        setSendingState(false)
+                    }
+                }
+            }
+            ws.onCancelNudge = { id ->
+                ApplicationManager.getApplication().invokeLater {
+                    chatConsolePanel.onCancelNudge?.invoke(id)
+                }
+            }
+            ws.onPermissionResponse = java.util.function.Consumer { data ->
+                ApplicationManager.getApplication().invokeLater {
+                    chatConsolePanel.handleWebPermissionResponse(data)
+                }
+            }
+        }
+
         return consolePanel.component
     }
 
@@ -1260,6 +1398,8 @@ class ChatToolWindowContent(
         val contentComponent = editor.contentComponent
         registerEnterSend(contentComponent)
         registerShiftEnterNewLine(editor, contentComponent)
+        registerCtrlEnterNudge(contentComponent)
+        registerCtrlShiftEnterQueue(contentComponent)
         registerPasteIntercept(editor, contentComponent)
         registerTriggerCharDetection(editor)
     }
@@ -1268,8 +1408,11 @@ class ChatToolWindowContent(
     private fun registerEnterSend(contentComponent: JComponent) {
         object : AnAction() {
             override fun actionPerformed(e: AnActionEvent) {
-                if (promptTextArea.text.isNotBlank() && !isSending && authService.pendingAuthError == null) {
-                    onSendStopClicked()
+                if (promptTextArea.text.isBlank() || authService.pendingAuthError != null) return
+                when {
+                    consolePanel.hasPendingAskUserRequest() -> onSendStopClicked()
+                    isSending -> onNudgeClicked()
+                    else -> onSendStopClicked()
                 }
             }
         }.registerCustomShortcutSet(
@@ -1296,6 +1439,66 @@ class ChatToolWindowContent(
             ),
             contentComponent
         )
+    }
+
+    private fun registerCtrlEnterNudge(contentComponent: JComponent) {
+        object : AnAction() {
+            override fun actionPerformed(e: AnActionEvent) = onForceStopAndSend()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(
+                KeyStroke.getKeyStroke(
+                    java.awt.event.KeyEvent.VK_ENTER,
+                    java.awt.event.InputEvent.CTRL_DOWN_MASK
+                )
+            ),
+            contentComponent
+        )
+    }
+
+    private fun registerCtrlShiftEnterQueue(contentComponent: JComponent) {
+        object : AnAction() {
+            override fun actionPerformed(e: AnActionEvent) = onQueueMessageClicked()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(
+                KeyStroke.getKeyStroke(
+                    java.awt.event.KeyEvent.VK_ENTER,
+                    java.awt.event.InputEvent.CTRL_DOWN_MASK or java.awt.event.InputEvent.SHIFT_DOWN_MASK
+                )
+            ),
+            contentComponent
+        )
+    }
+
+    private fun onQueueMessageClicked() {
+        val rawText = promptTextArea.text.trim()
+        if (rawText.isEmpty()) return
+        if (authService.pendingAuthError != null) return
+        val id = System.currentTimeMillis().toString()
+        promptTextArea.text = ""
+        consolePanel.showQueuedMessage(id, rawText)
+        com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+            .enqueueMessage(rawText)
+    }
+
+    private fun onForceStopAndSend() {
+        val rawText = promptTextArea.text.trim()
+        if (rawText.isEmpty()) return
+        if (isSending) {
+            // Discard any pending nudge before stopping so setSendingState doesn't auto-send it
+            if (pendingNudgeId != null) {
+                val nudgeId = pendingNudgeId!!
+                pendingNudgeId = null
+                pendingNudgeText = null
+                val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                psiBridge.setPendingNudge(null)
+                psiBridge.setOnNudgeConsumed(null)
+                ApplicationManager.getApplication().invokeLater { consolePanel.removeNudgeBubble(nudgeId) }
+            }
+            promptOrchestrator.stop()
+            setSendingState(false)
+        }
+        promptTextArea.text = rawText
+        onSendStopClicked()
     }
 
     private fun handlePastePreprocess(

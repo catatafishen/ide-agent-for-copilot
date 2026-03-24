@@ -31,6 +31,8 @@ data class PromptOrchestratorCallbacks(
     val onTimerSetCodeChangeStats: (added: Int, removed: Int) -> Unit,
     /** Called for plan-tree and file-tracking side-effects (remains in ChatToolWindowContent). */
     val onClientUpdate: (SessionUpdate) -> Unit,
+    /** Trigger a new prompt execution (used for queued messages). */
+    val sendPromptDirectly: (String) -> Unit,
 )
 
 /** Stored banner message to re-display at the start of the next prompt turn. */
@@ -57,6 +59,14 @@ class PromptOrchestrator(
     internal var conversationSummaryInjected: Boolean = false
     private var currentPromptThread: Thread? = null
 
+    /**
+     * True while a stop has been requested for the current turn. Set before cancelling/interrupting,
+     * cleared at the start of the next execute() call. Volatile so the background thread sees it
+     * immediately even if the future resolved before Thread.interrupt() fired.
+     */
+    @Volatile
+    private var stopped = false
+
     private var turnToolCallCount = 0
     private var turnInputTokens = 0
     private var turnOutputTokens = 0
@@ -64,11 +74,16 @@ class PromptOrchestrator(
     private var turnModelId = ""
     private var activeSubAgentId: String? = null
     private val toolCallTitles = mutableMapOf<String, String>()
+    private val toolCallArgs = mutableMapOf<String, String>() // arguments from tool_call_update
     private var pendingBanner: PendingBanner? = null
     private var codeChangeListener: Runnable? = null
 
     /** Executes a prompt on the calling thread (must be called from a background thread). */
     fun execute(prompt: String, contextItems: List<ContextItemData>, selectedModelId: String) {
+        stopped = false
+        // Clear any stale interrupt flag left by a previous stop() call so it doesn't fire
+        // immediately on the first blocking operation in the new turn.
+        Thread.interrupted()
         currentPromptThread = Thread.currentThread()
         try {
             executePrompt(prompt, contextItems, selectedModelId)
@@ -80,6 +95,9 @@ class PromptOrchestrator(
 
     /** Cancels the running prompt: interrupts the thread and cancels the remote session. */
     fun stop() {
+        // Set the flag FIRST so the background thread sees it even if the remote session
+        // completes the turn before Thread.interrupt() fires.
+        stopped = true
         val sessionId = currentSessionId
         if (sessionId != null) {
             try {
@@ -115,6 +133,10 @@ class PromptOrchestrator(
             addContextEntries(references, contextItems)
 
             dispatchPromptWithRetry(client, sessionId, effectivePrompt, modelId, references)
+            // If stop() was called, the remote turn may have ended cleanly (via turn/interrupt
+            // response) without throwing. Treat it as a cancellation so handlePromptCompletion
+            // is not invoked and the stale thread interrupt doesn't leak into the next turn.
+            if (stopped) throw InterruptedException("Stopped by user")
             handlePromptCompletion(prompt)
         } catch (e: Exception) {
             handlePromptError(e)
@@ -180,7 +202,7 @@ class PromptOrchestrator(
         val title = agentManager.activeProfile.displayName
         val content = "Permission request: $toolDisplayName"
         com.intellij.notification.NotificationGroupManager.getInstance()
-            .getNotificationGroup("IDE Agent for Copilot")
+            .getNotificationGroup("AgentBridge Notifications")
             ?.createNotification(title, content, com.intellij.notification.NotificationType.INFORMATION)
             ?.notify(project)
     }
@@ -363,6 +385,14 @@ class PromptOrchestrator(
             ApplicationManager.getApplication().invokeLater { consolePanel().showQuickReplies(quickReplies) }
         }
 
+        val nextMsg = PsiBridgeService.getInstance(project).nextQueuedMessage
+        if (nextMsg != null) {
+            ApplicationManager.getApplication().invokeLater {
+                consolePanel().removeQueuedMessageByText(nextMsg)
+                callbacks.sendPromptDirectly(nextMsg)
+            }
+        }
+
         ApplicationManager.getApplication().invokeLater {
             consolePanel().component.revalidate()
             consolePanel().component.repaint()
@@ -377,7 +407,7 @@ class PromptOrchestrator(
             is SessionUpdate.AgentMessageChunk -> {
                 val text = update.text()
                 ApplicationManager.getApplication().invokeLater {
-                    if (currentPromptThread != null) consolePanel().appendText(text)
+                    if (!stopped) consolePanel().appendText(text)
                 }
             }
 
@@ -391,7 +421,7 @@ class PromptOrchestrator(
                 handleClientUpdate(update)
             }
 
-            is SessionUpdate.AgentThoughtChunk -> consolePanel().appendThinkingText(update.text())
+            is SessionUpdate.AgentThoughtChunk -> if (!stopped) consolePanel().appendThinkingText(update.text())
             is SessionUpdate.TurnUsage -> {
                 turnInputTokens = update.inputTokens()
                 turnOutputTokens = update.outputTokens()
@@ -471,6 +501,12 @@ class PromptOrchestrator(
         val description = update.description()
         val autoDenied = update.autoDenied()
         val denialReason = update.denialReason()
+        val arguments = update.arguments() // raw arguments from tool_call_update
+
+        // Store arguments for potential re-correlation
+        if (arguments != null) {
+            toolCallArgs[toolCallId] = arguments
+        }
 
         val callType = toolCallTitles[toolCallId]
         val isSubAgent = callType == "task"
@@ -491,7 +527,9 @@ class PromptOrchestrator(
             isSubAgent,
             isInternal,
             autoDenied,
-            denialReason
+            denialReason,
+            arguments,
+            callType
         )
 
         if (status == SessionUpdate.ToolCallStatus.COMPLETED || status == SessionUpdate.ToolCallStatus.FAILED) {
@@ -508,7 +546,9 @@ class PromptOrchestrator(
         isSubAgent: Boolean,
         isInternal: Boolean,
         autoDenied: Boolean = false,
-        denialReason: String? = null
+        denialReason: String? = null,
+        arguments: String? = null,
+        title: String? = null
     ) {
         if (isSubAgent) {
             if (uiStatus == "running") {
@@ -528,7 +568,17 @@ class PromptOrchestrator(
         } else if (isInternal) {
             consolePanel().updateSubAgentToolCall(toolCallId, uiStatus, result, description, autoDenied, denialReason)
         } else {
-            consolePanel().updateToolCall(toolCallId, uiStatus, result, description, kind, autoDenied, denialReason)
+            consolePanel().updateToolCall(
+                toolCallId,
+                uiStatus,
+                result,
+                description,
+                kind,
+                autoDenied,
+                denialReason,
+                arguments,
+                title
+            )
         }
     }
 
@@ -576,7 +626,10 @@ class PromptOrchestrator(
             callbacks.updateSessionInfo()
         }
 
-        consolePanel().addErrorEntry("Error: $msg")
+        // stop() already added "Stopped by user" — don't add a redundant error entry.
+        if (!stopped) {
+            consolePanel().addErrorEntry("Error: $msg")
+        }
         if (!isCancelled) {
             statusBanner()?.showError(msg, "Reconnect") { reconnectAfterError() }
         }

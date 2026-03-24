@@ -48,7 +48,7 @@ object ChatTheme {
         val linkColor = UIManager.getColor(LINK_COLOR_KEY) ?: JBColor(Color(0x28, 0x7B, 0xDE), Color(0x58, 0x9D, 0xF6))
         val tooltipBg = UIManager.getColor("ToolTip.background") ?: JBColor(Color(0xF7, 0xF7, 0xF7), Color(0x3C, 0x3F, 0x41))
         val sb = StringBuilder()
-        sb.append("--font-family:'${font.family}';--font-size:${font.size - 2}pt;--code-font-size:${font.size - 3}pt;--code-font:'JetBrains Mono','${font.family}',monospace;")
+        sb.append("--font-family:'${font.family}',sans-serif;--font-size:${font.size - 2}pt;--code-font-size:${font.size - 3}pt;--code-font:'JetBrains Mono','${font.family}',monospace;")
         sb.append("--fg:${rgb(fg)};--fg-a05:${rgba(fg, 0.05)};--fg-a08:${rgba(fg, 0.08)};--fg-a16:${rgba(fg, 0.16)};--fg-muted:${rgba(fg, 0.55)};--bg:${rgb(bg)};")
         sb.append("--user:${rgb(USER_COLOR)};--user-a06:${rgba(USER_COLOR, 0.06)};--user-a08:${rgba(USER_COLOR, 0.08)};")
         sb.append("--user-a12:${rgba(USER_COLOR, 0.12)};--user-a15:${rgba(USER_COLOR, 0.15)};--user-a16:${rgba(USER_COLOR, 0.16)};")
@@ -101,6 +101,30 @@ object ChatTheme {
     fun activeAgentCss(profileId: String): String {
         val idx = agentColorIndex(profileId)
         return "--active-agent:var(--sa-c$idx);--active-agent-a06:var(--sa-c$idx-a06);"
+    }
+
+    fun getAgentIconSvg(profileId: String?, isDark: Boolean): String {
+        val name = when (profileId) {
+            "anthropic", "claude-cli" -> "claude"
+            "copilot" -> "copilot"
+            "opencode" -> "opencode"
+            "junie" -> "junie"
+            "kiro" -> "kiro"
+            "codex" -> "codex"
+            else -> "agentbridge"
+        }
+        val suffix = if (isDark) "_dark" else ""
+        val path = "/icons/expui/$name$suffix.svg"
+        return try {
+            ChatTheme::class.java.getResourceAsStream(path)?.bufferedReader()?.use { it.readText() } ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    @JvmStatic
+    fun getAgentIconSvgStatic(profileId: String?, isDark: Boolean): String {
+        return getAgentIconSvg(profileId, isDark)
     }
 
     private fun rgb(c: Color) = "rgb(${c.red},${c.green},${c.blue})"

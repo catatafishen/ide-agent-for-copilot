@@ -42,6 +42,12 @@ public final class ActiveAgentManager implements Disposable {
     private static final String KEY_FOLLOW_AGENT_FILES = "agent.followAgentFiles";
     private static final String KEY_AUTO_CONNECT = "agent.autoConnect";
     private static final String KEY_CUSTOM_ACP_COMMAND = "agent.customAcpCommand";
+    private static final String KEY_SHARED_TURN_TIMEOUT_MINUTES = "agent.sharedTurnTimeoutMinutes";
+    private static final String KEY_SHARED_INACTIVITY_TIMEOUT_SECONDS = "agent.sharedInactivityTimeoutSeconds";
+    private static final String KEY_SHARED_MAX_TOOL_CALLS = "agent.sharedMaxToolCallsPerTurn";
+    private static final int DEFAULT_TURN_TIMEOUT_MINUTES = 120;
+    private static final int DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 300;
+    private static final int DEFAULT_MAX_TOOL_CALLS_PER_TURN = 0;
 
     private final Project project;
     private volatile boolean acpConnected;
@@ -128,7 +134,7 @@ public final class ActiveAgentManager implements Disposable {
     @NotNull
     public AgentConfig getConfig() {
         if (cachedConfig == null) {
-            cachedConfig = new ProfileBasedAgentConfig(getActiveProfile(), ToolRegistry.getInstance(project));
+            cachedConfig = new ProfileBasedAgentConfig(getActiveProfile(), ToolRegistry.getInstance(project), project);
         }
         return cachedConfig;
     }
@@ -140,6 +146,54 @@ public final class ActiveAgentManager implements Disposable {
     public AgentUiSettings getSettings() {
         ensureSettingsForActiveProfile();
         return cachedUiSettings;
+    }
+
+    public int getSharedTurnTimeoutMinutes() {
+        return normalizeSharedTurnTimeoutMinutes(
+            PropertiesComponent.getInstance(project).getValue(KEY_SHARED_TURN_TIMEOUT_MINUTES)
+        );
+    }
+
+    public int getSharedTurnTimeoutSeconds() {
+        return getSharedTurnTimeoutMinutes() * 60;
+    }
+
+    public void setSharedTurnTimeoutMinutes(int minutes) {
+        PropertiesComponent.getInstance(project).setValue(
+            KEY_SHARED_TURN_TIMEOUT_MINUTES,
+            clamp(minutes, 1, 1440),
+            DEFAULT_TURN_TIMEOUT_MINUTES
+        );
+    }
+
+    public int getSharedInactivityTimeoutSeconds() {
+        return normalizeSharedInactivityTimeoutSeconds(
+            PropertiesComponent.getInstance(project).getValue(KEY_SHARED_INACTIVITY_TIMEOUT_SECONDS)
+        );
+    }
+
+    public void setSharedInactivityTimeoutSeconds(int seconds) {
+        PropertiesComponent.getInstance(project).setValue(
+            KEY_SHARED_INACTIVITY_TIMEOUT_SECONDS,
+            clamp(seconds, 30, 86_400),
+            DEFAULT_INACTIVITY_TIMEOUT_SECONDS
+        );
+    }
+
+    public int getSharedMaxToolCallsPerTurn() {
+        PropertiesComponent properties = PropertiesComponent.getInstance(project);
+        return normalizeSharedMaxToolCallsPerTurn(
+            properties.getValue(KEY_SHARED_MAX_TOOL_CALLS),
+            migrateLegacyMaxToolCallsPerTurn()
+        );
+    }
+
+    public void setSharedMaxToolCallsPerTurn(int count) {
+        PropertiesComponent.getInstance(project).setValue(
+            KEY_SHARED_MAX_TOOL_CALLS,
+            Math.max(0, count),
+            DEFAULT_MAX_TOOL_CALLS_PER_TURN
+        );
     }
 
     /**
@@ -296,14 +350,14 @@ public final class ActiveAgentManager implements Disposable {
         String defaultCommand = profile.getDefaultStartCommand();
 
         if (storedCommand.isEmpty() || storedCommand.equals(defaultCommand)) {
-            AgentConfig config = new ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project));
+            AgentConfig config = new ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project), project);
             cachedConfig = config;
             return config;
         }
 
         // User has customised the command — use CommandOverrideAgentConfig
         LOG.info("Using custom start command for " + profile.getDisplayName() + ": " + storedCommand);
-        AgentConfig realConfig = new ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project));
+        AgentConfig realConfig = new ProfileBasedAgentConfig(profile, ToolRegistry.getInstance(project), project);
         cachedConfig = realConfig;
         return new CommandOverrideAgentConfig(realConfig, storedCommand);
     }
@@ -320,6 +374,56 @@ public final class ActiveAgentManager implements Disposable {
             cachedSettings = new GenericSettings(profileId, project);
             cachedUiSettings = new GenericAgentUiSettings(cachedSettings);
         }
+    }
+
+    static int normalizeSharedTurnTimeoutMinutes(@Nullable String storedMinutes) {
+        return clamp(parseIntOrDefault(storedMinutes, DEFAULT_TURN_TIMEOUT_MINUTES), 1, 1440);
+    }
+
+    static int normalizeSharedInactivityTimeoutSeconds(@Nullable String storedSeconds) {
+        return clamp(parseIntOrDefault(storedSeconds, DEFAULT_INACTIVITY_TIMEOUT_SECONDS), 30, 86_400);
+    }
+
+    static int normalizeSharedMaxToolCallsPerTurn(@Nullable String storedCount, int legacyCount) {
+        if (storedCount != null) {
+            return Math.max(0, parseIntOrDefault(storedCount, DEFAULT_MAX_TOOL_CALLS_PER_TURN));
+        }
+        return Math.max(0, legacyCount);
+    }
+
+    private int migrateLegacyMaxToolCallsPerTurn() {
+        return Math.max(0, findLegacySharedInt(GenericSettings::getMaxToolCallsPerTurn, DEFAULT_MAX_TOOL_CALLS_PER_TURN));
+    }
+
+    private int findLegacySharedInt(@NotNull java.util.function.ToIntFunction<GenericSettings> reader, int defaultValue) {
+        GenericSettings activeSettings = new GenericSettings(getActiveProfileId(), project);
+        int activeValue = reader.applyAsInt(activeSettings);
+        if (activeValue != defaultValue) {
+            return activeValue;
+        }
+        for (AgentProfile profile : AgentProfileManager.getInstance().getAllProfiles()) {
+            GenericSettings settings = new GenericSettings(profile.getId(), project);
+            int value = reader.applyAsInt(settings);
+            if (value != defaultValue) {
+                return value;
+            }
+        }
+        return defaultValue;
+    }
+
+    private static int parseIntOrDefault(@Nullable String value, int defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     @NotNull

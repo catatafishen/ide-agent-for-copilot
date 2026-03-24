@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.bridge;
 
+import com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,9 +25,22 @@ public interface AgentSettings {
     }
 
     /**
-     * Maximum seconds of inactivity before the agent is terminated.
+     * Maximum seconds the agent turn may run before timing out.
      */
-    int getPromptTimeout();
+    int getTurnTimeout();
+
+    /**
+     * Maximum seconds of silence allowed before the agent is considered inactive.
+     */
+    int getInactivityTimeout();
+
+    /**
+     * @deprecated Use {@link #getTurnTimeout()}.
+     */
+    @Deprecated
+    default int getPromptTimeout() {
+        return getTurnTimeout();
+    }
 
     /**
      * Maximum tool calls allowed per prompt turn (0 = unlimited).

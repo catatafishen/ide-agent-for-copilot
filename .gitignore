@@ -9,6 +9,10 @@ build/
 .idea/tasks.xml
 .idea/usage.statistics.xml
 .idea/shelf/
+.idea/gradle.xml
+.idea/mcpServer.xml
+.idea/modules.xml
+.idea/sonarlint.xml
 .idea/sonarlint/
 .idea/.idea/
 *.iml

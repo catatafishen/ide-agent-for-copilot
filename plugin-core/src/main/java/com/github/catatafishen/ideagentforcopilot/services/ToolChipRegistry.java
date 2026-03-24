@@ -21,9 +21,16 @@ import java.util.function.BiConsumer;
 /**
  * Correlates tool chips across the ACP (or Claude streaming) and MCP channels.
  *
+ * <h2>Tool chip border</h2>
+ * Chips start with a <b>dashed</b> border. As soon as the MCP server sees the tool call
+ * (i.e. the agent is using AgentBridge to execute it), the border becomes <b>solid</b>.
+ * Chips that stay dashed were handled by the agent's own built-in tools, not by AgentBridge.
+ *
  * <h2>Correlation key</h2>
  * Both sides compute {@code hex8(args.hashCode())} over sorted key→value pairs of the tool
  * arguments. This gives a stable shared ID with no agent cooperation required.
+ * When the agent sends no args (e.g. Junie's {@code tool_call} with empty {@code content:[]}),
+ * the registry falls back to matching by tool display name.
  *
  * <h2>Chip lifecycle</h2>
  * <ol>
@@ -36,7 +43,7 @@ import java.util.function.BiConsumer;
  * <h2>MCP-first case</h2>
  * If MCP arrives before ACP, the registry stores the entry internally. When client-side
  * arrives, {@link #registerClientSide} returns {@link ChipState#RUNNING} immediately, and
- * {@link #addToolCallEntry} creates the chip at "running" without needing a transition.
+ * {@code addToolCallEntry} creates the chip at "running" without needing a transition.
  *
  * <h2>Turn scope</h2>
  * All entries are turn-scoped. Call {@link #clearTurn()} when a new agent response starts.
@@ -47,7 +54,12 @@ import java.util.function.BiConsumer;
 public final class ToolChipRegistry {
     private static final Logger LOG = Logger.getInstance(ToolChipRegistry.class);
 
-    public enum ChipState {PENDING, RUNNING, COMPLETE, EXTERNAL, FAILED}
+    /**
+     * Lifecycle states for a tool chip. Border is dashed until MCP handles the call, then solid.
+     */
+    public enum ChipState {
+        PENDING, RUNNING, COMPLETE, EXTERNAL, FAILED
+    }
 
     public record ChipRegistration(@NotNull String chipId, @NotNull ChipState initialState) {
     }
@@ -98,15 +110,44 @@ public final class ToolChipRegistry {
         @Nullable JsonObject args,
         @NotNull String clientId
     ) {
-        // If args is null, we cannot compute a hash — fall back to a clientId-based chip
-        // that cannot correlate with MCP. Empty args ({}) DO go through the hash path because
-        // the MCP side always hashes them the same way (hash of "{}").
+        // If args is null, we cannot compute a hash — but first try to find an MCP-first chip
+        // by tool name (handles Junie, which sends tool_call with empty content:[]).
+        // Fall back to a clientId-based chip that cannot correlate with MCP.
+        // Empty args ({}) DO go through the hash path because the MCP side always hashes them the same way.
         if (args == null) {
+            ChipEntry mcpFirstByName = findMcpFirstChipByName(displayTitle);
+            if (mcpFirstByName != null) {
+                ChipEntry updated = mcpFirstByName.withClientId(clientId, displayTitle);
+                chips.put(mcpFirstByName.chipId(), updated);
+                clientToChip.put(clientId, mcpFirstByName.chipId());
+                LOG.debug("ToolChipRegistry: null-args client claimed MCP-first chip " + mcpFirstByName.chipId() + " (" + displayTitle + ")");
+                return new ChipRegistration(mcpFirstByName.chipId(), ChipState.RUNNING);
+            }
             String chipId = "c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-");
             ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
             chips.put(chipId, entry);
             clientToChip.put(clientId, chipId);
             LOG.debug("ToolChipRegistry: null-args chip " + chipId + " (" + displayTitle + ")");
+            return new ChipRegistration(chipId, ChipState.PENDING);
+        }
+
+        // If args is empty {}, we cannot reliably correlate with MCP since MCP has the real arguments.
+        // Fall back to finding an MCP-first chip by tool name (same logic as null args).
+        if (args.isEmpty()) {
+            ChipEntry mcpFirstByName = findMcpFirstChipByName(displayTitle);
+            if (mcpFirstByName != null) {
+                ChipEntry updated = mcpFirstByName.withClientId(clientId, displayTitle);
+                chips.put(mcpFirstByName.chipId(), updated);
+                clientToChip.put(clientId, mcpFirstByName.chipId());
+                LOG.debug("ToolChipRegistry: empty-args client claimed MCP-first chip " + mcpFirstByName.chipId() + " (" + displayTitle + ")");
+                return new ChipRegistration(mcpFirstByName.chipId(), ChipState.RUNNING);
+            }
+            // No MCP-first chip found - create client-only chip with clientId-based ID
+            String chipId = "c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-");
+            ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
+            chips.put(chipId, entry);
+            clientToChip.put(clientId, chipId);
+            LOG.debug("ToolChipRegistry: empty-args chip " + chipId + " (" + displayTitle + ")");
             return new ChipRegistration(chipId, ChipState.PENDING);
         }
 
@@ -163,10 +204,11 @@ public final class ToolChipRegistry {
         }
 
         // MCP arrived first — store for when client-side arrives
-        LOG.warn("ToolChipRegistry [MCP→Server]: ✗ NO MATCH for tool=" + toolName + " hash=" + baseHash + " — MCP arrived before client or hash mismatch!");
+        LOG.info("ToolChipRegistry [MCP→Server]: MCP-first chip for tool=" + toolName + " hash=" + baseHash);
         ChipEntry entry = new ChipEntry(baseHash, toolName, null, true, System.currentTimeMillis());
         chips.put(baseHash, entry);
-        // Don't fire a state event — no DOM chip exists yet
+        // Fire RUNNING immediately so UI creates solid-border chip (MCP tools always get solid border)
+        fireState(baseHash, ChipState.RUNNING, kind);
         LOG.debug("ToolChipRegistry: MCP-first " + baseHash + " (" + toolName + ")");
     }
 
@@ -193,6 +235,69 @@ public final class ToolChipRegistry {
         }
         LOG.debug("ToolChipRegistry: complete " + chipId + " → " + state);
         fireState(chipId, state);
+    }
+
+    /**
+     * Re-register a chip with new arguments. Used when ACP sends tool_call with empty args first,
+     * then tool_call_update with actual args. This removes the old chip and creates a new one
+     * with the updated args, allowing proper correlation with MCP.
+     *
+     * @param clientId the ACP tool call ID
+     * @param newArgs  the new arguments (must not be null or empty)
+     * @return the new chip registration with updated chipId and state
+     */
+    public synchronized @NotNull ChipRegistration reregisterWithArgs(
+        @NotNull String clientId,
+        @NotNull JsonObject newArgs
+    ) {
+        // Find and remove the old chip, but save the tool name first
+        String oldChipId = clientToChip.get(clientId);
+        String toolName = null;
+        if (oldChipId != null) {
+            ChipEntry oldEntry = chips.get(oldChipId);
+            if (oldEntry != null) {
+                toolName = oldEntry.displayName();
+            }
+            chips.remove(oldChipId);
+            clientToChip.remove(clientId);
+            LOG.debug("ToolChipRegistry: removed old chip " + oldChipId + " for re-registration");
+        }
+
+        // If we don't have a tool name, we can't do name-based fallback - just return failure
+        if (toolName == null) {
+            LOG.debug("ToolChipRegistry: no tool name found for re-registration of clientId=" + clientId);
+            return new ChipRegistration("c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-"), ChipState.PENDING);
+        }
+
+        // Try to find MCP-first chip with new args (by tool name as fallback)
+        ChipEntry mcpFirstByName = findMcpFirstChipByName(toolName);
+        if (mcpFirstByName != null) {
+            ChipEntry updated = mcpFirstByName.withClientId(clientId, toolName);
+            chips.put(mcpFirstByName.chipId(), updated);
+            clientToChip.put(clientId, mcpFirstByName.chipId());
+            LOG.debug("ToolChipRegistry: re-registered claimed MCP-first chip by name " + mcpFirstByName.chipId() + " for " + toolName);
+            return new ChipRegistration(mcpFirstByName.chipId(), ChipState.RUNNING);
+        }
+
+        // Try to find MCP-first chip with new args hash
+        String newHash = computeBaseHash(newArgs);
+        ChipEntry mcpFirst = findMcpFirstChip(newHash);
+        if (mcpFirst != null) {
+            ChipEntry updated = mcpFirst.withClientId(clientId, toolName);
+            chips.put(mcpFirst.chipId(), updated);
+            clientToChip.put(clientId, mcpFirst.chipId());
+            LOG.debug("ToolChipRegistry: re-registered claimed MCP-first chip by hash " + mcpFirst.chipId() + " for " + toolName);
+            return new ChipRegistration(mcpFirst.chipId(), ChipState.RUNNING);
+        }
+
+        // No MCP-first chip - create new client chip with new args
+        int count = hashCounts.merge(newHash, 1, Integer::sum);
+        String newChipId = count == 1 ? newHash : newHash + "-" + count;
+        ChipEntry entry = new ChipEntry(newChipId, toolName, clientId, false, System.currentTimeMillis());
+        chips.put(newChipId, entry);
+        clientToChip.put(clientId, newChipId);
+        LOG.debug("ToolChipRegistry: re-registered with new args " + newChipId + " for " + toolName);
+        return new ChipRegistration(newChipId, ChipState.PENDING);
     }
 
     // ── Listeners ─────────────────────────────────────────────────────────────
@@ -243,6 +348,20 @@ public final class ToolChipRegistry {
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────
+
+    /**
+     * Find a MCP-first chip (mcpHandled=true, clientId=null) by tool display name.
+     * Used when the client-side event has no args (e.g. Junie's tool_call with empty content).
+     */
+    private @Nullable ChipEntry findMcpFirstChipByName(@NotNull String displayName) {
+        ChipEntry result = null;
+        for (var entry : chips.values()) {
+            if (entry.clientId() == null && entry.mcpHandled() && displayName.equals(entry.displayName())) {
+                result = entry; // keep iterating — last match wins (newest)
+            }
+        }
+        return result;
+    }
 
     /**
      * Find a MCP-first chip (mcpHandled=true, clientId=null) with the given base hash.
