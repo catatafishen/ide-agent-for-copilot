@@ -438,11 +438,13 @@ public final class ChatWebServer implements Disposable {
         }
     }
 
-    private static final String EXPECTED_CN = "CN=AgentBridge Local Network";
+    // Must match the -dname in the keytool command above. Update both together.
+    private static final String EXPECTED_SUBJECT_CN = "CN=AgentBridge Local Network";
+    private static final String EXPECTED_SUBJECT_O = "O=AgentBridge";
 
     /**
-     * Returns {@code true} if the certificate subject contains the expected CN.
-     * Detects certs generated before the display name was set, so they are regenerated.
+     * Returns {@code true} if the certificate subject contains the expected CN and O.
+     * Detects certs generated before the display name or organisation was set, so they are regenerated.
      */
     private static boolean certHasExpectedSubject(java.io.File ksFile) {
         try {
@@ -452,7 +454,8 @@ public final class ChatWebServer implements Disposable {
             }
             java.security.cert.Certificate cert = ks.getCertificate("agentbridge");
             if (!(cert instanceof X509Certificate x509)) return false;
-            return x509.getSubjectX500Principal().getName().contains(EXPECTED_CN);
+            String subject = x509.getSubjectX500Principal().getName();
+            return subject.contains(EXPECTED_SUBJECT_CN) && subject.contains(EXPECTED_SUBJECT_O);
         } catch (Exception e) {
             LOG.warn("[ChatWebServer] Could not read existing certificate subject", e);
             return false;
