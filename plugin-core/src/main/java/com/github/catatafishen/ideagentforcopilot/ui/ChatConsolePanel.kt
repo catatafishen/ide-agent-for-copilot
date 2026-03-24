@@ -440,11 +440,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     val hasCustomRenderer = ToolRenderers.hasRenderer(cleanTitle, toolRegistry)
                     val paramsJson = if (!hasCustomRenderer) escJs(arguments) else ""
 
-                    executeJs("ChatController.upsertToolChip('$currentTurnId','main','$newDid','${escJs(label)}','$paramsJson','${
-                        escJs(
-                            resolvedKind
-                        )
-                    }','running')")
+                    executeJs(
+                        "ChatController.upsertToolChip('$currentTurnId','main','$newDid','${escJs(label)}','$paramsJson','${
+                            escJs(
+                                resolvedKind
+                            )
+                        }','running')"
+                    )
 
                     did = newDid
                     if (registration.initialState() == ToolChipRegistry.ChipState.RUNNING) {
