@@ -130,4 +130,18 @@ interface ChatPanelApi : Disposable {
         description: String,
         onRespond: (com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse) -> Unit
     )
+
+    /**
+     * Show an ask-user bubble with quick-reply options. The user can also type a free-form response.
+     */
+    fun showAskUserRequest(
+        reqId: String,
+        question: String,
+        options: List<String>,
+        onRespond: (String) -> Unit
+    )
+
+    fun hasPendingAskUserRequest(): Boolean
+    fun consumePendingAskUserResponse(response: String): Boolean
+    fun clearPendingAskUserRequest(reqId: String? = null)
 }

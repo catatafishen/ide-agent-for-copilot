@@ -618,12 +618,19 @@ class ChatToolWindowContent(
     }
 
     private fun onSendStopClicked() {
+        val rawText = promptTextArea.text.trim()
+        if (consolePanel.hasPendingAskUserRequest()) {
+            if (rawText.isNotEmpty()) {
+                consolePanel.consumePendingAskUserResponse(rawText)
+                promptTextArea.text = ""
+            }
+            return
+        }
         if (isSending) {
             promptOrchestrator.stop()
             setSendingState(false)
             return
         }
-        val rawText = promptTextArea.text.trim()
         if (rawText.isEmpty()) return
         consolePanel.disableQuickReplies()
         statusBanner?.dismissCurrent()
@@ -1263,7 +1270,13 @@ class ChatToolWindowContent(
         chatConsolePanel = ChatConsolePanel(project)
         consolePanel = chatConsolePanel
         chatConsolePanel.onLoadMoreRequested = ::onLoadMoreHistory
-        consolePanel.onQuickReply = { text -> ApplicationManager.getApplication().invokeLater { sendQuickReply(text) } }
+        consolePanel.onQuickReply = { text ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!consolePanel.consumePendingAskUserResponse(text)) {
+                    sendQuickReply(text)
+                }
+            }
+        }
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
         return consolePanel.component
     }
@@ -1284,7 +1297,11 @@ class ChatToolWindowContent(
     private fun registerEnterSend(contentComponent: JComponent) {
         object : AnAction() {
             override fun actionPerformed(e: AnActionEvent) {
-                if (promptTextArea.text.isNotBlank() && !isSending && authService.pendingAuthError == null) {
+                if (
+                    promptTextArea.text.isNotBlank() &&
+                    authService.pendingAuthError == null &&
+                    (!isSending || consolePanel.hasPendingAskUserRequest())
+                ) {
                     onSendStopClicked()
                 }
             }

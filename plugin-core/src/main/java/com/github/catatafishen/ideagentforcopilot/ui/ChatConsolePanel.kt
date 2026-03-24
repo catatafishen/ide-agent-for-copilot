@@ -84,6 +84,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
     private val pendingPermissionCallbacks =
         java.util.concurrent.ConcurrentHashMap<String, (com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse) -> Unit>()
+    private val pendingAskUserCallbacks = java.util.concurrent.ConcurrentHashMap<String, (String) -> Unit>()
+
+    @Volatile
+    private var activeAskUserRequestId: String? = null
 
     // Periodic JCEF repaint during streaming to avoid partial-update artifacts
     private val repaintTimer = javax.swing.Timer(150) {
@@ -566,6 +570,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         turnCounter = 0; currentTurnId = ""; toolJustCompleted = false
         toolCallNames.clear(); toolCallEntries.clear()
         registry.clear()
+        clearPendingAskUserRequest(null)
         executeJs("ChatController.clear()")
         fallbackArea?.let { ApplicationManager.getApplication().invokeLater { it.text = "" } }
     }
@@ -596,6 +601,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     override fun cancelAllRunning() {
         repaintTimer.stop()
+        clearPendingAskUserRequest(null)
         executeJs("ChatController.cancelAllRunning()")
     }
 
@@ -1067,6 +1073,47 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val safeDesc = escJs(description)
         val turnId = currentTurnId.ifEmpty { "t${turnCounter++}".also { currentTurnId = it } }
         executeJs("window.showPermissionRequest('$turnId','main','$safeId','$safeName','$safeDesc');")
+    }
+
+    override fun showAskUserRequest(
+        reqId: String,
+        question: String,
+        options: List<String>,
+        onRespond: (String) -> Unit
+    ) {
+        clearPendingAskUserRequest(null)
+        pendingAskUserCallbacks[reqId] = onRespond
+        activeAskUserRequestId = reqId
+
+        val safeId = escJs(reqId)
+        val safeQuestion = escJs(question)
+        val optionJson = options.joinToString(",") { "'${escJs(it)}'" }
+        val turnId = currentTurnId.ifEmpty { "t${turnCounter++}".also { currentTurnId = it } }
+        executeJs("window.showAskUserRequest('$turnId','main','$safeId','$safeQuestion',[$optionJson]);")
+    }
+
+    override fun hasPendingAskUserRequest(): Boolean = activeAskUserRequestId != null
+
+    override fun consumePendingAskUserResponse(response: String): Boolean {
+        val reqId = activeAskUserRequestId ?: return false
+        if (response.isBlank()) return false
+
+        val callback = pendingAskUserCallbacks.remove(reqId) ?: return false
+        activeAskUserRequestId = null
+        disableQuickReplies()
+        addPromptEntry(response, null)
+        callback.invoke(response)
+        return true
+    }
+
+    override fun clearPendingAskUserRequest(reqId: String?) {
+        val activeId = activeAskUserRequestId
+        if (reqId != null && activeId != null && reqId != activeId) return
+        if (activeId != null) {
+            pendingAskUserCallbacks.remove(activeId)
+        }
+        activeAskUserRequestId = null
+        disableQuickReplies()
     }
 
     // ── Open in scratch file ─────────────────────────────────────────
