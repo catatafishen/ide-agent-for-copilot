@@ -245,6 +245,14 @@ public final class ChatWebServer implements Disposable {
         return httpServer != null ? httpServer.getAddress().getPort() : 0;
     }
 
+    /**
+     * Returns the primary LAN IPv4 address, or {@code null} if none is found.
+     */
+    public static @org.jetbrains.annotations.Nullable String getLanIp() {
+        List<String> ips = collectLocalIpv4Addresses();
+        return ips.isEmpty() ? null : ips.get(0);
+    }
+
     @Override
     public void dispose() {
         stop();

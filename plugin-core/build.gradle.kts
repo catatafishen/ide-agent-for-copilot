@@ -52,6 +52,10 @@ dependencies {
     // JSON processing (Gson)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
 
+    // QR code generation (ZXing)
+    implementation("com.google.zxing:core:${providers.gradleProperty("zxingVersion").get()}")
+    implementation("com.google.zxing:javase:${providers.gradleProperty("zxingVersion").get()}")
+
     testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
     testImplementation(
         "junit:junit:${

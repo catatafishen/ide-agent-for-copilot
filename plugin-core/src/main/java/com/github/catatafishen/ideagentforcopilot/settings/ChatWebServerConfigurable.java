@@ -26,6 +26,8 @@ public final class ChatWebServerConfigurable implements Configurable {
     private JButton startStopButton;
     private JLabel httpsUrlLabel;
     private JLabel httpUrlLabel;
+    private QrCodePanel httpsQrPanel;
+    private QrCodePanel certQrPanel;
     private JPanel mainPanel;
 
     public ChatWebServerConfigurable(@NotNull Project project) {
@@ -54,6 +56,9 @@ public final class ChatWebServerConfigurable implements Configurable {
         httpsUrlLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         httpUrlLabel = new JBLabel("");
         httpUrlLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        httpsQrPanel = new QrCodePanel();
+        certQrPanel = new QrCodePanel();
         updateUrlLabels();
 
         JButton copyHttpsUrlButton = new JButton("Copy HTTPS");
@@ -82,6 +87,13 @@ public final class ChatWebServerConfigurable implements Configurable {
         httpUrlRow.add(httpUrlLabel);
         httpUrlRow.add(copyHttpUrlButton);
 
+        JPanel httpsQrRow = buildQrRow(httpsQrPanel, "Open on phone:");
+        JPanel certQrRow = buildQrRow(certQrPanel, "Install CA cert:");
+
+        JPanel qrSection = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 0));
+        qrSection.add(httpsQrRow);
+        qrSection.add(certQrRow);
+
         mainPanel = FormBuilder.createFormBuilder()
             .addComponent(new JBLabel("<html>Serve the chat panel as a local web app accessible from "
                 + "any device on the same network (phone, tablet, etc.).<br>"
@@ -94,12 +106,25 @@ public final class ChatWebServerConfigurable implements Configurable {
             .addComponent(startStopButton)
             .addComponent(httpsUrlRow)
             .addComponent(httpUrlRow)
+            .addComponent(qrSection)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         mainPanel.setBorder(JBUI.Borders.empty(8));
 
         reset();
         return mainPanel;
+    }
+
+    private static JPanel buildQrRow(QrCodePanel qr, String label) {
+        JPanel col = new JPanel();
+        col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
+        JBLabel lbl = new JBLabel(label);
+        lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+        qr.setAlignmentX(Component.LEFT_ALIGNMENT);
+        col.add(lbl);
+        col.add(Box.createVerticalStrut(4));
+        col.add(qr);
+        return col;
     }
 
     @Override
@@ -133,6 +158,8 @@ public final class ChatWebServerConfigurable implements Configurable {
         startStopButton = null;
         httpsUrlLabel = null;
         httpUrlLabel = null;
+        httpsQrPanel = null;
+        certQrPanel = null;
     }
 
     private void toggleServer() {
@@ -185,9 +212,13 @@ public final class ChatWebServerConfigurable implements Configurable {
         if (httpsUrl.isEmpty()) {
             httpsUrlLabel.setText("<html><i style='color:gray'>Not running</i></html>");
             httpUrlLabel.setText("<html><i style='color:gray'>Not running</i></html>");
+            if (httpsQrPanel != null) httpsQrPanel.setUrl(null);
+            if (certQrPanel != null) certQrPanel.setUrl(null);
         } else {
             httpsUrlLabel.setText("<html><a href='" + httpsUrl + "'>" + httpsUrl + "</a></html>");
             httpUrlLabel.setText("<html><a href='" + httpUrl + "'>" + httpUrl + "</a></html>");
+            if (httpsQrPanel != null) httpsQrPanel.setUrl(httpsUrl);
+            if (certQrPanel != null) certQrPanel.setUrl(getCertUrl());
         }
     }
 
@@ -203,13 +234,17 @@ public final class ChatWebServerConfigurable implements Configurable {
         return buildUrl("http", ws.getHttpPort());
     }
 
+    private String getCertUrl() {
+        ChatWebServer ws = ChatWebServer.getInstance(project);
+        if (ws == null || !ws.isRunning()) return "";
+        // Serve cert over HTTP so the device can download it before trusting the HTTPS cert.
+        return buildUrl("http", ws.getHttpPort()) + "/cert.crt";
+    }
+
     private String buildUrl(String protocol, int port) {
-        try {
-            String host = java.net.InetAddress.getLocalHost().getHostAddress();
-            return protocol + "://" + host + ":" + port;
-        } catch (Exception e) {
-            return protocol + "://localhost:" + port;
-        }
+        String lanIp = ChatWebServer.getLanIp();
+        String host = lanIp != null ? lanIp : "localhost";
+        return protocol + "://" + host + ":" + port;
     }
 
     private void copyToClipboard(String text, JButton feedbackButton) {
