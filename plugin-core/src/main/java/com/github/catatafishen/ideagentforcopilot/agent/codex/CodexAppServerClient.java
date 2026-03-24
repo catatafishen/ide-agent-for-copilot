@@ -399,7 +399,7 @@ public final class CodexAppServerClient extends AbstractAgentClient {
     private int getTurnTimeoutSeconds() {
         try {
             return project != null
-                ? ActiveAgentManager.getInstance(project).getSettings().getTurnTimeout()
+                ? ActiveAgentManager.getInstance(project).getSharedTurnTimeoutSeconds()
                 : 300;
         } catch (Exception e) {
             LOG.warn("Falling back to default Codex turn timeout", e);
@@ -410,7 +410,7 @@ public final class CodexAppServerClient extends AbstractAgentClient {
     private int getInactivityTimeoutSeconds() {
         try {
             return project != null
-                ? ActiveAgentManager.getInstance(project).getSettings().getInactivityTimeout()
+                ? ActiveAgentManager.getInstance(project).getSharedInactivityTimeoutSeconds()
                 : 300;
         } catch (Exception e) {
             LOG.warn("Falling back to default Codex inactivity timeout", e);

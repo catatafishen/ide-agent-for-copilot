@@ -398,7 +398,7 @@ public abstract class AcpClient extends AbstractAgentClient {
 
     private int getTurnTimeoutSeconds() {
         try {
-            return ActiveAgentManager.getInstance(project).getSettings().getTurnTimeout();
+            return ActiveAgentManager.getInstance(project).getSharedTurnTimeoutSeconds();
         } catch (Exception e) {
             LOG.warn("Falling back to default turn timeout", e);
             return 300;
@@ -407,7 +407,7 @@ public abstract class AcpClient extends AbstractAgentClient {
 
     private int getInactivityTimeoutSeconds() {
         try {
-            return ActiveAgentManager.getInstance(project).getSettings().getInactivityTimeout();
+            return ActiveAgentManager.getInstance(project).getSharedInactivityTimeoutSeconds();
         } catch (Exception e) {
             LOG.warn("Falling back to default inactivity timeout", e);
             return 300;
@@ -1196,6 +1196,9 @@ public abstract class AcpClient extends AbstractAgentClient {
     }
 
     static boolean shouldAutoDenyBuiltInTool(@NotNull String toolId) {
+        if (isMcpResourceTool(toolId)) {
+            return false;
+        }
         if (toolId.startsWith("agentbridge-")
             || toolId.startsWith("agentbridge_")
             || toolId.startsWith("Tool: agentbridge/")
@@ -1204,6 +1207,12 @@ public abstract class AcpClient extends AbstractAgentClient {
             return false;
         }
         return !toolId.contains("/") && !toolId.contains("@") && !isAllowedBuiltInTool(toolId);
+    }
+
+    private static boolean isMcpResourceTool(@NotNull String toolId) {
+        String lower = toolId.toLowerCase();
+        return "read_mcp_resource".equals(lower)
+            || "list_mcp_resources".equals(lower);
     }
 
     protected final boolean isBuiltInTool(@NotNull String protocolTitle) {

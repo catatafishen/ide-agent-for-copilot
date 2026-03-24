@@ -27,17 +27,17 @@ public final class GenericAgentSettings implements AgentSettings {
 
     @Override
     public int getTurnTimeout() {
-        return settings.getTurnTimeout();
+        return project != null ? ActiveAgentManager.getInstance(project).getSharedTurnTimeoutSeconds() : settings.getTurnTimeout();
     }
 
     @Override
     public int getInactivityTimeout() {
-        return settings.getInactivityTimeout();
+        return project != null ? ActiveAgentManager.getInstance(project).getSharedInactivityTimeoutSeconds() : settings.getInactivityTimeout();
     }
 
     @Override
     public int getMaxToolCallsPerTurn() {
-        return settings.getMaxToolCallsPerTurn();
+        return project != null ? ActiveAgentManager.getInstance(project).getSharedMaxToolCallsPerTurn() : settings.getMaxToolCallsPerTurn();
     }
 
     @Override
