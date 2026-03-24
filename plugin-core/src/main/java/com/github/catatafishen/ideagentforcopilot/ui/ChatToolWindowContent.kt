@@ -58,6 +58,8 @@ class ChatToolWindowContent(
     private var restartSessionGroup: RestartSessionGroup? = null
     private lateinit var promptTextArea: EditorTextField
     private var isSending = false
+    private var pendingNudgeId: String? = null
+    private var pendingNudgeText: String? = null
     private lateinit var processingTimerPanel: ProcessingTimerPanel
     private lateinit var promptOrchestrator: PromptOrchestrator
     private lateinit var pasteToScratchHandler: PasteToScratchHandler
@@ -653,6 +655,24 @@ class ChatToolWindowContent(
         }
     }
 
+    private fun onNudgeClicked() {
+        if (!isSending) return
+        val rawText = promptTextArea.text.trim()
+        if (rawText.isEmpty()) return
+        val id = System.currentTimeMillis().toString()
+        pendingNudgeId = id
+        pendingNudgeText = rawText
+        promptTextArea.text = ""
+        consolePanel.showNudgeBubble(id, rawText)
+        val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+        psiBridge.setPendingNudge(rawText)
+        psiBridge.setOnNudgeConsumed {
+            pendingNudgeId = null
+            pendingNudgeText = null
+            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(id) }
+        }
+    }
+
     private fun buildBubbleHtml(rawText: String, items: List<ContextItemData>): String? {
         if (items.isEmpty()) return null
         val sb = StringBuilder()
@@ -689,6 +709,24 @@ class ChatToolWindowContent(
 
     private fun setSendingState(sending: Boolean) {
         isSending = sending
+        if (!sending) {
+            // If nudge was never consumed (no tool calls happened), remove bubble and restore text
+            val nudgeId = pendingNudgeId
+            val nudgeText = pendingNudgeText
+            if (nudgeId != null) {
+                pendingNudgeId = null
+                pendingNudgeText = null
+                val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                psiBridge.setPendingNudge(null)
+                psiBridge.setOnNudgeConsumed(null)
+                ApplicationManager.getApplication().invokeLater {
+                    consolePanel.removeNudgeBubble(nudgeId)
+                    if (nudgeText != null && promptTextArea.text.isBlank()) {
+                        promptTextArea.text = nudgeText
+                    }
+                }
+            }
+        }
         ApplicationManager.getApplication().invokeLater {
             controlsToolbar.updateActionsAsync()
             if (::processingTimerPanel.isInitialized) {
@@ -1270,6 +1308,16 @@ class ChatToolWindowContent(
         chatConsolePanel = ChatConsolePanel(project)
         consolePanel = chatConsolePanel
         chatConsolePanel.onLoadMoreRequested = ::onLoadMoreHistory
+        chatConsolePanel.onCancelNudge = { id ->
+            if (pendingNudgeId == id) {
+                pendingNudgeId = null
+                pendingNudgeText = null
+                val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
+                psiBridge.setPendingNudge(null)
+                psiBridge.setOnNudgeConsumed(null)
+                ApplicationManager.getApplication().invokeLater { consolePanel.removeNudgeBubble(id) }
+            }
+        }
         consolePanel.onQuickReply = { text ->
             ApplicationManager.getApplication().invokeLater {
                 if (!consolePanel.consumePendingAskUserResponse(text)) {
@@ -1289,6 +1337,7 @@ class ChatToolWindowContent(
         val contentComponent = editor.contentComponent
         registerEnterSend(contentComponent)
         registerShiftEnterNewLine(editor, contentComponent)
+        registerCtrlEnterNudge(contentComponent)
         registerPasteIntercept(editor, contentComponent)
         registerTriggerCharDetection(editor)
     }
@@ -1325,6 +1374,20 @@ class ChatToolWindowContent(
                 KeyStroke.getKeyStroke(
                     java.awt.event.KeyEvent.VK_ENTER,
                     java.awt.event.InputEvent.SHIFT_DOWN_MASK
+                )
+            ),
+            contentComponent
+        )
+    }
+
+    private fun registerCtrlEnterNudge(contentComponent: JComponent) {
+        object : AnAction() {
+            override fun actionPerformed(e: AnActionEvent) = onNudgeClicked()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(
+                KeyStroke.getKeyStroke(
+                    java.awt.event.KeyEvent.VK_ENTER,
+                    java.awt.event.InputEvent.CTRL_DOWN_MASK
                 )
             ),
             contentComponent

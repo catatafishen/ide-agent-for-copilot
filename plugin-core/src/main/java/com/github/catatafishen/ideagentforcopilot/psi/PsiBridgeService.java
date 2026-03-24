@@ -69,6 +69,9 @@ public final class PsiBridgeService implements Disposable {
     private final ToolRegistry registry;
     private final java.util.Set<String> sessionAllowedTools =
         java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.concurrent.atomic.AtomicReference<String> pendingNudge =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    private volatile Runnable onNudgeConsumed;
 
     public PsiBridgeService(@NotNull Project project) {
         this.project = project;
@@ -136,6 +139,24 @@ public final class PsiBridgeService implements Disposable {
      */
     public void clearSessionAllowedTools() {
         sessionAllowedTools.clear();
+    }
+
+    public void setPendingNudge(@Nullable String nudge) {
+        pendingNudge.set(nudge);
+    }
+
+    public void setOnNudgeConsumed(@Nullable Runnable callback) {
+        onNudgeConsumed = callback;
+    }
+
+    @Nullable
+    private String consumePendingNudge() {
+        String nudge = pendingNudge.getAndSet(null);
+        if (nudge != null) {
+            Runnable cb = onNudgeConsumed;
+            if (cb != null) cb.run();
+        }
+        return nudge;
     }
 
     /**
@@ -227,6 +248,11 @@ public final class PsiBridgeService implements Disposable {
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {
                 LOG.info("Auto-highlights: piggybacking on write to " + filePathForHighlights);
                 result = appendAutoHighlights(result, filePathForHighlights, daemonWaiter);
+            }
+            // Append pending nudge (user guidance injected on next tool call)
+            String nudge = consumePendingNudge();
+            if (nudge != null) {
+                result = result + "\n\n[User nudge]: " + nudge;
             }
             return result;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {

@@ -28,6 +28,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     override val component: JComponent get() = this
     override var onQuickReply: ((String) -> Unit)? = null
     override var onStatusMessage: ((type: String, message: String) -> Unit)? = null
+    var onCancelNudge: ((String) -> Unit)? = null
 
     // ── Data model (same types as V1 for serialization compat) ─────
     private val entries = mutableListOf<EntryData>()
@@ -79,6 +80,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var permissionResponseBridgeJs = ""
     private var openScratchBridgeJs = ""
     private var showToolPopupBridgeJs = ""
+    private var cancelNudgeBridgeJs = ""
 
     @Volatile
     private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
@@ -187,6 +189,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             showToolPopupQuery.addHandler { toolDomId -> handleShowToolPopup(toolDomId); null }
             Disposer.register(this, showToolPopupQuery)
             showToolPopupBridgeJs = showToolPopupQuery.inject("id")
+
+            val cancelNudgeQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            cancelNudgeQuery.addHandler { id -> onCancelNudge?.invoke(id); null }
+            Disposer.register(this, cancelNudgeQuery)
+            cancelNudgeBridgeJs = cancelNudgeQuery.inject("id")
 
             add(browser.component, BorderLayout.CENTER)
 
@@ -1116,6 +1123,18 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         disableQuickReplies()
     }
 
+    override fun showNudgeBubble(id: String, text: String) {
+        executeJs("ChatController.showNudgeBubble('${escJs(id)}','${escJs(text)}');")
+    }
+
+    override fun resolveNudgeBubble(id: String) {
+        executeJs("ChatController.resolveNudgeBubble('${escJs(id)}');")
+    }
+
+    override fun removeNudgeBubble(id: String) {
+        executeJs("ChatController.removeNudgeBubble('${escJs(id)}');")
+    }
+
     // ── Open in scratch file ─────────────────────────────────────────
 
     private fun handleOpenScratch(data: String) {
@@ -1255,7 +1274,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 quickReply: function(text) { $quickReplyBridgeJs },
                 permissionResponse: function(data) { $permissionResponseBridgeJs },
                 openScratch: function(lang, content) { $openScratchBridgeJs },
-                showToolPopup: function(id) { $showToolPopupBridgeJs }
+                showToolPopup: function(id) { $showToolPopupBridgeJs },
+                cancelNudge: function(id) { $cancelNudgeBridgeJs }
             };
         """.trimIndent()
         val css = loadResource("/chat/chat.css")

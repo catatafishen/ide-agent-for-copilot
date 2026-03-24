@@ -601,6 +601,43 @@ const ChatController = {
         }
     },
 
+    showNudgeBubble(id: string, text: string): void {
+        const existing = document.getElementById('nudge-' + id);
+        if (existing) return;
+        const msg = document.createElement('chat-message');
+        msg.id = 'nudge-' + id;
+        msg.setAttribute('type', 'user');
+        msg.classList.add('nudge-pending');
+        const meta = document.createElement('message-meta');
+        meta.innerHTML = '<span class="ts nudge-label">⏳ Nudge (pending)</span>';
+        msg.appendChild(meta);
+        const bubble = document.createElement('message-bubble');
+        bubble.setAttribute('type', 'user');
+        bubble.textContent = text;
+        msg.appendChild(bubble);
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'quick-reply-btn nudge-cancel-btn';
+        cancelBtn.textContent = '✕ Cancel nudge';
+        cancelBtn.onclick = () => (globalThis as any)._bridge?.cancelNudge(id);
+        msg.appendChild(cancelBtn);
+        this._msgs().appendChild(msg);
+        this._container()?.scrollIfNeeded();
+    },
+
+    resolveNudgeBubble(id: string): void {
+        const el = document.getElementById('nudge-' + id);
+        if (!el) return;
+        el.classList.remove('nudge-pending');
+        el.classList.add('nudge-sent');
+        el.querySelector('.nudge-label')?.remove();
+        el.querySelector('.nudge-cancel-btn')?.remove();
+    },
+
+    removeNudgeBubble(id: string): void {
+        document.getElementById('nudge-' + id)?.remove();
+    },
+
 };
 
 export default ChatController;

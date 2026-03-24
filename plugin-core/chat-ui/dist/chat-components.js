@@ -1295,6 +1295,40 @@ var __chatUI = (() => {
         const trimCount = rows.length - 80;
         for (let i = 0; i < trimCount; i++) rows[i].remove();
       }
+    },
+    showNudgeBubble(id, text) {
+      const existing = document.getElementById("nudge-" + id);
+      if (existing) return;
+      const msg = document.createElement("chat-message");
+      msg.id = "nudge-" + id;
+      msg.setAttribute("type", "user");
+      msg.classList.add("nudge-pending");
+      const meta = document.createElement("message-meta");
+      meta.innerHTML = '<span class="ts nudge-label">\u23F3 Nudge (pending)</span>';
+      msg.appendChild(meta);
+      const bubble = document.createElement("message-bubble");
+      bubble.setAttribute("type", "user");
+      bubble.textContent = text;
+      msg.appendChild(bubble);
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "quick-reply-btn nudge-cancel-btn";
+      cancelBtn.textContent = "\u2715 Cancel nudge";
+      cancelBtn.onclick = () => globalThis._bridge?.cancelNudge(id);
+      msg.appendChild(cancelBtn);
+      this._msgs().appendChild(msg);
+      this._container()?.scrollIfNeeded();
+    },
+    resolveNudgeBubble(id) {
+      const el = document.getElementById("nudge-" + id);
+      if (!el) return;
+      el.classList.remove("nudge-pending");
+      el.classList.add("nudge-sent");
+      el.querySelector(".nudge-label")?.remove();
+      el.querySelector(".nudge-cancel-btn")?.remove();
+    },
+    removeNudgeBubble(id) {
+      document.getElementById("nudge-" + id)?.remove();
     }
   };
   var ChatController_default = ChatController;

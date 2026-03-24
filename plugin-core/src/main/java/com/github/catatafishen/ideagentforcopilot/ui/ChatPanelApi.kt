@@ -144,4 +144,8 @@ interface ChatPanelApi : Disposable {
     fun hasPendingAskUserRequest(): Boolean
     fun consumePendingAskUserResponse(response: String): Boolean
     fun clearPendingAskUserRequest(reqId: String? = null)
+
+    fun showNudgeBubble(id: String, text: String)
+    fun resolveNudgeBubble(id: String)
+    fun removeNudgeBubble(id: String)
 }
