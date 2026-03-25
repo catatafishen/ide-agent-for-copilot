@@ -76,7 +76,9 @@ public final class ChatWebServer implements Disposable {
     private HttpServer httpServer;
     private volatile boolean running;
     private KeyStore sslKeyStore;
-    /** PEM-encoded CA certificate served at {@code /cert.crt} for device installation. */
+    /**
+     * PEM-encoded CA certificate served at {@code /cert.crt} for device installation.
+     */
     private volatile byte[] caCertPemBytes;
 
     // ── Event log ─────────────────────────────────────────────────────────────
@@ -356,7 +358,7 @@ public final class ChatWebServer implements Disposable {
      *   <li>{@code server.p12} — Server key pair + CA-signed server cert (CA:FALSE, serverAuth EKU,
      *       SANs, short-lived). Presented during the HTTPS handshake.</li>
      * </ul>
-     *
+     * <p>
      * Certificates are regenerated when the server cert's SANs don't match the current LAN IPs
      * or when the expected subject/SAN is missing (e.g. first run or upgrade from old format).
      */
@@ -576,7 +578,8 @@ public final class ChatWebServer implements Disposable {
             java.security.cert.Certificate cert = ks.getCertificate("server");
             if (!(cert instanceof X509Certificate x509)) return false;
             String subject = x509.getSubjectX500Principal().getName();
-            if (!subject.contains(EXPECTED_SERVER_SUBJECT_CN) || !subject.contains(EXPECTED_SERVER_SUBJECT_O)) return false;
+            if (!subject.contains(EXPECTED_SERVER_SUBJECT_CN) || !subject.contains(EXPECTED_SERVER_SUBJECT_O))
+                return false;
             Collection<List<?>> sans = x509.getSubjectAlternativeNames();
             if (sans == null) return false;
             for (List<?> san : sans) {

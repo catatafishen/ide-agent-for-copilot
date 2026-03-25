@@ -404,6 +404,9 @@ const ChatController = {
         document.querySelectorAll('tool-chip[status="running"]').forEach(c => c.setAttribute('status', 'complete'));
         this._container()?.scrollIfNeeded();
         this._trimMessages();
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            new Notification('Agent turn complete', {body: 'The agent has finished responding.', silent: true});
+        }
     },
 
     showPermissionRequest(turnId: string, agentId: string, reqId: string, toolDisplayName: string, contextJson: string): void {
@@ -453,6 +456,9 @@ const ChatController = {
         }
 
         this._container()?.scrollIfNeeded();
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            new Notification('Agent is asking you something', {body: question, silent: true});
+        }
     },
 
     showQuickReplies(options: string[]): void {

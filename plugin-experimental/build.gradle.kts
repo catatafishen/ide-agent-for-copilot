@@ -32,6 +32,8 @@ dependencies {
     // Runtime dependencies that plugin-core needs (not pulled transitively from compileOnly)
     implementation("com.google.code.gson:gson:${providers.gradleProperty("gsonVersion").get()}")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("com.google.zxing:core:${providers.gradleProperty("zxingVersion").get()}")
+    implementation("com.google.zxing:javase:${providers.gradleProperty("zxingVersion").get()}")
 
     // Force annotations version to match the platform
     implementation("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")

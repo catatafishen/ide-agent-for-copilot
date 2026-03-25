@@ -1149,6 +1149,9 @@ var __chatUI = (() => {
       document.querySelectorAll('tool-chip[status="running"]').forEach((c) => c.setAttribute("status", "complete"));
       this._container()?.scrollIfNeeded();
       this._trimMessages();
+      if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+        new Notification("Agent turn complete", { body: "The agent has finished responding.", silent: true });
+      }
     },
     showPermissionRequest(turnId, agentId, reqId, toolDisplayName, contextJson) {
       this.disableQuickReplies();
@@ -1186,6 +1189,9 @@ var __chatUI = (() => {
         ctx.msg.appendChild(replies);
       }
       this._container()?.scrollIfNeeded();
+      if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+        new Notification("Agent is asking you something", { body: question, silent: true });
+      }
     },
     showQuickReplies(options) {
       this.disableQuickReplies();
@@ -1594,6 +1600,9 @@ var __chatUI = (() => {
       globalThis._bridge?.setCursor(c);
     }
   });
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
   document.addEventListener("quick-reply", (e) => {
     globalThis._bridge?.quickReply(e.detail.text);
   });

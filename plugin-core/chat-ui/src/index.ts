@@ -85,6 +85,11 @@ document.addEventListener('mouseover', (e: MouseEvent) => {
     }
 });
 
+// Request notification permission (for PWA turn-end alerts)
+if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+}
+
 // Quick-reply bridge
 document.addEventListener('quick-reply', (e: Event) => {
     globalThis._bridge?.quickReply((e as CustomEvent).detail.text);
