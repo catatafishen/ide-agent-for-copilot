@@ -1325,7 +1325,7 @@ public final class ChatWebServer implements Disposable {
     private static final String WEB_APP_CSS = ""
         + "html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--fg);overflow:hidden;}\n"
         + "body{display:flex;flex-direction:column;height:100dvh;font-family:var(--font-family);font-size:var(--font-size);}\n"
-        + "#ab-offline{display:none;position:fixed;top:0;left:0;right:0;background:var(--error);color:#fff;text-align:center;padding:4px 8px;font-size:.85em;z-index:200;}\n"
+        + "#ab-offline{display:none;position:fixed;top:48px;left:0;right:0;background:var(--error);color:#fff;text-align:center;padding:4px 8px;font-size:.85em;z-index:200;}\n"
         + "#ab-offline.visible{display:block;}\n"
         + "#ab-header{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--fg-a16);background:var(--bg);min-height:36px;}\n"
         + "#ab-title{font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}\n"
