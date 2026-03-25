@@ -185,7 +185,7 @@ class PromptOrchestrator(
                     prompt.toolCallId(), prompt.toolName(), prompt.arguments() ?: ""
                 ) { response ->
                     when (response) {
-                        PermissionResponse.ALLOW_ONCE, PermissionResponse.ALLOW_SESSION ->
+                        PermissionResponse.ALLOW_ONCE, PermissionResponse.ALLOW_SESSION, PermissionResponse.ALLOW_ALWAYS ->
                             prompt.allow(response.name.lowercase())
 
                         PermissionResponse.DENY -> prompt.deny("Denied by user")

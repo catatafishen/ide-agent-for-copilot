@@ -76,12 +76,19 @@ export default class PermissionRequest extends HTMLElement {
         sessionBtn.textContent = 'Allow for session';
         sessionBtn.onclick = () => this._respond(reqId, 'session', '\u2713 Allowed for session');
 
+        const alwaysBtn = document.createElement('button');
+        alwaysBtn.type = 'button';
+        alwaysBtn.className = 'quick-reply-btn perm-allow-always';
+        alwaysBtn.textContent = 'Always allow';
+        alwaysBtn.onclick = () => this._respond(reqId, 'always', '\u2713 Always allowed');
+
         this.appendChild(denyBtn);
         this.appendChild(allowBtn);
         this.appendChild(sessionBtn);
+        this.appendChild(alwaysBtn);
     }
 
-    private _respond(reqId: string, mode: 'deny' | 'once' | 'session', label: string): void {
+    private _respond(reqId: string, mode: 'deny' | 'once' | 'session' | 'always', label: string): void {
         this.querySelectorAll('button').forEach(b => {
             b.disabled = true;
         });

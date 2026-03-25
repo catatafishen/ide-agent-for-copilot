@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.psi;
 
+import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.services.ToolChipRegistry;
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolPermission;
@@ -449,6 +450,12 @@ public final class PsiBridgeService implements Disposable {
         }
 
         return switch (response) {
+            case ALLOW_ALWAYS -> {
+                ActiveAgentManager.getInstance(project).getSettings().setToolPermission(toolName, ToolPermission.ALLOW);
+                sessionAllowedTools.add(toolName);
+                LOG.info("PSI Bridge: ASK approved permanently for " + toolName);
+                yield null;
+            }
             case ALLOW_SESSION -> {
                 sessionAllowedTools.add(toolName);
                 LOG.info("PSI Bridge: ASK approved for session for " + toolName);

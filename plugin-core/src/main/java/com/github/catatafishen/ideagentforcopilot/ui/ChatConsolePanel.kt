@@ -167,13 +167,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
             val permissionResponseQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
             permissionResponseQuery.addHandler { data ->
-                // data format: "reqId:deny", "reqId:once", or "reqId:session"
+                // data format: "reqId:deny", "reqId:once", "reqId:session", or "reqId:always"
                 val colonIdx = data.lastIndexOf(':')
                 if (colonIdx > 0) {
                     val reqId = data.substring(0, colonIdx)
                     val response = when (data.substring(colonIdx + 1)) {
                         "once" -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE
                         "session" -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_SESSION
+                        "always" -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ALWAYS
                         else -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY
                     }
                     pendingPermissionCallbacks.remove(reqId)?.invoke(response)
@@ -1148,6 +1149,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             val response = when (data.substring(colonIdx + 1)) {
                 "once" -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ONCE
                 "session" -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_SESSION
+                "always" -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.ALLOW_ALWAYS
                 else -> com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse.DENY
             }
             pendingPermissionCallbacks.remove(reqId)?.invoke(response)

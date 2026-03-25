@@ -1477,9 +1477,15 @@ var __chatUI = (() => {
       sessionBtn.className = "quick-reply-btn perm-allow-session";
       sessionBtn.textContent = "Allow for session";
       sessionBtn.onclick = () => this._respond(reqId, "session", "\u2713 Allowed for session");
+      const alwaysBtn = document.createElement("button");
+      alwaysBtn.type = "button";
+      alwaysBtn.className = "quick-reply-btn perm-allow-always";
+      alwaysBtn.textContent = "Always allow";
+      alwaysBtn.onclick = () => this._respond(reqId, "always", "\u2713 Always allowed");
       this.appendChild(denyBtn);
       this.appendChild(allowBtn);
       this.appendChild(sessionBtn);
+      this.appendChild(alwaysBtn);
     }
     _respond(reqId, mode, label) {
       this.querySelectorAll("button").forEach((b) => {

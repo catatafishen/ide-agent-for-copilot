@@ -8,7 +8,8 @@ tools you use.
 
 ## Status
 
-**Working** — Plugin is functional with multi-agent support (GitHub Copilot, opencode, Claude Code, custom profiles).
+**Working** — Plugin is functional with multi-agent support (GitHub Copilot, Junie, Kiro, OpenCode, Claude Code CLI,
+Anthropic direct API, custom profiles).
 
 ### What Works
 
@@ -48,20 +49,20 @@ graph TD
         AAM --> clients
     end
 
-    AC <-->|"stdin/stdout<br/>JSON-RPC 2.0"| CLI["Agent CLI"]
-    CC <-->|"stdin/stdout<br/>or HTTP"| CAPI["Claude API"]
-    CLI <-->|"API"| LLM["Cloud LLM"]
-    CLI -->|"stdio"| MCP["MCP Server (JAR)"]
-    MCP -->|"HTTP"| PSI
+    AC <-->|" stdin/stdout<br/>JSON-RPC 2.0 "| CLI["Agent CLI"]
+    CC <-->|" stdin/stdout<br/>or HTTP "| CAPI["Claude API"]
+    CLI <-->|" API "| LLM["Cloud LLM"]
+    CLI -->|" stdio "| MCP["MCP Server (JAR)"]
+    MCP -->|" HTTP "| PSI
 ```
 
 ### Three Layers
 
-| Layer       | Package                  | Purpose                                                                         |
-|-------------|--------------------------|---------------------------------------------------------------------------------|
-| **UI**      | `ui/`                    | Tool window, chat panel, model selector — agent-agnostic                        |
-| **Clients** | `acp/client/`, `agent/`  | Agent-specific clients: `CopilotClient`, `JunieClient`, `ClaudeCliClient`, etc. |
-| **MCP**     | `mcp-server/`, `psi/`    | IDE tools exposed via Model Context Protocol over stdio + HTTP                  |
+| Layer       | Package                 | Purpose                                                                         |
+|-------------|-------------------------|---------------------------------------------------------------------------------|
+| **UI**      | `ui/`                   | Tool window, chat panel, model selector — agent-agnostic                        |
+| **Clients** | `acp/client/`, `agent/` | Agent-specific clients: `CopilotClient`, `JunieClient`, `ClaudeCliClient`, etc. |
+| **MCP**     | `mcp-server/`, `psi/`   | IDE tools exposed via Model Context Protocol over stdio + HTTP                  |
 
 ### Extending for New Agents
 
@@ -174,21 +175,21 @@ Expand-Archive "plugin-core\build\distributions\plugin-core-*.zip" `
 Tracked issues on the agent CLI side that affect this plugin. When an issue is resolved upstream, the workaround can
 be removed and the entry marked as ✅.
 
-| # | Issue                                                                                         | Status  | Impact                                                                                                                                                                                                                                                             | Workaround                                                                                                                                                                                                                                |
-|---|-----------------------------------------------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1 | [#1486](https://github.com/github/copilot-cli/issues/1486) — MCP `instructions` field ignored | 🔴 Open | Copilot ignores the `instructions` field from the MCP `initialize` response, so the agent never sees our tool-usage guidance.                                                                                                                                      | Plugin prepends instructions to `copilot-instructions.md` on project open ([PsiBridgeStartup.kt](plugin-core/src/main/java/com/github/catatafishen/ideagentforcopilot/psi/PsiBridgeStartup.kt)).                                          |
-| 2 | [#556](https://github.com/github/copilot-cli/issues/556) — Tool filtering not respected       | 🔴 Open | `--available-tools` / `--excluded-tools` CLI flags and `tools/remove` MCP capability are all ignored in ACP mode. Re-validated on CLI v1.0.3 GA (Mar 2026): all four mechanisms still broken. Built-in tools (`view`, `edit`, `bash`, etc.) cannot be removed.     | Permission denial via ACP + sub-agent write blocking. See [CLI-BUG-556-WORKAROUND.md](docs/CLI-BUG-556-WORKAROUND.md).                                                                                                                    |
+| # | Issue                                                                                         | Status  | Impact                                                                                                                                                                                                                                                             | Workaround                                                                                                                                                                                                                                     |
+|---|-----------------------------------------------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1 | [#1486](https://github.com/github/copilot-cli/issues/1486) — MCP `instructions` field ignored | 🔴 Open | Copilot ignores the `instructions` field from the MCP `initialize` response, so the agent never sees our tool-usage guidance.                                                                                                                                      | Plugin prepends instructions to `copilot-instructions.md` on project open ([PsiBridgeStartup.kt](plugin-core/src/main/java/com/github/catatafishen/ideagentforcopilot/psi/PsiBridgeStartup.kt)).                                               |
+| 2 | [#556](https://github.com/github/copilot-cli/issues/556) — Tool filtering not respected       | 🔴 Open | `--available-tools` / `--excluded-tools` CLI flags and `tools/remove` MCP capability are all ignored in ACP mode. Re-validated on CLI v1.0.3 GA (Mar 2026): all four mechanisms still broken. Built-in tools (`view`, `edit`, `bash`, etc.) cannot be removed.     | Permission denial via ACP + sub-agent write blocking. See [CLI-BUG-556-WORKAROUND.md](docs/CLI-BUG-556-WORKAROUND.md).                                                                                                                         |
 | 3 | Sub-agents ignore custom instructions and agent definitions                                   | 🔴 Open | Sub-agents (explore, task, general-purpose) spawned via the `task` tool don't receive `.github/copilot-instructions.md` or `session/message` guidance. Read-only built-in tools (`view`, `grep`, `glob`) auto-execute without permission and can't be blocked.     | Plugin bundles a custom [intellij-explore agent](plugin-core/src/main/resources/agents/ide-explore.md) with instruction-based guidance to prefer IntelliJ MCP tools. Write tools (`edit`, `create`, `bash`) are blocked via permission denial. |
-| 4 | Junie built-in tool filtering not supported                                                   | 🔴 Open | Junie provides no built-in tool filtering mechanism AND does NOT send `session/request_permission` for ANY tools (built-in or MCP). All tools auto-execute without permission — protocol-level blocking impossible. (ACP spec has no standard filtering mechanism) | Prompt engineering via `session/message` startup instructions. See [JUNIE-TOOL-WORKAROUND.md](docs/JUNIE-TOOL-WORKAROUND.md). Warning emoji shown when Junie uses built-in tools.                                                         |
+| 4 | Junie built-in tool filtering not supported                                                   | 🔴 Open | Junie provides no built-in tool filtering mechanism AND does NOT send `session/request_permission` for ANY tools (built-in or MCP). All tools auto-execute without permission — protocol-level blocking impossible. (ACP spec has no standard filtering mechanism) | Prompt engineering via `session/message` startup instructions. See [JUNIE-TOOL-WORKAROUND.md](docs/JUNIE-TOOL-WORKAROUND.md). Warning emoji shown when Junie uses built-in tools.                                                              |
 
 ### Quick Comparison
 
-| Aspect                     | Copilot CLI                  | Junie CLI          | Kiro CLI  | OpenCode                  |
-|----------------------------|------------------------------|--------------------|-----------|---------------------------|
-| Built-in tool filtering¹   | `--excluded-tools` (broken²) | ❌ None             | ❓ Unknown | `permission` config field |
-| Sends permission requests³ | ✅ For write tools            | ❌ No (none)        | ❓ Unknown | ✅ Yes                     |
-| Blocking viable?           | ✅ Deny + retry               | ❌ No permission    | ❓ Unknown | ✅ Config + permissions    |
-| Workaround                 | Permission denial            | Prompt engineering | N/A       | None needed               |
+| Aspect                     | Copilot CLI                  | Junie CLI          | Kiro CLI                     | OpenCode                  |
+|----------------------------|------------------------------|--------------------|------------------------------|---------------------------|
+| Built-in tool filtering¹   | `--excluded-tools` (broken²) | ❌ None             | ✅ Agent definition file      | `permission` config field |
+| Sends permission requests³ | ✅ For write tools            | ❌ No (none)        | ❌ No (filtering via config)  | ✅ Yes                     |
+| Blocking viable?           | ✅ Deny + retry               | ❌ No permission    | ✅ Agent definition           | ✅ Config + permissions    |
+| Workaround                 | Permission denial            | Prompt engineering | `allowedTools` in agent JSON | None needed               |
 
 See [PERMISSIONS.md](docs/PERMISSIONS.md) for the full architecture.
 
@@ -197,7 +198,6 @@ See [PERMISSIONS.md](docs/PERMISSIONS.md) for the full architecture.
 - [Development Guide](DEVELOPMENT.md) — Build, deploy, architecture details
 - [Quick Start](QUICK-START.md) — Fast setup instructions
 - [Features](FEATURES.md) — Complete tool documentation
-- [Standalone MCP Server](docs/STANDALONE-MCP.md) — Use IDE tools with any MCP client
 - [Testing](TESTING.md) — Test running and coverage
 - [Roadmap](ROADMAP.md) — Project phases and future work
 - [Release Notes](RELEASE_NOTES.md) — Current release details
