@@ -117,8 +117,25 @@ class ChatToolWindowContent(
         )
     }
 
+    /**
+     * Wire up the web server callbacks that don't depend on the chat panel being created.
+     * Other callbacks (onSendPrompt, onNudge, etc.) are wired in createResponsePanel.
+     */
+    private fun wireUpWebServerCallbacks() {
+        ChatWebServer.getInstance(project)?.also { ws ->
+            ws.onConnect = java.util.function.Consumer { profileId ->
+                ApplicationManager.getApplication().invokeLater { connectToAgent(profileId, null) }
+            }
+            ws.onDisconnect = Runnable {
+                ApplicationManager.getApplication().invokeLater { disconnectFromAgent() }
+            }
+            ws.setProfilesJson(buildProfilesJson())
+        }
+    }
+
     private fun setupUI() {
         setupTitleBarActions()
+        wireUpWebServerCallbacks()
 
         connectPanel = AcpConnectPanel(project) { profileId, customCommand ->
             connectToAgent(profileId, customCommand)
@@ -1453,16 +1470,9 @@ class ChatToolWindowContent(
                     chatConsolePanel.handleWebPermissionResponse(data)
                 }
             }
-            ws.onDisconnect = Runnable {
-                ApplicationManager.getApplication().invokeLater { disconnectFromAgent() }
-            }
-            ws.onConnect = java.util.function.Consumer { profileId ->
-                ApplicationManager.getApplication().invokeLater { connectToAgent(profileId, null) }
-            }
             ws.onSelectModel = java.util.function.Consumer { modelId ->
                 ApplicationManager.getApplication().invokeLater { selectModelById(modelId) }
             }
-            ws.setProfilesJson(buildProfilesJson())
         }
 
         return consolePanel.component
