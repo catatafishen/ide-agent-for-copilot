@@ -131,25 +131,9 @@ public final class ToolChipRegistry {
             return new ChipRegistration(chipId, ChipState.PENDING);
         }
 
-        // If args is empty {}, we cannot reliably correlate with MCP since MCP has the real arguments.
-        // Fall back to finding an MCP-first chip by tool name (same logic as null args).
-        if (args.isEmpty()) {
-            ChipEntry mcpFirstByName = findMcpFirstChipByName(displayTitle);
-            if (mcpFirstByName != null) {
-                ChipEntry updated = mcpFirstByName.withClientId(clientId, displayTitle);
-                chips.put(mcpFirstByName.chipId(), updated);
-                clientToChip.put(clientId, mcpFirstByName.chipId());
-                LOG.debug("ToolChipRegistry: empty-args client claimed MCP-first chip " + mcpFirstByName.chipId() + " (" + displayTitle + ")");
-                return new ChipRegistration(mcpFirstByName.chipId(), ChipState.RUNNING);
-            }
-            // No MCP-first chip found - create client-only chip with clientId-based ID
-            String chipId = "c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-");
-            ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
-            chips.put(chipId, entry);
-            clientToChip.put(clientId, chipId);
-            LOG.debug("ToolChipRegistry: empty-args chip " + chipId + " (" + displayTitle + ")");
-            return new ChipRegistration(chipId, ChipState.PENDING);
-        }
+        // Note: empty args {} are treated the same as non-empty args — both sides hash {} identically
+        // (e.g. build_project has no args; hash("{}") == hash("{}") on both ACP and MCP sides).
+        // The null-args special case above handles agents like Junie that send content:[] (null) in ACP.
 
         String baseHash = computeBaseHash(args);
         LOG.info("ToolChipRegistry [ACP→Client]: tool=" + displayTitle + " hash=" + baseHash + " args=" + args);
