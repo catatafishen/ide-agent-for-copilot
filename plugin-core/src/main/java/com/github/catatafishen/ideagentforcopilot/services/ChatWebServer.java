@@ -116,26 +116,27 @@ public final class ChatWebServer implements Disposable {
         if (running) return;
         ChatWebServerSettings settings = ChatWebServerSettings.getInstance(project);
         int port = settings.getPort();
+        boolean https = settings.isHttpsEnabled();
 
-        SSLContext sslContext;
-        try {
-            sslContext = buildSelfSignedSslContext();
-        } catch (Exception e) {
-            throw new IOException("Failed to create TLS context for Chat Web Server", e);
+        SSLContext sslContext = null;
+        if (https) {
+            try {
+                sslContext = buildSelfSignedSslContext();
+            } catch (Exception e) {
+                throw new IOException("Failed to create TLS context for Chat Web Server", e);
+            }
         }
 
         IOException lastError = null;
         for (int attempt = 0; attempt < 10; attempt++) {
+            int tryPort = port + attempt;
             try {
-                int httpsPort = port + attempt;
-                int httpPort = httpsPort + 1;
-
-                httpsServer = HttpsServer.create(new InetSocketAddress("0.0.0.0", httpsPort), 0);
-                httpServer = HttpServer.create(new InetSocketAddress("0.0.0.0", httpPort), 0);
-
-                if (attempt > 0) {
-                    settings.setPort(httpsPort);
+                if (https) {
+                    httpsServer = HttpsServer.create(new InetSocketAddress("0.0.0.0", tryPort), 0);
+                } else {
+                    httpServer = HttpServer.create(new InetSocketAddress("0.0.0.0", tryPort), 0);
                 }
+                if (attempt > 0) settings.setPort(tryPort);
                 break;
             } catch (IOException e) {
                 if (httpsServer != null) {
@@ -149,30 +150,35 @@ public final class ChatWebServer implements Disposable {
                 lastError = e;
             }
         }
-        if (httpsServer == null || httpServer == null)
-            throw new IOException("Cannot bind Chat Web Server (HTTPS/HTTP) to any port near " + port, lastError);
 
-        SSLContext finalSslContext = sslContext;
-        httpsServer.setHttpsConfigurator(new HttpsConfigurator(finalSslContext) {
-            @Override
-            public void configure(com.sun.net.httpserver.HttpsParameters params) {
-                SSLParameters sslParams = finalSslContext.getDefaultSSLParameters();
-                params.setSSLParameters(sslParams);
-            }
-        });
-
-        registerContexts(httpsServer);
-        registerContexts(httpServer);
+        boolean bound = https ? httpsServer != null : httpServer != null;
+        if (!bound) throw new IOException("Cannot bind Chat Web Server to any port near " + port, lastError);
 
         var executor = Executors.newCachedThreadPool();
-        httpsServer.setExecutor(executor);
-        httpServer.setExecutor(executor);
 
-        httpsServer.start();
-        httpServer.start();
+        if (https) {
+            SSLContext finalSslContext = sslContext;
+            httpsServer.setHttpsConfigurator(new HttpsConfigurator(finalSslContext) {
+                @Override
+                public void configure(com.sun.net.httpserver.HttpsParameters params) {
+                    SSLParameters sslParams = finalSslContext.getDefaultSSLParameters();
+                    params.setSSLParameters(sslParams);
+                }
+            });
+            registerContexts(httpsServer);
+            httpsServer.setExecutor(executor);
+            httpsServer.start();
+            LOG.info("[ChatWebServer] started (HTTPS:" + httpsServer.getAddress().getPort()
+                + ") for project: " + project.getBasePath());
+        } else {
+            registerContexts(httpServer);
+            httpServer.setExecutor(executor);
+            httpServer.start();
+            LOG.info("[ChatWebServer] started (HTTP:" + httpServer.getAddress().getPort()
+                + ") for project: " + project.getBasePath());
+        }
+
         running = true;
-        LOG.info("[ChatWebServer] started (HTTPS:" + httpsServer.getAddress().getPort()
-            + ", HTTP:" + httpServer.getAddress().getPort() + ") for project: " + project.getBasePath());
     }
 
     private void registerContexts(HttpServer server) {
@@ -238,11 +244,16 @@ public final class ChatWebServer implements Disposable {
     }
 
     public int getPort() {
-        return httpsServer != null ? httpsServer.getAddress().getPort() : 0;
+        if (httpsServer != null) return httpsServer.getAddress().getPort();
+        if (httpServer != null) return httpServer.getAddress().getPort();
+        return 0;
     }
 
-    public int getHttpPort() {
-        return httpServer != null ? httpServer.getAddress().getPort() : 0;
+    /**
+     * Returns {@code true} if the running server is HTTPS, {@code false} if HTTP.
+     */
+    public boolean isHttps() {
+        return httpsServer != null;
     }
 
     /**
@@ -473,6 +484,11 @@ public final class ChatWebServer implements Disposable {
     private void handleCert(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        if (sslKeyStore == null) {
+            exchange.sendResponseHeaders(404, -1);
             exchange.close();
             return;
         }

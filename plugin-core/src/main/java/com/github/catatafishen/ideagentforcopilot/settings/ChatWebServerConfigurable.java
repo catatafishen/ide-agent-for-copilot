@@ -23,11 +23,13 @@ public final class ChatWebServerConfigurable implements Configurable {
     private final Project project;
     private JBCheckBox enabledCheckbox;
     private JSpinner portSpinner;
+    private JRadioButton httpRadio;
+    private JRadioButton httpsRadio;
     private JButton startStopButton;
-    private JLabel httpsUrlLabel;
-    private JLabel httpUrlLabel;
-    private QrCodePanel httpsQrPanel;
+    private JLabel urlLabel;
+    private QrCodePanel appQrPanel;
     private QrCodePanel certQrPanel;
+    private JPanel certQrRow;
     private JPanel mainPanel;
 
     public ChatWebServerConfigurable(@NotNull Project project) {
@@ -49,50 +51,44 @@ public final class ChatWebServerConfigurable implements Configurable {
 
         portSpinner = new JSpinner(new SpinnerNumberModel(settings.getPort(), 1024, 65535, 1));
 
+        httpRadio = new JRadioButton("HTTP");
+        httpsRadio = new JRadioButton("HTTPS (generates self-signed CA cert for device trust)");
+        ButtonGroup protocolGroup = new ButtonGroup();
+        protocolGroup.add(httpRadio);
+        protocolGroup.add(httpsRadio);
+        if (settings.isHttpsEnabled()) httpsRadio.setSelected(true);
+        else httpRadio.setSelected(true);
+
         startStopButton = new JButton(getStartStopLabel());
         startStopButton.addActionListener(e -> toggleServer());
 
-        httpsUrlLabel = new JBLabel("");
-        httpsUrlLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        httpUrlLabel = new JBLabel("");
-        httpUrlLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        urlLabel = new JBLabel("");
+        urlLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        httpsQrPanel = new QrCodePanel();
+        appQrPanel = new QrCodePanel();
         certQrPanel = new QrCodePanel();
-        updateUrlLabels();
 
-        JButton copyHttpsUrlButton = new JButton("Copy HTTPS");
-        copyHttpsUrlButton.addActionListener(e -> {
-            String url = getHttpsServerUrl();
-            if (!url.isEmpty()) {
-                copyToClipboard(url, copyHttpsUrlButton);
-            }
+        JButton copyUrlButton = new JButton("Copy URL");
+        copyUrlButton.addActionListener(e -> {
+            String url = getServerUrl();
+            if (!url.isEmpty()) copyToClipboard(url, copyUrlButton);
         });
 
-        JButton copyHttpUrlButton = new JButton("Copy HTTP");
-        copyHttpUrlButton.addActionListener(e -> {
-            String url = getHttpServerUrl();
-            if (!url.isEmpty()) {
-                copyToClipboard(url, copyHttpUrlButton);
-            }
-        });
+        JPanel urlRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        urlRow.add(new JBLabel("URL:"));
+        urlRow.add(urlLabel);
+        urlRow.add(copyUrlButton);
 
-        JPanel httpsUrlRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        httpsUrlRow.add(new JBLabel("HTTPS (PWA):"));
-        httpsUrlRow.add(httpsUrlLabel);
-        httpsUrlRow.add(copyHttpsUrlButton);
-
-        JPanel httpUrlRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        httpUrlRow.add(new JBLabel("HTTP (Legacy):"));
-        httpUrlRow.add(httpUrlLabel);
-        httpUrlRow.add(copyHttpUrlButton);
-
-        JPanel httpsQrRow = buildQrRow(httpsQrPanel, "Open on phone:");
-        JPanel certQrRow = buildQrRow(certQrPanel, "Install CA cert:");
+        JPanel appQrRow = buildQrRow(appQrPanel, "Open on phone");
+        certQrRow = buildQrRow(certQrPanel, "Install CA cert");
 
         JPanel qrSection = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 0));
-        qrSection.add(httpsQrRow);
+        qrSection.add(appQrRow);
         qrSection.add(certQrRow);
+
+        JPanel protocolPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        protocolPanel.add(httpRadio);
+        protocolPanel.add(httpsRadio);
 
         mainPanel = FormBuilder.createFormBuilder()
             .addComponent(new JBLabel("<html>Serve the chat panel as a local web app accessible from "
@@ -100,18 +96,17 @@ public final class ChatWebServerConfigurable implements Configurable {
                 + "Supports prompt sending, nudging, quick replies, and PWA push notifications.</html>"))
             .addSeparator()
             .addComponent(enabledCheckbox)
-            .addLabeledComponent("Base Port:", portSpinner)
-            .addComponent(new JBLabel("<html><i style='font-size:smaller;color:gray'>HTTPS uses Base Port, HTTP uses Base Port + 1</i></html>"))
+            .addLabeledComponent("Port:", portSpinner)
+            .addLabeledComponent("Protocol:", protocolPanel)
             .addSeparator()
             .addComponent(startStopButton)
-            .addComponent(httpsUrlRow)
-            .addComponent(httpUrlRow)
+            .addComponent(urlRow)
             .addComponent(qrSection)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         mainPanel.setBorder(JBUI.Borders.empty(8));
 
-        reset();
+        updateUrlAndQr();
         return mainPanel;
     }
 
@@ -131,7 +126,8 @@ public final class ChatWebServerConfigurable implements Configurable {
     public boolean isModified() {
         ChatWebServerSettings settings = ChatWebServerSettings.getInstance(project);
         if (enabledCheckbox.isSelected() != settings.isEnabled()) return true;
-        return (Integer) portSpinner.getValue() != settings.getPort();
+        if ((Integer) portSpinner.getValue() != settings.getPort()) return true;
+        return httpsRadio.isSelected() != settings.isHttpsEnabled();
     }
 
     @Override
@@ -139,6 +135,7 @@ public final class ChatWebServerConfigurable implements Configurable {
         ChatWebServerSettings settings = ChatWebServerSettings.getInstance(project);
         settings.setEnabled(enabledCheckbox.isSelected());
         settings.setPort((Integer) portSpinner.getValue());
+        settings.setHttpsEnabled(httpsRadio.isSelected());
     }
 
     @Override
@@ -146,7 +143,9 @@ public final class ChatWebServerConfigurable implements Configurable {
         ChatWebServerSettings settings = ChatWebServerSettings.getInstance(project);
         enabledCheckbox.setSelected(settings.isEnabled());
         portSpinner.setValue(settings.getPort());
-        updateUrlLabels();
+        if (settings.isHttpsEnabled()) httpsRadio.setSelected(true);
+        else httpRadio.setSelected(true);
+        updateUrlAndQr();
         if (startStopButton != null) startStopButton.setText(getStartStopLabel());
     }
 
@@ -155,11 +154,13 @@ public final class ChatWebServerConfigurable implements Configurable {
         mainPanel = null;
         enabledCheckbox = null;
         portSpinner = null;
+        httpRadio = null;
+        httpsRadio = null;
         startStopButton = null;
-        httpsUrlLabel = null;
-        httpUrlLabel = null;
-        httpsQrPanel = null;
+        urlLabel = null;
+        appQrPanel = null;
         certQrPanel = null;
+        certQrRow = null;
     }
 
     private void toggleServer() {
@@ -168,7 +169,7 @@ public final class ChatWebServerConfigurable implements Configurable {
             ws.stop();
             refresh();
         } else {
-            apply(); // save port before starting
+            apply();
             startStopButton.setEnabled(false);
             startStopButton.setText("Starting…");
             new Thread(() -> {
@@ -192,7 +193,7 @@ public final class ChatWebServerConfigurable implements Configurable {
         if (startStopButton == null) return;
         startStopButton.setEnabled(true);
         startStopButton.setText(getStartStopLabel());
-        updateUrlLabels();
+        updateUrlAndQr();
         if (mainPanel != null) {
             mainPanel.revalidate();
             mainPanel.repaint();
@@ -204,41 +205,34 @@ public final class ChatWebServerConfigurable implements Configurable {
         return ws != null && ws.isRunning() ? "Stop Web Server" : "Start Web Server";
     }
 
-    private void updateUrlLabels() {
-        if (httpsUrlLabel == null || httpUrlLabel == null) return;
-        String httpsUrl = getHttpsServerUrl();
-        String httpUrl = getHttpServerUrl();
+    private void updateUrlAndQr() {
+        if (urlLabel == null) return;
+        String url = getServerUrl();
+        boolean https = isRunningHttps();
 
-        if (httpsUrl.isEmpty()) {
-            httpsUrlLabel.setText("<html><i style='color:gray'>Not running</i></html>");
-            httpUrlLabel.setText("<html><i style='color:gray'>Not running</i></html>");
-            if (httpsQrPanel != null) httpsQrPanel.setUrl(null);
+        if (url.isEmpty()) {
+            urlLabel.setText("<html><i style='color:gray'>Not running</i></html>");
+            if (appQrPanel != null) appQrPanel.setUrl(null);
             if (certQrPanel != null) certQrPanel.setUrl(null);
         } else {
-            httpsUrlLabel.setText("<html><a href='" + httpsUrl + "'>" + httpsUrl + "</a></html>");
-            httpUrlLabel.setText("<html><a href='" + httpUrl + "'>" + httpUrl + "</a></html>");
-            if (httpsQrPanel != null) httpsQrPanel.setUrl(httpsUrl);
-            if (certQrPanel != null) certQrPanel.setUrl(getCertUrl());
+            urlLabel.setText("<html><a href='" + url + "'>" + url + "</a></html>");
+            if (appQrPanel != null) appQrPanel.setUrl(url);
+            if (certQrPanel != null) certQrPanel.setUrl(https ? url + "/cert.crt" : null);
         }
+
+        if (certQrRow != null) certQrRow.setVisible(https);
     }
 
-    private String getHttpsServerUrl() {
+    private String getServerUrl() {
         ChatWebServer ws = ChatWebServer.getInstance(project);
         if (ws == null || !ws.isRunning()) return "";
-        return buildUrl("https", ws.getPort());
+        String protocol = ws.isHttps() ? "https" : "http";
+        return buildUrl(protocol, ws.getPort());
     }
 
-    private String getHttpServerUrl() {
+    private boolean isRunningHttps() {
         ChatWebServer ws = ChatWebServer.getInstance(project);
-        if (ws == null || !ws.isRunning()) return "";
-        return buildUrl("http", ws.getHttpPort());
-    }
-
-    private String getCertUrl() {
-        ChatWebServer ws = ChatWebServer.getInstance(project);
-        if (ws == null || !ws.isRunning()) return "";
-        // Serve cert over HTTP so the device can download it before trusting the HTTPS cert.
-        return buildUrl("http", ws.getHttpPort()) + "/cert.crt";
+        return ws != null && ws.isRunning() && ws.isHttps();
     }
 
     private String buildUrl(String protocol, int port) {
