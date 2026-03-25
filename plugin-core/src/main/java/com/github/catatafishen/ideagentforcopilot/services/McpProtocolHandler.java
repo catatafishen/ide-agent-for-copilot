@@ -41,9 +41,9 @@ public final class McpProtocolHandler {
     private static final int RESOURCE_PAGE_SIZE = 200;
     private static final int RESOURCE_NOT_FOUND_ERROR = -32002;
 
-    private static final String SERVER_NAME = "ide-mcp-server";
-    private static final String SERVER_VERSION = "1.0.0";
-    private static final String PROTOCOL_VERSION = "2025-03-26";
+    private static final String SERVER_NAME = "agentbridge";
+    private static final String SERVER_VERSION = com.github.catatafishen.ideagentforcopilot.BuildInfo.getVersion();
+    private static final String PROTOCOL_VERSION = "2025-11-25";
     private static final String STARTUP_INSTRUCTIONS_URI = "resource://default-startup-instructions.md";
     private static final String RESOURCES_CURSOR_PREFIX = "resources:";
     private static final String RESOURCE_TEMPLATES_CURSOR_PREFIX = "resourceTemplates:";
@@ -420,12 +420,18 @@ public final class McpProtocolHandler {
         JsonObject arguments = params.has("arguments")
             ? params.getAsJsonObject("arguments") : new JsonObject();
 
-        // Extract progressToken from _meta — may equal the ACP toolCallId for direct correlation
+        // Extract correlation fields from _meta.
+        // claudecode/toolUseId matches the ACP tool_use.id exactly — used for direct chip correlation.
+        // progressToken is a sequence number, kept for debug logging only.
         String progressToken = null;
+        String toolUseId = null;
         if (params.has("_meta") && params.get("_meta").isJsonObject()) {
             JsonObject meta = params.getAsJsonObject("_meta");
             if (meta.has("progressToken")) {
                 progressToken = meta.get("progressToken").getAsString();
+            }
+            if (meta.has("claudecode/toolUseId")) {
+                toolUseId = meta.get("claudecode/toolUseId").getAsString();
             }
         }
 
@@ -440,9 +446,10 @@ public final class McpProtocolHandler {
 
         // Delegate to PsiBridgeService
         final String finalProgressToken = progressToken;
+        final String finalToolUseId = toolUseId;
         try {
             PsiBridgeService bridge = PsiBridgeService.getInstance(project);
-            String resultText = bridge.callTool(toolName, arguments, finalProgressToken);
+            String resultText = bridge.callTool(toolName, arguments, finalProgressToken, finalToolUseId);
             resultText = truncateIfNeeded(resultText);
 
             JsonObject content = new JsonObject();

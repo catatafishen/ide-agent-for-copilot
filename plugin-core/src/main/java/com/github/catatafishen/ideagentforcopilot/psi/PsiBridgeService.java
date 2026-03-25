@@ -198,10 +198,14 @@ public final class PsiBridgeService implements Disposable {
     }
 
     public String callTool(String toolName, JsonObject arguments) {
-        return callTool(toolName, arguments, null);
+        return callTool(toolName, arguments, null, null);
     }
 
     public String callTool(String toolName, JsonObject arguments, @Nullable String progressToken) {
+        return callTool(toolName, arguments, progressToken, null);
+    }
+
+    public String callTool(String toolName, JsonObject arguments, @Nullable String progressToken, @Nullable String toolUseId) {
         LOG.info("PSI Bridge: calling " + toolName + " with args: " + arguments);
         ToolDefinition def = registry.findDefinition(toolName);
         if (def == null || !def.hasExecutionHandler()) {
@@ -262,7 +266,7 @@ public final class PsiBridgeService implements Disposable {
             try {
                 // Register with chip registry BEFORE executing so the chip can transition to "running"
                 // Pass the resolved kind so the chip can update its color immediately.
-                ToolChipRegistry.getInstance(project).registerMcp(toolName, arguments, def.kind());
+                ToolChipRegistry.getInstance(project).registerMcp(toolName, arguments, def.kind(), toolUseId);
                 result = def.execute(arguments, argumentsHash);
             } finally {
                 if (syncLock != null) syncLock.unlock();

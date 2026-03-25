@@ -23,25 +23,67 @@ public final class ChatWebServerSettings implements PersistentStateComponent<Cha
         return PlatformApiCompat.getService(project, ChatWebServerSettings.class);
     }
 
-    public int getPort() { return myState.port; }
-    public void setPort(int port) { myState.port = port; }
+    public int getPort() {
+        return myState.port;
+    }
 
-    public boolean isEnabled() { return myState.enabled; }
-    public void setEnabled(boolean enabled) { myState.enabled = enabled; }
+    public void setPort(int port) {
+        myState.port = port;
+    }
+
+    public boolean isEnabled() {
+        return myState.enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        myState.enabled = enabled;
+    }
+
+    public boolean isHttpsEnabled() {
+        return myState.httpsEnabled;
+    }
+
+    public void setHttpsEnabled(boolean httpsEnabled) {
+        myState.httpsEnabled = httpsEnabled;
+    }
 
     @Override
-    public @NotNull State getState() { return myState; }
+    public @NotNull State getState() {
+        return myState;
+    }
 
     @Override
-    public void loadState(@NotNull State state) { myState = state; }
+    public void loadState(@NotNull State state) {
+        myState = state;
+    }
 
     public static class State {
         private int port = DEFAULT_PORT;
         private boolean enabled = false;
+        private boolean httpsEnabled = true;
 
-        public int getPort() { return port; }
-        public void setPort(int port) { this.port = port; }
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isHttpsEnabled() {
+            return httpsEnabled;
+        }
+
+        public void setHttpsEnabled(boolean httpsEnabled) {
+            this.httpsEnabled = httpsEnabled;
+        }
     }
 }

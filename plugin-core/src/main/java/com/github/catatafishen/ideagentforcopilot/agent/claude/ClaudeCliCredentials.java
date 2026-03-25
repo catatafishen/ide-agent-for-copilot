@@ -54,13 +54,6 @@ public final class ClaudeCliCredentials {
                 return new ClaudeCliCredentials(false, null);
             }
 
-            long expiresAt = oauth.has("expiresAt") ? oauth.get("expiresAt").getAsLong() : 0L;
-            boolean expired = expiresAt > 0 && System.currentTimeMillis() > expiresAt;
-            if (expired) {
-                LOG.info("Claude CLI credentials are expired (expiresAt=" + expiresAt + ")");
-                return new ClaudeCliCredentials(false, null);
-            }
-
             String name = null;
             if (root.has("oauthAccount")) {
                 JsonObject account = root.getAsJsonObject("oauthAccount");

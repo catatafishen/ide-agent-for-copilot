@@ -76,6 +76,8 @@ public final class ChatWebServer implements Disposable {
     private HttpServer httpServer;
     private volatile boolean running;
     private KeyStore sslKeyStore;
+    /** PEM-encoded CA certificate served at {@code /cert.crt} for device installation. */
+    private volatile byte[] caCertPemBytes;
 
     // ── Event log ─────────────────────────────────────────────────────────────
     // Stored as raw JSON strings: {"seq":N,"js":"..."}
@@ -116,26 +118,28 @@ public final class ChatWebServer implements Disposable {
         if (running) return;
         ChatWebServerSettings settings = ChatWebServerSettings.getInstance(project);
         int port = settings.getPort();
+        boolean https = settings.isHttpsEnabled();
 
-        SSLContext sslContext;
-        try {
-            sslContext = buildSelfSignedSslContext();
-        } catch (Exception e) {
-            throw new IOException("Failed to create TLS context for Chat Web Server", e);
+        SSLContext sslContext = null;
+        if (https) {
+            try {
+                sslContext = buildSslContext();
+            } catch (Exception e) {
+                throw new IOException("Failed to create TLS context for Chat Web Server", e);
+            }
         }
+
+        var executor = Executors.newCachedThreadPool();
 
         IOException lastError = null;
         for (int attempt = 0; attempt < 10; attempt++) {
+            int tryPort = port + attempt;
             try {
-                int httpsPort = port + attempt;
-                int httpPort = httpsPort + 1;
-
-                httpsServer = HttpsServer.create(new InetSocketAddress("0.0.0.0", httpsPort), 0);
-                httpServer = HttpServer.create(new InetSocketAddress("0.0.0.0", httpPort), 0);
-
-                if (attempt > 0) {
-                    settings.setPort(httpsPort);
+                if (https) {
+                    httpsServer = HttpsServer.create(new InetSocketAddress("0.0.0.0", tryPort), 0);
                 }
+                httpServer = HttpServer.create(new InetSocketAddress("0.0.0.0", tryPort + (https ? 1 : 0)), 0);
+                if (attempt > 0) settings.setPort(tryPort);
                 break;
             } catch (IOException e) {
                 if (httpsServer != null) {
@@ -149,30 +153,37 @@ public final class ChatWebServer implements Disposable {
                 lastError = e;
             }
         }
-        if (httpsServer == null || httpServer == null)
-            throw new IOException("Cannot bind Chat Web Server (HTTPS/HTTP) to any port near " + port, lastError);
 
-        SSLContext finalSslContext = sslContext;
-        httpsServer.setHttpsConfigurator(new HttpsConfigurator(finalSslContext) {
-            @Override
-            public void configure(com.sun.net.httpserver.HttpsParameters params) {
-                SSLParameters sslParams = finalSslContext.getDefaultSSLParameters();
-                params.setSSLParameters(sslParams);
-            }
-        });
+        boolean bound = https ? (httpsServer != null && httpServer != null) : httpServer != null;
+        if (!bound) throw new IOException("Cannot bind Chat Web Server to any port near " + port, lastError);
 
-        registerContexts(httpsServer);
-        registerContexts(httpServer);
-
-        var executor = Executors.newCachedThreadPool();
-        httpsServer.setExecutor(executor);
         httpServer.setExecutor(executor);
+        if (https) {
+            registerContexts(httpsServer);
+            SSLContext finalSslContext = sslContext;
+            httpsServer.setHttpsConfigurator(new HttpsConfigurator(finalSslContext) {
+                @Override
+                public void configure(com.sun.net.httpserver.HttpsParameters params) {
+                    SSLParameters sslParams = finalSslContext.getDefaultSSLParameters();
+                    params.setSSLParameters(sslParams);
+                }
+            });
+            httpsServer.setExecutor(executor);
+            httpsServer.start();
 
-        httpsServer.start();
-        httpServer.start();
+            registerCertOnlyContext(httpServer);
+            httpServer.start();
+            LOG.info("[ChatWebServer] started (HTTPS:" + httpsServer.getAddress().getPort()
+                + " + cert-HTTP:" + httpServer.getAddress().getPort()
+                + ") for project: " + project.getBasePath());
+        } else {
+            registerContexts(httpServer);
+            httpServer.start();
+            LOG.info("[ChatWebServer] started (HTTP:" + httpServer.getAddress().getPort()
+                + ") for project: " + project.getBasePath());
+        }
+
         running = true;
-        LOG.info("[ChatWebServer] started (HTTPS:" + httpsServer.getAddress().getPort()
-            + ", HTTP:" + httpServer.getAddress().getPort() + ") for project: " + project.getBasePath());
     }
 
     private void registerContexts(HttpServer server) {
@@ -216,6 +227,10 @@ public final class ChatWebServer implements Disposable {
         }));
     }
 
+    private void registerCertOnlyContext(HttpServer server) {
+        server.createContext("/cert.crt", this::handleCert);
+    }
+
     public synchronized void stop() {
         if (!running) return;
         // Signal all SSE clients to close
@@ -238,11 +253,33 @@ public final class ChatWebServer implements Disposable {
     }
 
     public int getPort() {
-        return httpsServer != null ? httpsServer.getAddress().getPort() : 0;
+        if (httpsServer != null) return httpsServer.getAddress().getPort();
+        if (httpServer != null) return httpServer.getAddress().getPort();
+        return 0;
     }
 
-    public int getHttpPort() {
-        return httpServer != null ? httpServer.getAddress().getPort() : 0;
+    /**
+     * Returns the port where the HTTP server is listening (for cert downloads).
+     * When HTTPS is enabled this is always a separate port from the main server.
+     */
+    public int getHttpCertPort() {
+        if (httpServer != null) return httpServer.getAddress().getPort();
+        return getPort();
+    }
+
+    /**
+     * Returns {@code true} if the running server is HTTPS, {@code false} if HTTP.
+     */
+    public boolean isHttps() {
+        return httpsServer != null;
+    }
+
+    /**
+     * Returns the primary LAN IPv4 address, or {@code null} if none is found.
+     */
+    public static @org.jetbrains.annotations.Nullable String getLanIp() {
+        List<String> ips = collectLocalIpv4Addresses();
+        return ips.isEmpty() ? null : ips.get(0);
     }
 
     @Override
@@ -299,82 +336,188 @@ public final class ChatWebServer implements Disposable {
 
     // ── TLS ───────────────────────────────────────────────────────────────────
 
-    private static final String KEYSTORE_NAME = "chat-web-server.p12";
     private static final String KEYSTORE_PASSWORD = "agentbridge-ephemeral";
 
-    private static java.nio.file.Path getKeystorePath() {
+    // Must match the -dname used in generateCaPlusServerCerts. Update both together.
+    private static final String EXPECTED_SERVER_SUBJECT_CN = "CN=AgentBridge Server";
+    private static final String EXPECTED_SERVER_SUBJECT_O = "O=AgentBridge";
+
+    private static java.nio.file.Path getPluginDir() {
         String configPath = com.intellij.openapi.application.PathManager.getConfigPath();
-        return java.nio.file.Path.of(configPath, "plugins", "intellij-copilot-plugin", KEYSTORE_NAME);
+        return java.nio.file.Path.of(configPath, "plugins", "intellij-copilot-plugin");
     }
 
     /**
-     * Builds an SSLContext with a self-signed RSA certificate.
-     * Stores the keystore in the plugin config directory so it persists across restarts.
-     * Includes all local non-loopback IPv4 addresses in the SAN so Android and other devices
-     * on the same LAN can trust the certificate after installing it via {@code /cert.crt}.
-     * If the existing certificate does not cover the current LAN IPs, it is deleted and regenerated.
+     * Builds an SSLContext backed by a proper CA + server certificate chain.
+     *
+     * <ul>
+     *   <li>{@code ca.p12} — CA key pair + self-signed CA cert (CA:TRUE, long-lived).
+     *       The device installs this via {@code /cert.crt}.</li>
+     *   <li>{@code server.p12} — Server key pair + CA-signed server cert (CA:FALSE, serverAuth EKU,
+     *       SANs, short-lived). Presented during the HTTPS handshake.</li>
+     * </ul>
+     *
+     * Certificates are regenerated when the server cert's SANs don't match the current LAN IPs
+     * or when the expected subject/SAN is missing (e.g. first run or upgrade from old format).
      */
-    private SSLContext buildSelfSignedSslContext() throws Exception {
-        java.nio.file.Path ksPath = getKeystorePath();
-        java.io.File ksFile = ksPath.toFile();
+    private SSLContext buildSslContext() throws Exception {
+        java.nio.file.Path pluginDir = getPluginDir();
+        java.io.File caKsFile = pluginDir.resolve("ca.p12").toFile();
+        java.io.File serverKsFile = pluginDir.resolve("server.p12").toFile();
 
         List<String> localIps = collectLocalIpv4Addresses();
 
-        if (ksFile.exists() && (!certCoversAllIps(ksFile, localIps) || !certHasCaFlag(ksFile) || !certHasExpectedSubject(ksFile))) {
-            LOG.info("[ChatWebServer] Regenerating certificate — local IPs changed, CA flag missing, or subject changed");
-            java.nio.file.Files.delete(ksPath);
+        boolean needsRegen = !caKsFile.exists()
+            || !serverKsFile.exists()
+            || !serverCertCoversAllIps(serverKsFile, localIps)
+            || !serverCertHasExpectedSubject(serverKsFile);
+
+        if (needsRegen) {
+            LOG.info("[ChatWebServer] Generating CA + server certificates");
+            java.nio.file.Files.deleteIfExists(caKsFile.toPath());
+            java.nio.file.Files.deleteIfExists(serverKsFile.toPath());
+            java.nio.file.Files.createDirectories(pluginDir);
+            generateCaPlusServerCerts(pluginDir, caKsFile, serverKsFile, localIps);
         }
 
-        if (!ksFile.exists()) {
-            java.nio.file.Path dir = ksPath.getParent();
-            if (dir != null && !java.nio.file.Files.exists(dir)) {
-                java.nio.file.Files.createDirectories(dir);
-            }
-
-            StringBuilder sanBuilder = new StringBuilder("dns:localhost,ip:127.0.0.1");
-            for (String ip : localIps) {
-                sanBuilder.append(",ip:").append(ip);
-            }
-
-            String[] cmd = {
-                "keytool", "-genkeypair",
-                "-alias", "agentbridge",
-                "-keyalg", "RSA",
-                "-keysize", "2048",
-                "-validity", "3650",
-                "-keystore", ksFile.getAbsolutePath(),
-                "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-keypass", KEYSTORE_PASSWORD,
-                "-dname", "CN=AgentBridge Local Network, O=AgentBridge, C=FI",
-                "-ext", "SAN=" + sanBuilder,
-                // Required for Android (and iOS) CA trust: marks this as a CA certificate.
-                // Without BasicConstraints CA:TRUE the mobile CA installer rejects it.
-                "-ext", "BC:critical=ca:true"
-            };
-
-            Process process = new ProcessBuilder(cmd).start();
-            if (!process.waitFor(10, TimeUnit.SECONDS) || process.exitValue() != 0) {
-                String error = "";
-                try (java.io.InputStream is = process.getErrorStream()) {
-                    error = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                }
-                throw new IOException("Failed to generate self-signed certificate via keytool: " + error);
-            }
+        // Load CA cert for device installation at /cert.crt
+        KeyStore caKs = KeyStore.getInstance("PKCS12");
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(caKsFile)) {
+            caKs.load(fis, KEYSTORE_PASSWORD.toCharArray());
         }
+        byte[] derBytes = caKs.getCertificate("ca").getEncoded();
+        String pem = "-----BEGIN CERTIFICATE-----\n"
+            + java.util.Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(derBytes)
+            + "\n-----END CERTIFICATE-----\n";
+        caCertPemBytes = pem.getBytes(StandardCharsets.UTF_8);
 
-        KeyStore ks = KeyStore.getInstance("PKCS12");
-        try (java.io.FileInputStream fis = new java.io.FileInputStream(ksFile)) {
-            ks.load(fis, KEYSTORE_PASSWORD.toCharArray());
+        // Load server keystore for the HTTPS handshake
+        KeyStore serverKs = KeyStore.getInstance("PKCS12");
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(serverKsFile)) {
+            serverKs.load(fis, KEYSTORE_PASSWORD.toCharArray());
         }
-        sslKeyStore = ks;
+        sslKeyStore = serverKs;
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(ks, KEYSTORE_PASSWORD.toCharArray());
+        kmf.init(serverKs, KEYSTORE_PASSWORD.toCharArray());
 
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(kmf.getKeyManagers(), null, null);
         return ctx;
+    }
+
+    /**
+     * Generates a CA key pair + self-signed CA cert, then a server key pair signed by the CA.
+     * Uses keytool for all crypto operations (no external library required).
+     */
+    private static void generateCaPlusServerCerts(
+        java.nio.file.Path pluginDir,
+        java.io.File caKsFile,
+        java.io.File serverKsFile,
+        List<String> localIps) throws Exception {
+
+        java.io.File caExportFile = pluginDir.resolve("ca-export.der").toFile();
+        java.io.File serverCsrFile = pluginDir.resolve("server.csr").toFile();
+        java.io.File serverCerFile = pluginDir.resolve("server.cer").toFile();
+
+        try {
+            StringBuilder san = new StringBuilder("dns:localhost,dns:agentbridge.local,ip:127.0.0.1");
+            for (String ip : localIps) san.append(",ip:").append(ip);
+
+            // 1. Generate CA key pair + long-lived self-signed CA cert
+            runKeytool(new String[]{
+                "keytool", "-genkeypair",
+                "-alias", "ca",
+                "-keyalg", "RSA", "-keysize", "4096", "-validity", "3650",
+                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD, "-keypass", KEYSTORE_PASSWORD,
+                "-dname", "CN=AgentBridge CA, O=AgentBridge, C=FI",
+                "-ext", "BC:critical=ca:true",
+                "-ext", "KU:critical=keyCertSign,cRLSign"
+            });
+
+            // 2. Generate server key pair (initially self-signed; will be replaced below)
+            runKeytool(new String[]{
+                "keytool", "-genkeypair",
+                "-alias", "server",
+                "-keyalg", "RSA", "-keysize", "2048", "-validity", "397",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD, "-keypass", KEYSTORE_PASSWORD,
+                "-dname", "CN=AgentBridge Server, O=AgentBridge, C=FI"
+            });
+
+            // 3. Generate CSR from server key
+            runKeytool(new String[]{
+                "keytool", "-certreq",
+                "-alias", "server",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", serverCsrFile.getAbsolutePath()
+            });
+
+            // 4. Sign server CSR with CA key → short-lived server cert with SANs and serverAuth EKU
+            runKeytool(new String[]{
+                "keytool", "-gencert",
+                "-alias", "ca",
+                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-infile", serverCsrFile.getAbsolutePath(),
+                "-outfile", serverCerFile.getAbsolutePath(),
+                "-validity", "397",
+                "-ext", "SAN=" + san,
+                "-ext", "EKU=serverAuth",
+                "-ext", "BC:critical=ca:false"
+            });
+
+            // 5. Export CA cert as DER so it can be imported as a trusted entry into the server keystore
+            runKeytool(new String[]{
+                "keytool", "-exportcert",
+                "-alias", "ca",
+                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", caExportFile.getAbsolutePath()
+            });
+
+            // 6. Import CA cert as trusted into server keystore — keytool needs this to build the chain
+            runKeytool(new String[]{
+                "keytool", "-importcert",
+                "-alias", "ca",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", caExportFile.getAbsolutePath(),
+                "-noprompt", "-trustcacerts"
+            });
+
+            // 7. Import signed server cert — replaces the temp self-signed cert; chain: server → CA
+            runKeytool(new String[]{
+                "keytool", "-importcert",
+                "-alias", "server",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", serverCerFile.getAbsolutePath(),
+                "-noprompt"
+            });
+        } finally {
+            java.nio.file.Files.deleteIfExists(caExportFile.toPath());
+            java.nio.file.Files.deleteIfExists(serverCsrFile.toPath());
+            java.nio.file.Files.deleteIfExists(serverCerFile.toPath());
+        }
+    }
+
+    private static void runKeytool(String[] cmd) throws IOException {
+        Process process = new ProcessBuilder(cmd).start();
+        String error;
+        try {
+            if (!process.waitFor(15, TimeUnit.SECONDS) || process.exitValue() != 0) {
+                try (java.io.InputStream is = process.getErrorStream()) {
+                    error = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+                throw new IOException("keytool " + cmd[1] + " failed: " + error);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("keytool " + cmd[1] + " interrupted", e);
+        }
     }
 
     private static List<String> collectLocalIpv4Addresses() {
@@ -396,14 +539,14 @@ public final class ChatWebServer implements Disposable {
         return ips;
     }
 
-    private static boolean certCoversAllIps(java.io.File ksFile, List<String> requiredIps) {
+    private static boolean serverCertCoversAllIps(java.io.File serverKsFile, List<String> requiredIps) {
         if (requiredIps.isEmpty()) return true;
         try {
             KeyStore ks = KeyStore.getInstance("PKCS12");
-            try (java.io.FileInputStream fis = new java.io.FileInputStream(ksFile)) {
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(serverKsFile)) {
                 ks.load(fis, KEYSTORE_PASSWORD.toCharArray());
             }
-            java.security.cert.Certificate cert = ks.getCertificate("agentbridge");
+            java.security.cert.Certificate cert = ks.getCertificate("server");
             if (!(cert instanceof X509Certificate x509)) return false;
             Collection<List<?>> sans = x509.getSubjectAlternativeNames();
             if (sans == null) return false;
@@ -415,46 +558,36 @@ public final class ChatWebServer implements Disposable {
             }
             return certIps.containsAll(requiredIps);
         } catch (Exception e) {
-            LOG.warn("[ChatWebServer] Could not read existing certificate SANs", e);
+            LOG.warn("[ChatWebServer] Could not read server certificate SANs", e);
             return false;
         }
     }
 
     /**
-     * Returns {@code true} if the certificate in the keystore has BasicConstraints CA:TRUE.
+     * Returns {@code true} if the server keystore contains a cert with the expected subject and
+     * {@code agentbridge.local} DNS SAN. Detects keystores from older single-cert format.
      */
-    private static boolean certHasCaFlag(java.io.File ksFile) {
+    private static boolean serverCertHasExpectedSubject(java.io.File serverKsFile) {
         try {
             KeyStore ks = KeyStore.getInstance("PKCS12");
-            try (java.io.FileInputStream fis = new java.io.FileInputStream(ksFile)) {
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(serverKsFile)) {
                 ks.load(fis, KEYSTORE_PASSWORD.toCharArray());
             }
-            java.security.cert.Certificate cert = ks.getCertificate("agentbridge");
+            java.security.cert.Certificate cert = ks.getCertificate("server");
             if (!(cert instanceof X509Certificate x509)) return false;
-            return x509.getBasicConstraints() >= 0; // >= 0 means CA:TRUE
-        } catch (Exception e) {
-            LOG.warn("[ChatWebServer] Could not read existing certificate BasicConstraints", e);
+            String subject = x509.getSubjectX500Principal().getName();
+            if (!subject.contains(EXPECTED_SERVER_SUBJECT_CN) || !subject.contains(EXPECTED_SERVER_SUBJECT_O)) return false;
+            Collection<List<?>> sans = x509.getSubjectAlternativeNames();
+            if (sans == null) return false;
+            for (List<?> san : sans) {
+                if (san.get(0) instanceof Integer type && type == 2
+                    && "agentbridge.local".equals(san.get(1))) {
+                    return true;
+                }
+            }
             return false;
-        }
-    }
-
-    private static final String EXPECTED_CN = "CN=AgentBridge Local Network";
-
-    /**
-     * Returns {@code true} if the certificate subject contains the expected CN.
-     * Detects certs generated before the display name was set, so they are regenerated.
-     */
-    private static boolean certHasExpectedSubject(java.io.File ksFile) {
-        try {
-            KeyStore ks = KeyStore.getInstance("PKCS12");
-            try (java.io.FileInputStream fis = new java.io.FileInputStream(ksFile)) {
-                ks.load(fis, KEYSTORE_PASSWORD.toCharArray());
-            }
-            java.security.cert.Certificate cert = ks.getCertificate("agentbridge");
-            if (!(cert instanceof X509Certificate x509)) return false;
-            return x509.getSubjectX500Principal().getName().contains(EXPECTED_CN);
         } catch (Exception e) {
-            LOG.warn("[ChatWebServer] Could not read existing certificate subject", e);
+            LOG.warn("[ChatWebServer] Could not read server certificate subject", e);
             return false;
         }
     }
@@ -465,15 +598,15 @@ public final class ChatWebServer implements Disposable {
             exchange.close();
             return;
         }
+        byte[] pemBytes = caCertPemBytes;
+        if (pemBytes == null) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
         try {
-            java.security.cert.Certificate cert = sslKeyStore.getCertificate("agentbridge");
             // Serve as PEM — Android's CA certificate installer requires PEM format.
             // Serving raw DER triggers Android's VPN/app-cert installer which asks for a private key.
-            byte[] derBytes = cert.getEncoded();
-            String pem = "-----BEGIN CERTIFICATE-----\n"
-                + java.util.Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(derBytes)
-                + "\n-----END CERTIFICATE-----\n";
-            byte[] pemBytes = pem.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/x-pem-file");
             exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"agentbridge-ca.pem\"");
             exchange.getResponseHeaders().set("Cache-Control", "no-cache");
@@ -524,8 +657,18 @@ public final class ChatWebServer implements Disposable {
         String sw = "self.addEventListener('install',()=>self.skipWaiting());\n"
             + "self.addEventListener('activate',e=>e.waitUntil(clients.claim()));\n"
             + "self.addEventListener('fetch',e=>{"
-            + "if(e.request.headers.get('accept')==='text/event-stream')return;"
-            + "e.respondWith(fetch(e.request).catch(()=>new Response('Offline',{status:503})));"
+            + "if(new URL(e.request.url).pathname==='/events')return;"
+            + "const offlineHtml='<!DOCTYPE html><html><body style=\"font-family:sans-serif;padding:2em;text-align:center;background:#1a1a1a;color:#e0e0e0\">"
+            + "<h2>Connection failed</h2>"
+            + "<p>Could not reach the server. Make sure:</p>"
+            + "<ul style=\"text-align:left;display:inline-block\">"
+            + "<li>The IDE plugin is running</li>"
+            + "<li>Your phone is on the same network as your computer</li>"
+            + "<li>The CA certificate is installed (System &rarr; Encryption &rarr; CA certs)</li>"
+            + "</ul>"
+            + "<p><a href=\"/\" style=\"color:#7ab8ff\">Retry</a></p>"
+            + "</body></html>';"
+            + "e.respondWith(fetch(e.request).catch(()=>new Response(offlineHtml,{status:503,headers:{'Content-Type':'text/html'}})));"
             + "});\n"
             + "self.addEventListener('message',e=>{\n"
             + "  if(e.data&&e.data.type==='SHOW_NOTIFICATION'){\n"
@@ -804,7 +947,7 @@ public final class ChatWebServer implements Disposable {
         List<String> certIps = new ArrayList<>();
         if (sslKeyStore != null) {
             try {
-                java.security.cert.Certificate cert = sslKeyStore.getCertificate("agentbridge");
+                java.security.cert.Certificate cert = sslKeyStore.getCertificate("server");
                 if (cert instanceof X509Certificate x509) {
                     Collection<List<?>> sans = x509.getSubjectAlternativeNames();
                     if (sans != null) {
