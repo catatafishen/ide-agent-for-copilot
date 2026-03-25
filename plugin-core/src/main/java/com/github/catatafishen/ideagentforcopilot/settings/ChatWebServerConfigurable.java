@@ -207,6 +207,7 @@ public final class ChatWebServerConfigurable implements Configurable {
 
     private void updateUrlAndQr() {
         if (urlLabel == null) return;
+        ChatWebServer ws = ChatWebServer.getInstance(project);
         String url = getServerUrl();
         boolean https = isRunningHttps();
 
@@ -217,7 +218,11 @@ public final class ChatWebServerConfigurable implements Configurable {
         } else {
             urlLabel.setText("<html><a href='" + url + "'>" + url + "</a></html>");
             if (appQrPanel != null) appQrPanel.setUrl(url);
-            if (certQrPanel != null) certQrPanel.setUrl(https ? url + "/cert.crt" : null);
+            if (certQrPanel != null && https) {
+                String host = ChatWebServer.getLanIp();
+                String certUrl = "http://" + (host != null ? host : "localhost") + ":" + ws.getPort() + "/cert.crt";
+                certQrPanel.setUrl(certUrl);
+            }
         }
 
         if (certQrRow != null) certQrRow.setVisible(https);
