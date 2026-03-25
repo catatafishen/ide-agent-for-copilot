@@ -120,11 +120,11 @@ public final class GenericSettings {
         getProperties().setValue(key("maxToolCallsPerTurn"), count, DEFAULT_MAX_TOOL_CALLS);
     }
 
-    // ── Per-tool permissions ─────────────────────────────────────────────────
+    // ── Per-tool permissions (project-global, not per-profile) ──────────────
 
     @NotNull
     public ToolPermission getToolPermission(@NotNull String toolId) {
-        String stored = getProperties().getValue(key("tool.perm." + toolId));
+        String stored = getProperties().getValue("tool.perm." + toolId);
         if (stored == null) return ToolPermission.ALLOW;
         try {
             return ToolPermission.valueOf(stored);
@@ -134,12 +134,12 @@ public final class GenericSettings {
     }
 
     public void setToolPermission(@NotNull String toolId, @NotNull ToolPermission perm) {
-        getProperties().setValue(key("tool.perm." + toolId), perm.name());
+        getProperties().setValue("tool.perm." + toolId, perm.name());
     }
 
     @NotNull
     public ToolPermission getToolPermissionInsideProject(@NotNull String toolId) {
-        String stored = getProperties().getValue(key(TOOL_PERM_IN_PREFIX + toolId));
+        String stored = getProperties().getValue(TOOL_PERM_IN_PREFIX + toolId);
         if (stored == null) return getToolPermission(toolId);
         try {
             return ToolPermission.valueOf(stored);
@@ -149,12 +149,12 @@ public final class GenericSettings {
     }
 
     public void setToolPermissionInsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
-        getProperties().setValue(key(TOOL_PERM_IN_PREFIX + toolId), perm.name());
+        getProperties().setValue(TOOL_PERM_IN_PREFIX + toolId, perm.name());
     }
 
     @NotNull
     public ToolPermission getToolPermissionOutsideProject(@NotNull String toolId) {
-        String stored = getProperties().getValue(key(TOOL_PERM_OUT_PREFIX + toolId));
+        String stored = getProperties().getValue(TOOL_PERM_OUT_PREFIX + toolId);
         if (stored == null) return getToolPermission(toolId);
         try {
             return ToolPermission.valueOf(stored);
@@ -164,7 +164,7 @@ public final class GenericSettings {
     }
 
     public void setToolPermissionOutsideProject(@NotNull String toolId, @NotNull ToolPermission perm) {
-        getProperties().setValue(key(TOOL_PERM_OUT_PREFIX + toolId), perm.name());
+        getProperties().setValue(TOOL_PERM_OUT_PREFIX + toolId, perm.name());
     }
 
     @NotNull
@@ -182,8 +182,8 @@ public final class GenericSettings {
     }
 
     public void clearToolSubPermissions(@NotNull String toolId) {
-        getProperties().unsetValue(key(TOOL_PERM_IN_PREFIX + toolId));
-        getProperties().unsetValue(key(TOOL_PERM_OUT_PREFIX + toolId));
+        getProperties().unsetValue(TOOL_PERM_IN_PREFIX + toolId);
+        getProperties().unsetValue(TOOL_PERM_OUT_PREFIX + toolId);
     }
 
     private static final String KEY_RESUME_SESSION_ID = "resumeSessionId";
