@@ -422,7 +422,11 @@ public abstract class AcpClient extends AbstractAgentClient {
         } catch (Exception e) {
             PromptResponse recovery = tryRecoverPromptException(e);
             if (recovery != null) return recovery;
-            throw new AgentPromptException("Prompt failed for " + displayName(), e);
+            String rootMsg = extractRootCauseMessage(e);
+            String msg = rootMsg != null
+                ? "Prompt failed for " + displayName() + ": " + rootMsg
+                : "Prompt failed for " + displayName();
+            throw new AgentPromptException(msg, e);
         } finally {
             afterPromptComplete();
         }
@@ -445,6 +449,27 @@ public abstract class AcpClient extends AbstractAgentClient {
      */
     protected @Nullable PromptResponse tryRecoverPromptException(Exception cause) {
         return null;
+    }
+
+    /**
+     * Walks the cause chain of an exception and returns the most descriptive non-null message.
+     * Unwraps {@link java.util.concurrent.ExecutionException} wrappers and strips unhelpful
+     * outer messages like "Prompt failed for ..." so the user sees the real reason.
+     */
+    @Nullable
+    private static String extractRootCauseMessage(Throwable e) {
+        Throwable current = e;
+        String bestMsg = null;
+        while (current != null) {
+            String msg = current.getMessage();
+            if (msg != null && !msg.isBlank()
+                && !msg.startsWith("Prompt failed for ")
+                && !msg.startsWith("Prompt interrupted for ")) {
+                bestMsg = msg;
+            }
+            current = current.getCause();
+        }
+        return bestMsg;
     }
 
     /**
