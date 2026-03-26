@@ -128,6 +128,7 @@ public final class CopilotEventsImporter {
                             UUID.randomUUID().toString(),
                             "user",
                             List.of(textPart),
+                            // Copilot events.jsonl does not include per-event timestamps; using import time
                             System.currentTimeMillis(),
                             null,
                             null));
@@ -379,6 +380,7 @@ public final class CopilotEventsImporter {
                 UUID.randomUUID().toString(),
                 "assistant",
                 new ArrayList<>(parts),
+                // Copilot events.jsonl does not include per-event timestamps; using import time
                 System.currentTimeMillis(),
                 null,
                 model);

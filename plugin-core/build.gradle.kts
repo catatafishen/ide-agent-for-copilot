@@ -56,6 +56,9 @@ dependencies {
     implementation("com.google.zxing:core:${providers.gradleProperty("zxingVersion").get()}")
     implementation("com.google.zxing:javase:${providers.gradleProperty("zxingVersion").get()}")
 
+    // SQLite JDBC (used by OpenCode session import)
+    implementation("org.xerial:sqlite-jdbc:3.47.2.0")
+
     testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
     testImplementation(
         "junit:junit:${

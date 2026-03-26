@@ -30,7 +30,7 @@ import java.util.UUID;
  *   conversation.json          ← v1 (still written for backward compat)
  *   conversations/             ← v1 archives
  *   sessions/
- *     sessions-index.json      ← JSON array of SessionRecord
+ *     sessions-index.json      ← JSON array of session metadata objects
  *     &lt;uuid&gt;.jsonl             ← one file per session
  * </pre>
  */
@@ -270,7 +270,7 @@ public final class SessionStoreV2 {
 
     // ── session finalisation ──────────────────────────────────────────────────
 
-    private void finaliseCurrentSession(@Nullable String basePath) {
+    private void finaliseCurrentSession(@Nullable String basePath) { // basePath reserved for future session finalization logic
         // Nothing special needed — the JSONL is already up-to-date.
         // This is a hook for future use (e.g. writing a "closed" marker).
     }

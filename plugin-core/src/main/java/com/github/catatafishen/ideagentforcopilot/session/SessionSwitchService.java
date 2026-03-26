@@ -1,14 +1,16 @@
 package com.github.catatafishen.ideagentforcopilot.session;
 
+import com.github.catatafishen.ideagentforcopilot.agent.claude.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliClient;
 import com.github.catatafishen.ideagentforcopilot.agent.codex.CodexAppServerClient;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
-import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
 import com.github.catatafishen.ideagentforcopilot.session.exporters.AnthropicMessageExporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.AnthropicMessageImporter;
+import com.github.catatafishen.ideagentforcopilot.session.importers.CodexImporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.CopilotEventsImporter;
+import com.github.catatafishen.ideagentforcopilot.session.importers.OpenCodeImporter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionStoreV2;
 import com.google.gson.Gson;
@@ -128,16 +130,16 @@ public final class SessionSwitchService implements Disposable {
 
         // Step 3: Export to the new client's native format.
         switch (toProfileId) {
-            case ClaudeCliClient.PROFILE_ID -> exportToClaudeCli(messages, basePath);
+            case ClaudeCliClient.PROFILE_ID, AnthropicDirectClient.PROFILE_ID -> exportToClaudeCli(messages, basePath);
             case CodexAppServerClient.PROFILE_ID ->
                 LOG.info("Codex does not support session import; starting fresh thread");
             default -> {
-                // Check whether the target is a Kiro profile (ACP with local session storage).
-                AgentProfile toProfile = AgentProfileManager.getInstance().getProfile(toProfileId);
-                if (toProfile != null && toProfile.getBinaryName().toLowerCase().contains("kiro")) {
+                if (toProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
                     exportToKiro(messages, basePath, toProfileId);
+                } else if (toProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
+                    LOG.info("OpenCode is ACP; sessions managed server-side, no export injection needed");
                 } else {
-                    // ACP clients (Copilot, Junie, OpenCode) resume their own sessions natively
+                    // ACP clients (Copilot, Junie) resume their own sessions natively
                     // via resumeSessionId. No cross-client injection supported (sessions managed
                     // server-side).
                     LOG.info("ACP client '" + toProfileId
@@ -159,22 +161,20 @@ public final class SessionSwitchService implements Disposable {
      */
     private void importFromPreviousClient(@NotNull String fromProfileId, @Nullable String basePath) {
         try {
-            if (fromProfileId.equals(ClaudeCliClient.PROFILE_ID)) {
+            if (fromProfileId.equals(ClaudeCliClient.PROFILE_ID)
+                || fromProfileId.equals(AnthropicDirectClient.PROFILE_ID)) {
+                // Both Claude CLI and Claude Code (Anthropic Direct) use ~/.claude/projects/<sha1>/
                 importFromClaudeCli(basePath);
             } else if (fromProfileId.equals(CodexAppServerClient.PROFILE_ID)) {
-                // Codex does not expose native session files; skip.
-                LOG.info("Skipping import from Codex (no native session file support)");
+                importFromCodex(basePath);
+            } else if (fromProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
+                importFromKiro(basePath);
+            } else if (fromProfileId.equals(AgentProfileManager.COPILOT_PROFILE_ID)) {
+                importFromCopilotCli(basePath);
+            } else if (fromProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
+                importFromOpenCode(basePath);
             } else {
-                // ACP profile — detect Kiro vs Copilot-like by binary name.
-                AgentProfile profile = AgentProfileManager.getInstance().getProfile(fromProfileId);
-                String binaryName = profile != null ? profile.getBinaryName().toLowerCase() : "";
-                if (binaryName.contains("kiro")) {
-                    importFromKiro(basePath);
-                } else if (fromProfileId.startsWith(COPILOT_ID_PREFIX) || binaryName.contains(COPILOT_ID_PREFIX)) {
-                    importFromCopilotCli(basePath);
-                } else {
-                    LOG.info("No native import path for profile '" + fromProfileId + "'; skipping pre-import");
-                }
+                LOG.info("No native import path for profile '" + fromProfileId + "'; skipping pre-import");
             }
         } catch (Exception e) {
             LOG.warn("Unexpected error during pre-import from '" + fromProfileId + "'", e);
@@ -280,6 +280,50 @@ public final class SessionSwitchService implements Disposable {
             if (path.equals(el.getAsString())) return true;
         }
         return false;
+    }
+
+    /**
+     * Imports the most recent Codex thread from {@code ~/.codex/codex.db} and its rollout JSONL
+     * if it has more messages than the current v2 session.
+     */
+    private void importFromCodex(@Nullable String basePath) {
+        Path dbPath = CodexImporter.defaultDbPath();
+        List<SessionMessage> imported = CodexImporter.importLatestThread(dbPath);
+        if (imported.isEmpty()) {
+            LOG.info("No Codex session to import");
+            return;
+        }
+
+        String sessionId = sessionStore.getCurrentSessionId(basePath);
+        if (sessionId == null) return;
+
+        List<SessionMessage> current = loadCurrentV2Session(basePath);
+        if (imported.size() > (current != null ? current.size() : 0)) {
+            writeV2Session(basePath, sessionId, imported);
+            LOG.info(LOG_PRE_IMPORTED + imported.size() + " messages from Codex");
+        }
+    }
+
+    /**
+     * Imports the most recent OpenCode session from {@code ~/.local/share/opencode/opencode.db}
+     * matching the current project directory, if it has more messages than the current v2 session.
+     */
+    private void importFromOpenCode(@Nullable String basePath) {
+        Path dbPath = OpenCodeImporter.defaultDbPath();
+        List<SessionMessage> imported = OpenCodeImporter.importLatestSession(dbPath, basePath != null ? basePath : "");
+        if (imported.isEmpty()) {
+            LOG.info("No OpenCode session to import");
+            return;
+        }
+
+        String sessionId = sessionStore.getCurrentSessionId(basePath);
+        if (sessionId == null) return;
+
+        List<SessionMessage> current = loadCurrentV2Session(basePath);
+        if (imported.size() > (current != null ? current.size() : 0)) {
+            writeV2Session(basePath, sessionId, imported);
+            LOG.info(LOG_PRE_IMPORTED + imported.size() + " messages from OpenCode");
+        }
     }
 
     /**

@@ -117,12 +117,13 @@ public final class AnthropicMessageImporter {
 
                 if (!parts.isEmpty()) {
                     result.add(new SessionMessage(
-                            UUID.randomUUID().toString(),
-                            "user",
-                            parts,
-                            System.currentTimeMillis(),
-                            null,
-                            null));
+                        UUID.randomUUID().toString(),
+                        "user",
+                        parts,
+                        // Anthropic message format does not include per-message timestamps; using import time
+                        System.currentTimeMillis(),
+                        null,
+                        null));
                 }
 
             } else if ("assistant".equals(role)) {
@@ -169,12 +170,13 @@ public final class AnthropicMessageImporter {
 
                 if (!parts.isEmpty()) {
                     result.add(new SessionMessage(
-                            UUID.randomUUID().toString(),
-                            "assistant",
-                            parts,
-                            System.currentTimeMillis(),
-                            null,
-                            null));
+                        UUID.randomUUID().toString(),
+                        "assistant",
+                        parts,
+                        // Anthropic message format does not include per-message timestamps; using import time
+                        System.currentTimeMillis(),
+                        null,
+                        null));
                 }
             }
             // Unknown roles are skipped
@@ -190,8 +192,8 @@ public final class AnthropicMessageImporter {
         for (JsonElement el : content) {
             if (!el.isJsonObject()) return false;
             String type = el.getAsJsonObject().has("type")
-                    ? el.getAsJsonObject().get("type").getAsString()
-                    : "";
+                ? el.getAsJsonObject().get("type").getAsString()
+                : "";
             if (!"tool_result".equals(type)) return false;
         }
         return true;
@@ -221,8 +223,8 @@ public final class AnthropicMessageImporter {
         ToolResultMap map = new ToolResultMap();
         if (userMessage == null) return map;
         JsonArray content = userMessage.has("content")
-                ? userMessage.getAsJsonArray("content")
-                : new JsonArray();
+            ? userMessage.getAsJsonArray("content")
+            : new JsonArray();
         for (JsonElement el : content) {
             if (!el.isJsonObject()) continue;
             JsonObject block = el.getAsJsonObject();
@@ -267,7 +269,9 @@ public final class AnthropicMessageImporter {
 
     // ── Inner helper ──────────────────────────────────────────────────────────
 
-    /** Simple string-to-string map to keep the tool-result lookup self-contained. */
+    /**
+     * Simple string-to-string map to keep the tool-result lookup self-contained.
+     */
     private static final class ToolResultMap {
         private final java.util.HashMap<String, String> map = new java.util.HashMap<>();
 

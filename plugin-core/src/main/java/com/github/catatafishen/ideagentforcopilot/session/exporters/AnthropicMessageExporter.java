@@ -48,7 +48,9 @@ public final class AnthropicMessageExporter {
     private static final Logger LOG = Logger.getInstance(AnthropicMessageExporter.class);
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
-    /** Default token budget for exported conversations. */
+    /**
+     * Default token budget for exported conversations.
+     */
     private static final int DEFAULT_MAX_TOKEN_ESTIMATE = 20_000;
 
     private AnthropicMessageExporter() {
@@ -66,8 +68,8 @@ public final class AnthropicMessageExporter {
      * @throws IOException if writing fails
      */
     public static void exportToFile(
-            @NotNull List<SessionMessage> messages,
-            @NotNull Path targetPath) throws IOException {
+        @NotNull List<SessionMessage> messages,
+        @NotNull Path targetPath) throws IOException {
         exportToFile(messages, targetPath, DEFAULT_MAX_TOKEN_ESTIMATE);
     }
 
@@ -85,9 +87,9 @@ public final class AnthropicMessageExporter {
      * @throws IOException if writing fails
      */
     public static void exportToFile(
-            @NotNull List<SessionMessage> messages,
-            @NotNull Path targetPath,
-            int maxTokenEstimate) throws IOException {
+        @NotNull List<SessionMessage> messages,
+        @NotNull Path targetPath,
+        int maxTokenEstimate) throws IOException {
 
         List<SessionMessage> budgeted = applyTokenBudget(messages, maxTokenEstimate);
         List<AnthropicMessage> anthropicMessages = toAnthropicMessages(budgeted);
@@ -100,7 +102,7 @@ public final class AnthropicMessageExporter {
         //noinspection ResultOfMethodCallIgnored — best-effort parent dir creation
         targetPath.getParent().toFile().mkdirs();
         Files.writeString(targetPath, sb.toString(), StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     // ── Token budget ──────────────────────────────────────────────────────────
@@ -113,8 +115,8 @@ public final class AnthropicMessageExporter {
      */
     @NotNull
     private static List<SessionMessage> applyTokenBudget(
-            @NotNull List<SessionMessage> messages,
-            int maxTokenEstimate) {
+        @NotNull List<SessionMessage> messages,
+        int maxTokenEstimate) {
 
         if (messages.isEmpty()) return messages;
 
@@ -210,7 +212,8 @@ public final class AnthropicMessageExporter {
                         assistantBlocks.add(block);
 
                     } else if ("reasoning".equals(type)) {
-                        // Skip — not part of Anthropic stored format
+                        // Skip reasoning blocks — not part of the Anthropic message format
+                        continue;
 
                     } else if ("tool-invocation".equals(type) && part.has("toolInvocation")) {
                         JsonObject inv = part.getAsJsonObject("toolInvocation");
@@ -251,7 +254,8 @@ public final class AnthropicMessageExporter {
                         toolResultMessages.add(new AnthropicMessage("user", List.of(toolResultBlock)));
 
                     } else if ("subagent".equals(type) || "status".equals(type) || "file".equals(type)) {
-                        // Skip — no Anthropic equivalent
+                        // Skip — no Anthropic equivalent for these part types
+                        continue;
                     }
                 }
 
