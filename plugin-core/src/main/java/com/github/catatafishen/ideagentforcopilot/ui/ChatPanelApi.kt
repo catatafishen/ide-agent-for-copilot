@@ -111,7 +111,7 @@ interface ChatPanelApi : Disposable {
     // ── Conversation export / persistence ──────────────────────────
 
     fun getConversationText(): String
-    fun getCompressedSummary(maxChars: Int = 8000): String
+    fun getCompressedSummary(maxChars: Int = 4000): String
     fun getConversationHtml(): String
     fun getLastResponseText(): String
 
