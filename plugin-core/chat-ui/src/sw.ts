@@ -72,6 +72,7 @@ self.addEventListener('push', (e) => {
         await self.registration.showNotification(title, {
             body,
             icon: '/icon-192.png',
+            badge: '/badge-96.png',
             tag: 'agentbridge',
             requireInteraction: false,
         });
@@ -93,6 +94,7 @@ self.addEventListener('message', (e) => {
         const opts: NotificationOptions = {
             body: data.body || '',
             icon: '/icon-192.png',
+            badge: '/badge-96.png',
             tag: 'agentbridge',
             requireInteraction: false,
         };

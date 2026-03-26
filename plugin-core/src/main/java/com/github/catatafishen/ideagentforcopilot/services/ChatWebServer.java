@@ -298,6 +298,7 @@ public final class ChatWebServer implements Disposable {
         server.createContext("/icon.svg", this::handleIconSvg);
         server.createContext("/icon-192.png", ex -> handleIconPng(ex, 192));
         server.createContext("/icon-512.png", ex -> handleIconPng(ex, 512));
+        server.createContext("/badge-96.png", this::handleBadgePng);
         server.createContext("/manifest.json", ex -> serveClasspath(ex, "/chat/manifest.json", "application/json; charset=utf-8"));
         server.createContext("/sw.js", ex -> serveClasspath(ex, "/chat/sw.js", "application/javascript; charset=utf-8"));
         server.createContext("/cert.crt", this::handleCert);
@@ -801,6 +802,88 @@ public final class ChatWebServer implements Disposable {
         exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
+        exchange.close();
+    }
+
+    // ── Badge icon (monochrome silhouette for Android status bar) ─────────────
+
+    private static final byte[] BADGE_96_PNG;
+
+    static {
+        BADGE_96_PNG = generateBadgePng(96);
+    }
+
+    private static byte[] generateBadgePng(int size) {
+        java.awt.image.BufferedImage img =
+            new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE);
+
+        // White silhouette on transparent background — Android masks to monochrome
+        double pad = size * 0.10;
+        double scale = (size - 2 * pad) / 13.0;
+        g.translate(pad, pad);
+        g.scale(scale, scale);
+
+        g.setColor(java.awt.Color.WHITE);
+
+        // Lightning bolt (filled)
+        java.awt.geom.Path2D.Double bolt = new java.awt.geom.Path2D.Double();
+        bolt.moveTo(7.925, 0);
+        bolt.lineTo(3.907, 6.5);
+        bolt.lineTo(6.98, 6.5);
+        bolt.lineTo(3.907, 13);
+        bolt.lineTo(9.58, 5.318);
+        bolt.lineTo(6.389, 5.318);
+        bolt.closePath();
+        g.fill(bolt);
+
+        // Corner circles (stroked)
+        float sw = 0.709f;
+        g.setStroke(new java.awt.BasicStroke(sw, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+        double r = 1.182;
+        double[][] corners = {{1.536, 1.536}, {11.464, 1.536}, {1.536, 11.464}, {11.464, 11.464}};
+        for (double[] c : corners) {
+            g.draw(new java.awt.geom.Ellipse2D.Double(c[0] - r, c[1] - r, r * 2, r * 2));
+        }
+
+        // Arms connecting corners to center
+        java.awt.geom.Path2D.Double arms = new java.awt.geom.Path2D.Double();
+        arms.moveTo(1.536, 2.718);
+        arms.lineTo(1.536, 5.082);
+        arms.lineTo(2.955, 6.5);
+        arms.moveTo(11.464, 2.718);
+        arms.lineTo(11.464, 5.082);
+        arms.lineTo(10.045, 6.5);
+        arms.moveTo(1.536, 10.282);
+        arms.lineTo(1.536, 7.918);
+        arms.lineTo(2.955, 6.5);
+        arms.moveTo(11.464, 10.282);
+        arms.lineTo(11.464, 7.918);
+        arms.lineTo(10.045, 6.5);
+        g.draw(arms);
+
+        g.dispose();
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            javax.imageio.ImageIO.write(img, "PNG", baos);
+        } catch (IOException ignored) {
+        }
+        return baos.toByteArray();
+    }
+
+    private void handleBadgePng(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        exchange.getResponseHeaders().set("Content-Type", "image/png");
+        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+        exchange.sendResponseHeaders(200, BADGE_96_PNG.length);
+        exchange.getResponseBody().write(BADGE_96_PNG);
         exchange.close();
     }
 
