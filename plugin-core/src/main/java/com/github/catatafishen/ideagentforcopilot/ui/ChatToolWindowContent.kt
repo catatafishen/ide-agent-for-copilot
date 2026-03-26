@@ -100,6 +100,8 @@ class ChatToolWindowContent(
     init {
         setupUI()
         subscribeToFocusRestoreEvents()
+        // Initialise the session store's agent name from the currently active profile.
+        conversationStore.setCurrentAgent(agentManager.activeProfile.displayName)
     }
 
     /**
@@ -559,6 +561,8 @@ class ChatToolWindowContent(
             loadModels()
         }
         agentManager.addSwitchListener {
+            // Update the session store's agent name when the user switches profiles.
+            conversationStore.setCurrentAgent(agentManager.activeProfile.displayName)
             ApplicationManager.getApplication().invokeLater {
                 copilotBanner?.triggerCheck()
             }
@@ -983,8 +987,9 @@ class ChatToolWindowContent(
         AllIcons.Actions.Restart
     ) {
         init {
-            // Listen for agent switches and update icon
+            // Listen for agent switches and update icon; also keep session store in sync.
             agentManager.addSwitchListener {
+                conversationStore.setCurrentAgent(agentManager.activeProfile.displayName)
                 updateIconForActiveAgent()
             }
         }

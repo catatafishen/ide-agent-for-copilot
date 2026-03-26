@@ -46,15 +46,34 @@ public final class SessionStoreV2 {
 
     private final ConversationStore v1Store = new ConversationStore();
 
+    /**
+     * Display name of the agent currently writing sessions (e.g. "GitHub Copilot").
+     */
+    private volatile String currentAgent = "Unknown";
+
+    /**
+     * Sets the display name of the agent that is currently writing sessions.
+     * Called whenever the active agent profile changes.
+     *
+     * @param agent human-readable agent name (e.g. "GitHub Copilot", "Claude CLI")
+     */
+    public void setCurrentAgent(@NotNull String agent) {
+        this.currentAgent = agent;
+    }
+
     // ── v1 delegation ─────────────────────────────────────────────────────────
 
-    /** Returns the v1 conversation file (delegates to {@link ConversationStore}). */
+    /**
+     * Returns the v1 conversation file (delegates to {@link ConversationStore}).
+     */
     @NotNull
     public File conversationFile(@Nullable String basePath) {
         return v1Store.conversationFile(basePath);
     }
 
-    /** Returns the v1 archives directory (delegates to {@link ConversationStore}). */
+    /**
+     * Returns the v1 archives directory (delegates to {@link ConversationStore}).
+     */
     @NotNull
     public File archivesDir(@Nullable String basePath) {
         return v1Store.archivesDir(basePath);
@@ -125,7 +144,7 @@ public final class SessionStoreV2 {
             //noinspection ResultOfMethodCallIgnored  — best-effort mkdirs
             idFile.getParentFile().mkdirs();
             Files.writeString(idFile.toPath(), newId, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
             return newId;
         } catch (IOException e) {
             LOG.warn("Could not read/write current-session-id, using transient UUID", e);
@@ -152,7 +171,7 @@ public final class SessionStoreV2 {
                 sb.append(GSON.toJson(msg)).append('\n');
             }
             Files.writeString(jsonlFile.toPath(), sb.toString(), StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
             // Update sessions index
             updateSessionsIndex(basePath, sessionId, sessionsDir, jsonlFile.getName());
@@ -163,10 +182,10 @@ public final class SessionStoreV2 {
     }
 
     private void updateSessionsIndex(
-            @Nullable String basePath,
-            @NotNull String sessionId,
-            @NotNull File sessionsDir,
-            @NotNull String jsonlFileName) throws IOException {
+        @Nullable String basePath,
+        @NotNull String sessionId,
+        @NotNull File sessionsDir,
+        @NotNull String jsonlFileName) throws IOException {
 
         File indexFile = new File(sessionsDir, SESSIONS_INDEX);
         List<JsonObject> records = readIndexRecords(indexFile);
@@ -187,7 +206,7 @@ public final class SessionStoreV2 {
         if (!found) {
             JsonObject newRec = new JsonObject();
             newRec.addProperty("id", sessionId);
-            newRec.addProperty("agent", "GitHub Copilot");
+            newRec.addProperty("agent", currentAgent);
             newRec.addProperty("directory", directory);
             newRec.addProperty("createdAt", now);
             newRec.addProperty("updatedAt", now);
@@ -198,7 +217,7 @@ public final class SessionStoreV2 {
         JsonArray arr = new JsonArray();
         records.forEach(arr::add);
         Files.writeString(indexFile.toPath(), GSON.toJson(arr), StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     // ── v2 read ───────────────────────────────────────────────────────────────
