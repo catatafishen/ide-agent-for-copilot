@@ -207,8 +207,10 @@ val buildChatUi by tasks.registering {
 
         // Sync to generated resources directory
         copy {
-            from("chat-ui/dist")
-            from("chat-ui/src/chat.css")
+            from("chat-ui/dist")              // chat-components.js, web-app.js, sw.js
+            from("chat-ui/src/chat.css")      // chat component styles
+            from("chat-ui/src/web-app.css")   // web app layout styles
+            from("chat-ui/src/manifest.json") // PWA manifest
             into(outputDir)
         }
     }
