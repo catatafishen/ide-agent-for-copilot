@@ -78,28 +78,28 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         myState.transportMode = mode;
     }
 
-    public @org.jetbrains.annotations.Nullable String getKindReadColorHex() {
-        return myState.getKindReadColorHex();
+    public @org.jetbrains.annotations.Nullable String getKindReadColorKey() {
+        return myState.getKindReadColorKey();
     }
 
-    public void setKindReadColorHex(@org.jetbrains.annotations.Nullable String hex) {
-        myState.setKindReadColorHex(hex);
+    public void setKindReadColorKey(@org.jetbrains.annotations.Nullable String key) {
+        myState.setKindReadColorKey(key);
     }
 
-    public @org.jetbrains.annotations.Nullable String getKindEditColorHex() {
-        return myState.getKindEditColorHex();
+    public @org.jetbrains.annotations.Nullable String getKindEditColorKey() {
+        return myState.getKindEditColorKey();
     }
 
-    public void setKindEditColorHex(@org.jetbrains.annotations.Nullable String hex) {
-        myState.setKindEditColorHex(hex);
+    public void setKindEditColorKey(@org.jetbrains.annotations.Nullable String key) {
+        myState.setKindEditColorKey(key);
     }
 
-    public @org.jetbrains.annotations.Nullable String getKindExecuteColorHex() {
-        return myState.getKindExecuteColorHex();
+    public @org.jetbrains.annotations.Nullable String getKindExecuteColorKey() {
+        return myState.getKindExecuteColorKey();
     }
 
-    public void setKindExecuteColorHex(@org.jetbrains.annotations.Nullable String hex) {
-        myState.setKindExecuteColorHex(hex);
+    public void setKindExecuteColorKey(@org.jetbrains.annotations.Nullable String key) {
+        myState.setKindExecuteColorKey(key);
     }
 
     /**
@@ -131,9 +131,9 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         private TransportMode transportMode = TransportMode.STREAMABLE_HTTP;
         private Set<String> disabledToolIds = new LinkedHashSet<>();
         private boolean defaultsApplied = false;
-        private String kindReadColorHex = null;
-        private String kindEditColorHex = null;
-        private String kindExecuteColorHex = null;
+        private String kindReadColorKey = null;
+        private String kindEditColorKey = null;
+        private String kindExecuteColorKey = null;
 
         public int getPort() {
             return port;
@@ -183,28 +183,28 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
             this.defaultsApplied = defaultsApplied;
         }
 
-        public @org.jetbrains.annotations.Nullable String getKindReadColorHex() {
-            return kindReadColorHex;
+        public @org.jetbrains.annotations.Nullable String getKindReadColorKey() {
+            return kindReadColorKey;
         }
 
-        public void setKindReadColorHex(@org.jetbrains.annotations.Nullable String kindReadColorHex) {
-            this.kindReadColorHex = kindReadColorHex;
+        public void setKindReadColorKey(@org.jetbrains.annotations.Nullable String kindReadColorKey) {
+            this.kindReadColorKey = kindReadColorKey;
         }
 
-        public @org.jetbrains.annotations.Nullable String getKindEditColorHex() {
-            return kindEditColorHex;
+        public @org.jetbrains.annotations.Nullable String getKindEditColorKey() {
+            return kindEditColorKey;
         }
 
-        public void setKindEditColorHex(@org.jetbrains.annotations.Nullable String kindEditColorHex) {
-            this.kindEditColorHex = kindEditColorHex;
+        public void setKindEditColorKey(@org.jetbrains.annotations.Nullable String kindEditColorKey) {
+            this.kindEditColorKey = kindEditColorKey;
         }
 
-        public @org.jetbrains.annotations.Nullable String getKindExecuteColorHex() {
-            return kindExecuteColorHex;
+        public @org.jetbrains.annotations.Nullable String getKindExecuteColorKey() {
+            return kindExecuteColorKey;
         }
 
-        public void setKindExecuteColorHex(@org.jetbrains.annotations.Nullable String kindExecuteColorHex) {
-            this.kindExecuteColorHex = kindExecuteColorHex;
+        public void setKindExecuteColorKey(@org.jetbrains.annotations.Nullable String kindExecuteColorKey) {
+            this.kindExecuteColorKey = kindExecuteColorKey;
         }
     }
 }

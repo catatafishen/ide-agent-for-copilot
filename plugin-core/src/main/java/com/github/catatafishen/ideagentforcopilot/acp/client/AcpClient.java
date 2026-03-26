@@ -815,6 +815,7 @@ public abstract class AcpClient extends AbstractAgentClient {
     // ─── Per-agent binary path settings (application-level) ────────────────
 
     private static final String PROP_CUSTOM_BINARY = "agentbridge.%s.customBinary";
+    private static final String PROP_AGENT_BUBBLE_COLOR = "agentbridge.client.%s.bubbleColor";
 
     /**
      * Returns the user-configured binary path for the given agent ID,
@@ -833,6 +834,26 @@ public abstract class AcpClient extends AbstractAgentClient {
     public static void saveCustomBinaryPath(String agentId, @Nullable String path) {
         PropertiesComponent.getInstance()
             .setValue(PROP_CUSTOM_BINARY.formatted(agentId), path != null ? path.trim() : "", "");
+    }
+
+    /**
+     * Returns the user-configured bubble color key (a {@link com.github.catatafishen.ideagentforcopilot.ui.ThemeColor}
+     * name) for the given CSS client type (e.g. {@code "copilot"}, {@code "claude"}),
+     * or {@code null} if the default color should be used.
+     */
+    public static @Nullable String loadAgentBubbleColorKey(String clientType) {
+        String stored = PropertiesComponent.getInstance()
+            .getValue(PROP_AGENT_BUBBLE_COLOR.formatted(clientType), "").trim();
+        return stored.isEmpty() ? null : stored;
+    }
+
+    /**
+     * Persists the bubble color key for the given CSS client type.
+     * Pass {@code null} or blank to restore the default color.
+     */
+    public static void saveAgentBubbleColorKey(String clientType, @Nullable String colorKey) {
+        PropertiesComponent.getInstance()
+            .setValue(PROP_AGENT_BUBBLE_COLOR.formatted(clientType), colorKey != null ? colorKey : "", "");
     }
 
     // ────────────────────────────────────────────────────────────────────────

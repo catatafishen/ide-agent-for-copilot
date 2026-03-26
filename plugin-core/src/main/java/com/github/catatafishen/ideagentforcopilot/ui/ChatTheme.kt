@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.ui
 
+import com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
@@ -161,6 +162,15 @@ object ChatTheme {
         sb.append("--kind-read:${rgb(kindRead)};--kind-edit:${rgb(kindEdit)};")
         sb.append("--kind-execute:${rgb(kindExecute)};--kind-search:${rgb(kindRead)};")
         sb.append("--kind-think:${rgb(KIND_THINK_COLOR)};--kind-other:${rgb(KIND_OTHER_COLOR)};")
+        // Per-agent bubble color overrides — injected only when the user has chosen a custom color.
+        // The CSS uses var(--client-X-bubble-bg, fallback) so these only take effect when present.
+        for (clientType in listOf("copilot", "claude", "opencode", "junie", "kiro", "codex")) {
+            val colorKey = AcpClient.loadAgentBubbleColorKey(clientType)
+            val themeColor = ThemeColor.fromKey(colorKey)
+            if (themeColor != null) {
+                sb.append("--client-${clientType}-bubble-bg:${rgba(themeColor.color, 0.05)};")
+            }
+        }
         return sb.toString()
     }
 

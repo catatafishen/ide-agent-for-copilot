@@ -2,10 +2,10 @@ package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.services.ToolDefinition;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.github.catatafishen.ideagentforcopilot.ui.ThemeColor;
 import com.github.catatafishen.ideagentforcopilot.ui.ToolKindColors;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
-import com.intellij.ui.ColorPanel;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Settings page: Settings → Tools → AgentBridge → MCP → Tools.
@@ -37,10 +38,9 @@ public final class ToolsConfigurable implements Configurable {
      */
     private final Map<ToolRegistry.Category, List<JBCheckBox>> categoryCheckboxes = new LinkedHashMap<>();
 
-    // Color picker panels for each tool kind
-    private @Nullable ColorPanel readColorPanel;
-    private @Nullable ColorPanel editColorPanel;
-    private @Nullable ColorPanel executeColorPanel;
+    private @Nullable ThemeColorComboBox readColorCombo;
+    private @Nullable ThemeColorComboBox editColorCombo;
+    private @Nullable ThemeColorComboBox executeColorCombo;
 
     public ToolsConfigurable(@NotNull Project project) {
         this.project = project;
@@ -92,6 +92,7 @@ public final class ToolsConfigurable implements Configurable {
             JBPanel<?> toolRow = new JBPanel<>();
             toolRow.setLayout(new BoxLayout(toolRow, BoxLayout.X_AXIS));
             toolRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            toolRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, toolRow.getPreferredSize().height));
 
             // Colored kind dot
             JBLabel dot = new JBLabel("● ");
@@ -110,11 +111,16 @@ public final class ToolsConfigurable implements Configurable {
 
             String desc = tool.description();
             if (!desc.isBlank()) {
-                JBLabel descLabel = new JBLabel(desc);
+                // Use HTML so the label wraps when the panel is width-constrained.
+                // Preferred width is set to 1 so this label does not drive the panel's
+                // preferred width — the wrapping container determines the actual width.
+                JBLabel descLabel = new JBLabel("<html>" + desc + "</html>");
                 descLabel.setFont(descLabel.getFont().deriveFont((float) (JBUI.Fonts.label().getSize() - 1)));
                 descLabel.setForeground(UIUtil.getContextHelpForeground());
                 descLabel.setBorder(JBUI.Borders.empty(0, 36, 3, 0));
                 descLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                descLabel.setPreferredSize(new Dimension(1, descLabel.getPreferredSize().height));
+                descLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, descLabel.getPreferredSize().height));
                 toolsPanel.add(descLabel);
             }
         }
@@ -123,8 +129,15 @@ public final class ToolsConfigurable implements Configurable {
         toolsPanel.add(buildColorPickerSection(settings));
         toolsPanel.add(Box.createVerticalGlue());
 
-        JBScrollPane scrollPane = new JBScrollPane(toolsPanel);
+        // Wrap in a BorderLayout panel so the scroll pane forces the content width.
+        // toolsPanel in NORTH gets the full viewport width, preventing long labels from
+        // widening the panel and pushing the Enable/Disable buttons off-screen.
+        JBPanel<?> scrollContent = new JBPanel<>(new BorderLayout());
+        scrollContent.add(toolsPanel, BorderLayout.NORTH);
+
+        JBScrollPane scrollPane = new JBScrollPane(scrollContent);
         scrollPane.setBorder(JBUI.Borders.empty());
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 
         JBPanel<?> wrapper = new JBPanel<>(new BorderLayout());
         wrapper.add(scrollPane, BorderLayout.CENTER);
@@ -167,7 +180,7 @@ public final class ToolsConfigurable implements Configurable {
     }
 
     /**
-     * Builds the "Tool Kind Colors" section with a [ColorPanel] for each kind.
+     * Builds the "Tool Kind Colors" section with a {@link ThemeColorComboBox} for each kind.
      */
     private JComponent buildColorPickerSection(McpServerSettings settings) {
         JBPanel<?> section = new JBPanel<>();
@@ -181,38 +194,44 @@ public final class ToolsConfigurable implements Configurable {
 
         JBLabel hint = new JBLabel(
             "<html>Customize the accent color used for each tool kind in this settings panel, "
-                + "tool-chip labels in the chat view, and permission dropdowns.</html>");
+                + "tool-chip labels in the chat view, and permission dropdowns. "
+                + "Colors adapt automatically when the IDE theme changes.</html>");
         hint.setFont(JBUI.Fonts.smallFont());
         hint.setForeground(UIUtil.getContextHelpForeground());
         hint.setBorder(JBUI.Borders.empty(0, 0, 8, 0));
         hint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        hint.setPreferredSize(new Dimension(1, hint.getPreferredSize().height));
+        hint.setMaximumSize(new Dimension(Integer.MAX_VALUE, hint.getPreferredSize().height));
         section.add(hint);
 
-        readColorPanel = new ColorPanel();
-        editColorPanel = new ColorPanel();
-        executeColorPanel = new ColorPanel();
+        readColorCombo = new ThemeColorComboBox();
+        editColorCombo = new ThemeColorComboBox();
+        executeColorCombo = new ThemeColorComboBox();
 
-        readColorPanel.setSelectedColor(ToolKindColors.readColor(settings));
-        editColorPanel.setSelectedColor(ToolKindColors.editColor(settings));
-        executeColorPanel.setSelectedColor(ToolKindColors.executeColor(settings));
+        readColorCombo.setSelectedThemeColor(ThemeColor.fromKey(settings.getKindReadColorKey()));
+        editColorCombo.setSelectedThemeColor(ThemeColor.fromKey(settings.getKindEditColorKey()));
+        executeColorCombo.setSelectedThemeColor(ThemeColor.fromKey(settings.getKindExecuteColorKey()));
 
-        section.add(colorRow("Read & Navigate", readColorPanel));
-        section.add(colorRow("Edit & Refactor", editColorPanel));
-        section.add(colorRow("Run & Execute", executeColorPanel));
+        section.add(colorRow("Read & Navigate", readColorCombo));
+        section.add(colorRow("Edit & Refactor", editColorCombo));
+        section.add(colorRow("Run & Execute", executeColorCombo));
 
         return section;
     }
 
-    private static JComponent colorRow(String label, ColorPanel picker) {
+    private static JComponent colorRow(String label, ThemeColorComboBox combo) {
         JBPanel<?> row = new JBPanel<>();
         row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setBorder(JBUI.Borders.empty(2, 0));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
 
         JBLabel lbl = new JBLabel(label);
         lbl.setPreferredSize(new Dimension(JBUI.scale(140), lbl.getPreferredSize().height));
+        lbl.setMaximumSize(new Dimension(JBUI.scale(140), lbl.getPreferredSize().height));
         row.add(lbl);
-        row.add(picker);
+        combo.setMaximumSize(new Dimension(JBUI.scale(180), combo.getPreferredSize().height));
+        row.add(combo);
         row.add(Box.createHorizontalGlue());
         return row;
     }
@@ -235,12 +254,12 @@ public final class ToolsConfigurable implements Configurable {
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             if (entry.getValue().isSelected() != settings.isToolEnabled(entry.getKey())) return true;
         }
-        if (readColorPanel != null && colorDiffersFromSetting(readColorPanel, settings.getKindReadColorHex(),
-            ToolKindColors.DEFAULT_READ)) return true;
-        if (editColorPanel != null && colorDiffersFromSetting(editColorPanel, settings.getKindEditColorHex(),
-            ToolKindColors.DEFAULT_EDIT)) return true;
-        return executeColorPanel != null && colorDiffersFromSetting(executeColorPanel, settings.getKindExecuteColorHex(),
-            ToolKindColors.DEFAULT_EXECUTE);
+        if (readColorCombo != null
+            && !Objects.equals(keyOf(readColorCombo), settings.getKindReadColorKey())) return true;
+        if (editColorCombo != null
+            && !Objects.equals(keyOf(editColorCombo), settings.getKindEditColorKey())) return true;
+        return executeColorCombo != null
+            && !Objects.equals(keyOf(executeColorCombo), settings.getKindExecuteColorKey());
     }
 
     @Override
@@ -249,12 +268,9 @@ public final class ToolsConfigurable implements Configurable {
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             settings.setToolEnabled(entry.getKey(), entry.getValue().isSelected());
         }
-        if (readColorPanel != null)
-            settings.setKindReadColorHex(encodeColor(readColorPanel, ToolKindColors.DEFAULT_READ));
-        if (editColorPanel != null)
-            settings.setKindEditColorHex(encodeColor(editColorPanel, ToolKindColors.DEFAULT_EDIT));
-        if (executeColorPanel != null)
-            settings.setKindExecuteColorHex(encodeColor(executeColorPanel, ToolKindColors.DEFAULT_EXECUTE));
+        if (readColorCombo != null) settings.setKindReadColorKey(keyOf(readColorCombo));
+        if (editColorCombo != null) settings.setKindEditColorKey(keyOf(editColorCombo));
+        if (executeColorCombo != null) settings.setKindExecuteColorKey(keyOf(executeColorCombo));
     }
 
     @Override
@@ -263,39 +279,28 @@ public final class ToolsConfigurable implements Configurable {
         for (Map.Entry<String, JBCheckBox> entry : toolCheckboxes.entrySet()) {
             entry.getValue().setSelected(settings.isToolEnabled(entry.getKey()));
         }
-        if (readColorPanel != null)
-            readColorPanel.setSelectedColor(ToolKindColors.readColor(settings));
-        if (editColorPanel != null)
-            editColorPanel.setSelectedColor(ToolKindColors.editColor(settings));
-        if (executeColorPanel != null)
-            executeColorPanel.setSelectedColor(ToolKindColors.executeColor(settings));
+        if (readColorCombo != null)
+            readColorCombo.setSelectedThemeColor(ThemeColor.fromKey(settings.getKindReadColorKey()));
+        if (editColorCombo != null)
+            editColorCombo.setSelectedThemeColor(ThemeColor.fromKey(settings.getKindEditColorKey()));
+        if (executeColorCombo != null)
+            executeColorCombo.setSelectedThemeColor(ThemeColor.fromKey(settings.getKindExecuteColorKey()));
+    }
+
+    @Override
+    public void disposeUIResources() {
+        readColorCombo = null;
+        editColorCombo = null;
+        executeColorCombo = null;
+        toolCheckboxes.clear();
+        categoryCheckboxes.clear();
     }
 
     /**
-     * Returns true if [panel]'s selected color differs from the given [savedHex] setting
-     * (or the [defaultColor] if [savedHex] is null/blank).
+     * Returns the ThemeColor name for persistence, or null if "Default" is selected.
      */
-    private static boolean colorDiffersFromSetting(ColorPanel panel, @Nullable String savedHex, Color defaultColor) {
-        Color panelColor = panel.getSelectedColor();
-        if (panelColor == null) return false;
-        Color expected = (savedHex != null && !savedHex.isBlank())
-            ? ToolKindColors.parseHex(savedHex)
-            : defaultColor;
-        if (expected == null) expected = defaultColor;
-        return !colorsEqual(panelColor, expected);
-    }
-
-    /**
-     * Returns the hex encoding of [panel]'s selected color, or null if it matches [defaultColor]
-     * (null signals "use default", avoiding unnecessary storage).
-     */
-    private static @Nullable String encodeColor(ColorPanel panel, Color defaultColor) {
-        Color selected = panel.getSelectedColor();
-        if (selected == null || colorsEqual(selected, defaultColor)) return null;
-        return ToolKindColors.toHex(selected);
-    }
-
-    private static boolean colorsEqual(Color a, Color b) {
-        return a.getRed() == b.getRed() && a.getGreen() == b.getGreen() && a.getBlue() == b.getBlue();
+    private static @Nullable String keyOf(ThemeColorComboBox combo) {
+        ThemeColor tc = combo.getSelectedThemeColor();
+        return tc != null ? tc.name() : null;
     }
 }

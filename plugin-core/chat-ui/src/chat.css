@@ -211,23 +211,27 @@ body {
 
 /* Client-specific colors */
 chat-message.client-copilot .agent-bubble {
-    background: rgba(124, 58, 237, 0.05);
+    background: var(--client-copilot-bubble-bg, rgba(124, 58, 237, 0.05));
 }
 
 chat-message.client-claude .agent-bubble {
-    background: rgba(217, 119, 6, 0.05);
+    background: var(--client-claude-bubble-bg, rgba(217, 119, 6, 0.05));
 }
 
 chat-message.client-opencode .agent-bubble {
-    background: rgba(8, 145, 178, 0.05);
+    background: var(--client-opencode-bubble-bg, rgba(8, 145, 178, 0.05));
 }
 
 chat-message.client-junie .agent-bubble {
-    background: rgba(220, 38, 38, 0.05);
+    background: var(--client-junie-bubble-bg, rgba(220, 38, 38, 0.05));
 }
 
 chat-message.client-kiro .agent-bubble {
-    background: rgba(5, 150, 105, 0.05);
+    background: var(--client-kiro-bubble-bg, rgba(5, 150, 105, 0.05));
+}
+
+chat-message.client-codex .agent-bubble {
+    background: var(--client-codex-bubble-bg, rgba(16, 163, 127, 0.05));
 }
 
 .agent-bubble + .agent-bubble {
@@ -261,28 +265,27 @@ working-indicator {
 }
 
 working-indicator.client-copilot {
-    background-color: rgba(124, 58, 237, 0.05);
-    background: rgba(124, 58, 237, 0.05);
+    background: var(--client-copilot-bubble-bg, rgba(124, 58, 237, 0.05));
 }
 
 working-indicator.client-claude {
-    background-color: rgba(217, 119, 6, 0.05);
-    background: rgba(217, 119, 6, 0.05);
+    background: var(--client-claude-bubble-bg, rgba(217, 119, 6, 0.05));
 }
 
 working-indicator.client-opencode {
-    background-color: rgba(8, 145, 178, 0.05);
-    background: rgba(8, 145, 178, 0.05);
+    background: var(--client-opencode-bubble-bg, rgba(8, 145, 178, 0.05));
 }
 
 working-indicator.client-junie {
-    background-color: rgba(220, 38, 38, 0.05);
-    background: rgba(220, 38, 38, 0.05);
+    background: var(--client-junie-bubble-bg, rgba(220, 38, 38, 0.05));
 }
 
 working-indicator.client-kiro {
-    background-color: rgba(5, 150, 105, 0.05);
-    background: rgba(5, 150, 105, 0.05);
+    background: var(--client-kiro-bubble-bg, rgba(5, 150, 105, 0.05));
+}
+
+working-indicator.client-codex {
+    background: var(--client-codex-bubble-bg, rgba(16, 163, 127, 0.05));
 }
 
 working-indicator[hidden] {

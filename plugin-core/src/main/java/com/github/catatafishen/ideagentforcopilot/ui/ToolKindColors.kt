@@ -20,22 +20,24 @@ object ToolKindColors {
     // Defaults match ChatTheme.KIND_*_COLOR values.
     @JvmField
     val DEFAULT_READ: JBColor = JBColor(Color(0x3A, 0x95, 0x95), Color(100, 185, 185))
+
     @JvmField
     val DEFAULT_EDIT: JBColor = JBColor(Color(0xA0, 0x7A, 0x3A), Color(205, 155, 95))
+
     @JvmField
     val DEFAULT_EXECUTE: JBColor = JBColor(Color(0x4A, 0x90, 0x4A), Color(130, 190, 130))
 
     @JvmStatic
     fun readColor(settings: McpServerSettings?): JBColor =
-        parseHex(settings?.kindReadColorHex) ?: DEFAULT_READ
+        ThemeColor.fromKey(settings?.kindReadColorKey)?.color ?: DEFAULT_READ
 
     @JvmStatic
     fun editColor(settings: McpServerSettings?): JBColor =
-        parseHex(settings?.kindEditColorHex) ?: DEFAULT_EDIT
+        ThemeColor.fromKey(settings?.kindEditColorKey)?.color ?: DEFAULT_EDIT
 
     @JvmStatic
     fun executeColor(settings: McpServerSettings?): JBColor =
-        parseHex(settings?.kindExecuteColorHex) ?: DEFAULT_EXECUTE
+        ThemeColor.fromKey(settings?.kindExecuteColorKey)?.color ?: DEFAULT_EXECUTE
 
     /**
      * Returns a tinted background by blending [alpha] proportion of [color] into the
@@ -55,16 +57,4 @@ object ToolKindColors {
     /** Encodes a [Color] to a lowercase hex string (e.g. `"#3a9595"`). */
     @JvmStatic
     fun toHex(color: Color): String = "#%02x%02x%02x".format(color.red, color.green, color.blue)
-
-    /** Decodes a hex color string to a [JBColor], or returns null on failure. */
-    @JvmStatic
-    fun parseHex(hex: String?): JBColor? {
-        if (hex.isNullOrBlank()) return null
-        return try {
-            val c = Color.decode(hex)
-            JBColor(c, c)
-        } catch (_: NumberFormatException) {
-            null
-        }
-    }
 }

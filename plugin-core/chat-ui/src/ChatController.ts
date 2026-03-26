@@ -630,7 +630,7 @@ const ChatController = {
         const container = this._container();
         const wi = container?.workingIndicator;
         if (wi) {
-            wi.classList.remove('client-copilot', 'client-claude', 'client-opencode', 'client-junie', 'client-kiro');
+            wi.classList.remove('client-copilot', 'client-claude', 'client-opencode', 'client-junie', 'client-kiro', 'client-codex');
             if (this._currentClientType) wi.classList.add('client-' + this._currentClientType);
         }
         wi?.show();
