@@ -15,7 +15,9 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
+import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import javax.swing.JComponent
@@ -35,6 +37,47 @@ private fun Int.toPluginPermission() = if (this == 1) ToolPermission.ASK else To
 
 private const val SILENT_TOOLTIP =
     "<html>This tool runs without a permission request — no control available</html>"
+
+/**
+ * Permission batch groups, matching the tool-chip CSS color palette.
+ *
+ * CSS source (chat.css):
+ *   --kind-read:    rgb(100, 185, 185)
+ *   --kind-edit:    rgb(205, 155,  95)
+ *   --kind-execute: rgb(130, 190, 130)
+ */
+private enum class KindGroup(
+    val label: String,
+    val description: String,
+    private val lightColor: Color,
+    private val darkColor: Color,
+) {
+    READ(
+        "Read & Navigate",
+        "File reads, search, git log/diff, code quality checks",
+        Color(0, 130, 130), Color(100, 185, 185)
+    ),
+    EDIT(
+        "Edit & Refactor",
+        "File writes, git stage/commit/merge, refactoring",
+        Color(150, 90, 20), Color(205, 155, 95)
+    ),
+    EXECUTE(
+        "Run & Execute",
+        "Shell commands, run configs, git push/reset, delete files",
+        Color(30, 120, 30), Color(130, 190, 130)
+    );
+
+    val color: Color get() = JBColor(lightColor, darkColor)
+}
+
+/** Maps a [ToolDefinition] to its batch [KindGroup], or null for unclassified tools. */
+private fun ToolDefinition.kindGroup(): KindGroup? = when {
+    isReadOnly -> KindGroup.READ
+    kind() == "edit" -> KindGroup.EDIT
+    kind() == "execute" -> KindGroup.EXECUTE
+    else -> null
+}
 
 /** Navigation node user-object for the tree. */
 private sealed class NavNode(val label: String) {
@@ -82,7 +125,8 @@ private class NavTreeCellRenderer : TreeCellRenderer {
 /**
  * Split-panel showing tool permissions:
  * left  = navigation tree (sections + categories),
- * right = scrollable grid for the selected set of tools.
+ * right = scrollable grid for the selected set of tools, with Quick Permissions
+ *         group controls at the top.
  *
  * This panel is purely about permission levels (allow/ask/deny).
  * Tool enable/disable is managed in Tool Registration settings.
@@ -97,19 +141,27 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     )
 
     private val rows = mutableListOf<ToolRow>()
+
+    /** Maps each KindGroup to its batch combo; populated in [buildGroupControlsPanel]. */
+    private val groupCombos = mutableMapOf<KindGroup, ComboBox<String>>()
+
+    /** Panel holding the Quick Permissions section; rebuilt when [reload] is called. */
+    private var groupControlsPanel: JBPanel<*> = JBPanel<JBPanel<*>>()
+
     private val rightContent = JBPanel<JBPanel<*>>(BorderLayout())
     val component: JComponent
 
     init {
         buildAllRows()
+        groupControlsPanel = buildGroupControlsPanel()
         component = buildMainComponent()
     }
 
     // ── Row construction ──────────────────────────────────────────────────────
 
     private fun buildAllRows() {
-        for (tool in registry.getAllTools()) {
-            if (tool.isBuiltIn()) continue
+        for (tool in registry.allTools) {
+            if (tool.isBuiltIn) continue
 
             val permCombo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
                 setMinimumAndPreferredWidth(JBUI.scale(108))
@@ -126,7 +178,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         tool: ToolDefinition,
         permCombo: ComboBox<String>?
     ): Pair<ComboBox<String>?, ComboBox<String>?> {
-        if (!tool.supportsPathSubPermissions() || tool.isBuiltIn() || permCombo == null) {
+        if (!tool.supportsPathSubPermissions() || tool.isBuiltIn || permCombo == null) {
             return Pair(null, null)
         }
 
@@ -160,6 +212,82 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         return Pair(inProjectCombo, outProjectCombo)
     }
 
+    // ── Group controls panel ──────────────────────────────────────────────────
+
+    /**
+     * Builds the "Quick Permissions" panel shown at the top of the right panel.
+     * Each [KindGroup] gets a colored label and a batch Allow/Ask combo that
+     * propagates to all matching tool rows when changed.
+     */
+    private fun buildGroupControlsPanel(): JBPanel<*> {
+        groupCombos.clear()
+        val panel = JBPanel<JBPanel<*>>(GridBagLayout())
+        panel.border = JBUI.Borders.empty(10, 16, 8, 16)
+
+        val gbc = GridBagConstraints().apply {
+            anchor = GridBagConstraints.WEST
+            fill = GridBagConstraints.NONE
+            insets = JBUI.insets(2, 0)
+            gridx = 0; gridy = 0
+        }
+
+        // Section header
+        gbc.gridwidth = 3; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
+        panel.add(TitledSeparator("Quick Permissions"), gbc)
+        gbc.gridy++
+        gbc.gridwidth = 1; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0.0
+        gbc.insets = JBUI.insets(4, 0, 2, 0)
+
+        for (group in KindGroup.entries) {
+            // Colored "●" dot
+            gbc.gridx = 0
+            panel.add(JBLabel("● ").apply {
+                foreground = group.color
+                font = UIUtil.getLabelFont().deriveFont(Font.BOLD, UIUtil.getLabelFont().size + 2f)
+                toolTipText = group.description
+            }, gbc)
+
+            // Group name
+            gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL
+            panel.add(JBLabel(group.label).apply {
+                toolTipText = group.description
+            }, gbc)
+
+            // Batch combo
+            gbc.gridx = 2; gbc.weightx = 0.0; gbc.fill = GridBagConstraints.NONE
+            val combo = ComboBox(PLUGIN_PERM_OPTIONS).apply {
+                setMinimumAndPreferredWidth(JBUI.scale(108))
+                selectedIndex = computeGroupInitialIndex(group)
+                toolTipText = "<html>Set <b>${group.label}</b> permission for all tools in this group</html>"
+            }
+            groupCombos[group] = combo
+            combo.addActionListener { applyGroupPermission(group) }
+            panel.add(combo, gbc)
+
+            gbc.gridy++
+            gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0.0
+        }
+
+        return panel
+    }
+
+    /**
+     * Computes the initial combo index for a [KindGroup]:
+     * if any tool in the group is set to Ask, shows Ask; otherwise shows Allow.
+     */
+    private fun computeGroupInitialIndex(group: KindGroup): Int {
+        val groupRows = rows.filter { it.tool.kindGroup() == group && it.permCombo != null }
+        return if (groupRows.any { it.permCombo!!.selectedIndex == 1 }) 1 else 0
+    }
+
+    /** Propagates the group combo selection to all individual tool combos in that group. */
+    private fun applyGroupPermission(group: KindGroup) {
+        val idx = groupCombos[group]?.selectedIndex ?: return
+        rows.filter { it.tool.kindGroup() == group }.forEach { row ->
+            row.permCombo?.selectedIndex = idx
+        }
+    }
+
     // ── Main split layout ─────────────────────────────────────────────────────
 
     private fun buildMainComponent(): JComponent {
@@ -167,7 +295,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
 
         // IntelliJ plugin tools section
         val pluginRoot = DefaultMutableTreeNode(NavNode.Section(isBuiltIn = false))
-        val pluginCats = rows.filter { !it.tool.isBuiltIn() }.map { it.tool.category() }.distinct()
+        val pluginCats = rows.filter { !it.tool.isBuiltIn }.map { it.tool.category() }.distinct()
         for (cat in pluginCats) pluginRoot.add(DefaultMutableTreeNode(NavNode.Cat(cat, isBuiltIn = false)))
         root.add(pluginRoot)
 
@@ -185,15 +313,15 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         // Initial selection → plugin section
         val pluginPath = TreePath(arrayOf(root, pluginRoot))
         tree.selectionPath = pluginPath
-        showTools { !it.tool.isBuiltIn() }
+        showTools { !it.tool.isBuiltIn }
 
         tree.addTreeSelectionListener { e ->
             val node = e?.newLeadSelectionPath?.lastPathComponent as? DefaultMutableTreeNode
                 ?: return@addTreeSelectionListener
             when (val nav = node.userObject) {
-                is NavNode.Section -> showTools { it.tool.isBuiltIn() == nav.isBuiltIn }
+                is NavNode.Section -> showTools { it.tool.isBuiltIn == nav.isBuiltIn }
                 is NavNode.Cat -> showTools {
-                    it.tool.category() == nav.category && it.tool.isBuiltIn() == nav.isBuiltIn
+                    it.tool.category() == nav.category && it.tool.isBuiltIn == nav.isBuiltIn
                 }
 
                 else -> Unit // other node types — no action needed
@@ -217,6 +345,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     private fun showTools(filter: (ToolRow) -> Boolean) {
         val filtered = rows.filter(filter)
         rightContent.removeAll()
+        rightContent.add(groupControlsPanel, BorderLayout.NORTH)
         if (filtered.isEmpty()) {
             val empty = JBLabel("No tools in this category.", SwingConstants.CENTER)
             empty.foreground = JBUI.CurrentTheme.Label.disabledForeground()
@@ -286,6 +415,16 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
         if (row.permCombo != null) {
             val wrapper = JBPanel<JBPanel<*>>(BorderLayout())
             wrapper.add(row.permCombo, BorderLayout.WEST)
+            // Show "(custom)" indicator if tool perm differs from its group's batch setting
+            val group = row.tool.kindGroup()
+            val groupIdx = group?.let { groupCombos[it]?.selectedIndex }
+            if (groupIdx != null && row.permCombo.selectedIndex != groupIdx) {
+                wrapper.add(JBLabel(" (custom)").apply {
+                    font = JBUI.Fonts.smallFont().deriveFont(Font.ITALIC)
+                    foreground = JBUI.CurrentTheme.Label.disabledForeground()
+                    toolTipText = "This tool's permission differs from the '${group.label}' group default"
+                }, BorderLayout.CENTER)
+            }
             content.add(wrapper, gbc)
         } else {
             content.add(JBLabel("Runs silently", AllIcons.Actions.Suspend, SwingConstants.LEFT).apply {
@@ -337,6 +476,7 @@ internal class PermissionsPanel(private val settings: AgentUiSettings, private v
     fun reload() {
         rows.clear()
         buildAllRows()
+        groupControlsPanel = buildGroupControlsPanel()
         rightContent.removeAll()
         rightContent.revalidate()
         rightContent.repaint()
