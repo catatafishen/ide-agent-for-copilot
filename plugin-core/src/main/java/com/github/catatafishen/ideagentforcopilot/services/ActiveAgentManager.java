@@ -316,9 +316,19 @@ public final class ActiveAgentManager implements Disposable {
 
     /**
      * Restart the agent process.
+     *
+     * <p>Before stopping the CLI, exports the current v2 session to the agent's native
+     * format. This ensures the native session directory has a valid {@code events.jsonl}
+     * (or equivalent) so the CLI can resume on restart — even if the previous CLI process
+     * was killed before flushing its event log to disk.</p>
      */
     public synchronized void restart() {
         LOG.info("Restarting ACP client");
+
+        // Export the v2 session to native format before stopping the CLI.
+        // start() calls awaitPendingExport() to wait for completion.
+        SessionSwitchService.getInstance(project).exportForRestart(getActiveProfileId());
+
         stop();
         clearCachedConfig();
         start();

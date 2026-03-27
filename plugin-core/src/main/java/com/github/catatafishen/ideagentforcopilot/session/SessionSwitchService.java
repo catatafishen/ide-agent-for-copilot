@@ -131,6 +131,26 @@ public final class SessionSwitchService implements Disposable {
     }
 
     /**
+     * Prepares the native session files for a same-agent restart (e.g., plugin restart).
+     *
+     * <p>When the CLI process is killed and restarted for the same agent, its own
+     * {@code events.jsonl} may not have been flushed to disk. This method exports
+     * the current v2 session (our source of truth) to the agent's native format,
+     * creating a fresh session directory with a valid {@code events.jsonl} so the
+     * CLI can resume via {@code --resume=<id>}.</p>
+     *
+     * <p>Runs asynchronously — callers should use {@link #awaitPendingExport(long)}
+     * before starting the new process.</p>
+     *
+     * @param profileId profile ID of the agent being restarted
+     */
+    public void exportForRestart(@NotNull String profileId) {
+        pendingExport = CompletableFuture.runAsync(
+            () -> doExport(profileId, profileId),
+            AppExecutorUtil.getAppExecutorService());
+    }
+
+    /**
      * Blocks until any in-progress session export completes, or until {@code timeoutMs} elapses.
      * Safe to call when no export is running — returns immediately.
      * <p>

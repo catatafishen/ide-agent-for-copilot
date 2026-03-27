@@ -473,11 +473,11 @@ After all ten bugs above were fixed (commits `db56f7c` through `f181688`), the
 2. `mergeConsecutiveSameRole()` (Bug 8) — prevents consecutive user messages that
    cause Claude API errors
 
-| Path              | Status | Notes                              |
-|-------------------|--------|------------------------------------|
-| Copilot → Claude  | ✅      | Confirmed working as of 2026-03-27 |
-| Claude → Copilot  | ✅      | Confirmed working as of 2026-03-27 |
-| Copilot → Copilot | ❓      | Not yet tested after Bug 9 fix     |
+| Path              | Status | Notes                                                        |
+|-------------------|--------|--------------------------------------------------------------|
+| Copilot → Claude  | ✅      | Confirmed working as of 2026-03-27                           |
+| Claude → Copilot  | ✅      | Confirmed working as of 2026-03-27                           |
+| Copilot → Copilot | ❓      | Bug 23 fix: restart() now exports v2 session — needs testing |
 
 ### ✅ Claude → Copilot Resume: Confirmed Working (2026-03-27)
 
@@ -664,20 +664,20 @@ clients that ran outside the plugin.
 
 ### Current Status (2026-03-27)
 
-| Route                   | Status | Notes                                    |
-|-------------------------|--------|------------------------------------------|
-| Copilot → Universal v2  | ✅      | CopilotClientImporter confirmed working  |
-| Claude → Universal v2   | ✅      | ClaudeClientImporter confirmed working   |
-| Codex → Universal v2    | ❓      | CodexClientImporter implemented, untested |
+| Route                   | Status | Notes                                         |
+|-------------------------|--------|-----------------------------------------------|
+| Copilot → Universal v2  | ✅      | CopilotClientImporter confirmed working       |
+| Claude → Universal v2   | ✅      | ClaudeClientImporter confirmed working        |
+| Codex → Universal v2    | ❓      | CodexClientImporter implemented, untested     |
 | OpenCode → Universal v2 | 🔧     | Bugs 12-18 fixed, driver fix (Bug 19) applied |
-| Junie → Universal v2    | ❓      | AnthropicClientImporter, untested        |
-| Kiro → Universal v2     | ❓      | AnthropicClientImporter, untested        |
-| Universal v2 → Copilot  | 🔧     | CWD fix (Bug 20) applied, awaiting retest |
-| Universal v2 → Claude   | ✅      | Confirmed working                        |
-| Universal v2 → Codex    | ❓      | CodexClientExporter implemented, untested |
-| Universal v2 → OpenCode | 🔧     | Bugs 12-19 fixed, driver fix applied     |
-| Universal v2 → Junie    | ❓      | AnthropicClientExporter, untested        |
-| Universal v2 → Kiro     | ❓      | AnthropicClientExporter, untested        |
+| Junie → Universal v2    | ❓      | AnthropicClientImporter, untested             |
+| Kiro → Universal v2     | ❓      | AnthropicClientImporter, untested             |
+| Universal v2 → Copilot  | 🔧     | CWD fix (Bug 20) applied, awaiting retest     |
+| Universal v2 → Claude   | ✅      | Confirmed working                             |
+| Universal v2 → Codex    | ❓      | CodexClientExporter implemented, untested     |
+| Universal v2 → OpenCode | 🔧     | Bugs 12-19 fixed, driver fix applied          |
+| Universal v2 → Junie    | ❓      | AnthropicClientExporter, untested             |
+| Universal v2 → Kiro     | ❓      | AnthropicClientExporter, untested             |
 
 ### Bug 22: `buildCommand()` clear-after-read loses resume ID (2026-03-27)
 
@@ -705,4 +705,25 @@ silently create a fresh session.
 **Fix**: Removed `settings.setResumeSessionId(null)` from `buildCommand()`. The explicit
 clear is redundant because `persistResumeSessionId(newId)` in `createSession()` naturally
 overwrites the old value. If `createSession()` fails, the old ID is preserved for retry.
+
+### Bug 23: Same-agent restart loses context — `restart()` skips session export
+
+**Symptom**: Copilot → restart plugin → Copilot always starts a fresh session with no
+context. The CLI was launched with `--resume=<id>` pointing to a valid session directory,
+but that directory had no `events.jsonl` file — only `workspace.yaml` and empty subdirs.
+
+**Root cause**: `ActiveAgentManager.restart()` did `stop(); start()` with no session
+export step. Unlike `switchAgent()` (which calls `SessionSwitchService.onAgentSwitch()`
+→ `doExport()` → `exportToCopilot()`), `restart()` relied entirely on the CLI's own
+native `events.jsonl`. The Copilot CLI writes `events.jsonl` incrementally during the
+conversation — if the CLI process is killed before it flushes any events, the file
+doesn't exist. On restart, `--resume=<id>` finds the directory but no events → the CLI
+creates a fresh session instead.
+
+**Fix**: `restart()` now calls `SessionSwitchService.exportForRestart(profileId)` before
+stopping the CLI. This exports the current v2 session (the plugin's authoritative source
+of truth, kept up-to-date on every conversation save) to the agent's native format,
+creating a new session directory with a valid `events.jsonl`. The `resumeSessionId` is
+set to the new directory, so the CLI can resume on restart. `start()` already calls
+`awaitPendingExport()` to wait for the async export to complete before launching.
 
