@@ -16,7 +16,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,9 +44,9 @@ public final class CodexClientExporter {
 
     @Nullable
     public static String exportSession(
-            @NotNull List<SessionMessage> messages,
-            @NotNull Path sessionsDir,
-            @NotNull Path dbPath) {
+        @NotNull List<SessionMessage> messages,
+        @NotNull Path sessionsDir,
+        @NotNull Path dbPath) {
         if (messages.isEmpty()) return null;
 
         try {
@@ -72,7 +76,7 @@ public final class CodexClientExporter {
             convertMessageToRolloutItems(msg, sb);
         }
         Files.writeString(rolloutFile, sb.toString(), StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     private static void convertMessageToRolloutItems(@NotNull SessionMessage msg, @NotNull StringBuilder sb) {
@@ -193,18 +197,18 @@ public final class CodexClientExporter {
             pragmaStmt.execute("PRAGMA journal_mode=WAL");
 
             pragmaStmt.execute("""
-                    CREATE TABLE IF NOT EXISTS threads (
-                        id TEXT PRIMARY KEY,
-                        rollout_path TEXT NOT NULL,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL,
-                        archived INTEGER DEFAULT 0,
-                        memory_mode TEXT
-                    )""");
+                CREATE TABLE IF NOT EXISTS threads (
+                    id TEXT PRIMARY KEY,
+                    rollout_path TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    archived INTEGER DEFAULT 0,
+                    memory_mode TEXT
+                )""");
 
             long now = System.currentTimeMillis() / 1000;
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT OR REPLACE INTO threads (id, rollout_path, created_at, updated_at, archived) VALUES (?, ?, ?, ?, 0)")) {
+                "INSERT OR REPLACE INTO threads (id, rollout_path, created_at, updated_at, archived) VALUES (?, ?, ?, ?, 0)")) {
                 ps.setString(1, threadId);
                 ps.setString(2, rolloutPath);
                 ps.setLong(3, now);

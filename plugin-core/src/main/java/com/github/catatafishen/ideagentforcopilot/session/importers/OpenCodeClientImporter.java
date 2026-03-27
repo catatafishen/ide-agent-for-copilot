@@ -9,8 +9,14 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class OpenCodeClientImporter {
 
@@ -53,7 +59,7 @@ public final class OpenCodeClientImporter {
                 pragmaStmt.execute("PRAGMA journal_mode=WAL");
             }
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1")) {
+                "SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1")) {
                 ps.setString(1, projectDir);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
@@ -93,12 +99,12 @@ public final class OpenCodeClientImporter {
 
                 if (!parts.isEmpty()) {
                     result.add(new SessionMessage(
-                            msgRow.id,
-                            msgRow.role != null ? msgRow.role : "assistant",
-                            parts,
-                            msgRow.timeCreated,
-                            "OpenCode",
-                            extractModel(msgRow.data)
+                        msgRow.id,
+                        msgRow.role != null ? msgRow.role : "assistant",
+                        parts,
+                        msgRow.timeCreated,
+                        "OpenCode",
+                        extractModel(msgRow.data)
                     ));
                 }
             }
@@ -114,7 +120,7 @@ public final class OpenCodeClientImporter {
     private static List<MessageRow> loadMessages(@NotNull Connection conn, @NotNull String sessionId) throws SQLException {
         List<MessageRow> rows = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created ASC")) {
+            "SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created ASC")) {
             ps.setString(1, sessionId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -136,7 +142,7 @@ public final class OpenCodeClientImporter {
     private static List<JsonObject> loadParts(@NotNull Connection conn, @NotNull String messageId) throws SQLException {
         List<JsonObject> parts = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT data FROM part WHERE message_id = ? ORDER BY time_created ASC")) {
+            "SELECT data FROM part WHERE message_id = ? ORDER BY time_created ASC")) {
             ps.setString(1, messageId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -194,11 +200,11 @@ public final class OpenCodeClientImporter {
     }
 
     private record MessageRow(
-            @NotNull String id,
-            @Nullable String role,
-            @Nullable String data,
-            @Nullable JsonObject dataObj,
-            long timeCreated
+        @NotNull String id,
+        @Nullable String role,
+        @Nullable String data,
+        @Nullable JsonObject dataObj,
+        long timeCreated
     ) {
     }
 }
