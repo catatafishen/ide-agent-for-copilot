@@ -112,6 +112,11 @@ public final class OpenCodeClient extends AcpClient {
     }
 
     @Override
+    protected boolean supportsSessionResume() {
+        return true;
+    }
+
+    @Override
     protected void customizeNewSession(String cwd, int mcpPort, JsonObject params) {
         // OpenCode requires mcpServers in session/new with type "http" (not "sse" or "local")
         // and needs an empty "headers" array per its Zod schema validation

@@ -94,7 +94,8 @@ public abstract class AcpClient extends AbstractAgentClient {
     private @Nullable String launchCwd;
     /**
      * Tracks the resume session ID requested in the current launch cycle.
-     * Set in {@link #buildNewSessionParams}, checked after {@link #onSessionCreated}.
+     * Set at the start of {@link #createSession}, used by {@link #resumeSession} and
+     * {@link #detectResumeFailed}.
      */
     private @Nullable String requestedResumeId;
     private final List<Model> availableModels = new ArrayList<>();
@@ -278,6 +279,19 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
         try {
             beforeCreateSession(cwd);
+            requestedResumeId = loadResumeSessionId();
+
+            // Agents that implement session/resume as a separate RPC method (e.g. OpenCode)
+            // are tried first. On failure, fall back to the standard session/new path.
+            if (requestedResumeId != null && supportsSessionResume()) {
+                try {
+                    return resumeSession(cwd, requestedResumeId);
+                } catch (Exception e) {
+                    LOG.warn(displayName() + ": session/resume failed for " + requestedResumeId
+                        + ", falling back to session/new: " + e.getMessage());
+                }
+            }
+
             JsonObject params = buildNewSessionParams(cwd);
 
             CompletableFuture<JsonElement> future = transport.sendRequest("session/new", params);
@@ -288,7 +302,8 @@ public abstract class AcpClient extends AbstractAgentClient {
             LOG.debug(displayName() + ": session/new: " + (response.models() != null ? response.models().size() : 0) + " model(s), "
                 + (response.modes() != null ? response.modes().size() : 0) + " mode(s)");
 
-            processNewSessionResponse(response);
+            currentSessionId = response.sessionId();
+            processSessionResponse(response);
 
             onSessionCreated(currentSessionId);
             detectResumeFailed(currentSessionId);
@@ -308,18 +323,22 @@ public abstract class AcpClient extends AbstractAgentClient {
         params.addProperty("cwd", cwd);
         customizeNewSession(cwd, mcpPort, params);
 
-        // Request continuation of the previous conversation if one was saved.
-        requestedResumeId = loadResumeSessionId();
-        if (requestedResumeId != null) {
+        // Only add resumeSessionId to session/new for agents that don't support the
+        // separate session/resume RPC method. Agents that do support it have already
+        // been tried via resumeSession() before reaching this point.
+        if (!supportsSessionResume() && requestedResumeId != null) {
             params.addProperty("resumeSessionId", requestedResumeId);
             LOG.info(displayName() + ": requesting resume of session " + requestedResumeId);
         }
         return params;
     }
 
-    private void processNewSessionResponse(NewSessionResponse response) {
-        currentSessionId = response.sessionId();
-
+    /**
+     * Processes the models, modes, and config options from a session response.
+     * Used by both {@code session/new} and {@code session/resume} paths.
+     * The caller is responsible for setting {@code currentSessionId} before calling this.
+     */
+    private void processSessionResponse(NewSessionResponse response) {
         if (response.models() != null) {
             availableModels.clear();
             availableModels.addAll(response.models());
@@ -370,6 +389,49 @@ public abstract class AcpClient extends AbstractAgentClient {
             }
         }
         LOG.debug(displayName() + ": session/new: " + availableConfigOptions.size() + " config option(s)");
+    }
+
+    /**
+     * Whether this agent supports the {@code session/resume} RPC method as a separate call
+     * from {@code session/new}.
+     * <p>
+     * When {@code true}, {@link #createSession(String)} will attempt {@code session/resume}
+     * before falling back to {@code session/new}. When {@code false} (default), the
+     * {@code resumeSessionId} parameter is passed inside {@code session/new} instead.
+     */
+    protected boolean supportsSessionResume() {
+        return false;
+    }
+
+    /**
+     * Resumes an existing session via the {@code session/resume} RPC method.
+     * <p>
+     * Only called for agents that override {@link #supportsSessionResume()} to return {@code true}.
+     * The response has no {@code sessionId} — the provided ID is reused.
+     *
+     * @return the resumed session ID (same as {@code sessionId} param)
+     * @throws Exception if the RPC call fails (caller falls back to {@code session/new})
+     */
+    private String resumeSession(String cwd, String sessionId) throws Exception {
+        JsonObject params = new JsonObject();
+        params.addProperty(KEY_SESSION_ID, sessionId);
+        params.addProperty("cwd", cwd);
+        int mcpPort = resolveMcpPort();
+        customizeNewSession(cwd, mcpPort, params);
+
+        LOG.info(displayName() + ": attempting session/resume for " + sessionId);
+        CompletableFuture<JsonElement> future = transport.sendRequest("session/resume", params);
+        JsonElement result = future.get(SESSION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        LOG.debug(displayName() + ": session/resume raw response: " + result);
+
+        NewSessionResponse response = gson.fromJson(result, NewSessionResponse.class);
+        currentSessionId = sessionId;
+        processSessionResponse(response);
+
+        LOG.info(displayName() + ": successfully resumed session " + sessionId);
+        onSessionCreated(sessionId);
+        persistResumeSessionId(sessionId);
+        return sessionId;
     }
 
     @Override

@@ -75,9 +75,12 @@ When the user switches from agent A to agent B:
    identifier so the agent client knows to resume on next `session/new`.
 
 3. **Agent client starts** and calls `AcpClient.createSession()`:
-    - `buildNewSessionParams()` reads `resumeSessionId` from `GenericSettings`
-    - If set, adds `"resumeSessionId": "<id>"` to the ACP `session/new` request
-    - The ACP server (Copilot CLI, Kiro, etc.) loads the session by that ID
+    - Loads `resumeSessionId` from `GenericSettings`
+    - If the agent supports `session/resume` as a separate RPC method (e.g. OpenCode),
+      sends `session/resume` with `{sessionId, cwd, mcpServers}` first. Falls back to
+      `session/new` on failure.
+    - Otherwise, adds `"resumeSessionId": "<id>"` to the ACP `session/new` request
+    - `detectResumeFailed()` enables injection fallback if the agent ignored the ID
 
 ## Native Session Locations
 
@@ -132,7 +135,7 @@ continuation of the exported session. The mechanism varies by client:
 | Junie      | `resumeSessionId` in ACP `session/new`                      | `GenericSettings("junie", project)`                                  |
 | Claude CLI | `--resume <id>` CLI flag                                    | `cliSessionIds` map (in-memory only) + `cliResumeSessionId` property |
 | Codex      | `codexThreadId`                                             | `PropertiesComponent` (profile-prefixed)                             |
-| OpenCode   | (no resume ID — exports directly to SQLite)                 | N/A                                                                  |
+| OpenCode   | `session/resume` ACP method (separate from `session/new`)   | `GenericSettings("opencode", project)`                               |
 
 **Critical:** If the exporter writes session files but does NOT set the resume ID,
 the new agent will start a blank session and the exported files are orphaned.
@@ -781,4 +784,31 @@ which checks if the resume session exists at the legacy `.agent-work/copilot/ses
 path and creates a symlink to it at `~/.copilot/session-state/` if the new location is empty.
 
 **Status**: Pending restart to verify.
+
+### Bug 26: OpenCode `session/resume` uses separate RPC method
+
+**Symptom**: OpenCode session resume never worked. The `resumeSessionId` parameter sent inside
+`session/new` was silently ignored by OpenCode's Zod schema validation, which strips unknown
+fields. The plugin's `detectResumeFailed()` correctly detected the failure and enabled the
+injection fallback, but the actual resume was never attempted via the correct method.
+
+**Root cause**: OpenCode implements session resume via a **separate `session/resume` RPC method**
+(distinct from `session/new`). The schemas are:
+
+- `session/new` request: `{cwd: string, mcpServers?: McpServer[]}`  — no `resumeSessionId`
+- `session/resume` request: `{sessionId: string, cwd: string, mcpServers?: McpServer[]}`
+- `session/resume` response: `{configOptions?, models?, modes?}`  — no `sessionId` (reuses provided ID)
+
+The handler also guards with `if (!agent.unstable_resumeSession)` and the method prefix
+`unstable_` confirms this is still a non-finalized API in OpenCode v1.2.27.
+
+**Fix**: Added `supportsSessionResume()` hook to `AcpClient` (default false). `OpenCodeClient`
+overrides it to return true. `createSession()` now tries `session/resume` first when a resume
+ID is available and the agent supports it. On failure, falls back to `session/new`.
+The `resumeSessionId` parameter is only added to `session/new` for agents that do NOT support
+the separate resume method (Copilot, Kiro, Junie).
+
+**Related**: [anomalyco/opencode#8931](https://github.com/anomalyco/opencode/issues/8931),
+[xsa-dev/anomalyco-opencode#1](https://github.com/xsa-dev/anomalyco-opencode/pull/1)
+
 
