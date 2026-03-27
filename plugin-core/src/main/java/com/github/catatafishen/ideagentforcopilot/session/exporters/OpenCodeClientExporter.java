@@ -61,6 +61,25 @@ public final class OpenCodeClientExporter {
     }
 
     /**
+     * Opens a SQLite connection, ensuring the JDBC driver is loaded first.
+     * IntelliJ plugins use a custom classloader that {@link java.sql.DriverManager}
+     * does not search, so we must explicitly load the driver class.
+     */
+    @NotNull
+    public static Connection openSqlite(@NotNull Path dbPath) throws SQLException {
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("SQLite JDBC driver not found on classpath", e);
+        }
+        Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA journal_mode=WAL");
+        }
+        return conn;
+    }
+
+    /**
      * Exports v2 session messages into the OpenCode SQLite database.
      *
      * @param messages   the v2 session messages to export
@@ -88,13 +107,8 @@ public final class OpenCodeClientExporter {
         }
 
         String sessionId = generateId("ses");
-        String url = "jdbc:sqlite:" + dbPath;
 
-        try (Connection conn = DriverManager.getConnection(url)) {
-            try (Statement pragmaStmt = conn.createStatement()) {
-                pragmaStmt.execute("PRAGMA journal_mode=WAL");
-            }
-
+        try (Connection conn = openSqlite(dbPath)) {
             ensureTables(conn);
 
             long now = System.currentTimeMillis();

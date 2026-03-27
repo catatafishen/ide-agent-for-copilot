@@ -583,7 +583,7 @@ public final class SessionSwitchService implements Disposable {
             writeWorkspaceYaml(sessionDir, newSessionId, base);
 
             Path eventsFile = sessionDir.resolve("events.jsonl");
-            CopilotClientExporter.exportToFile(messages, eventsFile, newSessionId);
+            CopilotClientExporter.exportToFile(messages, eventsFile, newSessionId, base);
 
             // Copy plan.md from v2 store into this Copilot session dir
             copyPlanFromV2Store(base, sessionDir);

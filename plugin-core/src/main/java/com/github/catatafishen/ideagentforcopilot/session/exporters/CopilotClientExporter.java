@@ -43,18 +43,21 @@ public final class CopilotClientExporter {
         @NotNull List<SessionMessage> messages,
         @NotNull Path targetPath) throws IOException {
 
-        exportToFile(messages, targetPath, null);
+        exportToFile(messages, targetPath, null, null);
     }
 
     /**
      * Exports v2 messages to Copilot CLI {@code events.jsonl}.
      *
      * @param sessionId if provided, used in the session.start event; otherwise a new UUID is generated
+     * @param basePath  project base path for CWD in the session.start event; if {@code null}, falls
+     *                  back to {@code System.getProperty("user.dir")}
      */
     public static void exportToFile(
         @NotNull List<SessionMessage> messages,
         @NotNull Path targetPath,
-        @Nullable String sessionId) throws IOException {
+        @Nullable String sessionId,
+        @Nullable String basePath) throws IOException {
 
         String sid = sessionId != null ? sessionId : UUID.randomUUID().toString();
         EventChain chain = new EventChain();
@@ -68,7 +71,7 @@ public final class CopilotClientExporter {
             startTime = Instant.ofEpochMilli(messages.getFirst().createdAt);
         }
 
-        sb.append(chain.emit("session.start", sessionStartData(sid, model, startTime))).append('\n');
+        sb.append(chain.emit("session.start", sessionStartData(sid, model, startTime, basePath))).append('\n');
 
         if (model != null) {
             JsonObject modelData = new JsonObject();
@@ -97,10 +100,11 @@ public final class CopilotClientExporter {
     private static JsonObject sessionStartData(
         @NotNull String sessionId,
         @Nullable String model,
-        @NotNull Instant startTime) {
+        @NotNull Instant startTime,
+        @Nullable String basePath) {
 
         JsonObject context = new JsonObject();
-        String cwd = System.getProperty("user.dir", "");
+        String cwd = (basePath != null && !basePath.isEmpty()) ? basePath : System.getProperty("user.dir", "");
         context.addProperty("cwd", cwd);
         context.addProperty("gitRoot", cwd);
 

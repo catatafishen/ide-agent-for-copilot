@@ -620,15 +620,62 @@ of worktree path). Our exporter didn't create or reference project records.
 **Fix**: `findOrCreateProject()` computes SHA-1 of the worktree path and creates a project
 record if one doesn't exist, matching OpenCode's native format.
 
+### Bug 19: SQLite JDBC driver not found at runtime (CRITICAL)
+
+**Symptom**: Switching Copilot → OpenCode showed "no context" — the exported session was
+never written to the OpenCode database.
+
+**Root cause**: `java.sql.DriverManager` discovers drivers via the system classloader, but
+IntelliJ plugins load under a custom classloader that `DriverManager` doesn't search. The
+`org.xerial:sqlite-jdbc` dependency is on the classpath, but the driver class is never
+registered with `DriverManager`. Tests pass because the test classloader makes the driver
+visible.
+
+**Fix**: Added `OpenCodeClientExporter.openSqlite(Path)` helper that calls
+`Class.forName("org.sqlite.JDBC")` before `DriverManager.getConnection()`, and also applies
+`PRAGMA journal_mode=WAL`. Both the exporter and importer now use this shared method,
+eliminating duplicated connection boilerplate.
+
+### Bug 20: Wrong CWD in exported Copilot session.start event
+
+**Symptom**: Switching OpenCode → Copilot launched Copilot with `--resume=<id>` (correct)
+but Copilot showed "no context".
+
+**Root cause**: `CopilotClientExporter.sessionStartData()` used
+`System.getProperty("user.dir")` for the CWD, which returns the JVM launch directory
+(`/home/user`) rather than the project directory. Native Copilot sessions have the project
+directory as CWD. The mismatch may cause Copilot CLI to silently reject the session.
+
+**Fix**: `exportToFile()` now accepts a `basePath` parameter which is threaded to
+`sessionStartData()` for the `cwd` and `gitRoot` fields. `SessionSwitchService.exportToCopilot()`
+passes the project's base path.
+
+### Bug 21: `importFromPreviousClient` is dead code
+
+**Symptom**: None directly — discovered during investigation.
+
+**Root cause**: `SessionSwitchService.importFromPreviousClient()` has zero callers. It was
+designed to import from a native client format into v2 before exporting, but was never wired
+into the `doExport()` flow. The v2 session is maintained during all conversations via
+`saveConversation()`, so this is not needed for normal operation.
+
+**Status**: Documented. Not causing failures. May be useful if importing sessions from
+clients that ran outside the plugin.
+
 ### Current Status (2026-03-27)
 
-| Path              | Status | Notes                                          |
-|-------------------|--------|------------------------------------------------|
-| Copilot → Claude  | ✅      | Confirmed working                              |
-| Claude → Copilot  | ✅      | Confirmed working (bidirectional)              |
-| → OpenCode        | 🔧     | Bugs 12-18 fixed, awaiting retest              |
-| OpenCode →        | 🔧     | Importer fixes applied, awaiting retest        |
-| Copilot → Copilot | ❓      | Not yet tested after Bug 9 fix                 |
-| → Junie           | ❓      | Junie not installed; code follows Kiro pattern |
-| → Kiro            | ❓      | Not tested                                     |
+| Route                   | Status | Notes                                    |
+|-------------------------|--------|------------------------------------------|
+| Copilot → Universal v2  | ✅      | CopilotClientImporter confirmed working  |
+| Claude → Universal v2   | ✅      | ClaudeClientImporter confirmed working   |
+| Codex → Universal v2    | ❓      | CodexClientImporter implemented, untested |
+| OpenCode → Universal v2 | 🔧     | Bugs 12-18 fixed, driver fix (Bug 19) applied |
+| Junie → Universal v2    | ❓      | AnthropicClientImporter, untested        |
+| Kiro → Universal v2     | ❓      | AnthropicClientImporter, untested        |
+| Universal v2 → Copilot  | 🔧     | CWD fix (Bug 20) applied, awaiting retest |
+| Universal v2 → Claude   | ✅      | Confirmed working                        |
+| Universal v2 → Codex    | ❓      | CodexClientExporter implemented, untested |
+| Universal v2 → OpenCode | 🔧     | Bugs 12-19 fixed, driver fix applied     |
+| Universal v2 → Junie    | ❓      | AnthropicClientExporter, untested        |
+| Universal v2 → Kiro     | ❓      | AnthropicClientExporter, untested        |
 

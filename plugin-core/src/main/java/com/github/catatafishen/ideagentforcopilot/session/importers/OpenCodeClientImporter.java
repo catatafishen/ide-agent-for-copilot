@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.session.importers;
 
+import com.github.catatafishen.ideagentforcopilot.session.exporters.OpenCodeClientExporter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -10,11 +11,9 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,11 +54,7 @@ public final class OpenCodeClientImporter {
 
     @Nullable
     private static String findLatestSessionId(@NotNull Path dbPath, @NotNull String projectDir) {
-        String url = "jdbc:sqlite:" + dbPath;
-        try (Connection conn = DriverManager.getConnection(url)) {
-            try (Statement pragmaStmt = conn.createStatement()) {
-                pragmaStmt.execute("PRAGMA journal_mode=WAL");
-            }
+        try (Connection conn = OpenCodeClientExporter.openSqlite(dbPath)) {
             try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1")) {
                 ps.setString(1, projectDir);
@@ -77,14 +72,9 @@ public final class OpenCodeClientImporter {
 
     @NotNull
     private static List<SessionMessage> importSession(@NotNull Path dbPath, @NotNull String sessionId) {
-        String url = "jdbc:sqlite:" + dbPath;
         List<SessionMessage> result = new ArrayList<>();
 
-        try (Connection conn = DriverManager.getConnection(url)) {
-            try (Statement pragmaStmt = conn.createStatement()) {
-                pragmaStmt.execute("PRAGMA journal_mode=WAL");
-            }
-
+        try (Connection conn = OpenCodeClientExporter.openSqlite(dbPath)) {
             List<MessageRow> messageRows = loadMessages(conn, sessionId);
 
             for (MessageRow msgRow : messageRows) {
@@ -111,10 +101,10 @@ public final class OpenCodeClientImporter {
                 }
             }
 
+            LOG.info("Imported OpenCode session " + sessionId + ": " + result.size() + " messages");
         } catch (SQLException e) {
-            LOG.warn("Failed to import OpenCode session " + sessionId + " from " + dbPath, e);
+            LOG.warn("Failed to import OpenCode session: " + sessionId, e);
         }
-
         return result;
     }
 
