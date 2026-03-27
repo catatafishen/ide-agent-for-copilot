@@ -6,6 +6,8 @@ import com.github.catatafishen.ideagentforcopilot.agent.AbstractAgentClient;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,6 +43,13 @@ public final class CopilotClient extends AcpClient {
     private static final String MCP_SERVER_NAME = "agentbridge";
     private static final String MCP_TYPE_HTTP = "http";
     private static final String KEY_RAW_INPUT = "rawInput";
+    private static final String SESSION_STATE_DIR = "session-state";
+
+    /**
+     * Tracks the resume session ID requested in the current launch cycle.
+     * Set in {@link #buildCommand}, checked in {@link #onSessionCreated}.
+     */
+    private @Nullable String requestedResumeId;
 
     // ─── MCP tool sets ───────────────────────────────
 
@@ -185,15 +194,14 @@ public final class CopilotClient extends AcpClient {
             cmd.add(agentSlug);
         }
 
-        // The Copilot CLI ignores resumeSessionId in ACP session/new params — it only
-        // supports resume via the --resume CLI flag. The ID is NOT cleared here — it will
-        // be overwritten by persistResumeSessionId() after a successful session/new. If the
-        // CLI fails to start, the old ID is preserved for the next attempt.
-        String resumeId = ActiveAgentManager.getInstance(project).getSettings().getResumeSessionId();
-        if (resumeId != null) {
-            cmd.add("--resume=" + resumeId);
-            Path sessionDir = copilotHome().resolve("session-state").resolve(resumeId);
-            LOG.info("Copilot --resume=" + resumeId
+        // The Copilot CLI ignores both resumeSessionId (ACP param) and --resume (CLI flag) in
+        // ACP mode as of v1.0.12. The flag is sent anyway in case a future version honours it.
+        // The actual context restoration is handled by the conversation history injection fallback.
+        requestedResumeId = ActiveAgentManager.getInstance(project).getSettings().getResumeSessionId();
+        if (requestedResumeId != null) {
+            cmd.add("--resume=" + requestedResumeId);
+            Path sessionDir = copilotHome().resolve(SESSION_STATE_DIR).resolve(requestedResumeId);
+            LOG.info("Copilot --resume=" + requestedResumeId
                 + " sessionDir=" + sessionDir + " (exists=" + Files.isDirectory(sessionDir) + ")");
         } else {
             LOG.info("Copilot: no resumeSessionId set, starting fresh session");
@@ -210,22 +218,17 @@ public final class CopilotClient extends AcpClient {
         return Path.of(System.getProperty("user.home"), ".copilot");
     }
 
-    /**
-     * Migrates a resume session from the legacy {@code .agent-work/copilot/session-state/}
-     * location to {@code ~/.copilot/session-state/} if needed. This handles the one-time
-     * transition after the HOME/config-dir overrides were removed.
-     */
     private void migrateResumeSessionFromLegacyPath() {
         String resumeId = ActiveAgentManager.getInstance(project).getSettings().getResumeSessionId();
         if (resumeId == null) return;
 
-        Path newDir = copilotHome().resolve("session-state").resolve(resumeId);
+        Path newDir = copilotHome().resolve(SESSION_STATE_DIR).resolve(resumeId);
         if (Files.isDirectory(newDir)) return;
 
         String basePath = project.getBasePath();
         if (basePath == null) return;
 
-        Path legacyDir = Path.of(basePath, ".agent-work", "copilot", "session-state", resumeId);
+        Path legacyDir = Path.of(basePath, ".agent-work", AGENT_ID, SESSION_STATE_DIR, resumeId);
         if (!Files.isDirectory(legacyDir)) return;
 
         try {
@@ -257,6 +260,37 @@ public final class CopilotClient extends AcpClient {
         JsonArray servers = new JsonArray();
         servers.add(server);
         params.add("mcpServers", servers);
+    }
+
+    /**
+     * Detects that the Copilot CLI ignored the {@code --resume} flag (it does not support
+     * session resume in ACP mode as of v1.0.12). When this happens, enables conversation
+     * history injection as a fallback so the agent still gets prior context.
+     */
+    @Override
+    protected void onSessionCreated(String sessionId) {
+        if (requestedResumeId == null || requestedResumeId.equals(sessionId)) {
+            return;
+        }
+        LOG.info("Copilot ignored --resume=" + requestedResumeId
+            + " → created fresh session " + sessionId + "; enabling conversation history injection fallback");
+
+        if (!ActiveAgentManager.getInjectConversationHistory(project)) {
+            ActiveAgentManager.setInjectConversationHistory(project, true);
+        }
+
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("AgentBridge Notifications")
+                .createNotification(
+                    "Copilot session resume not available",
+                    "The Copilot CLI (≤ v1.0.12) does not support --resume in ACP mode. "
+                        + "Conversation history injection has been enabled as a fallback — "
+                        + "a compressed summary of the previous session will be prepended to "
+                        + "your first prompt. You can configure this in "
+                        + "Settings → IDE Agent → Chat History.",
+                    NotificationType.INFORMATION)
+                .notify(project));
     }
 
     // ─── Mode selection ──────────────────────────────

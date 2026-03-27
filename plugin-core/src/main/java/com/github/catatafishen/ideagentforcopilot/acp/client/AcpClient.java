@@ -699,11 +699,11 @@ public abstract class AcpClient extends AbstractAgentClient {
     }
 
     /**
-     * Called after a session is successfully created.
+     * Called after a session is successfully created. Subclasses can override to detect
+     * resume failures or perform post-session setup.
      *
      * @param sessionId the created session ID
      */
-    @SuppressWarnings("unused")
     protected void onSessionCreated(String sessionId) {
         // Default: no post-session setup
     }
