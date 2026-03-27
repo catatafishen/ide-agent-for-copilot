@@ -1,17 +1,18 @@
 package com.github.catatafishen.ideagentforcopilot.session;
 
-import com.github.catatafishen.ideagentforcopilot.agent.claude.AnthropicDirectClient;
 import com.github.catatafishen.ideagentforcopilot.agent.claude.ClaudeCliClient;
 import com.github.catatafishen.ideagentforcopilot.agent.codex.CodexAppServerClient;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
-import com.github.catatafishen.ideagentforcopilot.session.exporters.AnthropicMessageExporter;
-import com.github.catatafishen.ideagentforcopilot.session.exporters.CodexExporter;
-import com.github.catatafishen.ideagentforcopilot.session.importers.AnthropicMessageImporter;
-import com.github.catatafishen.ideagentforcopilot.session.importers.CodexImporter;
-import com.github.catatafishen.ideagentforcopilot.session.importers.CopilotEventsImporter;
-import com.github.catatafishen.ideagentforcopilot.session.importers.OpenCodeImporter;
+import com.github.catatafishen.ideagentforcopilot.session.exporters.AnthropicClientExporter;
+import com.github.catatafishen.ideagentforcopilot.session.exporters.CodexClientExporter;
+import com.github.catatafishen.ideagentforcopilot.session.exporters.CopilotClientExporter;
+import com.github.catatafishen.ideagentforcopilot.session.exporters.OpenCodeClientExporter;
+import com.github.catatafishen.ideagentforcopilot.session.importers.AnthropicClientImporter;
+import com.github.catatafishen.ideagentforcopilot.session.importers.CodexClientImporter;
+import com.github.catatafishen.ideagentforcopilot.session.importers.CopilotClientImporter;
+import com.github.catatafishen.ideagentforcopilot.session.importers.OpenCodeClientImporter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionStoreV2;
 import com.google.gson.Gson;
@@ -64,11 +65,12 @@ import java.util.UUID;
  *
  * <h3>Export support (v2 → client native):</h3>
  * <ul>
- *   <li>Claude CLI / Claude Code — writes to {@code ~/.claude/projects/<sha1>/}</li>
+ *   <li>Claude CLI — writes to {@code ~/.claude/projects/<sha1>/}</li>
  *   <li>Kiro — writes to {@code ~/.kiro/sessions/<uuid>/} + sets resumeSessionId</li>
  *   <li>Junie — writes to {@code ~/.junie/sessions/<uuid>/} + sets resumeSessionId</li>
  *   <li>Codex — writes rollout JSONL + updates codex.db + sets codexThreadId</li>
- *   <li>Copilot CLI / OpenCode — ACP clients, sessions managed server-side</li>
+ *   <li>Copilot CLI — writes to {@code <project>/.agent-work/copilot/session-state/events.jsonl}</li>
+ *   <li>OpenCode — writes to {@code opencode.db} (session/message/part tables)</li>
  * </ul>
  */
 @Service(Service.Level.PROJECT)
@@ -125,6 +127,12 @@ public final class SessionSwitchService implements Disposable {
     // ── Export logic ──────────────────────────────────────────────────────────
 
     private void doExport(@NotNull String fromProfileId, @NotNull String toProfileId) {
+        // Check if session mapping is enabled for the target client
+        if (!com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient.isSessionMappingEnabled(toProfileId)) {
+            LOG.info("Session mapping disabled for " + toProfileId + " — skipping cross-client session export");
+            return;
+        }
+
         String basePath = project.getBasePath();
 
         // Step 1: Import from the previous client in case the user ran it directly outside
@@ -140,7 +148,7 @@ public final class SessionSwitchService implements Disposable {
 
         // Step 3: Export to the new client's native format.
         switch (toProfileId) {
-            case ClaudeCliClient.PROFILE_ID, AnthropicDirectClient.PROFILE_ID -> exportToClaudeCli(messages, basePath);
+            case ClaudeCliClient.PROFILE_ID -> exportToClaudeCli(messages, basePath);
             case CodexAppServerClient.PROFILE_ID -> exportToCodex(messages, basePath);
             default -> {
                 if (toProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
@@ -148,13 +156,12 @@ public final class SessionSwitchService implements Disposable {
                 } else if (toProfileId.equals(AgentProfileManager.JUNIE_PROFILE_ID)) {
                     exportToJunie(messages, basePath, toProfileId);
                 } else if (toProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
-                    LOG.info("OpenCode is ACP; sessions managed server-side, no export injection needed");
+                    exportToOpenCode(messages, basePath);
+                } else if (toProfileId.startsWith(COPILOT_ID_PREFIX)) {
+                    exportToCopilot(messages, basePath);
                 } else {
-                    // ACP clients (Copilot) resume their own sessions natively
-                    // via resumeSessionId. No cross-client injection supported (sessions managed
-                    // server-side).
                     LOG.info("ACP client '" + toProfileId
-                        + "' will resume its own session natively (no cross-client injection)");
+                        + "' — no native export format; will resume via resumeSessionId");
                 }
             }
         }
@@ -171,10 +178,14 @@ public final class SessionSwitchService implements Disposable {
      * @param basePath      project base path (may be null)
      */
     private void importFromPreviousClient(@NotNull String fromProfileId, @Nullable String basePath) {
+        // Check if session mapping is enabled for the source client
+        if (!com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient.isSessionMappingEnabled(fromProfileId)) {
+            LOG.info("Session mapping disabled for " + fromProfileId + " — skipping pre-import from native session");
+            return;
+        }
+
         try {
-            if (fromProfileId.equals(ClaudeCliClient.PROFILE_ID)
-                || fromProfileId.equals(AnthropicDirectClient.PROFILE_ID)) {
-                // Both Claude CLI and Claude Code (Anthropic Direct) use ~/.claude/projects/<sha1>/
+            if (fromProfileId.equals(ClaudeCliClient.PROFILE_ID)) {
                 importFromClaudeCli(basePath);
             } else if (fromProfileId.equals(CodexAppServerClient.PROFILE_ID)) {
                 importFromCodex(basePath);
@@ -210,7 +221,7 @@ public final class SessionSwitchService implements Disposable {
                     .max(Comparator.comparingLong(p -> p.toFile().lastModified()))
                     .ifPresent(mostRecent -> {
                         try {
-                            List<SessionMessage> imported = AnthropicMessageImporter.importFile(mostRecent);
+                            List<SessionMessage> imported = AnthropicClientImporter.importFile(mostRecent);
                             if (imported.size() > currentCount) {
                                 String sessionId = sessionStore.getCurrentSessionId(basePath);
                                 writeV2Session(basePath, sessionId, imported);
@@ -290,7 +301,7 @@ public final class SessionSwitchService implements Disposable {
             Path messagesPath = sessionDir.resolve("messages.jsonl");
             if (!messagesPath.toFile().exists()) return;
 
-            List<SessionMessage> imported = AnthropicMessageImporter.importFile(messagesPath);
+            List<SessionMessage> imported = AnthropicClientImporter.importFile(messagesPath);
             if (imported.size() > currentCount) {
                 String sessionId = sessionStore.getCurrentSessionId(basePath);
                 writeV2Session(basePath, sessionId, imported);
@@ -317,8 +328,8 @@ public final class SessionSwitchService implements Disposable {
      * if it has more messages than the current v2 session.
      */
     private void importFromCodex(@Nullable String basePath) {
-        Path dbPath = CodexImporter.defaultDbPath();
-        List<SessionMessage> imported = CodexImporter.importLatestThread(dbPath);
+        Path dbPath = CodexClientImporter.defaultDbPath();
+        List<SessionMessage> imported = CodexClientImporter.importLatestThread(dbPath);
         if (imported.isEmpty()) {
             LOG.info("No Codex session to import");
             return;
@@ -339,8 +350,8 @@ public final class SessionSwitchService implements Disposable {
      * matching the current project directory, if it has more messages than the current v2 session.
      */
     private void importFromOpenCode(@Nullable String basePath) {
-        Path dbPath = OpenCodeImporter.defaultDbPath();
-        List<SessionMessage> imported = OpenCodeImporter.importLatestSession(dbPath, basePath != null ? basePath : "");
+        Path dbPath = OpenCodeClientImporter.defaultDbPath();
+        List<SessionMessage> imported = OpenCodeClientImporter.importLatestSession(dbPath, basePath != null ? basePath : "");
         if (imported.isEmpty()) {
             LOG.info("No OpenCode session to import");
             return;
@@ -375,7 +386,7 @@ public final class SessionSwitchService implements Disposable {
                     .max(Comparator.comparingLong(p -> p.toFile().lastModified()))
                     .ifPresent(eventsFile -> {
                         try {
-                            List<SessionMessage> imported = CopilotEventsImporter.importFile(eventsFile);
+                            List<SessionMessage> imported = CopilotClientImporter.importFile(eventsFile);
                             if (imported.size() > currentCount) {
                                 String sessionId = sessionStore.getCurrentSessionId(basePath);
                                 writeV2Session(basePath, sessionId, imported);
@@ -403,7 +414,7 @@ public final class SessionSwitchService implements Disposable {
             String newSessionId = UUID.randomUUID().toString();
             Path targetFile = claudeDir.resolve(newSessionId + JSONL_EXT);
 
-            AnthropicMessageExporter.exportToFile(messages, targetFile);
+            AnthropicClientExporter.exportToFile(messages, targetFile);
 
             PropertiesComponent.getInstance(project)
                 .setValue(ClaudeCliClient.PROFILE_ID + ".cliResumeSessionId", newSessionId);
@@ -447,11 +458,11 @@ public final class SessionSwitchService implements Disposable {
      * Exports v2 session messages to an ACP client's local session directory
      * and sets {@code resumeSessionId} so AcpClient sends it on next {@code session/new}.
      *
-     * @param messages       messages to export
-     * @param basePath       project base path (may be null)
-     * @param toProfileId    profile ID of the target ACP client
+     * @param messages        messages to export
+     * @param basePath        project base path (may be null)
+     * @param toProfileId     profile ID of the target ACP client
      * @param sessionsBaseDir base sessions directory (e.g. {@code ~/.kiro/sessions/})
-     * @param clientName     human-readable client name for log messages
+     * @param clientName      human-readable client name for log messages
      */
     private void exportToAcpLocalSession(
         @NotNull List<SessionMessage> messages,
@@ -481,7 +492,7 @@ public final class SessionSwitchService implements Disposable {
                 StandardCharsets.UTF_8);
 
             // Write messages.jsonl via AnthropicMessageExporter
-            AnthropicMessageExporter.exportToFile(messages, sessionDir.resolve("messages.jsonl"));
+            AnthropicClientExporter.exportToFile(messages, sessionDir.resolve("messages.jsonl"));
 
             // Set resumeSessionId so AcpClient sends it on the next session/new
             new GenericSettings(toProfileId, project).setResumeSessionId(newSessionId);
@@ -499,14 +510,43 @@ public final class SessionSwitchService implements Disposable {
      * and sets the Codex thread ID for resume on next startup.
      */
     private void exportToCodex(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
-        Path sessionsDir = CodexExporter.defaultSessionsDir();
-        Path dbPath = CodexExporter.defaultDbPath();
-        String threadId = CodexExporter.exportSession(messages, sessionsDir, dbPath);
+        Path sessionsDir = CodexClientExporter.defaultSessionsDir();
+        Path dbPath = CodexClientExporter.defaultDbPath();
+        String threadId = CodexClientExporter.exportSession(messages, sessionsDir, dbPath);
         if (threadId != null) {
             // Set the thread ID so CodexAppServerClient will try thread/resume on next startup
             PropertiesComponent.getInstance(project)
                 .setValue(CodexAppServerClient.PROFILE_ID + ".codexThreadId", threadId);
             LOG.info("Exported v2 session to Codex thread: " + threadId);
+        }
+    }
+
+    // ── Copilot CLI export ────────────────────────────────────────────────────
+
+    /**
+     * Exports v2 session messages to Copilot CLI's native {@code events.jsonl} format.
+     */
+    private void exportToCopilot(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
+        try {
+            Path targetPath = CopilotClientExporter.defaultEventsPath(basePath != null ? basePath : "");
+            CopilotClientExporter.exportToFile(messages, targetPath);
+            LOG.info("Exported v2 session to Copilot CLI events.jsonl: " + targetPath);
+        } catch (IOException e) {
+            LOG.warn("Failed to export v2 session to Copilot CLI", e);
+        }
+    }
+
+    // ── OpenCode export ───────────────────────────────────────────────────────
+
+    /**
+     * Exports v2 session messages to OpenCode's native SQLite format.
+     */
+    private void exportToOpenCode(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
+        Path dbPath = OpenCodeClientExporter.defaultDbPath();
+        String projectDir = basePath != null ? basePath : "";
+        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, projectDir);
+        if (sessionId != null) {
+            LOG.info("Exported v2 session to OpenCode: " + sessionId);
         }
     }
 

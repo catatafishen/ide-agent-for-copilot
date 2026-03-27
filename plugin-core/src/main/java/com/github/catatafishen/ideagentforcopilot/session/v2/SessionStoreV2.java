@@ -42,6 +42,12 @@ public final class SessionStoreV2 {
     private static final String SESSIONS_INDEX = "sessions-index.json";
     private static final String CURRENT_SESSION_FILE = ".current-session-id";
 
+    private static final String KEY_ID = "id";
+    private static final String KEY_AGENT = "agent";
+    private static final String KEY_CREATED_AT = "createdAt";
+    private static final String KEY_UPDATED_AT = "updatedAt";
+    private static final String KEY_JSONL_PATH = "jsonlPath";
+
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private final ConversationStore v1Store = new ConversationStore();
@@ -59,6 +65,38 @@ public final class SessionStoreV2 {
      */
     public void setCurrentAgent(@NotNull String agent) {
         this.currentAgent = agent;
+    }
+
+    /**
+     * Metadata record for an archived or active session, suitable for display in a session picker.
+     *
+     * @param id        session UUID
+     * @param agent     display name of the agent (e.g. "GitHub Copilot")
+     * @param createdAt epoch millis when the session was created
+     * @param updatedAt epoch millis when the session was last updated
+     */
+    public record SessionRecord(
+        @NotNull String id,
+        @NotNull String agent,
+        long createdAt,
+        long updatedAt) {
+    }
+
+    @NotNull
+    public List<SessionRecord> listSessions(@Nullable String basePath) {
+        File indexFile = new File(sessionsDir(basePath), SESSIONS_INDEX);
+        List<JsonObject> records = readIndexRecords(indexFile);
+        List<SessionRecord> result = new ArrayList<>();
+        for (JsonObject rec : records) {
+            String id = rec.has(KEY_ID) ? rec.get(KEY_ID).getAsString() : null;
+            if (id == null || id.isEmpty()) continue;
+            String agent = rec.has(KEY_AGENT) ? rec.get(KEY_AGENT).getAsString() : "Unknown";
+            long createdAt = rec.has(KEY_CREATED_AT) ? rec.get(KEY_CREATED_AT).getAsLong() : 0;
+            long updatedAt = rec.has(KEY_UPDATED_AT) ? rec.get(KEY_UPDATED_AT).getAsLong() : 0;
+            result.add(new SessionRecord(id, agent, createdAt, updatedAt));
+        }
+        result.sort(java.util.Comparator.comparingLong(SessionRecord::updatedAt).reversed());
+        return result;
     }
 
     // ── v1 delegation ─────────────────────────────────────────────────────────
@@ -193,24 +231,22 @@ public final class SessionStoreV2 {
         long now = System.currentTimeMillis();
         String directory = basePath != null ? basePath : "";
 
-        // Find existing record for this session, or create a new one
         boolean found = false;
-        for (int i = 0; i < records.size(); i++) {
-            JsonObject rec = records.get(i);
-            if (rec.has("id") && sessionId.equals(rec.get("id").getAsString())) {
-                rec.addProperty("updatedAt", now);
+        for (JsonObject rec : records) {
+            if (rec.has(KEY_ID) && sessionId.equals(rec.get(KEY_ID).getAsString())) {
+                rec.addProperty(KEY_UPDATED_AT, now);
                 found = true;
                 break;
             }
         }
         if (!found) {
             JsonObject newRec = new JsonObject();
-            newRec.addProperty("id", sessionId);
-            newRec.addProperty("agent", currentAgent);
+            newRec.addProperty(KEY_ID, sessionId);
+            newRec.addProperty(KEY_AGENT, currentAgent);
             newRec.addProperty("directory", directory);
-            newRec.addProperty("createdAt", now);
-            newRec.addProperty("updatedAt", now);
-            newRec.addProperty("jsonlPath", jsonlFileName);
+            newRec.addProperty(KEY_CREATED_AT, now);
+            newRec.addProperty(KEY_UPDATED_AT, now);
+            newRec.addProperty(KEY_JSONL_PATH, jsonlFileName);
             records.add(newRec);
         }
 
