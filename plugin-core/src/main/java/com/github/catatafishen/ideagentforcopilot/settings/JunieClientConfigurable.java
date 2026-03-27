@@ -37,7 +37,6 @@ public final class JunieClientConfigurable implements Configurable {
     private JBTextField binaryPathField;
     private JBPasswordField authTokenField;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
-    private JCheckBox sessionMappingCheckBox;
     private JPanel panel;
 
     @Override
@@ -53,9 +52,6 @@ public final class JunieClientConfigurable implements Configurable {
         authTokenField.setToolTipText("Generate a token at https://junie.jetbrains.com/cli. Leave empty to use CLI credentials.");
 
         bubbleColorCombo = new ThemeColorComboBox();
-
-        sessionMappingCheckBox = new JCheckBox("Enable cross-client session mapping");
-        sessionMappingCheckBox.setToolTipText("Import from and export to Junie's native session format when switching agents.");
 
         HyperlinkLabel authLink = new HyperlinkLabel("Generate an auth token at junie.jetbrains.com/cli");
         authLink.setHyperlinkTarget("https://junie.jetbrains.com/cli");
@@ -89,8 +85,6 @@ public final class JunieClientConfigurable implements Configurable {
             .addTooltip("Leave empty to auto-detect on PATH.")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for message bubbles when using Junie.")
-            .addComponent(sessionMappingCheckBox, 4)
-            .addTooltip("Import from and export to Junie's native session format when switching agents.")
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));
@@ -108,10 +102,6 @@ public final class JunieClientConfigurable implements Configurable {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, AcpClient.loadAgentBubbleColorKey(AGENT_ID))) return true;
-        }
-        if (sessionMappingCheckBox != null) {
-            boolean storedSetting = AcpClient.isSessionMappingEnabled(AGENT_ID);
-            if (sessionMappingCheckBox.isSelected() != storedSetting) return true;
         }
         return false;
     }
@@ -135,10 +125,6 @@ public final class JunieClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             AcpClient.saveAgentBubbleColorKey(AGENT_ID, tc != null ? tc.name() : null);
-        }
-
-        if (sessionMappingCheckBox != null) {
-            AcpClient.setSessionMappingEnabled(AGENT_ID, sessionMappingCheckBox.isSelected());
         }
 
         // Restart Junie if auth token changed (so new token is picked up by the process)
@@ -175,9 +161,6 @@ public final class JunieClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(AGENT_ID)));
         }
-        if (sessionMappingCheckBox != null) {
-            sessionMappingCheckBox.setSelected(AcpClient.isSessionMappingEnabled(AGENT_ID));
-        }
     }
 
     @Override
@@ -186,7 +169,6 @@ public final class JunieClientConfigurable implements Configurable {
         binaryPathField = null;
         authTokenField = null;
         bubbleColorCombo = null;
-        sessionMappingCheckBox = null;
         panel = null;
     }
 

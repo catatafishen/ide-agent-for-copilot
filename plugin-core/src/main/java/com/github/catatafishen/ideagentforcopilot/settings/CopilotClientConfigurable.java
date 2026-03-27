@@ -36,7 +36,6 @@ public final class CopilotClientConfigurable implements Configurable {
     private JBLabel statusLabel;
     private JBTextField binaryPathField;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
-    private JCheckBox sessionMappingCheckBox;
     private BillingConfigurable billingConfigurable;
 
     @Override
@@ -57,9 +56,6 @@ public final class CopilotClientConfigurable implements Configurable {
 
         bubbleColorCombo = new ThemeColorComboBox();
 
-        sessionMappingCheckBox = new JCheckBox("Enable cross-client session mapping");
-        sessionMappingCheckBox.setToolTipText("Import from and export to Copilot's native session format when switching agents.");
-
         HyperlinkLabel installLink = new HyperlinkLabel("Install from github.com/github/copilot-cli");
         installLink.setHyperlinkTarget("https://github.com/github/copilot-cli#installation");
 
@@ -77,8 +73,6 @@ public final class CopilotClientConfigurable implements Configurable {
             .addTooltip("Leave empty to auto-detect on PATH.")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for message bubbles when using GitHub Copilot.")
-            .addComponent(sessionMappingCheckBox, 4)
-            .addTooltip("Import from and export to Copilot's native session format when switching agents.")
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         configPanel.setBorder(JBUI.Borders.empty(8));
@@ -107,10 +101,6 @@ public final class CopilotClientConfigurable implements Configurable {
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, AcpClient.loadAgentBubbleColorKey(AGENT_ID))) return true;
         }
-        if (sessionMappingCheckBox != null) {
-            boolean storedSetting = AcpClient.isSessionMappingEnabled(AGENT_ID);
-            if (sessionMappingCheckBox.isSelected() != storedSetting) return true;
-        }
         return billingConfigurable != null && billingConfigurable.isModified();
     }
 
@@ -122,9 +112,6 @@ public final class CopilotClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             AcpClient.saveAgentBubbleColorKey(AGENT_ID, tc != null ? tc.name() : null);
-        }
-        if (sessionMappingCheckBox != null) {
-            AcpClient.setSessionMappingEnabled(AGENT_ID, sessionMappingCheckBox.isSelected());
         }
         if (billingConfigurable != null) billingConfigurable.apply();
     }
@@ -138,9 +125,6 @@ public final class CopilotClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(AGENT_ID)));
         }
-        if (sessionMappingCheckBox != null) {
-            sessionMappingCheckBox.setSelected(AcpClient.isSessionMappingEnabled(AGENT_ID));
-        }
         if (billingConfigurable != null) billingConfigurable.reset();
     }
 
@@ -149,7 +133,6 @@ public final class CopilotClientConfigurable implements Configurable {
         statusLabel = null;
         binaryPathField = null;
         bubbleColorCombo = null;
-        sessionMappingCheckBox = null;
         if (billingConfigurable != null) {
             billingConfigurable.disposeUIResources();
             billingConfigurable = null;

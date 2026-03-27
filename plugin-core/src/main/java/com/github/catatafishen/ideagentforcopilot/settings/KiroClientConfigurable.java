@@ -34,7 +34,6 @@ public final class KiroClientConfigurable implements Configurable {
     private JBLabel statusLabel;
     private JBTextField binaryPathField;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
-    private JCheckBox sessionMappingCheckBox;
     private JPanel panel;
 
     @Override
@@ -46,9 +45,6 @@ public final class KiroClientConfigurable implements Configurable {
         binaryPathField.setToolTipText("Absolute path to the kiro-cli binary. Leave empty to find it on PATH.");
 
         bubbleColorCombo = new ThemeColorComboBox();
-
-        sessionMappingCheckBox = new JCheckBox("Enable cross-client session mapping");
-        sessionMappingCheckBox.setToolTipText("Import from and export to Kiro's native session format when switching agents.");
 
         HyperlinkLabel docsLink = new HyperlinkLabel("Kiro CLI documentation at kiro.dev/docs/cli/acp");
         docsLink.setHyperlinkTarget("https://kiro.dev/docs/cli/acp/");
@@ -67,8 +63,6 @@ public final class KiroClientConfigurable implements Configurable {
             .addTooltip("Leave empty to auto-detect on PATH.")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for message bubbles when using Kiro.")
-            .addComponent(sessionMappingCheckBox, 4)
-            .addTooltip("Import from and export to Kiro's native session format when switching agents.")
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));
@@ -85,10 +79,6 @@ public final class KiroClientConfigurable implements Configurable {
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, AcpClient.loadAgentBubbleColorKey(AGENT_ID))) return true;
         }
-        if (sessionMappingCheckBox != null) {
-            boolean storedSetting = AcpClient.isSessionMappingEnabled(AGENT_ID);
-            if (sessionMappingCheckBox.isSelected() != storedSetting) return true;
-        }
         return false;
     }
 
@@ -100,9 +90,6 @@ public final class KiroClientConfigurable implements Configurable {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             AcpClient.saveAgentBubbleColorKey(AGENT_ID, tc != null ? tc.name() : null);
         }
-        if (sessionMappingCheckBox != null) {
-            AcpClient.setSessionMappingEnabled(AGENT_ID, sessionMappingCheckBox.isSelected());
-        }
     }
 
     @Override
@@ -113,9 +100,6 @@ public final class KiroClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(AGENT_ID)));
         }
-        if (sessionMappingCheckBox != null) {
-            sessionMappingCheckBox.setSelected(AcpClient.isSessionMappingEnabled(AGENT_ID));
-        }
     }
 
     @Override
@@ -123,7 +107,6 @@ public final class KiroClientConfigurable implements Configurable {
         statusLabel = null;
         binaryPathField = null;
         bubbleColorCombo = null;
-        sessionMappingCheckBox = null;
         panel = null;
     }
 

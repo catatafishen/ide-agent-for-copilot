@@ -127,12 +127,6 @@ public final class SessionSwitchService implements Disposable {
     // ── Export logic ──────────────────────────────────────────────────────────
 
     private void doExport(@NotNull String fromProfileId, @NotNull String toProfileId) {
-        // Check if session mapping is enabled for the target client
-        if (!com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient.isSessionMappingEnabled(toProfileId)) {
-            LOG.info("Session mapping disabled for " + toProfileId + " — skipping cross-client session export");
-            return;
-        }
-
         String basePath = project.getBasePath();
 
         // Step 1: Import from the previous client in case the user ran it directly outside
@@ -178,12 +172,6 @@ public final class SessionSwitchService implements Disposable {
      * @param basePath      project base path (may be null)
      */
     private void importFromPreviousClient(@NotNull String fromProfileId, @Nullable String basePath) {
-        // Check if session mapping is enabled for the source client
-        if (!com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient.isSessionMappingEnabled(fromProfileId)) {
-            LOG.info("Session mapping disabled for " + fromProfileId + " — skipping pre-import from native session");
-            return;
-        }
-
         try {
             if (fromProfileId.equals(ClaudeCliClient.PROFILE_ID)) {
                 importFromClaudeCli(basePath);
