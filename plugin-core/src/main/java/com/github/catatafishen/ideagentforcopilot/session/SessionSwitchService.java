@@ -7,6 +7,7 @@ import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.GenericSettings;
 import com.github.catatafishen.ideagentforcopilot.session.exporters.AnthropicMessageExporter;
+import com.github.catatafishen.ideagentforcopilot.session.exporters.CodexExporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.AnthropicMessageImporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.CodexImporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.CopilotEventsImporter;
@@ -51,17 +52,24 @@ import java.util.UUID;
  * (in case the user ran the client directly outside the plugin), then exports to the new
  * agent's native session format so the conversation context carries over.</p>
  *
- * <p>Currently supported targets:
+ * <h3>Import support (client native → v2):</h3>
  * <ul>
- *   <li>{@value ClaudeCliClient#PROFILE_ID} — exports to
- *       {@code ~/.claude/projects/<sha1>/} as a new {@code .jsonl} file and persists
- *       the session ID via {@link PropertiesComponent}</li>
- *   <li>Kiro (ACP profile whose binary name contains "kiro") — exports to
- *       {@code ~/.kiro/sessions/<uuid>/} and sets {@code resumeSessionId}</li>
- *   <li>All other profiles — no-op (ACP clients resume natively, Codex does not
- *       support session injection)</li>
+ *   <li>Claude CLI / Claude Code — {@code ~/.claude/projects/<sha1>/*.jsonl}</li>
+ *   <li>Kiro — {@code ~/.kiro/sessions/<uuid>/messages.jsonl}</li>
+ *   <li>Junie — {@code ~/.junie/sessions/<uuid>/messages.jsonl}</li>
+ *   <li>Copilot CLI — {@code <project>/.agent-work/copilot/session-state/events.jsonl}</li>
+ *   <li>Codex — {@code ~/.codex/codex.db} + rollout JSONL</li>
+ *   <li>OpenCode — {@code ~/.local/share/opencode/opencode.db}</li>
  * </ul>
- * </p>
+ *
+ * <h3>Export support (v2 → client native):</h3>
+ * <ul>
+ *   <li>Claude CLI / Claude Code — writes to {@code ~/.claude/projects/<sha1>/}</li>
+ *   <li>Kiro — writes to {@code ~/.kiro/sessions/<uuid>/} + sets resumeSessionId</li>
+ *   <li>Junie — writes to {@code ~/.junie/sessions/<uuid>/} + sets resumeSessionId</li>
+ *   <li>Codex — writes rollout JSONL + updates codex.db + sets codexThreadId</li>
+ *   <li>Copilot CLI / OpenCode — ACP clients, sessions managed server-side</li>
+ * </ul>
  */
 @Service(Service.Level.PROJECT)
 public final class SessionSwitchService implements Disposable {
@@ -74,6 +82,8 @@ public final class SessionSwitchService implements Disposable {
     private static final String CLAUDE_PROJECTS_DIR = "projects";
     private static final String KIRO_HOME = ".kiro";
     private static final String KIRO_SESSIONS_DIR = "sessions";
+    private static final String JUNIE_HOME = ".junie";
+    private static final String JUNIE_SESSIONS_DIR = "sessions";
     private static final String USER_HOME_PROPERTY = "user.home";
     private static final String JSONL_EXT = ".jsonl";
     private static final String WORKSPACE_PATHS_KEY = "workspacePaths";
@@ -131,15 +141,16 @@ public final class SessionSwitchService implements Disposable {
         // Step 3: Export to the new client's native format.
         switch (toProfileId) {
             case ClaudeCliClient.PROFILE_ID, AnthropicDirectClient.PROFILE_ID -> exportToClaudeCli(messages, basePath);
-            case CodexAppServerClient.PROFILE_ID ->
-                LOG.info("Codex does not support session import; starting fresh thread");
+            case CodexAppServerClient.PROFILE_ID -> exportToCodex(messages, basePath);
             default -> {
                 if (toProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
                     exportToKiro(messages, basePath, toProfileId);
+                } else if (toProfileId.equals(AgentProfileManager.JUNIE_PROFILE_ID)) {
+                    exportToJunie(messages, basePath, toProfileId);
                 } else if (toProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
                     LOG.info("OpenCode is ACP; sessions managed server-side, no export injection needed");
                 } else {
-                    // ACP clients (Copilot, Junie) resume their own sessions natively
+                    // ACP clients (Copilot) resume their own sessions natively
                     // via resumeSessionId. No cross-client injection supported (sessions managed
                     // server-side).
                     LOG.info("ACP client '" + toProfileId
@@ -169,6 +180,8 @@ public final class SessionSwitchService implements Disposable {
                 importFromCodex(basePath);
             } else if (fromProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
                 importFromKiro(basePath);
+            } else if (fromProfileId.equals(AgentProfileManager.JUNIE_PROFILE_ID)) {
+                importFromJunie(basePath);
             } else if (fromProfileId.equals(AgentProfileManager.COPILOT_PROFILE_ID)) {
                 importFromCopilotCli(basePath);
             } else if (fromProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
@@ -216,36 +229,53 @@ public final class SessionSwitchService implements Disposable {
 
     /**
      * Imports from Kiro's local session storage ({@code ~/.kiro/sessions/}).
-     * Finds the session whose {@code workspacePaths} contains the project base path
-     * and that has more messages than the current v2.
+     * Delegates to {@link #importFromAcpLocalSessions(String, Path, String)}.
      */
     private void importFromKiro(@Nullable String basePath) {
+        Path dir = Path.of(System.getProperty(USER_HOME_PROPERTY), KIRO_HOME, KIRO_SESSIONS_DIR);
+        importFromAcpLocalSessions(basePath, dir, "Kiro");
+    }
+
+    /**
+     * Imports from Junie's local session storage ({@code ~/.junie/sessions/}).
+     * Delegates to {@link #importFromAcpLocalSessions(String, Path, String)}.
+     */
+    private void importFromJunie(@Nullable String basePath) {
+        Path dir = Path.of(System.getProperty(USER_HOME_PROPERTY), JUNIE_HOME, JUNIE_SESSIONS_DIR);
+        importFromAcpLocalSessions(basePath, dir, "Junie");
+    }
+
+    /**
+     * Imports from an ACP client's local session storage (session.json + messages.jsonl).
+     * Used for both Kiro ({@code ~/.kiro/sessions/}) and Junie ({@code ~/.junie/sessions/}).
+     */
+    private void importFromAcpLocalSessions(@Nullable String basePath, @NotNull Path sessionsBaseDir, @NotNull String clientName) {
         try {
-            Path kiroSessionsDir = Path.of(System.getProperty(USER_HOME_PROPERTY), KIRO_HOME, KIRO_SESSIONS_DIR);
-            if (!kiroSessionsDir.toFile().isDirectory()) return;
+            if (!sessionsBaseDir.toFile().isDirectory()) return;
 
             String projectPath = basePath != null ? basePath : "";
             List<SessionMessage> currentV2 = loadCurrentV2Session(basePath);
             int currentCount = currentV2 != null ? currentV2.size() : 0;
 
-            try (var stream = Files.list(kiroSessionsDir)) {
+            try (var stream = Files.list(sessionsBaseDir)) {
                 stream.filter(Files::isDirectory)
-                    .forEach(sessionDir -> processKiroSessionDir(sessionDir, basePath, projectPath, currentCount));
+                    .forEach(sessionDir -> processAcpSessionDir(sessionDir, basePath, projectPath, currentCount, clientName));
             }
         } catch (IOException e) {
-            LOG.warn("Failed to list Kiro sessions dir for import", e);
+            LOG.warn("Failed to list " + clientName + " sessions dir for import", e);
         }
     }
 
     /**
-     * Processes a single Kiro session directory: checks if it belongs to the current project
+     * Processes a single ACP session directory: checks if it belongs to the current project
      * and, if so, imports its messages if they outnumber the current v2 session.
      */
-    private void processKiroSessionDir(
+    private void processAcpSessionDir(
         @NotNull Path sessionDir,
         @Nullable String basePath,
         @NotNull String projectPath,
-        int currentCount) {
+        int currentCount,
+        @NotNull String clientName) {
         try {
             Path sessionJsonPath = sessionDir.resolve("session.json");
             if (!sessionJsonPath.toFile().exists()) return;
@@ -265,10 +295,10 @@ public final class SessionSwitchService implements Disposable {
                 String sessionId = sessionStore.getCurrentSessionId(basePath);
                 writeV2Session(basePath, sessionId, imported);
                 LOG.info(LOG_PRE_IMPORTED + imported.size()
-                    + " messages from Kiro session: " + sessionDir.getFileName());
+                    + " messages from " + clientName + " session: " + sessionDir.getFileName());
             }
         } catch (Exception e) {
-            LOG.warn("Failed to read Kiro session in " + sessionDir, e);
+            LOG.warn("Failed to read " + clientName + " session in " + sessionDir, e);
         }
     }
 
@@ -387,26 +417,52 @@ public final class SessionSwitchService implements Disposable {
         }
     }
 
-    // ── Kiro export ───────────────────────────────────────────────────────────
+    // ── ACP local session export (Kiro / Junie) ─────────────────────────────
 
     /**
-     * Exports v2 session messages to a new Kiro local session directory
-     * ({@code ~/.kiro/sessions/<uuid>/}) and sets the {@code resumeSessionId} for the
-     * profile so AcpClient will send it on the next {@code session/new} request.
-     *
-     * @param messages    messages to export
-     * @param basePath    project base path (may be null)
-     * @param toProfileId profile ID of the Kiro profile being switched to
+     * Exports v2 session messages to a Kiro local session directory.
+     * Delegates to {@link #exportToAcpLocalSession}.
      */
     private void exportToKiro(
         @NotNull List<SessionMessage> messages,
         @Nullable String basePath,
         @NotNull String toProfileId) {
+        Path dir = Path.of(System.getProperty(USER_HOME_PROPERTY), KIRO_HOME, KIRO_SESSIONS_DIR);
+        exportToAcpLocalSession(messages, basePath, toProfileId, dir, "Kiro");
+    }
+
+    /**
+     * Exports v2 session messages to a Junie local session directory.
+     * Delegates to {@link #exportToAcpLocalSession}.
+     */
+    private void exportToJunie(
+        @NotNull List<SessionMessage> messages,
+        @Nullable String basePath,
+        @NotNull String toProfileId) {
+        Path dir = Path.of(System.getProperty(USER_HOME_PROPERTY), JUNIE_HOME, JUNIE_SESSIONS_DIR);
+        exportToAcpLocalSession(messages, basePath, toProfileId, dir, "Junie");
+    }
+
+    /**
+     * Exports v2 session messages to an ACP client's local session directory
+     * and sets {@code resumeSessionId} so AcpClient sends it on next {@code session/new}.
+     *
+     * @param messages       messages to export
+     * @param basePath       project base path (may be null)
+     * @param toProfileId    profile ID of the target ACP client
+     * @param sessionsBaseDir base sessions directory (e.g. {@code ~/.kiro/sessions/})
+     * @param clientName     human-readable client name for log messages
+     */
+    private void exportToAcpLocalSession(
+        @NotNull List<SessionMessage> messages,
+        @Nullable String basePath,
+        @NotNull String toProfileId,
+        @NotNull Path sessionsBaseDir,
+        @NotNull String clientName) {
         try {
             String newSessionId = UUID.randomUUID().toString();
-            Path kiroSessionDir = Path.of(
-                System.getProperty(USER_HOME_PROPERTY), KIRO_HOME, KIRO_SESSIONS_DIR, newSessionId);
-            Files.createDirectories(kiroSessionDir);
+            Path sessionDir = sessionsBaseDir.resolve(newSessionId);
+            Files.createDirectories(sessionDir);
 
             // Write session.json
             JsonObject sessionJson = new JsonObject();
@@ -420,19 +476,37 @@ public final class SessionSwitchService implements Disposable {
             sessionJson.addProperty("lastModifiedAt", Instant.ofEpochMilli(now).toString());
             sessionJson.addProperty("schemaVersion", 1);
             Files.writeString(
-                kiroSessionDir.resolve("session.json"),
+                sessionDir.resolve("session.json"),
                 GSON.toJson(sessionJson),
                 StandardCharsets.UTF_8);
 
             // Write messages.jsonl via AnthropicMessageExporter
-            AnthropicMessageExporter.exportToFile(messages, kiroSessionDir.resolve("messages.jsonl"));
+            AnthropicMessageExporter.exportToFile(messages, sessionDir.resolve("messages.jsonl"));
 
             // Set resumeSessionId so AcpClient sends it on the next session/new
             new GenericSettings(toProfileId, project).setResumeSessionId(newSessionId);
 
-            LOG.info("Exported v2 session to Kiro: " + newSessionId + " for profile " + toProfileId);
+            LOG.info("Exported v2 session to " + clientName + ": " + newSessionId + " for profile " + toProfileId);
         } catch (IOException e) {
-            LOG.warn("Failed to export v2 session to Kiro", e);
+            LOG.warn("Failed to export v2 session to " + clientName, e);
+        }
+    }
+
+    // ── Codex export ──────────────────────────────────────────────────────────
+
+    /**
+     * Exports v2 session messages to a new Codex session (rollout JSONL + SQLite entry)
+     * and sets the Codex thread ID for resume on next startup.
+     */
+    private void exportToCodex(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
+        Path sessionsDir = CodexExporter.defaultSessionsDir();
+        Path dbPath = CodexExporter.defaultDbPath();
+        String threadId = CodexExporter.exportSession(messages, sessionsDir, dbPath);
+        if (threadId != null) {
+            // Set the thread ID so CodexAppServerClient will try thread/resume on next startup
+            PropertiesComponent.getInstance(project)
+                .setValue(CodexAppServerClient.PROFILE_ID + ".codexThreadId", threadId);
+            LOG.info("Exported v2 session to Codex thread: " + threadId);
         }
     }
 
