@@ -181,7 +181,7 @@ public final class CodexClientExporter {
             JsonObject outputItem = new JsonObject();
             outputItem.addProperty("type", "function_call_output");
             outputItem.addProperty("call_id", callId);
-            outputItem.addProperty("result", result != null ? result : "");
+            outputItem.addProperty("output", result != null ? result : "");
             sb.append(GSON.toJson(outputItem)).append('\n');
         }
     }

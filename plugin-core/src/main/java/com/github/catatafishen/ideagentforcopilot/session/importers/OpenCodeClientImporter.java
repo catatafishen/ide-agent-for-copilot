@@ -48,9 +48,10 @@ public final class OpenCodeClientImporter {
     @Nullable
     private static String findLatestSessionId(@NotNull Path dbPath, @NotNull String projectDir) {
         String url = "jdbc:sqlite:" + dbPath;
-        try (Connection conn = DriverManager.getConnection(url);
-             Statement pragmaStmt = conn.createStatement()) {
-            pragmaStmt.execute("PRAGMA journal_mode=WAL");
+        try (Connection conn = DriverManager.getConnection(url)) {
+            try (Statement pragmaStmt = conn.createStatement()) {
+                pragmaStmt.execute("PRAGMA journal_mode=WAL");
+            }
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1")) {
                 ps.setString(1, projectDir);
@@ -71,9 +72,10 @@ public final class OpenCodeClientImporter {
         String url = "jdbc:sqlite:" + dbPath;
         List<SessionMessage> result = new ArrayList<>();
 
-        try (Connection conn = DriverManager.getConnection(url);
-             Statement pragmaStmt = conn.createStatement()) {
-            pragmaStmt.execute("PRAGMA journal_mode=WAL");
+        try (Connection conn = DriverManager.getConnection(url)) {
+            try (Statement pragmaStmt = conn.createStatement()) {
+                pragmaStmt.execute("PRAGMA journal_mode=WAL");
+            }
 
             List<MessageRow> messageRows = loadMessages(conn, sessionId);
 

@@ -68,9 +68,10 @@ public final class OpenCodeClientExporter {
         String sessionId = UUID.randomUUID().toString();
         String url = "jdbc:sqlite:" + dbPath;
 
-        try (Connection conn = DriverManager.getConnection(url);
-             Statement pragmaStmt = conn.createStatement()) {
-            pragmaStmt.execute("PRAGMA journal_mode=WAL");
+        try (Connection conn = DriverManager.getConnection(url)) {
+            try (Statement pragmaStmt = conn.createStatement()) {
+                pragmaStmt.execute("PRAGMA journal_mode=WAL");
+            }
 
             ensureTables(conn);
             long now = System.currentTimeMillis();
