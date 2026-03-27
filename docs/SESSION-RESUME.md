@@ -378,3 +378,31 @@ Copilot started a brand new session with no context. Agent confirmed blank conte
 3. Test whether Copilot CLI's `--resume` flag works at all for externally-created sessions
    (try manually creating an `events.jsonl` and resuming it)
 
+### Bug 7: Copilot CLI requires `workspace.yaml` for resume (2026-03-27 ~14:30)
+
+**Symptom**: Copilot CLI received `--resume=6219334c` correctly, but created a new
+session (`f8fba59d`) instead of resuming. The exported session had only `events.jsonl`.
+
+**Root cause**: A real Copilot session directory contains `workspace.yaml` (session
+metadata), `session.db`, and subdirectories (`checkpoints/`, `files/`, `research/`).
+The CLI silently ignores `--resume` when `workspace.yaml` is missing.
+
+**Fix**: `exportToCopilot()` now creates `workspace.yaml` (with session ID, cwd,
+git_root, branch, timestamps) and the three required subdirectories.
+
+### Bug 8: Claude CLI exported JSONL has consecutive user messages (2026-03-27 ~14:30)
+
+**Symptom**: Claude CLI loaded the exported session via `--resume` but "failed to
+respond" on the first prompt.
+
+**Root cause**: `AnthropicClientExporter.toAnthropicMessages()` creates a user message
+with `tool_result` blocks after each assistant turn (to carry tool results). When the
+next v2 message is also a user message (text), the result is two consecutive user
+messages. Claude's API requires strict user/assistant alternation — consecutive
+same-role messages cause API errors or silent failures.
+
+**Fix**: Added `mergeConsecutiveSameRole()` post-processing step that combines
+consecutive messages with the same role into a single message with merged content
+blocks. This ensures the exported JSONL always has proper alternation.
+
+

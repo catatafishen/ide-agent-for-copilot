@@ -123,7 +123,7 @@ public final class AnthropicClientExporter {
 
     @NotNull
     private static List<AnthropicMessage> toAnthropicMessages(@NotNull List<SessionMessage> messages) {
-        List<AnthropicMessage> result = new ArrayList<>();
+        List<AnthropicMessage> raw = new ArrayList<>();
 
         for (SessionMessage msg : messages) {
             if ("separator".equals(msg.role)) continue;
@@ -140,7 +140,7 @@ public final class AnthropicClientExporter {
                     }
                 }
                 if (!blocks.isEmpty()) {
-                    result.add(new AnthropicMessage("user", blocks));
+                    raw.add(new AnthropicMessage("user", blocks));
                 }
 
             } else if ("assistant".equals(msg.role)) {
@@ -196,15 +196,39 @@ public final class AnthropicClientExporter {
                 }
 
                 if (!assistantBlocks.isEmpty()) {
-                    result.add(new AnthropicMessage("assistant", assistantBlocks));
+                    raw.add(new AnthropicMessage("assistant", assistantBlocks));
                     if (!toolResultBlocks.isEmpty()) {
-                        result.add(new AnthropicMessage("user", toolResultBlocks));
+                        raw.add(new AnthropicMessage("user", toolResultBlocks));
                     }
                 }
             }
         }
 
-        return result;
+        return mergeConsecutiveSameRole(raw);
+    }
+
+    /**
+     * Merges consecutive messages with the same role into a single message.
+     * Claude's API requires strict user/assistant alternation — consecutive same-role
+     * messages (e.g., a tool_result user message followed by a text user message) cause
+     * API errors or silent failures.
+     */
+    @NotNull
+    private static List<AnthropicMessage> mergeConsecutiveSameRole(@NotNull List<AnthropicMessage> messages) {
+        if (messages.size() <= 1) return messages;
+
+        List<AnthropicMessage> merged = new ArrayList<>();
+        for (AnthropicMessage msg : messages) {
+            if (!merged.isEmpty() && merged.getLast().role.equals(msg.role)) {
+                AnthropicMessage prev = merged.removeLast();
+                List<JsonObject> combinedBlocks = new ArrayList<>(prev.contentBlocks);
+                combinedBlocks.addAll(msg.contentBlocks);
+                merged.add(new AnthropicMessage(prev.role, combinedBlocks));
+            } else {
+                merged.add(msg);
+            }
+        }
+        return merged;
     }
 
     private static final class AnthropicMessage {

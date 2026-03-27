@@ -545,9 +545,14 @@ public final class SessionSwitchService implements Disposable {
      * Exports v2 session messages to a new Copilot CLI session directory
      * and sets {@code resumeSessionId} so AcpClient sends it on next {@code session/new}.
      *
-     * <p>Copilot CLI stores sessions under {@code .agent-work/copilot/session-state/<uuid>/events.jsonl}.
-     * We create a new UUID session folder, write the events there, and persist the UUID
-     * as the resume target — mirroring what {@link #exportToAcpLocalSession} does for Kiro/Junie.</p>
+     * <p>Copilot CLI stores sessions under {@code .agent-work/copilot/session-state/<uuid>/}.
+     * A valid resumable session requires at minimum:
+     * <ul>
+     *   <li>{@code events.jsonl} — the conversation event log</li>
+     *   <li>{@code workspace.yaml} — session metadata (id, cwd, git info)</li>
+     *   <li>{@code checkpoints/}, {@code files/}, {@code research/} — empty subdirectories</li>
+     * </ul>
+     * Without {@code workspace.yaml}, the CLI ignores {@code --resume} and creates a new session.</p>
      */
     private void exportToCopilot(
         @NotNull List<SessionMessage> messages,
@@ -558,6 +563,14 @@ public final class SessionSwitchService implements Disposable {
             String newSessionId = UUID.randomUUID().toString();
             Path sessionDir = Path.of(base, ".agent-work", "copilot", "session-state", newSessionId);
             Files.createDirectories(sessionDir);
+
+            // Create required subdirectories that Copilot CLI expects
+            Files.createDirectories(sessionDir.resolve("checkpoints"));
+            Files.createDirectories(sessionDir.resolve("files"));
+            Files.createDirectories(sessionDir.resolve("research"));
+
+            // Write workspace.yaml — required for Copilot CLI to recognize this as a valid session
+            writeWorkspaceYaml(sessionDir, newSessionId, base);
 
             Path eventsFile = sessionDir.resolve("events.jsonl");
             CopilotClientExporter.exportToFile(messages, eventsFile);
@@ -571,6 +584,40 @@ public final class SessionSwitchService implements Disposable {
     }
 
     // ── OpenCode export ───────────────────────────────────────────────────────
+
+    /**
+     * Writes a minimal {@code workspace.yaml} that Copilot CLI requires to recognize a session.
+     * Fields mirror what the CLI writes natively when creating a session.
+     */
+    private void writeWorkspaceYaml(@NotNull Path sessionDir, @NotNull String sessionId, @NotNull String basePath) throws IOException {
+        String branch = "unknown";
+        try {
+            Path gitDir = Path.of(basePath, ".git");
+            if (Files.isDirectory(gitDir)) {
+                Path headFile = gitDir.resolve("HEAD");
+                if (Files.exists(headFile)) {
+                    String headContent = Files.readString(headFile, StandardCharsets.UTF_8).trim();
+                    if (headContent.startsWith("ref: refs/heads/")) {
+                        branch = headContent.substring("ref: refs/heads/".length());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.info("Could not read git info for workspace.yaml: " + e.getMessage());
+        }
+
+        String now = Instant.now().toString();
+        String yaml = "id: " + sessionId + "\n"
+            + "cwd: " + basePath + "\n"
+            + "git_root: " + basePath + "\n"
+            + "branch: " + branch + "\n"
+            + "summary_count: 0\n"
+            + "created_at: " + now + "\n"
+            + "updated_at: " + now + "\n";
+
+        Files.writeString(sessionDir.resolve("workspace.yaml"), yaml, StandardCharsets.UTF_8,
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+    }
 
     /**
      * Exports v2 session messages to OpenCode's native SQLite format.
