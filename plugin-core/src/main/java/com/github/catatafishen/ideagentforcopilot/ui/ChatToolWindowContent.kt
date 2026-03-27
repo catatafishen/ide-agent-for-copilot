@@ -1911,6 +1911,10 @@ class ChatToolWindowContent(
         consolePanel.showPlaceholder("New conversation started.")
         updateSessionInfo()
         archiveConversation()
+        // Delete .current-session-id so the next save creates a brand-new v2 session.
+        // This is separate from archive() because archive() must NOT delete the ID during
+        // agent switches — doExport still needs the session ID for subsequent export steps.
+        conversationStore.resetCurrentSessionId(project.basePath)
         ApplicationManager.getApplication().invokeLater {
             if (::planRoot.isInitialized) {
                 planRoot.removeAllChildren()

@@ -35,12 +35,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -423,18 +420,26 @@ public final class SessionSwitchService implements Disposable {
     private void exportToClaudeCli(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
         try {
             Path claudeDir = claudeProjectDir(basePath);
-            //noinspection ResultOfMethodCallIgnored — best-effort
-            claudeDir.toFile().mkdirs();
+            if (!claudeDir.toFile().mkdirs() && !claudeDir.toFile().isDirectory()) {
+                LOG.warn("Failed to create Claude project directory: " + claudeDir);
+                return;
+            }
 
             String newSessionId = UUID.randomUUID().toString();
             Path targetFile = claudeDir.resolve(newSessionId + JSONL_EXT);
 
             AnthropicClientExporter.exportToFile(messages, targetFile);
 
+            if (!Files.exists(targetFile)) {
+                LOG.warn("Claude session file not found after export: " + targetFile);
+                return;
+            }
+
             PropertiesComponent.getInstance(project)
                 .setValue(ClaudeCliClient.PROFILE_ID + ".cliResumeSessionId", newSessionId);
 
-            LOG.info("Exported v2 session to Claude CLI: " + newSessionId);
+            LOG.info("Exported v2 session to Claude CLI: " + newSessionId
+                + " (" + targetFile + ", " + Files.size(targetFile) + " bytes)");
 
         } catch (IOException e) {
             LOG.warn("Failed to export v2 session to Claude CLI", e);
@@ -649,10 +654,11 @@ public final class SessionSwitchService implements Disposable {
 
     /**
      * Returns the Claude CLI projects directory for this project:
-     * {@code ~/.claude/projects/<sha1-of-absolute-project-path>/}
+     * {@code ~/.claude/projects/<dash-separated-path>/}
      *
-     * <p>The SHA-1 hash is computed over the project's absolute base path encoded as
-     * UTF-8 bytes and formatted as 40 lower-case hex characters.</p>
+     * <p>Claude CLI uses the absolute project path with all forward slashes replaced by
+     * dashes as the per-project directory name. For example, the project path
+     * {@code /home/user/my-project} becomes {@code -home-user-my-project}.</p>
      *
      * @param basePath absolute project base path; {@code null} falls back to empty string
      * @return path to the project-specific Claude directory (may not yet exist on disk)
@@ -660,27 +666,9 @@ public final class SessionSwitchService implements Disposable {
     @NotNull
     private static Path claudeProjectDir(@Nullable String basePath) {
         String projectPath = basePath != null ? basePath : "";
-        String hash = sha1Hex(projectPath);
+        String dirName = projectPath.replace('/', '-');
         String home = System.getProperty(USER_HOME_PROPERTY, "");
-        return Path.of(home, CLAUDE_HOME, CLAUDE_PROJECTS_DIR, hash);
-    }
-
-    /**
-     * Computes the SHA-1 hex digest of a string (UTF-8 encoded).
-     *
-     * @param input the string to hash
-     * @return 40-character lowercase hex string
-     */
-    @NotNull
-    private static String sha1Hex(@NotNull String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-1 is guaranteed to be present in every JVM
-            throw new IllegalStateException("SHA-1 algorithm not available", e);
-        }
+        return Path.of(home, CLAUDE_HOME, CLAUDE_PROJECTS_DIR, dirName);
     }
 
     @NotNull

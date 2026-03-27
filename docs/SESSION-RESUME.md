@@ -87,7 +87,7 @@ When the user switches from agent A to agent B:
 
 | Agent       | Session Storage Path                                                | Format                        |
 |-------------|---------------------------------------------------------------------|-------------------------------|
-| Claude CLI  | `~/.claude/projects/<sha1-of-cwd>/<uuid>.jsonl`                     | Anthropic messages            |
+| Claude CLI  | `~/.claude/projects/<dash-separated-cwd>/<uuid>.jsonl`                    | Anthropic messages            |
 | Kiro        | `~/.kiro/sessions/<uuid>/session.json` + `messages.jsonl`           | Anthropic messages            |
 | Junie       | `~/.junie/sessions/<uuid>/session.json` + `messages.jsonl`          | Anthropic messages            |
 | Copilot CLI | `<project>/.agent-work/copilot/session-state/<uuid>/events.jsonl`   | Copilot events                |

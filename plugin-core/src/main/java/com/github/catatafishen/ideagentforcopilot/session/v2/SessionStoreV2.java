@@ -121,12 +121,26 @@ public final class SessionStoreV2 {
 
     /**
      * Archives the current conversation: finalises the v2 session, then delegates to
-     * {@link ConversationStore#archive(String)} for v1, then starts a fresh session UUID.
+     * {@link ConversationStore#archive(String)} for v1. Does <b>not</b> delete the
+     * current session ID — call {@link #resetCurrentSessionId(String)} separately
+     * when a completely fresh session is desired (e.g. "New Conversation").
+     *
+     * <p>Keeping {@code .current-session-id} intact is important during agent switches:
+     * {@code buildAndShowChatPanel()} calls this on first connection, but the session
+     * switch export ({@code SessionSwitchService.doExport}) may still need the same
+     * session ID for subsequent export steps.
      */
     public void archive(@Nullable String basePath) {
         finaliseCurrentSession(basePath);
         v1Store.archive(basePath);
-        // Reset current session ID so the next write gets a fresh UUID
+    }
+
+    /**
+     * Deletes the {@code .current-session-id} file so the next {@link #getCurrentSessionId}
+     * call generates a fresh UUID. Use this when the user explicitly starts a new conversation
+     * (e.g. "New Conversation" button), <b>not</b> during agent switches.
+     */
+    public void resetCurrentSessionId(@Nullable String basePath) {
         File sessionIdFile = currentSessionIdFile(basePath);
         try {
             Files.deleteIfExists(sessionIdFile.toPath());
