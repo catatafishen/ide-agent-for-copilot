@@ -44,6 +44,7 @@ public final class ClaudeCliClientConfigurable implements Configurable {
     private JBTextField instructionsFileField;
     private JBTextArea customModelsArea;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
+    private JCheckBox sessionMappingCheckBox;
     private JPanel panel;
 
     @Override
@@ -67,6 +68,9 @@ public final class ClaudeCliClientConfigurable implements Configurable {
 
         bubbleColorCombo = new ThemeColorComboBox();
 
+        sessionMappingCheckBox = new JCheckBox("Enable cross-client session mapping");
+        sessionMappingCheckBox.setToolTipText("Import from and export to Claude CLI's native session format when switching agents.");
+
         JBLabel authNote = new JBLabel(
             "<html>Run <code>claude auth login</code> in a terminal to authenticate.</html>");
         authNote.setForeground(UIUtil.getContextHelpForeground());
@@ -82,6 +86,8 @@ public final class ClaudeCliClientConfigurable implements Configurable {
             .addTooltip("Plugin instructions are prepended here on session start (relative to project root).")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for Claude message bubbles. Shared with Claude Code.")
+            .addComponent(sessionMappingCheckBox, 4)
+            .addTooltip("Import from and export to Claude CLI's native session format when switching agents.")
             .addSeparator(8)
             .addComponent(new JBLabel("Custom models (one per line):"))
             .addTooltip("Format: <model-id>=<Display Name>. Leave empty to use the built-in model list.")
@@ -105,6 +111,10 @@ public final class ClaudeCliClientConfigurable implements Configurable {
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, AcpClient.loadAgentBubbleColorKey(BUBBLE_CLIENT_TYPE))) return true;
         }
+        if (sessionMappingCheckBox != null) {
+            boolean storedSetting = AcpClient.isSessionMappingEnabled(AgentProfileManager.CLAUDE_CLI_PROFILE_ID);
+            if (sessionMappingCheckBox.isSelected() != storedSetting) return true;
+        }
         return false;
     }
 
@@ -121,6 +131,9 @@ public final class ClaudeCliClientConfigurable implements Configurable {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             AcpClient.saveAgentBubbleColorKey(BUBBLE_CLIENT_TYPE, tc != null ? tc.name() : null);
         }
+        if (sessionMappingCheckBox != null) {
+            AcpClient.setSessionMappingEnabled(AgentProfileManager.CLAUDE_CLI_PROFILE_ID, sessionMappingCheckBox.isSelected());
+        }
     }
 
     @Override
@@ -136,6 +149,9 @@ public final class ClaudeCliClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(BUBBLE_CLIENT_TYPE)));
         }
+        if (sessionMappingCheckBox != null) {
+            sessionMappingCheckBox.setSelected(AcpClient.isSessionMappingEnabled(AgentProfileManager.CLAUDE_CLI_PROFILE_ID));
+        }
     }
 
     @Override
@@ -145,6 +161,7 @@ public final class ClaudeCliClientConfigurable implements Configurable {
         instructionsFileField = null;
         customModelsArea = null;
         bubbleColorCombo = null;
+        sessionMappingCheckBox = null;
         panel = null;
     }
 

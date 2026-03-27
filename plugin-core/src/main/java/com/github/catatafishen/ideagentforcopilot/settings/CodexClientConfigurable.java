@@ -30,6 +30,7 @@ public final class CodexClientConfigurable implements Configurable {
     private JBLabel authStatusLabel;
     private JBTextField binaryPathField;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
+    private JCheckBox sessionMappingCheckBox;
     private JPanel mainPanel;
 
     public CodexClientConfigurable(@NotNull Project project) {
@@ -51,6 +52,9 @@ public final class CodexClientConfigurable implements Configurable {
         binaryPathField.setToolTipText("Absolute path to the codex binary. Leave empty to find it on PATH.");
 
         bubbleColorCombo = new ThemeColorComboBox();
+
+        sessionMappingCheckBox = new JCheckBox("Enable cross-client session mapping");
+        sessionMappingCheckBox.setToolTipText("Import from and export to Codex's native session format when switching agents.");
 
         HyperlinkLabel installLink = new HyperlinkLabel("Install Codex CLI — npmjs.com/@openai/codex");
         installLink.setHyperlinkTarget("https://www.npmjs.com/package/@openai/codex");
@@ -81,6 +85,8 @@ public final class CodexClientConfigurable implements Configurable {
             .addTooltip("Leave empty to auto-detect on PATH.")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for message bubbles when using Codex.")
+            .addComponent(sessionMappingCheckBox, 4)
+            .addTooltip("Import from and export to Codex's native session format when switching agents.")
             .addSeparator(8)
             .addComponent(signInButton, 4)
             .addComponent(signInDeviceButton, 2)
@@ -101,6 +107,10 @@ public final class CodexClientConfigurable implements Configurable {
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, loadBubbleColorKey())) return true;
         }
+        if (sessionMappingCheckBox != null) {
+            boolean storedSetting = loadSessionMappingEnabled();
+            if (sessionMappingCheckBox.isSelected() != storedSetting) return true;
+        }
         return false;
     }
 
@@ -112,6 +122,9 @@ public final class CodexClientConfigurable implements Configurable {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             saveBubbleColorKey(tc != null ? tc.name() : null);
         }
+        if (sessionMappingCheckBox != null) {
+            saveSessionMappingEnabled(sessionMappingCheckBox.isSelected());
+        }
     }
 
     @Override
@@ -122,6 +135,9 @@ public final class CodexClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(loadBubbleColorKey()));
         }
+        if (sessionMappingCheckBox != null) {
+            sessionMappingCheckBox.setSelected(loadSessionMappingEnabled());
+        }
     }
 
     @Override
@@ -130,6 +146,7 @@ public final class CodexClientConfigurable implements Configurable {
         authStatusLabel = null;
         binaryPathField = null;
         bubbleColorCombo = null;
+        sessionMappingCheckBox = null;
         mainPanel = null;
     }
 
@@ -231,6 +248,16 @@ public final class CodexClientConfigurable implements Configurable {
     private void saveBubbleColorKey(@Nullable String colorKey) {
         com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient
             .saveAgentBubbleColorKey(CodexAppServerClient.PROFILE_ID, colorKey);
+    }
+
+    private boolean loadSessionMappingEnabled() {
+        return com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient
+            .isSessionMappingEnabled(CodexAppServerClient.PROFILE_ID);
+    }
+
+    private void saveSessionMappingEnabled(boolean enabled) {
+        com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient
+            .setSessionMappingEnabled(CodexAppServerClient.PROFILE_ID, enabled);
     }
 
     @NotNull

@@ -39,6 +39,7 @@ public final class OpenCodeClientConfigurable implements Configurable {
     private JBLabel statusLabel;
     private JBTextField binaryPathField;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
+    private JCheckBox sessionMappingCheckBox;
     private JPanel mainPanel;
 
     @Override
@@ -50,6 +51,9 @@ public final class OpenCodeClientConfigurable implements Configurable {
         binaryPathField.setToolTipText("Absolute path to the opencode binary. Leave empty to find it on PATH.");
 
         bubbleColorCombo = new ThemeColorComboBox();
+
+        sessionMappingCheckBox = new JCheckBox("Enable cross-client session mapping");
+        sessionMappingCheckBox.setToolTipText("Import from and export to OpenCode's native session format when switching agents.");
 
         HyperlinkLabel installLink = new HyperlinkLabel("Install OpenCode from npmjs.com/package/opencode-ai");
         installLink.setHyperlinkTarget("https://www.npmjs.com/package/opencode-ai");
@@ -68,6 +72,8 @@ public final class OpenCodeClientConfigurable implements Configurable {
             .addTooltip("Leave empty to auto-detect on PATH.")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for message bubbles when using OpenCode.")
+            .addComponent(sessionMappingCheckBox, 4)
+            .addTooltip("Import from and export to OpenCode's native session format when switching agents.")
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         mainPanel.setBorder(JBUI.Borders.empty(8));
@@ -87,6 +93,10 @@ public final class OpenCodeClientConfigurable implements Configurable {
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, AcpClient.loadAgentBubbleColorKey(AGENT_ID))) return true;
         }
+        if (sessionMappingCheckBox != null) {
+            boolean storedSetting = AcpClient.isSessionMappingEnabled(AGENT_ID);
+            if (sessionMappingCheckBox.isSelected() != storedSetting) return true;
+        }
         return false;
     }
 
@@ -98,6 +108,9 @@ public final class OpenCodeClientConfigurable implements Configurable {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             AcpClient.saveAgentBubbleColorKey(AGENT_ID, tc != null ? tc.name() : null);
         }
+        if (sessionMappingCheckBox != null) {
+            AcpClient.setSessionMappingEnabled(AGENT_ID, sessionMappingCheckBox.isSelected());
+        }
     }
 
     @Override
@@ -108,6 +121,9 @@ public final class OpenCodeClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(AGENT_ID)));
         }
+        if (sessionMappingCheckBox != null) {
+            sessionMappingCheckBox.setSelected(AcpClient.isSessionMappingEnabled(AGENT_ID));
+        }
     }
 
     @Override
@@ -115,6 +131,7 @@ public final class OpenCodeClientConfigurable implements Configurable {
         statusLabel = null;
         binaryPathField = null;
         bubbleColorCombo = null;
+        sessionMappingCheckBox = null;
         mainPanel = null;
     }
 
