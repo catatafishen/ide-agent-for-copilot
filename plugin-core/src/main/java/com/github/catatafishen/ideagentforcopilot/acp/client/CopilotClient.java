@@ -137,6 +137,7 @@ public final class CopilotClient extends AcpClient {
         Path home = copilotHome();
         writeAgentDefinitions(home.toString());
         mergeMcpConfig(home, mcpPort);
+        migrateResumeSessionFromLegacyPath();
     }
 
     // ─── Identity ────────────────────────────────────
@@ -207,6 +208,33 @@ public final class CopilotClient extends AcpClient {
      */
     static Path copilotHome() {
         return Path.of(System.getProperty("user.home"), ".copilot");
+    }
+
+    /**
+     * Migrates a resume session from the legacy {@code .agent-work/copilot/session-state/}
+     * location to {@code ~/.copilot/session-state/} if needed. This handles the one-time
+     * transition after the HOME/config-dir overrides were removed.
+     */
+    private void migrateResumeSessionFromLegacyPath() {
+        String resumeId = ActiveAgentManager.getInstance(project).getSettings().getResumeSessionId();
+        if (resumeId == null) return;
+
+        Path newDir = copilotHome().resolve("session-state").resolve(resumeId);
+        if (Files.isDirectory(newDir)) return;
+
+        String basePath = project.getBasePath();
+        if (basePath == null) return;
+
+        Path legacyDir = Path.of(basePath, ".agent-work", "copilot", "session-state", resumeId);
+        if (!Files.isDirectory(legacyDir)) return;
+
+        try {
+            Files.createDirectories(newDir.getParent());
+            Files.createSymbolicLink(newDir, legacyDir);
+            LOG.info("Migrated resume session " + resumeId + " from legacy path: " + legacyDir + " → " + newDir);
+        } catch (IOException e) {
+            LOG.warn("Failed to migrate resume session from legacy path: " + legacyDir, e);
+        }
     }
 
     @Override

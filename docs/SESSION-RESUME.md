@@ -473,11 +473,11 @@ After all ten bugs above were fixed (commits `db56f7c` through `f181688`), the
 2. `mergeConsecutiveSameRole()` (Bug 8) — prevents consecutive user messages that
    cause Claude API errors
 
-| Path              | Status | Notes                                                        |
-|-------------------|--------|--------------------------------------------------------------|
-| Copilot → Claude  | ✅      | Confirmed working as of 2026-03-27                           |
-| Claude → Copilot  | ✅      | Confirmed working as of 2026-03-27                           |
-| Copilot → Copilot | ❌      | Bug 24: `--resume` path mismatch — CLI never loads context    |
+| Path              | Status | Notes                                                      |
+|-------------------|--------|------------------------------------------------------------|
+| Copilot → Claude  | ✅      | Confirmed working as of 2026-03-27                         |
+| Claude → Copilot  | ✅      | Confirmed working as of 2026-03-27                         |
+| Copilot → Copilot | ❌      | Bug 24: `--resume` path mismatch — CLI never loads context |
 
 ### ✅ Claude → Copilot Resume: Confirmed Working (2026-03-27)
 
@@ -743,11 +743,13 @@ looks for them.
   and stores sessions at `$HOME/.copilot/session-state/<id>/`.
 - The plugin overrides `HOME=.agent-work/copilot` and passes `--config-dir=.agent-work/copilot`.
 - `session/new` creates sessions at `<config-dir>/session-state/` = `.agent-work/copilot/session-state/` ✅
-- `--resume` likely resolves sessions at `$HOME/.copilot/session-state/` = `.agent-work/copilot/.copilot/session-state/` ❌
+- `--resume` likely resolves sessions at `$HOME/.copilot/session-state/` = `.agent-work/copilot/.copilot/session-state/`
+  ❌
 - The `.copilot/` subdirectory **does not exist** under the overridden `HOME`, so `--resume`
   can never find any session.
 
 **Evidence**:
+
 - CLI launch log confirmed: `--resume=bf09e80e` on command line + `resumeSessionId` in ACP params
 - CLI responded with brand new session ID `3cb5b4c6` (no resume acknowledgment)
 - CLI process log: "Workspace initialized: 3cb5b4c6 (checkpoints: 0)" — no resume trace
@@ -755,14 +757,28 @@ looks for them.
 - Real `~/.copilot/session-state/` has 238 sessions (from terminal-mode Copilot)
 - Plugin `.agent-work/copilot/session-state/` has 34 sessions — completely separate, no overlap
 
-**Fix (implemented)**:
-1. `CopilotClient.beforeLaunch()` now creates a `.copilot/session-state → ../session-state`
-   symlink so sessions are accessible from both paths — the `--config-dir` path and the
-   `$HOME/.copilot` path.
-2. `ActiveAgentManager.dispose()` now exports the v2 session before shutdown, so the next
-   IDE startup has a valid export to resume from (previously only `restart()` did this).
-3. Added diagnostic logging to `buildCommand()` showing the `--resume` value and whether
-   the session directory exists at both paths.
+**Fix (attempted — symlink approach)**:
+
+1. `CopilotClient.beforeLaunch()` created a `.copilot/session-state → ../session-state`
+   symlink so sessions are accessible from both paths.
+2. `ActiveAgentManager.dispose()` now exports the v2 session before shutdown.
+3. Added diagnostic logging to `buildCommand()`.
+
+**Status**: ❌ **Symlink didn't help** — the root cause was the HOME override itself. See Bug 25.
+
+### Bug 25: HOME override removal exposes one-time migration gap
+
+**Symptom**: After removing all HOME/config-dir overrides (the definitive fix for Bug 24),
+the first IDE restart still failed to resume. The CLI logged:
+`--resume=edf62605-... sessionDir=~/.copilot/session-state/edf62605-... (exists=false)`
+
+**Root cause**: The previous IDE instance ran old code that exported sessions to
+`.agent-work/copilot/session-state/`. The new code (after the refactor) expects sessions at
+`~/.copilot/session-state/`. The exported session existed at the old path but not the new one.
+
+**Fix**: `CopilotClient.beforeLaunch()` now calls `migrateResumeSessionFromLegacyPath()`,
+which checks if the resume session exists at the legacy `.agent-work/copilot/session-state/`
+path and creates a symlink to it at `~/.copilot/session-state/` if the new location is empty.
 
 **Status**: Pending restart to verify.
 
