@@ -91,6 +91,8 @@ public final class SessionSwitchService implements Disposable {
     private static final String WORKSPACE_PATHS_KEY = "workspacePaths";
     private static final String COPILOT_ID_PREFIX = "copilot";
     private static final String LOG_PRE_IMPORTED = "Pre-imported ";
+    private static final String AGENT_WORK_DIR = ".agent-work";
+    private static final String SESSION_STATE_DIR = "session-state";
 
     private final Project project;
     private final SessionStoreV2 sessionStore = new SessionStoreV2();
@@ -160,6 +162,12 @@ public final class SessionSwitchService implements Disposable {
         if (messages == null || messages.isEmpty()) {
             LOG.info("No v2 session found to migrate from " + fromProfileId + " to " + toProfileId);
             return;
+        }
+
+        // Save the latest plan.md to the v2 store so per-agent exporters can pick it up.
+        Path planFile = findLatestPlanFile(basePath);
+        if (planFile != null) {
+            savePlanToV2Store(planFile, basePath);
         }
 
         // Export to the new client's native format.
@@ -561,7 +569,7 @@ public final class SessionSwitchService implements Disposable {
         try {
             String base = basePath != null ? basePath : "";
             String newSessionId = UUID.randomUUID().toString();
-            Path sessionDir = Path.of(base, ".agent-work", "copilot", "session-state", newSessionId);
+            Path sessionDir = Path.of(base, AGENT_WORK_DIR, COPILOT_ID_PREFIX, SESSION_STATE_DIR, newSessionId);
             Files.createDirectories(sessionDir);
 
             // Create required subdirectories that Copilot CLI expects
@@ -574,6 +582,9 @@ public final class SessionSwitchService implements Disposable {
 
             Path eventsFile = sessionDir.resolve("events.jsonl");
             CopilotClientExporter.exportToFile(messages, eventsFile);
+
+            // Copy plan.md from v2 store into this Copilot session dir
+            copyPlanFromV2Store(base, sessionDir);
 
             new GenericSettings(toProfileId, project).setResumeSessionId(newSessionId);
 
@@ -617,6 +628,96 @@ public final class SessionSwitchService implements Disposable {
 
         Files.writeString(sessionDir.resolve("workspace.yaml"), yaml, StandardCharsets.UTF_8,
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+    }
+
+    // ── Plan file transfer ──────────────────────────────────────────────────
+
+    private static final String PLAN_FILE_NAME = "plan.md";
+
+    /**
+     * Finds the most recently modified plan.md across all known agent session directories.
+     * Scans all locations regardless of which agent is active — the v2 store is the intermediary.
+     */
+    @Nullable
+    private Path findLatestPlanFile(@Nullable String basePath) {
+        List<Path> candidates = new ArrayList<>();
+        String base = basePath != null ? basePath : "";
+
+        // Copilot session directories
+        collectPlanFiles(Path.of(base, AGENT_WORK_DIR, COPILOT_ID_PREFIX, SESSION_STATE_DIR), candidates);
+
+        // Plugin-managed session directories (Claude, Kiro, Junie, etc.)
+        collectPlanFiles(Path.of(base, AGENT_WORK_DIR, SESSION_STATE_DIR), candidates);
+
+        // Top-level fallback
+        Path topLevel = Path.of(base, AGENT_WORK_DIR, PLAN_FILE_NAME);
+        if (Files.isRegularFile(topLevel)) {
+            candidates.add(topLevel);
+        }
+
+        // v2 sessions directory (may already have a plan from a previous switch)
+        Path v2Plan = Path.of(base, AGENT_WORK_DIR, SESSIONS_DIR, PLAN_FILE_NAME);
+        if (Files.isRegularFile(v2Plan)) {
+            candidates.add(v2Plan);
+        }
+
+        return candidates.stream()
+            .max(Comparator.comparingLong(p -> {
+                try {
+                    return Files.getLastModifiedTime(p).toMillis();
+                } catch (IOException e) {
+                    return 0L;
+                }
+            }))
+            .orElse(null);
+    }
+
+    private static void collectPlanFiles(@NotNull Path sessionsDir, @NotNull List<Path> out) {
+        if (!Files.isDirectory(sessionsDir)) return;
+        try (var dirs = Files.list(sessionsDir)) {
+            dirs.filter(Files::isDirectory).forEach(dir -> {
+                Path plan = dir.resolve(PLAN_FILE_NAME);
+                if (Files.isRegularFile(plan)) {
+                    out.add(plan);
+                }
+            });
+        } catch (IOException e) {
+            // Best-effort — skip unreadable directories
+        }
+    }
+
+    /**
+     * Copies the plan file to the v2 sessions directory as the universal intermediary.
+     * Per-agent exporters pull from here when placing plan.md in their session dirs.
+     */
+    private void savePlanToV2Store(@NotNull Path planFile, @Nullable String basePath) {
+        String base = basePath != null ? basePath : "";
+        try {
+            Path v2Dir = Path.of(base, AGENT_WORK_DIR, SESSIONS_DIR);
+            if (Files.isDirectory(v2Dir)) {
+                Files.copy(planFile, v2Dir.resolve(PLAN_FILE_NAME),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                LOG.info("Saved plan.md to v2 store from: " + planFile);
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to save plan.md to v2 store", e);
+        }
+    }
+
+    /**
+     * Copies plan.md from the v2 store into a target agent's session directory.
+     * This is the import half of the plan transfer: v2 store → agent session.
+     */
+    private static void copyPlanFromV2Store(@NotNull String basePath, @NotNull Path targetDir) {
+        Path v2Plan = Path.of(basePath, AGENT_WORK_DIR, SESSIONS_DIR, PLAN_FILE_NAME);
+        if (!Files.isRegularFile(v2Plan)) return;
+        try {
+            Files.copy(v2Plan, targetDir.resolve(PLAN_FILE_NAME),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            LOG.info("Copied plan.md from v2 store to: " + targetDir.getFileName());
+        } catch (IOException e) {
+            LOG.warn("Failed to copy plan.md to agent session dir", e);
+        }
     }
 
     /**
