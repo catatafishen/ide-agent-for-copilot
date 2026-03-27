@@ -28,6 +28,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -90,6 +92,11 @@ public abstract class AcpClient extends AbstractAgentClient {
     private @Nullable InitializeResponse capabilities;
     private @Nullable String currentSessionId;
     private @Nullable String launchCwd;
+    /**
+     * Tracks the resume session ID requested in the current launch cycle.
+     * Set in {@link #buildNewSessionParams}, checked after {@link #onSessionCreated}.
+     */
+    private @Nullable String requestedResumeId;
     private final List<Model> availableModels = new ArrayList<>();
     private final List<AbstractAgentClient.AgentMode> availableModes = new ArrayList<>();
     private @Nullable String currentModeSlug = null;
@@ -284,6 +291,7 @@ public abstract class AcpClient extends AbstractAgentClient {
             processNewSessionResponse(response);
 
             onSessionCreated(currentSessionId);
+            detectResumeFailed(currentSessionId);
             persistResumeSessionId(currentSessionId);
             return currentSessionId;
         } catch (InterruptedException e) {
@@ -301,10 +309,10 @@ public abstract class AcpClient extends AbstractAgentClient {
         customizeNewSession(cwd, mcpPort, params);
 
         // Request continuation of the previous conversation if one was saved.
-        String savedResumeId = loadResumeSessionId();
-        if (savedResumeId != null) {
-            params.addProperty("resumeSessionId", savedResumeId);
-            LOG.info(displayName() + ": requesting resume of session " + savedResumeId);
+        requestedResumeId = loadResumeSessionId();
+        if (requestedResumeId != null) {
+            params.addProperty("resumeSessionId", requestedResumeId);
+            LOG.info(displayName() + ": requesting resume of session " + requestedResumeId);
         }
         return params;
     }
@@ -394,6 +402,36 @@ public abstract class AcpClient extends AbstractAgentClient {
         } catch (Exception e) {
             LOG.warn("Failed to persist resume session ID", e);
         }
+    }
+
+    /**
+     * Detects that the agent ignored the {@code resumeSessionId} parameter and created a
+     * fresh session instead. When this happens, enables conversation history injection as a
+     * fallback so the agent still receives prior context.
+     */
+    private void detectResumeFailed(@Nullable String sessionId) {
+        if (requestedResumeId == null || requestedResumeId.equals(sessionId)) {
+            return;
+        }
+        LOG.info(displayName() + ": resume of " + requestedResumeId
+            + " failed → created fresh session " + sessionId + "; enabling conversation history injection fallback");
+
+        if (!ActiveAgentManager.getInjectConversationHistory(project)) {
+            ActiveAgentManager.setInjectConversationHistory(project, true);
+        }
+
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("AgentBridge Notifications")
+                .createNotification(
+                    displayName() + " session resume not available",
+                    "Session resume was requested but " + displayName() + " created a fresh session. "
+                        + "Conversation history injection has been enabled as a fallback — "
+                        + "a compressed summary of the previous session will be prepended to "
+                        + "your first prompt. You can configure this in "
+                        + "Settings → IDE Agent → Chat History.",
+                    NotificationType.INFORMATION)
+                .notify(project));
     }
 
     private int getTurnTimeoutSeconds() {

@@ -52,17 +52,17 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
      * Produce a compressed summary of the conversation for context injection.
      *
      * - Groups entries into named turns (t1, t2, …).
-     * - Last 2 turns: full user input + full agent text.
-     * - Older turns: first 200 chars of each, marked as truncated.
+     * - Last 3 turns: full user input + full agent text.
+     * - Older turns: first 500 chars of each, marked as truncated.
      * - Tool calls, thoughts, sub-agents: replaced with count markers, e.g. [5 tool calls, 2 thoughts].
      * - Builds from newest → oldest within [maxChars] budget.
      */
-    fun getCompressedSummary(maxChars: Int = 4000): String {
+    fun getCompressedSummary(maxChars: Int = 8000): String {
         val turns = groupIntoTurns()
         if (turns.isEmpty()) return ""
 
         val totalTurns = turns.size
-        val recentFullTurns = 2
+        val recentFullTurns = 3
 
         val blocks = ArrayDeque<String>()
         var usedChars = 0
@@ -153,7 +153,7 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
     }
 
     private fun truncateField(text: String, full: Boolean, hint: String): String =
-        if (full || text.length <= 200) text else text.take(200) + "…[$hint]"
+        if (full || text.length <= 500) text else text.take(500) + "…[$hint]"
 
     private fun buildMarkerLine(turn: TurnData): String? {
         val markers = buildList {
