@@ -298,7 +298,7 @@ const ChatController = {
         // No-op: orphan handling removed; replaced by ToolChipRegistry correlation
     },
 
-    addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptText?: string): void {
+    addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptHtml?: string): void {
         this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
@@ -311,7 +311,7 @@ const ChatController = {
         ctx.meta!.appendChild(chip);
         ctx.meta!.classList.add('show');
         const promptBubble = document.createElement('message-bubble');
-        promptBubble.innerHTML = '<span class="subagent-prefix subagent-c' + colorIndex + '">@' + escHtml(displayName) + '</span> ' + escHtml(promptText || '');
+        promptBubble.innerHTML = '<span class="subagent-prefix subagent-c' + colorIndex + '">@' + escHtml(displayName) + '</span> ' + (promptHtml || '');
         ctx.msg!.appendChild(promptBubble);
         const msg = document.createElement('chat-message');
         msg.setAttribute('type', 'agent');

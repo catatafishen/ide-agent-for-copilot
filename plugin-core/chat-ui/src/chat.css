@@ -711,6 +711,15 @@ thinking-chip.thinking-active .thought-bubble {
     border-top-color: var(--sa-color);
 }
 
+.turn-chip.subagent.status-complete {
+    border-style: solid;
+    opacity: 0.85;
+}
+
+.turn-chip.subagent.status-running {
+    border-style: dashed;
+}
+
 /* ── Session separator ───────────────────────────────── */
 .session-sep {
     display: flex;

@@ -581,12 +581,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val info = SUB_AGENT_INFO[agentType]
         val displayName = info?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
         val promptText = prompt ?: description
+        val promptHtml = b64(markdownToHtml(promptText))
         executeJs(
-            "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$colorIndex,'${
-                escJs(
-                    promptText
-                )
-            }')"
+            "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$colorIndex,b64('$promptHtml'))"
         )
         if (autoDenied || !initialResult.isNullOrBlank() || initialStatus == "completed" || initialStatus == "failed") {
             val status = if (autoDenied) "denied" else (initialStatus ?: "completed")
