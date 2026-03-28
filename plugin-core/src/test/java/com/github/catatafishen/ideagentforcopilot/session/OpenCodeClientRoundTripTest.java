@@ -21,6 +21,7 @@ import java.sql.Statement;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -291,8 +292,9 @@ class OpenCodeClientRoundTripTest {
     }
 
     @Test
-    void exportedTextPartHasTime() throws SQLException {
-        // Text parts in real OpenCode sessions also carry a top-level time field.
+    void exportedTextPartHasNoTime() throws SQLException {
+        // Real OpenCode text parts do NOT carry a top-level time field (only reasoning parts do).
+        // Writing time on text parts may cause Zod strict-mode validation failures in OpenCode.
         String sessionId = OpenCodeClientExporter.exportSession(
             List.of(userMessage("Hello")), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
@@ -306,10 +308,84 @@ class OpenCodeClientRoundTripTest {
             try (var rs = ps.executeQuery()) {
                 assertTrue(rs.next(), "Should have a text part");
                 JsonObject partData = GSON.fromJson(rs.getString("data"), JsonObject.class);
-                assertTrue(partData.has("time"), "text part must have top-level time");
-                JsonObject time = partData.getAsJsonObject("time");
-                assertTrue(time.has("start"), "time must have start");
-                assertTrue(time.has("end"), "time must have end");
+                assertFalse(partData.has("time"), "text part must NOT have a top-level time field");
+            }
+        }
+    }
+
+    @Test
+    void subagentPartConvertedToText() throws SQLException {
+        // Regression: writing type="subagent" to OpenCode's DB causes Zod validation failure
+        // because its discriminated union on "type" doesn't include "subagent".
+        // The exporter must convert subagent parts to text summaries instead.
+        JsonObject subagentPart = new JsonObject();
+        subagentPart.addProperty("type", "subagent");
+        subagentPart.addProperty("agentType", "explore");
+        subagentPart.addProperty("description", "Exploring codebase");
+        subagentPart.addProperty("result", "Found 3 files");
+        subagentPart.addProperty("status", "done");
+        SessionMessage assistant = new SessionMessage(
+            "a1", "assistant", List.of(subagentPart), System.currentTimeMillis(), null, null);
+
+        String sessionId = OpenCodeClientExporter.exportSession(
+            List.of(userMessage("Search"), assistant), dbPath, PROJECT_DIR);
+        assertNotNull(sessionId);
+
+        try (Connection conn = connect(dbPath);
+             var ps = conn.prepareStatement("""
+                 SELECT p.data FROM part p
+                 JOIN message m ON p.message_id = m.id
+                 WHERE m.session_id = ?""")) {
+            ps.setString(1, sessionId);
+            try (var rs = ps.executeQuery()) {
+                boolean foundText = false;
+                while (rs.next()) {
+                    JsonObject partData = GSON.fromJson(rs.getString("data"), JsonObject.class);
+                    String type = partData.get("type").getAsString();
+                    assertFalse("subagent".equals(type), "subagent type must not be written to DB");
+                    if ("text".equals(type)) {
+                        String text = partData.get("text").getAsString();
+                        assertTrue(text.contains("Exploring codebase"), "text should contain description");
+                        foundText = true;
+                    }
+                }
+                assertTrue(foundText, "Should have converted subagent to text part");
+            }
+        }
+    }
+
+    @Test
+    void unknownPartTypeSkipped() throws SQLException {
+        // Unknown v2 part types (e.g. "status", "file") must be skipped rather than written
+        // as-is, because OpenCode's Zod discriminated union would fail validation.
+        JsonObject statusPart = new JsonObject();
+        statusPart.addProperty("type", "status");
+        statusPart.addProperty("message", "Thinking...");
+        JsonObject textPart = new JsonObject();
+        textPart.addProperty("type", "text");
+        textPart.addProperty("text", "Hello");
+        SessionMessage msg = new SessionMessage(
+            "a1", "assistant", List.of(statusPart, textPart), System.currentTimeMillis(), null, null);
+
+        String sessionId = OpenCodeClientExporter.exportSession(List.of(msg), dbPath, PROJECT_DIR);
+        assertNotNull(sessionId);
+
+        try (Connection conn = connect(dbPath);
+             var ps = conn.prepareStatement("""
+                 SELECT p.data FROM part p
+                 JOIN message m ON p.message_id = m.id
+                 WHERE m.session_id = ?""")) {
+            ps.setString(1, sessionId);
+            try (var rs = ps.executeQuery()) {
+                boolean foundStatus = false;
+                int count = 0;
+                while (rs.next()) {
+                    count++;
+                    JsonObject partData = GSON.fromJson(rs.getString("data"), JsonObject.class);
+                    if ("status".equals(partData.get("type").getAsString())) foundStatus = true;
+                }
+                assertFalse(foundStatus, "status part must not be written to DB");
+                assertEquals(1, count, "Only the text part should be written");
             }
         }
     }

@@ -365,9 +365,10 @@ public final class OpenCodeClientExporter {
         @NotNull JsonObject v2Part,
         long timeCreated) throws SQLException {
 
-        String partId = generateId("prt");
         JsonObject partData = convertV2PartToOpenCodePart(v2Part, timeCreated);
+        if (partData == null) return;
 
+        String partId = generateId("prt");
         try (PreparedStatement ps = conn.prepareStatement(
             "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) "
                 + "VALUES (?, ?, ?, ?, ?, ?)")) {
@@ -388,20 +389,34 @@ public final class OpenCodeClientExporter {
      * {@code tool} type with the structure: {@code {"type":"tool","callID":"...","tool":"...",
      * "state":{"status":"completed","input":{...},"output":"...","time":{"start":T,"end":T}}}}.</p>
      *
-     * <p>OpenCode always writes {@code time} on parts it owns. Tool parts need
+     * <p>V2-specific part types that OpenCode doesn't recognise (e.g. {@code subagent},
+     * {@code status}, {@code file}) are either converted to a text summary or skipped.
+     * Writing an unknown {@code type} value to OpenCode's DB causes a Zod discriminated-union
+     * validation failure when OpenCode reads the session back, breaking resume entirely.</p>
+     *
+     * <p>OpenCode always writes {@code time} on reasoning parts it owns. Tool parts need
      * {@code state.time} (with {@code start}/{@code end}) because {@code toModelMessages}
      * accesses {@code part.state.time.compacted} to detect compacted entries — if
      * {@code state.time} is absent the property read throws a TypeError.</p>
+     *
+     * @return the converted part, or {@code null} if the part should be skipped
      */
-    @NotNull
+    @Nullable
     private static JsonObject convertV2PartToOpenCodePart(@NotNull JsonObject v2Part, long timeMs) {
         String type = JsonlUtil.getStr(v2Part, "type");
-        if (type == null) return v2Part.deepCopy();
+        if (type == null) return null;
 
         JsonObject result = new JsonObject();
         switch (type) {
-            case "text", "reasoning" -> {
-                result.addProperty("type", type);
+            case "text" -> {
+                result.addProperty("type", "text");
+                String text = JsonlUtil.getStr(v2Part, "text");
+                result.addProperty("text", text != null ? text : "");
+                // Real OpenCode text parts do NOT carry a top-level time object.
+                // Only reasoning parts have time. Zod validation may reject extra fields.
+            }
+            case "reasoning" -> {
+                result.addProperty("type", "reasoning");
                 String text = JsonlUtil.getStr(v2Part, "text");
                 result.addProperty("text", text != null ? text : "");
                 JsonObject time = new JsonObject();
@@ -411,7 +426,7 @@ public final class OpenCodeClientExporter {
             }
             case "tool-invocation" -> {
                 JsonObject invocation = v2Part.getAsJsonObject("toolInvocation");
-                if (invocation == null) return v2Part.deepCopy();
+                if (invocation == null) return null;
 
                 String toolCallId = JsonlUtil.getStr(invocation, "toolCallId");
                 String toolName = JsonlUtil.getStr(invocation, "toolName");
@@ -449,9 +464,28 @@ public final class OpenCodeClientExporter {
 
                 result.add("state", stateObj);
             }
-            default -> {
-                return v2Part.deepCopy();
+            case "subagent" -> {
+                // OpenCode has no subagent concept — convert to a text summary so context
+                // is preserved without writing an unknown discriminant value that fails Zod validation.
+                String description = JsonlUtil.getStr(v2Part, "description");
+                String agentType = JsonlUtil.getStr(v2Part, "agentType");
+                String subResult = JsonlUtil.getStr(v2Part, "result");
+                StringBuilder sb = new StringBuilder("[Subagent");
+                if (agentType != null) sb.append(" (").append(agentType).append(")");
+                if (description != null) sb.append(": ").append(description);
+                sb.append("]");
+                if (subResult != null && !subResult.isBlank()) {
+                    sb.append("\n").append(subResult);
+                }
+                result.addProperty("type", "text");
+                result.addProperty("text", sb.toString());
             }
+            default ->
+                // Unknown v2 part type (e.g. "status", "file"). Writing it as-is would cause
+                // Zod schema validation failure in OpenCode because its discriminated union on
+                // "type" doesn't include these values. Skip the part entirely.
+                // ignore
+                result = null;
         }
         return result;
     }
