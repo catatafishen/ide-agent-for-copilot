@@ -171,6 +171,7 @@ class ChatToolWindowContent(
 
     private fun setupTitleBarActions() {
         val actions = listOf(
+            AutoScrollToggleAction(),
             FollowAgentFilesToggleAction(),
             Separator.create(),
             ProjectFilesDropdownAction(),
@@ -1159,6 +1160,24 @@ class ChatToolWindowContent(
 
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             ActiveAgentManager.setFollowAgentFiles(project, state)
+        }
+    }
+
+    @Volatile
+    private var autoScrollEnabled = true
+
+    private inner class AutoScrollToggleAction : ToggleAction(
+        "Auto-Scroll",
+        "Scroll to bottom automatically when new content arrives",
+        AllIcons.RunConfigurations.Scroll_down
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+        override fun isSelected(e: AnActionEvent): Boolean = autoScrollEnabled
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            autoScrollEnabled = state
+            chatConsolePanel.setAutoScroll(state)
         }
     }
 

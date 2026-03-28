@@ -118,8 +118,9 @@
     --purple-bg: rgba(155, 89, 182, 0.15);
 }
 
-html {
-    scroll-behavior: smooth;
+html, body {
+    height: 100%;
+    overflow: hidden;
 }
 
 * {
@@ -133,10 +134,17 @@ body {
     font-size: var(--font-size);
     color: var(--fg);
     background: var(--bg);
-    padding: var(--sp-4);
+    padding: 0;
     line-height: 1.45;
-    /* Promote to GPU compositing layer for smoother JCEF rendering during streaming */
-    will-change: scroll-position;
+}
+
+chat-container {
+    display: block;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--sp-4);
+    contain: paint;
 }
 
 ::-webkit-scrollbar {
@@ -1189,10 +1197,6 @@ pre.word-wrap code {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
-    }
-
-    html {
-        scroll-behavior: auto;
     }
 }
 

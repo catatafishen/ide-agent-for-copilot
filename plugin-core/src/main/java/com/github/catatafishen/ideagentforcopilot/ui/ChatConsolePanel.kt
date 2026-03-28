@@ -246,6 +246,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     // ── Public API ─────────────────────────────────────────────────
 
+    fun setAutoScroll(enabled: Boolean) {
+        executeJs("ChatController.setAutoScroll($enabled)")
+    }
+
     override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?, bubbleHtml: String?) {
         toolJustCompleted = false
         finalizeCurrentText()
