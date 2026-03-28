@@ -174,7 +174,6 @@ export default class ChatContainer extends HTMLElement {
     }
 
     forceScroll(): void {
-        this._autoScroll = true;
         this._programmaticScroll = true;
         this.scrollTop = this.scrollHeight;
     }
