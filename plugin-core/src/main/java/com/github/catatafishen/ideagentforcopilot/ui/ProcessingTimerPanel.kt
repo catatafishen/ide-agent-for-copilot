@@ -202,7 +202,8 @@ internal class ProcessingTimerPanel(
         removedLabel.text = if (removedLineCount > 0) "-$removedLineCount" else ""
         removedLabel.isVisible = removedLineCount > 0
 
-        val hasUsage = !isRunning && (turnCostUsd?.let { it > 0.0 } ?: false || (turnInputTokens + turnOutputTokens) > 0)
+        val hasUsage =
+            !isRunning && (turnCostUsd?.let { it > 0.0 } ?: false || (turnInputTokens + turnOutputTokens) > 0)
         if (hasUsage) {
             requestsLabel.text =
                 "\u2022 ${BillingManager.formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)}"
