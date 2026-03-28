@@ -109,6 +109,14 @@ public abstract class AcpClient extends AbstractAgentClient {
     private final List<AbstractAgentClient.AgentConfigOption> availableConfigOptions = new ArrayList<>();
     private volatile @Nullable Consumer<SessionUpdate> updateConsumer;
     /**
+     * Conversation history replayed by the agent during {@code session/load}.
+     * Non-null and non-empty when the agent successfully restored a session with
+     * history replay via {@code session/update} notifications.
+     * Null when no session was loaded or the agent didn't replay any history.
+     * The UI layer can use this to determine whether injection is needed.
+     */
+    private volatile @Nullable List<SessionUpdate> loadedSessionHistory;
+    /**
      * Tracks pending {@code session/request_permission} request IDs so we can respond with
      * {@code {outcome: "cancelled"}} when {@link #cancelSession} is called.
      * Per ACP spec, the Client MUST respond to all pending permission requests with the
@@ -276,6 +284,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         availableConfigOptions.clear();
         pendingPermissionRequests.clear();
         terminalHandler.releaseAll();
+        loadedSessionHistory = null;
         updateConsumer = null;
     }
 
@@ -301,7 +310,18 @@ public abstract class AcpClient extends AbstractAgentClient {
             // (e.g. CopilotClient throws because Copilot doesn't support it).
             if (requestedResumeId != null) {
                 try {
-                    return loadSession(cwd, requestedResumeId);
+                    String loaded = loadSession(cwd, requestedResumeId);
+                    if (loadedSessionHistory != null) {
+                        // Agent replayed history — it has conversation context.
+                        // Disable injection in case it was left enabled from a prior failed load.
+                        ActiveAgentManager.setInjectConversationHistory(project, false);
+                    } else {
+                        // Agent loaded the session but didn't replay any history.
+                        // It may not have conversation context — inject as a safety net.
+                        LOG.info(displayName() + ": session loaded but no history replayed — enabling injection fallback");
+                        enableInjectionFallback(requestedResumeId);
+                    }
+                    return loaded;
                 } catch (Exception e) {
                     LOG.warn(displayName() + ": session/load failed for " + requestedResumeId
                         + ", falling back to session/new: " + e.getMessage());
@@ -434,6 +454,11 @@ public abstract class AcpClient extends AbstractAgentClient {
      * Sends a session load/resume RPC request and processes the response.
      * Handles all internal state management (currentSessionId, models, modes, etc.).
      * <p>
+     * Per ACP spec, the agent may replay conversation history during {@code session/load}
+     * via {@code session/update} notifications. This method buffers those notifications
+     * into {@link #loadedSessionHistory} so the UI layer can determine whether the agent
+     * successfully restored context.
+     * <p>
      * Subclasses that override {@link #loadSession} should call this method with the
      * appropriate RPC method name (e.g. {@code "session/resume"} for OpenCode).
      *
@@ -449,20 +474,32 @@ public abstract class AcpClient extends AbstractAgentClient {
         int mcpPort = resolveMcpPort();
         customizeNewSession(cwd, mcpPort, params);
 
-        LOG.info(displayName() + ": attempting " + method + " for " + sessionId);
-        CompletableFuture<JsonElement> future = transport.sendRequest(method, params);
-        JsonElement result = future.get(SESSION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        LOG.debug(displayName() + ": " + method + " response: " + result);
+        // Buffer session/update notifications that arrive during session/load.
+        // Per ACP spec, the agent replays conversation history via these notifications.
+        List<SessionUpdate> loadBuffer = new ArrayList<>();
+        updateConsumer = loadBuffer::add;
 
-        // Per ACP spec, session/load response is null (history replayed via session/update).
-        // Some agents (e.g. OpenCode's session/resume) return models/modes/configOptions.
-        if (result != null && !result.isJsonNull()) {
-            NewSessionResponse response = gson.fromJson(result, NewSessionResponse.class);
-            processSessionResponse(response);
+        LOG.info(displayName() + ": attempting " + method + " for " + sessionId);
+        try {
+            CompletableFuture<JsonElement> future = transport.sendRequest(method, params);
+            JsonElement result = future.get(SESSION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            LOG.debug(displayName() + ": " + method + " response: " + result);
+
+            // Per ACP spec, session/load response is null (history replayed via session/update).
+            // Some agents (e.g. OpenCode's session/resume) return models/modes/configOptions.
+            if (result != null && !result.isJsonNull()) {
+                NewSessionResponse response = gson.fromJson(result, NewSessionResponse.class);
+                processSessionResponse(response);
+            }
+        } finally {
+            updateConsumer = null;
         }
 
+        loadedSessionHistory = loadBuffer.isEmpty() ? null : List.copyOf(loadBuffer);
+        LOG.info(displayName() + ": loaded session " + sessionId + " via " + method
+            + " (" + loadBuffer.size() + " history update(s) replayed)");
+
         currentSessionId = sessionId;
-        LOG.info(displayName() + ": successfully loaded session " + sessionId + " via " + method);
         onSessionCreated(sessionId);
         persistResumeSessionId(sessionId);
         return sessionId;
@@ -490,6 +527,11 @@ public abstract class AcpClient extends AbstractAgentClient {
                         + "Settings → IDE Agent → Chat History.",
                     NotificationType.INFORMATION)
                 .notify(project));
+    }
+
+    @Override
+    public @Nullable List<SessionUpdate> getLoadedSessionHistory() {
+        return loadedSessionHistory;
     }
 
     @Override

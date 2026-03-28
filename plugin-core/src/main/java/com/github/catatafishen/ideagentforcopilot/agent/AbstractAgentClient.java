@@ -81,6 +81,19 @@ public abstract class AbstractAgentClient {
     public abstract String createSession(String cwd) throws Exception;
 
     /**
+     * Returns conversation history replayed by the agent during the most recent
+     * {@code session/load} call, or {@code null} if no history was replayed (or
+     * the session was created fresh via {@code session/new}).
+     * <p>
+     * When non-null and non-empty, the agent has conversation context from the
+     * loaded session and the UI layer does NOT need to inject a compressed summary.
+     * When null, injection should be used as a fallback.
+     */
+    public @Nullable List<SessionUpdate> getLoadedSessionHistory() {
+        return null;
+    }
+
+    /**
      * Cancel an in-progress prompt turn.
      */
     public abstract void cancelSession(String sessionId);
