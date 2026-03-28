@@ -6,7 +6,6 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.ResourceReference
 import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate
 import com.github.catatafishen.ideagentforcopilot.agent.AbstractAgentClient
 import com.github.catatafishen.ideagentforcopilot.agent.AgentException
-import com.github.catatafishen.ideagentforcopilot.agent.AgentPromptException
 import com.github.catatafishen.ideagentforcopilot.bridge.PermissionResponse
 import com.github.catatafishen.ideagentforcopilot.psi.CodeChangeTracker
 import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService
@@ -139,11 +138,13 @@ class PromptOrchestrator(
             // response) without throwing. Treat it as a cancellation so handlePromptCompletion
             // is not invoked and the stale thread interrupt doesn't leak into the next turn.
             if (stopped) throw InterruptedException("Stopped by user")
-            // If the agent returned end_turn but produced no content, the session state is likely
-            // corrupted (e.g. OpenCode's compaction state is broken). Reset the session so the
-            // next message starts fresh.
+            // If the agent returned end_turn but produced no content, the session state is
+            // likely corrupted (e.g. OpenCode's compaction state is broken). Handle it
+            // explicitly — NOT via handlePromptError, which shows a misleading "Reconnect"
+            // banner. We reset the session and tell the user clearly what happened.
             if (!turnHadContent) {
-                throw AgentPromptException("Agent returned an empty response — session state may be corrupted. Please try sending your message again.")
+                handleSessionCorrupted()
+                return
             }
             handlePromptCompletion(prompt)
         } catch (e: Exception) {
@@ -411,6 +412,39 @@ class PromptOrchestrator(
         }
     }
 
+    /**
+     * Called when the agent returns {@code end_turn} with no content at all — no text,
+     * no tool calls, no thoughts. This indicates a corrupted or unusable session state
+     * (e.g. OpenCode's session compaction state is broken).
+     *
+     * Resets the session and tells the user explicitly what happened. Does NOT go through
+     * [handlePromptError], which would show a misleading "Reconnect" banner implying a
+     * connection failure.
+     */
+    private fun handleSessionCorrupted() {
+        val agentName = agentManager.activeProfile.displayName
+        log.warn("$agentName: empty turn — session state corrupted, resetting session")
+
+        codeChangeListener?.let { CodeChangeTracker.removeListener(it) }
+        codeChangeListener = null
+        pendingBanner = null
+
+        currentSessionId = null
+        callbacks.updateSessionInfo()
+
+        consolePanel().cancelAllRunning()
+        consolePanel().finishResponse(turnToolCallCount, turnModelId, "")
+        callbacks.saveConversation()
+
+        consolePanel().addErrorEntry(
+            "Session not resumed — $agentName returned an empty response. " +
+                "Your session has been reset. Please resend your message to continue."
+        )
+        ApplicationManager.getApplication().invokeLater {
+            statusBanner()?.showWarning("Session was reset — please resend your last message.")
+        }
+    }
+
     private fun handlePromptStreamingUpdate(update: SessionUpdate) {
         when (update) {
             is SessionUpdate.AgentMessageChunk -> {
@@ -437,6 +471,7 @@ class PromptOrchestrator(
                 turnHadContent = true
                 if (!stopped) consolePanel().appendThinkingText(update.text())
             }
+
             is SessionUpdate.TurnUsage -> {
                 turnInputTokens = update.inputTokens()
                 turnOutputTokens = update.outputTokens()
