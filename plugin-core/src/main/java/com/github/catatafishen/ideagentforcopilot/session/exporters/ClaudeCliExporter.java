@@ -86,12 +86,13 @@ public final class ClaudeCliExporter {
         }
 
         // Append last-prompt so Claude CLI can identify the conversation head for resume.
-        // Uses the FIRST user message text, matching native CLI behavior.
-        String firstUserPromptText = extractFirstUserPromptText(anthropicMessages);
-        if (!firstUserPromptText.isEmpty()) {
+        // Uses the LAST user message text, matching native CLI behavior — the CLI writes
+        // last-prompt after each prompt cycle with the text of the prompt it just processed.
+        String lastUserPromptText = extractLastUserPromptText(anthropicMessages);
+        if (!lastUserPromptText.isEmpty()) {
             JsonObject lastPromptEvent = new JsonObject();
             lastPromptEvent.addProperty("type", "last-prompt");
-            lastPromptEvent.addProperty("lastPrompt", firstUserPromptText);
+            lastPromptEvent.addProperty("lastPrompt", lastUserPromptText);
             lastPromptEvent.addProperty(FIELD_SESSION_ID, sessionId);
             sb.append(GSON.toJson(lastPromptEvent)).append('\n');
         }
@@ -190,14 +191,8 @@ public final class ClaudeCliExporter {
     // Message extraction
     // ------------------------------------------------------------------
 
-    /**
-     * Extracts the text content from the <b>first</b> user message that contains text
-     * blocks. Claude CLI's {@code last-prompt} event records the initial prompt of
-     * the conversation cycle — the CLI uses it as metadata (the tree structure via
-     * {@code parentUuid} determines the actual resume position).
-     */
-    @NotNull
-    private static String extractFirstUserPromptText(@NotNull List<AnthropicMessage> messages) {
+    private static String extractLastUserPromptText(@NotNull List<AnthropicMessage> messages) {
+        String lastText = "";
         for (AnthropicMessage msg : messages) {
             if (!"user".equals(msg.role)) continue;
             StringBuilder sb = new StringBuilder();
@@ -207,10 +202,10 @@ public final class ClaudeCliExporter {
                 }
             }
             if (!sb.isEmpty()) {
-                return sb.toString();
+                lastText = sb.toString();
             }
         }
-        return "";
+        return lastText;
     }
 
     // ------------------------------------------------------------------
