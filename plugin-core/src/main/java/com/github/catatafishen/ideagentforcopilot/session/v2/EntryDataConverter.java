@@ -44,11 +44,19 @@ public final class EntryDataConverter {
                     currentMsg = null;
                 }
                 // Emit separator as its own message (no parts)
+                long sepTs = System.currentTimeMillis();
+                if (!sep.getTimestamp().isEmpty()) {
+                    try {
+                        sepTs = java.time.Instant.parse(sep.getTimestamp()).toEpochMilli();
+                    } catch (java.time.format.DateTimeParseException ignored) {
+                        // Keep current time
+                    }
+                }
                 result.add(new SessionMessage(
                     UUID.randomUUID().toString(),
                     "separator",
                     List.of(),
-                    System.currentTimeMillis(),
+                    sepTs,
                     sep.getAgent().isEmpty() ? null : sep.getAgent(),
                     null));
 
@@ -60,6 +68,7 @@ public final class EntryDataConverter {
                 }
                 // Build a new user message
                 MutableMessage userMsg = new MutableMessage("user", null);
+                userMsg.setTimestampFromIso(prompt.getTimestamp());
                 JsonObject part = new JsonObject();
                 part.addProperty("type", "text");
                 part.addProperty("text", prompt.getText());
@@ -117,6 +126,7 @@ public final class EntryDataConverter {
                 if (needsNewMsg) {
                     if (currentMsg != null) result.add(currentMsg.build());
                     currentMsg = new MutableMessage("assistant", agent);
+                    currentMsg.setTimestampFromIso(timestampOf(entry));
                 }
 
                 if (entry instanceof EntryData.Text text) {
@@ -185,9 +195,13 @@ public final class EntryDataConverter {
         List<EntryData> result = new ArrayList<>();
 
         for (SessionMessage msg : messages) {
+            String ts = msg.createdAt > 0
+                ? java.time.Instant.ofEpochMilli(msg.createdAt).toString()
+                : "";
+
             if ("separator".equals(msg.role)) {
                 result.add(new EntryData.SessionSeparator(
-                    "",
+                    ts,
                     msg.agent != null ? msg.agent : ""));
                 continue;
             }
@@ -202,11 +216,11 @@ public final class EntryDataConverter {
                     case "text" -> {
                         String text = part.has("text") ? part.get("text").getAsString() : "";
                         if ("user".equals(msg.role)) {
-                            result.add(new EntryData.Prompt(text, "", null));
+                            result.add(new EntryData.Prompt(text, ts, null));
                         } else {
                             result.add(new EntryData.Text(
                                 new StringBuilder(text),
-                                "",
+                                ts,
                                 msg.agent != null ? msg.agent : ""));
                             hasTextOrThinking = true;
                         }
@@ -215,7 +229,7 @@ public final class EntryDataConverter {
                         String text = part.has("text") ? part.get("text").getAsString() : "";
                         result.add(new EntryData.Thinking(
                             new StringBuilder(text),
-                            "",
+                            ts,
                             msg.agent != null ? msg.agent : ""));
                         hasTextOrThinking = true;
                     }
@@ -230,7 +244,7 @@ public final class EntryDataConverter {
                         result.add(new EntryData.ToolCall(
                             toolName, args, kind, toolResult, null, null, null,
                             autoDenied, denialReason, false,
-                            "", msg.agent != null ? msg.agent : ""));
+                            ts, msg.agent != null ? msg.agent : ""));
                     }
                     case "subagent" -> {
                         String agentType = part.has("agentType") ? part.get("agentType").getAsString() : "general-purpose";
@@ -245,7 +259,7 @@ public final class EntryDataConverter {
                             (subResult == null || subResult.isEmpty()) ? null : subResult,
                             (status == null || status.isEmpty()) ? "completed" : status,
                             colorIndex, null, false, null,
-                            "", msg.agent != null ? msg.agent : ""));
+                            ts, msg.agent != null ? msg.agent : ""));
                     }
                     case "status" -> {
                         String icon = part.has("icon") ? part.get("icon").getAsString() : "ℹ";
@@ -270,7 +284,7 @@ public final class EntryDataConverter {
             if ("assistant".equals(msg.role) && !hasTextOrThinking && result.size() > entriesBefore) {
                 result.add(new EntryData.Text(
                     new StringBuilder(),
-                    "",
+                    ts,
                     msg.agent != null ? msg.agent : ""));
             }
         }
@@ -290,6 +304,18 @@ public final class EntryDataConverter {
         return null;
     }
 
+    /**
+     * Extracts the ISO timestamp string from an entry, or empty string if none.
+     */
+    @NotNull
+    private static String timestampOf(@NotNull EntryData entry) {
+        if (entry instanceof EntryData.Text e) return e.getTimestamp();
+        if (entry instanceof EntryData.Thinking e) return e.getTimestamp();
+        if (entry instanceof EntryData.ToolCall e) return e.getTimestamp();
+        if (entry instanceof EntryData.SubAgent e) return e.getTimestamp();
+        return "";
+    }
+
     @org.jetbrains.annotations.Nullable
     private static SessionMessage findLastUserMessage(@NotNull List<SessionMessage> messages) {
         for (int i = messages.size() - 1; i >= 0; i--) {
@@ -304,11 +330,24 @@ public final class EntryDataConverter {
         final String role;
         final String agent;
         final List<JsonObject> parts = new ArrayList<>();
-        final long createdAt = System.currentTimeMillis();
+        long createdAt;
 
         MutableMessage(@NotNull String role, @org.jetbrains.annotations.Nullable String agent) {
             this.role = role;
             this.agent = agent;
+            this.createdAt = System.currentTimeMillis();
+        }
+
+        /**
+         * Sets createdAt from an ISO timestamp string (e.g. from EntryData.timestamp).
+         */
+        void setTimestampFromIso(@NotNull String isoTimestamp) {
+            if (isoTimestamp.isEmpty()) return;
+            try {
+                this.createdAt = java.time.Instant.parse(isoTimestamp).toEpochMilli();
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // Keep the default System.currentTimeMillis() value
+            }
         }
 
         @NotNull

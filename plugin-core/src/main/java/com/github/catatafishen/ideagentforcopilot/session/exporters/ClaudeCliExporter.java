@@ -48,18 +48,6 @@ public final class ClaudeCliExporter {
     private ClaudeCliExporter() {
     }
 
-    /**
-     * Exports v2 messages to a Claude CLI session JSONL file.
-     *
-     * <p>No token budget is applied here — Claude CLI manages its own context window when
-     * resuming via {@code --resume}. Applying a budget caused aggressive trimming that
-     * dropped important conversation turns in favour of tool-heavy recent ones.</p>
-     *
-     * @param messages   the conversation messages to export
-     * @param targetPath path to write the JSONL file
-     * @param sessionId  the UUID that identifies this Claude session
-     * @param cwd        the project working directory
-     */
     public static void exportToFile(
         @NotNull List<SessionMessage> messages,
         @NotNull Path targetPath,
@@ -72,16 +60,24 @@ public final class ClaudeCliExporter {
         String cliVersion = detectCliVersion(targetPath.getParent());
         String gitBranch = detectGitBranch(cwd);
 
-        var ctx = new EventContext(sessionId, cwd, Instant.now(), cliVersion, gitBranch);
+        // Use the earliest message timestamp for queue events, falling back to now
+        Instant sessionStart = anthropicMessages.isEmpty() || anthropicMessages.getFirst().createdAt == 0
+            ? Instant.now()
+            : Instant.ofEpochMilli(anthropicMessages.getFirst().createdAt);
+
+        var ctx = new EventContext(sessionId, cwd, cliVersion, gitBranch);
         StringBuilder sb = new StringBuilder();
         String parentUuid = null;
 
-        sb.append(queueEvent("enqueue", sessionId, ctx.timestamp)).append('\n');
-        sb.append(queueEvent("dequeue", sessionId, ctx.timestamp)).append('\n');
+        sb.append(queueEvent("enqueue", sessionId, sessionStart)).append('\n');
+        sb.append(queueEvent("dequeue", sessionId, sessionStart)).append('\n');
 
         for (AnthropicMessage msg : anthropicMessages) {
             String uuid = UUID.randomUUID().toString();
-            sb.append(messageEvent(msg, uuid, parentUuid, ctx)).append('\n');
+            Instant msgTimestamp = msg.createdAt > 0
+                ? Instant.ofEpochMilli(msg.createdAt)
+                : sessionStart;
+            sb.append(messageEvent(msg, uuid, parentUuid, ctx, msgTimestamp)).append('\n');
             parentUuid = uuid;
         }
 
@@ -231,7 +227,8 @@ public final class ClaudeCliExporter {
         @NotNull AnthropicMessage msg,
         @NotNull String uuid,
         @Nullable String parentUuid,
-        @NotNull EventContext ctx) {
+        @NotNull EventContext ctx,
+        @NotNull Instant timestamp) {
 
         JsonObject event = new JsonObject();
 
@@ -278,7 +275,7 @@ public final class ClaudeCliExporter {
         event.add("message", messagePayload);
 
         event.addProperty("uuid", uuid);
-        event.addProperty("timestamp", ctx.timestamp.toString());
+        event.addProperty("timestamp", timestamp.toString());
         event.addProperty("cwd", ctx.cwd);
         event.addProperty(FIELD_SESSION_ID, ctx.sessionId);
         event.addProperty(FIELD_VERSION, ctx.cliVersion);
@@ -289,13 +286,9 @@ public final class ClaudeCliExporter {
         return GSON.toJson(event);
     }
 
-    /**
-     * Groups the immutable context fields shared across all events in a single export.
-     */
     private record EventContext(
         @NotNull String sessionId,
         @NotNull String cwd,
-        @NotNull Instant timestamp,
         @NotNull String cliVersion,
         @Nullable String gitBranch) {
     }

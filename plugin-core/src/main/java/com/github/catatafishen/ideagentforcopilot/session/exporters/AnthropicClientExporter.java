@@ -121,7 +121,6 @@ public final class AnthropicClientExporter {
         return fixed;
     }
 
-    @NotNull
     static List<AnthropicMessage> toAnthropicMessages(@NotNull List<SessionMessage> messages) {
         List<AnthropicMessage> raw = new ArrayList<>();
 
@@ -140,7 +139,7 @@ public final class AnthropicClientExporter {
                     }
                 }
                 if (!blocks.isEmpty()) {
-                    raw.add(new AnthropicMessage("user", blocks));
+                    raw.add(new AnthropicMessage("user", blocks, msg.createdAt));
                 }
 
             } else if ("assistant".equals(msg.role)) {
@@ -196,9 +195,9 @@ public final class AnthropicClientExporter {
                 }
 
                 if (!assistantBlocks.isEmpty()) {
-                    raw.add(new AnthropicMessage("assistant", assistantBlocks));
+                    raw.add(new AnthropicMessage("assistant", assistantBlocks, msg.createdAt));
                     if (!toolResultBlocks.isEmpty()) {
-                        raw.add(new AnthropicMessage("user", toolResultBlocks));
+                        raw.add(new AnthropicMessage("user", toolResultBlocks, msg.createdAt));
                     }
                 }
             }
@@ -207,12 +206,6 @@ public final class AnthropicClientExporter {
         return mergeConsecutiveSameRole(raw);
     }
 
-    /**
-     * Merges consecutive messages with the same role into a single message.
-     * Claude's API requires strict user/assistant alternation — consecutive same-role
-     * messages (e.g., a tool_result user message followed by a text user message) cause
-     * API errors or silent failures.
-     */
     @NotNull
     private static List<AnthropicMessage> mergeConsecutiveSameRole(@NotNull List<AnthropicMessage> messages) {
         if (messages.size() <= 1) return messages;
@@ -223,7 +216,7 @@ public final class AnthropicClientExporter {
                 AnthropicMessage prev = merged.removeLast();
                 List<JsonObject> combinedBlocks = new ArrayList<>(prev.contentBlocks);
                 combinedBlocks.addAll(msg.contentBlocks);
-                merged.add(new AnthropicMessage(prev.role, combinedBlocks));
+                merged.add(new AnthropicMessage(prev.role, combinedBlocks, prev.createdAt));
             } else {
                 merged.add(msg);
             }
@@ -234,10 +227,19 @@ public final class AnthropicClientExporter {
     static final class AnthropicMessage {
         final String role;
         final List<JsonObject> contentBlocks;
+        /**
+         * Epoch millis when the original SessionMessage was created (0 if unknown).
+         */
+        final long createdAt;
 
-        AnthropicMessage(@NotNull String role, @NotNull List<JsonObject> contentBlocks) {
+        AnthropicMessage(@NotNull String role, @NotNull List<JsonObject> contentBlocks, long createdAt) {
             this.role = role;
             this.contentBlocks = List.copyOf(contentBlocks);
+            this.createdAt = createdAt;
+        }
+
+        AnthropicMessage(@NotNull String role, @NotNull List<JsonObject> contentBlocks) {
+            this(role, contentBlocks, 0);
         }
 
         @NotNull
