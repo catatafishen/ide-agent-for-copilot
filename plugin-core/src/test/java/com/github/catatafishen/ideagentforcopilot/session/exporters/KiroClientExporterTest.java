@@ -56,6 +56,27 @@ class KiroClientExporterTest {
         JsonObject state = root.getAsJsonObject("session_state");
         assertEquals("v1", state.get("version").getAsString());
         assertTrue(state.has("conversation_metadata"));
+
+        // rts_model_state is required by Kiro for session/load
+        JsonObject rtsModelState = state.getAsJsonObject("rts_model_state");
+        assertNotNull(rtsModelState, "rts_model_state is required by Kiro");
+        assertEquals(sessionId, rtsModelState.get("conversation_id").getAsString());
+        assertTrue(rtsModelState.get("model_info").isJsonNull());
+        assertTrue(rtsModelState.get("context_usage_percentage").isJsonNull());
+
+        // permissions are required by Kiro for session/load
+        JsonObject permissions = state.getAsJsonObject("permissions");
+        assertNotNull(permissions, "permissions is required by Kiro");
+
+        JsonObject filesystem = permissions.getAsJsonObject("filesystem");
+        assertNotNull(filesystem);
+        var readPaths = filesystem.getAsJsonArray("allowed_read_paths");
+        assertEquals(1, readPaths.size());
+        assertEquals("/my/project", readPaths.get(0).getAsString());
+        assertEquals(0, filesystem.getAsJsonArray("allowed_write_paths").size());
+
+        assertEquals(0, permissions.getAsJsonArray("trusted_tools").size());
+        assertEquals(0, permissions.getAsJsonArray("denied_tools").size());
     }
 
     @Test

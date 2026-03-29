@@ -23,7 +23,7 @@ import java.util.UUID;
 public final class KiroClientExporter {
 
     private static final Logger LOG = Logger.getInstance(KiroClientExporter.class);
-    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().serializeNulls().create();
 
     private static final String KIRO_FORMAT_VERSION = "v1";
     private static final String KIND_PROMPT = "Prompt";
@@ -100,19 +100,43 @@ public final class KiroClientExporter {
         @NotNull Path sessionsDir) throws IOException {
 
         String now = Instant.now().toString();
+        String effectiveCwd = cwd != null ? cwd : "";
 
         JsonObject conversationMetadata = new JsonObject();
         conversationMetadata.add("user_turn_metadatas", new JsonArray());
         conversationMetadata.add("user_turn_start_request", null);
         conversationMetadata.add("last_request", null);
 
+        JsonObject rtsModelState = new JsonObject();
+        rtsModelState.addProperty("conversation_id", sessionId);
+        rtsModelState.add("model_info", null);
+        rtsModelState.add("context_usage_percentage", null);
+
+        JsonArray allowedReadPaths = new JsonArray();
+        if (!effectiveCwd.isEmpty()) {
+            allowedReadPaths.add(effectiveCwd);
+        }
+
+        JsonObject filesystem = new JsonObject();
+        filesystem.add("allowed_read_paths", allowedReadPaths);
+        filesystem.add("allowed_write_paths", new JsonArray());
+        filesystem.add("denied_read_paths", new JsonArray());
+        filesystem.add("denied_write_paths", new JsonArray());
+
+        JsonObject permissions = new JsonObject();
+        permissions.add("filesystem", filesystem);
+        permissions.add("trusted_tools", new JsonArray());
+        permissions.add("denied_tools", new JsonArray());
+
         JsonObject sessionState = new JsonObject();
         sessionState.addProperty(KEY_VERSION, KIRO_FORMAT_VERSION);
         sessionState.add("conversation_metadata", conversationMetadata);
+        sessionState.add("rts_model_state", rtsModelState);
+        sessionState.add("permissions", permissions);
 
         JsonObject sessionJson = new JsonObject();
         sessionJson.addProperty("session_id", sessionId);
-        sessionJson.addProperty("cwd", cwd != null ? cwd : "");
+        sessionJson.addProperty("cwd", effectiveCwd);
         sessionJson.addProperty("created_at", now);
         sessionJson.addProperty("updated_at", now);
         sessionJson.add("session_state", sessionState);
