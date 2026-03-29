@@ -13,6 +13,7 @@ import com.github.catatafishen.ideagentforcopilot.services.AgentProfile;
 import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
+import com.github.catatafishen.ideagentforcopilot.session.SessionSwitchService;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -190,6 +191,14 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
             String propKey = PROFILE_ID + ".cliResumeSessionId";
             PropertiesComponent props = PropertiesComponent.getInstance(project);
             String resumeId = props.getValue(propKey);
+
+            // Fall back to file-based resume ID — PropertiesComponent values set during
+            // dispose() are lost on plugin hot-reload because IntelliJ flushes project state
+            // before dispose runs.
+            if (resumeId == null || resumeId.isEmpty()) {
+                resumeId = SessionSwitchService.readAndConsumeClaudeResumeIdFile(project.getBasePath());
+            }
+
             if (resumeId != null && !resumeId.isEmpty()) {
                 cliSessionIds.put(sessionId, resumeId);
                 props.unsetValue(propKey);

@@ -94,6 +94,7 @@ public final class SessionSwitchService implements Disposable {
     private static final String LOG_PRE_IMPORTED = "Pre-imported ";
     private static final String AGENT_WORK_DIR = ".agent-work";
     private static final String SESSION_STATE_DIR = "session-state";
+    private static final String CLAUDE_RESUME_ID_FILE = "claude-resume-id.txt";
 
     private final Project project;
     private final SessionStoreV2 sessionStore = new SessionStoreV2();
@@ -462,8 +463,14 @@ public final class SessionSwitchService implements Disposable {
                 return;
             }
 
+            // Store the resume ID in PropertiesComponent for same-process agent switches.
             PropertiesComponent.getInstance(project)
                 .setValue(ClaudeCliClient.PROFILE_ID + ".cliResumeSessionId", newSessionId);
+
+            // Also persist to a file — PropertiesComponent values set during dispose()
+            // are lost on plugin hot-reload because IntelliJ flushes project state to disk
+            // before calling dispose(), so in-memory-only changes are discarded.
+            writeClaudeResumeIdFile(basePath, newSessionId);
 
             LOG.info("Exported v2 session to Claude CLI: " + newSessionId
                 + " (" + targetFile + ", " + Files.size(targetFile) + " bytes)");
@@ -824,6 +831,50 @@ public final class SessionSwitchService implements Disposable {
     }
 
     // ── Path helpers ──────────────────────────────────────────────────────────
+
+// ── Claude resume ID file ─────────────────────────────────────────────────
+
+    /**
+     * Writes the Claude CLI resume session ID to a file on disk.
+     *
+     * <p>PropertiesComponent values set during {@code dispose()} are lost on plugin
+     * hot-reload because IntelliJ flushes project state to disk <b>before</b> calling
+     * dispose — any in-memory-only changes from dispose are discarded when the new
+     * plugin instance reads the properties. This file-based approach survives hot-reload.</p>
+     */
+    private static void writeClaudeResumeIdFile(@Nullable String basePath, @NotNull String sessionId) {
+        try {
+            File dir = sessionsDir(basePath);
+            //noinspection ResultOfMethodCallIgnored — best-effort
+            dir.mkdirs();
+            Path resumeFile = dir.toPath().resolve(CLAUDE_RESUME_ID_FILE);
+            Files.writeString(resumeFile, sessionId, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            LOG.warn("Failed to write Claude resume ID file", e);
+        }
+    }
+
+    /**
+     * Reads and consumes the Claude CLI resume session ID from the file on disk.
+     * Returns {@code null} if the file does not exist or is empty.
+     * The file is deleted after reading to ensure one-time consumption.
+     */
+    @Nullable
+    public static String readAndConsumeClaudeResumeIdFile(@Nullable String basePath) {
+        try {
+            File dir = sessionsDir(basePath);
+            Path resumeFile = dir.toPath().resolve(CLAUDE_RESUME_ID_FILE);
+            if (!Files.exists(resumeFile)) return null;
+
+            String id = Files.readString(resumeFile, StandardCharsets.UTF_8).trim();
+            Files.deleteIfExists(resumeFile);
+            return id.isEmpty() ? null : id;
+        } catch (IOException e) {
+            LOG.warn("Failed to read Claude resume ID file", e);
+            return null;
+        }
+    }
 
     /**
      * Returns the Claude CLI projects directory for this project:

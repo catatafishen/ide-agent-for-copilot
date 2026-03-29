@@ -5,8 +5,8 @@ import com.github.catatafishen.ideagentforcopilot.acp.model.SessionUpdate
 import com.github.catatafishen.ideagentforcopilot.agent.AgentException
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager
 import com.github.catatafishen.ideagentforcopilot.services.ChatWebServer
-import com.github.catatafishen.ideagentforcopilot.session.migration.V1ToV2Migrator
 import com.github.catatafishen.ideagentforcopilot.session.SessionSwitchService
+import com.github.catatafishen.ideagentforcopilot.session.migration.V1ToV2Migrator
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionStoreV2
 import com.github.catatafishen.ideagentforcopilot.settings.BillingSettings
 import com.intellij.icons.AllIcons
@@ -565,6 +565,11 @@ class ChatToolWindowContent(
         agentManager.addSwitchListener {
             // Update the session store's agent name when the user switches profiles.
             conversationStore.setCurrentAgent(agentManager.activeProfile.displayName)
+            // Reset session state so ensureSessionCreated() calls createSession() on the
+            // new client. Without this, Claude CLI's cliResumeSessionId property is never
+            // consumed and --resume is never passed, so context is lost on switch-back.
+            promptOrchestrator.currentSessionId = null
+            promptOrchestrator.conversationSummaryInjected = false
             ApplicationManager.getApplication().invokeLater {
                 copilotBanner?.triggerCheck()
             }
