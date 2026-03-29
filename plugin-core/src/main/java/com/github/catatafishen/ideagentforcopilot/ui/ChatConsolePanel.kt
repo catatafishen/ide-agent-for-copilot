@@ -105,7 +105,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     companion object {
         private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
-        private val QUICK_REPLY_TAG_REGEX = Regex("\\[quick-reply:\\s*([^]]+)]")
+        private val QUICK_REPLY_TAG_REGEX = Regex("\\[\\s*quick-reply:\\s*([^]]+)]")
 
         /** Active panels keyed by project — used by MCP tool to retrieve page HTML. */
         private val instances = java.util.concurrent.ConcurrentHashMap<Project, ChatConsolePanel>()
