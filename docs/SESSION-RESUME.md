@@ -882,3 +882,34 @@ the reverse path (OpenCode → v2 → other agent) hasn't been verified yet.
 | OpenCode → Copilot | ❓      | Requires OpenCode → v2 import to work first |
 | OpenCode → Claude  | ❓      | Requires OpenCode → v2 import to work first |
 
+---
+
+### Bug 29: Claude CLI resumes on wrong branch — missing `last-prompt` entry (2026-03-29)
+
+**Symptom**: After resuming Claude CLI via `--resume <id>`, Claude says "I don't have any context
+about a secret word" even though the exported session file clearly contains the conversation
+history including that information.
+
+**Root cause**: Claude CLI sessions are a linked-list tree (each event has a `parentUuid`).
+When resuming, Claude CLI needs to know the "conversation head" — the last point in the chain
+to continue from. It determines this via a `last-prompt` entry at the end of the session file:
+```json
+{"type": "last-prompt", "lastPrompt": "<last user message text>", "sessionId": "<id>"}
+```
+The plugin's `ClaudeCliExporter` wrote the `queue-operation` + message events correctly, but
+omitted the `last-prompt` entry. Without it, Claude CLI created a synthetic assistant branch
+(`model: "<synthetic>"`) from the **first user message** (parentUuid = L2) instead of
+continuing from the end of the conversation (L5). The actual conversation chain (L3→L4→L5)
+became a dead branch, invisible to Claude's context.
+
+**Evidence** (from session `3845b593-...`):
+- L0-L5: correctly exported chain (L2→L3→L4→L5, including "Secret word: tangerine")
+- L6-L7: new queue-operation events added by Claude CLI on resume  
+- **L8**: `{"type":"assistant", "model":"<synthetic>", "parentUuid": L2.uuid}` ← wrong branch!
+- L9-L11: user "What is the secret word?" parented to L8, NOT to L5
+- Result: Claude's context was L2→L8→L9 — missing L3→L4→L5 (the "tangerine" history)
+
+**Fix** (commit TBD): Added `extractLastUserPromptText()` helper and appended a `last-prompt`
+entry to `ClaudeCliExporter.exportToFile()`. The `lastPrompt` field is populated with the text
+of the last text-bearing user message in the exported conversation. With this entry, Claude CLI
+correctly identifies the conversation head and continues from after the last assistant response.

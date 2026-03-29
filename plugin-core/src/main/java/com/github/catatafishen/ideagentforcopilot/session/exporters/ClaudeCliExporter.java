@@ -33,6 +33,7 @@ public final class ClaudeCliExporter {
     private static final Logger LOG = Logger.getInstance(ClaudeCliExporter.class);
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final int DEFAULT_MAX_TOKEN_ESTIMATE = 20_000;
+    private static final String FIELD_SESSION_ID = "sessionId";
 
     private ClaudeCliExporter() {
     }
@@ -67,6 +68,19 @@ public final class ClaudeCliExporter {
             parentUuid = uuid;
         }
 
+        // Append last-prompt entry so Claude CLI knows the conversation head.
+        // Without this, Claude CLI creates a synthetic assistant branch from the first user message
+        // when resuming via --resume, causing it to ignore the exported conversation history.
+        // With last-prompt, Claude correctly resumes from after the last assistant response.
+        String lastUserPromptText = extractLastUserPromptText(anthropicMessages);
+        if (!lastUserPromptText.isEmpty()) {
+            JsonObject lastPromptEvent = new JsonObject();
+            lastPromptEvent.addProperty("type", "last-prompt");
+            lastPromptEvent.addProperty("lastPrompt", lastUserPromptText);
+            lastPromptEvent.addProperty(FIELD_SESSION_ID, sessionId);
+            sb.append(GSON.toJson(lastPromptEvent)).append('\n');
+        }
+
         Path parent = targetPath.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
@@ -74,6 +88,29 @@ public final class ClaudeCliExporter {
         Files.writeString(targetPath, sb.toString(), StandardCharsets.UTF_8,
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         LOG.info("Exported v2 session to Claude CLI format: " + targetPath);
+    }
+
+    /**
+     * Extracts the text content from the last user message in the list that contains
+     * text blocks (skipping tool_result-only user messages). Used to populate the
+     * {@code last-prompt} entry in the exported Claude CLI session file.
+     */
+    @NotNull
+    private static String extractLastUserPromptText(@NotNull List<AnthropicMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            AnthropicMessage msg = messages.get(i);
+            if (!"user".equals(msg.role)) continue;
+            StringBuilder sb = new StringBuilder();
+            for (JsonObject block : msg.contentBlocks) {
+                if (block.has("text")) {
+                    sb.append(block.get("text").getAsString());
+                }
+            }
+            if (!sb.isEmpty()) {
+                return sb.toString();
+            }
+        }
+        return "";
     }
 
     @NotNull
@@ -86,7 +123,7 @@ public final class ClaudeCliExporter {
         event.addProperty("type", "queue-operation");
         event.addProperty("operation", operation);
         event.addProperty("timestamp", timestamp.toString());
-        event.addProperty("sessionId", sessionId);
+        event.addProperty(FIELD_SESSION_ID, sessionId);
         return GSON.toJson(event);
     }
 
@@ -131,7 +168,7 @@ public final class ClaudeCliExporter {
         event.addProperty("uuid", uuid);
         event.addProperty("timestamp", timestamp.toString());
         event.addProperty("cwd", cwd);
-        event.addProperty("sessionId", sessionId);
+        event.addProperty(FIELD_SESSION_ID, sessionId);
         event.addProperty("version", "1");
 
         return GSON.toJson(event);
