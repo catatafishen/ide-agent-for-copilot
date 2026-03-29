@@ -532,7 +532,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val hasCustomRenderer = ToolRenderers.hasRenderer(cleanTitle, toolRegistry)
         val paramsJson = if (!arguments.isNullOrBlank() && !hasCustomRenderer) escJs(arguments) else ""
         val safeKind = escJs(resolvedKind)
-        val isExternal = def == null  // Not from our MCP plugin
+
+        // Check if MCP handled this via hash correlation
+        val argsObj = arguments?.let {
+            try {
+                JsonParser.parseString(it).takeIf { e -> e.isJsonObject }?.asJsonObject
+            } catch (_: Exception) {
+                null
+            }
+        }
+        val registration = registry.registerClientSide(cleanTitle, argsObj, toolId)
+        val isMcpHandled = registration.initialState() == ToolChipRegistry.ChipState.RUNNING
+        val isExternal = !isMcpHandled
+
         executeJs("ChatController.addSubAgentToolCall('$saDid','$toolDid','${escJs(label)}','$paramsJson','$safeKind',$isExternal)")
     }
 
