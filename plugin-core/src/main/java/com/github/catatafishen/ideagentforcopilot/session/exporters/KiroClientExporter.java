@@ -180,6 +180,20 @@ public final class KiroClientExporter {
                 default -> LOG.debug("Skipping unknown role: " + msg.role);
             }
         }
+
+        // Kiro requires conversation history to begin with a Prompt (user message).
+        // If the first message is not a Prompt, prepend a placeholder to avoid a panic.
+        if (!result.isEmpty()
+            && !KIND_PROMPT.equals(result.getFirst().get("kind").getAsString())) {
+            LOG.warn("Kiro export: first message is not a Prompt ("
+                + result.getFirst().get("kind").getAsString()
+                + "); prepending placeholder to prevent crash");
+
+            JsonArray content = new JsonArray();
+            content.add(textContentBlock("(continued from previous session)"));
+            result.addFirst(wrapMessage(KIND_PROMPT, UUID.randomUUID().toString(), content));
+        }
+
         return result;
     }
 

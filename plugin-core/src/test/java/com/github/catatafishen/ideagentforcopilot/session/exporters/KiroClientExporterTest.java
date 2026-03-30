@@ -269,6 +269,50 @@ class KiroClientExporterTest {
     }
 
     @Test
+    void prependsPlaceholderPromptWhenHistoryStartsWithAssistant() {
+        // Simulates a scenario where the v2 session has no user message at the start
+        // (e.g., budget trimming dropped it, or import from another agent was incomplete).
+        // Kiro panics with "invalid conversation history received" if the first message
+        // is not a Prompt, so the exporter must defensively prepend one.
+        List<JsonObject> kiroMessages = KiroClientExporter.toKiroMessages(
+            List.of(assistantMessage("I can help with that.")));
+
+        assertTrue(kiroMessages.size() >= 2, "Should have placeholder Prompt + AssistantMessage");
+        assertEquals("Prompt", kiroMessages.getFirst().get("kind").getAsString());
+        assertEquals("AssistantMessage", kiroMessages.get(1).get("kind").getAsString());
+
+        // The placeholder should contain meaningful text
+        String placeholderText = kiroMessages.getFirst()
+            .getAsJsonObject("data").getAsJsonArray("content")
+            .get(0).getAsJsonObject().get("data").getAsString();
+        assertNotNull(placeholderText);
+        assertTrue(placeholderText.contains("continued"));
+    }
+
+    @Test
+    void allMessageIdsAreUnique() {
+        // Regression test: previously all split AssistantMessage turns reused the same
+        // message_id from the original v2 message, causing Kiro to reject the history.
+        JsonObject tool1 = toolInvocationPart("tc1", "read_file", "{}", "data1");
+        JsonObject tool2 = toolInvocationPart("tc2", "search_text", "{}", "data2");
+
+        SessionMessage bigAssistant = new SessionMessage(
+            "a1", "assistant",
+            List.of(textPart("Part 1."), tool1, textPart("Part 2."), tool2, textPart("Part 3.")),
+            System.currentTimeMillis(), null, null);
+
+        List<JsonObject> kiroMessages = KiroClientExporter.toKiroMessages(
+            List.of(userMessage("go"), bigAssistant));
+
+        List<String> ids = kiroMessages.stream()
+            .map(m -> m.getAsJsonObject("data").get("message_id").getAsString())
+            .toList();
+
+        assertEquals(ids.size(), ids.stream().distinct().count(),
+            "All message_ids must be unique, got: " + ids);
+    }
+
+    @Test
     void toolResultsMapContainsMcpMetadata() {
         JsonObject toolPart = toolInvocationPart(
             "tc1", "search_text",
