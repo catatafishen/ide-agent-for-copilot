@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
 import com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient;
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.ui.ThemeColor;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.Configurable;
@@ -92,7 +93,7 @@ public final class CopilotClientConfigurable implements Configurable {
 
     @Override
     public boolean isModified() {
-        String stored = nullToEmpty(AcpClient.loadCustomBinaryPath(AGENT_ID));
+        String stored = nullToEmpty(AgentProfileManager.getInstance().loadBinaryPath(AGENT_ID));
         boolean binaryChanged = binaryPathField != null
             && !binaryPathField.getText().trim().equals(stored);
         if (binaryChanged) return true;
@@ -107,7 +108,7 @@ public final class CopilotClientConfigurable implements Configurable {
     @Override
     public void apply() {
         if (binaryPathField != null) {
-            AcpClient.saveCustomBinaryPath(AGENT_ID, binaryPathField.getText().trim());
+            AgentProfileManager.getInstance().saveBinaryPath(AGENT_ID, binaryPathField.getText().trim());
         }
         if (bubbleColorCombo != null) {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
@@ -120,7 +121,7 @@ public final class CopilotClientConfigurable implements Configurable {
     public void reset() {
         if (binaryPathField != null) {
             refreshStatusAsync();
-            binaryPathField.setText(nullToEmpty(AcpClient.loadCustomBinaryPath(AGENT_ID)));
+            binaryPathField.setText(nullToEmpty(AgentProfileManager.getInstance().loadBinaryPath(AGENT_ID)));
         }
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(AGENT_ID)));

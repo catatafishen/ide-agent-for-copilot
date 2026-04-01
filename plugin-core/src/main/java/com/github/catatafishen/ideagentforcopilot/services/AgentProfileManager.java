@@ -82,6 +82,7 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
     @Override
     public void loadState(@NotNull PersistedState state) {
         this.persistedState = state;
+        migrateFromPropertiesComponent();
         applyOverrides();
     }
 
@@ -143,6 +144,53 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
 
     private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
+    }
+
+    /**
+     * Returns the user-configured binary path for the given agent, or {@code null}
+     * if not set (auto-detect will be used instead).  This is the single source of
+     * truth for all agents — both ACP and profile-based.
+     */
+    @Nullable
+    public synchronized String loadBinaryPath(@NotNull String agentId) {
+        ensureDefaults();
+        AgentProfile profile = profiles.get(agentId);
+        if (profile == null) return null;
+        String path = profile.getCustomBinaryPath();
+        return path.isEmpty() ? null : path;
+    }
+
+    /**
+     * Persists a custom binary path for the given agent.
+     * Pass {@code null} or blank to clear the override and use auto-detection.
+     */
+    public synchronized void saveBinaryPath(@NotNull String agentId, @Nullable String path) {
+        ensureDefaults();
+        AgentProfile profile = profiles.get(agentId);
+        if (profile == null) return;
+        profile.setCustomBinaryPath(path != null ? path.trim() : "");
+    }
+
+    /**
+     * One-time migration: reads binary paths stored in the legacy
+     * {@code PropertiesComponent} keys ({@code agentbridge.<id>.customBinary})
+     * and copies them into the corresponding {@link AgentProfile}.
+     * Called once during {@link #loadState} before applying XML overrides,
+     * so that XML-persisted values (if any) win over legacy values.
+     */
+    private void migrateFromPropertiesComponent() {
+        var props = com.intellij.ide.util.PropertiesComponent.getInstance();
+        for (String id : List.of(COPILOT_PROFILE_ID, OPENCODE_PROFILE_ID,
+            JUNIE_PROFILE_ID, KIRO_PROFILE_ID, CODEX_PROFILE_ID)) {
+            String key = "agentbridge." + id + ".customBinary";
+            String legacy = props.getValue(key, "").trim();
+            if (legacy.isEmpty()) continue;
+            AgentProfile profile = profiles.get(id);
+            if (profile != null && profile.getCustomBinaryPath().isEmpty()) {
+                profile.setCustomBinaryPath(legacy);
+            }
+            props.unsetValue(key);
+        }
     }
 
     // ── Public API ─────────────────────────────────────────────────

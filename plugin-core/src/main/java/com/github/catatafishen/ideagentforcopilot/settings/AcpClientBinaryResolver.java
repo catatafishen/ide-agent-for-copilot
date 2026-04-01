@@ -1,15 +1,14 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
-import com.github.catatafishen.ideagentforcopilot.acp.client.AcpClient;
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * {@link AgentBinaryResolver} for ACP-protocol clients (Copilot, Kiro, Junie, OpenCode, Codex).
  *
- * <p>Reads the user's custom binary path from {@link AcpClient#loadCustomBinaryPath(String)},
- * which is stored in the application-level {@code PropertiesComponent} under the key
- * {@code agentbridge.<agentId>.customBinary}.
+ * <p>Reads the user's custom binary path from {@link AgentProfileManager#loadBinaryPath(String)},
+ * which persists it in the agent's {@code AgentProfile} (stored in {@code ideAgentProfiles.xml}).
  */
 public class AcpClientBinaryResolver extends AgentBinaryResolver {
 
@@ -19,7 +18,7 @@ public class AcpClientBinaryResolver extends AgentBinaryResolver {
 
     /**
      * @param agentId    the agent identifier (e.g. {@code "copilot"}) — used to look up the
-     *                   custom binary path in settings
+     *                   custom binary path in the agent profile
      * @param binaryName the primary binary name for auto-detection (e.g. {@code "copilot"})
      * @param alternates additional names to try when the primary is not found
      */
@@ -34,7 +33,7 @@ public class AcpClientBinaryResolver extends AgentBinaryResolver {
     @Override
     @Nullable
     protected String customBinaryPath() {
-        return AcpClient.loadCustomBinaryPath(agentId);
+        return AgentProfileManager.getInstance().loadBinaryPath(agentId);
     }
 
     @Override

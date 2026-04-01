@@ -20,6 +20,7 @@ import com.github.catatafishen.ideagentforcopilot.agent.AgentStartException;
 import com.github.catatafishen.ideagentforcopilot.bridge.McpServerJarLocator;
 import com.github.catatafishen.ideagentforcopilot.bridge.SessionOption;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
+import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.McpServerControl;
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.google.gson.Gson;
@@ -1036,26 +1037,30 @@ public abstract class AcpClient extends AbstractAgentClient {
 
     // ─── Per-agent binary path settings (application-level) ────────────────
 
-    private static final String PROP_CUSTOM_BINARY = "agentbridge.%s.customBinary";
     private static final String PROP_AGENT_BUBBLE_COLOR = "agentbridge.client.%s.bubbleColor";
 
     /**
      * Returns the user-configured binary path for the given agent ID,
      * or {@code null} if not set (auto-detect will be used instead).
+     *
+     * @deprecated Use {@link AgentProfileManager#loadBinaryPath(String)} instead.
+     *             Delegates to {@code AgentProfileManager} which is now the single source of truth.
      */
+    @Deprecated
     public static @Nullable String loadCustomBinaryPath(String agentId) {
-        String stored = PropertiesComponent.getInstance()
-            .getValue(PROP_CUSTOM_BINARY.formatted(agentId), "").trim();
-        return stored.isEmpty() ? null : stored;
+        return AgentProfileManager.getInstance().loadBinaryPath(agentId);
     }
 
     /**
      * Persists a custom binary path for the given agent ID.
      * Pass {@code null} or blank to clear the override and use auto-detection.
+     *
+     * @deprecated Use {@link AgentProfileManager#saveBinaryPath(String, String)} instead.
+     *             Delegates to {@code AgentProfileManager} which is now the single source of truth.
      */
+    @Deprecated
     public static void saveCustomBinaryPath(String agentId, @Nullable String path) {
-        PropertiesComponent.getInstance()
-            .setValue(PROP_CUSTOM_BINARY.formatted(agentId), path != null ? path.trim() : "", "");
+        AgentProfileManager.getInstance().saveBinaryPath(agentId, path);
     }
 
     /**
