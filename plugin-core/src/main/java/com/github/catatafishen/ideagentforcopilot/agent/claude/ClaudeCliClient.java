@@ -14,6 +14,7 @@ import com.github.catatafishen.ideagentforcopilot.services.McpInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.PermissionInjectionMethod;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.github.catatafishen.ideagentforcopilot.session.SessionSwitchService;
+import com.github.catatafishen.ideagentforcopilot.settings.BinaryDetector;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -833,7 +834,6 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     // ── Binary resolution ────────────────────────────────────────────────────
 
-    @NotNull
     private String resolveBinary() throws AgentException {
         String custom = profile.getCustomBinaryPath();
         if (!custom.isEmpty()) {
@@ -841,7 +841,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
             throw new AgentException("Claude binary not found at: " + custom, null, false);
         }
         for (String name : candidateNames()) {
-            String found = findOnPath(name);
+            String found = BinaryDetector.findBinaryPath(name);
             if (found != null) return found;
         }
         throw new AgentException(
@@ -857,17 +857,6 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         names.addAll(profile.getAlternateNames());
         if (!names.contains("claude")) names.add("claude");
         return names;
-    }
-
-    @Nullable
-    private static String findOnPath(@NotNull String name) {
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) return null;
-        for (String dir : pathEnv.split(File.pathSeparator)) {
-            Path candidate = Path.of(dir, name);
-            if (Files.isExecutable(candidate)) return candidate.toString();
-        }
-        return null;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
