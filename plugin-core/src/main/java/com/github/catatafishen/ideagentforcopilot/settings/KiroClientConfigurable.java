@@ -116,9 +116,7 @@ public final class KiroClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String customPath = AcpClient.loadCustomBinaryPath(AGENT_ID);
-            String binary = customPath != null ? customPath : "kiro-cli";
-            String version = BinaryDetector.detectBinaryVersion(binary, new String[0]);
+            String version = new AcpClientBinaryResolver(AGENT_ID, "kiro-cli", "kiro").detectVersion();
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {

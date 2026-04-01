@@ -124,9 +124,7 @@ public final class OpenCodeClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String customPath = AcpClient.loadCustomBinaryPath(AGENT_ID);
-            String binary = customPath != null ? customPath : AGENT_ID;
-            String version = BinaryDetector.detectBinaryVersion(binary, new String[0]);
+            String version = new AcpClientBinaryResolver(AGENT_ID, AGENT_ID).detectVersion();
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {

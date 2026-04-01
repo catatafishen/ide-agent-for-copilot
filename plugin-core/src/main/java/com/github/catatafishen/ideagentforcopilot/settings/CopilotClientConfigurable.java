@@ -144,40 +144,35 @@ public final class CopilotClientConfigurable implements Configurable {
         statusLabel.setText("Checking...");
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String customPath = binaryPathField != null ? binaryPathField.getText().trim() : null;
-            if (customPath == null || customPath.isEmpty()) {
-                customPath = AcpClient.loadCustomBinaryPath(AGENT_ID);
-            }
+        // Capture the live (possibly unsaved) field value on the EDT before going async
+        String liveCustomPath = binaryPathField != null ? binaryPathField.getText().trim() : null;
 
-            String version;
-            if (customPath != null && !customPath.isEmpty()) {
-                // Custom path provided - check if file exists first
-                File file = new File(customPath);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            AgentBinaryResolver resolver = new AcpClientBinaryResolver(AGENT_ID, AGENT_ID, "copilot-cli");
+
+            // If the user has typed a path but not yet saved, validate and check it immediately
+            if (liveCustomPath != null && !liveCustomPath.isEmpty()) {
+                File file = new File(liveCustomPath);
                 if (!file.exists()) {
-                    String finalCustomPath = customPath;
                     SwingUtilities.invokeLater(() -> {
                         if (statusLabel == null) return;
-                        statusLabel.setText("✗ File not found: " + finalCustomPath);
+                        statusLabel.setText("✗ File not found: " + liveCustomPath);
                         statusLabel.setForeground(Color.RED);
                     });
                     return;
                 }
                 if (!file.canExecute()) {
-                    String finalCustomPath1 = customPath;
                     SwingUtilities.invokeLater(() -> {
                         if (statusLabel == null) return;
-                        statusLabel.setText("✗ File not executable: " + finalCustomPath1);
+                        statusLabel.setText("✗ File not executable: " + liveCustomPath);
                         statusLabel.setForeground(Color.RED);
                     });
                     return;
                 }
-                version = BinaryDetector.detectBinaryVersion(customPath, new String[0]);
-            } else {
-                // Auto-detect on PATH
-                version = BinaryDetector.detectBinaryVersion(AGENT_ID, new String[]{"copilot-cli"});
+                resolver = resolver.withCustomPath(liveCustomPath);
             }
 
+            String version = resolver.detectVersion();
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {

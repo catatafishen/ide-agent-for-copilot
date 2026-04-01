@@ -143,9 +143,7 @@ public final class CodexClientConfigurable implements Configurable {
         authStatusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String customPath = loadCustomBinaryPath();
-            String binary = customPath != null && !customPath.isEmpty() ? customPath : "codex";
-            String version = BinaryDetector.detectBinaryVersion(binary, new String[0]);
+            String version = new AcpClientBinaryResolver(CodexAppServerClient.PROFILE_ID, "codex").detectVersion();
             CodexCredentials creds = CodexCredentials.read();
             SwingUtilities.invokeLater(() -> applyStatusResults(version, creds));
         });

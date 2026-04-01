@@ -21,6 +21,7 @@ import com.github.catatafishen.ideagentforcopilot.bridge.McpServerJarLocator;
 import com.github.catatafishen.ideagentforcopilot.bridge.SessionOption;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.github.catatafishen.ideagentforcopilot.services.McpServerControl;
+import com.github.catatafishen.ideagentforcopilot.settings.AcpClientBinaryResolver;
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -414,8 +415,8 @@ public abstract class AcpClient extends AbstractAgentClient {
             for (NewSessionResponse.SessionConfigOption opt : response.configOptions()) {
                 List<AbstractAgentClient.AgentConfigOptionValue> vals = opt.values() == null ? List.of()
                     : opt.values().stream()
-                    .map(v -> new AbstractAgentClient.AgentConfigOptionValue(v.id(), v.label()))
-                    .toList();
+                      .map(v -> new AbstractAgentClient.AgentConfigOptionValue(v.id(), v.label()))
+                      .toList();
                 String optId = opt.id() != null ? opt.id() : "";
                 String label = opt.label() != null ? opt.label() : optId;
                 availableConfigOptions.add(
@@ -1081,30 +1082,19 @@ public abstract class AcpClient extends AbstractAgentClient {
     // ────────────────────────────────────────────────────────────────────────
 
     private List<String> resolveCommand(List<String> command) {
-        if (command.isEmpty()) {
-            return command;
-        }
+        if (command.isEmpty()) return command;
         String binaryName = command.getFirst();
 
-        // User-configured override takes priority over auto-detection
-        String customPath = loadCustomBinaryPath(agentId());
-        if (customPath != null) {
-            List<String> resolved = new ArrayList<>(command);
-            resolved.set(0, customPath);
-            return resolved;
+        // Already an absolute or relative path — no resolution needed
+        if (binaryName.startsWith("/") || binaryName.startsWith("./")) return command;
+
+        String resolved = new AcpClientBinaryResolver(agentId(), binaryName).resolve();
+        if (resolved != null) {
+            List<String> result = new ArrayList<>(command);
+            result.set(0, resolved);
+            return result;
         }
 
-        // Already absolute — no resolution needed
-        if (binaryName.startsWith("/") || binaryName.startsWith("./")) {
-            return command;
-        }
-        String absolutePath = com.github.catatafishen.ideagentforcopilot.settings.BinaryDetector.findBinaryPath(binaryName);
-        if (absolutePath != null && !absolutePath.isEmpty()) {
-            List<String> resolved = new ArrayList<>(command);
-            resolved.set(0, absolutePath);
-            return resolved;
-        }
-        // Fall back to original name; will fail at exec with a helpful error
         LOG.warn("Could not resolve absolute path for '" + binaryName + "'; attempting launch with unresolved name");
         return command;
     }

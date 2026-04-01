@@ -178,9 +178,7 @@ public final class JunieClientConfigurable implements Configurable {
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String customPath = AcpClient.loadCustomBinaryPath(AGENT_ID);
-            String binary = customPath != null ? customPath : "junie";
-            String version = BinaryDetector.detectBinaryVersion(binary, new String[0]);
+            String version = new AcpClientBinaryResolver(AGENT_ID, "junie").detectVersion();
             SwingUtilities.invokeLater(() -> {
                 if (statusLabel == null) return;
                 if (version != null) {
