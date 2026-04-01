@@ -107,7 +107,6 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         p.setMcpMethod(McpInjectionMethod.CONFIG_FLAG);
         p.setSupportsMcpConfigFlag(true);
         p.setSupportsModelFlag(true);
-        p.setSupportsConfigDir(false);
         // requiresResourceDuplication removed (always false for CLI agents)
         p.setExcludeAgentBuiltInTools(true);
         p.setUsePluginPermissions(true);
@@ -271,7 +270,25 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     @Override
     public @NotNull List<com.github.catatafishen.ideagentforcopilot.acp.model.Model> getAvailableModels() {
-        return KNOWN_MODELS;
+        List<String> custom = profile.getCustomCliModels();
+        if (custom.isEmpty()) {
+            return KNOWN_MODELS;
+        }
+
+        // Known model IDs for dedup
+        java.util.Set<String> knownIds = new java.util.HashSet<>();
+        for (var m : KNOWN_MODELS) {
+            knownIds.add(m.id());
+        }
+
+        List<com.github.catatafishen.ideagentforcopilot.acp.model.Model> merged = new ArrayList<>(KNOWN_MODELS);
+        for (String id : custom) {
+            if (!id.isBlank() && !knownIds.contains(id.trim())) {
+                merged.add(new com.github.catatafishen.ideagentforcopilot.acp.model.Model(
+                    id.trim(), id.trim(), null, null));
+            }
+        }
+        return java.util.Collections.unmodifiableList(merged);
     }
 
     // ── Prompt execution ─────────────────────────────────────────────────────

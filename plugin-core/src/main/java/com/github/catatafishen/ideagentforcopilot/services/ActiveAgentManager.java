@@ -264,16 +264,18 @@ public final class ActiveAgentManager implements Disposable {
 
             clearCachedConfig();
 
-            if (ClaudeCliClient.PROFILE_ID.equals(agentId)) {
-                int mcpPort = resolveMcpPort();
-                AgentConfig config = resolveStartConfig();
-                acpClient = new ClaudeCliClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
-            } else if (CodexAppServerClient.PROFILE_ID.equals(agentId)) {
-                int mcpPort = resolveMcpPort();
-                AgentConfig config = resolveStartConfig();
-                acpClient = new CodexAppServerClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
-            } else {
-                acpClient = createAcpClient(agentId);
+            switch (profile.getTransportType()) {
+                case CLAUDE_CLI -> {
+                    int mcpPort = resolveMcpPort();
+                    AgentConfig config = resolveStartConfig();
+                    acpClient = new ClaudeCliClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
+                }
+                case CODEX_APP_SERVER -> {
+                    int mcpPort = resolveMcpPort();
+                    AgentConfig config = resolveStartConfig();
+                    acpClient = new CodexAppServerClient(profile, config, ToolRegistry.getInstance(project), project, mcpPort);
+                }
+                case ACP -> acpClient = createAcpClient(agentId);
             }
 
             // Apply persisted agent selection before start() builds the launch command.

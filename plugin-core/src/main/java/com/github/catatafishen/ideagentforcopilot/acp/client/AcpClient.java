@@ -20,7 +20,6 @@ import com.github.catatafishen.ideagentforcopilot.agent.AgentStartException;
 import com.github.catatafishen.ideagentforcopilot.bridge.McpServerJarLocator;
 import com.github.catatafishen.ideagentforcopilot.bridge.SessionOption;
 import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
-import com.github.catatafishen.ideagentforcopilot.services.AgentProfileManager;
 import com.github.catatafishen.ideagentforcopilot.services.McpServerControl;
 import com.github.catatafishen.ideagentforcopilot.settings.McpServerSettings;
 import com.google.gson.Gson;
@@ -1035,33 +1034,9 @@ public abstract class AcpClient extends AbstractAgentClient {
         return process;
     }
 
-    // ─── Per-agent binary path settings (application-level) ────────────────
+    // ─── Per-agent bubble color settings (application-level) ────────────────
 
     private static final String PROP_AGENT_BUBBLE_COLOR = "agentbridge.client.%s.bubbleColor";
-
-    /**
-     * Returns the user-configured binary path for the given agent ID,
-     * or {@code null} if not set (auto-detect will be used instead).
-     *
-     * @deprecated Use {@link AgentProfileManager#loadBinaryPath(String)} instead.
-     *             Delegates to {@code AgentProfileManager} which is now the single source of truth.
-     */
-    @Deprecated
-    public static @Nullable String loadCustomBinaryPath(String agentId) {
-        return AgentProfileManager.getInstance().loadBinaryPath(agentId);
-    }
-
-    /**
-     * Persists a custom binary path for the given agent ID.
-     * Pass {@code null} or blank to clear the override and use auto-detection.
-     *
-     * @deprecated Use {@link AgentProfileManager#saveBinaryPath(String, String)} instead.
-     *             Delegates to {@code AgentProfileManager} which is now the single source of truth.
-     */
-    @Deprecated
-    public static void saveCustomBinaryPath(String agentId, @Nullable String path) {
-        AgentProfileManager.getInstance().saveBinaryPath(agentId, path);
-    }
 
     /**
      * Returns the user-configured bubble color key (a {@link com.github.catatafishen.ideagentforcopilot.ui.ThemeColor}
