@@ -71,13 +71,14 @@ public class ShellEnvironment {
                 userShell = "/bin/sh";
             }
 
-            // Run as a login shell (-l) to pick up /etc/profile, ~/.bash_profile, etc.
-            // Then ALSO explicitly source the interactive rc file (~/.bashrc / ~/.zshrc)
-            // because on Linux, bash login shells do NOT source ~/.bashrc unless
-            // ~/.bash_profile explicitly does so — and tools like nvm/sdkman live in ~/.bashrc.
+            // Run a login shell to pick up /etc/profile and ~/.bash_profile / ~/.profile.
+            // Then ALSO source well-known version-manager init scripts directly, because:
+            // - ~/.bashrc is NOT sourced by bash login shells on Linux (only by interactive shells)
+            // - ~/.bashrc often has "case $- in *i*) ;; *) return ;;" which skips nvm/sdkman init
+            //   even if sourced explicitly
+            // - nvm.sh and sdkman-init.sh are designed to be sourced without interactive guards
             String home = System.getProperty("user.home");
-            String rcFile = userShell.contains("zsh") ? home + "/.zshrc" : home + "/.bashrc";
-            String command = "[ -f '" + rcFile + "' ] && . '" + rcFile + "' 2>/dev/null; env 2>/dev/null";
+            String command = buildEnvCaptureCommand(home);
 
             ProcessBuilder pb = new ProcessBuilder(userShell, "-l", "-c", command);
             pb.redirectErrorStream(false);
@@ -118,6 +119,22 @@ public class ShellEnvironment {
             LOG.warn("Failed to capture shell environment: " + e.getMessage(), e);
             return System.getenv();
         }
+    }
+
+    /**
+     * Builds a shell command that sources well-known version manager init scripts
+     * (nvm, sdkman, cargo, pyenv, etc.) before printing the environment.
+     * These scripts are safe to source in non-interactive shells — unlike ~/.bashrc.
+     */
+    @NotNull
+    private static String buildEnvCaptureCommand(@NotNull String home) {
+        // Each line: source the script if it exists, silently ignore errors
+        return "{ "
+            + "[ -s '" + home + "/.nvm/nvm.sh' ] && . '" + home + "/.nvm/nvm.sh' --no-use 2>/dev/null; "
+            + "[ -s '" + home + "/.sdkman/bin/sdkman-init.sh' ] && . '" + home + "/.sdkman/bin/sdkman-init.sh' 2>/dev/null; "
+            + "[ -s '" + home + "/.cargo/env' ] && . '" + home + "/.cargo/env' 2>/dev/null; "
+            + "[ -f '" + home + "/.pyenv/bin/pyenv' ] && export PATH='" + home + "/.pyenv/bin:$PATH' 2>/dev/null; "
+            + "env 2>/dev/null; }";
     }
 
     @NotNull
