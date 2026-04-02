@@ -35,6 +35,9 @@ export default class MessageBubble extends HTMLElement {
      */
     appendStreamingText(text: string): void {
         this._rawText += text;
+        // Synchronous append keeps textContent up-to-date between frames so
+        // callers can always read text content immediately.
+        this.appendChild(document.createTextNode(text));
         if (!this._renderPending) {
             this._renderPending = true;
             requestAnimationFrame(() => {
