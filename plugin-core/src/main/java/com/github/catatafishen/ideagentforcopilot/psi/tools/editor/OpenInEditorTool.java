@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
+import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.SimpleStatusRenderer;
@@ -86,10 +87,13 @@ public final class OpenInEditorTool extends EditorTool {
                     return;
                 }
 
+                // Don't steal focus when the chat prompt has focus — prevents keystroke leaks
+                boolean effectiveFocus = focus && !PsiBridgeService.isChatToolWindowActive(project);
+
                 if (line > 0) {
-                    new OpenFileDescriptor(project, vf, line - 1, 0).navigate(focus);
+                    new OpenFileDescriptor(project, vf, line - 1, 0).navigate(effectiveFocus);
                 } else {
-                    FileEditorManager.getInstance(project).openFile(vf, focus);
+                    FileEditorManager.getInstance(project).openFile(vf, effectiveFocus);
                 }
 
                 PsiFile psiFile = ApplicationManager.getApplication().runReadAction(

@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.file;
 
 import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
+import com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings;
 import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.Tool;
@@ -146,15 +147,18 @@ public abstract class FileTool extends Tool {
                     return;
                 }
 
+                // Don't steal focus when the chat prompt has focus — prevents keystroke leaks
+                boolean focus = !PsiBridgeService.isChatToolWindowActive(project);
+
                 FileEditorManager fem = FileEditorManager.getInstance(project);
                 int midLine = (startLine > 0 && endLine > 0)
                     ? (startLine + endLine) / 2
                     : Math.max(startLine, 1);
                 if (midLine > 0) {
-                    new OpenFileDescriptor(project, vf, midLine - 1, 0).navigate(true);
+                    new OpenFileDescriptor(project, vf, midLine - 1, 0).navigate(focus);
                     scrollAndHighlight(fem, vf, startLine, endLine, midLine, highlightColor, actionLabel);
                 } else {
-                    fem.openFile(vf, true);
+                    fem.openFile(vf, focus);
                 }
 
                 selectInProjectView(project, vf);
