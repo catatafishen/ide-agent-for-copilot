@@ -35,12 +35,12 @@ public final class GitRemoteTool extends GitTool {
 
     @Override
     public @NotNull Kind kind() {
-        return Kind.READ;
+        return Kind.EDIT;
     }
 
     @Override
-    public boolean isReadOnly() {
-        return true;
+    public @NotNull String permissionTemplate() {
+        return "{action} remote {name}";
     }
 
     @Override

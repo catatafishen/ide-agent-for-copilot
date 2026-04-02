@@ -36,13 +36,12 @@ public final class GitRebaseTool extends GitTool {
         return "Rebase current branch onto another";
     }
 
-
-
     @Override
     public @NotNull Kind kind() {
         return Kind.EXECUTE;
     }
-@Override
+
+    @Override
     public boolean isDestructive() {
         return true;
     }
@@ -81,12 +80,13 @@ public final class GitRebaseTool extends GitTool {
             return runGit(CMD_REBASE, "--skip");
         }
 
+        if (args.has(PARAM_INTERACTIVE) && args.get(PARAM_INTERACTIVE).getAsBoolean()) {
+            return "Error: interactive rebase requires a terminal text editor and cannot run in the plugin context. " +
+                "Use the IDE's Git > Rebase... dialog instead.";
+        }
+
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add(CMD_REBASE);
-
-        if (args.has(PARAM_INTERACTIVE) && args.get(PARAM_INTERACTIVE).getAsBoolean()) {
-            cmdArgs.add("--interactive");
-        }
 
         if (args.has(PARAM_AUTOSQUASH) && args.get(PARAM_AUTOSQUASH).getAsBoolean()) {
             cmdArgs.add("--autosquash");

@@ -89,10 +89,17 @@ public final class GitTagTool extends GitTool {
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'create'";
 
+                boolean annotate = args.has(PARAM_ANNOTATE) && args.get(PARAM_ANNOTATE).getAsBoolean();
+                String message = args.has(PARAM_MESSAGE) ? args.get(PARAM_MESSAGE).getAsString() : "";
+
+                if (annotate && message.isEmpty()) {
+                    yield "Error: 'message' is required for annotated tags (annotated tags without a message open an editor, which is unsupported)";
+                }
+
                 List<String> cmdArgs = new ArrayList<>();
                 cmdArgs.add("tag");
 
-                if (args.has(PARAM_ANNOTATE) && args.get(PARAM_ANNOTATE).getAsBoolean()) {
+                if (annotate) {
                     cmdArgs.add("-a");
                 }
 
@@ -102,9 +109,9 @@ public final class GitTagTool extends GitTool {
                     cmdArgs.add(args.get(PARAM_COMMIT).getAsString());
                 }
 
-                if (args.has(PARAM_MESSAGE) && !args.get(PARAM_MESSAGE).getAsString().isEmpty()) {
+                if (!message.isEmpty()) {
                     cmdArgs.add("-m");
-                    cmdArgs.add(args.get(PARAM_MESSAGE).getAsString());
+                    cmdArgs.add(message);
                 }
 
                 yield runGit(cmdArgs.toArray(String[]::new));
