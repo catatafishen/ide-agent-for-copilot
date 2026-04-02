@@ -50,6 +50,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -238,13 +239,13 @@ and push a corrected commit.
 
 # ── GitHub API ─────────────────────────────────────────────────────────────────
 
-def _gh_request(path: str) -> object:
+def _gh_request(path: str) -> Any:
     """GET request to the GitHub repos API for GITHUB_REPO."""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/{path}"
     return _gh_raw_request(url)
 
 
-def _gh_raw_request(url: str, method: str = "GET", data: bytes | None = None) -> object:
+def _gh_raw_request(url: str, method: str = "GET", data: bytes | None = None) -> Any:
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("User-Agent", "issue-fixer/1.0")
     req.add_header("Accept", "application/vnd.github+json")
@@ -291,7 +292,7 @@ def fetch_pr_detail(pr_number: int) -> dict | None:
     """Returns full PR object (includes head branch name)."""
     try:
         return _gh_request(f"pulls/{pr_number}")
-    except Exception:
+    except (urllib.error.URLError, urllib.error.HTTPError):
         return None
 
 
@@ -336,9 +337,11 @@ def fetch_check_runs(sha: str) -> list[dict]:
 
 def _plugin_request(path: str, data: bytes | None = None,
                     method: str = "GET") -> tuple[int, dict]:
+    # SSL verification is intentionally disabled — connects to the local plugin
+    # server which uses a self-signed certificate on localhost.
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    ctx.check_hostname = False  # NOSONAR — localhost self-signed cert
+    ctx.verify_mode = ssl.CERT_NONE  # NOSONAR — localhost self-signed cert
 
     urls = [f"{PLUGIN_URL}{path}"]
     port_match = re.search(r":(\d+)$", PLUGIN_URL)
@@ -372,7 +375,7 @@ def is_agent_running() -> bool:
     try:
         status, info = _plugin_request("/info")
         return status == 200 and bool(info.get("running", False))
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return False
 
 
@@ -415,6 +418,7 @@ def send_prompt(text: str, dry_run: bool = False) -> None:
 
 ISSUE_STATUS_DISPATCHED = "dispatched"
 ISSUE_STATUS_RESOLVED = "resolved"
+NO_DESCRIPTION = "(no description provided)"
 
 
 def load_state() -> dict:
@@ -473,6 +477,14 @@ def is_bot(login: str) -> bool:
 
 # ── Issue processing ───────────────────────────────────────────────────────────
 
+def _mark_resolved_issues(issues_state: dict, open_numbers: set[str]) -> None:
+    """Mark dispatched issues that are no longer open as resolved."""
+    for key, info in issues_state.items():
+        if info.get("status") == ISSUE_STATUS_DISPATCHED and key not in open_numbers:
+            info["status"] = ISSUE_STATUS_RESOLVED
+            print(f"[poll] issue #{key} is now closed — marking resolved")
+
+
 def process_issues(state: dict, dry_run: bool) -> None:
     issues_state: dict = state.setdefault("issues", {})
 
@@ -480,11 +492,7 @@ def process_issues(state: dict, dry_run: bool) -> None:
     open_issues = fetch_open_issues()
     open_numbers = {str(i["number"]) for i in open_issues}
 
-    # Mark issues that were dispatched but are now closed
-    for key, info in issues_state.items():
-        if info.get("status") == ISSUE_STATUS_DISPATCHED and key not in open_numbers:
-            info["status"] = ISSUE_STATUS_RESOLVED
-            print(f"[poll] issue #{key} is now closed — marking resolved")
+    _mark_resolved_issues(issues_state, open_numbers)
 
     new_issues = [i for i in open_issues if str(i["number"]) not in issues_state]
     dispatched_issues = [
@@ -502,14 +510,8 @@ def process_issues(state: dict, dry_run: bool) -> None:
         print(f"[poll] {len(dispatched_issues)} dispatched issue(s) to monitor: "
               f"{[i['number'] for i in dispatched_issues]}")
 
-    changed = False
-    for issue in new_issues:
-        if _dispatch_new_issue(issue, issues_state, dry_run):
-            changed = True
-
-    for issue in dispatched_issues:
-        if _check_author_response(issue, issues_state, dry_run):
-            changed = True
+    changed = any(_dispatch_new_issue(i, issues_state, dry_run) for i in new_issues)
+    changed = any(_check_author_response(i, issues_state, dry_run) for i in dispatched_issues) or changed
 
     if changed and not dry_run:
         save_state(state)
@@ -540,7 +542,7 @@ def _dispatch_new_issue(issue: dict, issues_state: dict, dry_run: bool) -> bool:
         prompt = EXISTING_PR_PROMPT.format(
             number=number,
             title=title,
-            body=body or "(no description provided)",
+            body=body or NO_DESCRIPTION,
             pr_number=pr["number"],
             pr_title=pr["title"],
             branch=branch,
@@ -552,7 +554,7 @@ def _dispatch_new_issue(issue: dict, issues_state: dict, dry_run: bool) -> bool:
         prompt = ISSUE_PROMPT.format(
             number=number,
             title=title,
-            body=body or "(no description provided)",
+            body=body or NO_DESCRIPTION,
             existing_prs=format_prs(existing_prs),
             slug=slugify(title),
             disclaimer=LLM_DISCLAIMER,
@@ -607,7 +609,7 @@ def _check_author_response(issue: dict, issues_state: dict, dry_run: bool) -> bo
     prompt = CLARIFICATION_RECEIVED_PROMPT.format(
         number=number,
         title=title,
-        body=body or "(no description provided)",
+        body=body or NO_DESCRIPTION,
         author=issue_author,
         new_comments=new_comments_text,
         slug=slugify(title),
