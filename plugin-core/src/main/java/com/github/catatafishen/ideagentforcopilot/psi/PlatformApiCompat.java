@@ -880,7 +880,7 @@ public final class PlatformApiCompat {
      * IDE and the target SDK. Cascading: {@code connection.subscribe()} and
      * {@code connection.disconnect()} also fail. The Gradle build compiles without errors.</p>
      */
-    static @NotNull Runnable subscribeDaemonListener(
+    public static @NotNull Runnable subscribeDaemonListener(
         @NotNull Project project,
         @NotNull com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.DaemonListener listener) {
         var connection = project.getMessageBus().connect();

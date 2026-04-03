@@ -605,6 +605,14 @@ public final class PsiBridgeService implements Disposable {
                 if (target != null) {
                     com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
                         .openFile(target, false);
+                    // Explicitly restart daemon analysis so it doesn't wait for its own
+                    // heuristic scheduling — avoids timeout in DaemonWaiter.await().
+                    com.intellij.psi.PsiFile psiFile =
+                        com.intellij.psi.PsiManager.getInstance(project).findFile(target);
+                    if (psiFile != null) {
+                        com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project)
+                            .restart(psiFile, "Agent: file opened for highlight analysis");
+                    }
                 }
             } finally {
                 opened.complete(null);

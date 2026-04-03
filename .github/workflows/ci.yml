@@ -83,6 +83,21 @@ jobs:
       - name: Run plugin tests
         run: ./gradlew :plugin-core:test --no-daemon
 
+      - name: Show test failures
+        if: failure()
+        run: |
+          python3 -c "
+          import glob, xml.etree.ElementTree as ET
+          for path in glob.glob('plugin-core/build/test-results/test/*.xml'):
+              root = ET.parse(path).getroot()
+              for tc in root.iter('testcase'):
+                  for tag in ('failure', 'error'):
+                      fail = tc.find(tag)
+                      if fail is not None:
+                          print('FAILED:', tc.get('classname') + '.' + tc.get('name'))
+                          print((fail.get('message') or '') + chr(10) + (fail.text or '')[:3000])
+          "
+
       - name: Create pluginVerifier cache directory
         run: mkdir -p ~/.pluginVerifier/extracted-plugins
 
