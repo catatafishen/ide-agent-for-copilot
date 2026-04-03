@@ -49,8 +49,10 @@ test-output/
 *.swp
 *~
 
-# Git bundles (for repo transfer)
-*.bundle
+# Scripts local config
+scripts/.env
+scripts/*.env
+
 
 # Plugin builds
 plugin-core/build/

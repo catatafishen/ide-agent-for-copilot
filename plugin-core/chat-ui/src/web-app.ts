@@ -10,26 +10,33 @@
 // ── Bridge: replaces native Kotlin bridge with fetch-based implementations ──
 
 globalThis._bridge = {
-    openFile: () => {},
-    openUrl: (url) => { globalThis.open(url, '_blank'); },
-    setCursor: (c) => { document.body.style.cursor = c; },
+    openFile: () => {
+    },
+    openUrl: (url) => {
+        globalThis.open(url, '_blank');
+    },
+    setCursor: (c) => {
+        document.body.style.cursor = c;
+    },
     loadMore: () => webPost('/load-more', {}),
-    quickReply: (text) => webPost('/reply', { text }),
+    quickReply: (text) => webPost('/reply', {text}),
     permissionResponse: (data) => {
         const parts = data.split(':');
         const resp = parts.pop()!;
         const reqId = parts.join(':');
-        void webPost('/permission', { reqId, response: resp });
+        void webPost('/permission', {reqId, response: resp});
     },
-    openScratch: () => {},
-    showToolPopup: () => {},
-    cancelNudge: (id) => webPost('/cancel-nudge', { id }),
+    openScratch: () => {
+    },
+    showToolPopup: () => {
+    },
+    cancelNudge: (id) => webPost('/cancel-nudge', {id}),
 };
 
 function webPost(path: string, body: Record<string, unknown>): Promise<Response> {
     return fetch(path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body),
     });
 }
@@ -67,7 +74,7 @@ const menuModelSection = document.getElementById('ab-menu-model-section')!;
 let atBottom = true;
 chatEl.addEventListener('scroll', () => {
     atBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 120;
-}, { passive: true });
+}, {passive: true});
 
 function scrollToBottom(): void {
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -115,7 +122,9 @@ function updateButtons(): void {
     sendBtn.innerHTML = globalThis.ICON_SVG + '<span>' + (agentRunning ? 'Nudge' : 'Send') + '</span>';
 }
 
-ChatController.setClientType = (_type: string, iconSvg?: string) => {
+const _origSetClientType = ChatController.setClientType.bind(ChatController);
+ChatController.setClientType = (type: string, iconSvg?: string) => {
+    _origSetClientType(type);  // preserves _currentClientType used for message bubble styling
     if (iconSvg) {
         globalThis.ICON_SVG = iconSvg.replace(
             '<svg',
@@ -206,7 +215,8 @@ fetch('/info')
         if (info.connected) showChatView();
         else showConnectView(info.profiles);
     })
-    .catch(() => {});
+    .catch(() => {
+    });
 
 // ── Hamburger menu ──────────────────────────────────────────────────────────
 
@@ -231,13 +241,15 @@ menuReloadBtn.addEventListener('click', () => {
             void caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
         }
     }
-    setTimeout(() => { location.href = '/?v=' + Date.now(); }, 150);
+    setTimeout(() => {
+        location.href = '/?v=' + Date.now();
+    }, 150);
 });
 
 // Model select change
 menuModelSel.addEventListener('change', () => {
     const id = menuModelSel.value;
-    if (id) void webPost('/set-model', { modelId: id });
+    if (id) void webPost('/set-model', {modelId: id});
 });
 
 // Disconnect
@@ -254,7 +266,7 @@ connectBtn.addEventListener('click', () => {
     connectBtn.disabled = true;
     connectBtn.textContent = 'Connecting\u2026';
     connectStatusEl.textContent = '';
-    webPost('/connect', { profileId }).catch(() => {
+    webPost('/connect', {profileId}).catch(() => {
         connectBtn.disabled = false;
         connectBtn.textContent = 'Connect';
         connectStatusEl.textContent = 'Connection error \u2014 check the IDE plugin.';
@@ -279,7 +291,8 @@ function handleConnected(modelsJsonStr: string, _profilesJsonStr: string): void 
                 }
                 populateModels(info.models, info.model);
             })
-            .catch(() => {});
+            .catch(() => {
+            });
         showChatView();
     } catch {
         showChatView();
@@ -379,7 +392,7 @@ function showNotification(title: string, body: string): void {
         });
     } else if ('Notification' in globalThis && Notification.permission === 'granted') {
         try {
-            new Notification(title, { body, icon: '/icon.svg', tag: 'ab' });
+            new Notification(title, {body, icon: '/icon.svg', tag: 'ab'});
         } catch {
             // ignore
         }
@@ -404,7 +417,7 @@ function subscribePush(vapidKey: string): void {
                     atob(vapidKey.replaceAll('-', '+').replaceAll('_', '/')),
                     c => c.codePointAt(0) ?? 0,
                 );
-                void reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey })
+                void reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: appKey})
                     .then(sub => {
                         console.log('[AB] Subscribed to push');
                         webPost('/push-subscribe', sub.toJSON() as Record<string, unknown>)
@@ -440,7 +453,7 @@ function reqNotifPerm(): void {
     }
 }
 
-document.addEventListener('click', reqNotifPerm, { once: true });
+document.addEventListener('click', reqNotifPerm, {once: true});
 
 // ── Quick-reply bridge (ask_user responses) ─────────────────────────────────
 
@@ -471,7 +484,7 @@ function sendAction(): void {
     if (!t) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
-    void webPost(agentRunning ? '/nudge' : '/prompt', { text: t });
+    void webPost(agentRunning ? '/nudge' : '/prompt', {text: t});
 }
 
 // ── Register service worker ─────────────────────────────────────────────────

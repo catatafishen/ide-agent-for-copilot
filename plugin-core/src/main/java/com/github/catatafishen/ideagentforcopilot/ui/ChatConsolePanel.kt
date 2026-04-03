@@ -307,13 +307,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val agentCss = ChatTheme.activeAgentCss(profileId)
         val isDark = com.intellij.ide.ui.LafManager.getInstance().currentUIThemeLookAndFeel.isDark
         val iconSvg = ChatTheme.getAgentIconSvg(profileId, isDark)
-        executeJs(
-            "document.documentElement.style.cssText += '$agentCss';ChatController.setClientType('${
-                escJs(
-                    clientType
-                )
-            }', '${escJs(iconSvg)}')"
-        )
+        // Apply per-agent CSS variables to the JCEF document root only.
+        // Starts with "document." so it is intentionally filtered from the web app event log.
+        executeJs("document.documentElement.style.cssText += '$agentCss'")
+        // Notify the client type change — pushed to both JCEF and the web app event log.
+        executeJs("ChatController.setClientType('${escJs(clientType)}', '${escJs(iconSvg)}')")
     }
 
     override fun addContextFilesEntry(files: List<Pair<String, String>>) {
