@@ -1351,6 +1351,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (baseName?.trim('\'', '"') == "git_commit" && tryNavigateToCommit(entry?.result)) {
             return
         }
+        // If the tool arguments contain old_str/new_str, open IntelliJ's diff viewer directly.
+        val diff = extractDiffFromArgs(entry?.arguments)
+        if (diff != null) {
+            ApplicationManager.getApplication().invokeLater {
+                val left = com.intellij.diff.DiffContentFactory.getInstance().create(diff.first)
+                val right = com.intellij.diff.DiffContentFactory.getInstance().create(diff.second)
+                val request = com.intellij.diff.requests.SimpleDiffRequest(
+                    chipTitle, left, right, "Before", "After"
+                )
+                com.intellij.diff.DiffManager.getInstance().showDiff(project, request)
+            }
+            return
+        }
 
         val resultPanel =
             renderToolResultPanel(
@@ -1413,6 +1426,25 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
                 else -> null
             }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Extracts before/after text from tool arguments for diff viewing.
+     * Supports `edit_text` (old_str/new_str) and `replace_symbol_body` (symbol/new_body with result diff).
+     */
+    private fun extractDiffFromArgs(arguments: String?): Pair<String, String>? {
+        if (arguments.isNullOrBlank()) return null
+        return try {
+            val json = JsonParser.parseString(arguments).asJsonObject
+            val oldStr = json["old_str"]?.asString
+            val newStr = json["new_str"]?.asString
+            if (oldStr != null && newStr != null && (oldStr.isNotBlank() || newStr.isNotBlank())) {
+                return Pair(oldStr, newStr)
+            }
+            null
         } catch (_: Exception) {
             null
         }
