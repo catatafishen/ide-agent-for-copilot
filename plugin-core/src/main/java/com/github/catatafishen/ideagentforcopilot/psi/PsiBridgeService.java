@@ -99,36 +99,6 @@ public final class PsiBridgeService implements Disposable {
         allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.editor.EditorToolFactory.create(project));
         allTools.addAll(com.github.catatafishen.ideagentforcopilot.psi.tools.debug.DebugToolFactory.create(project));
         registry.registerAll(allTools);
-
-        // Subscribe to tool call events to restore focus to chat input after each tool call
-        PlatformApiCompat.subscribeToolCallListener(project, this, (toolName, durationMs, success) ->
-            restoreChatFocus()
-        );
-    }
-
-    /**
-     * Requests focus restoration to the chat input after a tool call completes.
-     * This prevents focus from staying in the editor when files are opened in follow mode.
-     * Adds a small delay to allow editor scrolling/navigation to complete first.
-     */
-    private void restoreChatFocus() {
-        // Wait for editor operations (scrolling, navigation) to complete
-        // before stealing focus back to the chat input by listening for the action to finish
-        var connection = com.intellij.openapi.application.ApplicationManager.getApplication().getMessageBus().connect();
-        connection.subscribe(com.intellij.openapi.actionSystem.ex.AnActionListener.TOPIC, new com.intellij.openapi.actionSystem.ex.AnActionListener() {
-            @Override
-            public void afterActionPerformed(@NotNull com.intellij.openapi.actionSystem.AnAction action,
-                                             @NotNull com.intellij.openapi.actionSystem.AnActionEvent event,
-                                             @NotNull com.intellij.openapi.actionSystem.AnActionResult result) {
-                try {
-                    PlatformApiCompat.syncPublisher(project, FOCUS_RESTORE_TOPIC).restoreFocus();
-                } catch (Exception e) {
-                    LOG.debug("Failed to request focus restoration", e);
-                } finally {
-                    connection.disconnect();
-                }
-            }
-        });
     }
 
     @SuppressWarnings("java:S1905") // Cast needed: IDE doesn't resolve Project→ComponentManager supertype
@@ -221,7 +191,7 @@ public final class PsiBridgeService implements Disposable {
 
         // Track if chat tool window is active before the tool call
         // Only restore focus afterward if it was active before (don't steal focus if user switched away)
-        boolean chatWasActive = isChatToolWindowActive();
+        boolean chatWasActive = isChatToolWindowActive(project);
 
         // Determine if this tool requires synchronous execution (file/git/editing tools).
         boolean requiresSync = def.category() != null && SYNC_TOOL_CATEGORIES.contains(def.category().name());
@@ -356,10 +326,13 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
-     * Checks if the AgentBridge chat tool window is currently active.
-     * Used to determine whether to restore focus after a tool call.
+     * Checks if the AgentBridge chat tool window is currently active (has focus).
+     * <p>
+     * <b>Must be called on the EDT.</b> Used by tools to decide whether to request
+     * editor focus when opening files — if the chat is active, tools should not
+     * steal focus so that user keystrokes stay in the prompt.
      */
-    private boolean isChatToolWindowActive() {
+    public static boolean isChatToolWindowActive(@NotNull Project project) {
         try {
             com.intellij.openapi.wm.ToolWindowManager toolWindowManager =
                 com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
