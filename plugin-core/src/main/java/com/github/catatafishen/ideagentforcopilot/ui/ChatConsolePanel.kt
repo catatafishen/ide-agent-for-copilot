@@ -330,8 +330,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     override fun collapseThinking() {
         if (currentThinkingData == null) return
+        val raw = currentThinkingData!!.raw.toString()
         currentThinkingData = null
-        executeJs("ChatController.collapseThinking('$currentTurnId','main')")
+        val encoded = b64(markdownToHtml(raw))
+        executeJs("ChatController.collapseThinking('$currentTurnId','main','$encoded')")
     }
 
     override fun appendText(text: String) {
@@ -914,9 +916,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     metaChips.append("<thinking-chip label='Thought' status='complete' data-chip-for='$id'></thinking-chip>")
                     detailsContent.append(
                         "<thinking-block id='$id' class='thinking-section turn-hidden'><div class='thinking-content'>${
-                            esc(
-                                raw
-                            )
+                            markdownToHtml(raw)
                         }</div></thinking-block>"
                     )
                 }

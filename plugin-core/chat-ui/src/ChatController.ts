@@ -223,8 +223,12 @@ const ChatController = {
         this._container()?.scrollIfNeeded();
     },
 
-    collapseThinking(turnId: string, agentId: string): void {
+    collapseThinking(turnId: string, agentId: string, encodedHtml?: string): void {
         const ctx = this._getCtx(turnId, agentId);
+        if (encodedHtml && ctx.thinkingBlock) {
+            const content = (ctx.thinkingBlock as any).contentEl as Element | null;
+            if (content) content.innerHTML = b64(encodedHtml);
+        }
         this._collapseThinkingFor(ctx);
     },
 
