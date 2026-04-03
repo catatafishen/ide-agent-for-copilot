@@ -33,6 +33,8 @@ data class PromptOrchestratorCallbacks(
     val onClientUpdate: (SessionUpdate) -> Unit,
     /** Trigger a new prompt execution (used for queued messages). */
     val sendPromptDirectly: (String) -> Unit,
+    /** Restore the user's prompt text to the input box on send failure. */
+    val restorePromptText: (rawText: String) -> Unit,
 )
 
 /** Stored banner message to re-display at the start of the next prompt turn. */
@@ -79,8 +81,14 @@ class PromptOrchestrator(
     private var turnHadContent = false
     private var codeChangeListener: Runnable? = null
 
+    private var pendingRawText = ""
+    private var pendingPromptEntryId = ""
+
     /** Executes a prompt on the calling thread (must be called from a background thread). */
-    fun execute(prompt: String, contextItems: List<ContextItemData>, selectedModelId: String) {
+    fun execute(prompt: String, contextItems: List<ContextItemData>, selectedModelId: String,
+                rawText: String, promptEntryId: String) {
+        pendingRawText = rawText
+        pendingPromptEntryId = promptEntryId
         stopped = false
         // Clear any stale interrupt flag left by a previous stop() call so it doesn't fire
         // immediately on the first blocking operation in the new turn.
@@ -677,9 +685,20 @@ class PromptOrchestrator(
             msg = "ACP error: $msg"
         }
 
+        // If the prompt was never delivered (no content streamed) and the user didn't
+        // cancel, remove the failed prompt bubble and restore the text to the input box.
+        val shouldRestore = !turnHadContent && !isCancelled
+        if (shouldRestore) {
+            consolePanel().removePromptEntry(pendingPromptEntryId)
+        }
+
         consolePanel().cancelAllRunning()
         consolePanel().finishResponse(turnToolCallCount, turnModelId, "")
         callbacks.saveConversation()
+
+        if (shouldRestore) {
+            callbacks.restorePromptText(pendingRawText)
+        }
 
         if (authService.isAuthenticationError(msg)) {
             log.info("Authentication error detected: $msg")
@@ -703,7 +722,9 @@ class PromptOrchestrator(
             consolePanel().addErrorEntry("Error: $msg")
         }
         if (!isCancelled) {
-            statusBanner()?.showError(msg, "Reconnect") { reconnectAfterError() }
+            val bannerMsg = if (shouldRestore) "$msg — your message has been restored to the input box"
+            else msg
+            statusBanner()?.showError(bannerMsg, "Reconnect") { reconnectAfterError() }
         }
 
         e.printStackTrace()

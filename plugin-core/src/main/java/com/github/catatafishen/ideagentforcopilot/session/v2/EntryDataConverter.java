@@ -216,7 +216,7 @@ public final class EntryDataConverter {
                     case "text" -> {
                         String text = part.has("text") ? part.get("text").getAsString() : "";
                         if ("user".equals(msg.role)) {
-                            result.add(new EntryData.Prompt(text, ts, null));
+                            result.add(new EntryData.Prompt(text, ts, null, ""));
                         } else {
                             result.add(new EntryData.Text(
                                 new StringBuilder(text),

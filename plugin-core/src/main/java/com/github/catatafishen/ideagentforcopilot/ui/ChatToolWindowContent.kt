@@ -65,10 +65,6 @@ class ChatToolWindowContent(
     private var restartSessionGroup: RestartSessionGroup? = null
     private lateinit var promptTextArea: EditorTextField
     private var isSending = false
-
-    // @Volatile: written by the onNudgeConsumed callback on the HTTP handler thread,
-    // read by setSendingState(false) which may arrive on the orchestrator thread before the
-    // EDT has a chance to flush — @Volatile ensures cross-thread visibility.
     @Volatile
     private var pendingNudgeId: String? = null
     @Volatile
@@ -681,6 +677,7 @@ class ChatToolWindowContent(
                 },
                 onClientUpdate = ::handleClientUpdate,
                 sendPromptDirectly = ::sendPromptDirectly,
+                restorePromptText = ::restorePromptText,
             )
         )
 
@@ -760,12 +757,18 @@ class ChatToolWindowContent(
             }
         } else null
         val bubbleHtml = buildBubbleHtml(rawText, contextItems)
-        consolePanel.addPromptEntry(prompt, ctxFiles, bubbleHtml)
+        val entryId = consolePanel.addPromptEntry(prompt, ctxFiles, bubbleHtml)
         promptTextArea.text = ""
 
         val selectedModelId = resolveSelectedModelId()
         ApplicationManager.getApplication().executeOnPooledThread {
-            promptOrchestrator.execute(prompt, contextItems, selectedModelId)
+            promptOrchestrator.execute(prompt, contextItems, selectedModelId, rawText, entryId)
+        }
+    }
+
+    private fun restorePromptText(rawText: String) {
+        ApplicationManager.getApplication().invokeLater {
+            promptTextArea.text = rawText
         }
     }
 
@@ -1862,10 +1865,10 @@ class ChatToolWindowContent(
 
         statusBanner?.dismissCurrent()
         setSendingState(true)
-        consolePanel.addPromptEntry(trimmed, null)
+        val entryId = consolePanel.addPromptEntry(trimmed, null)
         val selectedModelId = resolveSelectedModelId()
         ApplicationManager.getApplication().executeOnPooledThread {
-            promptOrchestrator.execute(trimmed, emptyList(), selectedModelId)
+            promptOrchestrator.execute(trimmed, emptyList(), selectedModelId, trimmed, entryId)
         }
     }
 

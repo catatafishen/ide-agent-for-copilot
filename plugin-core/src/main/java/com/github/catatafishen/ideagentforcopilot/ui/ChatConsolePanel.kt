@@ -269,15 +269,22 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("document.querySelector('chat-container').style.scrollBehavior = '${if (enabled) "smooth" else "auto"}'")
     }
 
-    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?, bubbleHtml: String?) {
+    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?, bubbleHtml: String?): String {
         toolJustCompleted = false
         finalizeCurrentText()
         collapseThinking()
         currentTurnId = "t${turnCounter++}"
         val ts = timestamp()
-        entries.add(EntryData.Prompt(text, ts, contextFiles))
+        entries.add(EntryData.Prompt(text, ts, contextFiles, id = currentTurnId))
         val encodedBubble = if (bubbleHtml != null) b64(bubbleHtml) else ""
-        executeJs("ChatController.addUserMessage('${escJs(text)}','${displayTs(ts)}','$encodedBubble');ChatController.showWorkingIndicator()")
+        executeJs("ChatController.addUserMessage('${escJs(text)}','${displayTs(ts)}','$encodedBubble','$currentTurnId');ChatController.showWorkingIndicator()")
+        return currentTurnId
+    }
+
+    override fun removePromptEntry(entryId: String) {
+        val idx = entries.indexOfLast { it is EntryData.Prompt && it.id == entryId }
+        if (idx >= 0) entries.removeAt(idx)
+        executeJs("ChatController.removeUserMessage('$entryId')")
     }
 
     override fun startStreaming() {

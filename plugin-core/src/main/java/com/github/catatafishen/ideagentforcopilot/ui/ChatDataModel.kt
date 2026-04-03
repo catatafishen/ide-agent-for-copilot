@@ -37,7 +37,8 @@ sealed class EntryData {
     class Prompt(
         val text: String,
         val timestamp: String = "",
-        val contextFiles: List<Triple<String, String, Int>>? = null
+        val contextFiles: List<Triple<String, String, Int>>? = null,
+        val id: String = "",
     ) : EntryData()
 
     class Text(

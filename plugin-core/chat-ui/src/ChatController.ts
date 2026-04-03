@@ -134,9 +134,10 @@ const ChatController = {
 
     // ── Public API ─────────────────────────────────────────────
 
-    addUserMessage(text: string, timestamp: string, encodedBubbleHtml?: string): void {
+    addUserMessage(text: string, timestamp: string, encodedBubbleHtml?: string, entryId?: string): void {
         const msg = document.createElement('chat-message');
         msg.setAttribute('type', 'user');
+        if (entryId) msg.id = entryId;
         const meta = document.createElement('message-meta');
         meta.innerHTML = '<span class="ts">' + timestamp + '</span>';
         msg.appendChild(meta);
@@ -150,6 +151,10 @@ const ChatController = {
         msg.appendChild(bubble);
         this._insertMsg(msg);
         this._container()?.forceScroll();
+    },
+
+    removeUserMessage(entryId: string): void {
+        document.getElementById(entryId)?.remove();
     },
 
     appendAgentText(turnId: string, agentId: string, text: string, timestamp?: string): void {

@@ -21,7 +21,9 @@ interface ChatPanelApi : Disposable {
         text: String,
         contextFiles: List<Triple<String, String, Int>>? = null,
         bubbleHtml: String? = null
-    )
+    ): String
+
+    fun removePromptEntry(entryId: String)
 
     fun setPromptStats(modelId: String, multiplier: String)
     fun setCodeChangeStats(linesAdded: Int, linesRemoved: Int)
