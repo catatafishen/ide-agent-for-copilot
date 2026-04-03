@@ -318,7 +318,7 @@ working-indicator .working-text {
 }
 
 .thinking-content {
-    white-space: pre-wrap;
+    overflow-wrap: break-word;
     color: var(--think);
 }
 
