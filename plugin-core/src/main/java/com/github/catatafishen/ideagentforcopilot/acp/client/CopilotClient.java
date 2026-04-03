@@ -514,12 +514,13 @@ public final class CopilotClient extends AcpClient {
             // feedback — the agent corrects behaviour within the same turn instead of
             // waiting until the user sends another prompt.
             String notice = buildSingleToolReprimand(toolId);
-            PsiBridgeService psi =
-                PsiBridgeService.getInstance(project);
+            PsiBridgeService psi = PsiBridgeService.getInstance(project);
             psi.setPendingNudge(notice);
             // Once the nudge is consumed (agent saw it), clear the tracking set so
             // beforeSendPrompt() doesn't repeat the same reprimand on the next prompt.
-            psi.setOnNudgeConsumed(misusedBuiltInTools::clear);
+            // Use addOnNudgeConsumed (not set) to chain with any existing callback,
+            // e.g. the UI callback from onNudgeClicked that clears pendingNudgeId.
+            psi.addOnNudgeConsumed(misusedBuiltInTools::clear);
         }
     }
 
