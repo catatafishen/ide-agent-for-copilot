@@ -9,7 +9,13 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Lists tables and views in a data source with optional schema filter.
+ */
 public final class ListTablesTool extends DatabaseTool {
+
+    private static final String PARAM_DATA_SOURCE = "data_source";
+    private static final String PARAM_SCHEMA = "schema";
 
     public ListTablesTool(Project project) {
         super(project);
@@ -43,53 +49,54 @@ public final class ListTablesTool extends DatabaseTool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"data_source", TYPE_STRING, "Name of the data source to list tables from"},
-            {"schema", TYPE_STRING, "Optional: filter by schema name"},
-        }, "data_source");
+            {PARAM_DATA_SOURCE, TYPE_STRING, "Name of the data source to list tables from"},
+            {PARAM_SCHEMA, TYPE_STRING, "Optional: filter by schema name"},
+        }, PARAM_DATA_SOURCE);
     }
 
     @Override
     public @NotNull String execute(@NotNull JsonObject args) {
-        String dataSourceName = args.get("data_source").getAsString();
-        String schemaFilter = args.has("schema") && !args.get("schema").isJsonNull()
-            ? args.get("schema").getAsString() : null;
+        activateDatabaseToolWindow();
+        String dataSourceName = args.get(PARAM_DATA_SOURCE).getAsString();
+        String schemaFilter = args.has(PARAM_SCHEMA) && !args.get(PARAM_SCHEMA).isJsonNull()
+            ? args.get(PARAM_SCHEMA).getAsString() : null;
 
         DbDataSource dataSource = resolveDataSource(dataSourceName);
         if (dataSource == null) {
             return "Error: data source '" + dataSourceName + "' not found. " + availableDataSourceNames();
         }
 
-        return ReadAction.compute(() -> {
-            StringBuilder sb = new StringBuilder();
-            int tableCount = 0;
-            int viewCount = 0;
+        return ReadAction.compute(() -> formatTables(dataSource, dataSourceName, schemaFilter));
+    }
 
-            var tables = DasUtil.getTables(dataSource);
-            for (var table : tables) {
-                String tableSchema = DasUtil.getSchema(table);
-                if (schemaFilter != null && !schemaFilter.equalsIgnoreCase(tableSchema)) {
-                    continue;
-                }
-                ObjectKind objKind = table.getKind();
-                String kindLabel = objKind == ObjectKind.VIEW ? "VIEW" : "TABLE";
-                if (objKind == ObjectKind.VIEW) viewCount++;
-                else tableCount++;
+    private static @NotNull String formatTables(DbDataSource dataSource, String dataSourceName, String schemaFilter) {
+        StringBuilder sb = new StringBuilder();
+        int tableCount = 0;
+        int viewCount = 0;
 
-                sb.append("  ");
-                if (tableSchema != null && !tableSchema.isEmpty()) {
-                    sb.append(tableSchema).append(".");
-                }
-                sb.append(table.getName()).append(" (").append(kindLabel).append(")\n");
-            }
+        for (var table : DasUtil.getTables(dataSource)) {
+            if (!matchesSchema(DasUtil.getSchema(table), schemaFilter)) continue;
 
-            if (tableCount == 0 && viewCount == 0) {
-                return "No tables or views found in '" + dataSourceName + "'"
-                    + (schemaFilter != null ? " (schema: " + schemaFilter + ")" : "") + ".";
-            }
+            boolean isView = table.getKind() == ObjectKind.VIEW;
+            if (isView) viewCount++;
+            else tableCount++;
 
-            String header = tableCount + " table(s), " + viewCount + " view(s) in '" + dataSourceName + "'";
-            if (schemaFilter != null) header += " (schema: " + schemaFilter + ")";
-            return header + ":\n\n" + sb;
-        });
+            String tableSchema = DasUtil.getSchema(table);
+            sb.append("  ").append(formatQualifiedName(tableSchema, table.getName()));
+            sb.append(isView ? " (VIEW)\n" : " (TABLE)\n");
+        }
+
+        if (tableCount == 0 && viewCount == 0) {
+            return "No tables or views found in '" + dataSourceName + "'"
+                + (schemaFilter != null ? " (schema: " + schemaFilter + ")" : "") + ".";
+        }
+
+        String header = tableCount + " table(s), " + viewCount + " view(s) in '" + dataSourceName + "'";
+        if (schemaFilter != null) header += " (schema: " + schemaFilter + ")";
+        return header + ":\n\n" + sb;
+    }
+
+    private static boolean matchesSchema(String tableSchema, String schemaFilter) {
+        return schemaFilter == null || schemaFilter.equalsIgnoreCase(tableSchema);
     }
 }

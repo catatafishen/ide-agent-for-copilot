@@ -15,6 +15,11 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class GetSchemaTool extends DatabaseTool {
 
+    private static final String PARAM_DATA_SOURCE = "data_source";
+    private static final String PARAM_TABLE = "table";
+    private static final String PARAM_SCHEMA = "schema";
+    private static final String COLUMN_FORMAT = "  %-30s %-20s %-8s %-5s %-30s%n";
+
     public GetSchemaTool(Project project) {
         super(project);
     }
@@ -47,18 +52,19 @@ public final class GetSchemaTool extends DatabaseTool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(new Object[][]{
-            {"data_source", TYPE_STRING, "Name of the data source"},
-            {"table", TYPE_STRING, "Table name to get schema for"},
-            {"schema", TYPE_STRING, "Optional: schema name (if table name is ambiguous)"},
-        }, "data_source", "table");
+            {PARAM_DATA_SOURCE, TYPE_STRING, "Name of the data source"},
+            {PARAM_TABLE, TYPE_STRING, "Table name to get schema for"},
+            {PARAM_SCHEMA, TYPE_STRING, "Optional: schema name (if table name is ambiguous)"},
+        }, PARAM_DATA_SOURCE, PARAM_TABLE);
     }
 
     @Override
     public @NotNull String execute(@NotNull JsonObject args) {
-        String dataSourceName = args.get("data_source").getAsString();
-        String tableName = args.get("table").getAsString();
-        String schemaFilter = args.has("schema") && !args.get("schema").isJsonNull()
-            ? args.get("schema").getAsString() : null;
+        activateDatabaseToolWindow();
+        String dataSourceName = args.get(PARAM_DATA_SOURCE).getAsString();
+        String tableName = args.get(PARAM_TABLE).getAsString();
+        String schemaFilter = args.has(PARAM_SCHEMA) && !args.get(PARAM_SCHEMA).isJsonNull()
+            ? args.get(PARAM_SCHEMA).getAsString() : null;
 
         DbDataSource dataSource = resolveDataSource(dataSourceName);
         if (dataSource == null) {
@@ -79,41 +85,31 @@ public final class GetSchemaTool extends DatabaseTool {
             @NotNull DbDataSource dataSource,
             @NotNull String tableName,
             @Nullable String schemaFilter) {
-        var tables = DasUtil.getTables(dataSource);
-        for (var table : tables) {
+        for (var table : DasUtil.getTables(dataSource)) {
             if (!tableName.equalsIgnoreCase(table.getName())) continue;
-            if (schemaFilter != null) {
-                String tableSchema = DasUtil.getSchema(table);
-                if (!schemaFilter.equalsIgnoreCase(tableSchema)) continue;
+            if (schemaFilter == null || schemaFilter.equalsIgnoreCase(DasUtil.getSchema(table))) {
+                return table;
             }
-            return table;
         }
         return null;
     }
 
     private static @NotNull String formatTableSchema(@NotNull DasTable table) {
-        String tableSchema = DasUtil.getSchema(table);
         StringBuilder sb = new StringBuilder();
-        sb.append("Table: ");
-        if (tableSchema != null && !tableSchema.isEmpty()) {
-            sb.append(tableSchema).append(".");
-        }
-        sb.append(table.getName());
+        sb.append("Table: ").append(formatQualifiedName(DasUtil.getSchema(table), table.getName()));
         sb.append(" (").append(table.getKind().name()).append(")\n\n");
 
         sb.append("Columns:\n");
-        sb.append(String.format("  %-30s %-20s %-8s %-5s %-30s%n",
-            "Name", "Type", "Nullable", "PK", "Default"));
-        sb.append(String.format("  %-30s %-20s %-8s %-5s %-30s%n",
+        sb.append(String.format(COLUMN_FORMAT, "Name", "Type", "Nullable", "PK", "Default"));
+        sb.append(String.format(COLUMN_FORMAT,
             "─".repeat(30), "─".repeat(20), "─".repeat(8), "─".repeat(5), "─".repeat(30)));
 
-        var columns = DasUtil.getColumns(table);
-        for (var column : columns) {
+        for (var column : DasUtil.getColumns(table)) {
             boolean isPk = DasUtil.isPrimary(column);
             boolean isNotNull = column.isNotNull();
             String defaultValue = column.getDefault() != null ? column.getDefault() : "";
 
-            sb.append(String.format("  %-30s %-20s %-8s %-5s %-30s%n",
+            sb.append(String.format(COLUMN_FORMAT,
                 column.getName(),
                 column.getDasType().toDataType().getSpecification(),
                 isNotNull ? "NOT NULL" : "NULL",

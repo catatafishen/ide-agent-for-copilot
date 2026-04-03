@@ -1,11 +1,15 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.database;
 
+import com.github.catatafishen.ideagentforcopilot.psi.EdtUtil;
+import com.github.catatafishen.ideagentforcopilot.psi.ToolLayerSettings;
 import com.github.catatafishen.ideagentforcopilot.psi.tools.Tool;
 import com.github.catatafishen.ideagentforcopilot.services.ToolRegistry;
 import com.intellij.database.psi.DbDataSource;
 import com.intellij.database.psi.DbPsiFacade;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.wm.ToolWindowId;
+import com.intellij.openapi.wm.ToolWindowManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -54,5 +58,28 @@ public abstract class DatabaseTool extends Tool {
             }
             return sb.toString();
         });
+    }
+
+    /**
+     * Activates the Database tool window when follow-agent mode is enabled.
+     */
+    protected void activateDatabaseToolWindow() {
+        if (!ToolLayerSettings.getInstance(project).getFollowAgentFiles()) {
+            return;
+        }
+        EdtUtil.invokeLater(() -> {
+            var tw = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.DATABASE_VIEW);
+            if (tw != null) tw.activate(null);
+        });
+    }
+
+    /**
+     * Formats a schema-qualified name (e.g. "public.users") or just the name if schema is empty.
+     */
+    protected static @NotNull String formatQualifiedName(@Nullable String schema, @NotNull String name) {
+        if (schema != null && !schema.isEmpty()) {
+            return schema + "." + name;
+        }
+        return name;
     }
 }

@@ -45,12 +45,8 @@ public final class ListDataSourcesTool extends DatabaseTool {
     }
 
     @Override
-    public @NotNull JsonObject inputSchema() {
-        return schema(new Object[][]{});
-    }
-
-    @Override
     public @NotNull String execute(@NotNull JsonObject args) {
+        activateDatabaseToolWindow();
         return ReadAction.compute(() -> {
             List<DbDataSource> sources = DbPsiFacade.getInstance(project).getDataSources();
             if (sources.isEmpty()) {
