@@ -18,8 +18,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -253,6 +255,51 @@ class CodexClientRoundTripTest {
     }
 
     // ── SQLite import tests ─────────────────────────────────────────
+
+    @Test
+    void exportSanitizesToolNamesWithSpaces() throws IOException, SQLException {
+        JsonObject toolPart = toolInvocationPart(
+            "call_1", "Check for public console APIs", "{}", "found it");
+        SessionMessage assistant = new SessionMessage(
+            "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
+
+        Path sessionsDir = tempDir.resolve("sessions");
+        Path dbPath = tempDir.resolve("codex.db");
+        createThreadsTable(dbPath);
+
+        String threadId = CodexClientExporter.exportSession(
+            List.of(userMessage("check"), assistant), sessionsDir, dbPath);
+        assertNotNull(threadId);
+
+        String content = Files.readString(sessionsDir.resolve(threadId).resolve("rollout.jsonl"));
+        assertTrue(content.contains("\"name\":\"Check_for_public_console_APIs\""),
+            "Tool name should have spaces replaced with underscores: " + content);
+        assertFalse(content.contains("\"name\":\"Check for public console APIs\""),
+            "Tool name should not contain raw spaces");
+    }
+
+    @Test
+    void exportSanitizesToolNamesWithSlashesAndDots() throws IOException, SQLException {
+        JsonObject toolPart = toolInvocationPart(
+            "call_1", "Viewing .../ChatConsolePanel.kt", "{}", "data");
+        SessionMessage assistant = new SessionMessage(
+            "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
+
+        Path sessionsDir = tempDir.resolve("sessions");
+        Path dbPath = tempDir.resolve("codex.db");
+        createThreadsTable(dbPath);
+
+        String threadId = CodexClientExporter.exportSession(
+            List.of(userMessage("view"), assistant), sessionsDir, dbPath);
+        assertNotNull(threadId);
+
+        String content = Files.readString(sessionsDir.resolve(threadId).resolve("rollout.jsonl"));
+        assertFalse(content.contains("\"name\":\"Viewing .../ChatConsolePanel.kt\""),
+            "Tool name should not contain raw dots/slashes");
+        Pattern validName = Pattern.compile("\"name\":\"[a-zA-Z0-9_-]+\"");
+        assertTrue(validName.matcher(content).find(),
+            "Function call name should match ^[a-zA-Z0-9_-]+$");
+    }
 
     @Test
     void importLatestThreadReadsFromDb() throws IOException, SQLException {

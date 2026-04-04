@@ -559,7 +559,8 @@ public final class OpenCodeClientExporter {
 
                 result.addProperty("type", "tool");
                 result.addProperty("callID", toolCallId != null ? toolCallId : "");
-                result.addProperty("tool", toolName != null ? toolName : "unknown");
+                result.addProperty("tool", ExporterUtil.sanitizeToolName(
+                    toolName != null ? toolName : "unknown"));
 
                 JsonObject stateObj = new JsonObject();
                 stateObj.addProperty("status",

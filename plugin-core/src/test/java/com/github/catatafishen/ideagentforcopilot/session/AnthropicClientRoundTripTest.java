@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.session;
 
 import com.github.catatafishen.ideagentforcopilot.session.exporters.AnthropicClientExporter;
+import com.github.catatafishen.ideagentforcopilot.session.exporters.ExporterUtil;
 import com.github.catatafishen.ideagentforcopilot.session.importers.AnthropicClientImporter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.JsonObject;
@@ -650,7 +651,7 @@ class AnthropicClientRoundTripTest {
     @Test
     void sanitizeToolNameTruncatesLongNames() {
         String longName = "git add " + "a/".repeat(200) + "Foo.java";
-        String sanitized = AnthropicClientExporter.sanitizeToolName(longName);
+        String sanitized = ExporterUtil.sanitizeToolName(longName);
         assertTrue(sanitized.length() <= 200,
             "Sanitized name should be at most 200 chars, was " + sanitized.length());
         assertFalse(sanitized.contains(" "), "Sanitized name should not contain spaces");
@@ -658,24 +659,24 @@ class AnthropicClientRoundTripTest {
 
     @Test
     void sanitizeToolNamePreservesValidNames() {
-        assertEquals("read_file", AnthropicClientExporter.sanitizeToolName("read_file"));
+        assertEquals("read_file", ExporterUtil.sanitizeToolName("read_file"));
         assertEquals("mcp__agentbridge__read_file",
-            AnthropicClientExporter.sanitizeToolName("mcp__agentbridge__read_file"));
+            ExporterUtil.sanitizeToolName("mcp__agentbridge__read_file"));
     }
 
     @Test
     void sanitizeToolNameReplacesInvalidChars() {
         assertEquals("git_add_src_Foo-java",
-            AnthropicClientExporter.sanitizeToolName("git add src/Foo-java"));
+            ExporterUtil.sanitizeToolName("git add src/Foo-java"));
         assertEquals("Viewing__ChatConsolePanel_kt",
-            AnthropicClientExporter.sanitizeToolName("Viewing .../ChatConsolePanel.kt"));
+            ExporterUtil.sanitizeToolName("Viewing .../ChatConsolePanel.kt"));
     }
 
     @Test
     void sanitizeToolNameHandlesEdgeCases() {
-        assertEquals("unknown_tool", AnthropicClientExporter.sanitizeToolName(""));
-        assertEquals("unknown_tool", AnthropicClientExporter.sanitizeToolName("..."));
-        assertEquals("a", AnthropicClientExporter.sanitizeToolName("a"));
+        assertEquals("unknown_tool", ExporterUtil.sanitizeToolName(""));
+        assertEquals("unknown_tool", ExporterUtil.sanitizeToolName("..."));
+        assertEquals("a", ExporterUtil.sanitizeToolName("a"));
     }
 
     private static String extractText(SessionMessage msg) {

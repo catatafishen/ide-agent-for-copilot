@@ -213,8 +213,8 @@ public final class CopilotClientExporter {
         String state = JsonlUtil.getStr(invocation, "state");
         String toolCallId = JsonlUtil.getStr(invocation, TOOL_CALL_ID_KEY);
         if (toolCallId == null) toolCallId = UUID.randomUUID().toString();
-        String toolName = JsonlUtil.getStr(invocation, "toolName");
-        if (toolName == null) toolName = "unknown";
+        String rawToolName = JsonlUtil.getStr(invocation, "toolName");
+        String toolName = ExporterUtil.sanitizeToolName(rawToolName != null ? rawToolName : "unknown");
         String argsStr = JsonlUtil.getStr(invocation, "args");
 
         if ("call".equals(state) || RESULT_KEY.equals(state)) {
