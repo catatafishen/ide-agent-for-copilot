@@ -246,7 +246,7 @@ public final class CodexClientExporter {
         if (callId == null) callId = "call_" + UUID.randomUUID().toString().substring(0, 8);
 
         String rawToolName = JsonlUtil.getStr(invocation, "toolName");
-        String toolName = ExporterUtil.sanitizeToolName(rawToolName != null ? rawToolName : "unknown");
+        String toolName = ExporterUtil.normalizeToolNameForCodex(rawToolName != null ? rawToolName : "unknown");
 
         if ("call".equals(state) || F_RESULT.equals(state)) {
             JsonObject callItem = new JsonObject();

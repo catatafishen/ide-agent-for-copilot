@@ -18,7 +18,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -251,6 +250,8 @@ class CodexClientRoundTripTest {
         String content = Files.readString(sessionsDir.resolve(threadId).resolve("rollout.jsonl"));
         assertTrue(content.contains("\"type\":\"function_call\""));
         assertTrue(content.contains("\"call_id\":\"call_1\""));
+        assertTrue(content.contains("\"name\":\"agentbridge_read_file\""),
+            "Tool name should be prefixed with agentbridge_ for Codex: " + content);
         assertTrue(content.contains("\"type\":\"function_call_output\""));
     }
 
@@ -272,8 +273,8 @@ class CodexClientRoundTripTest {
         assertNotNull(threadId);
 
         String content = Files.readString(sessionsDir.resolve(threadId).resolve("rollout.jsonl"));
-        assertTrue(content.contains("\"name\":\"Check_for_public_console_APIs\""),
-            "Tool name should have spaces replaced with underscores: " + content);
+        assertTrue(content.contains("\"name\":\"agentbridge_Check_for_public_console_APIs\""),
+            "Tool name should be prefixed with agentbridge_ and have spaces replaced: " + content);
         assertFalse(content.contains("\"name\":\"Check for public console APIs\""),
             "Tool name should not contain raw spaces");
     }
@@ -296,9 +297,8 @@ class CodexClientRoundTripTest {
         String content = Files.readString(sessionsDir.resolve(threadId).resolve("rollout.jsonl"));
         assertFalse(content.contains("\"name\":\"Viewing .../ChatConsolePanel.kt\""),
             "Tool name should not contain raw dots/slashes");
-        Pattern validName = Pattern.compile("\"name\":\"[a-zA-Z0-9_-]+\"");
-        assertTrue(validName.matcher(content).find(),
-            "Function call name should match ^[a-zA-Z0-9_-]+$");
+        assertTrue(content.contains("\"name\":\"agentbridge_Viewing__ChatConsolePanel_kt\""),
+            "Tool name should be prefixed and sanitized: " + content);
     }
 
     @Test
@@ -411,7 +411,7 @@ class CodexClientRoundTripTest {
                 foundTool = true;
                 JsonObject inv = part.getAsJsonObject("toolInvocation");
                 assertEquals("result", inv.get("state").getAsString());
-                assertEquals("read_file", inv.get("toolName").getAsString());
+                assertEquals("agentbridge_read_file", inv.get("toolName").getAsString());
                 assertEquals("file data", inv.get("result").getAsString());
             }
         }
