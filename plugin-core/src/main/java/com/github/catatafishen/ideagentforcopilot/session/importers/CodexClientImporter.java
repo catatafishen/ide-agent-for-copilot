@@ -13,8 +13,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public final class CodexClientImporter {
 
@@ -58,7 +66,7 @@ public final class CodexClientImporter {
              Statement stmt = conn.createStatement()) {
             stmt.execute("PRAGMA journal_mode=WAL");
             try (ResultSet rs = stmt.executeQuery(
-                    "SELECT rollout_path FROM threads WHERE archived = 0 ORDER BY updated_at DESC LIMIT 1")) {
+                "SELECT rollout_path FROM threads WHERE archived = 0 ORDER BY updated_at DESC LIMIT 1")) {
                 if (rs.next()) {
                     return rs.getString("rollout_path");
                 }
@@ -104,11 +112,23 @@ public final class CodexClientImporter {
             String type = JsonlUtil.getStr(item, "type");
             if (type == null) continue;
 
+            // Unwrap response_item envelopes (native Codex format wraps items in these)
+            if ("response_item".equals(type)) {
+                JsonObject payload = item.getAsJsonObject("payload");
+                if (payload == null) continue;
+                item = payload;
+                type = JsonlUtil.getStr(item, "type");
+                if (type == null) continue;
+            }
+
             switch (type) {
                 case "message" -> handleMessage(item, messages, pendingAssistantParts, now);
                 case "function_call" -> handleFunctionCall(item, pendingAssistantParts, pendingCalls);
                 case "function_call_output" -> handleFunctionCallOutput(item, pendingAssistantParts, pendingCalls);
                 case "reasoning" -> handleReasoning(item, pendingAssistantParts);
+                // session_meta, event_msg, turn_context are metadata — skip silently
+                case "session_meta", "event_msg", "turn_context" -> {
+                }
                 default -> LOG.debug("Skipping unknown Codex rollout item type: " + type);
             }
         }
@@ -118,10 +138,10 @@ public final class CodexClientImporter {
     }
 
     private static void handleMessage(
-            @NotNull JsonObject item,
-            @NotNull List<SessionMessage> messages,
-            @NotNull List<JsonObject> pendingAssistantParts,
-            long now
+        @NotNull JsonObject item,
+        @NotNull List<SessionMessage> messages,
+        @NotNull List<JsonObject> pendingAssistantParts,
+        long now
     ) {
         String role = JsonlUtil.getStr(item, "role");
         if ("user".equals(role)) {
@@ -132,7 +152,7 @@ public final class CodexClientImporter {
             textPart.addProperty("type", "text");
             textPart.addProperty("text", text != null ? text : "");
             messages.add(new SessionMessage(
-                    UUID.randomUUID().toString(), "user", List.of(textPart), now, null, null));
+                UUID.randomUUID().toString(), "user", List.of(textPart), now, null, null));
         } else if ("assistant".equals(role)) {
             String text = extractContentText(item);
             if (text != null && !text.isEmpty()) {
@@ -145,9 +165,9 @@ public final class CodexClientImporter {
     }
 
     private static void handleFunctionCall(
-            @NotNull JsonObject item,
-            @NotNull List<JsonObject> pendingAssistantParts,
-            @NotNull Map<String, JsonObject> pendingCalls
+        @NotNull JsonObject item,
+        @NotNull List<JsonObject> pendingAssistantParts,
+        @NotNull Map<String, JsonObject> pendingCalls
     ) {
         String callId = JsonlUtil.getStr(item, "call_id");
         String name = JsonlUtil.getStr(item, "name");
@@ -178,9 +198,9 @@ public final class CodexClientImporter {
     }
 
     private static void handleFunctionCallOutput(
-            @NotNull JsonObject item,
-            @NotNull List<JsonObject> pendingAssistantParts,
-            @NotNull Map<String, JsonObject> pendingCalls
+        @NotNull JsonObject item,
+        @NotNull List<JsonObject> pendingAssistantParts,
+        @NotNull Map<String, JsonObject> pendingCalls
     ) {
         String callId = JsonlUtil.getStr(item, "call_id");
         String output = JsonlUtil.getStr(item, "output");
@@ -208,8 +228,8 @@ public final class CodexClientImporter {
     }
 
     private static void handleReasoning(
-            @NotNull JsonObject item,
-            @NotNull List<JsonObject> pendingAssistantParts
+        @NotNull JsonObject item,
+        @NotNull List<JsonObject> pendingAssistantParts
     ) {
         JsonArray content = item.getAsJsonArray("content");
         if (content == null) return;
@@ -233,13 +253,13 @@ public final class CodexClientImporter {
     }
 
     private static void flushAssistantParts(
-            @NotNull List<JsonObject> parts,
-            @NotNull List<SessionMessage> messages,
-            long now
+        @NotNull List<JsonObject> parts,
+        @NotNull List<SessionMessage> messages,
+        long now
     ) {
         if (parts.isEmpty()) return;
         messages.add(new SessionMessage(
-                UUID.randomUUID().toString(), "assistant", List.copyOf(parts), now, "Codex", null));
+            UUID.randomUUID().toString(), "assistant", List.copyOf(parts), now, "Codex", null));
         parts.clear();
     }
 

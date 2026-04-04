@@ -3,6 +3,7 @@ package com.github.catatafishen.ideagentforcopilot.session;
 import com.github.catatafishen.ideagentforcopilot.session.exporters.CodexClientExporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.CodexClientImporter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -126,6 +127,57 @@ class CodexClientRoundTripTest {
     }
 
     @Test
+    void exportRolloutStartsWithSessionMeta() throws IOException, SQLException {
+        List<SessionMessage> messages = List.of(
+            userMessage("Hello"),
+            assistantMessage("World")
+        );
+
+        Path sessionsDir = tempDir.resolve("sessions-meta");
+        Path dbPath = tempDir.resolve("codex-meta.db");
+        createThreadsTable(dbPath);
+
+        String threadId = CodexClientExporter.exportSession(messages, sessionsDir, dbPath, "/test/cwd");
+        assertNotNull(threadId);
+
+        Path rolloutFile = sessionsDir.resolve(threadId).resolve("rollout.jsonl");
+        List<String> lines = Files.readAllLines(rolloutFile, StandardCharsets.UTF_8);
+        assertTrue(lines.size() >= 3, "Should have session_meta + at least 2 items");
+
+        // First line must be session_meta with the thread ID
+        JsonObject firstLine = new Gson().fromJson(lines.getFirst(), JsonObject.class);
+        assertEquals("session_meta", firstLine.get("type").getAsString());
+        assertTrue(firstLine.has("timestamp"), "session_meta must have timestamp");
+        JsonObject payload = firstLine.getAsJsonObject("payload");
+        assertEquals(threadId, payload.get("id").getAsString());
+        assertEquals("/test/cwd", payload.get("cwd").getAsString());
+
+        // Content lines must be wrapped in response_item envelopes
+        JsonObject secondLine = new Gson().fromJson(lines.get(1), JsonObject.class);
+        assertEquals("response_item", secondLine.get("type").getAsString());
+        assertTrue(secondLine.has("timestamp"), "response_item must have timestamp");
+        JsonObject itemPayload = secondLine.getAsJsonObject("payload");
+        assertEquals("message", itemPayload.get("type").getAsString());
+        assertEquals("user", itemPayload.get("role").getAsString());
+    }
+
+    @Test
+    void importHandlesResponseItemEnvelopes() throws IOException {
+        Path rollout = writeRollout(
+            "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"test-thread\"}}",
+            "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Wrapped hello\"}]}}",
+            "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Wrapped response\"}]}}"
+        );
+
+        List<SessionMessage> messages = CodexClientImporter.importRolloutFile(rollout);
+        assertEquals(2, messages.size());
+        assertEquals("user", messages.get(0).role);
+        assertEquals("Wrapped hello", extractText(messages.get(0)));
+        assertEquals("assistant", messages.get(1).role);
+        assertEquals("Wrapped response", extractText(messages.get(1)));
+    }
+
+    @Test
     void importUnmatchedFunctionCallOutputCreatesOrphanPart() throws IOException {
         Path rollout = writeRollout(
             "{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Go\"}]}",
@@ -233,7 +285,7 @@ class CodexClientRoundTripTest {
 
         List<SessionMessage> messages = CodexClientImporter.importLatestThread(dbPath);
         assertEquals(1, messages.size());
-        assertEquals("New", extractText(messages.get(0)));
+        assertEquals("New", extractText(messages.getFirst()));
     }
 
     @Test
@@ -259,7 +311,7 @@ class CodexClientRoundTripTest {
     // ── Round-trip tests ────────────────────────────────────────────
 
     @Test
-    void roundTripPreservesTextContent() throws IOException, SQLException {
+    void roundTripPreservesTextContent() throws SQLException {
         List<SessionMessage> original = List.of(
             userMessage("What is Rust?"),
             assistantMessage("A systems language.")
@@ -281,7 +333,7 @@ class CodexClientRoundTripTest {
     }
 
     @Test
-    void roundTripPreservesToolCalls() throws IOException, SQLException {
+    void roundTripPreservesToolCalls() throws SQLException {
         JsonObject textPart = textPart("Reading file");
         JsonObject toolPart = toolInvocationPart("call_1", "read_file", "{\"path\":\"/a\"}", "file data");
 
@@ -318,7 +370,7 @@ class CodexClientRoundTripTest {
     }
 
     @Test
-    void roundTripPreservesReasoning() throws IOException, SQLException {
+    void roundTripPreservesReasoning() throws SQLException {
         JsonObject reasoning = new JsonObject();
         reasoning.addProperty("type", "reasoning");
         reasoning.addProperty("text", "Let me think...");
