@@ -1,6 +1,5 @@
 package com.github.catatafishen.ideagentforcopilot.settings;
 
-import com.github.catatafishen.ideagentforcopilot.services.ActiveAgentManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
@@ -17,8 +16,6 @@ public final class PluginSettingsConfigurable implements Configurable {
 
     public static final String ID = "com.github.catatafishen.ideagentforcopilot.settings";
     public static final String DISPLAY_NAME = "AgentBridge";
-
-    private JComboBox<String> triggerCharCombo;
 
     @SuppressWarnings("unused")
     public PluginSettingsConfigurable(@NotNull Project ignoredProject) {
@@ -38,8 +35,6 @@ public final class PluginSettingsConfigurable implements Configurable {
 
     @Override
     public @NotNull JComponent createComponent() {
-        triggerCharCombo = new JComboBox<>(new String[]{"# (VS Code style)", "@ (AI Assistant style)", "Disabled"});
-
         String version = com.github.catatafishen.ideagentforcopilot.BuildInfo.getVersion();
         String hash = com.github.catatafishen.ideagentforcopilot.BuildInfo.getGitHash();
 
@@ -59,9 +54,6 @@ public final class PluginSettingsConfigurable implements Configurable {
         versionLabel.setFont(JBUI.Fonts.smallFont());
 
         JPanel panel = FormBuilder.createFormBuilder()
-            .addLabeledComponent("File search trigger:", triggerCharCombo)
-            .addTooltip("Character that opens the file search popup in the chat input.")
-            .addSeparator(12)
             .addComponent(descLabel)
             .addVerticalGap(8)
             .addComponent(versionLabel)
@@ -69,41 +61,21 @@ public final class PluginSettingsConfigurable implements Configurable {
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));
 
-        reset();
         return panel;
-    }
-
-    private String selectedTriggerChar() {
-        int idx = triggerCharCombo == null ? 0 : triggerCharCombo.getSelectedIndex();
-        return switch (idx) {
-            case 1 -> "@";
-            case 2 -> "";
-            default -> "#";
-        };
-    }
-
-    private void selectTriggerChar(String value) {
-        if (triggerCharCombo == null) return;
-        triggerCharCombo.setSelectedIndex(switch (value) {
-            case "@" -> 1;
-            case "" -> 2;
-            default -> 0;
-        });
     }
 
     @Override
     public boolean isModified() {
-        return triggerCharCombo != null
-            && !selectedTriggerChar().equals(ActiveAgentManager.getAttachTriggerChar());
+        return false;
     }
 
     @Override
     public void apply() {
-        ActiveAgentManager.setAttachTriggerChar(selectedTriggerChar());
+        // Root page has no settings — sub-pages handle their own apply()
     }
 
     @Override
     public void reset() {
-        selectTriggerChar(ActiveAgentManager.getAttachTriggerChar());
+        // Root page has no settings — sub-pages handle their own reset()
     }
 }

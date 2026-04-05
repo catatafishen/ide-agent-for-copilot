@@ -354,6 +354,13 @@
       id="com.github.catatafishen.ideagentforcopilot.settings"
       displayName="AgentBridge"/>
 
+    <!-- ── Chat Input ── -->
+    <projectConfigurable
+      parentId="com.github.catatafishen.ideagentforcopilot.settings"
+      instance="com.github.catatafishen.ideagentforcopilot.settings.ChatInputConfigurable"
+      id="com.github.catatafishen.ideagentforcopilot.chatInput"
+      displayName="Chat Input"/>
+
     <!-- ── General sub-pages ── -->
     <projectConfigurable
       parentId="com.github.catatafishen.ideagentforcopilot.settings"

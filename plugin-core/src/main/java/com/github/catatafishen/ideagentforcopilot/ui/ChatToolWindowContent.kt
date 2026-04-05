@@ -65,8 +65,10 @@ class ChatToolWindowContent(
     private var restartSessionGroup: RestartSessionGroup? = null
     private lateinit var promptTextArea: EditorTextField
     private var isSending = false
+
     @Volatile
     private var pendingNudgeId: String? = null
+
     @Volatile
     private var pendingNudgeText: String? = null
     private lateinit var processingTimerPanel: ProcessingTimerPanel
@@ -259,8 +261,15 @@ class ChatToolWindowContent(
 
     private fun promptPlaceholder(): String {
         val name = agentManager.activeProfile.displayName
-        return if (isSending) "Nudge $name... (Shift+Enter for new line)"
-        else "Ask $name... (Shift+Enter for new line)"
+        val settings = com.github.catatafishen.ideagentforcopilot.settings.ChatInputSettings.getInstance()
+        val action = if (isSending) "Nudge" else "Ask"
+        if (!settings.isShowShortcutHints) {
+            return "$action $name..."
+        }
+        val ctrl = if (com.intellij.openapi.util.SystemInfo.isMac) "⌘" else "Ctrl"
+        val shift = if (com.intellij.openapi.util.SystemInfo.isMac) "⇧" else "Shift"
+        val enter = if (com.intellij.openapi.util.SystemInfo.isMac) "⏎" else "Enter"
+        return "$action $name... ($enter ${action.lowercase()} · $shift+$enter new line · $ctrl+$enter stop & send)"
     }
 
     private fun updatePromptPlaceholder() {
@@ -776,17 +785,26 @@ class ChatToolWindowContent(
         if (!isSending) return
         val rawText = promptTextArea.text.trim()
         if (rawText.isEmpty()) return
-        val id = System.currentTimeMillis().toString()
-        pendingNudgeId = id
-        pendingNudgeText = rawText
         promptTextArea.text = ""
-        consolePanel.showNudgeBubble(id, rawText)
+
+        val existingId = pendingNudgeId
+        if (existingId != null) {
+            pendingNudgeText = (pendingNudgeText ?: "") + "\n\n" + rawText
+            consolePanel.showNudgeBubble(existingId, pendingNudgeText!!)
+        } else {
+            val id = System.currentTimeMillis().toString()
+            pendingNudgeId = id
+            pendingNudgeText = rawText
+            consolePanel.showNudgeBubble(id, rawText)
+        }
+
         val psiBridge = com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
         psiBridge.setPendingNudge(rawText)
+        val resolveId = pendingNudgeId!!
         psiBridge.setOnNudgeConsumed {
             pendingNudgeId = null
             pendingNudgeText = null
-            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(id) }
+            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(resolveId) }
         }
     }
 
@@ -1485,17 +1503,25 @@ class ChatToolWindowContent(
             ws.onNudge = { text ->
                 ApplicationManager.getApplication().invokeLater {
                     if (isSending) {
-                        val id = System.currentTimeMillis().toString()
-                        pendingNudgeId = id
-                        pendingNudgeText = text
-                        consolePanel.showNudgeBubble(id, text)
+                        val existingId = pendingNudgeId
+                        if (existingId != null) {
+                            pendingNudgeText = (pendingNudgeText ?: "") + "\n\n" + text
+                            consolePanel.showNudgeBubble(existingId, pendingNudgeText!!)
+                        } else {
+                            val id = System.currentTimeMillis().toString()
+                            pendingNudgeId = id
+                            pendingNudgeText = text
+                            consolePanel.showNudgeBubble(id, text)
+                        }
                         val psiBridge =
                             com.github.catatafishen.ideagentforcopilot.psi.PsiBridgeService.getInstance(project)
                         psiBridge.setPendingNudge(text)
+                        val resolveId = pendingNudgeId!!
                         psiBridge.setOnNudgeConsumed {
                             pendingNudgeId = null
                             pendingNudgeText = null
-                            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(id) }
+                            ApplicationManager.getApplication()
+                                .invokeLater { consolePanel.resolveNudgeBubble(resolveId) }
                         }
                     }
                 }
@@ -1643,11 +1669,8 @@ class ChatToolWindowContent(
         contentComponent: JComponent,
         pasteStrokes: Set<KeyStroke>
     ): Boolean {
-        if (!com.intellij.ide.util.PropertiesComponent.getInstance().getBoolean(
-                com.github.catatafishen.ideagentforcopilot.settings.ScratchTypesConfigurable.KEY_PASTE_OVERRIDE,
-                true
-            )
-        ) return false
+        val chatInputSettings = com.github.catatafishen.ideagentforcopilot.settings.ChatInputSettings.getInstance()
+        if (!chatInputSettings.isSmartPasteEnabled) return false
         if (event !is java.awt.event.KeyEvent) return false
         if (editor.isDisposed) return false
         if (event.id != java.awt.event.KeyEvent.KEY_PRESSED) return false
@@ -1656,7 +1679,9 @@ class ChatToolWindowContent(
         if (!SwingUtilities.isDescendingFrom(focused, contentComponent)) return false
 
         val clipText = contextManager.getClipboardText()
-        if (clipText == null || (clipText.lines().size <= 3 && clipText.length <= 500)) return false
+        val minLines = chatInputSettings.smartPasteMinLines
+        val minChars = chatInputSettings.smartPasteMinChars
+        if (clipText == null || (clipText.lines().size <= minLines && clipText.length <= minChars)) return false
 
         val projectSource = contextManager.findClipboardSourceInProject(clipText)
         event.consume()

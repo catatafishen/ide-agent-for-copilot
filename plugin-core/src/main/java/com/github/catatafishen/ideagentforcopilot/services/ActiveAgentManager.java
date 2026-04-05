@@ -10,6 +10,7 @@ import com.github.catatafishen.ideagentforcopilot.bridge.GenericAgentSettings;
 import com.github.catatafishen.ideagentforcopilot.bridge.ProfileBasedAgentConfig;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
 import com.github.catatafishen.ideagentforcopilot.session.SessionSwitchService;
+import com.github.catatafishen.ideagentforcopilot.settings.ChatInputSettings;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
@@ -37,8 +38,6 @@ public final class ActiveAgentManager implements Disposable {
     private static final Logger LOG = Logger.getInstance(ActiveAgentManager.class);
 
     private static final String KEY_ACTIVE_PROFILE = "agent.activeProfileId";
-    private static final String KEY_ATTACH_TRIGGER = "agent.attachTriggerChar";
-    private static final String DEFAULT_ATTACH_TRIGGER = "#";
     private static final String KEY_FOLLOW_AGENT_FILES = "agent.followAgentFiles";
     private static final String KEY_INJECT_CONV_HISTORY = "agent.injectConversationHistory";
     private static final String KEY_AUTO_CONNECT = "agent.autoConnect";
@@ -495,11 +494,11 @@ public final class ActiveAgentManager implements Disposable {
 
     @NotNull
     public static String getAttachTriggerChar() {
-        return PropertiesComponent.getInstance().getValue(KEY_ATTACH_TRIGGER, DEFAULT_ATTACH_TRIGGER);
+        return ChatInputSettings.getInstance().getFileSearchTrigger();
     }
 
     public static void setAttachTriggerChar(@NotNull String trigger) {
-        PropertiesComponent.getInstance().setValue(KEY_ATTACH_TRIGGER, trigger, DEFAULT_ATTACH_TRIGGER);
+        ChatInputSettings.getInstance().setFileSearchTrigger(trigger);
     }
 
     public static boolean getFollowAgentFiles(@NotNull Project project) {

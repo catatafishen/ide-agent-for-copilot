@@ -37,8 +37,6 @@ import java.util.Set;
  */
 public final class ScratchTypesConfigurable implements Configurable {
 
-    public static final String KEY_PASTE_OVERRIDE = "copilot.pasteOverrideEnabled";
-
     private CheckBoxList<Language> languageList;
     private JBTable table;
     private MappingsTableModel tableModel;
@@ -68,32 +66,12 @@ public final class ScratchTypesConfigurable implements Configurable {
         return mainSplitter;
     }
 
-    private com.intellij.ui.components.JBCheckBox smartPasteCheckBox;
-
     private JBPanel<?> createGeneralPanel() {
-        smartPasteCheckBox = new com.intellij.ui.components.JBCheckBox("Smart Paste");
-        smartPasteCheckBox.setToolTipText("Intercept large clipboard pastes to create scratch files instead");
-
         JBPanel<?> panel = new JBPanel<>(new BorderLayout());
-        JBLabel hint = new JBLabel("General Settings:");
-        hint.setBorder(JBUI.Borders.empty(0, 0, 4, 0));
-
-        JPanel content = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.weightx = 1.0;
-        gbc.anchor = GridBagConstraints.NORTHWEST;
-        gbc.insets = JBUI.insets(4, 0);
-        content.add(smartPasteCheckBox, gbc);
-
-        // Filler
-        gbc.gridy = 1;
-        gbc.weighty = 1.0;
-        content.add(new JPanel(), gbc);
-
+        JBLabel hint = new JBLabel("<html><i>Smart Paste settings have moved to Chat Input.</i></html>");
+        hint.setForeground(com.intellij.util.ui.UIUtil.getContextHelpForeground());
+        hint.setBorder(JBUI.Borders.empty(8));
         panel.add(hint, BorderLayout.NORTH);
-        panel.add(content, BorderLayout.CENTER);
         return panel;
     }
 
@@ -247,12 +225,6 @@ public final class ScratchTypesConfigurable implements Configurable {
     @Override
     public boolean isModified() {
         ScratchTypeSettings settings = ScratchTypeSettings.getInstance();
-
-        if (smartPasteCheckBox != null) {
-            boolean current = com.intellij.ide.util.PropertiesComponent.getInstance().getBoolean(KEY_PASTE_OVERRIDE, true);
-            if (smartPasteCheckBox.isSelected() != current) return true;
-        }
-
         if (!settings.getEnabledLanguageIds().equals(getCheckedLanguageIds())) return true;
         return !settings.getMappings().equals(tableModel.toMap());
     }
@@ -262,10 +234,6 @@ public final class ScratchTypesConfigurable implements Configurable {
         ScratchTypeSettings settings = ScratchTypeSettings.getInstance();
         settings.setEnabledLanguageIds(getCheckedLanguageIds());
         settings.setMappings(tableModel.toMap());
-
-        if (smartPasteCheckBox != null) {
-            com.intellij.ide.util.PropertiesComponent.getInstance().setValue(KEY_PASTE_OVERRIDE, smartPasteCheckBox.isSelected(), true);
-        }
     }
 
     @Override
@@ -273,10 +241,6 @@ public final class ScratchTypesConfigurable implements Configurable {
         languageList.clear();
         loadLanguageList();
         loadAliasTable();
-
-        if (smartPasteCheckBox != null) {
-            smartPasteCheckBox.setSelected(com.intellij.ide.util.PropertiesComponent.getInstance().getBoolean(KEY_PASTE_OVERRIDE, true));
-        }
     }
 
     @Override
