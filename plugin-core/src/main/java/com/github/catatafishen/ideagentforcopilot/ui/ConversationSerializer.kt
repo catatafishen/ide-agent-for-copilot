@@ -26,6 +26,7 @@ internal object ConversationSerializer {
             is EntryData.Prompt -> {
                 obj.addProperty("type", "prompt")
                 obj.addProperty("text", e.text)
+                if (e.id.isNotEmpty()) obj.addProperty("id", e.id)
                 if (e.timestamp.isNotEmpty()) obj.addProperty("ts", e.timestamp)
                 if (!e.contextFiles.isNullOrEmpty()) {
                     val fa = JsonArray()
@@ -76,6 +77,7 @@ internal object ConversationSerializer {
                 obj.addProperty("result", e.result ?: "")
                 obj.addProperty("status", e.status ?: "")
                 obj.addProperty("colorIndex", e.colorIndex)
+                if (!e.callId.isNullOrEmpty()) obj.addProperty("callId", e.callId)
                 if (e.autoDenied) obj.addProperty("autoDenied", true)
                 if (!e.denialReason.isNullOrEmpty()) obj.addProperty("denialReason", e.denialReason)
                 if (e.timestamp.isNotEmpty()) obj.addProperty("ts", e.timestamp)
@@ -131,7 +133,12 @@ internal object ConversationSerializer {
                 val fo = f.asJsonObject
                 Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
             }
-            EntryData.Prompt(obj["text"]?.asString ?: "", obj["ts"]?.asString ?: "", ctxFiles)
+            EntryData.Prompt(
+                obj["text"]?.asString ?: "",
+                obj["ts"]?.asString ?: "",
+                ctxFiles,
+                obj["id"]?.asString ?: ""
+            )
         }
 
         "text" -> EntryData.Text(
@@ -170,7 +177,7 @@ internal object ConversationSerializer {
                 obj["result"]?.asString?.ifEmpty { null },
                 obj["status"]?.asString?.ifEmpty { null } ?: "completed",
                 ci,
-                null,
+                obj["callId"]?.asString,
                 obj["autoDenied"]?.asBoolean ?: false,
                 obj["denialReason"]?.asString,
                 obj["ts"]?.asString ?: "",
