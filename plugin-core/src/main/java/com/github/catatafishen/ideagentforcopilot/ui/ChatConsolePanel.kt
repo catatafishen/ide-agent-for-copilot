@@ -269,7 +269,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("document.querySelector('chat-container').style.scrollBehavior = '${if (enabled) "smooth" else "auto"}'")
     }
 
-    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?, bubbleHtml: String?): String {
+    override fun addPromptEntry(
+        text: String,
+        contextFiles: List<Triple<String, String, Int>>?,
+        bubbleHtml: String?
+    ): String {
         toolJustCompleted = false
         finalizeCurrentText()
         collapseThinking()
@@ -562,10 +566,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val isMcpHandled = registration.initialState() == ToolChipRegistry.ChipState.RUNNING
         val isExternal = !isMcpHandled
 
-        val entry = EntryData.ToolCall(cleanTitle, arguments, resolvedKind)
+        val entry = EntryData.ToolCall(
+            cleanTitle, arguments, resolvedKind,
+            timestamp = timestamp(), agent = currentAgent
+        )
         if (isMcpHandled) entry.mcpHandled = true
         toolCallNames[toolDid] = cleanTitle
         toolCallEntries[toolDid] = entry
+        entries.add(entry)
 
         executeJs("ChatController.addSubAgentToolCall('$saDid','$toolDid','${escJs(label)}','$paramsJson','$safeKind',$isExternal)")
         if (isMcpHandled) {
@@ -625,7 +633,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val promptHtml = b64(markdownToHtml(promptText))
         val ts = displayTs(entry.timestamp)
         executeJs(
-            "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$colorIndex,b64('$promptHtml'),'${escJs(ts)}')"
+            "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$colorIndex,b64('$promptHtml'),'${
+                escJs(
+                    ts
+                )
+            }')"
         )
         if (autoDenied || !initialResult.isNullOrBlank() || initialStatus == "completed" || initialStatus == "failed") {
             val status = if (autoDenied) "denied" else (initialStatus ?: "completed")
