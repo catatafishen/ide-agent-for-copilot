@@ -1,6 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.session.exporters;
 
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
+import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -59,17 +61,18 @@ public final class KiroClientExporter {
     /**
      * Exports v2 session messages to Kiro's native format.
      *
-     * @param messages    v2 session messages to export
+     * @param entries     v2 session entries to export
      * @param cwd         project working directory (may be null)
      * @param sessionsDir Kiro CLI sessions directory (e.g. {@code ~/.kiro/sessions/cli/})
      * @return the generated session ID, or {@code null} on failure
      */
     @Nullable
     public static String exportSession(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @Nullable String cwd,
         @NotNull Path sessionsDir) {
 
+        List<SessionMessage> messages = EntryDataConverter.toMessages(entries);
         if (messages.isEmpty()) {
             LOG.info("No messages to export to Kiro");
             return null;

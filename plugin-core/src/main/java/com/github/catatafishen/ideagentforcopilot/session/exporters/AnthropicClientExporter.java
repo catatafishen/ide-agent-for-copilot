@@ -1,6 +1,8 @@
 package com.github.catatafishen.ideagentforcopilot.session.exporters;
 
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
+import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -60,9 +62,10 @@ public final class AnthropicClientExporter {
     }
 
     public static void exportToFile(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @NotNull Path targetPath) throws IOException {
 
+        List<SessionMessage> messages = EntryDataConverter.toMessages(entries);
         List<AnthropicMessage> anthropicMessages = toAnthropicMessages(messages);
 
         StringBuilder sb = new StringBuilder();

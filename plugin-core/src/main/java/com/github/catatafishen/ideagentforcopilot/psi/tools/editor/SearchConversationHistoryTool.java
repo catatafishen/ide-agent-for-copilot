@@ -1,29 +1,30 @@
 package com.github.catatafishen.ideagentforcopilot.psi.tools.editor;
 
-import com.github.catatafishen.ideagentforcopilot.psi.ToolUtils;
-import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataJsonAdapter;
+import com.github.catatafishen.ideagentforcopilot.session.v2.SessionStoreV2;
+import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
 import com.github.catatafishen.ideagentforcopilot.ui.renderers.IdeInfoRenderer;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
-import java.nio.file.Files;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Lists, reads, and searches past conversation sessions from the chat history.
+ * Reads V2 JSONL sessions via {@link SessionStoreV2}.
  */
 public final class SearchConversationHistoryTool extends EditorTool {
 
-    private static final String JSON_EXT = ".json";
     private static final String PARAM_QUERY = "query";
     private static final String PARAM_MAX_CHARS = "max_chars";
     private static final String PARAM_SINCE = "since";
@@ -32,9 +33,9 @@ public final class SearchConversationHistoryTool extends EditorTool {
     private static final String PARAM_TURN_ID = "turn_id";
     private static final String PARAM_OFFSET = "offset";
     private static final String CONVERSATION_CURRENT = "current";
-    private static final String CONVERSATION_PREFIX = "conversation-";
-    private static final String JSON_TITLE = "title";
-    private static final String JSON_TIMESTAMP = "timestamp";
+
+    private static final DateTimeFormatter DISPLAY_FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private static final class FilterOptions {
         String query;
@@ -45,7 +46,8 @@ public final class SearchConversationHistoryTool extends EditorTool {
         String turnId;
         int maxChars;
 
-        FilterOptions(String query, Instant since, Instant until, Integer lastN, Integer offset, String turnId, int maxChars) {
+        FilterOptions(String query, Instant since, Instant until,
+                      Integer lastN, Integer offset, String turnId, int maxChars) {
             this.query = query != null ? query.toLowerCase(Locale.ROOT) : null;
             this.since = since;
             this.until = until;
@@ -109,9 +111,7 @@ public final class SearchConversationHistoryTool extends EditorTool {
         String basePath = project.getBasePath();
         if (basePath == null) return "Error: project base path unavailable";
 
-        File agentDir = new File(basePath, ".agent-work");
-        File archiveDir = new File(agentDir, "conversations");
-        File currentFile = new File(agentDir, "conversation" + JSON_EXT);
+        SessionStoreV2 store = SessionStoreV2.getInstance(project);
 
         String query = args.has(PARAM_QUERY) ? args.get(PARAM_QUERY).getAsString() : null;
         String file = args.has("file") ? args.get("file").getAsString() : null;
@@ -136,14 +136,14 @@ public final class SearchConversationHistoryTool extends EditorTool {
         FilterOptions options = new FilterOptions(query, since, until, lastN, offset, turnId, maxChars);
 
         if (file == null && query == null && since == null && until == null && lastN == null) {
-            return listConversations(currentFile, archiveDir);
+            return listConversations(store, basePath);
         }
 
         if (file != null && query == null && since == null && until == null && lastN == null) {
-            return readConversation(file, currentFile, archiveDir, options);
+            return readConversation(store, basePath, file, options);
         }
 
-        return searchConversations(file, currentFile, archiveDir, options);
+        return searchConversations(store, basePath, file, options);
     }
 
     private static Instant parseTimestampParam(JsonObject args, String param) {
@@ -156,47 +156,64 @@ public final class SearchConversationHistoryTool extends EditorTool {
         }
     }
 
-    private static String listConversations(File currentFile, File archiveDir) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Conversations:\n\n");
-        if (currentFile.exists() && currentFile.length() > 10) {
-            sb.append("  current (").append(ToolUtils.formatFileSize(currentFile.length())).append(")\n");
-        }
-        if (archiveDir.exists()) {
-            File[] archives = archiveDir.listFiles((d, n) -> n.endsWith(JSON_EXT));
-            if (archives != null && archives.length > 0) {
-                Arrays.sort(archives, Comparator.comparing(File::getName).reversed());
-                for (File f : archives) {
-                    String name = f.getName().replace(CONVERSATION_PREFIX, "").replace(JSON_EXT, "");
-                    sb.append("  ").append(name).append(" (").append(ToolUtils.formatFileSize(f.length())).append(")\n");
-                }
+    // ── List ──────────────────────────────────────────────────────────────────
+
+    private static String listConversations(SessionStoreV2 store, String basePath) {
+        List<SessionStoreV2.SessionRecord> sessions = store.listSessions(basePath);
+        String currentId = store.getCurrentSessionId(basePath);
+
+        if (sessions.isEmpty()) {
+            // Check if at least a current session exists
+            List<EntryData> current = store.loadEntries(basePath);
+            if (current == null || current.isEmpty()) {
+                return "No conversation history found.";
             }
         }
-        if (sb.length() < 20) {
-            return "No conversation history found.";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Conversations:\n\n");
+
+        for (SessionStoreV2.SessionRecord rec : sessions) {
+            boolean isCurrent = rec.id().equals(currentId);
+            String label = isCurrent ? CONVERSATION_CURRENT : rec.id();
+            String nameOrAgent = !rec.name().isEmpty() ? rec.name() : rec.agent();
+            String updated = formatEpochMillis(rec.updatedAt());
+            sb.append("  ").append(label).append(" — ")
+                .append(nameOrAgent)
+                .append(" (").append(rec.turnCount()).append(" turns, updated ").append(updated).append(")\n");
         }
-        sb.append("\nUse 'file' parameter to read a specific conversation (e.g., file='current' or file='2026-03-04T15-30-00').");
+
+        // If no sessions in the index, but a current session exists
+        if (sessions.isEmpty()) {
+            sb.append("  current (active session)\n");
+        }
+
+        sb.append("\nUse 'file' parameter to read a specific conversation (e.g., file='current' or a session UUID).");
         sb.append("\nUse 'query' parameter to search across all conversations.");
         return sb.toString();
     }
 
-    private static String readConversation(String file, File currentFile,
-                                           File archiveDir, FilterOptions options) {
-        File target = resolveConversationFile(file, currentFile, archiveDir);
-        if (target == null || !target.exists()) {
-            return "Error: Conversation file not found: " + file;
+    // ── Read single session ───────────────────────────────────────────────────
+
+    private static String readConversation(SessionStoreV2 store, String basePath,
+                                           String fileParam, FilterOptions options) {
+        List<EntryData> entries = loadSessionEntries(store, basePath, fileParam);
+        if (entries == null || entries.isEmpty()) {
+            return "Error: Conversation not found: " + fileParam;
         }
-        return conversationJsonToText(target, options);
+        return entriesToText(entries, options);
     }
 
-    private static String searchConversations(String file, File currentFile,
-                                              File archiveDir, FilterOptions options) {
-        List<File> files = collectFilesToSearch(file, currentFile, archiveDir);
+    // ── Search across sessions ────────────────────────────────────────────────
+
+    private static String searchConversations(SessionStoreV2 store, String basePath,
+                                              @Nullable String fileParam, FilterOptions options) {
+        Map<String, List<EntryData>> sessionMap = collectSessionEntries(store, basePath, fileParam);
 
         int totalMatches = 0;
         StringBuilder sb = new StringBuilder();
-        for (File f : files) {
-            totalMatches += appendFileSearchResult(f, currentFile, options, sb);
+        for (var entry : sessionMap.entrySet()) {
+            totalMatches += appendSessionSearchResult(entry.getKey(), entry.getValue(), options, sb);
             if (sb.length() >= options.maxChars) break;
         }
 
@@ -207,64 +224,64 @@ public final class SearchConversationHistoryTool extends EditorTool {
         return sb.toString().trim();
     }
 
-    private static List<File> collectFilesToSearch(String file, File currentFile, File archiveDir) {
-        List<File> files = new ArrayList<>();
-        if (file != null) {
-            File target = resolveConversationFile(file, currentFile, archiveDir);
-            if (target != null && target.exists()) files.add(target);
-        } else {
-            if (currentFile.exists() && currentFile.length() > 10) files.add(currentFile);
-            if (archiveDir.exists()) {
-                File[] archives = archiveDir.listFiles((d, n) -> n.endsWith(JSON_EXT));
-                if (archives != null) {
-                    Arrays.sort(archives, Comparator.comparing(File::getName).reversed());
-                    files.addAll(Arrays.asList(archives));
-                }
-            }
+    // ── Session resolution ────────────────────────────────────────────────────
+
+    @Nullable
+    private static List<EntryData> loadSessionEntries(SessionStoreV2 store, String basePath, String fileParam) {
+        if (CONVERSATION_CURRENT.equalsIgnoreCase(fileParam)) {
+            return store.loadEntries(basePath);
         }
-        return files;
-    }
+        // Try as session UUID
+        List<EntryData> entries = store.loadEntriesBySessionId(basePath, fileParam);
+        if (entries != null) return entries;
 
-    private static int appendFileSearchResult(File f, File currentFile,
-                                              FilterOptions options,
-                                              StringBuilder sb) {
-        String label = f.equals(currentFile)
-            ? CONVERSATION_CURRENT
-            : f.getName().replace(CONVERSATION_PREFIX, "").replace(JSON_EXT, "");
-        String result = conversationJsonToText(f, options);
-        if (result.isEmpty()) return 0;
-
-        String lowerQuery = options.query;
-        long matchCount = lowerQuery == null ? 1 : result.lines()
-            .filter(l -> l.toLowerCase(Locale.ROOT).contains(lowerQuery))
-            .count();
-        sb.append("── ").append(label).append(" (").append(matchCount).append(" matches) ──\n");
-        sb.append(result).append("\n");
-        return (int) matchCount;
-    }
-
-    private static File resolveConversationFile(String name, File currentFile, File archiveDir) {
-        if (CONVERSATION_CURRENT.equalsIgnoreCase(name)) return currentFile;
-        File direct = new File(archiveDir, CONVERSATION_PREFIX + name + JSON_EXT);
-        if (direct.exists()) return direct;
-        if (archiveDir.exists()) {
-            File[] archives = archiveDir.listFiles((d, n) -> n.contains(name) && n.endsWith(JSON_EXT));
-            if (archives != null && archives.length > 0) return archives[0];
+        // Try partial match against known session IDs (backward compat with archive timestamps)
+        List<SessionStoreV2.SessionRecord> sessions = store.listSessions(basePath);
+        for (SessionStoreV2.SessionRecord rec : sessions) {
+            if (rec.id().contains(fileParam) || rec.name().contains(fileParam)) {
+                return store.loadEntriesBySessionId(basePath, rec.id());
+            }
         }
         return null;
     }
 
-    private static String conversationJsonToText(File file, FilterOptions options) {
-        try {
-            String json = Files.readString(file.toPath());
-            var arr = JsonParser.parseString(json).getAsJsonArray();
-            List<JsonObject> entries = new ArrayList<>();
-            for (var el : arr) {
-                if (el.isJsonObject()) {
-                    entries.add(el.getAsJsonObject());
-                }
-            }
+    private static Map<String, List<EntryData>> collectSessionEntries(
+        SessionStoreV2 store, String basePath, @Nullable String fileParam) {
+        Map<String, List<EntryData>> result = new LinkedHashMap<>();
 
+        if (fileParam != null) {
+            List<EntryData> entries = loadSessionEntries(store, basePath, fileParam);
+            if (entries != null && !entries.isEmpty()) {
+                String label = CONVERSATION_CURRENT.equalsIgnoreCase(fileParam) ? CONVERSATION_CURRENT : fileParam;
+                result.put(label, entries);
+            }
+            return result;
+        }
+
+        // Load current session
+        String currentId = store.getCurrentSessionId(basePath);
+        List<EntryData> current = store.loadEntries(basePath);
+        if (current != null && !current.isEmpty()) {
+            result.put(CONVERSATION_CURRENT, current);
+        }
+
+        // Load all indexed sessions (skip current to avoid duplication)
+        List<SessionStoreV2.SessionRecord> sessions = store.listSessions(basePath);
+        for (SessionStoreV2.SessionRecord rec : sessions) {
+            if (rec.id().equals(currentId)) continue;
+            List<EntryData> entries = store.loadEntriesBySessionId(basePath, rec.id());
+            if (entries != null && !entries.isEmpty()) {
+                String label = !rec.name().isEmpty() ? rec.name() : rec.id();
+                result.put(label, entries);
+            }
+        }
+        return result;
+    }
+
+    // ── Entries → text conversion ─────────────────────────────────────────────
+
+    private static String entriesToText(List<EntryData> entries, FilterOptions options) {
+        try {
             // 1. Filter by time
             entries = filterByTime(entries, options);
 
@@ -274,21 +291,23 @@ public final class SearchConversationHistoryTool extends EditorTool {
             // 3. Format and filter by query
             return formatAndFilterEntries(entries, options);
         } catch (Exception e) {
-            return "Error reading " + file.getName() + ": " + e.getMessage();
+            return "Error processing entries: " + e.getMessage();
         }
     }
 
-    private static List<JsonObject> filterByTime(List<JsonObject> entries, FilterOptions options) {
+    // ── Filtering ─────────────────────────────────────────────────────────────
+
+    private static List<EntryData> filterByTime(List<EntryData> entries, FilterOptions options) {
         if (options.since == null && options.until == null) return entries;
         return entries.stream()
-            .filter(obj -> isWithinTimeRange(obj, options.since, options.until))
+            .filter(e -> isWithinTimeRange(e, options.since, options.until))
             .toList();
     }
 
-    private static List<JsonObject> filterByTurns(List<JsonObject> entries, FilterOptions options) {
+    private static List<EntryData> filterByTurns(List<EntryData> entries, FilterOptions options) {
         List<Integer> promptIndices = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
-            if (EntryDataJsonAdapter.TYPE_PROMPT.equals(entries.get(i).get("type").getAsString())) {
+            if (entries.get(i) instanceof EntryData.Prompt) {
                 promptIndices.add(i);
             }
         }
@@ -312,8 +331,8 @@ public final class SearchConversationHistoryTool extends EditorTool {
         return entries.subList(startIdx, endIdx + 1);
     }
 
-    private static List<JsonObject> filterByTurnId(List<JsonObject> entries,
-                                                   List<Integer> promptIndices, String turnId) {
+    private static List<EntryData> filterByTurnId(List<EntryData> entries,
+                                                  List<Integer> promptIndices, String turnId) {
         int n = parseTurnNumber(turnId);
         if (n <= 0 || n > promptIndices.size()) return Collections.emptyList();
         int promptIdx = n - 1; // 0-based
@@ -337,11 +356,12 @@ public final class SearchConversationHistoryTool extends EditorTool {
         }
     }
 
-    private static String formatAndFilterEntries(List<JsonObject> entries, FilterOptions options) {
+    // ── Formatting ────────────────────────────────────────────────────────────
+
+    private static String formatAndFilterEntries(List<EntryData> entries, FilterOptions options) {
         StringBuilder sb = new StringBuilder();
-        for (var obj : entries) {
-            String type = obj.has("type") ? obj.get("type").getAsString() : "";
-            String line = formatConversationEntry(obj, type);
+        for (EntryData entry : entries) {
+            String line = formatConversationEntry(entry);
             if (isMatchingEntry(line, options.query)) {
                 sb.append(line).append("\n");
                 if (sb.length() >= options.maxChars) {
@@ -353,16 +373,55 @@ public final class SearchConversationHistoryTool extends EditorTool {
         return sb.toString();
     }
 
-    private static boolean isWithinTimeRange(JsonObject obj, Instant since, Instant until) {
-        String tsKey = obj.has("ts") ? "ts" : JSON_TIMESTAMP;
-        if (!obj.has(tsKey)) return true;
-        String tsStr = obj.get(tsKey).getAsString();
+    private static String formatConversationEntry(EntryData e) {
+        if (e instanceof EntryData.Prompt p) {
+            String ts = p.getTimestamp().isEmpty() ? "" : " [" + formatTimestamp(p.getTimestamp()) + "]";
+            return ">>> " + p.getText() + ts;
+        }
+        if (e instanceof EntryData.Text t) return t.getRaw().toString().trim();
+        if (e instanceof EntryData.Thinking t) {
+            String raw = t.getRaw().toString().trim();
+            return raw.isEmpty() ? null : "[thinking] " + raw;
+        }
+        if (e instanceof EntryData.ToolCall t) {
+            String toolArgs = t.getArguments() != null ? t.getArguments() : "";
+            return t.getTitle() + (toolArgs.isEmpty() ? "" : " " + toolArgs);
+        }
+        if (e instanceof EntryData.SubAgent s) {
+            return "SubAgent: " + s.getAgentType() + " — " + s.getDescription();
+        }
+        if (e instanceof EntryData.ContextFiles) return "Context files attached";
+        if (e instanceof EntryData.Status s) {
+            return s.getMessage().isEmpty() ? null : "Status: " + s.getMessage();
+        }
+        if (e instanceof EntryData.SessionSeparator s) {
+            return "--- Session " + formatTimestamp(s.getTimestamp()) + " ---";
+        }
+        // skip
+        return null;
+    }
+
+    // ── Time helpers ──────────────────────────────────────────────────────────
+
+    private static boolean isWithinTimeRange(EntryData e, Instant since, Instant until) {
+        String tsStr = getTimestamp(e);
+        if (tsStr.isEmpty()) return true;
         try {
             Instant ts = Instant.parse(tsStr);
             return (since == null || !ts.isBefore(since)) && (until == null || !ts.isAfter(until));
-        } catch (Exception e) {
+        } catch (Exception ex) {
             return true;
         }
+    }
+
+    private static String getTimestamp(EntryData e) {
+        if (e instanceof EntryData.Prompt p) return p.getTimestamp();
+        if (e instanceof EntryData.Text t) return t.getTimestamp();
+        if (e instanceof EntryData.Thinking t) return t.getTimestamp();
+        if (e instanceof EntryData.ToolCall t) return t.getTimestamp();
+        if (e instanceof EntryData.SubAgent s) return s.getTimestamp();
+        if (e instanceof EntryData.SessionSeparator s) return s.getTimestamp();
+        return "";
     }
 
     private static boolean isMatchingEntry(String line, String searchQuery) {
@@ -370,55 +429,45 @@ public final class SearchConversationHistoryTool extends EditorTool {
         return searchQuery == null || line.toLowerCase(Locale.ROOT).contains(searchQuery);
     }
 
-    private static String formatConversationEntry(JsonObject obj, String type) {
-        return switch (type) {
-            case EntryDataJsonAdapter.TYPE_PROMPT -> {
-                String text = obj.has("text") ? obj.get("text").getAsString() : "";
-                String ts = obj.has("ts") ? " [" + formatTimestamp(obj.get("ts").getAsString()) + "]" : "";
-                yield ">>> " + text + ts;
-            }
-            case EntryDataJsonAdapter.TYPE_TEXT -> {
-                String raw = obj.has("raw") ? obj.get("raw").getAsString() : "";
-                yield raw.isEmpty() ? null : raw.trim();
-            }
-            case EntryDataJsonAdapter.TYPE_THINKING -> {
-                String raw = obj.has("raw") ? obj.get("raw").getAsString() : "";
-                yield raw.isEmpty() ? null : "[thinking] " + raw.trim();
-            }
-            case EntryDataJsonAdapter.TYPE_TOOL -> {
-                String title = obj.has(JSON_TITLE) ? obj.get(JSON_TITLE).getAsString() : "tool";
-                String toolArgs = obj.has("args") ? obj.get("args").getAsString() : "";
-                yield title + (toolArgs.isEmpty() ? "" : " " + toolArgs);
-            }
-            case EntryDataJsonAdapter.TYPE_SUBAGENT -> {
-                String agentType = obj.has("agentType") ? obj.get("agentType").getAsString() : "";
-                String desc = obj.has("description") ? obj.get("description").getAsString() : "";
-                yield "SubAgent: " + agentType + " — " + desc;
-            }
-            case EntryDataJsonAdapter.TYPE_CONTEXT -> "Context files attached";
-            case EntryDataJsonAdapter.TYPE_STATUS -> {
-                String msg = obj.has("message") ? obj.get("message").getAsString() : "";
-                yield msg.isEmpty() ? null : "Status: " + msg;
-            }
-            case EntryDataJsonAdapter.TYPE_SEPARATOR -> {
-                String ts = obj.has(JSON_TIMESTAMP) ? obj.get(JSON_TIMESTAMP).getAsString() : "";
-                yield "--- Session " + formatTimestamp(ts) + " ---";
-            }
-            default -> null;
-        };
+    // ── Search result assembly ────────────────────────────────────────────────
+
+    private static int appendSessionSearchResult(String label, List<EntryData> entries,
+                                                 FilterOptions options, StringBuilder sb) {
+        String result = entriesToText(entries, options);
+        if (result.isEmpty()) return 0;
+
+        String lowerQuery = options.query;
+        long matchCount = lowerQuery == null ? 1 : result.lines()
+            .filter(l -> l.toLowerCase(Locale.ROOT).contains(lowerQuery))
+            .count();
+        sb.append("── ").append(label).append(" (").append(matchCount).append(" matches) ──\n");
+        sb.append(result).append("\n");
+        return (int) matchCount;
     }
+
+    // ── Display formatting ────────────────────────────────────────────────────
 
     /**
      * Formats a stored timestamp for human-readable display.
-     * Handles ISO 8601 (new format, e.g. "2026-03-12T14:29:47Z") as well as legacy
-     * formats ("14:29", "Mar 11, 2026 1:29 PM") for backward compatibility.
+     * Handles ISO 8601 (e.g. "2026-03-12T14:29:47Z") as well as legacy formats
+     * for backward compatibility.
      */
     private static String formatTimestamp(String ts) {
         try {
-            java.time.ZonedDateTime zdt = java.time.Instant.parse(ts).atZone(java.time.ZoneId.systemDefault());
-            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(zdt);
+            ZonedDateTime zdt = Instant.parse(ts).atZone(ZoneId.systemDefault());
+            return DISPLAY_FMT.format(zdt);
         } catch (Exception e) {
             return ts;
+        }
+    }
+
+    private static String formatEpochMillis(long epochMillis) {
+        if (epochMillis <= 0) return "unknown";
+        try {
+            ZonedDateTime zdt = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault());
+            return DISPLAY_FMT.format(zdt);
+        } catch (Exception e) {
+            return "unknown";
         }
     }
 }

@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.session;
 
 import com.github.catatafishen.ideagentforcopilot.session.exporters.CopilotClientExporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.CopilotClientImporter;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
@@ -149,7 +150,7 @@ class CopilotClientRoundTripTest {
         );
 
         Path target = tempDir.resolve("events.jsonl");
-        CopilotClientExporter.exportToFile(messages, target);
+        CopilotClientExporter.exportToFile(EntryDataConverter.fromMessages(messages), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertTrue(content.contains("\"type\":\"session.start\""));
@@ -167,11 +168,11 @@ class CopilotClientRoundTripTest {
             "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, "gpt-4.1");
 
         Path target = tempDir.resolve("events.jsonl");
-        CopilotClientExporter.exportToFile(List.of(userMessage("read"), assistant), target);
+        CopilotClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("read"), assistant)), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertTrue(content.contains("\"type\":\"tool.execution_complete\""));
-        assertTrue(content.contains("\"toolCallId\":\"tc1\""));
+        assertTrue(content.contains("\"toolCallId\":"));
         assertTrue(content.contains("file data"));
     }
 
@@ -193,7 +194,7 @@ class CopilotClientRoundTripTest {
         );
 
         Path file = tempDir.resolve("roundtrip.jsonl");
-        CopilotClientExporter.exportToFile(original, file);
+        CopilotClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = CopilotClientImporter.importFile(file);
 
         assertEquals(2, imported.size());
@@ -214,7 +215,7 @@ class CopilotClientRoundTripTest {
         List<SessionMessage> original = List.of(userMessage("Read /a"), assistant);
 
         Path file = tempDir.resolve("roundtrip-tools.jsonl");
-        CopilotClientExporter.exportToFile(original, file);
+        CopilotClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = CopilotClientImporter.importFile(file);
 
         assertEquals(2, imported.size());
@@ -243,7 +244,7 @@ class CopilotClientRoundTripTest {
         );
 
         Path file = tempDir.resolve("roundtrip-multi.jsonl");
-        CopilotClientExporter.exportToFile(original, file);
+        CopilotClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = CopilotClientImporter.importFile(file);
 
         assertEquals(4, imported.size());

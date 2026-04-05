@@ -356,6 +356,24 @@ public final class SessionStoreV2 implements Disposable {
     }
 
     /**
+     * Loads entries for a specific session by ID from V2 JSONL.
+     * Returns {@code null} if the session file does not exist or cannot be read.
+     */
+    @Nullable
+    public List<EntryData> loadEntriesBySessionId(@Nullable String basePath, @NotNull String sessionId) {
+        File dir = sessionsDir(basePath);
+        File jsonlFile = new File(dir, sessionId + JSONL_EXT);
+        if (!jsonlFile.exists() || jsonlFile.length() < 2) return null;
+        try {
+            String content = Files.readString(jsonlFile.toPath(), StandardCharsets.UTF_8);
+            return parseJsonlAutoDetect(content);
+        } catch (Exception e) {
+            LOG.warn("Failed to parse v2 JSONL for session " + sessionId, e);
+            return null;
+        }
+    }
+
+    /**
      * Loads entries directly from V2 JSONL file.
      * Auto-detects format per line: {@code "type":} → new EntryData format,
      * {@code "role":} → old SessionMessage format (converted via fromMessages).

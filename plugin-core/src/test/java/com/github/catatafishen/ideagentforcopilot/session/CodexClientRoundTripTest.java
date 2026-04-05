@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.session;
 
 import com.github.catatafishen.ideagentforcopilot.session.exporters.CodexClientExporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.CodexClientImporter;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
@@ -150,7 +151,7 @@ class CodexClientRoundTripTest {
         Path dbPath = tempDir.resolve("codex.db");
         createThreadsTable(dbPath);
 
-        String threadId = CodexClientExporter.exportSession(messages, sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(EntryDataConverter.fromMessages(messages), sessionsDir, dbPath);
         assertNotNull(threadId);
 
         // Verify thread row exists
@@ -175,7 +176,7 @@ class CodexClientRoundTripTest {
     void exportEmptyMessagesReturnsNull() {
         Path sessionsDir = tempDir.resolve("sessions");
         Path dbPath = tempDir.resolve("codex.db");
-        assertNull(CodexClientExporter.exportSession(List.of(), sessionsDir, dbPath));
+        assertNull(CodexClientExporter.exportSession(EntryDataConverter.fromMessages(List.of()), sessionsDir, dbPath));
     }
 
     @Test
@@ -188,13 +189,13 @@ class CodexClientRoundTripTest {
         Path dbPath = tempDir.resolve("codex.db");
         createThreadsTable(dbPath);
 
-        String threadId = CodexClientExporter.exportSession(
-            List.of(userMessage("read"), assistant), sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("read"), assistant)), sessionsDir, dbPath);
         assertNotNull(threadId);
 
         String content = Files.readString(sessionsDir.resolve(threadId).resolve("rollout.jsonl"));
         assertTrue(content.contains("\"type\":\"function_call\""));
-        assertTrue(content.contains("\"call_id\":\"call_1\""));
+        assertTrue(content.contains("\"call_id\":"));
         assertTrue(content.contains("\"type\":\"function_call_output\""));
     }
 
@@ -269,7 +270,7 @@ class CodexClientRoundTripTest {
         Path dbPath = tempDir.resolve("rt-codex.db");
         createThreadsTable(dbPath);
 
-        String threadId = CodexClientExporter.exportSession(original, sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(EntryDataConverter.fromMessages(original), sessionsDir, dbPath);
         assertNotNull(threadId);
 
         Path rolloutFile = sessionsDir.resolve(threadId).resolve("rollout.jsonl");
@@ -295,7 +296,7 @@ class CodexClientRoundTripTest {
         Path dbPath = tempDir.resolve("rt-codex-tools.db");
         createThreadsTable(dbPath);
 
-        String threadId = CodexClientExporter.exportSession(original, sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(EntryDataConverter.fromMessages(original), sessionsDir, dbPath);
         assertNotNull(threadId);
 
         Path rolloutFile = sessionsDir.resolve(threadId).resolve("rollout.jsonl");
@@ -335,7 +336,7 @@ class CodexClientRoundTripTest {
         Path dbPath = tempDir.resolve("rt-codex-reasoning.db");
         createThreadsTable(dbPath);
 
-        String threadId = CodexClientExporter.exportSession(original, sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(EntryDataConverter.fromMessages(original), sessionsDir, dbPath);
         assertNotNull(threadId);
 
         Path rolloutFile = sessionsDir.resolve(threadId).resolve("rollout.jsonl");

@@ -289,8 +289,8 @@ public final class EntryDataConverter {
                     case "tool-invocation" -> {
                         JsonObject inv = part.has("toolInvocation") ? part.getAsJsonObject("toolInvocation") : new JsonObject();
                         String toolName = inv.has("toolName") ? inv.get("toolName").getAsString() : "";
-                        String args = inv.has("args") ? inv.get("args").getAsString() : null;
-                        String toolResult = inv.has("result") ? inv.get("result").getAsString() : null;
+                        String args = inv.has("args") && !inv.get("args").isJsonNull() ? inv.get("args").getAsString() : null;
+                        String toolResult = inv.has("result") && !inv.get("result").isJsonNull() ? inv.get("result").getAsString() : null;
                         boolean autoDenied = inv.has("denialReason");
                         String denialReason = autoDenied ? inv.get("denialReason").getAsString() : null;
                         String kind = inv.has("kind") ? inv.get("kind").getAsString() : "other";
