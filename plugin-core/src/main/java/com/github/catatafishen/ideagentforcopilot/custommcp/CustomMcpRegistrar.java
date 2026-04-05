@@ -7,7 +7,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -110,7 +109,7 @@ public final class CustomMcpRegistrar {
             }
             registeredByServer.put(server.getId(), registered);
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             LOG.warn("Failed to connect to custom MCP server '" + server.getName()
                 + "' at " + server.getUrl() + ": " + e.getMessage());
         }
