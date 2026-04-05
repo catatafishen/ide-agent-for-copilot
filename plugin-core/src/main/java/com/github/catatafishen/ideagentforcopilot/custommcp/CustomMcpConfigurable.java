@@ -208,6 +208,15 @@ public final class CustomMcpConfigurable implements Configurable {
         updateInstructionsPanel(-1);
     }
 
+    @Override
+    public void disposeUIResources() {
+        tableModel = null;
+        table = null;
+        instructionsArea = null;
+        testButton = null;
+        lastSelectedRow = -1;
+    }
+
     // ── Table model ───────────────────────────────────────────────────────
 
     private static final class ServerTableModel extends AbstractTableModel {
