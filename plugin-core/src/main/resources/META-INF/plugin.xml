@@ -318,6 +318,8 @@
     <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ChatWebServerSettings"/>
     <projectService
+      serviceImplementation="com.github.catatafishen.ideagentforcopilot.settings.ChatHistorySettings"/>
+    <projectService
       serviceImplementation="com.github.catatafishen.ideagentforcopilot.services.ChatWebServer"/>
 
     <!-- MCP HTTP server (speaks MCP protocol, used by agent CLI via McpStdioProxy) -->

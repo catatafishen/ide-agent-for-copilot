@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.github.catatafishen.ideagentforcopilot.BuildInfo;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
+import com.github.catatafishen.ideagentforcopilot.settings.ChatHistorySettings;
 import com.github.catatafishen.ideagentforcopilot.settings.ChatWebServerSettings;
 import com.github.catatafishen.ideagentforcopilot.ui.ChatTheme;
 import com.google.gson.Gson;
@@ -69,7 +70,6 @@ import java.util.function.Consumer;
 public final class ChatWebServer implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(ChatWebServer.class);
-    private static final int MAX_EVENTS = 600;
     private static final Gson GSON = new Gson();
 
     private final Project project;
@@ -437,7 +437,8 @@ public final class ChatWebServer implements Disposable {
                 eventLog.clear();
             } else {
                 eventLog.add(json);
-                if (eventLog.size() > MAX_EVENTS) eventLog.remove(0);
+                int maxEvents = ChatHistorySettings.getInstance(project).getEventLogSize();
+                if (eventLog.size() > maxEvents) eventLog.remove(0);
             }
             // Track model from setCurrentModel calls
             if (js.startsWith("ChatController.setCurrentModel(")) {
@@ -1120,7 +1121,9 @@ public final class ChatWebServer implements Disposable {
             snapshot = new ArrayList<>(eventLog);
             seq = nextSeq - 1;
         }
+        int domLimit = ChatHistorySettings.getInstance(project).getDomMessageLimit();
         StringBuilder sb = new StringBuilder("{\"seq\":").append(seq)
+            .append(",\"domMessageLimit\":").append(domLimit)
             .append(",\"events\":[");
         for (int i = 0; i < snapshot.size(); i++) {
             if (i > 0) sb.append(',');

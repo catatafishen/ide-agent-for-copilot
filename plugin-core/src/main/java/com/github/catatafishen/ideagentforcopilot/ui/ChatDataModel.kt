@@ -34,26 +34,31 @@ internal val QUICK_REPLY_TAG_REGEX = Regex("""\[\s*quick-reply:\s*([^\]]+)]""", 
 // ── Data model ────────────────────────────────────────────────────────────────
 
 sealed class EntryData {
-    class Prompt(
+    abstract val entryId: String
+
+    class Prompt @JvmOverloads constructor(
         val text: String,
         val timestamp: String = "",
         val contextFiles: List<Triple<String, String, Int>>? = null,
         val id: String = "",
+        override val entryId: String = id.ifEmpty { java.util.UUID.randomUUID().toString() },
     ) : EntryData()
 
-    class Text(
+    class Text @JvmOverloads constructor(
         val raw: StringBuilder = StringBuilder(),
         val timestamp: String = "",
-        val agent: String = ""
+        val agent: String = "",
+        override val entryId: String = java.util.UUID.randomUUID().toString()
     ) : EntryData()
 
-    class Thinking(
+    class Thinking @JvmOverloads constructor(
         val raw: StringBuilder = StringBuilder(),
         val timestamp: String = "",
-        val agent: String = ""
+        val agent: String = "",
+        override val entryId: String = java.util.UUID.randomUUID().toString()
     ) : EntryData()
 
-    class ToolCall(
+    class ToolCall @JvmOverloads constructor(
         val title: String,
         val arguments: String? = null,
         var kind: String = "other",
@@ -65,10 +70,11 @@ sealed class EntryData {
         var denialReason: String? = null,
         var mcpHandled: Boolean = false,
         val timestamp: String = "",
-        val agent: String = ""
+        val agent: String = "",
+        override val entryId: String = java.util.UUID.randomUUID().toString()
     ) : EntryData()
 
-    class SubAgent(
+    class SubAgent @JvmOverloads constructor(
         val agentType: String,
         val description: String,
         val prompt: String? = null,
@@ -79,12 +85,26 @@ sealed class EntryData {
         var autoDenied: Boolean = false,
         var denialReason: String? = null,
         val timestamp: String = "",
-        val agent: String = ""
+        val agent: String = "",
+        override val entryId: String = java.util.UUID.randomUUID().toString()
     ) : EntryData()
 
-    class ContextFiles(val files: List<Pair<String, String>>) : EntryData()
-    class Status(val icon: String, val message: String) : EntryData()
-    class SessionSeparator(val timestamp: String, val agent: String = "") : EntryData()
+    class ContextFiles @JvmOverloads constructor(
+        val files: List<Pair<String, String>>,
+        override val entryId: String = java.util.UUID.randomUUID().toString()
+    ) : EntryData()
+
+    class Status @JvmOverloads constructor(
+        val icon: String,
+        val message: String,
+        override val entryId: String = java.util.UUID.randomUUID().toString()
+    ) : EntryData()
+
+    class SessionSeparator @JvmOverloads constructor(
+        val timestamp: String,
+        val agent: String = "",
+        override val entryId: String = java.util.UUID.randomUUID().toString()
+    ) : EntryData()
 }
 
 // ── Tool / sub-agent metadata ─────────────────────────────────────────────────

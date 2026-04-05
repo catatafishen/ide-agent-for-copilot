@@ -156,7 +156,8 @@ Events pushed to JCEF and SSE clients via `ChatWebServer.pushJsEvent()`:
 
 ### Event Log Compaction
 
-The event log is capped at 600 events. Streaming events are compacted when their finalizer arrives:
+The event log size is configurable via **Settings → AgentBridge → Chat History → History Limits → Web event log size** (default: 600).
+Streaming events are compacted when their finalizer arrives:
 - `appendAgentText` events → removed when `finalizeAgentText` arrives for the same turn+agent
 - `addThinkingText` events → removed when `collapseThinking` arrives for the same turn+agent
 
@@ -171,3 +172,21 @@ Sub-agent internal tool calls (tools invoked *by* a sub-agent during its executi
 
 On batch restore, sub-agent tool calls are reconstructed from the persisted entries and
 displayed as tool chips within the sub-agent's section.
+
+---
+
+## Configurable History Limits
+
+All history limits are configurable via **Settings → AgentBridge → Chat History → History Limits**.
+Persisted in `chatHistory.xml` per project via `ChatHistorySettings`.
+
+| Setting | Default | Description |
+|---|---|---|
+| Web event log size | 600 | Max JS events in the in-memory FIFO buffer (SSE reconnect / PWA `/state`) |
+| DOM message limit | 80 | Max `<chat-message>` elements visible in the DOM before older ones are trimmed |
+| Recent turns on restore | 5 | Number of recent prompt turns loaded immediately when restoring a session |
+| Load-more batch size | 3 | Number of prompt turns loaded per "Load More" click |
+
+The event log size and DOM message limit are also sent to web/PWA clients:
+- Event log size: controls server-side FIFO cap in `ChatWebServer.pushJsEvent()`
+- DOM message limit: sent via `/state` response (`domMessageLimit` field) and via `ChatController.setDomMessageLimit()` JS call

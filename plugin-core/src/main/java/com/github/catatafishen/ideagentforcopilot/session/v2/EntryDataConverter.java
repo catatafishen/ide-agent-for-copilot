@@ -74,6 +74,7 @@ public final class EntryDataConverter {
                 JsonObject part = new JsonObject();
                 part.addProperty("type", "text");
                 part.addProperty("text", prompt.getText());
+                addEntryId(part, prompt.getEntryId());
                 userMsg.parts.add(part);
 
                 // Context files attached to this prompt
@@ -136,6 +137,7 @@ public final class EntryDataConverter {
                     part.addProperty("type", "text");
                     part.addProperty("text", text.getRaw().toString());
                     addTimestamp(part, text.getTimestamp());
+                    addEntryId(part, text.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.Thinking thinking) {
@@ -143,6 +145,7 @@ public final class EntryDataConverter {
                     part.addProperty("type", "reasoning");
                     part.addProperty("text", thinking.getRaw().toString());
                     addTimestamp(part, thinking.getTimestamp());
+                    addEntryId(part, thinking.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.ToolCall toolCall) {
@@ -177,6 +180,7 @@ public final class EntryDataConverter {
                     part.addProperty("type", "tool-invocation");
                     part.add("toolInvocation", invocation);
                     addTimestamp(part, toolCall.getTimestamp());
+                    addEntryId(part, toolCall.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.SubAgent subAgent) {
@@ -198,6 +202,7 @@ public final class EntryDataConverter {
                         part.addProperty("denialReason", subAgent.getDenialReason());
                     }
                     addTimestamp(part, subAgent.getTimestamp());
+                    addEntryId(part, subAgent.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.Status status) {
@@ -205,6 +210,7 @@ public final class EntryDataConverter {
                     part.addProperty("type", "status");
                     part.addProperty("icon", status.getIcon());
                     part.addProperty("message", status.getMessage());
+                    addEntryId(part, status.getEntryId());
                     currentMsg.parts.add(part);
                 }
                 // Unknown subtypes are silently ignored — forward-compat
@@ -339,6 +345,12 @@ public final class EntryDataConverter {
     private static void addTimestamp(@NotNull JsonObject part, @NotNull String isoTimestamp) {
         if (!isoTimestamp.isEmpty()) {
             part.addProperty("ts", isoTimestamp);
+        }
+    }
+
+    private static void addEntryId(@NotNull JsonObject part, @NotNull String entryId) {
+        if (!entryId.isEmpty()) {
+            part.addProperty("eid", entryId);
         }
     }
 

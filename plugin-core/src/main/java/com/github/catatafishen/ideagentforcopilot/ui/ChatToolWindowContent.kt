@@ -9,6 +9,7 @@ import com.github.catatafishen.ideagentforcopilot.session.SessionSwitchService
 import com.github.catatafishen.ideagentforcopilot.session.migration.V1ToV2Migrator
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionStoreV2
 import com.github.catatafishen.ideagentforcopilot.settings.BillingSettings
+import com.github.catatafishen.ideagentforcopilot.settings.ChatHistorySettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
@@ -1850,8 +1851,13 @@ class ChatToolWindowContent(
             val json = conversationStore.loadJson(project.basePath)
             ApplicationManager.getApplication().invokeLater {
                 if (json != null) {
-                    conversationReplayer.loadAndSplit(json)
-                    chatConsolePanel.appendEntries(conversationReplayer.recentEntries())
+                    val histSettings = ChatHistorySettings.getInstance(project)
+                    chatConsolePanel.setDomMessageLimit(histSettings.domMessageLimit)
+                    conversationReplayer.loadAndSplit(json, histSettings.recentTurnsOnRestore)
+                    chatConsolePanel.appendEntries(
+                        conversationReplayer.recentEntries(),
+                        conversationReplayer.totalPromptCount()
+                    )
                     val deferred = conversationReplayer.remainingPromptCount()
                     if (deferred > 0) chatConsolePanel.showLoadMore(deferred)
                 }
@@ -1945,7 +1951,8 @@ class ChatToolWindowContent(
     }
 
     private fun onLoadMoreHistory() {
-        val batch = conversationReplayer.loadNextBatch()
+        val batchSize = ChatHistorySettings.getInstance(project).loadMoreBatchSize
+        val batch = conversationReplayer.loadNextBatch(batchSize)
         if (batch.isNotEmpty()) chatConsolePanel.prependEntries(batch)
         val remaining = conversationReplayer.remainingPromptCount()
         if (remaining > 0) chatConsolePanel.showLoadMore(remaining)
