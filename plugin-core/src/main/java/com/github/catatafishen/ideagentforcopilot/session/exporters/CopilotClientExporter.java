@@ -1,7 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.session.exporters;
 
 import com.github.catatafishen.ideagentforcopilot.session.importers.JsonlUtil;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
+import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -40,10 +42,10 @@ public final class CopilotClientExporter {
     }
 
     public static void exportToFile(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @NotNull Path targetPath) throws IOException {
 
-        exportToFile(messages, targetPath, null, null);
+        exportToFile(entries, targetPath, null, null);
     }
 
     /**
@@ -54,11 +56,12 @@ public final class CopilotClientExporter {
      *                  back to {@code System.getProperty("user.dir")}
      */
     public static void exportToFile(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @NotNull Path targetPath,
         @Nullable String sessionId,
         @Nullable String basePath) throws IOException {
 
+        List<SessionMessage> messages = EntryDataConverter.toMessages(entries);
         String sid = sessionId != null ? sessionId : UUID.randomUUID().toString();
         EventChain chain = new EventChain();
         StringBuilder sb = new StringBuilder();

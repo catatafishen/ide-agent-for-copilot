@@ -1,7 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.session.exporters;
 
 import com.github.catatafishen.ideagentforcopilot.session.importers.JsonlUtil;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
+import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -90,17 +92,18 @@ public final class OpenCodeClientExporter {
      * chain that OpenCode expects. Each assistant message gets a unique
      * {@code parentID} pointing to the preceding user message.</p>
      *
-     * @param messages   the v2 session messages to export
+     * @param entries    the v2 session entries to export
      * @param dbPath     path to the OpenCode database file
      * @param projectDir the project directory (used as the session's {@code directory} field)
      * @return the new session ID (e.g. {@code ses_XXXX}), or {@code null} if export failed
      */
     @Nullable
     public static String exportSession(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @NotNull Path dbPath,
         @NotNull String projectDir) {
 
+        List<SessionMessage> messages = EntryDataConverter.toMessages(entries);
         if (messages.isEmpty()) return null;
 
         if (!Files.exists(dbPath)) {

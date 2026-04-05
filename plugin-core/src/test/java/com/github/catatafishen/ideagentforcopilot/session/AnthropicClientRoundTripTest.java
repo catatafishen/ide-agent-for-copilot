@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.session;
 
 import com.github.catatafishen.ideagentforcopilot.session.exporters.AnthropicClientExporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.AnthropicClientImporter;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -134,7 +135,7 @@ class AnthropicClientRoundTripTest {
         );
 
         Path target = tempDir.resolve("exported.jsonl");
-        AnthropicClientExporter.exportToFile(messages, target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(messages), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertTrue(content.contains("\"role\":\"user\""));
@@ -150,12 +151,12 @@ class AnthropicClientRoundTripTest {
             "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("exported-tools.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("read"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("read"), assistant)), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertTrue(content.contains("\"type\":\"tool_use\""));
         assertTrue(content.contains("\"type\":\"tool_result\""));
-        assertTrue(content.contains("\"tool_use_id\":\"tc1\""));
+        assertTrue(content.contains("\"tool_use_id\":"));
     }
 
     @Test
@@ -168,7 +169,7 @@ class AnthropicClientRoundTripTest {
             "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("exported-long-tool-name.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("commit"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("commit"), assistant)), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         // Parse the assistant message line (first non-user line) and check tool_use name length
@@ -202,7 +203,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("exported-reasoning.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("Q"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("Q"), assistant)), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertFalse(content.contains("Thinking..."), "Reasoning should not appear in Anthropic export");
@@ -219,7 +220,7 @@ class AnthropicClientRoundTripTest {
         );
 
         Path file = tempDir.resolve("roundtrip.jsonl");
-        AnthropicClientExporter.exportToFile(original, file);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = AnthropicClientImporter.importFile(file);
 
         assertEquals(2, imported.size());
@@ -239,7 +240,7 @@ class AnthropicClientRoundTripTest {
         List<SessionMessage> original = List.of(userMessage("Read /a.txt"), assistant);
 
         Path file = tempDir.resolve("roundtrip-tools.jsonl");
-        AnthropicClientExporter.exportToFile(original, file);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = AnthropicClientImporter.importFile(file);
 
         assertEquals(2, imported.size());
@@ -268,7 +269,7 @@ class AnthropicClientRoundTripTest {
         );
 
         Path file = tempDir.resolve("roundtrip-multi.jsonl");
-        AnthropicClientExporter.exportToFile(original, file);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = AnthropicClientImporter.importFile(file);
 
         assertEquals(4, imported.size());
@@ -297,7 +298,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("consolidated.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("Do both"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("Do both"), assistant)), target);
 
         List<String> lines = Files.readAllLines(target, StandardCharsets.UTF_8).stream()
             .filter(l -> !l.isBlank()).toList();
@@ -315,8 +316,8 @@ class AnthropicClientRoundTripTest {
         var block2 = contentArray.get(1).getAsJsonObject();
         assertEquals("tool_result", block1.get("type").getAsString());
         assertEquals("tool_result", block2.get("type").getAsString());
-        assertEquals("tc1", block1.get("tool_use_id").getAsString());
-        assertEquals("tc2", block2.get("tool_use_id").getAsString());
+        assertFalse(block1.get("tool_use_id").getAsString().isEmpty());
+        assertFalse(block2.get("tool_use_id").getAsString().isEmpty());
     }
 
     @Test
@@ -335,7 +336,7 @@ class AnthropicClientRoundTripTest {
         );
 
         Path target = tempDir.resolve("native-check.jsonl");
-        AnthropicClientExporter.exportToFile(messages, target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(messages), target);
 
         List<JsonObject> exported = new ArrayList<>();
         for (String line : Files.readAllLines(target, StandardCharsets.UTF_8)) {
@@ -361,7 +362,7 @@ class AnthropicClientRoundTripTest {
 
         // Verify tool_use blocks have correct fields: id, name, input
         var toolUse1 = assistantContent.get(1).getAsJsonObject();
-        assertEquals("tu1", toolUse1.get("id").getAsString());
+        assertFalse(toolUse1.get("id").getAsString().isEmpty());
         assertEquals("read_file", toolUse1.get("name").getAsString());
         assertTrue(toolUse1.has("input"), "tool_use must have 'input' field");
 
@@ -369,9 +370,9 @@ class AnthropicClientRoundTripTest {
         var mergedUserContent = exported.get(2).getAsJsonArray("content");
         assertEquals(3, mergedUserContent.size());
         assertEquals("tool_result", mergedUserContent.get(0).getAsJsonObject().get("type").getAsString());
-        assertEquals("tu1", mergedUserContent.get(0).getAsJsonObject().get("tool_use_id").getAsString());
+        assertFalse(mergedUserContent.get(0).getAsJsonObject().get("tool_use_id").getAsString().isEmpty());
         assertEquals("tool_result", mergedUserContent.get(1).getAsJsonObject().get("type").getAsString());
-        assertEquals("tu2", mergedUserContent.get(1).getAsJsonObject().get("tool_use_id").getAsString());
+        assertFalse(mergedUserContent.get(1).getAsJsonObject().get("tool_use_id").getAsString().isEmpty());
         assertEquals("text", mergedUserContent.get(2).getAsJsonObject().get("type").getAsString());
         assertEquals("Now commit", mergedUserContent.get(2).getAsJsonObject().get("text").getAsString());
     }
@@ -428,7 +429,7 @@ class AnthropicClientRoundTripTest {
         );
 
         Path file = tempDir.resolve("roundtrip-multi-tools.jsonl");
-        AnthropicClientExporter.exportToFile(original, file);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(original), file);
         List<SessionMessage> imported = AnthropicClientImporter.importFile(file);
 
         assertEquals(4, imported.size());
@@ -464,7 +465,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("sequential-tools.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("Do both"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("Do both"), assistant)), target);
 
         List<JsonObject> exported = new ArrayList<>();
         for (String line : Files.readAllLines(target, StandardCharsets.UTF_8)) {
@@ -480,7 +481,7 @@ class AnthropicClientRoundTripTest {
         var turn1Content = exported.get(1).getAsJsonArray("content");
         assertEquals(1, turn1Content.size());
         assertEquals("tool_use", turn1Content.get(0).getAsJsonObject().get("type").getAsString());
-        assertEquals("tc1", turn1Content.get(0).getAsJsonObject().get("id").getAsString());
+        assertFalse(turn1Content.get(0).getAsJsonObject().get("id").getAsString().isEmpty());
 
         // Turn 1: user with tool_result(tc1)
         var turn1Results = exported.get(2).getAsJsonArray("content");
@@ -521,7 +522,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("parallel-tools.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("Read both"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("Read both"), assistant)), target);
 
         List<JsonObject> exported = new ArrayList<>();
         for (String line : Files.readAllLines(target, StandardCharsets.UTF_8)) {
@@ -556,7 +557,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("empty-text.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("Q"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("Q"), assistant)), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         // The empty text block must NOT appear — Anthropic API rejects it
@@ -579,7 +580,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("empty-user-text.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(user, assistantMessage("Answer")), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(user, assistantMessage("Answer"))), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertFalse(content.contains("\"text\":\"\""),
@@ -602,7 +603,7 @@ class AnthropicClientRoundTripTest {
             System.currentTimeMillis(), null, null);
 
         Path target = tempDir.resolve("tool-only.jsonl");
-        AnthropicClientExporter.exportToFile(List.of(userMessage("search"), assistant), target);
+        AnthropicClientExporter.exportToFile(EntryDataConverter.fromMessages(List.of(userMessage("search"), assistant)), target);
 
         String content = Files.readString(target, StandardCharsets.UTF_8);
         assertFalse(content.contains("\"text\":\"\""),

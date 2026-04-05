@@ -1,6 +1,7 @@
 package com.github.catatafishen.ideagentforcopilot.session;
 
 import com.github.catatafishen.ideagentforcopilot.session.exporters.OpenCodeClientExporter;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -97,7 +98,7 @@ class OpenCodeZodValidationTest {
         );
 
         Path dbPath = tempDir.resolve("opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertTrue(sessionId != null && !sessionId.isEmpty(), "Export should succeed");
 
         // Extract message and part rows from the exported DB
@@ -126,7 +127,7 @@ class OpenCodeZodValidationTest {
         );
 
         Path dbPath = tempDir.resolve("opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertTrue(sessionId != null && !sessionId.isEmpty());
 
         JsonObject validatorInput = extractValidatorInput(dbPath, sessionId);
@@ -157,7 +158,7 @@ class OpenCodeZodValidationTest {
         );
 
         Path dbPath = tempDir.resolve("opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertTrue(sessionId != null && !sessionId.isEmpty());
 
         JsonObject validatorInput = extractValidatorInput(dbPath, sessionId);
@@ -188,7 +189,7 @@ class OpenCodeZodValidationTest {
         );
 
         Path dbPath = tempDir.resolve("opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         JsonObject validatorInput = extractValidatorInput(dbPath, sessionId);
@@ -212,7 +213,7 @@ class OpenCodeZodValidationTest {
         );
 
         Path dbPath = tempDir.resolve("opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         JsonObject validatorInput = extractValidatorInput(dbPath, sessionId);
@@ -256,7 +257,7 @@ class OpenCodeZodValidationTest {
         );
 
         Path dbPath = tempDir.resolve("opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertNotNull(sessionId, "Export should succeed");
 
         // Validate structure: should have exactly 4 messages (2 user + 2 assistant)

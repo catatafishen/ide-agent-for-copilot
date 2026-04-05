@@ -16,6 +16,7 @@ import com.github.catatafishen.ideagentforcopilot.session.importers.CodexClientI
 import com.github.catatafishen.ideagentforcopilot.session.importers.CopilotClientImporter;
 import com.github.catatafishen.ideagentforcopilot.session.importers.OpenCodeClientImporter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataJsonAdapter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionStoreV2;
 import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
@@ -187,8 +188,8 @@ public final class SessionSwitchService implements Disposable {
         // Load v2 session — this is our source of truth, kept up-to-date by the plugin
         // on every conversation save. No need to re-import from the previous client's
         // native format; that would introduce round-trip conversion bugs.
-        List<SessionMessage> messages = loadCurrentV2Session(basePath);
-        if (messages == null || messages.isEmpty()) {
+        List<EntryData> entries = loadCurrentV2Session(basePath);
+        if (entries == null || entries.isEmpty()) {
             LOG.info("No v2 session found to migrate from " + fromProfileId + " to " + toProfileId);
             return;
         }
@@ -201,17 +202,17 @@ public final class SessionSwitchService implements Disposable {
 
         // Export to the new client's native format.
         switch (toProfileId) {
-            case ClaudeCliClient.PROFILE_ID -> exportToClaudeCli(messages, basePath);
-            case CodexAppServerClient.PROFILE_ID -> exportToCodex(messages, basePath);
+            case ClaudeCliClient.PROFILE_ID -> exportToClaudeCli(entries, basePath);
+            case CodexAppServerClient.PROFILE_ID -> exportToCodex(entries, basePath);
             default -> {
                 if (toProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
-                    exportToKiro(messages, basePath, toProfileId);
+                    exportToKiro(entries, basePath, toProfileId);
                 } else if (toProfileId.equals(AgentProfileManager.JUNIE_PROFILE_ID)) {
-                    exportToJunie(messages, basePath, toProfileId);
+                    exportToJunie(entries, basePath, toProfileId);
                 } else if (toProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
-                    exportToOpenCode(messages, basePath);
+                    exportToOpenCode(entries, basePath);
                 } else if (toProfileId.startsWith(COPILOT_ID_PREFIX)) {
-                    exportToCopilot(messages, basePath, toProfileId);
+                    exportToCopilot(entries, basePath, toProfileId);
                 } else {
                     LOG.info("ACP client '" + toProfileId
                         + "' — no native export format; will resume via resumeSessionId");
@@ -260,7 +261,7 @@ public final class SessionSwitchService implements Disposable {
             Path claudeDir = claudeProjectDir(basePath);
             if (!claudeDir.toFile().isDirectory()) return;
 
-            List<SessionMessage> currentV2 = loadCurrentV2Session(basePath);
+            List<EntryData> currentV2 = loadCurrentV2Session(basePath);
             int currentCount = currentV2 != null ? currentV2.size() : 0;
 
             try (var stream = Files.list(claudeDir)) {
@@ -271,7 +272,7 @@ public final class SessionSwitchService implements Disposable {
                             List<SessionMessage> imported = AnthropicClientImporter.importFile(mostRecent);
                             if (imported.size() > currentCount) {
                                 String sessionId = SessionStoreV2.getInstance(project).getCurrentSessionId(basePath);
-                                writeV2Session(basePath, sessionId, imported, "Claude Code CLI");
+                                writeV2Session(basePath, sessionId, EntryDataConverter.fromMessages(imported), "Claude Code CLI");
                                 LOG.info(LOG_PRE_IMPORTED + imported.size()
                                     + " messages from Claude CLI: " + mostRecent.getFileName());
                             }
@@ -312,7 +313,7 @@ public final class SessionSwitchService implements Disposable {
             if (!sessionsBaseDir.toFile().isDirectory()) return;
 
             String projectPath = basePath != null ? basePath : "";
-            List<SessionMessage> currentV2 = loadCurrentV2Session(basePath);
+            List<EntryData> currentV2 = loadCurrentV2Session(basePath);
             int currentCount = currentV2 != null ? currentV2.size() : 0;
 
             try (var stream = Files.list(sessionsBaseDir)) {
@@ -351,7 +352,7 @@ public final class SessionSwitchService implements Disposable {
             List<SessionMessage> imported = AnthropicClientImporter.importFile(messagesPath);
             if (imported.size() > currentCount) {
                 String sessionId = SessionStoreV2.getInstance(project).getCurrentSessionId(basePath);
-                writeV2Session(basePath, sessionId, imported, clientName);
+                writeV2Session(basePath, sessionId, EntryDataConverter.fromMessages(imported), clientName);
                 LOG.info(LOG_PRE_IMPORTED + imported.size()
                     + " messages from " + clientName + " session: " + sessionDir.getFileName());
             }
@@ -385,9 +386,9 @@ public final class SessionSwitchService implements Disposable {
         String sessionId = SessionStoreV2.getInstance(project).getCurrentSessionId(basePath);
         if (sessionId == null) return;
 
-        List<SessionMessage> current = loadCurrentV2Session(basePath);
+        List<EntryData> current = loadCurrentV2Session(basePath);
         if (imported.size() > (current != null ? current.size() : 0)) {
-            writeV2Session(basePath, sessionId, imported, "Codex");
+            writeV2Session(basePath, sessionId, EntryDataConverter.fromMessages(imported), "Codex");
             LOG.info(LOG_PRE_IMPORTED + imported.size() + " messages from Codex");
         }
     }
@@ -407,9 +408,9 @@ public final class SessionSwitchService implements Disposable {
         String sessionId = SessionStoreV2.getInstance(project).getCurrentSessionId(basePath);
         if (sessionId == null) return;
 
-        List<SessionMessage> current = loadCurrentV2Session(basePath);
+        List<EntryData> current = loadCurrentV2Session(basePath);
         if (imported.size() > (current != null ? current.size() : 0)) {
-            writeV2Session(basePath, sessionId, imported, "OpenCode");
+            writeV2Session(basePath, sessionId, EntryDataConverter.fromMessages(imported), "OpenCode");
             LOG.info(LOG_PRE_IMPORTED + imported.size() + " messages from OpenCode");
         }
     }
@@ -423,7 +424,7 @@ public final class SessionSwitchService implements Disposable {
             Path copilotSessionsDir = Path.of(System.getProperty(USER_HOME_PROPERTY), ".copilot", SESSION_STATE_DIR);
             if (!copilotSessionsDir.toFile().isDirectory()) return;
 
-            List<SessionMessage> currentV2 = loadCurrentV2Session(basePath);
+            List<EntryData> currentV2 = loadCurrentV2Session(basePath);
             int currentCount = currentV2 != null ? currentV2.size() : 0;
 
             // Find the most recently modified events.jsonl across session subdirs.
@@ -435,7 +436,7 @@ public final class SessionSwitchService implements Disposable {
                             List<SessionMessage> imported = CopilotClientImporter.importFile(eventsFile);
                             if (imported.size() > currentCount) {
                                 String sessionId = SessionStoreV2.getInstance(project).getCurrentSessionId(basePath);
-                                writeV2Session(basePath, sessionId, imported, "GitHub Copilot");
+                                writeV2Session(basePath, sessionId, EntryDataConverter.fromMessages(imported), "GitHub Copilot");
                                 LOG.info(LOG_PRE_IMPORTED + imported.size()
                                     + " messages from Copilot CLI: " + eventsFile);
                             }
@@ -451,7 +452,7 @@ public final class SessionSwitchService implements Disposable {
 
     // ── Claude CLI export ─────────────────────────────────────────────────────
 
-    private void exportToClaudeCli(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
+    private void exportToClaudeCli(@NotNull List<EntryData> entries, @Nullable String basePath) {
         try {
             Path claudeDir = claudeProjectDir(basePath);
             if (!claudeDir.toFile().mkdirs() && !claudeDir.toFile().isDirectory()) {
@@ -463,7 +464,7 @@ public final class SessionSwitchService implements Disposable {
             Path targetFile = claudeDir.resolve(newSessionId + JSONL_EXT);
             String cwd = basePath != null ? basePath : "";
 
-            ClaudeCliExporter.exportToFile(messages, targetFile, newSessionId, cwd);
+            ClaudeCliExporter.exportToFile(entries, targetFile, newSessionId, cwd);
 
             if (!Files.exists(targetFile)) {
                 LOG.warn("Claude session file not found after export: " + targetFile);
@@ -499,11 +500,11 @@ public final class SessionSwitchService implements Disposable {
      * Delegates to {@link KiroClientExporter} which handles the Kiro-specific format.
      */
     private void exportToKiro(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @Nullable String basePath,
         @NotNull String toProfileId) {
         Path sessionsDir = KiroClientExporter.defaultSessionsDir();
-        String sessionId = KiroClientExporter.exportSession(messages, basePath, sessionsDir);
+        String sessionId = KiroClientExporter.exportSession(entries, basePath, sessionsDir);
         if (sessionId != null) {
             new GenericSettings(toProfileId, project).setResumeSessionId(sessionId);
             LOG.info("Exported v2 session to Kiro: " + sessionId + " for profile " + toProfileId);
@@ -515,25 +516,25 @@ public final class SessionSwitchService implements Disposable {
      * Delegates to {@link #exportToAcpLocalSession}.
      */
     private void exportToJunie(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @Nullable String basePath,
         @NotNull String toProfileId) {
         Path dir = Path.of(System.getProperty(USER_HOME_PROPERTY), JUNIE_HOME, JUNIE_SESSIONS_DIR);
-        exportToAcpLocalSession(messages, basePath, toProfileId, dir, "Junie");
+        exportToAcpLocalSession(entries, basePath, toProfileId, dir, "Junie");
     }
 
     /**
      * Exports v2 session messages to an ACP client's local session directory
      * and sets {@code resumeSessionId} so AcpClient sends it on next {@code session/new}.
      *
-     * @param messages        messages to export
+     * @param entries         entries to export
      * @param basePath        project base path (may be null)
      * @param toProfileId     profile ID of the target ACP client
      * @param sessionsBaseDir base sessions directory (e.g. {@code ~/.kiro/sessions/})
      * @param clientName      human-readable client name for log messages
      */
     private void exportToAcpLocalSession(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @Nullable String basePath,
         @NotNull String toProfileId,
         @NotNull Path sessionsBaseDir,
@@ -560,7 +561,7 @@ public final class SessionSwitchService implements Disposable {
                 StandardCharsets.UTF_8);
 
             // Write messages.jsonl via AnthropicMessageExporter
-            AnthropicClientExporter.exportToFile(messages, sessionDir.resolve("messages.jsonl"));
+            AnthropicClientExporter.exportToFile(entries, sessionDir.resolve("messages.jsonl"));
 
             // Set resumeSessionId so AcpClient sends it on the next session/new
             new GenericSettings(toProfileId, project).setResumeSessionId(newSessionId);
@@ -577,10 +578,10 @@ public final class SessionSwitchService implements Disposable {
      * Exports v2 session messages to a new Codex session (rollout JSONL + SQLite entry)
      * and sets the Codex thread ID for resume on next startup.
      */
-    private void exportToCodex(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
+    private void exportToCodex(@NotNull List<EntryData> entries, @Nullable String basePath) {
         Path sessionsDir = CodexClientExporter.defaultSessionsDir();
         Path dbPath = CodexClientExporter.defaultDbPath();
-        String threadId = CodexClientExporter.exportSession(messages, sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(entries, sessionsDir, dbPath);
         if (threadId != null) {
             // Set the thread ID so CodexAppServerClient will try thread/resume on next startup
             PropertiesComponent.getInstance(project)
@@ -605,7 +606,7 @@ public final class SessionSwitchService implements Disposable {
      * Without {@code workspace.yaml}, the CLI ignores {@code --resume} and creates a new session.</p>
      */
     private void exportToCopilot(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @Nullable String basePath,
         @NotNull String toProfileId) {
         try {
@@ -623,7 +624,7 @@ public final class SessionSwitchService implements Disposable {
             writeWorkspaceYaml(sessionDir, newSessionId, base);
 
             Path eventsFile = sessionDir.resolve("events.jsonl");
-            CopilotClientExporter.exportToFile(messages, eventsFile, newSessionId, base);
+            CopilotClientExporter.exportToFile(entries, eventsFile, newSessionId, base);
 
             // Copy plan.md from v2 store into this Copilot session dir
             copyPlanFromV2Store(base, sessionDir);
@@ -769,10 +770,10 @@ public final class SessionSwitchService implements Disposable {
      * Exports v2 session messages to OpenCode's native SQLite format
      * and sets {@code resumeSessionId} so AcpClient sends it in the next {@code session/new}.
      */
-    private void exportToOpenCode(@NotNull List<SessionMessage> messages, @Nullable String basePath) {
+    private void exportToOpenCode(@NotNull List<EntryData> entries, @Nullable String basePath) {
         Path dbPath = OpenCodeClientExporter.defaultDbPath();
         String projectDir = basePath != null ? basePath : "";
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, projectDir);
+        String sessionId = OpenCodeClientExporter.exportSession(entries, dbPath, projectDir);
         if (sessionId != null) {
             new GenericSettings(AgentProfileManager.OPENCODE_PROFILE_ID, project)
                 .setResumeSessionId(sessionId);
@@ -785,16 +786,17 @@ public final class SessionSwitchService implements Disposable {
     private void writeV2Session(
         @Nullable String basePath,
         @NotNull String sessionId,
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @NotNull String agentName) {
         try {
             File dir = sessionsDir(basePath);
             //noinspection ResultOfMethodCallIgnored — best-effort
             dir.mkdirs();
             File jsonlFile = new File(dir, sessionId + JSONL_EXT);
+
             StringBuilder sb = new StringBuilder();
-            for (SessionMessage msg : messages) {
-                sb.append(GSON.toJson(msg)).append('\n');
+            for (EntryData entry : entries) {
+                sb.append(GSON.toJson(EntryDataJsonAdapter.serialize(entry))).append('\n');
             }
             Files.writeString(jsonlFile.toPath(), sb.toString(), StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
@@ -808,10 +810,8 @@ public final class SessionSwitchService implements Disposable {
     // ── v2 session reading ────────────────────────────────────────────────────
 
     @Nullable
-    private List<SessionMessage> loadCurrentV2Session(@Nullable String basePath) {
-        List<EntryData> entries = SessionStoreV2.getInstance(project).loadEntries(basePath);
-        if (entries == null || entries.isEmpty()) return null;
-        return EntryDataConverter.toMessages(entries);
+    private List<EntryData> loadCurrentV2Session(@Nullable String basePath) {
+        return SessionStoreV2.getInstance(project).loadEntries(basePath);
     }
 
     // ── Path helpers ──────────────────────────────────────────────────────────

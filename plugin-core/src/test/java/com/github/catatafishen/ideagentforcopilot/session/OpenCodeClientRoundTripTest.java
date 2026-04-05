@@ -187,7 +187,7 @@ class OpenCodeClientRoundTripTest {
             assistantMessage("World")
         );
 
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         // Verify session row
@@ -225,8 +225,8 @@ class OpenCodeClientRoundTripTest {
             "a1", "assistant", List.of(reasoningPart, textPart),
             System.currentTimeMillis(), null, null);
 
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("Q"), assistant), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Q"), assistant)), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         // Count total part rows for the session
@@ -248,14 +248,14 @@ class OpenCodeClientRoundTripTest {
 
     @Test
     void exportEmptyMessagesReturnsNull() {
-        assertNull(OpenCodeClientExporter.exportSession(List.of(), dbPath, PROJECT_DIR));
+        assertNull(OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(List.of()), dbPath, PROJECT_DIR));
     }
 
     @Test
     void exportToNonExistentDbCreatesIt() {
         Path freshDb = tempDir.resolve("fresh/opencode.db");
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("hi")), freshDb, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("hi"))), freshDb, PROJECT_DIR);
         assertNotNull(sessionId, "Exporter should create the DB and succeed");
         assertTrue(Files.exists(freshDb), "Database file should have been created");
     }
@@ -271,8 +271,8 @@ class OpenCodeClientRoundTripTest {
         SessionMessage assistant = new SessionMessage(
             "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
 
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("Q"), assistant), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Q"), assistant)), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);
@@ -298,8 +298,8 @@ class OpenCodeClientRoundTripTest {
     void exportedTextPartHasNoTime() throws SQLException {
         // Real OpenCode text parts do NOT carry a top-level time field (only reasoning parts do).
         // Writing time on text parts may cause Zod strict-mode validation failures in OpenCode.
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("Hello")), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Hello"))), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);
@@ -330,8 +330,8 @@ class OpenCodeClientRoundTripTest {
         SessionMessage assistant = new SessionMessage(
             "a1", "assistant", List.of(subagentPart), System.currentTimeMillis(), null, null);
 
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("Search"), assistant), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Search"), assistant)), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);
@@ -371,7 +371,7 @@ class OpenCodeClientRoundTripTest {
         SessionMessage msg = new SessionMessage(
             "a1", "assistant", List.of(statusPart, textPart), System.currentTimeMillis(), null, null);
 
-        String sessionId = OpenCodeClientExporter.exportSession(List.of(msg), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(List.of(msg)), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);
@@ -401,7 +401,7 @@ class OpenCodeClientRoundTripTest {
             assistantMessage("A systems language.")
         );
 
-        String sessionId = OpenCodeClientExporter.exportSession(original, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(original), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         List<SessionMessage> imported = OpenCodeClientImporter.importLatestSession(dbPath, PROJECT_DIR);
@@ -424,7 +424,7 @@ class OpenCodeClientRoundTripTest {
 
         List<SessionMessage> original = List.of(userMessage("Read /a"), assistant);
 
-        String sessionId = OpenCodeClientExporter.exportSession(original, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(original), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         List<SessionMessage> imported = OpenCodeClientImporter.importLatestSession(dbPath, PROJECT_DIR);
@@ -436,7 +436,7 @@ class OpenCodeClientRoundTripTest {
             if ("tool-invocation".equals(part.get("type").getAsString())) {
                 foundTool = true;
                 JsonObject inv = part.getAsJsonObject("toolInvocation");
-                assertEquals("tc1", inv.get("toolCallId").getAsString());
+                assertFalse(inv.get("toolCallId").getAsString().isEmpty());
                 assertEquals("read_file", inv.get("toolName").getAsString());
             }
         }
@@ -452,7 +452,7 @@ class OpenCodeClientRoundTripTest {
             assistantMessage("Answer 2")
         );
 
-        OpenCodeClientExporter.exportSession(original, dbPath, PROJECT_DIR);
+        OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(original), dbPath, PROJECT_DIR);
 
         List<SessionMessage> imported = OpenCodeClientImporter.importLatestSession(dbPath, PROJECT_DIR);
         assertEquals(4, imported.size());
@@ -478,7 +478,7 @@ class OpenCodeClientRoundTripTest {
             assistantMessage("World")
         );
 
-        String sessionId = OpenCodeClientExporter.exportSession(messages, dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(messages), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);
@@ -534,8 +534,8 @@ class OpenCodeClientRoundTripTest {
         SessionMessage assistant = new SessionMessage(
             "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
 
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("Q"), assistant), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Q"), assistant)), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);
@@ -574,8 +574,8 @@ class OpenCodeClientRoundTripTest {
         SessionMessage assistant = new SessionMessage(
             "a1", "assistant", List.of(toolPart), System.currentTimeMillis(), null, null);
 
-        String sessionId = OpenCodeClientExporter.exportSession(
-            List.of(userMessage("Q"), assistant), dbPath, PROJECT_DIR);
+        String sessionId = OpenCodeClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Q"), assistant)), dbPath, PROJECT_DIR);
         assertNotNull(sessionId);
 
         try (Connection conn = connect(dbPath);

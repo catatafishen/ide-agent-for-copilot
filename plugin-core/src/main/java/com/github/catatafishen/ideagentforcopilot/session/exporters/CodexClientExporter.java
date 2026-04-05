@@ -1,7 +1,9 @@
 package com.github.catatafishen.ideagentforcopilot.session.exporters;
 
 import com.github.catatafishen.ideagentforcopilot.session.importers.JsonlUtil;
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
+import com.github.catatafishen.ideagentforcopilot.ui.EntryData;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -44,9 +46,10 @@ public final class CodexClientExporter {
 
     @Nullable
     public static String exportSession(
-        @NotNull List<SessionMessage> messages,
+        @NotNull List<EntryData> entries,
         @NotNull Path sessionsDir,
         @NotNull Path dbPath) {
+        List<SessionMessage> messages = EntryDataConverter.toMessages(entries);
         if (messages.isEmpty()) return null;
 
         try {

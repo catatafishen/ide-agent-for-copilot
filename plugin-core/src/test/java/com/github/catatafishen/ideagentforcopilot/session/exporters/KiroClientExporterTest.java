@@ -1,5 +1,6 @@
 package com.github.catatafishen.ideagentforcopilot.session.exporters;
 
+import com.github.catatafishen.ideagentforcopilot.session.v2.EntryDataConverter;
 import com.github.catatafishen.ideagentforcopilot.session.v2.SessionMessage;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -36,7 +37,7 @@ class KiroClientExporterTest {
             assistantMessage("Hi there!")
         );
 
-        String sessionId = KiroClientExporter.exportSession(messages, "/test/project", tempDir);
+        String sessionId = KiroClientExporter.exportSession(EntryDataConverter.fromMessages(messages), "/test/project", tempDir);
 
         assertNotNull(sessionId);
         assertTrue(Files.exists(tempDir.resolve(sessionId + ".json")));
@@ -45,8 +46,8 @@ class KiroClientExporterTest {
 
     @Test
     void sessionJsonHasCorrectFormat() throws Exception {
-        String sessionId = KiroClientExporter.exportSession(
-            List.of(userMessage("Hi")), "/my/project", tempDir);
+        String sessionId = KiroClientExporter.exportSession(EntryDataConverter.fromMessages(
+            List.of(userMessage("Hi"))), "/my/project", tempDir);
 
         String json = Files.readString(tempDir.resolve(sessionId + ".json"), StandardCharsets.UTF_8);
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
@@ -84,7 +85,7 @@ class KiroClientExporterTest {
 
     @Test
     void exportEmptyMessagesReturnsNull() {
-        String result = KiroClientExporter.exportSession(List.of(), "/test", tempDir);
+        String result = KiroClientExporter.exportSession(EntryDataConverter.fromMessages(List.of()), "/test", tempDir);
         assertNull(result);
     }
 
