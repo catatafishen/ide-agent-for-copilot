@@ -326,8 +326,9 @@ let lastSeq = 0;
 let sseRetry: ReturnType<typeof setTimeout> | null = null;
 
 fetch('/state')
-    .then(r => r.json() as Promise<{ events?: SseEvent[]; seq?: number }>)
+    .then(r => r.json() as Promise<{ events?: SseEvent[]; seq?: number; domMessageLimit?: number }>)
     .then(st => {
+        if (st.domMessageLimit) ChatController.setDomMessageLimit(st.domMessageLimit);
         (st.events || []).forEach(ev => processEvent(ev, true));
         lastSeq = st.seq || 0;
         requestAnimationFrame(scrollToBottom);

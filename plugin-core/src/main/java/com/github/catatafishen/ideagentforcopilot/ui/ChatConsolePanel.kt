@@ -769,11 +769,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.removeLoadMore()")
     }
 
-    fun appendEntries(entries: List<EntryData>) {
+    fun setDomMessageLimit(limit: Int) {
+        executeJs("ChatController.setDomMessageLimit($limit)")
+    }
+
+    fun appendEntries(entries: List<EntryData>, totalPromptCount: Int = -1) {
         if (entries.isEmpty()) return
         for (e in entries) addEntryFromData(e)
-        val turnCount = entries.count { it is EntryData.Prompt }
-        if (turnCount > 0) turnCounter += turnCount
+        val count = if (totalPromptCount >= 0) totalPromptCount
+        else entries.count { it is EntryData.Prompt }
+        if (count > 0) turnCounter += count
         val html = renderBatchGroupedHtml(entries)
         if (html.isNotEmpty()) {
             val encoded = b64(html)

@@ -14,6 +14,8 @@ function _showNotification(title: string, body: string, actions?: { action: stri
 }
 
 const ChatController = {
+    _domMessageLimit: 80,
+
     _msgs(): HTMLElement {
         return document.querySelector('#messages')!;
     },
@@ -658,10 +660,15 @@ const ChatController = {
         const rows = Array.from(msgs.children).filter(
             c => c.tagName === 'CHAT-MESSAGE'
         );
-        if (rows.length > 80) {
-            const trimCount = rows.length - 80;
+        const limit = this._domMessageLimit;
+        if (rows.length > limit) {
+            const trimCount = rows.length - limit;
             for (let i = 0; i < trimCount; i++) rows[i].remove();
         }
+    },
+
+    setDomMessageLimit(limit: number): void {
+        this._domMessageLimit = limit;
     },
 
     showNudgeBubble(id: string, text: string): void {
