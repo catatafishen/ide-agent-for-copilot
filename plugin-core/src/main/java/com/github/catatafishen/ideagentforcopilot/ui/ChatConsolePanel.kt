@@ -269,7 +269,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("document.querySelector('chat-container').style.scrollBehavior = '${if (enabled) "smooth" else "auto"}'")
     }
 
-    override fun addPromptEntry(text: String, contextFiles: List<Triple<String, String, Int>>?, bubbleHtml: String?): String {
+    override fun addPromptEntry(
+        text: String,
+        contextFiles: List<Triple<String, String, Int>>?,
+        bubbleHtml: String?
+    ): String {
         toolJustCompleted = false
         finalizeCurrentText()
         collapseThinking()
@@ -562,10 +566,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val isMcpHandled = registration.initialState() == ToolChipRegistry.ChipState.RUNNING
         val isExternal = !isMcpHandled
 
-        val entry = EntryData.ToolCall(cleanTitle, arguments, resolvedKind)
+        val entry = EntryData.ToolCall(
+            cleanTitle, arguments, resolvedKind,
+            timestamp = timestamp(), agent = currentAgent
+        )
         if (isMcpHandled) entry.mcpHandled = true
         toolCallNames[toolDid] = cleanTitle
         toolCallEntries[toolDid] = entry
+        entries.add(entry)
 
         executeJs("ChatController.addSubAgentToolCall('$saDid','$toolDid','${escJs(label)}','$paramsJson','$safeKind',$isExternal)")
         if (isMcpHandled) {
@@ -623,8 +631,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val displayName = info?.displayName ?: agentType.replaceFirstChar { it.uppercaseChar() }
         val promptText = prompt ?: description
         val promptHtml = b64(markdownToHtml(promptText))
+        val ts = displayTs(entry.timestamp)
         executeJs(
-            "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$colorIndex,b64('$promptHtml'))"
+            "ChatController.addSubAgent('$currentTurnId','main','$did','${escJs(displayName)}',$colorIndex,b64('$promptHtml'),'${
+                escJs(
+                    ts
+                )
+            }')"
         )
         if (autoDenied || !initialResult.isNullOrBlank() || initialStatus == "completed" || initialStatus == "failed") {
             val status = if (autoDenied) "denied" else (initialStatus ?: "completed")
@@ -756,11 +769,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.removeLoadMore()")
     }
 
-    fun appendEntries(entries: List<EntryData>) {
+    fun setDomMessageLimit(limit: Int) {
+        executeJs("ChatController.setDomMessageLimit($limit)")
+    }
+
+    fun appendEntries(entries: List<EntryData>, totalPromptCount: Int = -1) {
         if (entries.isEmpty()) return
         for (e in entries) addEntryFromData(e)
-        val turnCount = entries.count { it is EntryData.Prompt }
-        if (turnCount > 0) turnCounter += turnCount
+        val count = if (totalPromptCount >= 0) totalPromptCount
+        else entries.count { it is EntryData.Prompt }
+        if (count > 0) turnCounter += count
         val html = renderBatchGroupedHtml(entries)
         if (html.isNotEmpty()) {
             val encoded = b64(html)
@@ -843,6 +861,10 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         var segmentAgent = ""
 
         fun flushSegment() {
+            if (segmentMetaChips.isEmpty() && segmentDetailsContent.isEmpty() && segmentAfterDetails.isEmpty()) {
+                segmentStarted = false
+                return
+            }
             sb.append("<chat-message type='agent'")
             if (segmentAgent.isNotEmpty()) {
                 sb.append(" data-agent='${esc(segmentAgent)}'")
@@ -867,6 +889,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             segmentTimestamp = ""
             segmentAgent = ""
             hadToolOrSubagent = false
+            segmentStarted = false
         }
 
         while (i < entries.size) {
@@ -935,7 +958,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val raw = e.raw.toString()
                 if (raw.isNotBlank()) {
                     val clean = raw.replace(QUICK_REPLY_TAG_REGEX, "").trimEnd()
-                    afterDetails.append("<message-bubble>${markdownToHtml(clean)}</message-bubble>")
+                    if (clean.isNotBlank()) {
+                        afterDetails.append("<message-bubble>${markdownToHtml(clean)}</message-bubble>")
+                    }
                 }
             }
 

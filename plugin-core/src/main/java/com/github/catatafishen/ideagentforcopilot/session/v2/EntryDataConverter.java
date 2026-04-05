@@ -11,8 +11,10 @@ import java.util.UUID;
 /**
  * Converts between {@link EntryData} (UI model) and {@link SessionMessage} (v2 disk format).
  *
- * <p>The conversion is lossy in minor details (e.g. per-entry timestamps collapse into the
- * message timestamp) but preserves all information needed to reconstruct the UI faithfully.
+ * <p>Each content part carries its own {@code "ts"} field preserving the original per-entry
+ * timestamp. On deserialization, the part-level timestamp is preferred; the message-level
+ * {@link SessionMessage#createdAt} is used only as a fallback for parts written before this
+ * enrichment.
  */
 public final class EntryDataConverter {
 
@@ -72,6 +74,7 @@ public final class EntryDataConverter {
                 JsonObject part = new JsonObject();
                 part.addProperty("type", "text");
                 part.addProperty("text", prompt.getText());
+                addEntryId(part, prompt.getEntryId());
                 userMsg.parts.add(part);
 
                 // Context files attached to this prompt
@@ -133,12 +136,16 @@ public final class EntryDataConverter {
                     JsonObject part = new JsonObject();
                     part.addProperty("type", "text");
                     part.addProperty("text", text.getRaw().toString());
+                    addTimestamp(part, text.getTimestamp());
+                    addEntryId(part, text.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.Thinking thinking) {
                     JsonObject part = new JsonObject();
                     part.addProperty("type", "reasoning");
                     part.addProperty("text", thinking.getRaw().toString());
+                    addTimestamp(part, thinking.getTimestamp());
+                    addEntryId(part, thinking.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.ToolCall toolCall) {
@@ -156,10 +163,24 @@ public final class EntryDataConverter {
                     if (!kind.isEmpty() && !"other".equals(kind)) {
                         invocation.addProperty("kind", kind);
                     }
+                    if (toolCall.getStatus() != null && !toolCall.getStatus().isEmpty()) {
+                        invocation.addProperty("status", toolCall.getStatus());
+                    }
+                    if (toolCall.getDescription() != null && !toolCall.getDescription().isEmpty()) {
+                        invocation.addProperty("description", toolCall.getDescription());
+                    }
+                    if (toolCall.getFilePath() != null && !toolCall.getFilePath().isEmpty()) {
+                        invocation.addProperty("filePath", toolCall.getFilePath());
+                    }
+                    if (toolCall.getMcpHandled()) {
+                        invocation.addProperty("mcpHandled", true);
+                    }
 
                     JsonObject part = new JsonObject();
                     part.addProperty("type", "tool-invocation");
                     part.add("toolInvocation", invocation);
+                    addTimestamp(part, toolCall.getTimestamp());
+                    addEntryId(part, toolCall.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.SubAgent subAgent) {
@@ -171,6 +192,17 @@ public final class EntryDataConverter {
                     part.addProperty("result", subAgent.getResult() != null ? subAgent.getResult() : "");
                     part.addProperty("status", subAgent.getStatus() != null ? subAgent.getStatus() : "");
                     part.addProperty("colorIndex", subAgent.getColorIndex());
+                    if (subAgent.getCallId() != null && !subAgent.getCallId().isEmpty()) {
+                        part.addProperty("callId", subAgent.getCallId());
+                    }
+                    if (subAgent.getAutoDenied()) {
+                        part.addProperty("autoDenied", true);
+                    }
+                    if (subAgent.getDenialReason() != null && !subAgent.getDenialReason().isEmpty()) {
+                        part.addProperty("denialReason", subAgent.getDenialReason());
+                    }
+                    addTimestamp(part, subAgent.getTimestamp());
+                    addEntryId(part, subAgent.getEntryId());
                     currentMsg.parts.add(part);
 
                 } else if (entry instanceof EntryData.Status status) {
@@ -178,6 +210,7 @@ public final class EntryDataConverter {
                     part.addProperty("type", "status");
                     part.addProperty("icon", status.getIcon());
                     part.addProperty("message", status.getMessage());
+                    addEntryId(part, status.getEntryId());
                     currentMsg.parts.add(part);
                 }
                 // Unknown subtypes are silently ignored — forward-compat
@@ -215,21 +248,23 @@ public final class EntryDataConverter {
                 switch (type) {
                     case "text" -> {
                         String text = part.has("text") ? part.get("text").getAsString() : "";
+                        String partTs = readTimestamp(part, ts);
                         if ("user".equals(msg.role)) {
-                            result.add(new EntryData.Prompt(text, ts, null, ""));
+                            result.add(new EntryData.Prompt(text, partTs, null, ""));
                         } else {
                             result.add(new EntryData.Text(
                                 new StringBuilder(text),
-                                ts,
+                                partTs,
                                 msg.agent != null ? msg.agent : ""));
                             hasTextOrThinking = true;
                         }
                     }
                     case "reasoning" -> {
                         String text = part.has("text") ? part.get("text").getAsString() : "";
+                        String partTs = readTimestamp(part, ts);
                         result.add(new EntryData.Thinking(
                             new StringBuilder(text),
-                            ts,
+                            partTs,
                             msg.agent != null ? msg.agent : ""));
                         hasTextOrThinking = true;
                     }
@@ -241,10 +276,15 @@ public final class EntryDataConverter {
                         boolean autoDenied = inv.has("denialReason");
                         String denialReason = autoDenied ? inv.get("denialReason").getAsString() : null;
                         String kind = inv.has("kind") ? inv.get("kind").getAsString() : "other";
+                        String toolStatus = inv.has("status") ? inv.get("status").getAsString() : null;
+                        String toolDescription = inv.has("description") ? inv.get("description").getAsString() : null;
+                        String filePath = inv.has("filePath") ? inv.get("filePath").getAsString() : null;
+                        boolean mcpHandled = inv.has("mcpHandled") && inv.get("mcpHandled").getAsBoolean();
+                        String partTs = readTimestamp(part, ts);
                         result.add(new EntryData.ToolCall(
-                            toolName, args, kind, toolResult, null, null, null,
-                            autoDenied, denialReason, false,
-                            ts, msg.agent != null ? msg.agent : ""));
+                            toolName, args, kind, toolResult, toolStatus, toolDescription, filePath,
+                            autoDenied, denialReason, mcpHandled,
+                            partTs, msg.agent != null ? msg.agent : ""));
                     }
                     case "subagent" -> {
                         String agentType = part.has("agentType") ? part.get("agentType").getAsString() : "general-purpose";
@@ -253,13 +293,17 @@ public final class EntryDataConverter {
                         String subResult = part.has("result") ? part.get("result").getAsString() : null;
                         String status = part.has("status") ? part.get("status").getAsString() : "completed";
                         int colorIndex = part.has("colorIndex") ? part.get("colorIndex").getAsInt() : 0;
+                        String callId = part.has("callId") ? part.get("callId").getAsString() : null;
+                        boolean autoDenied = part.has("autoDenied") && part.get("autoDenied").getAsBoolean();
+                        String denialReason = part.has("denialReason") ? part.get("denialReason").getAsString() : null;
+                        String partTs = readTimestamp(part, ts);
                         result.add(new EntryData.SubAgent(
                             agentType, description,
                             (prompt == null || prompt.isEmpty()) ? null : prompt,
                             (subResult == null || subResult.isEmpty()) ? null : subResult,
                             (status == null || status.isEmpty()) ? "completed" : status,
-                            colorIndex, null, false, null,
-                            ts, msg.agent != null ? msg.agent : ""));
+                            colorIndex, callId, autoDenied, denialReason,
+                            partTs, msg.agent != null ? msg.agent : ""));
                     }
                     case "status" -> {
                         String icon = part.has("icon") ? part.get("icon").getAsString() : "ℹ";
@@ -293,6 +337,35 @@ public final class EntryDataConverter {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Adds a {@code "ts"} field to a part if the timestamp is non-empty.
+     * This preserves per-entry timestamps in the V2 format.
+     */
+    private static void addTimestamp(@NotNull JsonObject part, @NotNull String isoTimestamp) {
+        if (!isoTimestamp.isEmpty()) {
+            part.addProperty("ts", isoTimestamp);
+        }
+    }
+
+    private static void addEntryId(@NotNull JsonObject part, @NotNull String entryId) {
+        if (!entryId.isEmpty()) {
+            part.addProperty("eid", entryId);
+        }
+    }
+
+    /**
+     * Reads a per-entry timestamp from a V2 part, falling back to the message-level timestamp.
+     * Parts written before this fix will not have {@code "ts"} and will use the message timestamp.
+     */
+    @NotNull
+    private static String readTimestamp(@NotNull JsonObject part, @NotNull String messageLevelTs) {
+        if (part.has("ts")) {
+            String partTs = part.get("ts").getAsString();
+            if (!partTs.isEmpty()) return partTs;
+        }
+        return messageLevelTs;
+    }
 
     @org.jetbrains.annotations.Nullable
     private static String agentOf(@NotNull EntryData entry) {

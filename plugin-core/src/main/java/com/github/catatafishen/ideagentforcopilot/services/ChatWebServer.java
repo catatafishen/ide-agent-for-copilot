@@ -2,6 +2,7 @@ package com.github.catatafishen.ideagentforcopilot.services;
 
 import com.github.catatafishen.ideagentforcopilot.BuildInfo;
 import com.github.catatafishen.ideagentforcopilot.psi.PlatformApiCompat;
+import com.github.catatafishen.ideagentforcopilot.settings.ChatHistorySettings;
 import com.github.catatafishen.ideagentforcopilot.settings.ChatWebServerSettings;
 import com.github.catatafishen.ideagentforcopilot.ui.ChatTheme;
 import com.google.gson.Gson;
@@ -69,7 +70,6 @@ import java.util.function.Consumer;
 public final class ChatWebServer implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(ChatWebServer.class);
-    private static final int MAX_EVENTS = 600;
     private static final Gson GSON = new Gson();
 
     private final Project project;
@@ -427,6 +427,9 @@ public final class ChatWebServer implements Disposable {
         int seq;
         boolean isClear = js.equals("ChatController.clear()");
         synchronized (this) {
+            if (!isClear) {
+                compactStreamingEvents(js);
+            }
             seq = nextSeq++;
             json = "{\"seq\":" + seq + ",\"js\":" + GSON.toJson(js) + "}";
             if (isClear) {
@@ -434,7 +437,8 @@ public final class ChatWebServer implements Disposable {
                 eventLog.clear();
             } else {
                 eventLog.add(json);
-                if (eventLog.size() > MAX_EVENTS) eventLog.remove(0);
+                int maxEvents = ChatHistorySettings.getInstance(project).getEventLogSize();
+                if (eventLog.size() > maxEvents) eventLog.remove(0);
             }
             // Track model from setCurrentModel calls
             if (js.startsWith("ChatController.setCurrentModel(")) {
@@ -442,6 +446,65 @@ public final class ChatWebServer implements Disposable {
             }
         }
         broadcast(json);
+    }
+
+    /**
+     * Compacts the event log by removing streaming events that are superseded by
+     * a finalization event.  When {@code finalizeAgentText('t0','main',...)} arrives,
+     * all preceding {@code appendAgentText('t0','main',...)} events become redundant.
+     * Similarly, {@code collapseThinking} supersedes {@code addThinkingText}.
+     *
+     * <p>Without compaction, streaming text tokens dominate the event log (50-200 events
+     * per agent turn) and eventually evict critical events like {@code restoreBatch} —
+     * causing the PWA to show empty messages on initial page load.
+     *
+     * <p>Must be called while holding the monitor on {@code this}.
+     */
+    private void compactStreamingEvents(String js) {
+        String removePrefix = null;
+        if (js.startsWith("ChatController.finalizeAgentText(")) {
+            removePrefix = buildStreamingPrefix(js, "ChatController.finalizeAgentText(", "ChatController.appendAgentText(");
+        } else if (js.startsWith("ChatController.collapseThinking(")) {
+            removePrefix = buildStreamingPrefix(js, "ChatController.collapseThinking(", "ChatController.addThinkingText(");
+        }
+        if (removePrefix != null) {
+            // GSON HTML-escapes single quotes as \u0027 — encode the prefix to match
+            String encodedPrefix = removePrefix.replace("'", "\\u0027");
+            eventLog.removeIf(ev -> eventJsStartsWith(ev, encodedPrefix));
+        }
+    }
+
+    /**
+     * Extracts the first two single-quoted arguments (turnId, agentId) from a JS call
+     * and builds the corresponding streaming-event prefix.
+     *
+     * <p>E.g., for {@code ChatController.finalizeAgentText('t0','main','html')} with
+     * {@code streamPrefix = "ChatController.appendAgentText("}, returns
+     * {@code "ChatController.appendAgentText('t0','main',"}.
+     */
+    static @Nullable String buildStreamingPrefix(String js, String finalizePrefix, String streamPrefix) {
+        int q1 = js.indexOf('\'', finalizePrefix.length());
+        if (q1 < 0) return null;
+        int q2 = js.indexOf('\'', q1 + 1);
+        if (q2 < 0) return null;
+        int q3 = js.indexOf('\'', q2 + 1);
+        if (q3 < 0) return null;
+        int q4 = js.indexOf('\'', q3 + 1);
+        if (q4 < 0) return null;
+        String turnId = js.substring(q1 + 1, q2);
+        String agentId = js.substring(q3 + 1, q4);
+        return streamPrefix + "'" + turnId + "','" + agentId + "',";
+    }
+
+    /**
+     * Checks whether the {@code js} field of the given event JSON starts with {@code jsPrefix}.
+     * Uses fast string matching to avoid full JSON parsing.
+     */
+    static boolean eventJsStartsWith(String eventJson, String jsPrefix) {
+        int idx = eventJson.indexOf("\"js\":\"");
+        if (idx < 0) return false;
+        int jsStart = idx + 6;
+        return eventJson.startsWith(jsPrefix, jsStart);
     }
 
     /**
@@ -1058,7 +1121,9 @@ public final class ChatWebServer implements Disposable {
             snapshot = new ArrayList<>(eventLog);
             seq = nextSeq - 1;
         }
+        int domLimit = ChatHistorySettings.getInstance(project).getDomMessageLimit();
         StringBuilder sb = new StringBuilder("{\"seq\":").append(seq)
+            .append(",\"domMessageLimit\":").append(domLimit)
             .append(",\"events\":[");
         for (int i = 0; i < snapshot.size(); i++) {
             if (i > 0) sb.append(',');
@@ -1101,7 +1166,12 @@ public final class ChatWebServer implements Disposable {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void broadcast(String json) {
-        for (SseClient c : sseClients) c.offer(json);
+        for (SseClient c : sseClients) {
+            if (!c.offer(json)) {
+                LOG.warn("SSE event dropped for a client — queue full (capacity 300). " +
+                    "PWA may show stale or incomplete content.");
+            }
+        }
     }
 
     private static void writeSse(OutputStream out, String json) throws IOException {

@@ -16,6 +16,7 @@ import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.ColoredTableCellRenderer;
+import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBLabel;
@@ -76,6 +77,10 @@ public final class ChatHistoryConfigurable implements Configurable {
     private JCheckBox injectHistoryCheckbox;
     private JBTable table;
     private ConversationTableModel tableModel;
+    private JSpinner eventLogSizeSpinner;
+    private JSpinner domMessageLimitSpinner;
+    private JSpinner recentTurnsSpinner;
+    private JSpinner loadMoreBatchSpinner;
 
     public ChatHistoryConfigurable(Project project) {
         this.project = project;
@@ -140,12 +145,39 @@ public final class ChatHistoryConfigurable implements Configurable {
                 + "but uses extra tokens. Disabled by default.</html>");
         injectHistoryCheckbox.setSelected(ActiveAgentManager.getInjectConversationHistory(project));
 
+        ChatHistorySettings histSettings = ChatHistorySettings.getInstance(project);
+
+        eventLogSizeSpinner = new JSpinner(new SpinnerNumberModel(
+            histSettings.getEventLogSize(), 100, 10_000, 100));
+        eventLogSizeSpinner.setToolTipText("Maximum number of JS events buffered for web/PWA clients");
+
+        domMessageLimitSpinner = new JSpinner(new SpinnerNumberModel(
+            histSettings.getDomMessageLimit(), 10, 1000, 10));
+        domMessageLimitSpinner.setToolTipText("Maximum chat messages visible in the DOM before older ones are trimmed");
+
+        recentTurnsSpinner = new JSpinner(new SpinnerNumberModel(
+            histSettings.getRecentTurnsOnRestore(), 1, 100, 1));
+        recentTurnsSpinner.setToolTipText("Number of recent turns loaded immediately when restoring a session");
+
+        loadMoreBatchSpinner = new JSpinner(new SpinnerNumberModel(
+            histSettings.getLoadMoreBatchSize(), 1, 50, 1));
+        loadMoreBatchSpinner.setToolTipText("Number of turns loaded per 'Load More' click");
+
+        JPanel limitsPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent("Web event log size:", eventLogSizeSpinner)
+            .addLabeledComponent("DOM message limit:", domMessageLimitSpinner)
+            .addLabeledComponent("Recent turns on restore:", recentTurnsSpinner)
+            .addLabeledComponent("Load-more batch size:", loadMoreBatchSpinner)
+            .getPanel();
+        limitsPanel.setBorder(IdeBorderFactory.createTitledBorder("History Limits"));
+
         JPanel panel = FormBuilder.createFormBuilder()
             .addComponent(new JBLabel(
                 "<html>Conversation files stored in this project's "
                     + "<code>.agent-work</code> directory.</html>"))
             .addComponent(summaryLabel)
             .addComponent(injectHistoryCheckbox)
+            .addComponent(limitsPanel)
             .addComponentFillVertically(decorated, 4)
             .getPanel();
         panel.setBorder(JBUI.Borders.empty(8));
@@ -158,8 +190,14 @@ public final class ChatHistoryConfigurable implements Configurable {
 
     @Override
     public boolean isModified() {
-        return injectHistoryCheckbox != null
-            && injectHistoryCheckbox.isSelected() != ActiveAgentManager.getInjectConversationHistory(project);
+        if (injectHistoryCheckbox == null) return false;
+        if (injectHistoryCheckbox.isSelected() != ActiveAgentManager.getInjectConversationHistory(project)) return true;
+
+        ChatHistorySettings settings = ChatHistorySettings.getInstance(project);
+        if (spinnerValue(eventLogSizeSpinner) != settings.getEventLogSize()) return true;
+        if (spinnerValue(domMessageLimitSpinner) != settings.getDomMessageLimit()) return true;
+        if (spinnerValue(recentTurnsSpinner) != settings.getRecentTurnsOnRestore()) return true;
+        return spinnerValue(loadMoreBatchSpinner) != settings.getLoadMoreBatchSize();
     }
 
     @Override
@@ -167,12 +205,26 @@ public final class ChatHistoryConfigurable implements Configurable {
         if (injectHistoryCheckbox != null) {
             ActiveAgentManager.setInjectConversationHistory(project, injectHistoryCheckbox.isSelected());
         }
+        if (eventLogSizeSpinner != null) {
+            ChatHistorySettings settings = ChatHistorySettings.getInstance(project);
+            settings.setEventLogSize(spinnerValue(eventLogSizeSpinner));
+            settings.setDomMessageLimit(spinnerValue(domMessageLimitSpinner));
+            settings.setRecentTurnsOnRestore(spinnerValue(recentTurnsSpinner));
+            settings.setLoadMoreBatchSize(spinnerValue(loadMoreBatchSpinner));
+        }
     }
 
     @Override
     public void reset() {
         if (injectHistoryCheckbox != null) {
             injectHistoryCheckbox.setSelected(ActiveAgentManager.getInjectConversationHistory(project));
+        }
+        if (eventLogSizeSpinner != null) {
+            ChatHistorySettings settings = ChatHistorySettings.getInstance(project);
+            eventLogSizeSpinner.setValue(settings.getEventLogSize());
+            domMessageLimitSpinner.setValue(settings.getDomMessageLimit());
+            recentTurnsSpinner.setValue(settings.getRecentTurnsOnRestore());
+            loadMoreBatchSpinner.setValue(settings.getLoadMoreBatchSize());
         }
         loadConversations();
     }
@@ -183,6 +235,14 @@ public final class ChatHistoryConfigurable implements Configurable {
         injectHistoryCheckbox = null;
         table = null;
         tableModel = null;
+        eventLogSizeSpinner = null;
+        domMessageLimitSpinner = null;
+        recentTurnsSpinner = null;
+        loadMoreBatchSpinner = null;
+    }
+
+    private static int spinnerValue(JSpinner spinner) {
+        return ((Number) spinner.getValue()).intValue();
     }
 
     // ── Toolbar actions ──

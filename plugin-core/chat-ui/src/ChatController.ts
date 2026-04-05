@@ -14,6 +14,8 @@ function _showNotification(title: string, body: string, actions?: { action: stri
 }
 
 const ChatController = {
+    _domMessageLimit: 80,
+
     _msgs(): HTMLElement {
         return document.querySelector('#messages')!;
     },
@@ -70,8 +72,8 @@ const ChatController = {
             const meta = document.createElement('message-meta');
             meta.className = 'meta';
             const ts = timestamp || (() => {
-                const now = new Date();
-                return String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                console.warn('[_ensureMsg] No timestamp provided for turn', turnId, '— showing placeholder');
+                return '--:--';
             })();
             const tsSpan = document.createElement('span');
             tsSpan.className = 'ts';
@@ -309,7 +311,7 @@ const ChatController = {
         // No-op: orphan handling removed; replaced by ToolChipRegistry correlation
     },
 
-    addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptHtml?: string): void {
+    addSubAgent(turnId: string, agentId: string, sectionId: string, displayName: string, colorIndex: number, promptHtml?: string, timestamp?: string): void {
         this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
@@ -330,8 +332,7 @@ const ChatController = {
         msg.classList.add('subagent-indent', 'subagent-c' + colorIndex);
         const meta = document.createElement('message-meta');
         meta.className = 'meta show';
-        const now = new Date();
-        const ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        const ts = timestamp || '--:--';
         const tsSpan = document.createElement('span');
         tsSpan.className = 'ts';
         tsSpan.textContent = ts;
@@ -659,10 +660,15 @@ const ChatController = {
         const rows = Array.from(msgs.children).filter(
             c => c.tagName === 'CHAT-MESSAGE'
         );
-        if (rows.length > 80) {
-            const trimCount = rows.length - 80;
+        const limit = this._domMessageLimit;
+        if (rows.length > limit) {
+            const trimCount = rows.length - limit;
             for (let i = 0; i < trimCount; i++) rows[i].remove();
         }
+    },
+
+    setDomMessageLimit(limit: number): void {
+        this._domMessageLimit = limit;
     },
 
     showNudgeBubble(id: string, text: string): void {

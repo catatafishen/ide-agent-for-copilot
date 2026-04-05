@@ -5,9 +5,12 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
 /**
- * Serialises [EntryData] lists to the on-disk JSON schema and deserialises them back.
+ * **V1 format — deprecated.** Retained only for reading legacy conversations
+ * and for the dual-write path until V1 is fully removed.
  *
- * This is the single source of truth for the conversation persistence format.
+ * New code should use V2 ([EntryDataConverter]) as the canonical persistence format.
+ *
+ * Serialises [EntryData] lists to the V1 on-disk JSON array schema and deserialises them back.
  * Neither file I/O nor rendering is performed here.
  */
 internal object ConversationSerializer {
@@ -26,6 +29,7 @@ internal object ConversationSerializer {
             is EntryData.Prompt -> {
                 obj.addProperty("type", "prompt")
                 obj.addProperty("text", e.text)
+                if (e.id.isNotEmpty()) obj.addProperty("id", e.id)
                 if (e.timestamp.isNotEmpty()) obj.addProperty("ts", e.timestamp)
                 if (!e.contextFiles.isNullOrEmpty()) {
                     val fa = JsonArray()
@@ -76,6 +80,7 @@ internal object ConversationSerializer {
                 obj.addProperty("result", e.result ?: "")
                 obj.addProperty("status", e.status ?: "")
                 obj.addProperty("colorIndex", e.colorIndex)
+                if (!e.callId.isNullOrEmpty()) obj.addProperty("callId", e.callId)
                 if (e.autoDenied) obj.addProperty("autoDenied", true)
                 if (!e.denialReason.isNullOrEmpty()) obj.addProperty("denialReason", e.denialReason)
                 if (e.timestamp.isNotEmpty()) obj.addProperty("ts", e.timestamp)
@@ -106,6 +111,7 @@ internal object ConversationSerializer {
                 obj.addProperty("agent", e.agent)
             }
         }
+        obj.addProperty("eid", e.entryId)
         return obj
     }
 
@@ -125,75 +131,94 @@ internal object ConversationSerializer {
         return result
     }
 
-    fun fromJson(obj: JsonObject): EntryData? = when (obj["type"]?.asString) {
-        "prompt" -> {
-            val ctxFiles = obj["ctxFiles"]?.asJsonArray?.map { f ->
-                val fo = f.asJsonObject
-                Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
+    fun fromJson(obj: JsonObject): EntryData? {
+        val eid = obj["eid"]?.asString ?: ""
+        return when (obj["type"]?.asString) {
+            "prompt" -> {
+                val ctxFiles = obj["ctxFiles"]?.asJsonArray?.map { f ->
+                    val fo = f.asJsonObject
+                    Triple(fo["name"]?.asString ?: "", fo["path"]?.asString ?: "", fo["line"]?.asInt ?: 0)
+                }
+                val id = obj["id"]?.asString ?: ""
+                EntryData.Prompt(
+                    obj["text"]?.asString ?: "",
+                    obj["ts"]?.asString ?: "",
+                    ctxFiles,
+                    id,
+                    entryId = eid.ifEmpty { id.ifEmpty { java.util.UUID.randomUUID().toString() } }
+                )
             }
-            EntryData.Prompt(obj["text"]?.asString ?: "", obj["ts"]?.asString ?: "", ctxFiles)
-        }
 
-        "text" -> EntryData.Text(
-            StringBuilder(obj["raw"]?.asString ?: ""),
-            obj["ts"]?.asString ?: "",
-            obj["agent"]?.asString ?: ""
-        )
+            "text" -> EntryData.Text(
+                StringBuilder(obj["raw"]?.asString ?: ""),
+                obj["ts"]?.asString ?: "",
+                obj["agent"]?.asString ?: "",
+                entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() }
+            )
 
-        "thinking" -> EntryData.Thinking(
-            StringBuilder(obj["raw"]?.asString ?: ""),
-            obj["ts"]?.asString ?: "",
-            obj["agent"]?.asString ?: ""
-        )
+            "thinking" -> EntryData.Thinking(
+                StringBuilder(obj["raw"]?.asString ?: ""),
+                obj["ts"]?.asString ?: "",
+                obj["agent"]?.asString ?: "",
+                entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() }
+            )
 
-        "tool" -> EntryData.ToolCall(
-            obj["title"]?.asString ?: "",
-            obj["args"]?.asString,
-            obj["kind"]?.asString ?: "other",
-            obj["result"]?.asString,
-            obj["status"]?.asString,
-            obj["description"]?.asString,
-            obj["filePath"]?.asString,
-            obj["autoDenied"]?.asBoolean ?: false,
-            obj["denialReason"]?.asString,
-            obj["mcpHandled"]?.asBoolean ?: false,
-            obj["ts"]?.asString ?: "",
-            obj["agent"]?.asString ?: ""
-        )
-
-        "subagent" -> {
-            val ci = obj["colorIndex"]?.asInt ?: 0
-            EntryData.SubAgent(
-                obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL,
-                obj["description"]?.asString ?: "",
-                obj["prompt"]?.asString?.ifEmpty { null },
-                obj["result"]?.asString?.ifEmpty { null },
-                obj["status"]?.asString?.ifEmpty { null } ?: "completed",
-                ci,
-                null,
+            "tool" -> EntryData.ToolCall(
+                obj["title"]?.asString ?: "",
+                obj["args"]?.asString,
+                obj["kind"]?.asString ?: "other",
+                obj["result"]?.asString,
+                obj["status"]?.asString,
+                obj["description"]?.asString,
+                obj["filePath"]?.asString,
                 obj["autoDenied"]?.asBoolean ?: false,
                 obj["denialReason"]?.asString,
+                obj["mcpHandled"]?.asBoolean ?: false,
                 obj["ts"]?.asString ?: "",
-                obj["agent"]?.asString ?: ""
+                obj["agent"]?.asString ?: "",
+                entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() }
             )
-        }
 
-        "context" -> {
-            val files = mutableListOf<Pair<String, String>>()
-            obj["files"]?.asJsonArray?.forEach { f ->
-                val fo = f.asJsonObject
-                files.add(fo["name"]?.asString.orEmpty() to fo["path"]?.asString.orEmpty())
+            "subagent" -> {
+                val ci = obj["colorIndex"]?.asInt ?: 0
+                EntryData.SubAgent(
+                    obj["agentType"]?.asString ?: AGENT_TYPE_GENERAL,
+                    obj["description"]?.asString ?: "",
+                    obj["prompt"]?.asString?.ifEmpty { null },
+                    obj["result"]?.asString?.ifEmpty { null },
+                    obj["status"]?.asString?.ifEmpty { null } ?: "completed",
+                    ci,
+                    obj["callId"]?.asString,
+                    obj["autoDenied"]?.asBoolean ?: false,
+                    obj["denialReason"]?.asString,
+                    obj["ts"]?.asString ?: "",
+                    obj["agent"]?.asString ?: "",
+                    entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() }
+                )
             }
-            EntryData.ContextFiles(files)
+
+            "context" -> {
+                val files = mutableListOf<Pair<String, String>>()
+                obj["files"]?.asJsonArray?.forEach { f ->
+                    val fo = f.asJsonObject
+                    files.add(fo["name"]?.asString.orEmpty() to fo["path"]?.asString.orEmpty())
+                }
+                EntryData.ContextFiles(files, entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() })
+            }
+
+            "status" -> EntryData.Status(
+                obj["icon"]?.asString ?: "ℹ",
+                obj["message"]?.asString ?: "",
+                entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() }
+            )
+
+            "separator" -> EntryData.SessionSeparator(
+                obj["timestamp"]?.asString ?: "",
+                obj["agent"]?.asString ?: "",
+                entryId = eid.ifEmpty { java.util.UUID.randomUUID().toString() }
+            )
+
+            else -> null
         }
-
-        "status" -> EntryData.Status(obj["icon"]?.asString ?: "ℹ", obj["message"]?.asString ?: "")
-
-        "separator" -> EntryData.SessionSeparator(
-            obj["timestamp"]?.asString ?: "",
-            obj["agent"]?.asString ?: ""
-        )
-
-        else -> null
     }
 }
