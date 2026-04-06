@@ -721,10 +721,17 @@ class ChatToolWindowContent(
                         promptTextArea.scrollRectToVisible(
                             Rectangle(converted.x, converted.y, 1, lineHeight)
                         )
-                        // Repaint after scroll: the deferred scroll shifts the viewport's clip
-                        // region before RepaintManager paints the selection dirty-regions, so
-                        // only the caret line gets painted with a selection highlight. A second
-                        // repaint with the final viewport position fixes all visible lines.
+                        // IntelliJ independently scrolls the editor's inner JViewport to the
+                        // caret via its own scroll-to-caret mechanism. Selection highlights are
+                        // clipped to whichever of the two viewports (inner/outer) covers less
+                        // content. By syncing the inner viewport's Y position to the outer
+                        // viewport's Y position after the outer scroll, both viewports show the
+                        // same region and all visually-exposed lines receive selection highlights.
+                        val outerViewport = promptTextArea.parent as? JViewport
+                        if (outerViewport != null) {
+                            editor.scrollPane.viewport.viewPosition =
+                                Point(0, outerViewport.viewPosition.y)
+                        }
                         editor.contentComponent.repaint()
                     }
                 }
