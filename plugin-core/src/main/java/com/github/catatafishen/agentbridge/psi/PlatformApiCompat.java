@@ -342,6 +342,20 @@ public final class PlatformApiCompat {
     }
 
     /**
+     * Returns {@code true} if the current IDE UI theme is dark.
+     *
+     * <p><b>Why extracted:</b> {@code UIThemeLookAndFeelInfo.isDark()} is only available from
+     * IntelliJ 2022.3+. The IDE daemon resolves {@code getCurrentUIThemeLookAndFeel()} to the
+     * SDK version in the dev IDE and flags {@code .isDark()} as unresolved in earlier-target
+     * builds. Gradle compiles without errors. Centralising the call here confines the
+     * false-positive daemon error to one place.</p>
+     */
+    public static boolean isCurrentThemeDark() {
+        return com.intellij.ide.ui.LafManager.getInstance()
+            .getCurrentUIThemeLookAndFeel().isDark();
+    }
+
+    /**
      * Navigates the VCS Log tool window to a specific commit by its full SHA hash.
      *
      * <p><b>Why extracted:</b> {@code com.intellij.vcs.log.Hash} and

@@ -559,19 +559,6 @@ public final class ChatWebServer implements Disposable {
         return java.nio.file.Path.of(configPath, "plugins", "intellij-copilot-plugin");
     }
 
-    /**
-     * Builds an SSLContext backed by a proper CA + server certificate chain.
-     *
-     * <ul>
-     *   <li>{@code ca.p12} — CA key pair + self-signed CA cert (CA:TRUE, long-lived).
-     *       The device installs this via {@code /cert.crt}.</li>
-     *   <li>{@code server.p12} — Server key pair + CA-signed server cert (CA:FALSE, serverAuth EKU,
-     *       SANs, short-lived). Presented during the HTTPS handshake.</li>
-     * </ul>
-     * <p>
-     * Certificates are regenerated when the server cert's SANs don't match the current LAN IPs
-     * or when the expected subject/SAN is missing (e.g. first run or upgrade from old format).
-     */
     private SSLContext buildSslContext() throws Exception {
         java.nio.file.Path pluginDir = getPluginDir();
         java.io.File caKsFile = pluginDir.resolve("ca.p12").toFile();
@@ -579,17 +566,23 @@ public final class ChatWebServer implements Disposable {
 
         List<String> localIps = collectLocalIpv4Addresses();
 
-        boolean needsRegen = !caKsFile.exists()
+        boolean caNeedsRegen = !caKsFile.exists();
+        boolean serverNeedsRegen = caNeedsRegen
             || !serverKsFile.exists()
             || !serverCertCoversAllIps(serverKsFile, localIps)
             || !serverCertHasExpectedSubject(serverKsFile);
 
-        if (needsRegen) {
-            LOG.info("[ChatWebServer] Generating CA + server certificates");
-            java.nio.file.Files.deleteIfExists(caKsFile.toPath());
+        if (caNeedsRegen) {
+            LOG.info("[ChatWebServer] Generating new CA + server certificates");
             java.nio.file.Files.deleteIfExists(serverKsFile.toPath());
             java.nio.file.Files.createDirectories(pluginDir);
             generateCaPlusServerCerts(pluginDir, caKsFile, serverKsFile, localIps);
+        } else if (serverNeedsRegen) {
+            // Preserve existing CA so devices that already installed it keep trusting us.
+            LOG.info("[ChatWebServer] Regenerating server certificate only (CA unchanged)");
+            java.nio.file.Files.deleteIfExists(serverKsFile.toPath());
+            java.nio.file.Files.createDirectories(pluginDir);
+            regenerateServerCert(pluginDir, caKsFile, serverKsFile, localIps);
         }
 
         // Load CA cert for device installation at /cert.crt
@@ -701,6 +694,94 @@ public final class ChatWebServer implements Disposable {
             });
 
             // 7. Import signed server cert — replaces the temp self-signed cert; chain: server → CA
+            runKeytool(new String[]{
+                "keytool", "-importcert",
+                "-alias", "server",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", serverCerFile.getAbsolutePath(),
+                "-noprompt"
+            });
+        } finally {
+            java.nio.file.Files.deleteIfExists(caExportFile.toPath());
+            java.nio.file.Files.deleteIfExists(serverCsrFile.toPath());
+            java.nio.file.Files.deleteIfExists(serverCerFile.toPath());
+        }
+    }
+
+    /**
+     * Regenerates only the server certificate, signed by the existing CA.
+     * <p>
+     * Call this when the server cert is stale (e.g., IPs changed) but the CA is still valid.
+     * Preserving the CA means devices that already installed the CA cert continue to trust us.
+     */
+    private static void regenerateServerCert(
+        java.nio.file.Path pluginDir,
+        java.io.File caKsFile,
+        java.io.File serverKsFile,
+        List<String> localIps) throws Exception {
+
+        java.io.File caExportFile = pluginDir.resolve("ca-export.der").toFile();
+        java.io.File serverCsrFile = pluginDir.resolve("server.csr").toFile();
+        java.io.File serverCerFile = pluginDir.resolve("server.cer").toFile();
+
+        try {
+            StringBuilder san = new StringBuilder("dns:localhost,dns:agentbridge.local,ip:127.0.0.1,ip:127.0.1.1");
+            for (String ip : localIps) san.append(",ip:").append(ip);
+
+            // 1. Generate server key pair (initially self-signed; replaced below)
+            runKeytool(new String[]{
+                "keytool", "-genkeypair",
+                "-alias", "server",
+                "-keyalg", "RSA", "-keysize", "2048", "-validity", "397",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD, "-keypass", KEYSTORE_PASSWORD,
+                "-dname", "CN=AgentBridge Server, O=AgentBridge, C=FI"
+            });
+
+            // 2. Generate CSR from server key
+            runKeytool(new String[]{
+                "keytool", "-certreq",
+                "-alias", "server",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", serverCsrFile.getAbsolutePath()
+            });
+
+            // 3. Sign server CSR with existing CA
+            runKeytool(new String[]{
+                "keytool", "-gencert",
+                "-alias", "ca",
+                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-infile", serverCsrFile.getAbsolutePath(),
+                "-outfile", serverCerFile.getAbsolutePath(),
+                "-validity", "397",
+                "-ext", "SAN=" + san,
+                "-ext", "EKU=serverAuth",
+                "-ext", "BC:critical=ca:false"
+            });
+
+            // 4. Export CA cert as DER so it can be imported as a trusted entry into the server keystore
+            runKeytool(new String[]{
+                "keytool", "-exportcert",
+                "-alias", "ca",
+                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", caExportFile.getAbsolutePath()
+            });
+
+            // 5. Import CA cert as trusted into server keystore — keytool needs this to build the chain
+            runKeytool(new String[]{
+                "keytool", "-importcert",
+                "-alias", "ca",
+                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
+                "-storepass", KEYSTORE_PASSWORD,
+                "-file", caExportFile.getAbsolutePath(),
+                "-noprompt", "-trustcacerts"
+            });
+
+            // 6. Import signed server cert — replaces the temp self-signed cert; chain: server → CA
             runKeytool(new String[]{
                 "keytool", "-importcert",
                 "-alias", "server",
@@ -1339,7 +1420,7 @@ public final class ChatWebServer implements Disposable {
 
     private String buildWebAppHtml() {
         String cssVars = ChatTheme.INSTANCE.buildCssVars();
-        boolean isDark = LafManager.getInstance().getCurrentUIThemeLookAndFeel().isDark();
+        boolean isDark = com.github.catatafishen.agentbridge.psi.PlatformApiCompat.isCurrentThemeDark();
         String bodyClass = isDark ? "dark" : "light";
 
         String activeProfile = ActiveAgentManager.getInstance(project).getActiveProfileId();
