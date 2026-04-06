@@ -613,7 +613,7 @@ class PromptOrchestrator(
 
         val uiStatus = when (status) {
             SessionUpdate.ToolCallStatus.COMPLETED -> "completed"
-            SessionUpdate.ToolCallStatus.FAILED -> update.error() ?: result ?: "Unknown error"
+            SessionUpdate.ToolCallStatus.FAILED -> "failed"
             else -> "running"
         }
 
