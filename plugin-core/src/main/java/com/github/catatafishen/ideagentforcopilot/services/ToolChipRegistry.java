@@ -69,14 +69,15 @@ public final class ToolChipRegistry {
         @NotNull String displayName,
         @Nullable String clientId,
         boolean pluginRegistered,
+        @Nullable String mcpToolName,
         long createdAt
     ) {
-        ChipEntry withPluginRegistration() {
-            return new ChipEntry(chipId, displayName, clientId, true, createdAt);
+        ChipEntry withPluginRegistration(@Nullable String mcpToolName) {
+            return new ChipEntry(chipId, displayName, clientId, true, mcpToolName, createdAt);
         }
 
         ChipEntry withClientId(@NotNull String id, @NotNull String name) {
-            return new ChipEntry(chipId, name, id, pluginRegistered, createdAt);
+            return new ChipEntry(chipId, name, id, pluginRegistered, mcpToolName, createdAt);
         }
     }
 
@@ -91,7 +92,7 @@ public final class ToolChipRegistry {
     private final List<ChipStateWithKindListener> kindListeners = new ArrayList<>();
 
     public interface ChipStateWithKindListener {
-        void stateChanged(@NotNull String chipId, @NotNull ChipState state, @Nullable String kind);
+        void stateChanged(@NotNull String chipId, @NotNull ChipState state, @Nullable String kind, @Nullable String mcpToolName);
     }
 
     public static ToolChipRegistry getInstance(@NotNull Project project) {
@@ -124,7 +125,7 @@ public final class ToolChipRegistry {
                 return new ChipRegistration(mcpFirstByName.chipId(), ChipState.RUNNING);
             }
             String chipId = "c-" + clientId.replaceAll("[^a-zA-Z0-9]", "-");
-            ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
+            ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, null, System.currentTimeMillis());
             chips.put(chipId, entry);
             clientToChip.put(clientId, chipId);
             LOG.debug("ToolChipRegistry: null-args chip " + chipId + " (" + displayTitle + ")");
@@ -151,7 +152,7 @@ public final class ToolChipRegistry {
         // New chip — assign chipId with collision counter
         int count = hashCounts.merge(baseHash, 1, Integer::sum);
         String chipId = count == 1 ? baseHash : baseHash + "-" + count;
-        ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, System.currentTimeMillis());
+        ChipEntry entry = new ChipEntry(chipId, displayTitle, clientId, false, null, System.currentTimeMillis());
         chips.put(chipId, entry);
         clientToChip.put(clientId, chipId);
         LOG.debug("ToolChipRegistry: client-first chip " + chipId + " (" + displayTitle + ")");
@@ -182,9 +183,9 @@ public final class ToolChipRegistry {
             if (chipId != null) {
                 ChipEntry entry = chips.get(chipId);
                 if (entry != null && !entry.pluginRegistered()) {
-                    chips.put(chipId, entry.withPluginRegistration());
+                    chips.put(chipId, entry.withPluginRegistration(toolName));
                     LOG.info("ToolChipRegistry [MCP→Server]: ✓ DIRECT toolUseId=" + toolUseId + " → chip=" + chipId + " tool=" + toolName);
-                    fireState(chipId, ChipState.RUNNING, kind);
+                    fireState(chipId, ChipState.RUNNING, kind, toolName);
                     return;
                 }
             }
@@ -200,18 +201,18 @@ public final class ToolChipRegistry {
         // Find the newest unmatched client-side chip (newest = last in insertion order)
         ChipEntry target = findNewestUnmatchedClientChip(baseHash);
         if (target != null) {
-            chips.put(target.chipId(), target.withPluginRegistration());
+            chips.put(target.chipId(), target.withPluginRegistration(toolName));
             LOG.info("ToolChipRegistry [MCP→Server]: ✓ MATCHED client chip " + target.chipId() + " for tool=" + toolName);
-            fireState(target.chipId(), ChipState.RUNNING, kind);
+            fireState(target.chipId(), ChipState.RUNNING, kind, toolName);
             return;
         }
 
         // MCP arrived first — store for when client-side arrives
         LOG.info("ToolChipRegistry [MCP→Server]: MCP-first chip for tool=" + toolName + " hash=" + baseHash);
-        ChipEntry entry = new ChipEntry(baseHash, toolName, null, true, System.currentTimeMillis());
+        ChipEntry entry = new ChipEntry(baseHash, toolName, null, true, toolName, System.currentTimeMillis());
         chips.put(baseHash, entry);
         // Fire RUNNING immediately so UI creates solid-border chip (MCP tools always get solid border)
-        fireState(baseHash, ChipState.RUNNING, kind);
+        fireState(baseHash, ChipState.RUNNING, kind, toolName);
         LOG.debug("ToolChipRegistry: MCP-first " + baseHash + " (" + toolName + ")");
     }
 
@@ -237,7 +238,7 @@ public final class ToolChipRegistry {
             state = ChipState.EXTERNAL;
         }
         LOG.debug("ToolChipRegistry: complete " + chipId + " → " + state);
-        fireState(chipId, state);
+        fireState(chipId, state, null, entry != null ? entry.mcpToolName() : null);
     }
 
     /**
@@ -296,7 +297,7 @@ public final class ToolChipRegistry {
         // No MCP-first chip - create new client chip with new args
         int count = hashCounts.merge(newHash, 1, Integer::sum);
         String newChipId = count == 1 ? newHash : newHash + "-" + count;
-        ChipEntry entry = new ChipEntry(newChipId, toolName, clientId, false, System.currentTimeMillis());
+        ChipEntry entry = new ChipEntry(newChipId, toolName, clientId, false, null, System.currentTimeMillis());
         chips.put(newChipId, entry);
         clientToChip.put(clientId, newChipId);
         LOG.debug("ToolChipRegistry: re-registered with new args " + newChipId + " for " + toolName);
@@ -396,10 +397,14 @@ public final class ToolChipRegistry {
     }
 
     private void fireState(@NotNull String chipId, @NotNull ChipState state) {
-        fireState(chipId, state, null);
+        fireState(chipId, state, null, null);
     }
 
     private void fireState(@NotNull String chipId, @NotNull ChipState state, @Nullable String kind) {
+        fireState(chipId, state, kind, null);
+    }
+
+    private void fireState(@NotNull String chipId, @NotNull ChipState state, @Nullable String kind, @Nullable String mcpToolName) {
         List<BiConsumer<String, ChipState>> snapshot;
         List<ChipStateWithKindListener> kindSnapshot;
         synchronized (this) {
@@ -418,7 +423,7 @@ public final class ToolChipRegistry {
             }
             for (var listener : kindSnapshot) {
                 try {
-                    listener.stateChanged(chipId, state, kind);
+                    listener.stateChanged(chipId, state, kind, mcpToolName);
                 } catch (Exception e) {
                     LOG.warn("ToolChipRegistry kind listener error", e);
                 }
