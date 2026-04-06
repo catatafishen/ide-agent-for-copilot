@@ -721,6 +721,11 @@ class ChatToolWindowContent(
                         promptTextArea.scrollRectToVisible(
                             Rectangle(converted.x, converted.y, 1, lineHeight)
                         )
+                        // Repaint after scroll: the deferred scroll shifts the viewport's clip
+                        // region before RepaintManager paints the selection dirty-regions, so
+                        // only the caret line gets painted with a selection highlight. A second
+                        // repaint with the final viewport position fixes all visible lines.
+                        editor.contentComponent.repaint()
                     }
                 }
             })
