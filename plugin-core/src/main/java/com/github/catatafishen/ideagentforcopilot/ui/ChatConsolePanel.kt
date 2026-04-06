@@ -50,14 +50,14 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private val fileNavigator = FileNavigator(project)
 
-    private val kindStateListener = ToolChipRegistry.ChipStateWithKindListener { chipId, state, kind ->
+    private val kindStateListener = ToolChipRegistry.ChipStateWithKindListener { chipId, state, kind, mcpToolName ->
         // Use "t-$chipId" — chips are registered in the DOM as data-chip-for="t-<chipId>"
         val did = "t-$chipId"
         if (state == ToolChipRegistry.ChipState.RUNNING) {
             // MCP is handling this tool — mark as agentbridge tool (solid border) and set running
             executeJs("ChatController.markMcpHandled('$did')")
             // Mark the entry as MCP handled for persistence
-            toolCallEntries[did]?.pluginTool = toolCallNames[did]
+            toolCallEntries[did]?.pluginTool = mcpToolName ?: toolCallNames[did]
         } else {
             // COMPLETE, EXTERNAL, FAILED — just remove the spinner; border already shows origin
             val jsState = if (state == ToolChipRegistry.ChipState.FAILED) "failed" else "complete"
