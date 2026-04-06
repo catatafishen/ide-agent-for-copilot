@@ -31,7 +31,8 @@ export default class SubagentChip extends HTMLElement {
 
     private _render(): void {
         const label = this.getAttribute('label') || '';
-        const status = this.getAttribute('status') || 'running';
+        const rawStatus = this.getAttribute('status') || 'running';
+        const status = rawStatus.replaceAll(/\s+/g, '-');
         const display = label.length > 50 ? label.substring(0, 47) + '\u2026' : label;
         this.className = this.className.replaceAll(/\bstatus-\S+/g, '').trim();
         this.classList.add(`status-${status}`);

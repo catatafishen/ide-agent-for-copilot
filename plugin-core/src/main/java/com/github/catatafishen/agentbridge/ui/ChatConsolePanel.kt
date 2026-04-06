@@ -773,6 +773,21 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private var batchIdCounter = 0
 
+    /**
+     * Normalize a stored chip status string to a valid [ChipStatus] CSS class token.
+     * Any non-canonical value (e.g. "Unknown error" from a legacy session) falls back
+     * to [ChipStatus.FAILED] so that `classList.add("status-${value}")` never crashes.
+     */
+    private fun normalizeChipStatus(raw: String?): String {
+        return when (raw) {
+            ChipStatus.PENDING, ChipStatus.RUNNING, ChipStatus.COMPLETE,
+            ChipStatus.FAILED, ChipStatus.DENIED, ChipStatus.THINKING -> raw
+
+            null -> ChipStatus.COMPLETE
+            else -> ChipStatus.FAILED
+        }
+    }
+
     private fun serializeBatchTurns(entries: List<EntryData>): String {
         val turns = mutableListOf<Map<String, Any?>>()
         var i = 0
@@ -887,7 +902,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 val title = e.title.trim('\'', '"')
                 val label = toolChipTitle(title, e.arguments)
                 val id = "batch-tool-${batchIdCounter++}"
-                val status = e.status ?: ChipStatus.COMPLETE
+                val status = normalizeChipStatus(e.status)
                 toolCallNames[id] = title
                 toolCallEntries[id] = EntryData.ToolCall(
                     title, e.arguments, e.kind,
