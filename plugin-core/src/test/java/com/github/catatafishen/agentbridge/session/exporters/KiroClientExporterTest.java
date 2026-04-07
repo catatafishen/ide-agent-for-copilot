@@ -455,6 +455,41 @@ class KiroClientExporterTest {
     }
 
     @Test
+    void singleTurnHistoryExceedingBudgetIsTrimedByDroppingOldestToolRounds() {
+        // Single user message followed by many tool-call rounds — no second Prompt to trim by.
+        // The fallback must drop the oldest AssistantMessage+ToolResults pairs until within budget.
+        List<EntryData> entries = new ArrayList<>();
+        entries.add(userPrompt("Do lots of work"));
+        // Add enough tool-call rounds to exceed the 400K-char budget.
+        // Each round: assistantText + toolCall with ~5KB result → ~6KB per round.
+        // 100 rounds ≈ 600KB > 400KB.
+        String bigResult = "x".repeat(5_000);
+        for (int i = 0; i < 100; i++) {
+            entries.add(assistantText("Step " + i));
+            entries.add(toolCall("read_file", "{}", bigResult));
+        }
+        entries.add(assistantText("Done!"));
+
+        List<JsonObject> kiroMessages = KiroClientExporter.toKiroMessages(entries);
+
+        assertFalse(kiroMessages.isEmpty(), "Messages must not be empty after trim");
+        assertEquals("Prompt", kiroMessages.getFirst().get("kind").getAsString(),
+            "Must still start with the single Prompt");
+        // Structural validity: no consecutive same-kind messages
+        for (int i = 0; i < kiroMessages.size() - 1; i++) {
+            String a = kiroMessages.get(i).get("kind").getAsString();
+            String b = kiroMessages.get(i + 1).get("kind").getAsString();
+            assertNotEquals(a, b, "Consecutive same-kind messages at " + i + ": " + a);
+        }
+        // Must be within the 400K budget
+        int totalChars = kiroMessages.stream()
+            .mapToInt(m -> new com.google.gson.GsonBuilder().create().toJson(m).length())
+            .sum();
+        assertTrue(totalChars <= 400_000,
+            "Trimmed history must be within 400K chars budget, was: " + totalChars);
+    }
+
+    @Test
     void thinkingEntryIsSkippedInExport() {
         // Thinking blocks must NOT be included in Kiro exported sessions.
         // Anthropic's API rejects conversation history with thinking blocks unless extended

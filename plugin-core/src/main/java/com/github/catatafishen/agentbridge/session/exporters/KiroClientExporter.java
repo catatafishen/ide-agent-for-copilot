@@ -372,16 +372,17 @@ public final class KiroClientExporter {
     }
 
     /**
-     * Drops the oldest complete user-turn blocks from the front of {@code messages}
-     * until the total serialized character count is within {@link #MAX_TOTAL_HISTORY_CHARS}.
+     * Drops the oldest complete conversation blocks from {@code messages} until the total
+     * serialized character count is within {@link #MAX_TOTAL_HISTORY_CHARS}.
      *
-     * <p>A "user-turn block" is everything from one {@code Prompt} up to (but not including)
-     * the next {@code Prompt}. Dropping the block preserves the structural validity of the
-     * remaining history because each surviving block still starts with a {@code Prompt} and
-     * has matching {@code AssistantMessage}/{@code ToolResults} pairs.</p>
+     * <p><b>Multi-turn sessions (multiple Prompts):</b> drops the oldest user-turn block
+     * (everything from one {@code Prompt} up to the next). This is the common case.</p>
      *
-     * <p>If fewer than two {@code Prompt} messages remain, no further trimming is performed.
-     * This guarantees the history always starts with at least one user message.</p>
+     * <p><b>Single-turn sessions (one Prompt):</b> drops the oldest {@code AssistantMessage}
+     * and its immediately following {@code ToolResults} (if any), keeping the initial Prompt
+     * and at least one {@code AssistantMessage}. This handles long single-turn sessions where
+     * the assistant makes many tool-call rounds — without this fallback the history would
+     * exceed the Anthropic API context limit and produce "invalid conversation history".</p>
      */
     private static void trimToSizeBudget(@NotNull List<JsonObject> messages) {
         int totalChars = 0;
@@ -404,20 +405,63 @@ public final class KiroClientExporter {
                 }
             }
 
-            if (secondPromptIdx == -1) {
+            if (secondPromptIdx != -1) {
+                // Multi-turn: drop everything before the second Prompt.
+                int charsDropped = 0;
+                for (int i = 0; i < secondPromptIdx; i++) {
+                    charsDropped += GSON.toJson(messages.get(i)).length();
+                }
+                LOG.warn("Kiro export: trimming " + secondPromptIdx
+                    + " oldest messages (" + charsDropped + " chars) — history was "
+                    + totalChars + " chars, budget is " + MAX_TOTAL_HISTORY_CHARS);
+                messages.subList(0, secondPromptIdx).clear();
+                totalChars -= charsDropped;
+                continue;
+            }
+
+            // Single-turn fallback: only one Prompt remains, but still over budget.
+            // Drop the oldest AssistantMessage (plus the following ToolResults if any)
+            // while keeping the Prompt and at least one AssistantMessage.
+            // The Prompt is always at index 0 here; the oldest AssistantMessage is at index 1.
+            int firstAssistantIdx = -1;
+            for (int i = 1; i < messages.size(); i++) {
+                if (KIND_ASSISTANT_MESSAGE.equals(messages.get(i).get("kind").getAsString())) {
+                    firstAssistantIdx = i;
+                    break;
+                }
+            }
+            if (firstAssistantIdx == -1) {
                 LOG.warn("Kiro export: history exceeds budget (" + totalChars
-                    + " chars) but only one Prompt remains — cannot trim further");
+                    + " chars) but no AssistantMessage found to drop — cannot trim further");
                 break;
             }
 
+            // Count how many AssistantMessages remain (excluding the one we're about to drop).
+            long remainingAssistants = messages.stream()
+                .filter(m -> KIND_ASSISTANT_MESSAGE.equals(m.get("kind").getAsString()))
+                .count() - 1;
+            if (remainingAssistants < 1) {
+                LOG.warn("Kiro export: history exceeds budget (" + totalChars
+                    + " chars) but only one AssistantMessage remains — cannot trim further");
+                break;
+            }
+
+            // Drop: AssistantMessage at firstAssistantIdx, plus the immediately following
+            // ToolResults (if any), so tool-call pairs are always removed together.
+            int dropEnd = firstAssistantIdx + 1;
+            if (dropEnd < messages.size()
+                && KIND_TOOL_RESULTS.equals(messages.get(dropEnd).get("kind").getAsString())) {
+                dropEnd++;
+            }
+
             int charsDropped = 0;
-            for (int i = 0; i < secondPromptIdx; i++) {
+            for (int i = firstAssistantIdx; i < dropEnd; i++) {
                 charsDropped += GSON.toJson(messages.get(i)).length();
             }
-            LOG.warn("Kiro export: trimming " + secondPromptIdx
-                + " oldest messages (" + charsDropped + " chars) — history was "
+            LOG.warn("Kiro export: single-turn trim: dropping " + (dropEnd - firstAssistantIdx)
+                + " oldest tool-call round(s) (" + charsDropped + " chars) — history was "
                 + totalChars + " chars, budget is " + MAX_TOTAL_HISTORY_CHARS);
-            messages.subList(0, secondPromptIdx).clear();
+            messages.subList(firstAssistantIdx, dropEnd).clear();
             totalChars -= charsDropped;
         }
     }
