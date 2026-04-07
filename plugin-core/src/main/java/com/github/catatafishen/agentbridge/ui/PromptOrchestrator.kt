@@ -77,6 +77,7 @@ class PromptOrchestrator(
     private var turnOutputTokens = 0
     private var turnCostUsd: Double? = null
     private var turnModelId = ""
+
     /**
      * Stack of currently active sub-agent call IDs, ordered by start time (oldest first).
      *
@@ -625,9 +626,9 @@ class PromptOrchestrator(
         val isInternal = callType == "subagent_internal"
 
         val uiStatus = when (status) {
-            SessionUpdate.ToolCallStatus.COMPLETED -> "completed"
-            SessionUpdate.ToolCallStatus.FAILED -> "failed"
-            else -> "running"
+            SessionUpdate.ToolCallStatus.COMPLETED -> MessageFormatter.ChipStatus.COMPLETE
+            SessionUpdate.ToolCallStatus.FAILED -> MessageFormatter.ChipStatus.FAILED
+            else -> MessageFormatter.ChipStatus.RUNNING
         }
 
         updateToolCallUi(

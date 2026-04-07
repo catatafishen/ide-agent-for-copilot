@@ -787,7 +787,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             ChipStatus.PENDING, ChipStatus.RUNNING, ChipStatus.COMPLETE,
             ChipStatus.FAILED, ChipStatus.DENIED, ChipStatus.THINKING -> raw
 
-            null -> ChipStatus.COMPLETE
+            null, "completed" -> ChipStatus.COMPLETE
             else -> ChipStatus.FAILED
         }
     }
