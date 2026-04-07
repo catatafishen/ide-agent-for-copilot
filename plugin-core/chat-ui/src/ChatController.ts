@@ -506,15 +506,9 @@ const ChatController = {
     },
 
     setPromptStats(model: string, multiplier: string): void {
-        const rows = document.querySelectorAll('.prompt-row');
-        const row = rows[rows.length - 1];
+        const row = this._lastAgentRow();
         if (!row) return;
-        let meta = row.querySelector('message-meta');
-        if (!meta) {
-            meta = document.createElement('message-meta');
-            row.insertBefore(meta, row.firstChild);
-        }
-        meta.classList.add('show');
+        const meta = this._ensureStatsFooter(row);
         const chip = document.createElement('span');
         chip.className = 'turn-chip stats';
         chip.textContent = multiplier;
@@ -524,16 +518,25 @@ const ChatController = {
     },
 
     setCodeChangeStats(added: number, removed: number): void {
-        const rows = document.querySelectorAll('.prompt-row');
-        const row = rows[rows.length - 1];
+        const row = this._lastAgentRow();
         if (!row) return;
-        let meta = row.querySelector('message-meta');
+        const meta = this._ensureStatsFooter(row);
+        (meta as any).setCodeChangeStats(added, removed);
+    },
+
+    _lastAgentRow(): Element | null {
+        const rows = document.querySelectorAll('.agent-row');
+        return rows[rows.length - 1] ?? null;
+    },
+
+    _ensureStatsFooter(agentRow: Element): HTMLElement {
+        let meta = agentRow.querySelector('message-meta.stats-footer') as HTMLElement | null;
         if (!meta) {
             meta = document.createElement('message-meta');
-            row.insertBefore(meta, row.firstChild);
+            meta.classList.add('stats-footer', 'show');
+            agentRow.appendChild(meta);
         }
-        meta.classList.add('show');
-        (meta as any).setCodeChangeStats(added, removed);
+        return meta;
     },
 
     setCurrentProfile(profileId: string): void {
