@@ -72,6 +72,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         if (kind != null) {
             val jsKind = kind.replace("'", "\\'")
             executeJs("ChatController.updateToolCallKind('$did','$jsKind')")
+            toolCallEntries[did]?.kind = kind
         }
     }
 
