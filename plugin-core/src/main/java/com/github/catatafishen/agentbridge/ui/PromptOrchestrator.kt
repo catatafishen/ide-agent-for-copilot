@@ -77,7 +77,19 @@ class PromptOrchestrator(
     private var turnOutputTokens = 0
     private var turnCostUsd: Double? = null
     private var turnModelId = ""
-    private var activeSubAgentId: String? = null
+    /**
+     * Stack of currently active sub-agent call IDs, ordered by start time (oldest first).
+     *
+     * The ACP protocol does not include a parentToolCallId in sub-agent internal tool calls —
+     * attribution is based purely on temporal ordering (internal calls arrive between the
+     * sub-agent's start and complete events). A stack handles the serial case perfectly
+     * (one entry) and gives best-effort attribution for parallel sub-agents (attributes to
+     * the most recently started one, since we have no protocol data to do better).
+     */
+    private val activeSubAgentStack = ArrayDeque<String>()
+
+    /** The most recently started sub-agent call ID still in-flight, or null if none. */
+    private val activeSubAgentId: String? get() = activeSubAgentStack.lastOrNull()
     private val toolCallTitles = mutableMapOf<String, String>()
     private val toolCallArgs = mutableMapOf<String, String>() // arguments from tool_call_update
     private var pendingBanner: PendingBanner? = null
@@ -240,7 +252,7 @@ class PromptOrchestrator(
         turnOutputTokens = 0
         turnCostUsd = null
         turnHadContent = false
-        activeSubAgentId = null
+        activeSubAgentStack.clear()
         turnModelId = selectedModelId
         CodeChangeTracker.clear()
 
@@ -561,7 +573,7 @@ class PromptOrchestrator(
             turnToolCallCount++
             callbacks.onTimerIncrementToolCalls()
             toolCallTitles[toolCallId] = "task"
-            activeSubAgentId = toolCallId
+            activeSubAgentStack.addLast(toolCallId)
             agentManager.client.setSubAgentActive(true)
             PsiBridgeService.getInstance(project).setNudgesHeld(true)
             agentManager.settings.setActiveAgentLabel(agentType)
@@ -654,15 +666,17 @@ class PromptOrchestrator(
                 // calling updateSubAgentResult here would prematurely complete the chip in the JS layer.
                 return
             }
-            activeSubAgentId = null
-            agentManager.client.setSubAgentActive(false)
-            PsiBridgeService.getInstance(project).setNudgesHeld(false)
-            agentManager.settings.setActiveAgentLabel(null)
-            consolePanel().setCurrentAgent(
-                agentManager.activeProfile.displayName,
-                agentManager.activeProfile.id,
-                agentManager.activeProfile.clientCssClass
-            )
+            activeSubAgentStack.remove(toolCallId)
+            if (activeSubAgentStack.isEmpty()) {
+                agentManager.client.setSubAgentActive(false)
+                PsiBridgeService.getInstance(project).setNudgesHeld(false)
+                agentManager.settings.setActiveAgentLabel(null)
+                consolePanel().setCurrentAgent(
+                    agentManager.activeProfile.displayName,
+                    agentManager.activeProfile.id,
+                    agentManager.activeProfile.clientCssClass
+                )
+            }
             consolePanel().updateSubAgentResult(toolCallId, uiStatus, result, description, autoDenied, denialReason)
         } else if (isInternal) {
             consolePanel().updateSubAgentToolCall(toolCallId, uiStatus, result, description, autoDenied, denialReason)
