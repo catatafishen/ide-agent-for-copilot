@@ -204,6 +204,12 @@ chat-container {
 
 
 /* ── Agent response ──────────────────────────────────── */
+
+chat-message {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
+}
+
 .agent-row {
     display: block;
     margin: var(--sp-2) 0;

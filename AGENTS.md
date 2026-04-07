@@ -81,6 +81,16 @@ When fixing a bug, **always fix the root cause, not just the symptom**.
 - **Prefer visible errors over invisible wrong behavior.** A crash or error message that leads to
   a fix is always better than silently wrong output that nobody notices.
 
+# Plugin Development Best Practices for Performance
+
+If developing a plugin, adhere to these guidelines to avoid performance degradation:
+
+- **Avoid Expensive PSI Operations:** Avoid `getText()` and `getTextRange()` on large files, as
+  they traverse the entire tree. Use `textMatches()` or `textLength` instead.
+- **Background Tasks:** All heavy processing (networking, file I/O, heavy computation) must be
+  offloaded to background threads. Never hold the UI thread.
+- **Cache Information:** Store PSI data in `UserData` or use custom indexes to avoid recomputing data.
+
 # Agent Definition Formats
 
 Different ACP agents support custom agent definitions with tool filtering, but use different formats.

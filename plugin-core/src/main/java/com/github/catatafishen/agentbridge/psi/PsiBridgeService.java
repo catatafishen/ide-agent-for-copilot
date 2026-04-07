@@ -67,6 +67,13 @@ public final class PsiBridgeService implements Disposable {
     private final java.util.concurrent.Semaphore writeToolSemaphore = new java.util.concurrent.Semaphore(1);
     private final WriteBatchCoordinator writeBatchCoordinator = new WriteBatchCoordinator(writeToolSemaphore);
 
+    /**
+     * Cached chat tool window activation state, updated asynchronously via {@code invokeLater}.
+     * Read from any thread; written only on the EDT. Using volatile for safe cross-thread reads.
+     * The value may lag by one tool call — acceptable for focus-restoration heuristics.
+     */
+    private volatile boolean chatToolWindowActiveCache;
+
     private final Project project;
     private final ToolRegistry registry;
     private final java.util.Set<String> sessionAllowedTools =
@@ -215,12 +222,7 @@ public final class PsiBridgeService implements Disposable {
 
         // Track if chat tool window is active before the tool call.
         // Only restore focus afterward if it was active before (don't steal focus if user switched away).
-        // Must query on the EDT — invokeAndWait is safe here because we are on a pooled/MCP thread.
-        final boolean[] chatActiveHolder = {false};
-        ApplicationManager.getApplication().invokeAndWait(() ->
-            chatActiveHolder[0] = isChatToolWindowActive(project)
-        );
-        boolean chatWasActive = chatActiveHolder[0];
+        boolean chatWasActive = isChatToolWindowActive(project);
 
         // Determine if this tool requires synchronous execution (file/git/editing tools).
         boolean requiresSync = def.category() != null && SYNC_TOOL_CATEGORIES.contains(def.category().name());
@@ -414,20 +416,24 @@ public final class PsiBridgeService implements Disposable {
     /**
      * Checks if the AgentBridge chat tool window is currently active (has focus).
      * <p>
-     * <b>Must be called on the EDT.</b> Used by tools to decide whether to request
-     * editor focus when opening files — if the chat is active, tools should not
-     * steal focus so that user keystrokes stay in the prompt.
+     * Thread-safe: reads a volatile cache that is refreshed asynchronously on the EDT.
+     * The cached value may lag by one tool call — acceptable for focus-restoration heuristics.
      */
     public static boolean isChatToolWindowActive(@NotNull Project project) {
-        try {
-            com.intellij.openapi.wm.ToolWindowManager toolWindowManager =
-                com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
-            com.intellij.openapi.wm.ToolWindow toolWindow = toolWindowManager.getToolWindow("AgentBridge");
-            return toolWindow != null && toolWindow.isActive();
-        } catch (Exception e) {
-            LOG.debug("Failed to check chat tool window state", e);
-            return false;
-        }
+        PsiBridgeService service = getInstance(project);
+        if (service == null) return false;
+        // Refresh cache asynchronously — result available for the next caller
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                com.intellij.openapi.wm.ToolWindowManager twm =
+                    com.intellij.openapi.wm.ToolWindowManager.getInstance(project);
+                com.intellij.openapi.wm.ToolWindow tw = twm.getToolWindow("AgentBridge");
+                service.chatToolWindowActiveCache = tw != null && tw.isActive();
+            } catch (Exception e) {
+                LOG.debug("Failed to refresh chat tool window state", e);
+            }
+        });
+        return service.chatToolWindowActiveCache;
     }
 
     /**

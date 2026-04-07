@@ -674,7 +674,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         registry.clearTurn()
 
         executeJs("ChatController.finalizeTurn('$currentTurnId',$statsJson)")
-        ApplicationManager.getApplication().invokeLater { browser?.component?.repaint() }
         ChatWebServer.getInstance(project)
             ?.pushNotification("Turn complete", "Agent finished ($toolCallCount tool calls)")
     }
@@ -1093,7 +1092,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 .info("executeJs (ready): $short")
             browser?.cefBrowser?.let { cef ->
                 cef.executeJavaScript(js, "", 0)
-                cef.invalidate()
             }
         } else {
             com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
