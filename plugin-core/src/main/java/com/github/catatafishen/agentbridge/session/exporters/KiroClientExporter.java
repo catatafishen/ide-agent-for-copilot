@@ -272,6 +272,17 @@ public final class KiroClientExporter {
         // Kiro may also reject consecutive AssistantMessages. Merge them by concatenating content.
         mergeConsecutiveAssistantMessages(result);
 
+        // If history ends with ToolResults, a new session/prompt would produce consecutive user-role
+        // messages (ToolResults + new Prompt), which Anthropic rejects as invalid conversation history.
+        // Insert a placeholder AssistantMessage to close the tool round cleanly.
+        if (!result.isEmpty()
+            && KIND_TOOL_RESULTS.equals(result.getLast().get("kind").getAsString())) {
+            LOG.warn("Kiro export: history ends with ToolResults; inserting placeholder AssistantMessage");
+            JsonArray content = new JsonArray();
+            content.add(textContentBlock("(Tool calls completed)"));
+            result.add(wrapMessage(KIND_ASSISTANT_MESSAGE, UUID.randomUUID().toString(), content));
+        }
+
         return result;
     }
 
