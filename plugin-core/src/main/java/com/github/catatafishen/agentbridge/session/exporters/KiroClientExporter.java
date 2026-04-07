@@ -44,10 +44,11 @@ public final class KiroClientExporter {
 
     /**
      * Maximum characters allowed per individual tool result in the exported history.
-     * Large file reads / search results are truncated to this limit to prevent the
-     * context window from being filled by a single historical tool call.
+     * Results larger than this are replaced with an omission placeholder rather than
+     * being silently truncated mid-content. Truncating mid-content corrupts the semantic
+     * meaning of the history; a clear placeholder is less misleading.
      */
-    private static final int MAX_TOOL_RESULT_CHARS = 4_000;
+    private static final int MAX_TOOL_RESULT_CHARS = 50_000;
 
     /**
      * Maximum total character budget for the exported conversation history.
@@ -215,13 +216,12 @@ public final class KiroClientExporter {
                 String argsStr = toolCall.getArguments() != null ? toolCall.getArguments() : "{}";
                 String resultStr = toolCall.getResult() != null ? toolCall.getResult() : "";
 
-                // Truncate large tool results — raw file reads and search dumps can be hundreds
-                // of KB each. In exported history the agent no longer needs the raw content
-                // (it already acted on it); a summary stub preserves conversation structure
-                // without inflating the context window past Anthropic's limit.
+                // Replace oversized tool results with an omission placeholder. Truncating
+                // mid-content would corrupt the semantic meaning of the history; a clear
+                // placeholder tells the agent what happened without misleading it.
                 if (resultStr.length() > MAX_TOOL_RESULT_CHARS) {
-                    resultStr = resultStr.substring(0, MAX_TOOL_RESULT_CHARS)
-                        + "\n[... truncated for context window ...]";
+                    resultStr = "[result omitted: " + resultStr.length()
+                        + " chars exceeds single-result limit of " + MAX_TOOL_RESULT_CHARS + "]";
                 }
 
                 JsonObject inputObj;

@@ -393,10 +393,10 @@ class KiroClientExporterTest {
     }
 
     @Test
-    void largeToolResultIsTruncated() {
-        // Tool results exceeding MAX_TOOL_RESULT_CHARS (4000 chars) should be truncated so that
-        // the exported history stays within Anthropic's context window limit.
-        String largeResult = "x".repeat(10_000);
+    void largeToolResultIsReplacedWithPlaceholder() {
+        // Tool results exceeding MAX_TOOL_RESULT_CHARS (50_000 chars) should be replaced with
+        // an omission placeholder, not silently truncated mid-content.
+        String largeResult = "x".repeat(60_000);
         List<JsonObject> kiroMessages = KiroClientExporter.toKiroMessages(
             List.of(
                 userPrompt("read big file"),
@@ -404,7 +404,7 @@ class KiroClientExporterTest {
                 toolCall("read_file", "{}", largeResult)
             ));
 
-        // The ToolResults at index 2 should have the result truncated
+        // The ToolResults at index 2 should have the result replaced
         JsonObject trMsg = kiroMessages.get(2);
         assertEquals("ToolResults", trMsg.get("kind").getAsString());
 
@@ -418,9 +418,9 @@ class KiroClientExporterTest {
             .getAsJsonArray("content")
             .get(0).getAsJsonObject();
         String resultText = resultEntry.get("text").getAsString();
-        assertTrue(resultText.length() < largeResult.length(),
-            "Tool result should be truncated but was same length: " + resultText.length());
-        assertTrue(resultText.contains("truncated"), "Truncation marker should be present");
+        assertTrue(resultText.contains("result omitted"), "Omission placeholder should be present");
+        assertTrue(resultText.contains("60000"), "Placeholder should include original size");
+        assertTrue(resultText.length() < largeResult.length(), "Placeholder should be shorter than original");
     }
 
     @Test
