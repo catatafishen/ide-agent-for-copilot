@@ -44,7 +44,8 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
 
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
             is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${formatTimestamp(e.timestamp)} ---")
-            is EntryData.TurnStats -> {}
+            is EntryData.TurnStats -> { /* aggregated stats only, not part of conversation text */ }
+            is EntryData.Nudge -> if (e.sent) sb.appendLine(">>> [Nudge] ${e.text}")
         }
         return sb.toString()
     }
@@ -135,6 +136,7 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
                 is EntryData.ContextFiles,
                 is EntryData.SessionSeparator,
                 is EntryData.Status,
+                is EntryData.Nudge,
                 is EntryData.TurnStats -> { /* not relevant for turn grouping */
                 }
             }
@@ -249,6 +251,7 @@ ul,ol{margin:4px 0;padding-left:22px}
         }</div>\n"
 
         is EntryData.TurnStats -> ""
+        is EntryData.Nudge -> if (e.sent) "<div class='prompt'><span class='prompt-b'>[Nudge] ${escapeHtml(e.text)}</span></div>\n" else ""
     }
 
     private fun renderExportToolCall(e: EntryData.ToolCall): String {

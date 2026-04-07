@@ -2652,6 +2652,16 @@ chat-message[data-agent] {
     color: var(--warning);
 }
 
+/* Spinner inside the nudge pending label uses warning color */
+.nudge-spinner {
+    border-top-color: var(--warning);
+}
+
+/* Sent nudge label (shown on session replay) */
+.nudge-sent-label {
+    opacity: 0.7;
+}
+
 .nudge-cancel-btn {
     margin-top: var(--sp-2);
     font-size: 0.82em;

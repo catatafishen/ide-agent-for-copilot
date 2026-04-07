@@ -64,7 +64,13 @@ interface SeparatorTurn {
     agent: string;
 }
 
-type BatchTurn = UserTurn | AgentTurn | SeparatorTurn;
+interface NudgeSentTurn {
+    type: 'nudge_sent';
+    html: string;
+    timestamp: string;
+}
+
+type BatchTurn = UserTurn | AgentTurn | SeparatorTurn | NudgeSentTurn;
 
 // ── Public API ──────────────────────────────────────────────
 
@@ -85,6 +91,9 @@ export function renderBatchFragment(encodedJson: string): DocumentFragment {
                 break;
             case 'separator':
                 fragment.appendChild(_renderSeparator(turn));
+                break;
+            case 'nudge_sent':
+                fragment.appendChild(_renderNudgeSentTurn(turn));
                 break;
         }
     }
@@ -163,6 +172,27 @@ function _renderSeparator(turn: SeparatorTurn): HTMLElement {
     el.setAttribute('timestamp', turn.timestamp);
     el.setAttribute('agent', turn.agent);
     return el;
+}
+
+/** Renders a sent nudge as a user message with a "Nudge" meta label. */
+function _renderNudgeSentTurn(turn: NudgeSentTurn): HTMLElement {
+    const msg = document.createElement('chat-message');
+    msg.setAttribute('type', 'user');
+    msg.classList.add('nudge-sent');
+
+    const meta = document.createElement('message-meta');
+    const label = document.createElement('span');
+    label.className = 'ts nudge-sent-label';
+    label.textContent = turn.timestamp ? `Nudge · ${turn.timestamp}` : 'Nudge';
+    meta.appendChild(label);
+    msg.appendChild(meta);
+
+    const bubble = document.createElement('message-bubble');
+    bubble.setAttribute('type', 'user');
+    bubble.innerHTML = turn.html;
+    msg.appendChild(bubble);
+
+    return msg;
 }
 
 // ── Entry renderers ─────────────────────────────────────────

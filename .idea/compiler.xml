@@ -5,6 +5,18 @@
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="agentbridge.integration-tests" options="-parameters" />
+      <module name="agentbridge.integration-tests.main" options="-parameters" />
+      <module name="agentbridge.integration-tests.test" options="-parameters" />
+      <module name="agentbridge.mcp-server" options="-parameters" />
+      <module name="agentbridge.mcp-server.main" options="-parameters" />
+      <module name="agentbridge.mcp-server.test" options="-parameters" />
+      <module name="agentbridge.plugin-core" options="-parameters -Xlint:deprecation" />
+      <module name="agentbridge.plugin-core.main" options="-parameters -Xlint:deprecation" />
+      <module name="agentbridge.plugin-core.test" options="-parameters -Xlint:deprecation" />
+      <module name="agentbridge.plugin-experimental" options="-parameters -Xlint:deprecation" />
+      <module name="agentbridge.plugin-experimental.main" options="-parameters -Xlint:deprecation" />
+      <module name="agentbridge.plugin-experimental.test" options="-parameters -Xlint:deprecation" />
       <module name="com.github.catatafishen.ideagentforcopilot.ide-agent-for-copilot.plugin-core" options="-parameters -Xlint:deprecation" />
       <module name="com.github.catatafishen.ideagentforcopilot.ide-agent-for-copilot.plugin-core.main" options="-parameters -Xlint:deprecation" />
       <module name="com.github.catatafishen.ideagentforcopilot.ide-agent-for-copilot.plugin-core.test" options="-parameters -Xlint:deprecation" />
