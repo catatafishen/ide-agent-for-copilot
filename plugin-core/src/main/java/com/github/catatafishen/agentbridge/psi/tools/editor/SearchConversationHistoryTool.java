@@ -79,7 +79,7 @@ public final class SearchConversationHistoryTool extends EditorTool {
 
     @Override
     public @NotNull Kind kind() {
-        return Kind.READ;
+        return Kind.SEARCH;
     }
 
     @Override
@@ -428,8 +428,8 @@ public final class SearchConversationHistoryTool extends EditorTool {
 
         String lowerQuery = options.query;
         long matchCount = lowerQuery == null ? 1 : result.lines()
-            .filter(l -> l.toLowerCase(Locale.ROOT).contains(lowerQuery))
-            .count();
+                                                   .filter(l -> l.toLowerCase(Locale.ROOT).contains(lowerQuery))
+                                                   .count();
         sb.append("── ").append(label).append(" (").append(matchCount).append(" matches) ──\n");
         sb.append(result).append("\n");
         return (int) matchCount;

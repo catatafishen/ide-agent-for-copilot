@@ -38,13 +38,12 @@ public final class MoveFileTool extends FileTool {
         return "Move a file to a different directory";
     }
 
-    
-
     @Override
     public @NotNull Kind kind() {
-        return Kind.EDIT;
+        return Kind.MOVE;
     }
-@Override
+
+    @Override
     public @NotNull String permissionTemplate() {
         return "Move {path} → {destination}";
     }

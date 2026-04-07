@@ -40,13 +40,12 @@ public final class DeleteFileTool extends FileTool {
         return "Delete a file from the project via IntelliJ";
     }
 
-
-
     @Override
     public @NotNull Kind kind() {
-        return Kind.EXECUTE;
+        return Kind.DELETE;
     }
-@Override
+
+    @Override
     public boolean isDestructive() {
         return true;
     }

@@ -47,13 +47,12 @@ public final class SearchSymbolsTool extends NavigationTool {
         return "Search for classes, methods, or fields by name using IntelliJ's symbol index";
     }
 
-
-
     @Override
     public @NotNull Kind kind() {
-        return Kind.READ;
+        return Kind.SEARCH;
     }
-@Override
+
+    @Override
     public boolean isReadOnly() {
         return true;
     }
