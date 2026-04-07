@@ -802,6 +802,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     i++
                 }
 
+                is EntryData.Nudge -> {
+                    // Only sent nudges appear in replay; pending ones are transient UI state.
+                    if (e.sent) turns.add(serializeNudgeTurn(e))
+                    i++
+                }
+
                 is EntryData.SessionSeparator -> {
                     turns.add(
                         mapOf(
@@ -837,6 +843,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         )
     }
 
+    private fun serializeNudgeTurn(e: EntryData.Nudge): Map<String, Any?> =
+        mapOf(
+            "type" to "nudge_sent",
+            "html" to esc(e.text),
+            "timestamp" to displayTs(e.timestamp)
+        )
+
+    /** Adds a sent nudge entry to the in-memory entries list for persistence. */
+    override fun addNudgeEntry(id: String, text: String) {
+        val ts = java.time.Instant.now().toString()
+        entries.add(EntryData.Nudge(text = text, id = id, sent = true, timestamp = ts))
+    }
+
     private fun serializeAgentTurn(
         entries: List<EntryData>, startI: Int
     ): Pair<Map<String, Any?>, Int> {
@@ -862,7 +881,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
         while (i < entries.size) {
             val e = entries[i]
-            if (e is EntryData.Prompt || e is EntryData.SessionSeparator || e is EntryData.Status) break
+            if (e is EntryData.Prompt || e is EntryData.Nudge || e is EntryData.SessionSeparator || e is EntryData.Status) break
             if (e is EntryData.ContextFiles || e is EntryData.TurnStats) {
                 i++; continue
             }

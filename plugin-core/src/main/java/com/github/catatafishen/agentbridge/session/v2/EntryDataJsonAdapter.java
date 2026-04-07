@@ -32,6 +32,7 @@ public final class EntryDataJsonAdapter {
     public static final String TYPE_STATUS = "status";
     public static final String TYPE_SEPARATOR = "separator";
     public static final String TYPE_TURN_STATS = "turnStats";
+    public static final String TYPE_NUDGE = "nudge";
 
     private EntryDataJsonAdapter() {
         throw new IllegalStateException("Utility class");
@@ -168,6 +169,14 @@ public final class EntryDataJsonAdapter {
             addNonEmpty(json, "timestamp", sep.getTimestamp());
             addNonEmpty(json, "agent", sep.getAgent());
             json.addProperty("entryId", sep.getEntryId());
+
+        } else if (entry instanceof EntryData.Nudge n) {
+            json.addProperty("type", TYPE_NUDGE);
+            json.addProperty("text", n.getText());
+            json.addProperty("id", n.getId());
+            if (n.getSent()) json.addProperty("sent", true);
+            addNonEmpty(json, "timestamp", n.getTimestamp());
+            json.addProperty("entryId", n.getEntryId());
         }
 
         return json;
@@ -293,6 +302,12 @@ public final class EntryDataJsonAdapter {
                 intVal(json, "totalToolCalls"),
                 intVal(json, "totalLinesAdded"),
                 intVal(json, "totalLinesRemoved"),
+                entryId);
+            case TYPE_NUDGE -> new EntryData.Nudge(
+                str(json, "text"),
+                str(json, "id"),
+                bool(json, "sent"),
+                str(json, "timestamp"),
                 entryId);
             default -> {
                 LOG.debug("Skipping unknown entry type during deserialization: " + type);

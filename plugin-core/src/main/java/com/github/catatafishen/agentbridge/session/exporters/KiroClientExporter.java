@@ -239,11 +239,13 @@ public final class KiroClientExporter {
                 seenToolUse = true;
 
             }
-            // Skip Thinking, SubAgent, Status, TurnStats, ContextFiles, SessionSeparator.
+            // Skip Thinking, SubAgent, Status, TurnStats, ContextFiles, SessionSeparator, Nudge.
             // Note: Thinking is intentionally excluded — Anthropic rejects conversation history
             // containing thinking blocks unless extended thinking is explicitly enabled in the
             // session. Kiro does not enable extended thinking when resuming from exported history,
             // so including thinking blocks causes an immediate panic on session/prompt.
+            // Nudge entries represent mid-turn user guidance injected into tool results; they are
+            // not standalone user messages and must not be included in exported history.
         }
 
         // Flush remaining

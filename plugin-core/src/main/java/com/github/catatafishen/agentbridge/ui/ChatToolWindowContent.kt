@@ -850,9 +850,16 @@ class ChatToolWindowContent(
         psiBridge.setPendingNudge(rawText)
         val resolveId = pendingNudgeId!!
         psiBridge.setOnNudgeConsumed {
+            val capturedText = pendingNudgeText
             pendingNudgeId = null
             pendingNudgeText = null
-            ApplicationManager.getApplication().invokeLater { consolePanel.resolveNudgeBubble(resolveId) }
+            ApplicationManager.getApplication().invokeLater {
+                consolePanel.resolveNudgeBubble(resolveId)
+                if (capturedText != null) {
+                    consolePanel.addNudgeEntry(resolveId, capturedText)
+                    appendNewEntries()
+                }
+            }
         }
     }
 
@@ -1565,10 +1572,17 @@ class ChatToolWindowContent(
                         psiBridge.setPendingNudge(text)
                         val resolveId = pendingNudgeId!!
                         psiBridge.setOnNudgeConsumed {
+                            val capturedText = pendingNudgeText
                             pendingNudgeId = null
                             pendingNudgeText = null
                             ApplicationManager.getApplication()
-                                .invokeLater { consolePanel.resolveNudgeBubble(resolveId) }
+                                .invokeLater {
+                                    consolePanel.resolveNudgeBubble(resolveId)
+                                    if (capturedText != null) {
+                                        consolePanel.addNudgeEntry(resolveId, capturedText)
+                                        appendNewEntries()
+                                    }
+                                }
                         }
                     }
                 }

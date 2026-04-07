@@ -143,6 +143,20 @@ sealed class EntryData {
         val agent: String = "",
         override val entryId: String = java.util.UUID.randomUUID().toString()
     ) : EntryData()
+
+    /**
+     * A nudge message sent by the user while the agent was running.
+     * Pending nudges are transient (not persisted); once [sent] is true the entry is
+     * persisted and replayed as a user-visible message in the conversation history.
+     * Nudge entries are excluded from all agent/client session exports.
+     */
+    data class Nudge @JvmOverloads constructor(
+        val text: String,
+        val id: String,
+        val sent: Boolean = false,
+        override val timestamp: String = "",
+        override val entryId: String = java.util.UUID.randomUUID().toString()
+    ) : EntryData()
 }
 
 // ── Tool / sub-agent metadata ─────────────────────────────────────────────────

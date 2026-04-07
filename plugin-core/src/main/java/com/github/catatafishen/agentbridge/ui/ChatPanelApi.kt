@@ -158,6 +158,7 @@ interface ChatPanelApi : Disposable {
     fun showNudgeBubble(id: String, text: String)
     fun resolveNudgeBubble(id: String)
     fun removeNudgeBubble(id: String)
+    fun addNudgeEntry(id: String, text: String)
 
     fun showQueuedMessage(id: String, text: String)
     fun removeQueuedMessage(id: String)

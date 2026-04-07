@@ -158,7 +158,7 @@ public final class AnthropicClientExporter {
                     currentModel = entryModel;
                 }
             }
-            // Skip Status, TurnStats, ContextFiles, SessionSeparator
+            // Skip Status, TurnStats, ContextFiles, SessionSeparator, Nudge
         }
 
         // Flush remaining

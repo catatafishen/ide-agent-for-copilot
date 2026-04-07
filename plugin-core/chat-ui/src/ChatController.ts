@@ -666,7 +666,7 @@ const ChatController = {
         msg.setAttribute('type', 'user');
         msg.classList.add('nudge-pending');
         const meta = document.createElement('message-meta');
-        meta.innerHTML = '<span class="ts nudge-label">⏳ Nudge (pending)</span>';
+        meta.innerHTML = '<span class="ts nudge-label"><span class="chip-spinner nudge-spinner"></span> Nudge (pending)</span>';
         msg.appendChild(meta);
         const bubble = document.createElement('message-bubble');
         bubble.setAttribute('type', 'user');
@@ -678,7 +678,13 @@ const ChatController = {
         cancelBtn.textContent = '✕ Cancel nudge';
         cancelBtn.onclick = () => (globalThis as any)._bridge?.cancelNudge(id);
         msg.appendChild(cancelBtn);
-        this._msgs().appendChild(msg);
+        // Insert before the first queued message so nudge appears above queued messages.
+        const firstQueued = this._msgs().querySelector('.message-queued');
+        if (firstQueued) {
+            this._msgs().insertBefore(msg, firstQueued);
+        } else {
+            this._msgs().appendChild(msg);
+        }
         this._container()?.scrollIfNeeded();
     },
 
