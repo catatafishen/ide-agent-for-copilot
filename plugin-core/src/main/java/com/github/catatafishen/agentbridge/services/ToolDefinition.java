@@ -42,11 +42,28 @@ public interface ToolDefinition {
          */
         READ,
         /**
+         * Search/query operation (symbol lookup, text search, find references).
+         * Rendered with the same color as READ in the UI.
+         * Included in ALL, Explore, and Edit agent sets.
+         */
+        SEARCH,
+        /**
          * Mutates IDE state (file edits, refactoring, settings) — included in ALL and Edit.
          */
         EDIT,
         /**
-         * Mutates debug state (stepping, breakpoints) — included in ALL only.
+         * Deletes a file or resource. Rendered with the same color as EDIT in the UI.
+         * Included in ALL and Edit agent sets.
+         */
+        DELETE,
+        /**
+         * Moves or renames a file or resource. Rendered with the same color as EDIT in the UI.
+         * Included in ALL and Edit agent sets.
+         */
+        MOVE,
+        /**
+         * Mutates debug state (stepping, breakpoints). Rendered with the same color as EDIT in the UI.
+         * Included in ALL only.
          */
         WRITE,
         /**

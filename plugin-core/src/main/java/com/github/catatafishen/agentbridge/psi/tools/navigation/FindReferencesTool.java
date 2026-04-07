@@ -41,13 +41,12 @@ public final class FindReferencesTool extends NavigationTool {
         return "Find all usages of a symbol throughout the project";
     }
 
-
-
     @Override
     public @NotNull Kind kind() {
-        return Kind.READ;
+        return Kind.SEARCH;
     }
-@Override
+
+    @Override
     public boolean isReadOnly() {
         return true;
     }

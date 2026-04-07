@@ -484,6 +484,15 @@ working-indicator .working-text {
     border-color: color-mix(in srgb, var(--kind-edit) 22%, transparent);
 }
 
+/* write, delete, move share the edit color */
+.turn-chip.kind-write,
+.turn-chip.kind-delete,
+.turn-chip.kind-move {
+    color: var(--kind-edit);
+    background: color-mix(in srgb, var(--kind-edit) 10%, transparent);
+    border-color: color-mix(in srgb, var(--kind-edit) 22%, transparent);
+}
+
 .turn-chip.kind-execute {
     color: var(--kind-execute);
     background: color-mix(in srgb, var(--kind-execute) 10%, transparent);
@@ -539,6 +548,13 @@ working-indicator .working-text {
 }
 
 .turn-chip.kind-edit:hover {
+    background: color-mix(in srgb, var(--kind-edit) 18%, transparent);
+    border-color: color-mix(in srgb, var(--kind-edit) 32%, transparent);
+}
+
+.turn-chip.kind-write:hover,
+.turn-chip.kind-delete:hover,
+.turn-chip.kind-move:hover {
     background: color-mix(in srgb, var(--kind-edit) 18%, transparent);
     border-color: color-mix(in srgb, var(--kind-edit) 32%, transparent);
 }

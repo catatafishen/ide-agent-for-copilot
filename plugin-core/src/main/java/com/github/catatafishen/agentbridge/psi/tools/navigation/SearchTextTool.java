@@ -70,7 +70,7 @@ public final class SearchTextTool extends NavigationTool {
 
     @Override
     public @NotNull Kind kind() {
-        return Kind.READ;
+        return Kind.SEARCH;
     }
 
     @Override
