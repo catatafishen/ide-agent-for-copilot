@@ -34,6 +34,78 @@ function _formatTokens(n: number): string {
     return Math.round(n / 1000) + 'k';
 }
 
+/** Build a turn-summary-bar element: a horizontal rule with stats centered. */
+function _buildTurnSummaryBar(stats: {
+    duration: number; inputTokens: number; outputTokens: number;
+    tools: number; added: number; removed: number;
+    model: string; multiplier?: string;
+}): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'turn-summary-bar';
+
+    const lineL = document.createElement('span');
+    lineL.className = 'turn-summary-line';
+    const lineR = document.createElement('span');
+    lineR.className = 'turn-summary-line';
+    const label = document.createElement('span');
+    label.className = 'turn-summary-label';
+
+    const parts: Array<string | HTMLElement> = [];
+
+    if (stats.model) {
+        const name = stats.model.includes('/') ? stats.model.split('/').pop()! : stats.model;
+        parts.push(name);
+    }
+
+    if (stats.added > 0 || stats.removed > 0) {
+        const diffEl = document.createElement('span');
+        if (stats.added > 0) {
+            const a = document.createElement('span');
+            a.className = 'diff-add';
+            a.textContent = '+' + stats.added;
+            diffEl.appendChild(a);
+        }
+        if (stats.removed > 0) {
+            if (stats.added > 0) diffEl.appendChild(document.createTextNode('\u2009'));
+            const d = document.createElement('span');
+            d.className = 'diff-del';
+            d.textContent = '\u2212' + stats.removed;
+            diffEl.appendChild(d);
+        }
+        parts.push(diffEl);
+    }
+
+    if (stats.inputTokens > 0 || stats.outputTokens > 0) {
+        parts.push(_formatTokens(stats.inputTokens) + '/' + _formatTokens(stats.outputTokens) + ' tok');
+    }
+
+    if (stats.tools > 0) {
+        parts.push(stats.tools + (stats.tools === 1 ? ' tool' : ' tools'));
+    }
+
+    if (stats.multiplier) {
+        parts.push(stats.multiplier);
+    }
+
+    const dur = _formatDuration(stats.duration);
+    if (dur) parts.push(dur);
+
+    const sep = ' \u2014 ';
+    parts.forEach((part, i) => {
+        if (i > 0) label.appendChild(document.createTextNode(sep));
+        if (typeof part === 'string') {
+            label.appendChild(document.createTextNode(part));
+        } else {
+            label.appendChild(part);
+        }
+    });
+
+    bar.appendChild(lineL);
+    bar.appendChild(label);
+    bar.appendChild(lineR);
+    return bar;
+}
+
 const ChatController = {
     _domMessageLimit: 80,
 
@@ -559,75 +631,18 @@ const ChatController = {
         tools: number; added: number; removed: number;
         model: string; multiplier?: string;
     }): void {
+        // Remove ALL live stats footers across every agent row (the footer may be
+        // stranded on an earlier row if new segments were added after the last
+        // setCodeChangeStats call).
+        document.querySelectorAll('message-meta.stats-footer').forEach(el => el.remove());
+
         const row = this._lastAgentRow();
         if (!row) return;
 
-        // Remove any live stats footer from this row
-        row.querySelectorAll('message-meta.stats-footer').forEach(el => el.remove());
-        // Remove any previous summary bar (shouldn't exist but guard anyway)
+        // Remove any previous summary bar (guard against double-emit)
         row.querySelectorAll('.turn-summary-bar').forEach(el => el.remove());
 
-        const bar = document.createElement('div');
-        bar.className = 'turn-summary-bar';
-
-        const parts: Array<string | HTMLElement> = ['Turn complete'];
-
-        // Model name (use short form after last '/')
-        if (stats.model) {
-            const name = stats.model.includes('/') ? stats.model.split('/').pop()! : stats.model;
-            parts.push(name);
-        }
-
-        // Diff: +N −N with colors
-        if (stats.added > 0 || stats.removed > 0) {
-            const diffEl = document.createElement('span');
-            if (stats.added > 0) {
-                const a = document.createElement('span');
-                a.className = 'diff-add';
-                a.textContent = '+' + stats.added;
-                diffEl.appendChild(a);
-            }
-            if (stats.removed > 0) {
-                if (stats.added > 0) diffEl.appendChild(document.createTextNode('\u2009'));
-                const d = document.createElement('span');
-                d.className = 'diff-del';
-                d.textContent = '\u2212' + stats.removed;
-                diffEl.appendChild(d);
-            }
-            parts.push(diffEl);
-        }
-
-        // Tokens
-        if (stats.inputTokens > 0 || stats.outputTokens > 0) {
-            parts.push(_formatTokens(stats.inputTokens) + ' / ' + _formatTokens(stats.outputTokens) + ' tokens');
-        }
-
-        // Tool count
-        if (stats.tools > 0) {
-            parts.push(stats.tools + (stats.tools === 1 ? ' tool' : ' tools'));
-        }
-
-        // Multiplier (e.g. "5x")
-        if (stats.multiplier) {
-            parts.push(stats.multiplier);
-        }
-
-        // Duration
-        const dur = _formatDuration(stats.duration);
-        if (dur) parts.push(dur);
-
-        // Assemble with em-dash separators
-        const sep = ' \u2014 ';
-        parts.forEach((part, i) => {
-            if (i > 0) bar.appendChild(document.createTextNode(sep));
-            if (typeof part === 'string') {
-                bar.appendChild(document.createTextNode(part));
-            } else {
-                bar.appendChild(part);
-            }
-        });
-
-        row.appendChild(bar);
+        row.appendChild(_buildTurnSummaryBar(stats));
     },
 
     _lastAgentRow(): Element | null {

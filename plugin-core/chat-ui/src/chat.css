@@ -344,16 +344,25 @@ working-indicator .working-text {
     display: none !important;
 }
 
-/* ── Turn summary bar (replaces chip-based stats footer) ── */
+/* ── Turn summary bar (horizontal rule with centered stats) ── */
 .turn-summary-bar {
-    font-size: 0.78em;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    margin: var(--sp-4) 0 var(--sp-1) 0;
+    opacity: 0.45;
+}
+
+.turn-summary-line {
+    flex: 1;
+    height: 1px;
+    background: var(--think-a30);
+}
+
+.turn-summary-label {
+    font-size: 0.75em;
     color: var(--think);
-    opacity: 0.65;
-    margin-top: var(--sp-2);
-    padding: var(--sp-1) 0;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     letter-spacing: 0.01em;
 }
 

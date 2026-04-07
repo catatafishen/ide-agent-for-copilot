@@ -706,7 +706,16 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             )
         )
         // Render the turn summary footer in the chat panel
-        val statsJson = buildTurnSummaryJson(durationMs, inputTokens, outputTokens, toolCallCount, linesAdded, linesRemoved, model, multiplier)
+        val statsJson = buildTurnSummaryJson(
+            durationMs,
+            inputTokens,
+            outputTokens,
+            toolCallCount,
+            linesAdded,
+            linesRemoved,
+            model,
+            multiplier
+        )
         executeJs("ChatController.renderTurnSummary($statsJson)")
     }
 
@@ -852,6 +861,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                     turns.add(serializeTurnStatsTurn(e))
                     i++
                 }
+
                 else -> {
                     val (turn, nextI) = serializeAgentTurn(entries, i)
                     turns.add(turn)
@@ -929,7 +939,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         while (i < entries.size) {
             val e = entries[i]
             if (e is EntryData.Prompt || e is EntryData.Nudge || e is EntryData.SessionSeparator
-                || e is EntryData.Status || e is EntryData.TurnStats) break
+                || e is EntryData.Status || e is EntryData.TurnStats
+            ) break
             if (e is EntryData.ContextFiles) {
                 i++; continue
             }

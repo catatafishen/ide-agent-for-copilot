@@ -271,9 +271,19 @@ function _appendStatsToLastAgent(fragment: DocumentFragment, stats: StatsTurn): 
     const agents = fragment.querySelectorAll('chat-message[type="agent"]');
     const lastAgent = agents[agents.length - 1];
     if (!lastAgent) return;
+    lastAgent.appendChild(_buildStatBar(stats));
+}
 
+function _buildStatBar(stats: StatsTurn): HTMLElement {
     const bar = document.createElement('div');
     bar.className = 'turn-summary-bar';
+
+    const lineL = document.createElement('span');
+    lineL.className = 'turn-summary-line';
+    const lineR = document.createElement('span');
+    lineR.className = 'turn-summary-line';
+    const label = document.createElement('span');
+    label.className = 'turn-summary-label';
 
     const totalSec = Math.round(stats.duration / 1000);
     let dur = '';
@@ -287,7 +297,7 @@ function _appendStatsToLastAgent(fragment: DocumentFragment, stats: StatsTurn): 
     const fmt = (n: number): string =>
         n < 1000 ? String(n) : n < 10000 ? (n / 1000).toFixed(1) + 'k' : Math.round(n / 1000) + 'k';
 
-    const parts: Array<string | HTMLElement> = ['Turn complete'];
+    const parts: Array<string | HTMLElement> = [];
 
     if (stats.model) {
         const name = stats.model.includes('/') ? stats.model.split('/').pop()! : stats.model;
@@ -313,7 +323,7 @@ function _appendStatsToLastAgent(fragment: DocumentFragment, stats: StatsTurn): 
     }
 
     if (stats.inputTokens > 0 || stats.outputTokens > 0) {
-        parts.push(fmt(stats.inputTokens) + ' / ' + fmt(stats.outputTokens) + ' tokens');
+        parts.push(fmt(stats.inputTokens) + '/' + fmt(stats.outputTokens) + ' tok');
     }
 
     if (stats.tools > 0) {
@@ -328,13 +338,16 @@ function _appendStatsToLastAgent(fragment: DocumentFragment, stats: StatsTurn): 
 
     const sep = ' \u2014 ';
     parts.forEach((part, i) => {
-        if (i > 0) bar.appendChild(document.createTextNode(sep));
+        if (i > 0) label.appendChild(document.createTextNode(sep));
         if (typeof part === 'string') {
-            bar.appendChild(document.createTextNode(part));
+            label.appendChild(document.createTextNode(part));
         } else {
-            bar.appendChild(part);
+            label.appendChild(part);
         }
     });
 
-    lastAgent.appendChild(bar);
+    bar.appendChild(lineL);
+    bar.appendChild(label);
+    bar.appendChild(lineR);
+    return bar;
 }
