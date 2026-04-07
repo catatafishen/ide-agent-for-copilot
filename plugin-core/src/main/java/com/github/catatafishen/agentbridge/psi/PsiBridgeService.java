@@ -65,6 +65,7 @@ public final class PsiBridgeService implements Disposable {
     private static final Set<String> SYNC_TOOL_CATEGORIES = Set.of("FILE", "EDITING", "REFACTOR", "GIT");
     private final Map<String, ReentrantLock> toolLocks = new ConcurrentHashMap<>();
     private final java.util.concurrent.Semaphore writeToolSemaphore = new java.util.concurrent.Semaphore(1);
+    private final WriteBatchCoordinator writeBatchCoordinator = new WriteBatchCoordinator(writeToolSemaphore);
 
     private final Project project;
     private final ToolRegistry registry;
@@ -229,10 +230,33 @@ public final class PsiBridgeService implements Disposable {
         // via invokeLater can saturate the EDT queue and cause the IDE to freeze.
         // Sync-category tools (FILE, EDITING, REFACTOR, GIT) also use per-tool locks for ordering.
         boolean needsGlobalLock = !def.isReadOnly();
+
+        // Track whether this is a write operation that should participate in batch draining.
+        // Write tools register with WriteBatchCoordinator BEFORE acquiring the semaphore so
+        // earlier writes can see them as "pending" and defer highlight collection.
+        boolean isWriteOp = needsGlobalLock && isWriteToolName(toolName);
+        // Tracks whether registerWrite() was called but unregisterWrite() hasn't been yet.
+        // Ensures exactly one unregister per register across all exit paths.
+        boolean writeRegistered = false;
+        if (isWriteOp) {
+            writeBatchCoordinator.registerWrite();
+            writeRegistered = true;
+        }
+
         if (needsGlobalLock) {
             String lockError = acquireWriteLock(toolName, startMs);
-            if (lockError != null) return lockError;
+            if (lockError != null) {
+                if (writeRegistered) {
+                    writeBatchCoordinator.unregisterWrite();
+                    writeRegistered = false;
+                }
+                return lockError;
+            }
         }
+
+        // Track whether we released the semaphore early to drain pending writes.
+        // When true, the finally block must NOT release the semaphore again.
+        boolean semaphoreReleasedEarly = false;
 
         // Subscribe to daemon events BEFORE the write to avoid the race where
         // the daemon finishes before we subscribe and we miss the event entirely.
@@ -253,6 +277,10 @@ public final class PsiBridgeService implements Disposable {
             ? new DaemonWaiter(project, vfForHighlights, preWriteStamp) : null) {
             String denied = checkPluginToolPermission(toolName, arguments);
             if (denied != null) {
+                if (writeRegistered) {
+                    writeBatchCoordinator.unregisterWrite();
+                    writeRegistered = false;
+                }
                 fireToolCallEvent(toolName, startMs, false);
                 return denied;
             }
@@ -272,10 +300,32 @@ public final class PsiBridgeService implements Disposable {
                 if (syncLock != null) syncLock.unlock();
             }
 
-            // Piggyback highlights after successful write operations
+            // Mark this write as complete — no longer "pending" from the coordinator's perspective.
+            if (writeRegistered) {
+                writeBatchCoordinator.unregisterWrite();
+                writeRegistered = false;
+            }
+
+            // Piggyback highlights after successful write operations.
+            //
+            // WRITE BATCH DRAINING: When multiple write tool calls are queued (e.g., the agent
+            // sends 3 edits in one turn), earlier writes may produce false-positive highlights
+            // if collected immediately — e.g., "unused method" after edit 1 adds a method, even
+            // though edit 2 will call it. To avoid this, we check whether other writes are still
+            // pending. If so, we release the semaphore to let them execute first, then collect
+            // highlights that reflect the final state after all writes.
+            // See WriteBatchCoordinator for full documentation.
             if (isSuccessfulWrite(toolName, result) && daemonWaiter != null) {
-                LOG.info("Auto-highlights: piggybacking on write to " + filePathForHighlights);
-                result = appendAutoHighlights(result, filePathForHighlights, daemonWaiter);
+                if (writeBatchCoordinator.hasPendingWrites()) {
+                    LOG.info("Auto-highlights: deferring for " + filePathForHighlights
+                        + " — draining " + writeBatchCoordinator.getPendingCount() + " pending write(s)");
+                    writeBatchCoordinator.drainPendingWrites();
+                    semaphoreReleasedEarly = true;
+                    result = collectPostDrainHighlights(result, filePathForHighlights, vfForHighlights);
+                } else {
+                    LOG.info("Auto-highlights: piggybacking on write to " + filePathForHighlights);
+                    result = appendAutoHighlights(result, filePathForHighlights, daemonWaiter);
+                }
             }
             // Append pending nudge (user guidance injected on next tool call)
             String nudge = consumePendingNudge();
@@ -285,10 +335,12 @@ public final class PsiBridgeService implements Disposable {
             return result;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
             success = false;
+            if (writeRegistered) writeBatchCoordinator.unregisterWrite();
             return "Error: IDE is busy, please retry. " + e.getMessage();
         } catch (Exception e) {
             LOG.warn("Tool call error: " + toolName, e);
             success = false;
+            if (writeRegistered) writeBatchCoordinator.unregisterWrite();
             String modalDetail = EdtUtil.describeModalBlocker();
             String base = "Error: " + e.getMessage();
             if (!modalDetail.isEmpty()) {
@@ -297,7 +349,7 @@ public final class PsiBridgeService implements Disposable {
             }
             return base;
         } finally {
-            if (needsGlobalLock) writeToolSemaphore.release();
+            if (needsGlobalLock && !semaphoreReleasedEarly) writeToolSemaphore.release();
             fireToolCallEvent(toolName, startMs, success);
             // Only restore focus if chat was active before the tool call
             if (chatWasActive) {
@@ -589,22 +641,7 @@ public final class PsiBridgeService implements Disposable {
     private String appendAutoHighlights(String writeResult, String path, DaemonWaiter preWriteWaiter) {
         com.intellij.openapi.vfs.VirtualFile vf = ToolUtils.resolveVirtualFile(project, path);
         try (DaemonWaiter activeWaiter = resolveActiveWaiter(preWriteWaiter, vf, path)) {
-            activeWaiter.await();
-
-            ToolDefinition highlightDef = registry.findDefinition("get_highlights");
-            if (highlightDef == null || !highlightDef.hasExecutionHandler()) return writeResult;
-
-            JsonObject highlightArgs = new JsonObject();
-            highlightArgs.addProperty("path", path);
-            highlightArgs.addProperty("include_unindexed", true);
-            String highlights = highlightDef.execute(highlightArgs);
-            if (highlights != null) {
-                LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
-            }
-
-            return highlights != null
-                ? writeResult + "\n\n--- Highlights (auto) ---\n" + highlights
-                : writeResult;
+            return waitAndCollectHighlights(writeResult, path, activeWaiter);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return writeResult;
@@ -612,6 +649,76 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("Auto-highlights after write failed: " + e.getMessage());
             return writeResult;
         }
+    }
+
+    /**
+     * Collects highlights after a write batch drain. Creates a fresh {@link DaemonWaiter}
+     * because the original waiter (created before this write) may have already settled on
+     * an intermediate daemon pass that does not reflect the final document state.
+     * <p>
+     * Uses {@code postDrainStamp = getDocumentStamp(vf) - 1} so the fresh waiter only
+     * accepts daemon passes that analyzed the document at its current (post-all-writes)
+     * version. Explicitly restarts the daemon to ensure a new analysis pass fires.
+     */
+    private String collectPostDrainHighlights(
+        String writeResult,
+        String path,
+        @Nullable com.intellij.openapi.vfs.VirtualFile vf) {
+
+        if (vf == null) vf = ToolUtils.resolveVirtualFile(project, path);
+        if (vf == null) return writeResult;
+
+        // Use stamp - 1 so the waiter accepts passes where currentStamp >= postDrainStamp.
+        // The check is "reject if currentStamp <= preWriteStamp", so stamp - 1 accepts
+        // the current stamp itself while rejecting all prior versions.
+        long postDrainStamp = getDocumentStamp(vf) - 1;
+
+        com.intellij.openapi.vfs.VirtualFile target = vf;
+        try (DaemonWaiter freshWaiter = new DaemonWaiter(project, vf, postDrainStamp)) {
+            // Explicitly restart daemon analysis to guarantee a fresh pass fires after
+            // all writes. The daemon may have already completed a stale pass (for an
+            // intermediate document state) that this waiter correctly rejects.
+            ApplicationManager.getApplication().invokeLater(() -> {
+                com.intellij.psi.PsiFile psiFile =
+                    com.intellij.psi.PsiManager.getInstance(project).findFile(target);
+                if (psiFile != null) {
+                    com.intellij.codeInsight.daemon.DaemonCodeAnalyzer.getInstance(project)
+                        .restart(psiFile, "Agent: re-analyzing after write batch drain");
+                }
+            });
+
+            return waitAndCollectHighlights(writeResult, path, freshWaiter);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return writeResult;
+        } catch (Exception e) {
+            LOG.info("Auto-highlights after batch drain failed: " + e.getMessage());
+            return writeResult;
+        }
+    }
+
+    /**
+     * Shared logic: waits for the daemon to settle, then reads and appends highlights.
+     */
+    private String waitAndCollectHighlights(
+        String writeResult, String path, DaemonWaiter waiter) throws Exception {
+
+        waiter.await();
+
+        ToolDefinition highlightDef = registry.findDefinition("get_highlights");
+        if (highlightDef == null || !highlightDef.hasExecutionHandler()) return writeResult;
+
+        JsonObject highlightArgs = new JsonObject();
+        highlightArgs.addProperty("path", path);
+        highlightArgs.addProperty("include_unindexed", true);
+        String highlights = highlightDef.execute(highlightArgs);
+        if (highlights != null) {
+            LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
+        }
+
+        return highlights != null
+            ? writeResult + "\n\n--- Highlights (auto) ---\n" + highlights
+            : writeResult;
     }
 
     private DaemonWaiter resolveActiveWaiter(
