@@ -25,6 +25,14 @@ public final class KiroClient extends AcpClient {
     private final java.util.Deque<String> recentStderr = new java.util.ArrayDeque<>();
     private static final int STDERR_BUFFER_SIZE = 30;
 
+    /**
+     * The first stderr line that looks like a Rust panic header, captured immediately on arrival.
+     * With RUST_BACKTRACE=1, the backtrace can be 50+ lines long, evicting the panic header from
+     * {@link #recentStderr} before {@link #tryRecoverPromptException} runs. Storing it eagerly
+     * ensures the actual crash reason is always surfaced in the UI.
+     */
+    private volatile @org.jetbrains.annotations.Nullable String capturedPanicLine = null;
+
     public KiroClient(Project project) {
         super(project);
     }
@@ -50,12 +58,19 @@ public final class KiroClient extends AcpClient {
                 recentStderr.addLast(line);
                 if (recentStderr.size() > STDERR_BUFFER_SIZE) recentStderr.removeFirst();
             }
+            // Capture the first panic line immediately for tryRecoverPromptException.
+            // With RUST_BACKTRACE=1, the backtrace can exceed the rolling buffer size,
+            // evicting the panic header before tryRecoverPromptException is called.
+            if (capturedPanicLine == null && isPanicLine(line)) {
+                capturedPanicLine = line.trim();
+            }
             // When Kiro's agent-loop thread panics, the Rust panic hook prints the message to
             // stderr but the main process thread stays alive — stdout remains open, so readLoop
             // never gets EOF and pending futures wait until the full inactivity timeout (minutes).
             // Force-kill the process as soon as we detect a panic so readLoop gets EOF immediately
             // and the error surfaces in the UI within ~500ms instead of after the timeout.
-            if (line.contains("The application panicked") || line.contains("thread 'agent") && line.contains("panicked")) {
+            // Match any Rust thread panic, not just threads named "agent".
+            if (isPanicLine(line)) {
                 LOG.warn("Kiro panic detected — force-killing process to unblock pending futures");
                 destroyProcess();
             }
@@ -268,19 +283,39 @@ public final class KiroClient extends AcpClient {
     }
 
     /**
+     * Returns {@code true} if {@code line} looks like a Rust panic header.
+     *
+     * <p>Rust 2018 format: {@code thread 'name' panicked at 'msg', file:line}</p>
+     * <p>Rust 2021+ format: {@code thread 'name' panicked at file:line:col}</p>
+     * <p>Crash-handler format: {@code The application panicked (crash handler installed)}</p>
+     */
+    private static boolean isPanicLine(@NotNull String line) {
+        return line.contains("panicked at") || line.contains("The application panicked");
+    }
+
+    /**
      * When Kiro crashes (Rust panic), the process writes the panic message to stderr and the
      * transport stops. The generic "Transport stopped" message is unhelpful; this override
-     * inspects the buffered stderr lines and surfaces the actual panic reason to the UI.
+     * inspects the eagerly-captured panic line (or falls back to the rolling buffer) and surfaces
+     * the actual panic reason to the UI.
+     *
+     * <p><b>Why eager capture:</b> With {@code RUST_BACKTRACE=1}, Kiro emits 50+ backtrace lines
+     * after the panic header, evicting it from the 30-line rolling buffer before this method runs.
+     * {@link #capturedPanicLine} stores the first panic line the moment it arrives so it is never
+     * lost regardless of backtrace length.</p>
      */
     @Override
     protected @org.jetbrains.annotations.Nullable PromptResponse
     tryRecoverPromptException(Exception cause) {
-        String panicLine;
-        synchronized (recentStderr) {
-            panicLine = recentStderr.stream()
-                .filter(l -> l.contains("panicked") || l.contains("Message:"))
-                .reduce((first, second) -> second) // keep last matching line
-                .orElse(null);
+        // Prefer the eagerly-captured panic line; fall back to a scan of the rolling buffer.
+        String panicLine = capturedPanicLine;
+        if (panicLine == null) {
+            synchronized (recentStderr) {
+                panicLine = recentStderr.stream()
+                    .filter(l -> l.contains("panicked") || l.contains("Message:"))
+                    .reduce((first, second) -> second) // keep last matching line
+                    .orElse(null);
+            }
         }
         if (panicLine == null) return null;
         // Throw an unchecked exception whose message surfaces in the UI via handlePromptError.
