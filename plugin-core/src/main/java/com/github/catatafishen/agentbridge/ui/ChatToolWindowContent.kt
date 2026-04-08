@@ -704,6 +704,18 @@ class ChatToolWindowContent(
             editor.settings.isUseSoftWraps = true
             editor.contentComponent.border = JBUI.Borders.empty(4, 6)
             editor.setBorder(null)
+            // Workaround for IntelliJ 2026.1 selection rendering regression:
+            // IntelliJ's internal auto-scroll (scrollToCaret) shifts the viewport before the
+            // selection dirty-regions are painted, so only the caret line appears highlighted.
+            // Queueing a deferred full repaint after each selection change ensures the selection
+            // highlight is re-painted after the viewport settles.
+            editor.selectionModel.addSelectionListener(object : com.intellij.openapi.editor.event.SelectionListener {
+                override fun selectionChanged(e: com.intellij.openapi.editor.event.SelectionEvent) {
+                    ApplicationManager.getApplication().invokeLater {
+                        editor.contentComponent.repaint()
+                    }
+                }
+            })
         }
 
         promptTextArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
