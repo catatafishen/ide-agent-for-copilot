@@ -118,14 +118,14 @@ const ChatController = {
         forceScroll(): void;
         compensateScroll(targetY: number): void;
         autoScroll: boolean;
-        workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
+        workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void; stop(ms: number): void }
     } | null {
         return document.querySelector<HTMLElement & {
             scrollIfNeeded(): void;
             forceScroll(): void;
             compensateScroll(targetY: number): void;
             autoScroll: boolean;
-            workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void }
+            workingIndicator: HTMLElement & { show(): void; hide(): void; resetTimer(): void; stop(ms: number): void }
         }>('chat-container');
     },
 
@@ -256,7 +256,6 @@ const ChatController = {
 
     appendAgentText(turnId: string, agentId: string, text: string, timestamp?: string): void {
         try {
-            this._resetWorkingTimer();
             const ctx = this._getCtx(turnId, agentId);
             this._collapseThinkingFor(ctx);
             if (!ctx.textBubble) {
@@ -303,7 +302,6 @@ const ChatController = {
     },
 
     addThinkingText(turnId: string, agentId: string, text: string, timestamp?: string): void {
-        this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId, timestamp);
         if (!ctx.thinkingBlock) {
             this._thinkingCounter++;
@@ -501,7 +499,13 @@ const ChatController = {
 
     finalizeTurn(turnId: string, statsJson?: string): void {
         this._turnActive = false;
-        this.hideWorkingIndicator();
+        // Working indicator is stopped by renderTurnSummary (with the authoritative Kotlin duration)
+        // so the displayed duration matches the turn summary bar. Use a rAF as a fallback in case
+        // renderTurnSummary is never called (e.g. for empty or cancelled turns).
+        const wi = this._container()?.workingIndicator;
+        requestAnimationFrame(() => {
+            if (wi && !wi.hidden) wi.hide();
+        });
         const ctx = this._ctx[turnId + '-main'];
         if (ctx?.textBubble && !ctx.textBubble.textContent?.trim()) {
             ctx.textBubble.remove();
@@ -627,6 +631,10 @@ const ChatController = {
         tools: number; added: number; removed: number;
         model: string; multiplier?: string;
     }): void {
+        // Stop the working indicator with the authoritative Kotlin duration so it shows
+        // the same value as the summary bar below (both use Math.round on the same ms value).
+        this._container()?.workingIndicator?.stop(stats.duration);
+
         // Remove ALL live stats footers across every agent row (the footer may be
         // stranded on an earlier row if new segments were added after the last
         // setCodeChangeStats call).

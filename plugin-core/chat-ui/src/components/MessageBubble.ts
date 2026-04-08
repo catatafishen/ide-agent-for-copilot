@@ -11,6 +11,8 @@ export default class MessageBubble extends HTMLElement {
     private _rawText = '';
     /** True while a requestAnimationFrame re-render is pending. */
     private _renderPending = false;
+    /** Handle for the pending rAF, so finalize() can cancel it before overwriting innerHTML. */
+    private _rafHandle: number | null = null;
 
     connectedCallback(): void {
         if (this._init) return;
@@ -40,7 +42,8 @@ export default class MessageBubble extends HTMLElement {
         this.appendChild(document.createTextNode(text));
         if (!this._renderPending) {
             this._renderPending = true;
-            requestAnimationFrame(() => {
+            this._rafHandle = requestAnimationFrame(() => {
+                this._rafHandle = null;
                 this._renderPending = false;
                 this.innerHTML = renderMarkdown(this._rawText);
             });
@@ -51,11 +54,16 @@ export default class MessageBubble extends HTMLElement {
      * Replace the streaming content with the fully server-rendered HTML.
      * Called by ChatController.finalizeAgentText once the Kotlin side has
      * produced the authoritative HTML (with file-path links, git SHA links, etc.).
+     * Cancels any pending rAF to prevent it from overwriting the final HTML with renderMarkdown('').
      */
     finalize(html: string): void {
         this.removeAttribute('streaming');
         this._rawText = '';
         this._renderPending = false;
+        if (this._rafHandle !== null) {
+            cancelAnimationFrame(this._rafHandle);
+            this._rafHandle = null;
+        }
         this.innerHTML = html;
     }
 

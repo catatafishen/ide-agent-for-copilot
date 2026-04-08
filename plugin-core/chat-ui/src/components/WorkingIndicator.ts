@@ -34,8 +34,21 @@ export default class WorkingIndicator extends HTMLElement {
 
     private _render(): void {
         if (!this._span) return;
-        const elapsed = Math.floor((Date.now() - this._startTime) / 1000);
+        const elapsed = Math.round((Date.now() - this._startTime) / 1000);
         this._span.textContent = elapsed > 0 ? `Working\u2026 ${elapsed}s` : 'Working\u2026';
+    }
+
+    /**
+     * Render the authoritative final duration (from Kotlin) and immediately hide.
+     * Called by renderTurnSummary so both the indicator and the summary bar
+     * show the same value, derived from the same source.
+     */
+    stop(ms: number): void {
+        this._stopTimer();
+        if (!this._span) return;
+        const secs = Math.round(ms / 1000);
+        this._span.textContent = secs > 0 ? `Working\u2026 ${secs}s` : 'Working\u2026';
+        this.hidden = true;
     }
 
     private _stopTimer(): void {
