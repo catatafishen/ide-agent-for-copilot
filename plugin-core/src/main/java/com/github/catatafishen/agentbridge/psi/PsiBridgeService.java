@@ -246,6 +246,19 @@ public final class PsiBridgeService implements Disposable {
             writeRegistered = true;
         }
 
+        // Check permission BEFORE acquiring the global write lock. The permission prompt
+        // may block up to 120 s (waiting for user to respond). Holding the semaphore during
+        // that wait would freeze all other non-readonly tool calls for the full duration.
+        String denied = checkPluginToolPermission(toolName, arguments);
+        if (denied != null) {
+            if (writeRegistered) {
+                writeBatchCoordinator.unregisterWrite();
+                writeRegistered = false;
+            }
+            fireToolCallEvent(toolName, startMs, false);
+            return denied;
+        }
+
         if (needsGlobalLock) {
             String lockError = acquireWriteLock(toolName, startMs);
             if (lockError != null) {
@@ -278,16 +291,6 @@ public final class PsiBridgeService implements Disposable {
         // appendAutoHighlights may close and re-subscribe internally; disconnect() is idempotent.
         try (DaemonWaiter daemonWaiter = filePathForHighlights != null
             ? new DaemonWaiter(project, vfForHighlights, preWriteStamp) : null) {
-            String denied = checkPluginToolPermission(toolName, arguments);
-            if (denied != null) {
-                if (writeRegistered) {
-                    writeBatchCoordinator.unregisterWrite();
-                    writeRegistered = false;
-                }
-                fireToolCallEvent(toolName, startMs, false);
-                return denied;
-            }
-
             // Acquire per-tool sync lock if needed, register with chip registry, then execute.
             ReentrantLock syncLock = requiresSync
                 ? toolLocks.computeIfAbsent(toolName, k -> new ReentrantLock())
@@ -500,20 +503,33 @@ public final class PsiBridgeService implements Disposable {
                 return "Permission request interrupted for tool '" + toolName + "'.";
             }
         } else {
-            // Fallback: modal dialog when JCEF / chat panel is unavailable
-            boolean[] result = {false};
-            EdtUtil.invokeAndWait(() -> {
-                String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
-                    + buildArgSummary(arguments != null ? arguments : new com.google.gson.JsonObject()) + "</html>";
+            // Fallback: modal dialog when JCEF / chat panel is unavailable.
+            // Must NOT use EdtUtil.invokeAndWait here: the modal detector in EdtUtil.pollUntilDone
+            // detects the dialog it just opened and throws after ~1.5 s, leaving the dialog open
+            // as an orphan. Use invokeLater + CompletableFuture instead so the background thread
+            // waits for the user's actual response without triggering the modal blocker check.
+            String message = "<html><b>Allow: " + StringUtil.escapeXmlEntities(displayName) + "</b><br><br>"
+                + buildArgSummary(arguments != null ? arguments : new com.google.gson.JsonObject()) + "</html>";
+            java.util.concurrent.CompletableFuture<Integer> choiceFuture = new java.util.concurrent.CompletableFuture<>();
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
                 int choice = Messages.showYesNoDialog(
                     project, message, "Tool Permission Request",
                     "Allow", "Deny", Messages.getQuestionIcon()
                 );
-                result[0] = choice == Messages.YES;
-            });
-            response = result[0]
-                ? com.github.catatafishen.agentbridge.bridge.PermissionResponse.ALLOW_ONCE
-                : com.github.catatafishen.agentbridge.bridge.PermissionResponse.DENY;
+                choiceFuture.complete(choice);
+            }, com.intellij.openapi.application.ModalityState.defaultModalityState());
+            try {
+                int choice = choiceFuture.get(120, java.util.concurrent.TimeUnit.SECONDS);
+                response = choice == Messages.YES
+                    ? com.github.catatafishen.agentbridge.bridge.PermissionResponse.ALLOW_ONCE
+                    : com.github.catatafishen.agentbridge.bridge.PermissionResponse.DENY;
+            } catch (java.util.concurrent.TimeoutException e) {
+                LOG.info("PSI Bridge: modal permission timed out for " + toolName);
+                return "Permission request timed out for tool '" + toolName + "'.";
+            } catch (InterruptedException | java.util.concurrent.ExecutionException e) {
+                Thread.currentThread().interrupt();
+                return "Permission request interrupted for tool '" + toolName + "'.";
+            }
         }
 
         return switch (response) {

@@ -12,7 +12,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.usageView.UsageInfo;
 import com.intellij.usages.Usage;
@@ -25,7 +24,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,8 +38,11 @@ public final class SearchTextTool extends NavigationTool {
 
     /**
      * Holds a single match position for visual display in follow-agent mode.
+     * {@code psiFile} is resolved inside the read-action search pass so the EDT
+     * invokeLater in showResultsInUsageView does not need to call PsiManager at all.
      */
-    private record MatchPosition(VirtualFile vf, int startOffset, int endOffset) {
+    private record MatchPosition(VirtualFile vf, @Nullable com.intellij.psi.PsiFile psiFile,
+                                 int startOffset, int endOffset) {
     }
 
     private record SearchParams(Pattern pattern, String basePath, String filePattern,
@@ -151,23 +152,15 @@ public final class SearchTextTool extends NavigationTool {
         return sb.toString();
     }
 
-    /**
-     * Displays the pre-collected match positions in IntelliJ's Usage View — no second search.
-     * Must be called from a read action; schedules EDT work via invokeLater.
-     */
     private void showResultsInUsageView(String query, List<MatchPosition> positions) {
-        // Capture the positions as a snapshot; PsiManager lookups happen on EDT (implicit read lock).
+        // PsiFile objects are pre-resolved in the read-action pass (processFile → searchFileForPattern).
+        // No PsiManager lookup needed on the EDT.
         List<MatchPosition> snapshot = List.copyOf(positions);
         ApplicationManager.getApplication().invokeLater(() -> {
             Usage[] usages = snapshot.stream()
-                .map(pos -> {
-                    PsiFile psiFile = PsiManager.getInstance(project).findFile(pos.vf());
-                    if (psiFile == null) return null;
-                    return (Usage) new UsageInfo2UsageAdapter(
-                        new UsageInfo(psiFile, pos.startOffset(), pos.endOffset())
-                    );
-                })
-                .filter(Objects::nonNull)
+                .filter(pos -> pos.psiFile() != null)
+                .map(pos -> (Usage) new UsageInfo2UsageAdapter(
+                    new UsageInfo(pos.psiFile(), pos.startOffset(), pos.endOffset())))
                 .toArray(Usage[]::new);
 
             UsageViewPresentation pres = new UsageViewPresentation();
@@ -188,11 +181,16 @@ public final class SearchTextTool extends NavigationTool {
             p.skippedLarge().incrementAndGet();
             return p.results().size() < p.maxResults();
         }
-        searchFileForPattern(vf, p.pattern(), relPath, p.results(), p.positions(), p.maxResults(), p.contextLines());
+        // Pre-resolve PsiFile here (inside the existing read action) so showResultsInUsageView
+        // does not need to call PsiManager on the EDT.
+        com.intellij.psi.PsiFile psiFile = p.positions() != null
+            ? PsiManager.getInstance(project).findFile(vf) : null;
+        searchFileForPattern(vf, psiFile, p.pattern(), relPath, p.results(), p.positions(), p.maxResults(), p.contextLines());
         return p.results().size() < p.maxResults();
     }
 
-    private static void searchFileForPattern(VirtualFile vf, Pattern pattern,
+    private static void searchFileForPattern(VirtualFile vf, @Nullable com.intellij.psi.PsiFile psiFile,
+                                             Pattern pattern,
                                              String relPath, List<String> results,
                                              @Nullable List<MatchPosition> positions,
                                              int maxResults, int contextLines) {
@@ -209,7 +207,7 @@ public final class SearchTextTool extends NavigationTool {
                 results.add(buildMatchWithContext(doc, relPath, matchLine, lineText, contextLines));
             }
             if (positions != null) {
-                positions.add(new MatchPosition(vf, matcher.start(), matcher.end()));
+                positions.add(new MatchPosition(vf, psiFile, matcher.start(), matcher.end()));
             }
         }
     }
