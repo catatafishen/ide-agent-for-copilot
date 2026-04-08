@@ -160,15 +160,15 @@ describe('ChatController', () => {
 
     describe('sub-agents', () => {
         it('addSubAgent creates section with chip', () => {
-            CC().addSubAgent('t0', 'main', 'sa-1', 'Explore', 0, 'Find the file');
+            CC().addSubAgent('t0', 'main', 'sa-1', 'Explore', 0, btoa('Find the file'));
             const chip = getMessages().querySelector('subagent-chip');
             expect(chip).not.toBeNull();
             expect(chip.textContent).toContain('Explore');
         });
 
         it('updateSubAgent sets status and result', () => {
-            CC().addSubAgent('t0', 'main', 'sa-1', 'Task Agent', 1, 'Do something');
-            CC().updateSubAgent('sa-1', 'completed', '<p>Done</p>');
+            CC().addSubAgent('t0', 'main', 'sa-1', 'Task Agent', 1, btoa('Do something'));
+            CC().updateSubAgent('sa-1', 'completed', btoa('<p>Done</p>'));
             const chip = getMessages().querySelector('subagent-chip');
             expect(chip.getAttribute('status')).toBe('complete');
         });
@@ -273,8 +273,8 @@ describe('ChatController', () => {
 
         it('handles sub-agent flow', () => {
             CC().addUserMessage('Do something', '10:00', '');
-            CC().addSubAgent('t0', 'main', 'sa-flow', 'Explore', 0, 'Find the file');
-            CC().updateSubAgent('sa-flow', 'completed', '<p>Found it</p>');
+            CC().addSubAgent('t0', 'main', 'sa-flow', 'Explore', 0, btoa('Find the file'));
+            CC().updateSubAgent('sa-flow', 'completed', btoa('<p>Found it</p>'));
             CC().appendAgentText('t0', 'main', 'Done');
             CC().finalizeAgentText('t0', 'main', btoa('<p>Done</p>'));
             CC().finalizeTurn('t0', null);
@@ -336,7 +336,7 @@ describe('ChatController', () => {
 
     describe('addSubAgentToolCall', () => {
         it('adds tool chip and section to sub-agent result message', () => {
-            CC().addSubAgent('t0', 'main', 'sa-1', 'Explore Agent', 0, 'Find stuff');
+            CC().addSubAgent('t0', 'main', 'sa-1', 'Explore Agent', 0, btoa('Find stuff'));
             CC().addSubAgentToolCall('sa-1', 'sa-tc-1', 'Glob — *.kt', '{"pattern":"*.kt"}');
             CC().addSubAgentToolCall('sa-1', 'sa-tc-2', 'Grep — foo', '{"pattern":"foo"}');
 
@@ -351,7 +351,7 @@ describe('ChatController', () => {
         });
 
         it('updateToolCall works for sub-agent internal tools', () => {
-            CC().addSubAgent('t0', 'main', 'sa-2', 'Task Agent', 1, 'Build');
+            CC().addSubAgent('t0', 'main', 'sa-2', 'Task Agent', 1, btoa('Build'));
             CC().addSubAgentToolCall('sa-2', 'sa-tc-3', 'Run Tests', '{}');
             CC().updateToolCall('sa-tc-3', 'completed', 'All passed');
 
@@ -372,7 +372,8 @@ describe('ChatController', () => {
         it('restoreBatch inserts after load-more, not before it', () => {
             CC().addUserMessage('Current message', '10:30', '');
             CC().showLoadMore(3);
-            const encoded = btoa('<chat-message type="agent"><div class="bubble"><p>Old message</p></div></chat-message>');
+            const batch = [{type: 'agent', agent: 'main', segments: [{timestamp: '', entries: [{type: 'text', html: '<p>Old message</p>'}]}]}];
+            const encoded = btoa(JSON.stringify(batch));
             CC().restoreBatch(encoded);
             const msgs = getMessages();
             // load-more should still be the first child
@@ -380,7 +381,7 @@ describe('ChatController', () => {
             // restored message should be between load-more and the existing message
             const children = Array.from(msgs.children);
             expect(children[1].tagName).toBe('CHAT-MESSAGE');
-            expect(children[1].querySelector('.bubble').textContent).toBe('Old message');
+            expect(children[1].querySelector('message-bubble').textContent).toContain('Old message');
         });
 
         it('removeLoadMore removes the element', () => {
@@ -393,22 +394,24 @@ describe('ChatController', () => {
         it('restoreBatch with segmented HTML produces correct ordering', () => {
             // Simulates what the Kotlin appendAgentTurn now produces when restoring
             // a turn with the pattern: text_before → tool → text_after.
-            // The Kotlin fix emits TWO chat-messages (like the live session):
-            //   segment 1: tool chip in meta + "Before tool" bubble
+            // The Kotlin fix emits two agent segments (like the live session):
+            //   segment 1: tool chip + "Before tool" bubble
             //   segment 2: "After tool" bubble
-            const html =
-                '<chat-message type="user"><message-bubble type="user">Q</message-bubble></chat-message>' +
-                '<chat-message type="agent">' +
-                '  <message-meta class="show"><tool-chip label="Read File" status="complete" kind="read" data-chip-for="t1"></tool-chip></message-meta>' +
-                '  <turn-details></turn-details>' +
-                '  <message-bubble>Before tool</message-bubble>' +
-                '</chat-message>' +
-                '<chat-message type="agent">' +
-                '  <message-meta></message-meta>' +
-                '  <turn-details></turn-details>' +
-                '  <message-bubble>After tool</message-bubble>' +
-                '</chat-message>';
-            CC().restoreBatch(btoa(html));
+            const batch = [
+                {type: 'user', html: 'Q', timestamp: ''},
+                {
+                    type: 'agent', agent: 'main', segments: [
+                        {timestamp: '', entries: [
+                            {type: 'tool', id: 't1', label: 'Read File', kind: 'read', status: 'complete'},
+                            {type: 'text', html: 'Before tool'},
+                        ]},
+                        {timestamp: '', entries: [
+                            {type: 'text', html: 'After tool'},
+                        ]},
+                    ],
+                },
+            ];
+            CC().restoreBatch(btoa(JSON.stringify(batch)));
 
             const agentMsgs = getMessages().querySelectorAll('chat-message[type="agent"]');
             expect(agentMsgs.length).toBe(2);
