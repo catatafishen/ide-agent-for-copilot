@@ -240,6 +240,10 @@ public final class CustomMcpClient implements AutoCloseable {
                 + " (only http and https are supported). URL: " + url);
         }
 
+        // Capture the session ID to use for this specific request before sending it.
+        // This is used both to set the header and to detect genuine session expiry on 404.
+        String sentSessionId = sessionId;
+
         byte[] bodyBytes = GSON.toJson(request).getBytes(StandardCharsets.UTF_8);
         HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
         try {
@@ -250,8 +254,8 @@ public final class CustomMcpClient implements AutoCloseable {
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json, text/event-stream");
 
-            if (includeSessionHeader && sessionId != null) {
-                conn.setRequestProperty(SESSION_HEADER, sessionId);
+            if (includeSessionHeader && sentSessionId != null) {
+                conn.setRequestProperty(SESSION_HEADER, sentSessionId);
             }
 
             try (OutputStream os = conn.getOutputStream()) {
@@ -266,9 +270,11 @@ public final class CustomMcpClient implements AutoCloseable {
                 sessionId = newSessionId;
             }
 
-            // Session expired — server terminated the session (MCP spec: MUST return 404)
-            if (status == 404 && !isRetry && includeSessionHeader) {
-                return handleSessionExpiry(method, params);
+            // Session expired — only treat 404 as session expiry when we actually sent a session header.
+            // Without this guard, a real 404 (wrong URL) would be mistaken for session expiry
+            // and trigger a spurious re-initialize + retry.
+            if (status == 404 && !isRetry && sentSessionId != null) {
+                return handleSessionExpiry(method, params, sentSessionId);
             }
 
             if (status == 202) {
@@ -294,17 +300,27 @@ public final class CustomMcpClient implements AutoCloseable {
      * Uses a {@link ReentrantLock} so that concurrent threads encountering 404 do not
      * all attempt to re-initialize — only the first one does, and others wait and reuse
      * the new session.
+     *
+     * @param expiredSessionId the session ID that was sent with the failed request, used for
+     *                         a double-check under the lock to skip re-initialization when a
+     *                         concurrent thread has already established a new session
      */
     @NotNull
-    private JsonObject handleSessionExpiry(@NotNull String method, @NotNull JsonObject params) throws IOException {
+    private JsonObject handleSessionExpiry(
+        @NotNull String method,
+        @NotNull JsonObject params,
+        @NotNull String expiredSessionId
+    ) throws IOException {
         LOG.info("Session expired on " + url + " (HTTP 404), re-initializing");
         reinitLock.lock();
         try {
-            // Double-check: another thread may have already re-initialized while we waited for the lock
-            if (sessionId != null) {
+            // Double-check: another thread may have already re-initialized while we waited for the lock.
+            // Only re-initialize if the current session is still the expired one (or has been cleared).
+            // If a different (newer) session is active, skip re-init and fall through to retry with it.
+            if (expiredSessionId.equals(sessionId) || sessionId == null) {
                 sessionId = null;
+                initialize();
             }
-            initialize();
         } finally {
             reinitLock.unlock();
         }

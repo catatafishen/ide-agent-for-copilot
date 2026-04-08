@@ -1,7 +1,7 @@
 package com.github.catatafishen.agentbridge.custommcp;
 
 import com.github.catatafishen.agentbridge.psi.PsiBridgeService;
-import com.intellij.openapi.components.ComponentManager;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -24,7 +24,7 @@ import java.util.Set;
  * across tool calls and properly terminated when servers are removed or disabled.
  */
 @Service(Service.Level.PROJECT)
-public final class CustomMcpRegistrar {
+public final class CustomMcpRegistrar implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(CustomMcpRegistrar.class);
 
@@ -45,9 +45,8 @@ public final class CustomMcpRegistrar {
         this.project = project;
     }
 
-    @SuppressWarnings("java:S1905") // Cast needed: IDE doesn't resolve Project→ComponentManager supertype
     public static CustomMcpRegistrar getInstance(@NotNull Project project) {
-        return ((ComponentManager) project).getService(CustomMcpRegistrar.class);
+        return project.getService(CustomMcpRegistrar.class);
     }
 
     /**
@@ -89,9 +88,23 @@ public final class CustomMcpRegistrar {
     }
 
     /**
+     * Closes all tracked MCP client sessions when the project/service is disposed.
+     * Called by IntelliJ on project close or IDE shutdown.
+     */
+    @Override
+    public synchronized void dispose() {
+        for (CustomMcpClient client : clientByServer.values()) {
+            client.close();
+        }
+        clientByServer.clear();
+        registeredByServer.clear();
+    }
+
+    /**
      * Connects to one server, discovers its tools, and registers proxy instances.
      * Replaces any previously registered tools for the same server ID.
-     * Closes the old client's session before creating a new one.
+     * Creates and validates the replacement client first, then closes the old client's
+     * session and replaces stale registrations for that server ID.
      * Logs a warning and skips silently on connection failure.
      */
     private void connectAndRegister(@NotNull PsiBridgeService bridge, @NotNull CustomMcpServerConfig server) {
@@ -103,6 +116,8 @@ public final class CustomMcpRegistrar {
             if (tools.isEmpty()) {
                 LOG.info("Custom MCP server '" + server.getName() + "' reported no tools");
                 client.close();
+                unregisterServerTools(bridge, server.getId());
+                registeredByServer.remove(server.getId());
                 return;
             }
 

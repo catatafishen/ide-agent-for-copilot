@@ -378,8 +378,10 @@ class CustomMcpClientSessionTest {
 
     private void setupHandler(RequestHandler handler) {
         server.createContext("/mcp", exchange -> {
-            try (exchange) {
+            try {
                 handler.handle(exchange);
+            } finally {
+                exchange.close();
             }
         });
     }
