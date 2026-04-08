@@ -76,12 +76,15 @@ public abstract class FileTool extends Tool {
                     if (vf != null) {
                         PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                         if (psiFile != null) {
+                            Document doc = psiFile.getViewProvider().getDocument();
                             WriteAction.run(() ->
                                 CommandProcessor.getInstance().executeCommand(project, () -> {
-                                    PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                    if (doc != null)
+                                        PsiDocumentManager.getInstance(project).commitDocument(doc);
                                     new OptimizeImportsProcessor(project, psiFile).run();
                                     new ReformatCodeProcessor(psiFile, false).run();
-                                    PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                    if (doc != null)
+                                        PsiDocumentManager.getInstance(project).commitDocument(doc);
                                 }, "Auto-Format (Deferred)", null)
                             );
                             LOG.info("Deferred auto-format (EDT): " + pathStr);
@@ -109,12 +112,15 @@ public abstract class FileTool extends Tool {
                     if (vf != null) {
                         PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
                         if (psiFile != null) {
+                            Document doc = psiFile.getViewProvider().getDocument();
                             WriteAction.run(() ->
                                 CommandProcessor.getInstance().executeCommand(project, () -> {
-                                    PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                    if (doc != null)
+                                        PsiDocumentManager.getInstance(project).commitDocument(doc);
                                     new OptimizeImportsProcessor(project, psiFile).run();
                                     new ReformatCodeProcessor(psiFile, false).run();
-                                    PsiDocumentManager.getInstance(project).commitAllDocuments();
+                                    if (doc != null)
+                                        PsiDocumentManager.getInstance(project).commitDocument(doc);
                                 }, "Auto-Format (Deferred)", null)
                             );
                             LOG.info("Deferred auto-format: " + pathStr);

@@ -96,7 +96,9 @@ final class AcpFileSystemHandler {
             return null;
         }
 
-        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(() -> {
+        // EdtUtil.invokeAndWait adds a 30-second backstop + modal-dialog detection,
+        // preventing an indefinite hang if the EDT is occupied.
+        com.github.catatafishen.agentbridge.psi.EdtUtil.invokeAndWait(() -> {
             VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(absolutePath);
             if (vf == null) {
                 // File was created concurrently between the check and here — fall back to createNewFile

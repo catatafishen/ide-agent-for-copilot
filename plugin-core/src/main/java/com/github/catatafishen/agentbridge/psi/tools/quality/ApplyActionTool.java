@@ -190,8 +190,8 @@ public final class ApplyActionTool extends QualityTool {
                 () -> ctx.action().invoke(project, ctx.editor(), ctx.psiFile())),
             option
         );
-        PsiDocumentManager.getInstance(project).commitAllDocuments();
-        FileDocumentManager.getInstance().saveAllDocuments();
+        PsiDocumentManager.getInstance(project).commitDocument(ctx.doc());
+        FileDocumentManager.getInstance().saveDocument(ctx.doc());
         String after = ctx.doc().getText();
         String diff = DiffUtils.unifiedDiff(before, after, pathStr);
         if (!selected) {
@@ -205,7 +205,7 @@ public final class ApplyActionTool extends QualityTool {
                                  ActionContext ctx, VirtualFile vf) {
         WriteCommandAction.runWriteCommandAction(project, actionName, null,
             () -> ctx.action().invoke(project, ctx.editor(), ctx.psiFile()));
-        PsiDocumentManager.getInstance(project).commitAllDocuments();
+        PsiDocumentManager.getInstance(project).commitDocument(ctx.doc());
         String after = ctx.doc().getText();
         String diff = DiffUtils.unifiedDiff(before, after, pathStr);
         undoLastAction(vf);
@@ -220,15 +220,15 @@ public final class ApplyActionTool extends QualityTool {
                                  String before, ActionContext ctx) {
         WriteCommandAction.runWriteCommandAction(project, actionName, null,
             () -> ctx.action().invoke(project, ctx.editor(), ctx.psiFile()));
-        PsiDocumentManager.getInstance(project).commitAllDocuments();
-        FileDocumentManager.getInstance().saveAllDocuments();
+        PsiDocumentManager.getInstance(project).commitDocument(ctx.doc());
+        FileDocumentManager.getInstance().saveDocument(ctx.doc());
         String after = ctx.doc().getText();
         String diff = DiffUtils.unifiedDiff(before, after, pathStr);
         if (diff.isEmpty()) {
             return ACTION_PREFIX + actionName + "' made no changes. It may require user input via a dialog. "
                 + "Try get_action_options to inspect what dialog options it shows.";
         }
-        return formatApplyResult(actionName, pathStr, targetLine, diff, true);
+        return formatApplyResult(actionName, pathStr, targetLine, diff, false);
     }
 
     private record ActionContext(IntentionAction action, Editor editor, PsiFile psiFile, Document doc) {
