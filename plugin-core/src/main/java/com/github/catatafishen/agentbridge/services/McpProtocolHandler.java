@@ -463,7 +463,7 @@ public final class McpProtocolHandler {
 
             JsonObject result = new JsonObject();
             result.add("content", contentArray);
-            result.addProperty("isError", resultText != null && resultText.startsWith("Error:"));
+            result.addProperty("isError", resultText != null && resultText.startsWith("Error"));
 
             return respondResult(msg, result);
         } catch (Exception e) {

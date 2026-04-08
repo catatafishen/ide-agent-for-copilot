@@ -1335,7 +1335,7 @@ public final class CodexAppServerClient extends AbstractAgentClient {
         }
 
         if (cb != null) {
-            boolean success = !userResponse.startsWith("Error:");
+            boolean success = !userResponse.startsWith("Error");
             cb.accept(new SessionUpdate.ToolCallUpdate(chipId,
                 success ? SessionUpdate.ToolCallStatus.COMPLETED : SessionUpdate.ToolCallStatus.FAILED,
                 success ? userResponse : null, success ? null : userResponse, null));
