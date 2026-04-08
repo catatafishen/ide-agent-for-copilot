@@ -190,13 +190,21 @@ class UsageGraphPanel : JBPanel<UsageGraphPanel>() {
 /**
  * Toolbar action that embeds a [UsageGraphPanel] as a clickable custom component.
  * Clicking the graph opens a popup with detailed usage information.
+ *
+ * @param visibleWhen evaluated on every action update; the component is hidden when false.
+ *   Use this to restrict the graph to GitHub Copilot connections only.
  */
 class UsageGraphAction(
     private val onGraphClicked: (JComponent) -> Unit,
     private val graphPanelSetter: (UsageGraphPanel) -> Unit,
+    private val visibleWhen: () -> Boolean = { true },
 ) : AnAction("Usage Graph"), CustomComponentAction {
 
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isVisible = visibleWhen()
+    }
 
     override fun actionPerformed(e: AnActionEvent) {
         // Handled via mouse listener in createCustomComponent

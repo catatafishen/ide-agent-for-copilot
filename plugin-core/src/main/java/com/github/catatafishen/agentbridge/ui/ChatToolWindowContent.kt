@@ -8,7 +8,6 @@ import com.github.catatafishen.agentbridge.services.ChatWebServer
 import com.github.catatafishen.agentbridge.session.SessionSwitchService
 import com.github.catatafishen.agentbridge.session.migration.V1ToV2Migrator
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2
-import com.github.catatafishen.agentbridge.settings.BillingSettings
 import com.github.catatafishen.agentbridge.settings.ChatHistorySettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.*
@@ -896,9 +895,7 @@ class ChatToolWindowContent(
 
         val rightGroup = DefaultActionGroup()
         rightGroup.add(ProcessingIndicatorAction())
-        if (BillingSettings.getInstance().isShowCopilotUsage) {
-            rightGroup.add(billing.createUsageGraphAction())
-        }
+        rightGroup.add(billing.createUsageGraphAction(project))
 
         val rightToolbar = ActionManager.getInstance().createActionToolbar(
             "AgentRight", rightGroup, true

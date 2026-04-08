@@ -390,11 +390,22 @@ class BillingManager {
             .showUnderneathOf(owner)
     }
 
-    /** Creates the toolbar action for the usage sparkline graph. */
-    fun createUsageGraphAction(): UsageGraphAction {
+    /**
+     * Creates the toolbar action for the usage sparkline graph.
+     *
+     * The graph is only visible when the active agent profile is a GitHub Copilot
+     * profile (clientCssClass == "copilot") AND the user has enabled the Copilot
+     * usage display in settings.
+     */
+    fun createUsageGraphAction(project: com.intellij.openapi.project.Project): UsageGraphAction {
         return UsageGraphAction(
             onGraphClicked = { owner -> showUsagePopup(owner) },
             graphPanelSetter = { panel -> usageGraphPanel = panel },
+            visibleWhen = {
+                com.github.catatafishen.agentbridge.settings.BillingSettings.getInstance().isShowCopilotUsage
+                    && com.github.catatafishen.agentbridge.services.ActiveAgentManager.getInstance(project)
+                    .activeProfile.clientCssClass == "copilot"
+            },
         )
     }
 }
