@@ -370,29 +370,16 @@ public final class PlatformApiCompat {
     }
 
     /**
-     * Navigates to a commit in the VCS Log after the log has refreshed its data pack.
+     * Opens the Git Log tab and selects the commit with {@code fullHash} once the VCS log has
+     * indexed it. Registers a {@link com.intellij.vcs.log.data.DataPackChangeListener} and waits
+     * for the new commit to appear in the storage before calling
+     * {@code showRevisionInMainLog} — this avoids the "commit could not be found" error bubble
+     * that occurs when the listener fires for an intermediate data-pack update (e.g., branch
+     * pointer refresh) before the new commit is actually indexed.
      * <p>
-     * Unlike {@link #showRevisionInLog}, this method does NOT call {@code showRevisionInMainLog}
-     * immediately. Instead, it registers a {@code DataPackChangeListener} and triggers a VCS log
-     * refresh. When the log finishes refreshing (and the new commit is indexed), it navigates.
-     * <p>
-     * <b>Why extracted:</b> {@code DataPackChangeListener} changed its SAM method parameter type
-     * from {@code DataPack} to {@code VcsLogGraphData} between 2024.3 and 2025.2. A lambda compiled
-     * against one version throws {@code AbstractMethodError} on the other. Using
-     * {@link java.lang.reflect.Proxy} avoids the binary incompatibility since we never use the
-     * parameter.
-     * <p>
-     * Note: {@code DataPack} is deprecated (scheduled for removal) but there is no non-internal
-     * replacement listener API yet. {@code VcsLogProgress.ProgressListener} exists but requires
-     * {@code VcsLogData.DATA_PACK_REFRESH} which is {@code @ApiStatus.Internal}. Using deprecated
-     * APIs produces only a verifier warning (SCHEDULED_FOR_REMOVAL_API_USAGES), while using
-     * internal APIs would produce a verifier failure (INTERNAL_API_USAGES). Neither
-     * SCHEDULED_FOR_REMOVAL_API_USAGES nor INTERNAL_API_USAGES are in our
-     * {@code intellijPlugin { verifyPlugin { failureLevel } }} configuration, so the build
-     * still passes. This usage is an accepted, documented exception with no viable alternative.
-     * <p>
-     * This avoids the "Commit or reference 'xxx' not found" notification that
-     * {@code showRevisionInMainLog} shows when called before the log has indexed a new commit.
+     * <b>Why extracted:</b> {@code DataPackChangeListener} is an internal API whose SAM method
+     * signature changed between IDE versions (DataPack → VcsLogGraphData). Using a dynamic
+     * {@link java.lang.reflect.Proxy} avoids {@link AbstractMethodError} at runtime.
      * <p>
      * Must be called on the EDT.
      *
@@ -418,13 +405,36 @@ public final class PlatformApiCompat {
                 com.intellij.vcs.log.data.DataPackChangeListener.class.getClassLoader(),
                 new Class<?>[]{com.intellij.vcs.log.data.DataPackChangeListener.class},
                 (proxy, method, args) -> {
-                    if ("onDataPackChange".equals(method.getName())) {
-                        if (!navigated.compareAndSet(false, true)) return null;
-                        data.removeDataPackChangeListener(
-                            (com.intellij.vcs.log.data.DataPackChangeListener) proxy);
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
-                            com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, hash));
+                    // Handle standard Object methods required by the Proxy contract.
+                    // Returning null for equals/hashCode would cause NullPointerException
+                    // because they unbox to primitives at the call site.
+                    switch (method.getName()) {
+                        case "equals" -> {
+                            return args != null && args.length > 0 && proxy == args[0];
+                        }
+                        case "hashCode" -> {
+                            return System.identityHashCode(proxy);
+                        }
+                        case "toString" -> {
+                            return "DataPackChangeListenerProxy@" + Integer.toHexString(System.identityHashCode(proxy));
+                        }
                     }
+                    if (!"onDataPackChange".equals(method.getName())) return null;
+
+                    // The data pack can change multiple times during a refresh (e.g., once when
+                    // branch pointers update, again when new commits are indexed). Only navigate
+                    // after the new commit is actually present in the VCS log storage — otherwise
+                    // showRevisionInMainLog shows a "commit could not be found" error bubble.
+                    boolean commitIndexed = data.getLogProviders().keySet().stream()
+                        .anyMatch(root -> data.getStorage().containsCommit(
+                            new com.intellij.vcs.log.CommitId(hash, root)));
+                    if (!commitIndexed) return null;
+
+                    if (!navigated.compareAndSet(false, true)) return null;
+                    data.removeDataPackChangeListener(
+                        (com.intellij.vcs.log.data.DataPackChangeListener) proxy);
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
+                        com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, hash));
                     return null;
                 });
 
@@ -439,13 +449,13 @@ public final class PlatformApiCompat {
             }
         }
 
-        // Timeout: clean up listener after 5 seconds to prevent leak
+        // Timeout: clean up listener after 10 seconds to prevent leak
         com.intellij.util.concurrency.AppExecutorUtil.getAppScheduledExecutorService()
             .schedule(() -> {
                 if (navigated.compareAndSet(false, true)) {
                     data.removeDataPackChangeListener(listener);
                 }
-            }, 5, java.util.concurrent.TimeUnit.SECONDS);
+            }, 10, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     /**
@@ -658,7 +668,7 @@ public final class PlatformApiCompat {
     static @Nullable com.intellij.execution.configurations.ConfigurationType findConfigurationType(@NotNull String type) {
         for (var ct : com.intellij.execution.configurations.ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
             String displayName = ct.getDisplayName().toLowerCase();
-            if (displayName.equals(type) || displayName.contains(type)
+            if (displayName.contains(type)
                 || ct.getId().toLowerCase().contains(type)) {
                 return ct;
             }
@@ -933,20 +943,6 @@ public final class PlatformApiCompat {
     }
 
     /**
-     * Subscribes to tool call completion events and returns a disposable to disconnect.
-     *
-     * <p><b>Why extracted:</b> Same resolution issue as {@link #subscribeDaemonListener} —
-     * {@code project.getMessageBus().connect()} generic bounds differ between dev IDE and target SDK.</p>
-     */
-    static void subscribeToolCallListener(
-        @NotNull Project project,
-        @NotNull com.intellij.openapi.Disposable parentDisposable,
-        @NotNull PsiBridgeService.ToolCallListener listener) {
-        var connection = project.getMessageBus().connect(parentDisposable);
-        connection.subscribe(PsiBridgeService.TOOL_CALL_TOPIC, listener);
-    }
-
-    /**
      * Returns the list of installed UI themes.
      *
      * <p><b>Why extracted:</b> {@link com.intellij.ide.ui.LafManager#getInstalledThemes()} is
@@ -971,10 +967,10 @@ public final class PlatformApiCompat {
     /**
      * Creates an {@link com.intellij.xdebugger.XExpression} from plain text (language-agnostic, expression mode).
      *
-     * <b>Why extracted:</b> {@code XExpression} is a public interface but the platform provides no
+     * <p><b>Why extracted:</b> {@code XExpression} is a public interface but the platform provides no
      * public factory. The previous approach used the internal {@code XExpressionImpl.fromText()};
      * this implementation avoids that by implementing the interface directly, using only
-     * public API ({@code XExpression}, {@code EvaluationMode}).
+     * public API ({@code XExpression}, {@code EvaluationMode}).</p>
      */
     public static com.intellij.xdebugger.XExpression createXExpression(@NotNull String text) {
         return new com.intellij.xdebugger.XExpression() {
@@ -989,7 +985,7 @@ public final class PlatformApiCompat {
             }
 
             @Override
-            public @Nullable com.intellij.xdebugger.evaluation.EvaluationMode getMode() {
+            public @NotNull com.intellij.xdebugger.evaluation.EvaluationMode getMode() {
                 return com.intellij.xdebugger.evaluation.EvaluationMode.EXPRESSION;
             }
 
