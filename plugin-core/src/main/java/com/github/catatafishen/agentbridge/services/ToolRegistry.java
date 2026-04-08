@@ -32,7 +32,8 @@ public final class ToolRegistry {
         SHELL("Shell (built-in)"),
         OTHER("Other"),
         MACRO("Recorded Macros"),
-        CUSTOM_MCP("Custom MCP Servers");
+        CUSTOM_MCP("Custom MCP Servers"),
+        DATABASE("Database");
 
         public final String displayName;
 

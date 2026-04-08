@@ -111,6 +111,7 @@ public final class PsiBridgeService implements Disposable {
         allTools.addAll(com.github.catatafishen.agentbridge.psi.tools.terminal.TerminalToolFactory.create(project));
         allTools.addAll(com.github.catatafishen.agentbridge.psi.tools.editor.EditorToolFactory.create(project));
         allTools.addAll(com.github.catatafishen.agentbridge.psi.tools.debug.DebugToolFactory.create(project));
+        allTools.addAll(com.github.catatafishen.agentbridge.psi.tools.database.DatabaseToolFactory.create(project));
         registry.registerAll(allTools);
     }
 
