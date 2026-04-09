@@ -711,27 +711,28 @@ class ChatToolWindowContent(
             }
         })
 
-        // Shortcut hint overlay centered inside the editor area
+        // Shortcut hint overlay centered inside the editor area.
+        // Not added as a Swing child — painted explicitly in paintChildren
+        // to avoid z-order issues between JLayeredPane and EditorTextField.
         shortcutHintPanel = PromptShortcutHintPanel()
         shortcutHintPanel.isVisible =
             com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
 
-        // JLayeredPane layers the editor (background) and hint overlay (foreground).
-        // The custom layout delegates sizing to the editor so the splitter works correctly.
-        val editorWrapper = JLayeredPane()
-        editorWrapper.layout = object : LayoutManager {
-            override fun addLayoutComponent(name: String?, comp: Component?) {}
-            override fun removeLayoutComponent(comp: Component?) {}
-            override fun preferredLayoutSize(parent: Container): Dimension = promptTextArea.preferredSize
-            override fun minimumLayoutSize(parent: Container): Dimension = promptTextArea.minimumSize
-            override fun layoutContainer(parent: Container) {
-                val bounds = Rectangle(0, 0, parent.width, parent.height)
-                promptTextArea.bounds = bounds
-                shortcutHintPanel.bounds = bounds
+        val editorWrapper = object : JPanel(BorderLayout()) {
+            override fun paintChildren(g: Graphics) {
+                super.paintChildren(g)
+                if (!shortcutHintPanel.isVisible) return
+                val pref = shortcutHintPanel.preferredSize
+                if (pref.width <= 0 || pref.height <= 0) return
+                shortcutHintPanel.size = pref
+                shortcutHintPanel.doLayout()
+                val g2 = g.create() as Graphics2D
+                g2.translate((width - pref.width) / 2, (height - pref.height) / 2)
+                shortcutHintPanel.paint(g2)
+                g2.dispose()
             }
         }
-        editorWrapper.add(promptTextArea, JLayeredPane.DEFAULT_LAYER)
-        editorWrapper.add(shortcutHintPanel, JLayeredPane.PALETTE_LAYER)
+        editorWrapper.add(promptTextArea, BorderLayout.CENTER)
 
         row.border = JBUI.Borders.empty()
         row.add(editorWrapper, BorderLayout.CENTER)
@@ -863,6 +864,7 @@ class ChatToolWindowContent(
         val showHints = com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
         val editorEmpty = promptTextArea.text.isEmpty()
         shortcutHintPanel.isVisible = showHints && editorEmpty
+        promptTextArea.parent?.repaint()
     }
 
     private fun setSendingState(sending: Boolean) {

@@ -151,7 +151,9 @@ public final class ChatInputConfigurable implements Configurable {
         var link = new com.intellij.ui.components.labels.LinkLabel<Void>(
             "Customize keyboard shortcuts…", null,
             (aSource, aLinkData) -> com.intellij.openapi.options.ShowSettingsUtil.getInstance()
-                .showSettingsDialog(project, "Keymap"));
+                .showSettingsDialog(project,
+                    com.intellij.openapi.keymap.impl.ui.KeymapPanel.class,
+                    panel -> panel.showOption("AgentBridge Chat Prompt")));
         link.setBorder(JBUI.Borders.emptyLeft(20));
         return link;
     }
