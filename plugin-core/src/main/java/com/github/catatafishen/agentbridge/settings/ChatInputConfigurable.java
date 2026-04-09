@@ -152,7 +152,15 @@ public final class ChatInputConfigurable implements Configurable {
             "Customize keyboard shortcuts…", null,
             (aSource, aLinkData) -> com.intellij.openapi.application.ApplicationManager.getApplication()
                 .invokeLater(() -> com.intellij.openapi.options.ShowSettingsUtil.getInstance()
-                    .showSettingsDialog(project, "Keymap")));
+                    .showSettingsDialog(project,
+                        c -> c instanceof com.intellij.openapi.options.SearchableConfigurable sc
+                            && "preferences.keymap".equals(sc.getId()),
+                        c -> {
+                            if (c instanceof com.intellij.openapi.options.SearchableConfigurable sc) {
+                                Runnable search = sc.enableSearch("AgentBridge");
+                                if (search != null) search.run();
+                            }
+                        })));
         link.setBorder(JBUI.Borders.emptyLeft(20));
         return link;
     }
