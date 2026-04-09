@@ -42,7 +42,17 @@ jobs:
           cache-disabled: true
 
       - name: Run MCP server tests
-        run: ./gradlew :mcp-server:test --no-daemon --quiet --build-cache
+        run: ./gradlew :mcp-server:test :mcp-server:jacocoTestReport --no-daemon --quiet --build-cache
+
+      - name: Upload MCP server coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe  # v5.5.4
+        with:
+          files: mcp-server/build/reports/jacoco/test/jacocoTestReport.xml
+          flags: mcp-server
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   build-and-test:
     name: Build, Test & Verify

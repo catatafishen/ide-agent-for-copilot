@@ -1,6 +1,7 @@
 plugins {
     id("java")
     application
+    jacoco
 }
 
 dependencies {
@@ -16,4 +17,17 @@ tasks.jar {
         attributes["Main-Class"] = "com.github.copilot.mcp.McpStdioProxy"
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.test {
+    useJUnitPlatform()
+    finalizedBy(tasks.named("jacocoTestReport"))
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.named("test"))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
 }

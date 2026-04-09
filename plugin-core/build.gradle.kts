@@ -1,3 +1,4 @@
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
 import java.util.zip.ZipInputStream
@@ -420,6 +421,12 @@ tasks {
         useJUnitPlatform {
             excludeTags("integration")
         }
+        // IntelliJ Platform loads classes via a custom classloader that doesn't
+        // provide class file locations. Without this flag, JaCoCo reports 0% coverage.
+        extensions.configure<JacocoTaskExtension> {
+            isIncludeNoLocationClasses = true
+            excludes = listOf("jdk.internal.*")
+        }
         finalizedBy(named("jacocoTestReport"))
     }
 
@@ -429,6 +436,18 @@ tasks {
             xml.required.set(true)
             html.required.set(true)
         }
+        // Use only Java-compiled classes to avoid "Can't add different class with
+        // same name" errors from duplicate .class files in kotlin/main and java/main.
+        // Exclude UI and service classes that require the full IDE runtime — these
+        // can only be tested via integration tests, not unit tests.
+        val mainClasses = fileTree("${layout.buildDirectory.get()}/classes/java/main") {
+            exclude(
+                "**/ui/**",           // Swing/JCEF UI components
+                "**/actions/**",      // AnAction subclasses (need ActionManager)
+                "**/settings/**",     // Settings UI (configurable panels)
+            )
+        }
+        classDirectories.setFrom(mainClasses)
     }
 
     runIde {
