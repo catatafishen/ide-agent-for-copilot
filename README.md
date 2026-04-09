@@ -4,6 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/catatafishen/agentbridge?label=release)](https://github.com/catatafishen/agentbridge/releases/latest)
 [![License](https://img.shields.io/github/license/catatafishen/agentbridge)](LICENSE)
 [![CodeQL](https://github.com/catatafishen/agentbridge/actions/workflows/codeql.yml/badge.svg)](https://github.com/catatafishen/agentbridge/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/catatafishen/agentbridge/graph/badge.svg)](https://codecov.io/gh/catatafishen/agentbridge)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/catatafishen/agentbridge/badge)](https://scorecard.dev/viewer/?uri=github.com/catatafishen/agentbridge)
 
 An ACP & MCP bridge connecting AI coding agents to your JetBrains IDE through **117 native MCP tools**.
