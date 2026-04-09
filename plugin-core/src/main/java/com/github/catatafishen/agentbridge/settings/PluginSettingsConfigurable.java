@@ -25,7 +25,10 @@ public final class PluginSettingsConfigurable implements Configurable {
      * Opens this settings page programmatically.
      */
     public static void open(@NotNull Project project) {
-        ShowSettingsUtil.getInstance().showSettingsDialog(project, PluginSettingsConfigurable.class);
+        // Defer to next EDT cycle to avoid BufferStrategy NPE when a modal
+        // dialog is shown during mouse-event processing (JDK repaint race).
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
+            ShowSettingsUtil.getInstance().showSettingsDialog(project, PluginSettingsConfigurable.class));
     }
 
     @Override
