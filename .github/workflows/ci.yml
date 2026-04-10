@@ -77,11 +77,11 @@ jobs:
             plugin-core/js-tests/package-lock.json
 
       - name: Install chat-ui dependencies
-        run: npm ci --silent
+        run: npm ci --silent --ignore-scripts
         working-directory: plugin-core/chat-ui
 
       - name: Install JS test dependencies
-        run: npm ci --silent
+        run: npm ci --silent --ignore-scripts
         working-directory: plugin-core/js-tests
 
       - name: Build chat-ui

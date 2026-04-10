@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: plugin-core/chat-ui/package-lock.json
 
       - name: Install chat-ui dependencies
-        run: npm ci --silent
+        run: npm ci --silent --ignore-scripts
         working-directory: plugin-core/chat-ui
 
       - name: Initialize CodeQL
