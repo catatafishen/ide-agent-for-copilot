@@ -376,6 +376,8 @@ public abstract class GitTool extends Tool {
 
     /**
      * Extracts the first full commit hash from git output and navigates to it in the VCS Log tab.
+     * Uses {@link PlatformApiCompat#showRevisionInLogAfterRefresh} to wait for the VCS log to
+     * index the commit before navigating — avoids "commit could not be found" errors.
      */
     protected void showFirstCommitInLog(String gitOutput) {
         if (!ToolLayerSettings.getInstance(project).getFollowAgentFiles()) return;
@@ -394,7 +396,7 @@ public abstract class GitTool extends Tool {
         String finalHash = hash;
         EdtUtil.invokeLater(() -> {
             try {
-                PlatformApiCompat.showRevisionInLog(project, finalHash);
+                PlatformApiCompat.showRevisionInLogAfterRefresh(project, finalHash);
             } catch (Exception ignored) {
                 // best-effort UI follow-along
             }

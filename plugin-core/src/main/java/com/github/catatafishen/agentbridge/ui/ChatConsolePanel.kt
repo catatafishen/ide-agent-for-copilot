@@ -1539,7 +1539,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 if (fullHash.length == 40) {
                     ApplicationManager.getApplication().invokeLater {
                         PlatformApiCompat
-                            .showRevisionInLog(project, fullHash)
+                            .showRevisionInLogAfterRefresh(project, fullHash)
                     }
                 }
             } catch (_: Exception) {
