@@ -293,12 +293,18 @@ public final class HttpRequestTool extends InfrastructureTool {
             try {
                 var factory = com.intellij.execution.filters.TextConsoleBuilderFactory.getInstance();
                 var view = factory.createBuilder(project).getConsole();
-                view.print(text, com.intellij.execution.ui.ConsoleViewContentType.SYSTEM_OUTPUT);
 
-                new RunContentExecutor(project, new NopProcessHandler())
+                NopProcessHandler processHandler = new NopProcessHandler();
+                processHandler.startNotify();
+
+                new RunContentExecutor(project, processHandler)
                     .withTitle(tabTitle)
+                    .withConsole(view)
                     .withActivateToolWindow(false)
                     .run();
+
+                view.print(text, com.intellij.execution.ui.ConsoleViewContentType.SYSTEM_OUTPUT);
+                processHandler.destroyProcess();
             } catch (Exception e) {
                 LOG.warn("Failed to show HTTP request in Run panel", e);
             }
