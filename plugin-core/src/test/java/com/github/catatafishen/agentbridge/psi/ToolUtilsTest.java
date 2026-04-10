@@ -258,4 +258,160 @@ class ToolUtilsTest {
             assertEquals(output, result);
         }
     }
+
+    @Nested
+    class FormatFileSize {
+
+        @Test
+        void zeroBytes() {
+            assertEquals("0 B", ToolUtils.formatFileSize(0));
+        }
+
+        @Test
+        void smallByteCount() {
+            assertEquals("512 B", ToolUtils.formatFileSize(512));
+        }
+
+        @Test
+        void maxBytesBeforeKB() {
+            assertEquals("1023 B", ToolUtils.formatFileSize(1023));
+        }
+
+        @Test
+        void exactlyOneKB() {
+            assertEquals("1.0 KB", ToolUtils.formatFileSize(1024));
+        }
+
+        @Test
+        void kilobytes() {
+            assertEquals("2.0 KB", ToolUtils.formatFileSize(2048));
+        }
+
+        @Test
+        void exactlyOneMB() {
+            assertEquals("1.0 MB", ToolUtils.formatFileSize(1024 * 1024));
+        }
+
+        @Test
+        void megabytes() {
+            assertEquals("2.0 MB", ToolUtils.formatFileSize(2 * 1024 * 1024));
+        }
+    }
+
+    @Nested
+    class FormatFileTimestamp {
+
+        @Test
+        void zeroReturnsUnknown() {
+            assertEquals("unknown", ToolUtils.formatFileTimestamp(0));
+        }
+
+        @Test
+        void nonZeroMatchesDatePattern() {
+            // Any non-zero epoch should produce a yyyy-MM-dd string
+            String result = ToolUtils.formatFileTimestamp(1_705_320_000_000L);
+            assertTrue(result.matches("\\d{4}-\\d{2}-\\d{2}"),
+                "Expected yyyy-MM-dd but got: " + result);
+        }
+    }
+
+    @Nested
+    class ParseDateParam {
+
+        @Test
+        void nullReturnsMinusOne() {
+            assertEquals(-1L, ToolUtils.parseDateParam(null));
+        }
+
+        @Test
+        void emptyStringReturnsMinusOne() {
+            assertEquals(-1L, ToolUtils.parseDateParam(""));
+        }
+
+        @Test
+        void blankStringReturnsMinusOne() {
+            assertEquals(-1L, ToolUtils.parseDateParam("   "));
+        }
+
+        @Test
+        void invalidDateReturnsMinusOne() {
+            assertEquals(-1L, ToolUtils.parseDateParam("not-a-date"));
+        }
+
+        @Test
+        void validDateReturnsUtcEpoch() {
+            // 2024-01-15 00:00:00 UTC
+            assertEquals(1_705_276_800_000L, ToolUtils.parseDateParam("2024-01-15"));
+        }
+
+        @Test
+        void anotherValidDate() {
+            // 2025-03-01 00:00:00 UTC
+            assertEquals(1_740_787_200_000L, ToolUtils.parseDateParam("2025-03-01"));
+        }
+    }
+
+    @Nested
+    class GetCommandAbuseMessage {
+
+        @Test
+        void gitMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("git").startsWith("Error:"));
+        }
+
+        @Test
+        void catMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("cat").startsWith("Error:"));
+        }
+
+        @Test
+        void sedMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("sed").startsWith("Error:"));
+        }
+
+        @Test
+        void grepMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("grep").startsWith("Error:"));
+        }
+
+        @Test
+        void findMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("find").startsWith("Error:"));
+        }
+
+        @Test
+        void compileMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("compile").startsWith("Error:"));
+        }
+
+        @Test
+        void testMessageStartsWithError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("test").startsWith("Error:"));
+        }
+
+        @Test
+        void unknownTypeReturnsDefaultError() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("unknown").startsWith("Error:"));
+        }
+
+        @Test
+        void gitMessageMentionsGitTools() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("git").contains("git_status"));
+        }
+
+        @Test
+        void catMessageMentionsReadFile() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("cat").contains("read"));
+        }
+
+        @Test
+        void sedMessageMentionsEditText() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("sed").contains("edit_text"));
+        }
+
+        @Test
+        void grepMessageMentionsSearchText() {
+            assertTrue(ToolUtils.getCommandAbuseMessage("grep").contains("search_text"));
+        }
+    }
 }
