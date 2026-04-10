@@ -1,16 +1,15 @@
 package com.github.catatafishen.agentbridge.ui.statistics;
 
 import com.github.catatafishen.agentbridge.ui.ChatTheme;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.ui.JBColor;
-import com.intellij.ui.charts.Coordinates;
-import com.intellij.ui.charts.XYLineChart;
-import com.intellij.ui.charts.XYLineDataset;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBPanel;
 import com.intellij.util.ui.JBUI;
 
+import javax.swing.*;
 import java.awt.*;
-import java.time.Instant;
+import java.awt.geom.Path2D;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -20,21 +19,26 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Chart component that wraps JetBrains' {@link XYLineChart} to display usage
- * metrics over time, with per-agent color coding.
- * <p>
- * {@code com.intellij.ui.charts} is marked {@code @ApiStatus.Experimental} but is the only
- * native JetBrains charting API. It has been stable since IntelliJ 2020.2 and there is no
- * non-experimental alternative. If the API changes in a future platform version, only this
- * class needs updating.
+ * Chart component that renders usage metrics over time using Java2D.
+ * Each agent gets its own colored line and fill area, stacked from the baseline.
  */
-@SuppressWarnings("UnstableApiUsage")
 class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
 
+    private static final Logger LOG = Logger.getInstance(UsageStatisticsChart.class);
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MM/dd");
 
+    private static final int MARGIN_LEFT = 48;
+    private static final int MARGIN_RIGHT = 12;
+    private static final int MARGIN_TOP = 8;
+    private static final int MARGIN_BOTTOM = 24;
+
+    private static final Color GRID_LINE_COLOR = new JBColor(
+        new Color(220, 220, 220), new Color(60, 60, 60));
+    private static final Color GRID_LABEL_COLOR = new JBColor(
+        new Color(120, 120, 120), new Color(150, 150, 150));
+
     private final UsageStatisticsData.Metric metric;
-    private final XYLineChart<Long, Long> chart;
+    private final ChartCanvas canvas;
     private final JBLabel emptyLabel;
 
     UsageStatisticsChart(String title, UsageStatisticsData.Metric metric) {
@@ -47,9 +51,8 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD));
         add(titleLabel, BorderLayout.NORTH);
 
-        chart = new XYLineChart<>();
-        configureGrid();
-        add(chart.getComponent(), BorderLayout.CENTER);
+        canvas = new ChartCanvas();
+        add(canvas, BorderLayout.CENTER);
 
         emptyLabel = new JBLabel("No data");
         emptyLabel.setHorizontalAlignment(JBLabel.CENTER);
@@ -58,7 +61,7 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
 
     void update(UsageStatisticsData.StatisticsSnapshot snapshot) {
         if (snapshot == null || snapshot.dailyStats().isEmpty()) {
-            remove(chart.getComponent());
+            remove(canvas);
             emptyLabel.setVisible(true);
             add(emptyLabel, BorderLayout.CENTER);
             revalidate();
@@ -68,39 +71,35 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
 
         emptyLabel.setVisible(false);
         remove(emptyLabel);
-        add(chart.getComponent(), BorderLayout.CENTER);
+        add(canvas, BorderLayout.CENTER);
 
         Map<String, List<UsageStatisticsData.DailyAgentStats>> byAgent = snapshot.dailyStats().stream()
             .collect(Collectors.groupingBy(UsageStatisticsData.DailyAgentStats::agentId));
 
-        List<XYLineDataset<Long, Long>> datasets = new ArrayList<>();
+        List<DataSeries> seriesList = new ArrayList<>();
 
         for (Map.Entry<String, List<UsageStatisticsData.DailyAgentStats>> entry : byAgent.entrySet()) {
             String agentId = entry.getKey();
             List<UsageStatisticsData.DailyAgentStats> agentStats = entry.getValue();
 
-            XYLineDataset<Long, Long> dataset = new XYLineDataset<>();
-            dataset.setLabel(agentId);
-            dataset.setStacked(true);
-            dataset.setStroke(new BasicStroke(2.0f));
-
             int colorIndex = ChatTheme.INSTANCE.agentColorIndex(agentId);
             JBColor agentColor = ChatTheme.INSTANCE.getSA_COLORS()[colorIndex];
-            dataset.setLineColor(agentColor);
-            dataset.setFillColor(new Color(agentColor.getRed(), agentColor.getGreen(), agentColor.getBlue(), 38));
 
+            List<DataPoint> points = new ArrayList<>();
             for (UsageStatisticsData.DailyAgentStats stats : agentStats) {
                 long x = stats.date().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
                 long y = extractMetricValue(stats);
-                //noinspection unchecked — varargs generic erasure in XYLineDataset.add(T...)
-                dataset.add(Coordinates.of(x, y));
+                points.add(new DataPoint(x, y, stats.date()));
             }
 
-            datasets.add(dataset);
+            seriesList.add(new DataSeries(agentId, agentColor, points));
         }
 
-        chart.setDatasets(datasets);
-        chart.update();
+        canvas.setData(seriesList);
+
+        long totalPoints = seriesList.stream().mapToInt(s -> s.points.size()).sum();
+        LOG.info("Chart '" + metric + "': " + seriesList.size() + " series, " + totalPoints + " points");
+
         revalidate();
         repaint();
     }
@@ -116,13 +115,212 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
         };
     }
 
-    private void configureGrid() {
-        chart.getRanges().setXPainter(gl -> {
-            long millis = gl.getValue();
-            gl.setLabel(LocalDate.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault())
-                .format(DATE_FMT));
-        });
-        chart.getRanges().setYPainter(gl -> gl.setLabel(formatCompact(gl.getValue())));
+    private record DataPoint(long x, long y, LocalDate date) {
+    }
+
+    private record DataSeries(String agentId, JBColor color, List<DataPoint> points) {
+    }
+
+    /**
+     * Custom JPanel that renders the chart using Java2D.
+     */
+    private static final class ChartCanvas extends JPanel {
+
+        private List<DataSeries> seriesList = List.of();
+        private long xMin, xMax, yMin, yMax;
+
+        ChartCanvas() {
+            setOpaque(false);
+        }
+
+        void setData(List<DataSeries> seriesList) {
+            this.seriesList = seriesList;
+            computeMinMax();
+            repaint();
+        }
+
+        private void computeMinMax() {
+            boolean first = true;
+            long xLo = 0, xHi = 0, yLo = 0, yHi = 0;
+            for (DataSeries series : seriesList) {
+                for (DataPoint pt : series.points) {
+                    if (first) {
+                        xLo = xHi = pt.x;
+                        yLo = yHi = pt.y;
+                        first = false;
+                    } else {
+                        xLo = Math.min(xLo, pt.x);
+                        xHi = Math.max(xHi, pt.x);
+                        yLo = Math.min(yLo, pt.y);
+                        yHi = Math.max(yHi, pt.y);
+                    }
+                }
+            }
+            xMin = xLo;
+            xMax = xHi;
+            // Always include zero on the Y axis so bars are grounded
+            yMin = Math.min(0, yLo);
+            yMax = yHi;
+            // Pad the top by 10% so the peak isn't clipped against the border
+            if (yMax > yMin) {
+                yMax += (yMax - yMin) / 10;
+            } else {
+                yMax = yMin + 1;
+            }
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (seriesList.isEmpty()) return;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+
+                int w = getWidth();
+                int h = getHeight();
+                int plotLeft = MARGIN_LEFT;
+                int plotRight = w - MARGIN_RIGHT;
+                int plotTop = MARGIN_TOP;
+                int plotBottom = h - MARGIN_BOTTOM;
+                int plotW = plotRight - plotLeft;
+                int plotH = plotBottom - plotTop;
+
+                if (plotW <= 0 || plotH <= 0) return;
+
+                paintGrid(g2, plotLeft, plotTop, plotW, plotH);
+                paintData(g2, plotLeft, plotTop, plotW, plotH);
+                paintBorder(g2, plotLeft, plotTop, plotW, plotH);
+            } finally {
+                g2.dispose();
+            }
+        }
+
+        private void paintGrid(Graphics2D g2, int plotLeft, int plotTop, int plotW, int plotH) {
+            g2.setFont(g2.getFont().deriveFont(Font.PLAIN, JBUI.scale(10f)));
+            FontMetrics fm = g2.getFontMetrics();
+            int plotBottom = plotTop + plotH;
+            int plotRight = plotLeft + plotW;
+
+            // Y-axis grid lines
+            int yTicks = computeNiceTickCount(plotH);
+            if (yTicks > 0 && yMax > yMin) {
+                for (int i = 0; i <= yTicks; i++) {
+                    long yVal = yMin + (yMax - yMin) * i / yTicks;
+                    int py = plotBottom - (int) ((double) (yVal - yMin) / (yMax - yMin) * plotH);
+                    g2.setColor(GRID_LINE_COLOR);
+                    g2.drawLine(plotLeft, py, plotRight, py);
+                    g2.setColor(GRID_LABEL_COLOR);
+                    String label = formatCompact(yVal);
+                    int labelW = fm.stringWidth(label);
+                    g2.drawString(label, plotLeft - labelW - 4, py + fm.getAscent() / 2);
+                }
+            }
+
+            // X-axis date labels
+            List<LocalDate> dates = collectUniqueDates();
+            if (!dates.isEmpty()) {
+                g2.setColor(GRID_LABEL_COLOR);
+                int labelY = plotBottom + fm.getAscent() + 4;
+                int prevLabelEnd = Integer.MIN_VALUE;
+                for (LocalDate date : dates) {
+                    long xVal = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                    int px = plotLeft + mapX(xVal, plotW);
+                    String label = date.format(DATE_FMT);
+                    int labelW = fm.stringWidth(label);
+                    int labelStart = px - labelW / 2;
+                    // Skip overlapping labels
+                    if (labelStart > prevLabelEnd + 4) {
+                        g2.drawString(label, labelStart, labelY);
+                        prevLabelEnd = labelStart + labelW;
+                    }
+                }
+            }
+        }
+
+        private void paintData(Graphics2D g2, int plotLeft, int plotTop, int plotW, int plotH) {
+            int plotBottom = plotTop + plotH;
+
+            for (DataSeries series : seriesList) {
+                List<DataPoint> points = series.points;
+                if (points.isEmpty()) continue;
+
+                Color lineColor = series.color;
+                Color fillColor = new Color(
+                    lineColor.getRed(), lineColor.getGreen(), lineColor.getBlue(), 38);
+
+                // Build the line path
+                Path2D.Double linePath = new Path2D.Double();
+                boolean first = true;
+                for (DataPoint pt : points) {
+                    int px = plotLeft + mapX(pt.x, plotW);
+                    int py = plotBottom - mapY(pt.y, plotH);
+                    if (first) {
+                        linePath.moveTo(px, py);
+                        first = false;
+                    } else {
+                        linePath.lineTo(px, py);
+                    }
+                }
+
+                // Build the fill path (extend line to bottom, close)
+                Path2D.Double fillPath = new Path2D.Double(linePath);
+                DataPoint lastPt = points.getLast();
+                DataPoint firstPt = points.getFirst();
+                int lastPx = plotLeft + mapX(lastPt.x, plotW);
+                int firstPx = plotLeft + mapX(firstPt.x, plotW);
+                fillPath.lineTo(lastPx, plotBottom);
+                fillPath.lineTo(firstPx, plotBottom);
+                fillPath.closePath();
+
+                // Clip to the plot area
+                Shape oldClip = g2.getClip();
+                g2.clipRect(plotLeft, plotTop, plotW, plotH);
+
+                // Fill area
+                g2.setColor(fillColor);
+                g2.fill(fillPath);
+
+                // Draw line
+                g2.setColor(lineColor);
+                g2.setStroke(new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.draw(linePath);
+
+                g2.setClip(oldClip);
+            }
+        }
+
+        private void paintBorder(Graphics2D g2, int plotLeft, int plotTop, int plotW, int plotH) {
+            g2.setColor(GRID_LINE_COLOR);
+            g2.drawRect(plotLeft, plotTop, plotW, plotH);
+        }
+
+        private int mapX(long xVal, int plotW) {
+            if (xMax == xMin) return plotW / 2;
+            return (int) ((double) (xVal - xMin) / (xMax - xMin) * plotW);
+        }
+
+        private int mapY(long yVal, int plotH) {
+            if (yMax == yMin) return plotH / 2;
+            return (int) ((double) (yVal - yMin) / (yMax - yMin) * plotH);
+        }
+
+        private List<LocalDate> collectUniqueDates() {
+            return seriesList.stream()
+                .flatMap(s -> s.points.stream())
+                .map(DataPoint::date)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+        }
+
+        private static int computeNiceTickCount(int plotH) {
+            int minSpacing = JBUI.scale(40);
+            int maxTicks = Math.max(1, plotH / minSpacing);
+            return Math.min(maxTicks, 5);
+        }
     }
 
     private static String formatCompact(long value) {
