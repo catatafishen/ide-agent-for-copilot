@@ -16,21 +16,26 @@ public class CopilotSettingsTest extends BasePlatformTestCase {
     protected void setUp() throws Exception {
         super.setUp();
         settings = new GenericSettings("copilot");
-        // Clear any stale values from previous runs
         PropertiesComponent props = PropertiesComponent.getInstance();
         PropertiesComponent projectProps = PropertiesComponent.getInstance(getProject());
-        props.unsetValue("copilot.selectedModel");
-        props.unsetValue("copilot.selectedAgent");
-        props.unsetValue("copilot.monthlyRequests");
-        props.unsetValue("copilot.monthlyCost");
-        props.unsetValue("copilot.usageResetMonth");
-        props.unsetValue("copilot.tool.perm.edit_text");
+        // Clear app-level keys touched by these tests
+        for (String key : new String[]{
+            "copilot.selectedModel", "copilot.selectedAgent",
+            "copilot.monthlyRequests", "copilot.monthlyCost", "copilot.usageResetMonth",
+            "copilot.contextHistoryLimit", "copilot.maxToolCallsPerTurn",
+            "copilot.resumeSessionId", "copilot.sessionOpt.effort"}) {
+            props.unsetValue(key);
+        }
+        // Tool permission keys are NOT prefixed — they're global across all profiles
+        for (String toolId : new String[]{"edit_text", "tool_in_fallback", "tool_in_set",
+            "tool_out_fallback", "tool_out_set", "tool_to_clear"}) {
+            props.unsetValue("tool.perm." + toolId);
+            props.unsetValue("tool.perm.in." + toolId);
+            props.unsetValue("tool.perm.out." + toolId);
+        }
+        // Clear project-level keys
         projectProps.unsetValue("copilot.selectedModel");
-        projectProps.unsetValue("copilot.selectedAgent");
-        projectProps.unsetValue("copilot.monthlyRequests");
-        projectProps.unsetValue("copilot.monthlyCost");
-        projectProps.unsetValue("copilot.usageResetMonth");
-        projectProps.unsetValue("copilot.tool.perm.edit_text");
+        projectProps.unsetValue("tool.perm.edit_text");
     }
 
     public void testSelectedModelDefaultNull() {
@@ -93,5 +98,128 @@ public class CopilotSettingsTest extends BasePlatformTestCase {
 
         assertEquals(ToolPermission.DENY, appSettings.getToolPermission("edit_text"));
         assertEquals(ToolPermission.ASK, projectSettings.getToolPermission("edit_text"));
+    }
+
+    public void testContextHistoryLimitDefaultUsesProvided() {
+        assertEquals(5, settings.getContextHistoryLimit(5));
+        assertEquals(0, settings.getContextHistoryLimit(0));
+    }
+
+    public void testSetAndGetContextHistoryLimit() {
+        settings.setContextHistoryLimit(10);
+        assertEquals(10, settings.getContextHistoryLimit(999));
+    }
+
+    public void testMaxToolCallsDefault() {
+        assertEquals(0, settings.getMaxToolCallsPerTurn());
+    }
+
+    public void testSetAndGetMaxToolCalls() {
+        settings.setMaxToolCallsPerTurn(50);
+        assertEquals(50, settings.getMaxToolCallsPerTurn());
+    }
+
+    public void testToolPermissionDefaultAllow() {
+        assertEquals(ToolPermission.ALLOW, settings.getToolPermission("unknown_tool"));
+    }
+
+    public void testToolPermissionInsideProjectFallsBackToGlobal() {
+        settings.setToolPermission("tool_in_fallback", ToolPermission.ASK);
+        assertEquals(ToolPermission.ASK, settings.getToolPermissionInsideProject("tool_in_fallback"));
+    }
+
+    public void testSetAndGetToolPermissionInsideProject() {
+        settings.setToolPermissionInsideProject("tool_in_set", ToolPermission.DENY);
+        assertEquals(ToolPermission.DENY, settings.getToolPermissionInsideProject("tool_in_set"));
+    }
+
+    public void testToolPermissionOutsideProjectFallsBackToGlobal() {
+        settings.setToolPermission("tool_out_fallback", ToolPermission.ASK);
+        assertEquals(ToolPermission.ASK, settings.getToolPermissionOutsideProject("tool_out_fallback"));
+    }
+
+    public void testSetAndGetToolPermissionOutsideProject() {
+        settings.setToolPermissionOutsideProject("tool_out_set", ToolPermission.DENY);
+        assertEquals(ToolPermission.DENY, settings.getToolPermissionOutsideProject("tool_out_set"));
+    }
+
+    public void testClearToolSubPermissions() {
+        settings.setToolPermissionInsideProject("tool_to_clear", ToolPermission.DENY);
+        settings.setToolPermissionOutsideProject("tool_to_clear", ToolPermission.ASK);
+        settings.clearToolSubPermissions("tool_to_clear");
+        // After clear, sub-permissions fall back to global (which is ALLOW by default)
+        assertEquals(ToolPermission.ALLOW, settings.getToolPermissionInsideProject("tool_to_clear"));
+        assertEquals(ToolPermission.ALLOW, settings.getToolPermissionOutsideProject("tool_to_clear"));
+    }
+
+    public void testResolveEffectivePermissionWithDenied() {
+        ToolRegistry registry = new ToolRegistry(getProject());
+        settings.setToolPermission("denied_tool", ToolPermission.DENY);
+        // DENY at top level → always returns DENY regardless of sub-permissions
+        assertEquals(ToolPermission.DENY, settings.resolveEffectivePermission("denied_tool", true, registry));
+        assertEquals(ToolPermission.DENY, settings.resolveEffectivePermission("denied_tool", false, registry));
+    }
+
+    public void testResolveEffectivePermissionToolNotInRegistry() {
+        ToolRegistry registry = new ToolRegistry(getProject());
+        // Tool not registered → no sub-permissions possible → returns global ALLOW
+        assertEquals(ToolPermission.ALLOW, settings.resolveEffectivePermission("unknown_tool_x", true, registry));
+        assertEquals(ToolPermission.ALLOW, settings.resolveEffectivePermission("unknown_tool_x", false, registry));
+    }
+
+    public void testResumeSessionIdDefaultNull() {
+        assertNull(settings.getResumeSessionId());
+    }
+
+    public void testSetAndGetResumeSessionId() {
+        settings.setResumeSessionId("session-abc-123");
+        assertEquals("session-abc-123", settings.getResumeSessionId());
+    }
+
+    public void testClearResumeSessionIdWithNull() {
+        settings.setResumeSessionId("session-abc-123");
+        settings.setResumeSessionId(null);
+        assertNull(settings.getResumeSessionId());
+    }
+
+    public void testClearResumeSessionIdWithEmpty() {
+        settings.setResumeSessionId("session-abc-123");
+        settings.setResumeSessionId("");
+        assertNull(settings.getResumeSessionId());
+    }
+
+    public void testSessionOptionValueDefault() {
+        assertEquals("", settings.getSessionOptionValue("effort"));
+    }
+
+    public void testSetAndGetSessionOptionValue() {
+        settings.setSessionOptionValue("effort", "high");
+        assertEquals("high", settings.getSessionOptionValue("effort"));
+    }
+
+    public void testActiveAgentLabelDefaultNull() {
+        assertNull(settings.getActiveAgentLabel());
+    }
+
+    public void testSetAndGetActiveAgentLabel() {
+        settings.setActiveAgentLabel("intellij-explore");
+        assertEquals("intellij-explore", settings.getActiveAgentLabel());
+    }
+
+    public void testClearActiveAgentLabel() {
+        settings.setActiveAgentLabel("intellij-explore");
+        settings.setActiveAgentLabel(null);
+        assertNull(settings.getActiveAgentLabel());
+    }
+
+    public void testActiveAgentLabelUsedAsModelFallback() {
+        settings.setActiveAgentLabel("claude-sonnet-4.5");
+        // When no selectedModel is persisted, getSelectedModel() falls back to activeAgentLabel
+        assertNull(PropertiesComponent.getInstance().getValue("copilot.selectedModel"));
+        assertEquals("claude-sonnet-4.5", settings.getSelectedModel());
+    }
+
+    public void testGetPrefix() {
+        assertEquals("copilot.", settings.getPrefix());
     }
 }
