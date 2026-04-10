@@ -72,6 +72,14 @@ public final class MemorySettings implements PersistentStateComponent<MemorySett
         myState.palaceWing = palaceWing;
     }
 
+    public boolean isBackfillCompleted() {
+        return myState.backfillCompleted;
+    }
+
+    public void setBackfillCompleted(boolean completed) {
+        myState.backfillCompleted = completed;
+    }
+
     // ── PersistentStateComponent ──────────────────────────────────────────
 
     @Override
@@ -93,6 +101,7 @@ public final class MemorySettings implements PersistentStateComponent<MemorySett
         private int minChunkLength = 200;
         private int maxDrawersPerTurn = 10;
         private String palaceWing = "";
+        private boolean backfillCompleted = false;
 
         public boolean isEnabled() {
             return enabled;
@@ -140,6 +149,14 @@ public final class MemorySettings implements PersistentStateComponent<MemorySett
 
         public void setPalaceWing(String v) {
             this.palaceWing = v;
+        }
+
+        public boolean isBackfillCompleted() {
+            return backfillCompleted;
+        }
+
+        public void setBackfillCompleted(boolean v) {
+            this.backfillCompleted = v;
         }
     }
 }

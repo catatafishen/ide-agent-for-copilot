@@ -2,7 +2,7 @@ package com.github.catatafishen.agentbridge.memory.mining;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests for {@link RoomDetector} — keyword-based room/topic detection.
@@ -67,7 +67,7 @@ class RoomDetectorTest {
 
     @Test
     void shortTextWithOneKeyword() {
-        assertEquals("technical", RoomDetector.detect("fix the build"));
+        assertEquals("technical", RoomDetector.detect("compile the code"));
     }
 
     @Test
