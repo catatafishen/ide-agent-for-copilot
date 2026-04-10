@@ -147,6 +147,12 @@ public final class CodexClientExporter {
     private static void insertThread(@NotNull Path dbPath, @NotNull String threadId,
                                      @NotNull String rolloutPath, long createdAt) {
         String url = "jdbc:sqlite:" + dbPath;
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            LOG.warn("SQLite JDBC driver not found on classpath", e);
+            return;
+        }
         try (Connection conn = DriverManager.getConnection(url);
              Statement pragmaStmt = conn.createStatement()) {
             pragmaStmt.execute("PRAGMA journal_mode=WAL");

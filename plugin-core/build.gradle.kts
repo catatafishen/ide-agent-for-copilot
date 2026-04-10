@@ -1,4 +1,3 @@
-import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
 import java.util.zip.ZipInputStream
@@ -61,6 +60,9 @@ dependencies {
 
     // SQLite JDBC (used by OpenCode session import)
     implementation("org.xerial:sqlite-jdbc:3.51.3.0")
+
+    // ONNX Runtime for embedding model inference (semantic memory)
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.24.3")
 
     testImplementation("org.junit.jupiter:junit-jupiter:${providers.gradleProperty("junitVersion").get()}")
     testImplementation(
@@ -436,11 +438,34 @@ tasks {
             xml.required.set(true)
             html.required.set(true)
         }
-        // Use only Java-compiled classes to avoid "Can't add different class with
-        // same name" errors from duplicate .class files in kotlin/main and java/main.
+        // IntelliJ Platform's instrumentCode task applies @NotNull bytecode checks,
+        // changing class hashes. Tests run against these instrumented classes (in
+        // build/instrumented/instrumentCode/), so the report must use them too —
+        // otherwise JaCoCo reports "execution data does not match" for every class.
+        // Exclude UI and service classes that require the full IDE runtime — these
+        // can only be tested via integration tests, not unit tests.
+        val instrumentedClasses = fileTree("${layout.buildDirectory.get()}/instrumented/instrumentCode") {
+            exclude(
+                "**/ui/**",           // Swing/JCEF UI components
+                "**/actions/**",      // AnAction subclasses (need ActionManager)
+                "**/settings/**",     // Settings UI (configurable panels)
+            )
+        }
+        // Fallback to raw classes if instrumentCode hasn't run (e.g., standalone report)
+        val rawClasses = fileTree("${layout.buildDirectory.get()}/classes/java/main") {
+            exclude(
+                "**/ui/**",
+                "**/actions/**",
+                "**/settings/**",
+            )
+        }
         classDirectories.setFrom(
-            fileTree("${layout.buildDirectory.get()}/classes/java/main")
+            if (file("${layout.buildDirectory.get()}/instrumented/instrumentCode").exists())
+                instrumentedClasses
+            else
+                rawClasses
         )
+        sourceDirectories.setFrom(files("src/main/java"))
     }
 
     runIde {

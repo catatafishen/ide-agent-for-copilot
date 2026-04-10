@@ -399,20 +399,6 @@ public final class PlatformApiCompat {
     }
 
     /**
-     * Navigates the VCS Log tool window to a specific commit by its full SHA hash.
-     *
-     * <p><b>Why extracted:</b> {@code com.intellij.vcs.log.Hash} and
-     * {@code com.intellij.vcs.log.impl.HashImpl} are resolved against the dev IDE's VCS plugin JAR,
-     * which may have different class metadata or {@code @NotNull} annotations than the target SDK.
-     * The IDE daemon reports "Unknown class: com.intellij.vcs.log.Hash" and cascading resolution
-     * failures on {@code showRevisionInMainLog}. The Gradle build compiles without errors.</p>
-     */
-    public static void showRevisionInLog(@NotNull Project project, @NotNull String fullHash) {
-        var vcsHash = com.intellij.vcs.log.impl.HashImpl.build(fullHash);
-        com.intellij.vcs.log.impl.VcsProjectLog.showRevisionInMainLog(project, vcsHash);
-    }
-
-    /**
      * Opens the Git Log tab and selects the commit with {@code fullHash} once the VCS log has
      * indexed it. Registers a {@link com.intellij.vcs.log.data.DataPackChangeListener} and waits
      * for the new commit to appear in the storage before calling

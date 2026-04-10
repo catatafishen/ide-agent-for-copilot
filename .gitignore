@@ -12,6 +12,7 @@ build/
 .idea/gradle.xml
 .idea/mcpServer.xml
 .idea/chatWebServer.xml
+.idea/agentbridgeMemory.xml
 .idea/modules.xml
 .idea/sonarlint.xml
 .idea/sonarlint/
