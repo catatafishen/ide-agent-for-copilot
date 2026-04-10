@@ -85,8 +85,8 @@ public final class McpProtocolHandler {
             if (!msg.has("id")) return null;
             return GSON.toJson(result);
         } catch (Exception e) {
-            LOG.warn("MCP protocol error", e);
-            return GSON.toJson(makeErrorResponse(null, -32700, "Parse error: " + e.getMessage()));
+            LOG.error("MCP protocol error processing request", e);
+            return GSON.toJson(makeErrorResponse(null, -32700, "Internal error: " + e.getClass().getSimpleName() + ": " + e.getMessage()));
         }
     }
 
