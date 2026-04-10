@@ -438,16 +438,9 @@ tasks {
         }
         // Use only Java-compiled classes to avoid "Can't add different class with
         // same name" errors from duplicate .class files in kotlin/main and java/main.
-        // Exclude UI and service classes that require the full IDE runtime — these
-        // can only be tested via integration tests, not unit tests.
-        val mainClasses = fileTree("${layout.buildDirectory.get()}/classes/java/main") {
-            exclude(
-                "**/ui/**",           // Swing/JCEF UI components
-                "**/actions/**",      // AnAction subclasses (need ActionManager)
-                "**/settings/**",     // Settings UI (configurable panels)
-            )
-        }
-        classDirectories.setFrom(mainClasses)
+        classDirectories.setFrom(
+            fileTree("${layout.buildDirectory.get()}/classes/java/main")
+        )
     }
 
     runIde {
