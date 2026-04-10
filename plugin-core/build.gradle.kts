@@ -70,6 +70,7 @@ dependencies {
             providers.gradleProperty("junit4Version").get()
         }"
     )  // Required by IntelliJ test framework
+    testImplementation("org.mockito:mockito-core:${providers.gradleProperty("mockitoVersion").get()}")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:${providers.gradleProperty("junitVersion").get()}")
 }
