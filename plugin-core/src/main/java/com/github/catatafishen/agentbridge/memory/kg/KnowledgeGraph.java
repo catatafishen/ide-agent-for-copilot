@@ -46,12 +46,16 @@ public final class KnowledgeGraph implements Disposable {
      */
     public void initialize() throws IOException {
         try {
+            // Explicitly load the SQLite JDBC driver so it registers with DriverManager.
+            // In IntelliJ's plugin classloader environment, DriverManager.getConnection()
+            // searches the system/context classloader which doesn't see plugin dependencies.
+            Class.forName("org.sqlite.JDBC");
             Files.createDirectories(dbPath.getParent());
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
             connection.setAutoCommit(true);
             createSchema();
             LOG.info("KnowledgeGraph initialized at " + dbPath);
-        } catch (SQLException e) {
+        } catch (SQLException | ClassNotFoundException e) {
             throw new IOException("Failed to initialize KnowledgeGraph", e);
         }
     }
@@ -97,9 +101,9 @@ public final class KnowledgeGraph implements Disposable {
      * Only returns currently valid triples (valid_until is NULL or in the future).
      */
     public @NotNull List<KgTriple> query(@Nullable String subject,
-                                          @Nullable String predicate,
-                                          @Nullable String object,
-                                          int limit) throws IOException {
+                                         @Nullable String predicate,
+                                         @Nullable String object,
+                                         int limit) throws IOException {
         StringBuilder sql = new StringBuilder(
             "SELECT id, subject, predicate, object, valid_from, valid_until, source_closet, created_at FROM triples WHERE 1=1");
         List<Object> params = new ArrayList<>();

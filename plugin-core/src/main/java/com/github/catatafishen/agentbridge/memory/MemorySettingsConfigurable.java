@@ -5,6 +5,9 @@ import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import org.jetbrains.annotations.Nls;
@@ -13,11 +16,8 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
 
-/**
- * Settings UI panel for the Semantic Memory feature.
- * Displayed under AgentBridge > Memory in the IDE Settings.
- */
 public final class MemorySettingsConfigurable implements Configurable {
 
     private final Project project;
@@ -30,6 +30,10 @@ public final class MemorySettingsConfigurable implements Configurable {
     private JTextField palaceWingField;
     private JButton backfillButton;
     private JLabel backfillStatusLabel;
+
+    private JLabel minChunkLabel;
+    private JLabel maxDrawersLabel;
+    private JLabel palaceWingLabel;
 
     public MemorySettingsConfigurable(@NotNull Project project) {
         this.project = project;
@@ -64,6 +68,7 @@ public final class MemorySettingsConfigurable implements Configurable {
         gbc.gridy++;
         gbc.gridwidth = 2;
         enabledCheckBox = new JCheckBox("Enable semantic memory (stores memories locally in .agent-work/memory/)");
+        enabledCheckBox.addItemListener(e -> updateSubOptionsEnabled());
         panel.add(enabledCheckBox, gbc);
 
         // ── Auto-mine on turn complete ──
@@ -82,7 +87,8 @@ public final class MemorySettingsConfigurable implements Configurable {
         gbc.gridy++;
         gbc.gridwidth = 1;
         gbc.gridx = 0;
-        panel.add(new JLabel("Minimum chunk length (chars):"), gbc);
+        minChunkLabel = new JLabel("Minimum chunk length (chars):");
+        panel.add(minChunkLabel, gbc);
         gbc.gridx = 1;
         minChunkLengthSpinner = new JSpinner(new SpinnerNumberModel(200, 50, 2000, 50));
         panel.add(minChunkLengthSpinner, gbc);
@@ -90,7 +96,8 @@ public final class MemorySettingsConfigurable implements Configurable {
         // ── Max drawers per turn ──
         gbc.gridy++;
         gbc.gridx = 0;
-        panel.add(new JLabel("Max drawers per turn:"), gbc);
+        maxDrawersLabel = new JLabel("Max drawers per turn:");
+        panel.add(maxDrawersLabel, gbc);
         gbc.gridx = 1;
         maxDrawersPerTurnSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100, 1));
         panel.add(maxDrawersPerTurnSpinner, gbc);
@@ -98,7 +105,8 @@ public final class MemorySettingsConfigurable implements Configurable {
         // ── Palace wing ──
         gbc.gridy++;
         gbc.gridx = 0;
-        panel.add(new JLabel("Palace wing (empty = project name):"), gbc);
+        palaceWingLabel = new JLabel("Palace wing (empty = project name):");
+        panel.add(palaceWingLabel, gbc);
         gbc.gridx = 1;
         palaceWingField = new JTextField(20);
         panel.add(palaceWingField, gbc);
@@ -138,7 +146,22 @@ public final class MemorySettingsConfigurable implements Configurable {
         gbc.weighty = 1.0;
         panel.add(Box.createVerticalGlue(), gbc);
 
+        updateSubOptionsEnabled();
         return panel;
+    }
+
+    private void updateSubOptionsEnabled() {
+        boolean enabled = enabledCheckBox.isSelected();
+        autoMineTurnCheckBox.setEnabled(enabled);
+        autoMineArchiveCheckBox.setEnabled(enabled);
+        minChunkLabel.setEnabled(enabled);
+        minChunkLengthSpinner.setEnabled(enabled);
+        maxDrawersLabel.setEnabled(enabled);
+        maxDrawersPerTurnSpinner.setEnabled(enabled);
+        palaceWingLabel.setEnabled(enabled);
+        palaceWingField.setEnabled(enabled);
+        backfillButton.setEnabled(enabled);
+        backfillStatusLabel.setEnabled(enabled);
     }
 
     private void updateBackfillStatus() {
@@ -169,25 +192,50 @@ public final class MemorySettingsConfigurable implements Configurable {
         }
 
         backfillButton.setEnabled(false);
-        backfillButton.setText("Mining…");
-        backfillStatusLabel.setText("Mining in progress…");
+        backfillStatusLabel.setText("Starting backfill…");
 
-        BackfillMiner backfillMiner = new BackfillMiner(project);
-        backfillMiner.run(progress ->
-            ApplicationManager.getApplication().invokeLater(() ->
-                backfillStatusLabel.setText(progress)
-            )
-        ).whenComplete((result, error) ->
-            ApplicationManager.getApplication().invokeLater(() -> {
-                backfillButton.setEnabled(true);
-                backfillButton.setText("Mine Existing History");
-                if (error != null) {
-                    backfillStatusLabel.setText("Backfill failed: " + error.getMessage());
-                } else {
-                    updateBackfillStatus();
-                }
-            })
-        );
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Mining conversation history", true) {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setIndeterminate(false);
+                indicator.setFraction(0);
+
+                SessionStoreV2 sessionStore = SessionStoreV2.getInstance(project);
+                List<SessionStoreV2.SessionRecord> sessions = sessionStore.listSessions(project.getBasePath());
+                int total = sessions.size();
+
+                BackfillMiner backfillMiner = new BackfillMiner(project);
+                backfillMiner.run(progress -> {
+                    int current = parseCurrentSession(progress, total);
+                    if (current > 0) {
+                        indicator.setFraction((double) current / total);
+                    }
+                    indicator.setText(progress);
+                    ApplicationManager.getApplication().invokeLater(() ->
+                        backfillStatusLabel.setText(progress));
+                }).whenComplete((result, error) ->
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        backfillButton.setEnabled(enabledCheckBox.isSelected());
+                        if (error != null) {
+                            backfillStatusLabel.setText("Backfill failed: " + error.getMessage());
+                        } else {
+                            updateBackfillStatus();
+                        }
+                    })
+                );
+            }
+        });
+    }
+
+    private static int parseCurrentSession(String progress, int total) {
+        if (total <= 0 || !progress.startsWith("Mining session ")) return -1;
+        int ofIndex = progress.indexOf(" of ");
+        if (ofIndex < 0) return -1;
+        try {
+            return Integer.parseInt(progress.substring("Mining session ".length(), ofIndex));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     @Override
@@ -250,5 +298,6 @@ public final class MemorySettingsConfigurable implements Configurable {
         if (backfillStatusLabel != null) {
             updateBackfillStatus();
         }
+        updateSubOptionsEnabled();
     }
 }
