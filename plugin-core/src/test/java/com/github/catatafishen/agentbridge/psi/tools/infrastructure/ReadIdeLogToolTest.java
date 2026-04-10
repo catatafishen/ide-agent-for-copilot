@@ -1,7 +1,6 @@
 package com.github.catatafishen.agentbridge.psi.tools.infrastructure;
 
 import com.google.gson.JsonObject;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,7 +30,6 @@ class ReadIdeLogToolTest {
 
     private Path logFile;
     private ReadIdeLogTool tool;
-    private String savedLogPath;
 
     /**
      * Template: "YYYY-MM-DD HH:mm:ss,SSS [THREAD]   LEVEL - #logger - message"
@@ -40,19 +38,10 @@ class ReadIdeLogToolTest {
 
     @BeforeEach
     void setUp() {
-        savedLogPath = System.getProperty("idea.log.path");
-        System.setProperty("idea.log.path", tempDir.toString());
         logFile = tempDir.resolve("idea.log");
-        tool = new ReadIdeLogTool(null);
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (savedLogPath != null) {
-            System.setProperty("idea.log.path", savedLogPath);
-        } else {
-            System.clearProperty("idea.log.path");
-        }
+        // Pass tempDir as logDirOverride to bypass the system-property fallback chain,
+        // which would otherwise find the real sandbox idea.log via PathManager.
+        tool = new ReadIdeLogTool(null, tempDir);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

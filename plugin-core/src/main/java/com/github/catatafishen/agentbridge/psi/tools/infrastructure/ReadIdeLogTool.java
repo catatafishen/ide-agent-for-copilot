@@ -51,8 +51,22 @@ public final class ReadIdeLogTool extends InfrastructureTool {
     private static final DateTimeFormatter DATETIME_FMT =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /**
+     * Overrides the log directory resolved via system properties. Package-private for testing.
+     */
+    @Nullable
+    private final Path logDirOverride;
+
     public ReadIdeLogTool(Project project) {
+        this(project, null);
+    }
+
+    /**
+     * Package-private constructor that bypasses the system-property fallback chain. For testing only.
+     */
+    ReadIdeLogTool(@Nullable Project project, @Nullable Path logDirOverride) {
         super(project);
+        this.logDirOverride = logDirOverride;
     }
 
     @Override
@@ -270,7 +284,12 @@ public final class ReadIdeLogTool extends InfrastructureTool {
 
     // ── Log file location ─────────────────────────────────────────────────────
 
-    private static @Nullable Path findIdeLogFile() {
+    private @Nullable Path findIdeLogFile() {
+        if (logDirOverride != null) {
+            Path f = logDirOverride.resolve(IDEA_LOG_FILENAME);
+            return Files.exists(f) ? f : null;
+        }
+
         Path logFile = Path.of(System.getProperty("idea.log.path", ""), IDEA_LOG_FILENAME);
         if (Files.exists(logFile)) return logFile;
 
