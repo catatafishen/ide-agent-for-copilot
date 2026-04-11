@@ -72,12 +72,35 @@ const menuModelSection = document.getElementById('ab-menu-model-section')!;
 // ── Auto-scroll: track whether user is near the bottom ──────────────────────
 
 let atBottom = true;
+let unreadCount = 0;
+
+// Scroll-to-bottom FAB (injected into the #ab-chat wrapper)
+const scrollFab = document.createElement('button');
+scrollFab.id = 'ab-scroll-fab';
+scrollFab.setAttribute('aria-label', 'Scroll to bottom');
+scrollFab.hidden = true;
+chatAreaEl.appendChild(scrollFab);
+
+function updateScrollFab(): void {
+    scrollFab.hidden = atBottom;
+    scrollFab.textContent = unreadCount > 0 ? `↓ ${unreadCount}` : '↓';
+}
+
+scrollFab.addEventListener('click', () => {
+    unreadCount = 0;
+    scrollToBottom();
+});
+
 chatEl.addEventListener('scroll', () => {
     atBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 120;
+    if (atBottom) unreadCount = 0;
+    updateScrollFab();
 }, {passive: true});
 
 function scrollToBottom(): void {
     chatEl.scrollTop = chatEl.scrollHeight;
+    atBottom = true;
+    updateScrollFab();
 }
 
 // ── Track agent state via ChatController overrides ──────────────────────────
@@ -95,6 +118,10 @@ const origFinalizeTurn = ChatController.finalizeTurn.bind(ChatController);
 ChatController.finalizeTurn = function (...args: unknown[]) {
     (origFinalizeTurn as (...a: unknown[]) => void)(...args);
     agentRunning = false;
+    if (!atBottom) {
+        unreadCount++;
+        updateScrollFab();
+    }
     updateButtons();
 };
 
@@ -216,6 +243,9 @@ fetch('/info')
         else showConnectView(info.profiles);
     })
     .catch(() => {
+        showConnectView();
+        connectStatusEl.textContent = 'Failed to reach plugin — check that IntelliJ is running';
+        connectStatusEl.classList.add('error');
     });
 
 // ── Hamburger menu ──────────────────────────────────────────────────────────
@@ -487,7 +517,7 @@ document.addEventListener('quick-reply', (e: Event) => {
 
 inputEl.addEventListener('input', () => {
     inputEl.style.height = 'auto';
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
 });
 
 inputEl.addEventListener('keydown', (e: KeyboardEvent) => {

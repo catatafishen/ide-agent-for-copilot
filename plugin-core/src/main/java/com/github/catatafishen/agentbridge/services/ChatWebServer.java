@@ -1495,7 +1495,7 @@ public final class ChatWebServer implements Disposable {
             + "          <button id=\"ab-connect-stop-btn\" hidden class=\"ab-card-stop-btn\">⏹</button>\n"
             + "        </div>\n"
             + "        <div class=\"ab-card-content\">\n"
-            + "          <select id=\"ab-connect-profile\"></select>\n"
+            + "          <select id=\"ab-connect-profile\" aria-label=\"ACP profile\"></select>\n"
             + "          <button id=\"ab-connect-btn\">Connect</button>\n"
             + "          <div id=\"ab-connect-status\"></div>\n"
             + "        </div>\n"

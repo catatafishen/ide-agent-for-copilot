@@ -143,6 +143,9 @@ const ChatController = {
     _currentProfile: '',
     _currentClientType: '',
     _ctx: {} as Record<string, TurnContext & { thinkingMsg?: HTMLElement | null; thinkingChip?: HTMLElement | null }>,
+    /** Caches the first known timestamp for each turn key (turnId-agentId) so late
+     *  events (e.g. finalizeAgentText after compaction) can reuse it. */
+    _turnTimestamps: {} as Record<string, string>,
 
     _getCtx(turnId: string, agentId: string): TurnContext & {
         thinkingMsg?: HTMLElement | null;
@@ -163,14 +166,16 @@ const ChatController = {
         thinkingMsg?: HTMLElement | null;
         thinkingChip?: HTMLElement | null
     } {
+        const key = turnId + '-' + agentId;
+        if (timestamp) this._turnTimestamps[key] = timestamp;
         const ctx = this._getCtx(turnId, agentId);
         if (!ctx.msg) {
             const msg = document.createElement('chat-message');
             msg.setAttribute('type', 'agent');
             const meta = document.createElement('message-meta');
             meta.className = 'meta';
-            const ts = timestamp || (() => {
-                console.warn('[_ensureMsg] No timestamp provided for turn', turnId, '— showing placeholder');
+            const ts = timestamp || this._turnTimestamps[key] || (() => {
+                console.warn('[_ensureMsg] No timestamp for turn', turnId, '— showing placeholder');
                 return '--:--';
             })();
             const tsSpan = document.createElement('span');
