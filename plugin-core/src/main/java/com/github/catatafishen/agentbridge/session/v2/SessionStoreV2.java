@@ -513,7 +513,9 @@ public final class SessionStoreV2 implements Disposable {
                 }
             } catch (Exception e) {
                 skippedLines++;
-                LOG.warn("Skipping malformed JSONL line: " + line, e);
+                // Include exception message as string (not throwable) so IntelliJ's
+                // TestLoggerInterceptor does not treat WARN+throwable as a test failure.
+                LOG.warn("Skipping malformed JSONL line: " + line + " (" + e.getMessage() + ")");
             }
         }
 
