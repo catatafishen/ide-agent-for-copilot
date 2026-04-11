@@ -513,7 +513,7 @@ public final class SessionStoreV2 implements Disposable {
                 }
             } catch (Exception e) {
                 skippedLines++;
-                LOG.warn("Skipping malformed JSONL line: " + line, e);
+                LOG.warn("Skipping malformed JSONL line: " + line + " (" + e.getMessage() + ")");
             }
         }
 
