@@ -3,13 +3,14 @@ package com.github.catatafishen.agentbridge.agent.codex;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-
 import com.google.gson.JsonPrimitive;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CodexAppServerClientTest {
 
