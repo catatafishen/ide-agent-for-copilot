@@ -10,6 +10,9 @@ updates:
       github-actions:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
 
   - package-ecosystem: "gradle"
     directory: "/"
@@ -21,6 +24,9 @@ updates:
       gradle-dependencies:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
 
   - package-ecosystem: "npm"
     directory: "/plugin-core/chat-ui"
@@ -32,6 +38,9 @@ updates:
       chat-ui-npm:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
 
   - package-ecosystem: "npm"
     directory: "/plugin-core/js-tests"
@@ -43,3 +52,6 @@ updates:
       js-tests-npm:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30

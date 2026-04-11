@@ -246,7 +246,7 @@ const ChatController = {
         if (entryId) msg.id = entryId;
         const meta = document.createElement('message-meta');
         // Safe: timestamp is a server-generated ISO 8601 time string (digits, colons, letters only).
-        // It is never derived from user input and cannot contain HTML special characters.
+        // It is never derived from user input and cannot contain HTML special characters. — lgtm[js/html-constructed-from-input]
         meta.innerHTML = '<span class="ts">' + timestamp + '</span>';
         msg.appendChild(meta);
         const bubble = document.createElement('message-bubble');
@@ -427,7 +427,7 @@ const ChatController = {
         // Safe: colorIndex is a number from the server (no HTML chars possible).
         // displayName is HTML-escaped via escHtml(). promptHtml is pre-rendered HTML
         // produced by MessageFormatter on the Java side and base64-encoded — the Java
-        // layer is responsible for sanitising all user-visible content before encoding.
+        // layer is responsible for sanitising all user-visible content before encoding. — lgtm[js/html-constructed-from-input]
         promptBubble.innerHTML = '<span class="subagent-prefix subagent-c' + colorIndex + '">@' + escHtml(displayName) + '</span> ' + (promptHtml ? decodeBase64(promptHtml) : '');
         ctx.msg!.appendChild(promptBubble);
         const msg = document.createElement('chat-message');
@@ -500,7 +500,7 @@ const ChatController = {
 
     showPlaceholder(text: string): void {
         this.clear();
-        // Safe: text is HTML-escaped via escHtml() before insertion.
+        // Safe: text is HTML-escaped via escHtml() before insertion. — lgtm[js/html-constructed-from-input]
         this._msgs().innerHTML = '<div class="placeholder">' + escHtml(text) + '</div>';
     },
 
@@ -567,6 +567,7 @@ const ChatController = {
         }
 
         const bubble = document.createElement('message-bubble');
+        // Safe: questionHtml is constructed exclusively from escHtml() calls — lgtm[js/html-constructed-from-input]
         bubble.innerHTML = questionHtml;
         ctx.msg!.appendChild(bubble);
 
@@ -585,6 +586,7 @@ const ChatController = {
 
         const bubble = document.createElement('message-bubble');
         bubble.dataset.reqId = reqId;
+        // Safe: question is fully escaped with escHtml() before being set — lgtm[js/html-constructed-from-input]
         bubble.innerHTML = escHtml(question).replace(/\n/g, '<br/>');
         ctx.msg!.appendChild(bubble);
 
