@@ -13,7 +13,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -97,10 +99,10 @@ public final class McpProtocolHandler {
         } catch (com.google.gson.JsonSyntaxException | com.google.gson.JsonIOException e) {
             // Malformed input from client — warn, not error (this is a caller mistake, not a server fault)
             LOG.warn("MCP protocol error: malformed JSON from client", e);
-            return GSON.toJson(makeErrorResponse(null, -32700, "Parse error: " + e.getMessage()));
+            return GSON.toJson(makeErrorResponse(JsonNull.INSTANCE, -32700, "Parse error: " + e.getMessage()));
         } catch (Exception e) {
             LOG.error("MCP protocol error processing request", e);
-            return GSON.toJson(makeErrorResponse(null, -32700, "Internal error: " + e.getClass().getSimpleName() + ": " + e.getMessage()));
+            return GSON.toJson(makeErrorResponse(null, -32603, "Internal error: " + e.getClass().getSimpleName() + ": " + e.getMessage()));
         }
     }
 
@@ -418,9 +420,24 @@ public final class McpProtocolHandler {
             return new ToolCallMeta(null, null);
         }
         JsonObject meta = params.getAsJsonObject(KEY_META);
-        String progressToken = meta.has("progressToken") ? meta.get("progressToken").getAsString() : null;
-        String toolUseId = meta.has("claudecode/toolUseId") ? meta.get("claudecode/toolUseId").getAsString() : null;
+        String progressToken = getOptionalMetaString(meta, "progressToken");
+        String toolUseId = getOptionalMetaString(meta, "claudecode/toolUseId");
         return new ToolCallMeta(progressToken, toolUseId);
+    }
+
+    private static @Nullable String getOptionalMetaString(@NotNull JsonObject meta, @NotNull String key) {
+        if (!meta.has(key)) {
+            return null;
+        }
+        JsonElement value = meta.get(key);
+        if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+            return null;
+        }
+        JsonPrimitive primitive = value.getAsJsonPrimitive();
+        if (primitive.isString() || primitive.isNumber()) {
+            return value.getAsString();
+        }
+        return null;
     }
 
     private static JsonObject buildToolResult(JsonObject msg, @Nullable String text, boolean isError) {

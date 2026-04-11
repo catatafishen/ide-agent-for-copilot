@@ -104,7 +104,7 @@ class AgentProfileTest {
     void duplicateDefensiveCopyOfLists() {
         profile.setAcpArgs(List.of("--acp"));
         AgentProfile copy = profile.duplicate();
-        copy.getAcpArgs().clear(); // This would throw on immutable list, so use a mutable copy
+        copy.getAcpArgs().clear(); // asserts duplicate() returns a mutable list
         // The original should still have --acp
         assertEquals(List.of("--acp"), profile.getAcpArgs());
     }

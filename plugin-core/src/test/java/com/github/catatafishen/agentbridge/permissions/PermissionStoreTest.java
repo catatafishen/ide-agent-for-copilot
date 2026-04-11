@@ -19,8 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Unit tests for {@link PermissionStore}.
  * <p>
- * Uses a HashMap-based fake for {@link PropertiesComponent} because Mockito's inline mock
- * mode cannot instrument that class on Java 25 (JVM restriction on modifying core classes).
+ * Uses a HashMap-based fake for {@link PropertiesComponent} because inline mocking is not a
+ * reliable way to stand in for this IntelliJ component in the test JVM, so an in-memory fake
+ * keeps the tests simple and stable.
  */
 class PermissionStoreTest {
 
