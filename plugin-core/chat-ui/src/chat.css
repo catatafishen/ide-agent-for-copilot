@@ -400,10 +400,17 @@ working-indicator .working-text {
 .chip-strip {
     display: flex;
     gap: var(--sp-2);
-    overflow: hidden;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
     flex: 1;
     min-width: 0;
     cursor: grab;
+}
+
+.chip-strip::-webkit-scrollbar {
+    display: none;
 }
 
 .chip-strip.dragging {

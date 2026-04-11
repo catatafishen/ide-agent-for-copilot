@@ -126,7 +126,7 @@ chat-container {
     font: inherit;
     resize: none;
     min-height: 36px;
-    max-height: 120px;
+    max-height: 160px;
     overflow-y: auto;
     outline: none;
 }
@@ -436,4 +436,52 @@ tool-chip .chip-expand {
     font-size: .85em;
     color: var(--fg-muted);
     min-height: 1.2em;
+}
+
+#ab-connect-status.error {
+    color: var(--error);
+}
+
+/* ── Scroll-to-bottom FAB ───────────────────────────────────────────────── */
+
+#ab-scroll-fab {
+    position: absolute;
+    bottom: 10px;
+    right: 14px;
+    z-index: 20;
+    border: none;
+    border-radius: 20px;
+    background: var(--user-a12);
+    color: var(--user);
+    padding: 5px 12px;
+    cursor: pointer;
+    font: inherit;
+    font-size: .88em;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+    transition: opacity .15s, background .15s;
+}
+
+#ab-scroll-fab:hover {
+    background: var(--user-a16);
+}
+
+/* ── Empty-state placeholder ────────────────────────────────────────────── */
+
+#messages:empty::after {
+    content: 'Ask Copilot something…';
+    display: block;
+    text-align: center;
+    color: var(--fg-muted);
+    font-size: .95em;
+    margin-top: 40px;
+    pointer-events: none;
+}
+
+/* ── Narrow-screen header ───────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+    #ab-model {
+        display: none;
+    }
 }
