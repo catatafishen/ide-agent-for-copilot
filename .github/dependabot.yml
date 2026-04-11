@@ -6,6 +6,10 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "gradle"
     directory: "/"
@@ -13,6 +17,10 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    groups:
+      gradle-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/plugin-core/chat-ui"
@@ -20,6 +28,10 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    groups:
+      chat-ui-npm:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/plugin-core/js-tests"
@@ -27,3 +39,7 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    groups:
+      js-tests-npm:
+        patterns:
+          - "*"

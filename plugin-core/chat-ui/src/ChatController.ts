@@ -245,6 +245,8 @@ const ChatController = {
         msg.setAttribute('type', 'user');
         if (entryId) msg.id = entryId;
         const meta = document.createElement('message-meta');
+        // Safe: timestamp is a server-generated ISO 8601 time string (digits, colons, letters only).
+        // It is never derived from user input and cannot contain HTML special characters.
         meta.innerHTML = '<span class="ts">' + timestamp + '</span>';
         msg.appendChild(meta);
         const bubble = document.createElement('message-bubble');
@@ -422,6 +424,10 @@ const ChatController = {
         ctx.meta!.appendChild(chip);
         ctx.meta!.classList.add('show');
         const promptBubble = document.createElement('message-bubble');
+        // Safe: colorIndex is a number from the server (no HTML chars possible).
+        // displayName is HTML-escaped via escHtml(). promptHtml is pre-rendered HTML
+        // produced by MessageFormatter on the Java side and base64-encoded — the Java
+        // layer is responsible for sanitising all user-visible content before encoding.
         promptBubble.innerHTML = '<span class="subagent-prefix subagent-c' + colorIndex + '">@' + escHtml(displayName) + '</span> ' + (promptHtml ? decodeBase64(promptHtml) : '');
         ctx.msg!.appendChild(promptBubble);
         const msg = document.createElement('chat-message');
@@ -494,6 +500,7 @@ const ChatController = {
 
     showPlaceholder(text: string): void {
         this.clear();
+        // Safe: text is HTML-escaped via escHtml() before insertion.
         this._msgs().innerHTML = '<div class="placeholder">' + escHtml(text) + '</div>';
     },
 
@@ -547,6 +554,8 @@ const ChatController = {
 
         // Parse the structured context {question, args} produced by Java.
         // Falls back to generic label if the payload is a plain string (old code paths).
+        // Safe: toolDisplayName and parsed.question are both HTML-escaped via escHtml().
+        // argsJson is only passed to JSON.stringify — it is rendered via textContent, not innerHTML.
         let questionHtml = `Can I use <strong>${escHtml(toolDisplayName)}</strong>?`;
         let argsJson = '';
         try {
