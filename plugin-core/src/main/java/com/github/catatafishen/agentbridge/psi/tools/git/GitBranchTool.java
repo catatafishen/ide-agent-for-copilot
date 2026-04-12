@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 public final class GitBranchTool extends GitTool {
 
     private static final String CMD_BRANCH = "branch";
+    private static final String CMD_SWITCH = "switch";
     private static final String PARAM_ACTION = "action";
     private static final String PARAM_NAME = "name";
     private static final String PARAM_BASE = "base";
@@ -73,20 +74,18 @@ public final class GitBranchTool extends GitTool {
                 if (name == null) yield "Error: 'name' parameter is required for 'create'";
                 String base = args.has(PARAM_BASE) && !args.get(PARAM_BASE).getAsString().isEmpty()
                     ? args.get(PARAM_BASE).getAsString()
-                    : "HEAD";
-                String result = runGit(CMD_BRANCH, name, base);
+                    : null;
+                // Use `git switch -c` to create and switch atomically
+                String result = base != null
+                    ? runGit(CMD_SWITCH, "-c", name, base)
+                    : runGit(CMD_SWITCH, "-c", name);
                 if (result.startsWith("Error")) yield result;
-
-                String baseDesc = "HEAD".equals(base) ? runGitQuiet("rev-parse", "--short", "HEAD") : base;
-                yield (result.isBlank() ? "Created branch '" + name + "'" : result)
-                    + "\n\n--- Context ---\n"
-                    + "Base: " + (baseDesc != null ? baseDesc : base) + "\n"
-                    + "No tracking branch set — use git_push with set_upstream: true to push\n";
+                yield "Created and switched to branch '" + name + "'\n" + getBranchContext();
             }
-            case "switch", "checkout" -> {
+            case CMD_SWITCH, "checkout" -> {
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'switch'";
-                String result = runGit("switch", name);
+                String result = runGit(CMD_SWITCH, name);
                 if (result.startsWith("Error")) yield result;
                 yield result + getBranchContext();
             }
