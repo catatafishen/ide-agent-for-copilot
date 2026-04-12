@@ -634,6 +634,13 @@ public final class CodexAppServerClient extends AbstractAgentClient {
             } catch (AgentException e) {
                 LOG.warn("thread/resume failed (thread may be expired), starting new thread: " + e.getMessage());
                 persistCodexThreadId(null);
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
+                    com.github.catatafishen.agentbridge.psi.PlatformApiCompat.showNotification(
+                        project,
+                        "Codex session resume failed",
+                        "Could not resume the previous Codex thread (it may have expired). "
+                            + "A new thread will be started. Previous conversation context will not be restored.",
+                        com.intellij.notification.NotificationType.WARNING));
             }
         }
         return startThread(sessionId, model);

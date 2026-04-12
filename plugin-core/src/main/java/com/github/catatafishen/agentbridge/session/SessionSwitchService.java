@@ -354,7 +354,7 @@ public final class SessionSwitchService implements Disposable {
     private void exportToCodex(@NotNull List<EntryData> entries, @Nullable String basePath) {
         Path sessionsDir = CodexClientExporter.defaultSessionsDir();
         Path dbPath = CodexClientExporter.defaultDbPath();
-        String threadId = CodexClientExporter.exportSession(entries, sessionsDir, dbPath);
+        String threadId = CodexClientExporter.exportSession(entries, sessionsDir, dbPath, basePath);
         if (threadId != null) {
             // Set the thread ID so CodexAppServerClient will try thread/resume on next startup
             PropertiesComponent.getInstance(project)

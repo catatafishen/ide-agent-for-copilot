@@ -146,7 +146,8 @@ class CodexClientExporterTest {
 
         JsonObject fcLine = lines.get(1);
         assertEquals("function_call", fcLine.get("type").getAsString());
-        assertEquals("read_file", fcLine.get("name").getAsString());
+        assertEquals("agentbridge_read_file", fcLine.get("name").getAsString(),
+            "Tool name must be prefixed with agentbridge_ for Codex MCP tool matching");
         assertEquals("{\"path\":\"/etc/hosts\"}", fcLine.get("arguments").getAsString());
     }
 
@@ -279,14 +280,71 @@ class CodexClientExporterTest {
             "Second write with more entries must produce a larger file");
     }
 
+    // ── Native format structure tests ─────────────────────────────────────────
+
+    @Test
+    void exportedRolloutHasSessionMetaFirstLine() throws IOException {
+        Path rollout = tempDir.resolve("rollout-meta.jsonl");
+        CodexClientExporter.writeRolloutFile(List.of(prompt("Hi")), rollout);
+
+        List<String> rawLines = Files.readAllLines(rollout, StandardCharsets.UTF_8).stream()
+            .filter(l -> !l.isBlank())
+            .toList();
+        assertFalse(rawLines.isEmpty(), "Rollout file must not be empty");
+
+        JsonObject firstLine = GSON.fromJson(rawLines.getFirst(), JsonObject.class);
+        assertEquals("session_meta", firstLine.get("type").getAsString(),
+            "First line must be session_meta");
+        assertTrue(firstLine.has("originator"), "session_meta must have originator field");
+        assertTrue(firstLine.has("cli_version"), "session_meta must have cli_version field");
+    }
+
+    @Test
+    void contentItemsAreWrappedInResponseItemEnvelopes() throws IOException {
+        Path rollout = tempDir.resolve("rollout-envelopes.jsonl");
+        CodexClientExporter.writeRolloutFile(List.of(prompt("Hi"), text("Hello")), rollout);
+
+        List<JsonObject> rawLines = Files.readAllLines(rollout, StandardCharsets.UTF_8).stream()
+            .filter(l -> !l.isBlank())
+            .map(l -> GSON.fromJson(l, JsonObject.class))
+            .toList();
+
+        // Line 0 = session_meta, lines 1+ = response_item envelopes
+        for (int i = 1; i < rawLines.size(); i++) {
+            JsonObject line = rawLines.get(i);
+            assertEquals("response_item", line.get("type").getAsString(),
+                "Content line " + i + " must be wrapped in response_item envelope");
+            assertTrue(line.has("payload"),
+                "response_item at line " + i + " must have a payload field");
+            assertTrue(line.has("timestamp"),
+                "response_item at line " + i + " must have a timestamp field");
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /**
+     * Writes a rollout file and parses the content lines.
+     * Skips the {@code session_meta} header line and unwraps {@code response_item} envelopes
+     * so tests can assert on the inner payload items directly.
+     */
     private List<JsonObject> writeAndParse(List<EntryData> entries) throws IOException {
         Path rollout = tempDir.resolve("rollout-" + System.nanoTime() + ".jsonl");
         CodexClientExporter.writeRolloutFile(entries, rollout);
         return Files.readAllLines(rollout, StandardCharsets.UTF_8).stream()
             .filter(l -> !l.isBlank())
             .map(l -> GSON.fromJson(l, JsonObject.class))
+            .filter(obj -> {
+                String type = obj.has("type") ? obj.get("type").getAsString() : "";
+                return !"session_meta".equals(type);
+            })
+            .map(obj -> {
+                String type = obj.has("type") ? obj.get("type").getAsString() : "";
+                if ("response_item".equals(type) && obj.has("payload")) {
+                    return obj.getAsJsonObject("payload");
+                }
+                return obj;
+            })
             .collect(Collectors.toList());
     }
 
