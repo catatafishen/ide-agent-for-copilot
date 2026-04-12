@@ -267,6 +267,7 @@ const ChatController = {
 
     appendAgentText(turnId: string, agentId: string, text: string, timestamp?: string): void {
         try {
+            this._resetWorkingTimer();
             const ctx = this._getCtx(turnId, agentId);
             this._collapseThinkingFor(ctx);
             if (!ctx.textBubble) {
@@ -313,6 +314,7 @@ const ChatController = {
     },
 
     addThinkingText(turnId: string, agentId: string, text: string, timestamp?: string): void {
+        this._resetWorkingTimer();
         const ctx = this._ensureMsg(turnId, agentId, timestamp);
         if (!ctx.thinkingBlock) {
             this._thinkingCounter++;
