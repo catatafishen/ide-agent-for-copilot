@@ -1,6 +1,8 @@
 package com.github.catatafishen.agentbridge.ui.statistics;
 
 import com.google.gson.JsonObject;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,286 +18,304 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
+@DisplayName("UsageStatisticsLoader")
 class UsageStatisticsLoaderTest {
 
     // ── toAgentId (package-private static) ──────────────────────────────
 
-    @Test
-    void toAgentId_copilot() {
-        assertEquals("copilot", UsageStatisticsLoader.toAgentId("GitHub Copilot"));
+    @Nested
+    @DisplayName("toAgentId")
+    class ToAgentId {
+
+        @Test
+        @DisplayName("null → 'unknown'")
+        void nullReturnsUnknown() {
+            assertEquals("unknown", UsageStatisticsLoader.toAgentId(null));
+        }
+
+        @Test
+        @DisplayName("empty string → 'unknown'")
+        void emptyReturnsUnknown() {
+            assertEquals("unknown", UsageStatisticsLoader.toAgentId(""));
+        }
+
+        @Test
+        @DisplayName("'GitHub Copilot' → 'copilot'")
+        void gitHubCopilot() {
+            assertEquals("copilot", UsageStatisticsLoader.toAgentId("GitHub Copilot"));
+        }
+
+        @Test
+        @DisplayName("'Claude Code' → 'claude-cli'")
+        void claudeCode() {
+            assertEquals("claude-cli", UsageStatisticsLoader.toAgentId("Claude Code"));
+        }
+
+        @Test
+        @DisplayName("'OpenCode Agent' → 'opencode'")
+        void openCodeAgent() {
+            assertEquals("opencode", UsageStatisticsLoader.toAgentId("OpenCode Agent"));
+        }
+
+        @Test
+        @DisplayName("'Junie' → 'junie'")
+        void junie() {
+            assertEquals("junie", UsageStatisticsLoader.toAgentId("Junie"));
+        }
+
+        @Test
+        @DisplayName("'Kiro' → 'kiro'")
+        void kiro() {
+            assertEquals("kiro", UsageStatisticsLoader.toAgentId("Kiro"));
+        }
+
+        @Test
+        @DisplayName("'codex-mini' → 'codex'")
+        void codexMini() {
+            assertEquals("codex", UsageStatisticsLoader.toAgentId("codex-mini"));
+        }
+
+        @Test
+        @DisplayName("'My Custom Agent' → 'my-custom-agent' (sanitized)")
+        void customAgentSanitized() {
+            assertEquals("my-custom-agent", UsageStatisticsLoader.toAgentId("My Custom Agent"));
+        }
+
+        @Test
+        void specialCharsStripped() {
+            assertEquals("agent-v2-0", UsageStatisticsLoader.toAgentId("Agent V2.0"));
+        }
     }
 
-    @Test
-    void toAgentId_copilotCaseInsensitive() {
-        assertEquals("copilot", UsageStatisticsLoader.toAgentId("COPILOT chat"));
+    // ── parsePremiumMultiplier (private static, via reflection) ─────────
+
+    @Nested
+    @DisplayName("parsePremiumMultiplier")
+    class ParsePremiumMultiplier {
+
+        @Test
+        @DisplayName("null → 1.0")
+        void nullReturnsOne() throws Exception {
+            assertEquals(1.0, invokeParsePremiumMultiplier(null));
+        }
+
+        @Test
+        @DisplayName("empty string → 1.0")
+        void emptyReturnsOne() throws Exception {
+            assertEquals(1.0, invokeParsePremiumMultiplier(""));
+        }
+
+        @Test
+        @DisplayName("'1x' → 1.0")
+        void oneX() throws Exception {
+            assertEquals(1.0, invokeParsePremiumMultiplier("1x"));
+        }
+
+        @Test
+        @DisplayName("'0.5x' → 0.5")
+        void halfX() throws Exception {
+            assertEquals(0.5, invokeParsePremiumMultiplier("0.5x"));
+        }
+
+        @Test
+        @DisplayName("'2.0' → 2.0 (no suffix)")
+        void twoPointZero() throws Exception {
+            assertEquals(2.0, invokeParsePremiumMultiplier("2.0"));
+        }
+
+        @Test
+        @DisplayName("'invalid' → 1.0 (fallback)")
+        void invalidReturnsFallback() throws Exception {
+            assertEquals(1.0, invokeParsePremiumMultiplier("invalid"));
+        }
+
+        @Test
+        void zeroMultiplier() throws Exception {
+            assertEquals(0.0, invokeParsePremiumMultiplier("0x"));
+        }
     }
 
-    @Test
-    void toAgentId_claude() {
-        assertEquals("claude-cli", UsageStatisticsLoader.toAgentId("Claude Code"));
+    // ── extractDate (private static, via reflection) ────────────────────
+
+    @Nested
+    @DisplayName("extractDate")
+    class ExtractDate {
+
+        @Test
+        void fromTimestamp() throws Exception {
+            JsonObject obj = new JsonObject();
+            String ts = "2024-06-15T10:30:00Z";
+            obj.addProperty("timestamp", ts);
+            LocalDate expected = Instant.parse(ts).atZone(ZoneId.systemDefault()).toLocalDate();
+            assertEquals(expected, invokeExtractDate(obj, null));
+        }
+
+        @Test
+        void fallbackWhenNoTimestamp() throws Exception {
+            JsonObject obj = new JsonObject();
+            String fallback = "2024-06-15T10:30:00Z";
+            LocalDate expected = Instant.parse(fallback).atZone(ZoneId.systemDefault()).toLocalDate();
+            assertEquals(expected, invokeExtractDate(obj, fallback));
+        }
+
+        @Test
+        void emptyTimestampUsesFallback() throws Exception {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("timestamp", "");
+            String fallback = "2024-01-01T00:00:00Z";
+            LocalDate expected = Instant.parse(fallback).atZone(ZoneId.systemDefault()).toLocalDate();
+            assertEquals(expected, invokeExtractDate(obj, fallback));
+        }
+
+        @Test
+        void noTimestampNoFallback() throws Exception {
+            assertNull(invokeExtractDate(new JsonObject(), null));
+        }
+
+        @Test
+        void badTimestampNoFallback() throws Exception {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("timestamp", "not-a-date");
+            assertNull(invokeExtractDate(obj, null));
+        }
+
+        @Test
+        void badTimestampWithFallback() throws Exception {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("timestamp", "not-a-date");
+            // Invalid timestamp returns null; fallback only used when timestamp key is absent
+            assertNull(invokeExtractDate(obj, "2024-03-20T12:00:00Z"));
+        }
     }
 
-    @Test
-    void toAgentId_opencode() {
-        assertEquals("opencode", UsageStatisticsLoader.toAgentId("OpenCode Agent"));
+    // ── collectTurnStats (private static, via reflection) ───────────────
+
+    @Nested
+    @DisplayName("collectTurnStats")
+    class CollectTurnStats {
+
+        @Test
+        void twoEntriesSameDateProducesOneAccumulator(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("session.jsonl");
+            String line1 = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
+                + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
+                + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
+                + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e1\"}";
+            String line2 = "{\"type\":\"turnStats\",\"turnId\":\"t2\",\"durationMs\":3000,"
+                + "\"inputTokens\":50,\"outputTokens\":100,\"toolCallCount\":1,"
+                + "\"linesAdded\":5,\"linesRemoved\":2,\"multiplier\":\"1x\","
+                + "\"timestamp\":\"2024-06-15T12:00:00Z\",\"entryId\":\"e2\"}";
+            Files.writeString(jsonlPath, line1 + "\n" + line2 + "\n");
+
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
+            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+
+            assertEquals(1, accumulators.size(),
+                "Two entries on the same date/agent should produce exactly one accumulator bucket");
+        }
+
+        @Test
+        void tracksAgentChangesWithinSession(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("mixed.jsonl");
+            String line1 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"GitHub Copilot\","
+                + "\"entryId\":\"e1\"}";
+            String line2 = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
+                + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
+                + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
+                + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e2\"}";
+            String line3 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"Claude Code\","
+                + "\"entryId\":\"e3\"}";
+            String line4 = "{\"type\":\"turnStats\",\"turnId\":\"t2\",\"durationMs\":3000,"
+                + "\"inputTokens\":50,\"outputTokens\":100,\"toolCallCount\":1,"
+                + "\"linesAdded\":5,\"linesRemoved\":2,\"multiplier\":\"1x\","
+                + "\"timestamp\":\"2024-06-15T11:00:00Z\",\"entryId\":\"e4\"}";
+            Files.writeString(jsonlPath, line1 + "\n" + line2 + "\n" + line3 + "\n" + line4 + "\n");
+
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
+            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "unknown", accumulators, agentIds, agentDisplayNames);
+
+            Method buildMethod = UsageStatisticsLoader.class.getDeclaredMethod("buildDailyStats", Map.class);
+            buildMethod.setAccessible(true);
+            List<?> result = (List<?>) buildMethod.invoke(null, accumulators);
+
+            assertEquals(2, result.size());
+            assertTrue(agentIds.contains("copilot"));
+            assertTrue(agentIds.contains("claude-cli"));
+            assertEquals("GitHub Copilot", agentDisplayNames.get("copilot"));
+            assertEquals("Claude Code", agentDisplayNames.get("claude-cli"));
+
+            UsageStatisticsData.DailyAgentStats first = (UsageStatisticsData.DailyAgentStats) result.get(0);
+            UsageStatisticsData.DailyAgentStats second = (UsageStatisticsData.DailyAgentStats) result.get(1);
+            assertTrue(Set.of(first.agentId(), second.agentId()).contains("copilot"));
+            assertTrue(Set.of(first.agentId(), second.agentId()).contains("claude-cli"));
+        }
+
+        @Test
+        void emptyFile_producesNoAccumulators(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("empty.jsonl");
+            Files.writeString(jsonlPath, "");
+
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
+            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+
+            assertTrue(accumulators.isEmpty());
+        }
+
+        @Test
+        void entryOutsideDateRange_producesNoAccumulators(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("old.jsonl");
+            String line = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":1000,"
+                + "\"inputTokens\":10,\"outputTokens\":20,\"toolCallCount\":1,"
+                + "\"linesAdded\":1,\"linesRemoved\":0,\"multiplier\":\"1x\","
+                + "\"timestamp\":\"2023-01-01T00:00:00Z\",\"entryId\":\"e1\"}";
+            Files.writeString(jsonlPath, line + "\n");
+
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
+            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+
+            assertTrue(accumulators.isEmpty());
+        }
     }
 
-    @Test
-    void toAgentId_junie() {
-        assertEquals("junie", UsageStatisticsLoader.toAgentId("Junie AI"));
-    }
+    // ── buildDailyStats (private static, via reflection) ────────────────
 
-    @Test
-    void toAgentId_kiro() {
-        assertEquals("kiro", UsageStatisticsLoader.toAgentId("Kiro Assistant"));
-    }
+    @Nested
+    @DisplayName("buildDailyStats")
+    class BuildDailyStats {
 
-    @Test
-    void toAgentId_codex() {
-        assertEquals("codex", UsageStatisticsLoader.toAgentId("Codex"));
-    }
+        @Test
+        void withPopulatedAccumulators_returnsNonEmptyList(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("session.jsonl");
+            String line = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
+                + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
+                + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
+                + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e1\"}";
+            Files.writeString(jsonlPath, line + "\n");
 
-    @Test
-    void toAgentId_unknownFallback() {
-        assertEquals("my-custom-agent", UsageStatisticsLoader.toAgentId("My Custom Agent"));
-    }
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
+            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
 
-    @Test
-    void toAgentId_null() {
-        assertEquals("unknown", UsageStatisticsLoader.toAgentId(null));
-    }
+            assertFalse(accumulators.isEmpty(), "Precondition: accumulators must be populated");
 
-    @Test
-    void toAgentId_empty() {
-        assertEquals("unknown", UsageStatisticsLoader.toAgentId(""));
-    }
+            Method buildMethod = UsageStatisticsLoader.class.getDeclaredMethod("buildDailyStats", Map.class);
+            buildMethod.setAccessible(true);
+            List<?> result = (List<?>) buildMethod.invoke(null, accumulators);
 
-    @Test
-    void toAgentId_specialCharsStripped() {
-        assertEquals("agent-v2-0", UsageStatisticsLoader.toAgentId("Agent V2.0"));
-    }
-
-    // ── parsePremiumMultiplier (private static) ─────────────────────────
-
-    @Test
-    void parsePremiumMultiplier_one() throws Exception {
-        assertEquals(1.0, invokeParsePremiumMultiplier("1x"));
-    }
-
-    @Test
-    void parsePremiumMultiplier_fraction() throws Exception {
-        assertEquals(0.5, invokeParsePremiumMultiplier("0.5x"));
-    }
-
-    @Test
-    void parsePremiumMultiplier_noSuffix() throws Exception {
-        assertEquals(2.0, invokeParsePremiumMultiplier("2.0"));
-    }
-
-    @Test
-    void parsePremiumMultiplier_null() throws Exception {
-        assertEquals(1.0, invokeParsePremiumMultiplier(null));
-    }
-
-    @Test
-    void parsePremiumMultiplier_empty() throws Exception {
-        assertEquals(1.0, invokeParsePremiumMultiplier(""));
-    }
-
-    @Test
-    void parsePremiumMultiplier_invalid() throws Exception {
-        assertEquals(1.0, invokeParsePremiumMultiplier("abc"));
-    }
-
-    @Test
-    void parsePremiumMultiplier_zero() throws Exception {
-        assertEquals(0.0, invokeParsePremiumMultiplier("0x"));
-    }
-
-    // ── extractDate (private static) ────────────────────────────────────
-
-    @Test
-    void extractDate_fromTimestamp() throws Exception {
-        JsonObject obj = new JsonObject();
-        String ts = "2024-06-15T10:30:00Z";
-        obj.addProperty("timestamp", ts);
-        LocalDate expected = Instant.parse(ts).atZone(ZoneId.systemDefault()).toLocalDate();
-        assertEquals(expected, invokeExtractDate(obj, null));
-    }
-
-    @Test
-    void extractDate_fallback() throws Exception {
-        JsonObject obj = new JsonObject();
-        String fallback = "2024-06-15T10:30:00Z";
-        LocalDate expected = Instant.parse(fallback).atZone(ZoneId.systemDefault()).toLocalDate();
-        assertEquals(expected, invokeExtractDate(obj, fallback));
-    }
-
-    @Test
-    void extractDate_emptyTimestampUsesFallback() throws Exception {
-        JsonObject obj = new JsonObject();
-        obj.addProperty("timestamp", "");
-        String fallback = "2024-01-01T00:00:00Z";
-        LocalDate expected = Instant.parse(fallback).atZone(ZoneId.systemDefault()).toLocalDate();
-        assertEquals(expected, invokeExtractDate(obj, fallback));
-    }
-
-    @Test
-    void extractDate_noTimestampNoFallback() throws Exception {
-        assertNull(invokeExtractDate(new JsonObject(), null));
-    }
-
-    @Test
-    void extractDate_badTimestampNoFallback() throws Exception {
-        JsonObject obj = new JsonObject();
-        obj.addProperty("timestamp", "not-a-date");
-        assertNull(invokeExtractDate(obj, null));
-    }
-
-    @Test
-    void extractDate_badTimestampWithFallback() throws Exception {
-        JsonObject obj = new JsonObject();
-        obj.addProperty("timestamp", "not-a-date");
-        String fallback = "2024-03-20T12:00:00Z";
-        // An invalid object timestamp returns null; the fallback is only used when the timestamp is absent.
-        assertNull(invokeExtractDate(obj, fallback));
-    }
-
-    // ── collectTurnStats (private static) ──────────────────────────────
-
-    /**
-     * Two {@code TurnStats} entries on the same date (UTC) and same agentId
-     * must land in the same accumulator bucket → map size == 1.
-     */
-    @Test
-    void collectTurnStats_twoEntriesSameDateProducesOneAccumulator(@TempDir Path tempDir) throws Exception {
-        Path jsonlPath = tempDir.resolve("session.jsonl");
-        String line1 = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
-            + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
-            + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
-            + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e1\"}";
-        String line2 = "{\"type\":\"turnStats\",\"turnId\":\"t2\",\"durationMs\":3000,"
-            + "\"inputTokens\":50,\"outputTokens\":100,\"toolCallCount\":1,"
-            + "\"linesAdded\":5,\"linesRemoved\":2,\"multiplier\":\"1x\","
-            + "\"timestamp\":\"2024-06-15T12:00:00Z\",\"entryId\":\"e2\"}";
-        Files.writeString(jsonlPath, line1 + "\n" + line2 + "\n");
-
-        Map<Object, Object> accumulators = new LinkedHashMap<>();
-        LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-        Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-        invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
-
-        assertEquals(1, accumulators.size(),
-            "Two entries on the same date/agent should produce exactly one accumulator bucket");
-    }
-
-    @Test
-    void collectTurnStats_tracksAgentChangesWithinSession(@TempDir Path tempDir) throws Exception {
-        Path jsonlPath = tempDir.resolve("mixed.jsonl");
-        String line1 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"GitHub Copilot\","
-            + "\"entryId\":\"e1\"}";
-        String line2 = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
-            + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
-            + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
-            + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e2\"}";
-        String line3 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"Claude Code\","
-            + "\"entryId\":\"e3\"}";
-        String line4 = "{\"type\":\"turnStats\",\"turnId\":\"t2\",\"durationMs\":3000,"
-            + "\"inputTokens\":50,\"outputTokens\":100,\"toolCallCount\":1,"
-            + "\"linesAdded\":5,\"linesRemoved\":2,\"multiplier\":\"1x\","
-            + "\"timestamp\":\"2024-06-15T11:00:00Z\",\"entryId\":\"e4\"}";
-        Files.writeString(jsonlPath, line1 + "\n" + line2 + "\n" + line3 + "\n" + line4 + "\n");
-
-        Map<Object, Object> accumulators = new LinkedHashMap<>();
-        LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-        Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-        invokeCollectTurnStats(jsonlPath, "unknown", accumulators, agentIds, agentDisplayNames);
-
-        Method buildMethod = UsageStatisticsLoader.class.getDeclaredMethod("buildDailyStats", Map.class);
-        buildMethod.setAccessible(true);
-        List<?> result = (List<?>) buildMethod.invoke(null, accumulators);
-
-        assertEquals(2, result.size());
-        assertTrue(agentIds.contains("copilot"));
-        assertTrue(agentIds.contains("claude-cli"));
-        assertEquals("GitHub Copilot", agentDisplayNames.get("copilot"));
-        assertEquals("Claude Code", agentDisplayNames.get("claude-cli"));
-
-        UsageStatisticsData.DailyAgentStats first = (UsageStatisticsData.DailyAgentStats) result.get(0);
-        UsageStatisticsData.DailyAgentStats second = (UsageStatisticsData.DailyAgentStats) result.get(1);
-        assertTrue(Set.of(first.agentId(), second.agentId()).contains("copilot"));
-        assertTrue(Set.of(first.agentId(), second.agentId()).contains("claude-cli"));
-    }
-
-    @Test
-    void collectTurnStats_emptyFile_producesNoAccumulators(@TempDir Path tempDir) throws Exception {
-        Path jsonlPath = tempDir.resolve("empty.jsonl");
-        Files.writeString(jsonlPath, "");
-
-        Map<Object, Object> accumulators = new LinkedHashMap<>();
-        LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-        Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-        invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
-
-        assertTrue(accumulators.isEmpty(), "Empty JSONL file should produce no accumulators");
-    }
-
-    @Test
-    void collectTurnStats_entryOutsideDateRange_producesNoAccumulators(@TempDir Path tempDir) throws Exception {
-        Path jsonlPath = tempDir.resolve("old.jsonl");
-        // Entry is in 2023; range is restricted to 2024
-        String line = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":1000,"
-            + "\"inputTokens\":10,\"outputTokens\":20,\"toolCallCount\":1,"
-            + "\"linesAdded\":1,\"linesRemoved\":0,\"multiplier\":\"1x\","
-            + "\"timestamp\":\"2023-01-01T00:00:00Z\",\"entryId\":\"e1\"}";
-        Files.writeString(jsonlPath, line + "\n");
-
-        Map<Object, Object> accumulators = new LinkedHashMap<>();
-        LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-        Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-        invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
-
-        assertTrue(accumulators.isEmpty(), "Entry outside the date range should not be accumulated");
-    }
-
-    // ── buildDailyStats (private static) ───────────────────────────────
-
-    /**
-     * Populates an accumulators map via {@code collectTurnStats} (already tested
-     * above), then passes it to {@code buildDailyStats} and verifies the result
-     * is non-null and non-empty.  {@code DayAgentKey} is private so we reuse the
-     * map produced by reflection — no need to construct the key directly.
-     */
-    @Test
-    void buildDailyStats_withPopulatedAccumulators_returnsNonEmptyList(@TempDir Path tempDir) throws Exception {
-        // Populate the accumulators map
-        Path jsonlPath = tempDir.resolve("session.jsonl");
-        String line = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
-            + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
-            + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
-            + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e1\"}";
-        Files.writeString(jsonlPath, line + "\n");
-
-        Map<Object, Object> accumulators = new LinkedHashMap<>();
-        LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-        Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-        invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
-
-        assertFalse(accumulators.isEmpty(), "Precondition: accumulators must be populated by collectTurnStats");
-
-        // Now invoke buildDailyStats with the populated map
-        Method buildMethod = UsageStatisticsLoader.class.getDeclaredMethod("buildDailyStats", Map.class);
-        buildMethod.setAccessible(true);
-        List<?> result = (List<?>) buildMethod.invoke(null, accumulators);
-
-        assertNotNull(result);
-        assertFalse(result.isEmpty());
+            assertNotNull(result);
+            assertFalse(result.isEmpty());
+        }
     }
 
     // ── Reflection helpers ──────────────────────────────────────────────

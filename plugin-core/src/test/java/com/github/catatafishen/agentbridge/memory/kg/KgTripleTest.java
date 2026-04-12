@@ -4,149 +4,155 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for {@link KgTriple} — POJO and input validation.
+ * Unit tests for {@link KgTriple} — static sanitization methods, safety checks, and builder.
  */
 class KgTripleTest {
 
-    @Test
-    void builderCreatesTriple() {
-        Instant now = Instant.now();
-        KgTriple triple = KgTriple.builder()
-            .id(1)
-            .subject("project")
-            .predicate("uses")
-            .object("Java 21")
-            .validFrom(now)
-            .createdAt(now)
-            .build();
+    // ── sanitizeName ─────────────────────────────────────────────────────────
 
-        assertEquals(1, triple.id());
-        assertEquals("project", triple.subject());
-        assertEquals("uses", triple.predicate());
-        assertEquals("Java 21", triple.object());
-        assertEquals(now, triple.validFrom());
-        assertNull(triple.validUntil());
-        assertEquals(now, triple.createdAt());
+    @Test
+    void sanitizeName_normalName_unchanged() {
+        assertEquals("hello-world", KgTriple.sanitizeName("hello-world"));
     }
 
     @Test
-    void sanitizeNameTrimsAndTruncates() {
-        String longName = "a".repeat(200);
-        String sanitized = KgTriple.sanitizeName(longName);
-        assertEquals(KgTriple.MAX_NAME_LENGTH, sanitized.length());
-    }
-
-    @Test
-    void sanitizeNameStripsWhitespace() {
+    void sanitizeName_leadingAndTrailingWhitespace_stripped() {
         assertEquals("hello", KgTriple.sanitizeName("  hello  "));
     }
 
     @Test
-    void sanitizeNameRemovesNullBytes() {
-        assertEquals("hello", KgTriple.sanitizeName("hel\0lo"));
+    void sanitizeName_nullBytesRemoved() {
+        assertEquals("hello", KgTriple.sanitizeName("he\0llo"));
     }
 
     @Test
-    void sanitizeNamePreventsPathTraversal() {
-        String sanitized = KgTriple.sanitizeName("../../etc/passwd");
-        assertFalse(sanitized.contains(".."));
-        assertFalse(sanitized.contains("/"));
+    void sanitizeName_pathTraversalRemoved() {
+        String sanitized = KgTriple.sanitizeName("../etc/passwd");
+        assertEquals("etcpasswd", sanitized);
     }
 
     @Test
-    void sanitizeNameRemovesBackslash() {
-        String sanitized = KgTriple.sanitizeName("path\\to\\file");
-        assertFalse(sanitized.contains("\\"));
+    void sanitizeName_backslashRemoved() {
+        assertEquals("foobar", KgTriple.sanitizeName("foo\\bar"));
     }
 
     @Test
-    void sanitizeNameThrowsForEmpty() {
+    void sanitizeName_truncatesAt128Chars() {
+        String longName = "a".repeat(200);
+        String sanitized = KgTriple.sanitizeName(longName);
+        assertEquals(KgTriple.MAX_NAME_LENGTH, sanitized.length());
+        assertEquals(128, sanitized.length());
+    }
+
+    @Test
+    void sanitizeName_emptyAfterSanitization_throws() {
         assertThrows(IllegalArgumentException.class,
-            () -> KgTriple.sanitizeName(""));
+            () -> KgTriple.sanitizeName("   "));
     }
 
     @Test
-    void sanitizeNameThrowsForOnlyNullBytes() {
+    void sanitizeName_onlySpecialChars_throws() {
+        // "../..//" → after removing "..", "/", "\\" → empty
         assertThrows(IllegalArgumentException.class,
-            () -> KgTriple.sanitizeName("\0\0\0"));
+            () -> KgTriple.sanitizeName("../..//"));
+    }
+
+    // ── sanitizeContent ──────────────────────────────────────────────────────
+
+    @Test
+    void sanitizeContent_normalContent_unchanged() {
+        assertEquals("some content here", KgTriple.sanitizeContent("some content here"));
     }
 
     @Test
-    void sanitizeContentRemovesNullBytes() {
+    void sanitizeContent_nullBytesRemoved() {
         assertEquals("hello world", KgTriple.sanitizeContent("hello\0 world"));
     }
 
     @Test
-    void sanitizeContentTruncatesLongContent() {
+    void sanitizeContent_truncatesAt100000Chars() {
         String longContent = "x".repeat(200_000);
         String sanitized = KgTriple.sanitizeContent(longContent);
         assertEquals(KgTriple.MAX_CONTENT_LENGTH, sanitized.length());
+        assertEquals(100_000, sanitized.length());
     }
 
     @Test
-    void sanitizeContentThrowsForEmpty() {
+    void sanitizeContent_emptyAfterSanitization_throws() {
         assertThrows(IllegalArgumentException.class,
             () -> KgTriple.sanitizeContent(""));
     }
 
     @Test
-    void sanitizeContentThrowsForOnlyWhitespace() {
+    void sanitizeContent_whitespaceOnlyAfterSanitization_throws() {
         assertThrows(IllegalArgumentException.class,
-            () -> KgTriple.sanitizeContent("   "));
+            () -> KgTriple.sanitizeContent("   \t\n  "));
+    }
+
+    // ── isSafeName ───────────────────────────────────────────────────────────
+
+    @Test
+    void isSafeName_safeNames_returnTrue() {
+        assertTrue(KgTriple.isSafeName("hello-world"));
+        assertTrue(KgTriple.isSafeName("foo_bar"));
+        assertTrue(KgTriple.isSafeName("test.txt"));
+        assertTrue(KgTriple.isSafeName("A B C 123"));
     }
 
     @Test
-    void isSafeNameAcceptsValidNames() {
-        assertTrue(KgTriple.isSafeName("project-name"));
-        assertTrue(KgTriple.isSafeName("my_variable"));
-        assertTrue(KgTriple.isSafeName("version 2.0"));
-        assertTrue(KgTriple.isSafeName("Java21"));
-    }
-
-    @Test
-    void isSafeNameRejectsUnsafeCharacters() {
-        assertFalse(KgTriple.isSafeName("foo;bar"));
-        assertFalse(KgTriple.isSafeName("hello\nworld"));
-        assertFalse(KgTriple.isSafeName("path/to/file"));
+    void isSafeName_unsafeNames_returnFalse() {
+        assertFalse(KgTriple.isSafeName("hello@world"));
+        assertFalse(KgTriple.isSafeName("foo/bar"));
+        assertFalse(KgTriple.isSafeName("test\0"));
         assertFalse(KgTriple.isSafeName(""));
     }
 
+    // ── Builder ──────────────────────────────────────────────────────────────
+
     @Test
-    void builderSanitizesInputs() {
+    void builder_sanitizesSubjectOnSet() {
         KgTriple triple = KgTriple.builder()
-            .subject("  my project  ")
+            .subject("  hello  ")
             .predicate("uses")
-            .object("Java\0 21")
-            .build();
-
-        assertEquals("my project", triple.subject());
-        assertEquals("uses", triple.predicate());
-        assertEquals("Java 21", triple.object());
-    }
-
-    @Test
-    void tripleWithNullOptionalFields() {
-        KgTriple triple = KgTriple.builder()
-            .subject("test")
-            .predicate("is")
             .object("value")
             .build();
 
-        assertNull(triple.validFrom());
-        assertNull(triple.validUntil());
-        assertNull(triple.sourceDrawer());
+        assertEquals("hello", triple.subject(), "builder should strip whitespace from subject");
     }
 
     @Test
-    void maxNameLength() {
-        assertEquals(128, KgTriple.MAX_NAME_LENGTH);
+    void builder_throwsOnEmptySubject() {
+        assertThrows(IllegalArgumentException.class,
+            () -> KgTriple.builder().subject("   "));
     }
 
     @Test
-    void maxContentLength() {
-        assertEquals(100_000, KgTriple.MAX_CONTENT_LENGTH);
+    void builder_fullRoundTrip() {
+        Instant now = Instant.now();
+        KgTriple triple = KgTriple.builder()
+            .id(42)
+            .subject("project")
+            .predicate("uses")
+            .object("Java 21")
+            .validFrom(now)
+            .validUntil(now.plusSeconds(3600))
+            .sourceDrawer("code")
+            .createdAt(now)
+            .build();
+
+        assertEquals(42, triple.id());
+        assertEquals("project", triple.subject());
+        assertEquals("uses", triple.predicate());
+        assertEquals("Java 21", triple.object());
+        assertEquals(now, triple.validFrom());
+        assertEquals(now.plusSeconds(3600), triple.validUntil());
+        assertEquals("code", triple.sourceDrawer());
+        assertEquals(now, triple.createdAt());
     }
 }

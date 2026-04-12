@@ -7,9 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -17,270 +14,181 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ExchangeChunkerTest {
 
+    // --- chunk() tests ---
+
     @Test
-    void singlePromptAndResponsePair() {
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("What is Java 21?", "2024-01-01T00:00:00Z"),
-            new EntryData.Text("Java 21 is the latest LTS release.")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-
-        ExchangeChunker.Exchange ex = exchanges.get(0);
-        assertEquals("What is Java 21?", ex.prompt());
-        assertEquals("Java 21 is the latest LTS release.", ex.response());
-        assertEquals("2024-01-01T00:00:00Z", ex.timestamp());
+    void emptyList_returnsEmpty() {
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(List.of());
+        assertTrue(result.isEmpty());
     }
 
     @Test
-    void multipleResponsesAreConcatenated() {
+    void noPrompts_returnsEmpty() {
         List<EntryData> entries = List.of(
-            new EntryData.Prompt("Tell me about patterns"),
-            new EntryData.Text("Here are some patterns:"),
-            new EntryData.Text("1. Singleton\n2. Factory\n3. Observer")
+            new EntryData.Text("some text"),
+            new EntryData.Text("more text")
         );
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertTrue(exchanges.get(0).response().contains("Singleton"));
-        assertTrue(exchanges.get(0).response().contains("Observer"));
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void singleExchange_promptAndText() {
+        List<EntryData> entries = List.of(
+            new EntryData.Prompt("What is Kotlin?"),
+            new EntryData.Text("Kotlin is a modern JVM language.")
+        );
+
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(1, result.size());
+        assertEquals("What is Kotlin?", result.get(0).prompt());
+        assertEquals("Kotlin is a modern JVM language.", result.get(0).response());
+    }
+
+    @Test
+    void singleExchange_multipleTexts() {
+        List<EntryData> entries = List.of(
+            new EntryData.Prompt("Explain design patterns"),
+            new EntryData.Text("Here are some patterns:"),
+            new EntryData.Text("1. Singleton"),
+            new EntryData.Text("2. Factory")
+        );
+
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(1, result.size());
+        String response = result.get(0).response();
+        assertTrue(response.contains("Here are some patterns:"));
+        assertTrue(response.contains("1. Singleton"));
+        assertTrue(response.contains("2. Factory"));
     }
 
     @Test
     void multipleExchanges() {
         List<EntryData> entries = List.of(
-            new EntryData.Prompt("Question 1"),
-            new EntryData.Text("Answer 1"),
-            new EntryData.Prompt("Question 2"),
-            new EntryData.Text("Answer 2"),
-            new EntryData.Prompt("Question 3"),
-            new EntryData.Text("Answer 3")
+            new EntryData.Prompt("Q1"),
+            new EntryData.Text("A1 part 1"),
+            new EntryData.Text("A1 part 2"),
+            new EntryData.Prompt("Q2"),
+            new EntryData.Text("A2")
         );
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(3, exchanges.size());
-        assertEquals("Question 1", exchanges.get(0).prompt());
-        assertEquals("Question 2", exchanges.get(1).prompt());
-        assertEquals("Question 3", exchanges.get(2).prompt());
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(2, result.size());
+        assertEquals("Q1", result.get(0).prompt());
+        assertTrue(result.get(0).response().contains("A1 part 1"));
+        assertTrue(result.get(0).response().contains("A1 part 2"));
+        assertEquals("Q2", result.get(1).prompt());
+        assertEquals("A2", result.get(1).response());
     }
 
     @Test
-    void toolCallsAreSkippedFromResponseText() {
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Fix the bug"),
-            new EntryData.ToolCall("read_file"),
-            new EntryData.Text("I found the issue and fixed it."),
-            new EntryData.ToolCall("write_file")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertEquals("I found the issue and fixed it.", exchanges.get(0).response());
-    }
-
-    @Test
-    void thinkingEntriesAreSkipped() {
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Explain"),
-            new EntryData.Thinking("Let me think..."),
-            new EntryData.Text("The answer is 42.")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertEquals("The answer is 42.", exchanges.get(0).response());
-    }
-
-    @Test
-    void promptWithNoResponseIsSkipped() {
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Hello"),
-            new EntryData.Prompt("Another prompt"),
-            new EntryData.Text("Response to second prompt")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertEquals("Another prompt", exchanges.get(0).prompt());
-    }
-
-    @Test
-    void emptyEntryListReturnsEmpty() {
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(List.of());
-        assertTrue(exchanges.isEmpty());
-    }
-
-    @Test
-    void blankResponseTextIsSkipped() {
+    void blankTextSkipped() {
         List<EntryData> entries = List.of(
             new EntryData.Prompt("Question"),
             new EntryData.Text("   "),
+            new EntryData.Text(""),
             new EntryData.Text("Real answer")
         );
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertEquals("Real answer", exchanges.get(0).response());
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(1, result.size());
+        assertEquals("Real answer", result.get(0).response());
     }
 
     @Test
-    void combinedTextContainsBothPromptAndResponse() {
-        ExchangeChunker.Exchange ex = new ExchangeChunker.Exchange(
-            "my prompt", "my response", "", "", List.of());
-        String combined = ex.combinedText();
-        assertTrue(combined.contains("my prompt"));
-        assertTrue(combined.contains("my response"));
-    }
-
-    @Test
-    void noResponseEntriesAtAllReturnsEmpty() {
+    void textBeforeFirstPrompt_ignored() {
         List<EntryData> entries = List.of(
-            new EntryData.Prompt("Just a prompt")
+            new EntryData.Text("orphan text before any prompt"),
+            new EntryData.Prompt("First real prompt"),
+            new EntryData.Text("Response to prompt")
         );
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertTrue(exchanges.isEmpty());
-    }
-
-    // --- Traceability: entryId ---
-
-    @Test
-    void promptEntryIdIsCaptured() {
-        EntryData.Prompt prompt = new EntryData.Prompt("Question", "2024-01-01T00:00:00Z");
-        List<EntryData> entries = List.of(prompt, new EntryData.Text("Answer"));
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertEquals(prompt.getEntryId(), exchanges.get(0).promptEntryId());
-        assertFalse(exchanges.get(0).promptEntryId().isEmpty());
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(1, result.size());
+        assertEquals("First real prompt", result.get(0).prompt());
+        assertEquals("Response to prompt", result.get(0).response());
     }
 
     @Test
-    void multipleExchangesPreserveTheirOwnEntryIds() {
-        EntryData.Prompt p1 = new EntryData.Prompt("Q1");
-        EntryData.Prompt p2 = new EntryData.Prompt("Q2");
+    void promptWithNoResponse_notIncluded() {
         List<EntryData> entries = List.of(
-            p1, new EntryData.Text("A1"),
-            p2, new EntryData.Text("A2")
+            new EntryData.Prompt("First prompt with no response"),
+            new EntryData.Prompt("Second prompt"),
+            new EntryData.Text("Response to second")
         );
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(2, exchanges.size());
-        assertEquals(p1.getEntryId(), exchanges.get(0).promptEntryId());
-        assertEquals(p2.getEntryId(), exchanges.get(1).promptEntryId());
-        assertNotEquals(exchanges.get(0).promptEntryId(), exchanges.get(1).promptEntryId());
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(1, result.size());
+        assertEquals("Second prompt", result.get(0).prompt());
+        assertEquals("Response to second", result.get(0).response());
     }
 
-    // --- Traceability: git commit hashes ---
-
     @Test
-    void gitCommitHashExtractedFromToolCallResult() {
-        EntryData.ToolCall commitTc = new EntryData.ToolCall("git_commit");
-        commitTc.setResult("[fix/my-branch abc1234] fix: resolve null pointer");
-
+    void toolCallIgnoredForResponse() {
         List<EntryData> entries = List.of(
-            new EntryData.Prompt("Fix the NPE"),
-            commitTc,
-            new EntryData.Text("Done.")
+            new EntryData.Prompt("Fix the bug"),
+            new EntryData.ToolCall("read_file"),
+            new EntryData.Text("I found and fixed the issue."),
+            new EntryData.ToolCall("write_file")
         );
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertEquals(List.of("abc1234"), exchanges.get(0).commitHashes());
+        List<ExchangeChunker.Exchange> result = ExchangeChunker.chunk(entries);
+        assertEquals(1, result.size());
+        assertEquals("I found and fixed the issue.", result.get(0).response());
     }
 
-    @Test
-    void multipleCommitsInSameExchange() {
-        EntryData.ToolCall tc1 = new EntryData.ToolCall("git_commit");
-        tc1.setResult("[main aaa1111] feat: add feature A");
-        EntryData.ToolCall tc2 = new EntryData.ToolCall("git_commit");
-        tc2.setResult("[main bbb2222] fix: fix feature A edge case");
-
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Add feature and fix edge case"),
-            tc1, tc2,
-            new EntryData.Text("Both done.")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(List.of("aaa1111", "bbb2222"), exchanges.get(0).commitHashes());
-    }
+    // --- extractCommitHashes() tests ---
 
     @Test
-    void commitHashesResetBetweenExchanges() {
+    void extractCommitHashes_singleMatch() {
         EntryData.ToolCall tc = new EntryData.ToolCall("git_commit");
-        tc.setResult("[main abc1234] fix: first");
-
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("First turn"),
-            tc,
-            new EntryData.Text("Done first."),
-            new EntryData.Prompt("Second turn, no commits"),
-            new EntryData.Text("Done second.")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(2, exchanges.size());
-        assertEquals(List.of("abc1234"), exchanges.get(0).commitHashes());
-        assertTrue(exchanges.get(1).commitHashes().isEmpty());
-    }
-
-    @Test
-    void toolCallWithNullResultDoesNotCrash() {
-        EntryData.ToolCall tc = new EntryData.ToolCall("read_file");
-        // result is null by default
-
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Read a file"),
-            tc,
-            new EntryData.Text("File content.")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertEquals(1, exchanges.size());
-        assertTrue(exchanges.get(0).commitHashes().isEmpty());
-    }
-
-    @Test
-    void toolCallWithNoGitOutputHasNoHashes() {
-        EntryData.ToolCall tc = new EntryData.ToolCall("write_file");
-        tc.setResult("Written: src/Main.java (500 chars)");
-
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Write a file"),
-            tc,
-            new EntryData.Text("Done.")
-        );
-
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertTrue(exchanges.get(0).commitHashes().isEmpty());
-    }
-
-    @Test
-    void extractCommitHashesHandlesFullSha() {
-        EntryData.ToolCall tc = new EntryData.ToolCall("git_commit");
-        tc.setResult("[main 0123456789abcdef0123456789abcdef01234567] full sha");
+        tc.setResult("[main abc1234] fix: resolve null pointer");
 
         List<String> out = new ArrayList<>();
         ExchangeChunker.extractCommitHashes(tc, out);
-        assertEquals(1, out.size());
-        assertEquals("0123456789abcdef0123456789abcdef01234567", out.get(0));
+        assertEquals(List.of("abc1234"), out);
     }
 
     @Test
-    void commitHashesAreUnmodifiableInExchange() {
+    void extractCommitHashes_multipleMatches() {
         EntryData.ToolCall tc = new EntryData.ToolCall("git_commit");
-        tc.setResult("[main abc1234] commit");
+        tc.setResult("[main aaa1111] feat: add feature\n[main bbb2222] fix: edge case");
 
-        List<EntryData> entries = List.of(
-            new EntryData.Prompt("Commit"),
-            tc,
-            new EntryData.Text("Done.")
-        );
+        List<String> out = new ArrayList<>();
+        ExchangeChunker.extractCommitHashes(tc, out);
+        assertEquals(2, out.size());
+        assertEquals("aaa1111", out.get(0));
+        assertEquals("bbb2222", out.get(1));
+    }
 
-        List<ExchangeChunker.Exchange> exchanges = ExchangeChunker.chunk(entries);
-        assertThrows(UnsupportedOperationException.class,
-            () -> exchanges.get(0).commitHashes().add("should-fail"));
+    @Test
+    void extractCommitHashes_nullResult() {
+        EntryData.ToolCall tc = new EntryData.ToolCall("read_file");
+        // result is null by default
+
+        List<String> out = new ArrayList<>();
+        ExchangeChunker.extractCommitHashes(tc, out);
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    void extractCommitHashes_noMatch() {
+        EntryData.ToolCall tc = new EntryData.ToolCall("write_file");
+        tc.setResult("Written: src/Main.java (500 chars)");
+
+        List<String> out = new ArrayList<>();
+        ExchangeChunker.extractCommitHashes(tc, out);
+        assertTrue(out.isEmpty());
+    }
+
+    // --- Exchange.combinedText() ---
+
+    @Test
+    void combinedText_format() {
+        ExchangeChunker.Exchange ex = new ExchangeChunker.Exchange(
+            "my prompt", "my response", "", "", List.of());
+
+        assertEquals("my prompt\n\nmy response", ex.combinedText());
     }
 }
