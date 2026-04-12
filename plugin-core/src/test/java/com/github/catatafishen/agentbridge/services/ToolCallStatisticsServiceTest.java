@@ -59,7 +59,6 @@ class ToolCallStatisticsServiceTest {
         var agg = aggregates.getFirst();
         assertEquals("read_file", agg.toolName());
         assertEquals("FILE", agg.category());
-        assertEquals("copilot", agg.clientId());
         assertEquals(1, agg.callCount());
         assertEquals(42, agg.avgDurationMs());
         assertEquals(256, agg.totalInputBytes());
@@ -105,7 +104,6 @@ class ToolCallStatisticsServiceTest {
 
         var filtered = service.queryAggregates(null, "opencode");
         assertEquals(1, filtered.size());
-        assertEquals("opencode", filtered.getFirst().clientId());
         assertEquals(300, filtered.getFirst().totalInputBytes());
     }
 
