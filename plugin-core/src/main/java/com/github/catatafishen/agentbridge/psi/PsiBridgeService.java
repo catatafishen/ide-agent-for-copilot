@@ -42,7 +42,7 @@ public final class PsiBridgeService implements Disposable {
     public interface ToolCallListener {
         void toolCalled(String toolName, long durationMs, boolean success,
                         long inputSizeBytes, long outputSizeBytes, String clientId,
-                        @Nullable String category);
+                        @Nullable String category, @Nullable String errorMessage);
     }
 
     /**
@@ -219,13 +219,15 @@ public final class PsiBridgeService implements Disposable {
         long inputSize = arguments != null ? arguments.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length : 0;
         ToolDefinition def = registry.findDefinition(toolName);
         if (def == null || !def.hasExecutionHandler()) {
-            fireToolCallEvent(toolName, System.currentTimeMillis(), false, inputSize, 0, null);
-            return "Unknown tool: " + toolName;
+            String unknownErr = "Unknown tool: " + toolName;
+            fireToolCallEvent(toolName, System.currentTimeMillis(), false, inputSize, 0, null, unknownErr);
+            return unknownErr;
         }
         String categoryName = def.category() != null ? def.category().name() : null;
         long outputSize = 0;
         long startMs = System.currentTimeMillis();
         boolean success = true;
+        String errorMessage = null;
 
         String argumentsHash = ToolChipRegistry.computeBaseHash(arguments);
 
@@ -265,7 +267,7 @@ public final class PsiBridgeService implements Disposable {
                 writeBatchCoordinator.unregisterWrite();
                 writeRegistered = false;
             }
-            fireToolCallEvent(toolName, startMs, false, inputSize, 0, categoryName);
+            fireToolCallEvent(toolName, startMs, false, inputSize, 0, categoryName, denied);
             return denied;
         }
 
@@ -352,8 +354,9 @@ public final class PsiBridgeService implements Disposable {
             return result;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
             success = false;
+            errorMessage = "Error: IDE is busy, please retry. " + e.getMessage();
             if (writeRegistered) writeBatchCoordinator.unregisterWrite();
-            return "Error: IDE is busy, please retry. " + e.getMessage();
+            return errorMessage;
         } catch (Exception e) {
             LOG.warn("Tool call error: " + toolName, e);
             success = false;
@@ -361,13 +364,15 @@ public final class PsiBridgeService implements Disposable {
             String modalDetail = EdtUtil.describeModalBlocker();
             String base = "Error: " + e.getMessage();
             if (!modalDetail.isEmpty()) {
-                return base + "\n" + modalDetail.trim()
+                errorMessage = base + "\n" + modalDetail.trim()
                     + "\nUse the interact_with_modal tool to respond to the dialog.";
+            } else {
+                errorMessage = base;
             }
-            return base;
+            return errorMessage;
         } finally {
             if (needsGlobalLock && !semaphoreReleasedEarly) writeToolSemaphore.release();
-            fireToolCallEvent(toolName, startMs, success, inputSize, outputSize, categoryName);
+            fireToolCallEvent(toolName, startMs, success, inputSize, outputSize, categoryName, errorMessage);
             if (chatWasActive) {
                 fireFocusRestoreEvent();
             }
@@ -398,26 +403,28 @@ public final class PsiBridgeService implements Disposable {
                                     long inputSizeBytes, @Nullable String category) {
         try {
             if (!writeToolSemaphore.tryAcquire(60, java.util.concurrent.TimeUnit.SECONDS)) {
-                fireToolCallEvent(toolName, startTimeMs, false, inputSizeBytes, 0, category);
-                return "Error: IDE is busy processing another tool call. Please retry shortly.";
+                String err = "Error: IDE is busy processing another tool call. Please retry shortly.";
+                fireToolCallEvent(toolName, startTimeMs, false, inputSizeBytes, 0, category, err);
+                return err;
             }
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            fireToolCallEvent(toolName, startTimeMs, false, inputSizeBytes, 0, category);
-            return "Error: Interrupted waiting for write lock.";
+            String err = "Error: Interrupted waiting for write lock.";
+            fireToolCallEvent(toolName, startTimeMs, false, inputSizeBytes, 0, category, err);
+            return err;
         }
     }
 
     private void fireToolCallEvent(String toolName, long startTimeMs, boolean success,
                                    long inputSizeBytes, long outputSizeBytes,
-                                   @Nullable String category) {
+                                   @Nullable String category, @Nullable String errorMessage) {
         long duration = System.currentTimeMillis() - startTimeMs;
         String clientId = ActiveAgentManager.getInstance(project).getActiveProfileId();
         try {
             PlatformApiCompat.syncPublisher(project, TOOL_CALL_TOPIC)
                 .toolCalled(toolName, duration, success, inputSizeBytes, outputSizeBytes,
-                    clientId, category);
+                    clientId, category, errorMessage);
         } catch (Exception e) {
             LOG.debug("Failed to fire tool call event", e);
         }
