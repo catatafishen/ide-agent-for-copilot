@@ -4,7 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KiroClientTest {
 
@@ -33,6 +35,39 @@ class KiroClientTest {
     @Test
     void isPanicLine_containsPanickedAtMiddle() throws Exception {
         assertTrue(invokeIsPanicLine("error: thread 'tokio-runtime' panicked at core/event.rs:128"));
+    }
+
+    // ── stripAnsi (package-private static) ────────────────────────────
+
+    @Test
+    void stripAnsi_removesColorCodes() {
+        assertEquals(
+            "The application panicked (crashed).",
+            KiroClient.stripAnsi("\u001b[31mThe application panicked (crashed).\u001b[0m")
+        );
+    }
+
+    @Test
+    void stripAnsi_removesMultipleCodes() {
+        assertEquals(
+            "thread 'agent' panicked at src/main.rs:42",
+            KiroClient.stripAnsi("\u001b[33mthread 'agent' panicked at \u001b[35msrc/main.rs\u001b[0m:\u001b[35m42\u001b[0m")
+        );
+    }
+
+    @Test
+    void stripAnsi_noOpForCleanString() {
+        assertEquals("no ansi here", KiroClient.stripAnsi("no ansi here"));
+    }
+
+    @Test
+    void stripAnsi_emptyString() {
+        assertEquals("", KiroClient.stripAnsi(""));
+    }
+
+    @Test
+    void stripAnsi_boldAndReset() {
+        assertEquals("bold text", KiroClient.stripAnsi("\u001b[1mbold text\u001b[0m"));
     }
 
     // ── Reflection helpers ──────────────────────────────────────────────
