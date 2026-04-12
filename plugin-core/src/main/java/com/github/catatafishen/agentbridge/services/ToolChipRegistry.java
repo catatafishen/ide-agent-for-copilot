@@ -1,9 +1,7 @@
 package com.github.catatafishen.agentbridge.services;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
@@ -15,7 +13,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.function.BiConsumer;
 
 /**
@@ -393,7 +390,7 @@ public final class ToolChipRegistry {
     }
 
     private static boolean isMatchingHash(@NotNull String chipId, @NotNull String baseHash) {
-        return chipId.equals(baseHash) || chipId.startsWith(baseHash + "-");
+        return ToolCallHasher.isMatchingHash(chipId, baseHash);
     }
 
     private void fireState(@NotNull String chipId, @NotNull ChipState state) {
@@ -432,51 +429,10 @@ public final class ToolChipRegistry {
     }
 
     public static @NotNull String computeBaseHash(@NotNull JsonObject args) {
-        try {
-            TreeMap<String, String> sorted = new TreeMap<>();
-            for (String key : args.keySet()) {
-                if (!"__tool_use_purpose".equals(key)) {
-                    JsonElement value = args.get(key);
-                    sorted.put(key, computeStableValue(value));
-                }
-            }
-            String toHash = sorted.toString();
-            String hash = String.format("%08x", toHash.hashCode());
-            LOG.debug("ToolChipRegistry: hashing '" + toHash + "' -> " + hash);
-            return hash;
-        } catch (Exception e) {
-            LOG.warn("ToolChipRegistry: hash error", e);
-            return "00000000";
-        }
+        return ToolCallHasher.computeBaseHash(args);
     }
 
     private static String computeStableValue(JsonElement value) {
-        if (value == null || value.isJsonNull()) return "null";
-        if (value.isJsonObject()) {
-            JsonObject obj = value.getAsJsonObject();
-            TreeMap<String, String> sorted = new TreeMap<>();
-            for (String key : obj.keySet()) {
-                sorted.put(key, computeStableValue(obj.get(key)));
-            }
-            return sorted.toString();
-        }
-        if (value.isJsonArray()) {
-            JsonArray arr = value.getAsJsonArray();
-            ArrayList<String> items = new ArrayList<>();
-            for (JsonElement item : arr) {
-                items.add(computeStableValue(item));
-            }
-            return items.toString();
-        }
-        if (value.isJsonPrimitive()) {
-            JsonPrimitive p = value.getAsJsonPrimitive();
-            if (p.isNumber()) {
-                double d = p.getAsDouble();
-                if (d == (long) d) {
-                    return String.valueOf((long) d);
-                }
-            }
-        }
-        return value.toString();
+        return ToolCallHasher.computeStableValue(value);
     }
 }

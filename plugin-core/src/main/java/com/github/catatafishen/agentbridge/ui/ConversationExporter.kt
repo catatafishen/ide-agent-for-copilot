@@ -44,7 +44,9 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
 
             is EntryData.Status -> sb.appendLine("${e.icon} ${e.message}")
             is EntryData.SessionSeparator -> sb.appendLine("--- Previous session \uD83D\uDCC5 ${formatTimestamp(e.timestamp)} ---")
-            is EntryData.TurnStats -> { /* aggregated stats only, not part of conversation text */ }
+            is EntryData.TurnStats -> { /* aggregated stats only, not part of conversation text */
+            }
+
             is EntryData.Nudge -> if (e.sent) sb.appendLine(">>> [Nudge] ${e.text}")
         }
         return sb.toString()
@@ -87,86 +89,10 @@ internal class ConversationExporter(private val entries: List<EntryData>) {
         return header + blocks.joinToString("\n")
     }
 
-    private data class TurnData(
-        val id: String,
-        val userText: String,
-        val agentText: String,
-        val toolCallCount: Int,
-        val thinkingCount: Int,
-        val subAgentCount: Int,
-    )
+    private fun groupIntoTurns() = ConversationSummaryBuilder.groupIntoTurns(entries)
 
-    private fun groupIntoTurns(): List<TurnData> {
-        val turns = mutableListOf<TurnData>()
-        var currentPrompt: EntryData.Prompt? = null
-        val agentTextBuf = StringBuilder()
-        var toolCount = 0
-        var thinkCount = 0
-        var subAgentCount = 0
-
-        fun flush() {
-            val p = currentPrompt ?: return
-            turns.add(
-                TurnData(
-                    id = "t${turns.size + 1}",
-                    userText = p.text,
-                    agentText = agentTextBuf.toString().trim(),
-                    toolCallCount = toolCount,
-                    thinkingCount = thinkCount,
-                    subAgentCount = subAgentCount,
-                )
-            )
-        }
-
-        for (e in entries) {
-            when (e) {
-                is EntryData.Prompt -> {
-                    flush()
-                    currentPrompt = e
-                    agentTextBuf.clear()
-                    toolCount = 0
-                    thinkCount = 0
-                    subAgentCount = 0
-                }
-
-                is EntryData.Text -> agentTextBuf.append(e.raw)
-                is EntryData.ToolCall -> toolCount++
-                is EntryData.Thinking -> thinkCount++
-                is EntryData.SubAgent -> subAgentCount++
-                is EntryData.ContextFiles,
-                is EntryData.SessionSeparator,
-                is EntryData.Status,
-                is EntryData.Nudge,
-                is EntryData.TurnStats -> { /* not relevant for turn grouping */
-                }
-            }
-        }
-        flush()
-        return turns
-    }
-
-    private fun formatTurnForSummary(turn: TurnData, full: Boolean): String {
-        val sb = StringBuilder()
-        sb.appendLine("[${turn.id}] User: ${truncateField(turn.userText, full, "use turn_id='${turn.id}' for full")}")
-        if (turn.agentText.isNotEmpty()) {
-            sb.appendLine("Agent: ${truncateField(turn.agentText, full, "truncated")}")
-        }
-        val markerLine = buildMarkerLine(turn)
-        if (markerLine != null) sb.appendLine(markerLine)
-        return sb.toString()
-    }
-
-    private fun truncateField(text: String, full: Boolean, hint: String): String =
-        if (full || text.length <= 500) text else text.take(500) + "…[$hint]"
-
-    private fun buildMarkerLine(turn: TurnData): String? {
-        val markers = buildList {
-            if (turn.toolCallCount > 0) add("${turn.toolCallCount} tool call${if (turn.toolCallCount > 1) "s" else ""}")
-            if (turn.thinkingCount > 0) add("${turn.thinkingCount} thinking block${if (turn.thinkingCount > 1) "s" else ""}")
-            if (turn.subAgentCount > 0) add("${turn.subAgentCount} sub-agent${if (turn.subAgentCount > 1) "s" else ""}")
-        }
-        return if (markers.isNotEmpty()) "[${markers.joinToString(", ")}]" else null
-    }
+    private fun formatTurnForSummary(turn: ConversationSummaryBuilder.TurnData, full: Boolean): String =
+        ConversationSummaryBuilder.formatTurnForSummary(turn, full)
 
     /** Returns the conversation as a self-contained HTML document */
     fun getConversationHtml(): String {

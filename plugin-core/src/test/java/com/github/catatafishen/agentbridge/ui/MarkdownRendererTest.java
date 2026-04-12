@@ -5,7 +5,9 @@ import kotlin.jvm.functions.Function1;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MarkdownRendererTest {
 
@@ -15,32 +17,42 @@ class MarkdownRendererTest {
     private static final Function1<String, String> NO_FILE_PATH = ref -> null;
     private static final Function1<String, Boolean> NO_GIT = sha -> false;
 
-    /** Render Markdown with no external resolution. */
+    /**
+     * Render Markdown with no external resolution.
+     */
     private String render(String markdown) {
         return MarkdownRenderer.INSTANCE.markdownToHtml(markdown, NO_FILE_REF, NO_FILE_PATH, NO_GIT);
     }
 
-    /** Render Markdown with a custom file-path resolver. */
+    /**
+     * Render Markdown with a custom file-path resolver.
+     */
     private String renderWithFilePath(String markdown, Function1<String, String> resolveFilePath) {
         return MarkdownRenderer.INSTANCE.markdownToHtml(markdown, NO_FILE_REF, resolveFilePath, NO_GIT);
     }
 
-    /** Render Markdown with a custom file-reference resolver. */
+    /**
+     * Render Markdown with a custom file-reference resolver.
+     */
     private String renderWithFileRef(String markdown, Function1<String, Pair<String, Integer>> resolveFileRef) {
         return MarkdownRenderer.INSTANCE.markdownToHtml(markdown, resolveFileRef, NO_FILE_PATH, NO_GIT);
     }
 
-    /** Render Markdown with a git-commit checker. */
+    /**
+     * Render Markdown with a git-commit checker.
+     */
     private String renderWithGit(String markdown, Function1<String, Boolean> isGitCommit) {
         return MarkdownRenderer.INSTANCE.markdownToHtml(markdown, NO_FILE_REF, NO_FILE_PATH, isGitCommit);
     }
 
-    /** Render with all resolvers active. */
+    /**
+     * Render with all resolvers active.
+     */
     private String renderFull(
-            String markdown,
-            Function1<String, Pair<String, Integer>> resolveFileRef,
-            Function1<String, String> resolveFilePath,
-            Function1<String, Boolean> isGitCommit
+        String markdown,
+        Function1<String, Pair<String, Integer>> resolveFileRef,
+        Function1<String, String> resolveFilePath,
+        Function1<String, Boolean> isGitCommit
     ) {
         return MarkdownRenderer.INSTANCE.markdownToHtml(markdown, resolveFileRef, resolveFilePath, isGitCommit);
     }
@@ -217,7 +229,7 @@ class MarkdownRendererTest {
         @Test
         void inlineCodeWithFileReferenceResolvesToLink() {
             String html = renderWithFileRef("`MyFile.kt`",
-                    ref -> "MyFile.kt".equals(ref) ? new Pair<>("/path/MyFile.kt", null) : null);
+                ref -> "MyFile.kt".equals(ref) ? new Pair<>("/path/MyFile.kt", null) : null);
             assertTrue(html.contains("<a href='openfile:///path/MyFile.kt'>"), html);
             assertTrue(html.contains("<code>MyFile.kt</code>"), html);
         }
@@ -225,7 +237,7 @@ class MarkdownRendererTest {
         @Test
         void inlineCodeWithFileReferenceAndLineNumber() {
             String html = renderWithFileRef("`MyFile.kt:42`",
-                    ref -> "MyFile.kt:42".equals(ref) ? new Pair<>("/path/MyFile.kt", 42) : null);
+                ref -> "MyFile.kt:42".equals(ref) ? new Pair<>("/path/MyFile.kt", 42) : null);
             assertTrue(html.contains("openfile:///path/MyFile.kt:42"), html);
         }
 
@@ -381,7 +393,7 @@ class MarkdownRendererTest {
             int codeClose = html.indexOf("</code></pre>");
             int contentIdx = html.indexOf("some other stuff");
             assertTrue(contentIdx > codeOpen && contentIdx < codeClose,
-                    "Non-major-element line should remain in implicit code block: " + html);
+                "Non-major-element line should remain in implicit code block: " + html);
         }
 
         @Test
@@ -534,7 +546,7 @@ class MarkdownRendererTest {
             assertTrue(html.contains("<li>Three</li>"), html);
             // Should be one list
             assertEquals(html.indexOf("<ul>"), html.lastIndexOf("<ul>"),
-                    "Should be a single <ul>: " + html);
+                "Should be a single <ul>: " + html);
         }
 
         @Test
@@ -690,21 +702,21 @@ class MarkdownRendererTest {
         @Test
         void markdownLinkResolvedAsFileReference() {
             String html = renderWithFileRef("[MyClass](MyClass.kt)",
-                    ref -> "MyClass.kt".equals(ref) ? new Pair<>("/src/MyClass.kt", null) : null);
+                ref -> "MyClass.kt".equals(ref) ? new Pair<>("/src/MyClass.kt", null) : null);
             assertTrue(html.contains("openfile:///src/MyClass.kt"), html);
         }
 
         @Test
         void markdownLinkResolvedAsFileReferenceWithLine() {
             String html = renderWithFileRef("[MyClass](MyClass.kt:10)",
-                    ref -> "MyClass.kt:10".equals(ref) ? new Pair<>("/src/MyClass.kt", 10) : null);
+                ref -> "MyClass.kt:10".equals(ref) ? new Pair<>("/src/MyClass.kt", 10) : null);
             assertTrue(html.contains("openfile:///src/MyClass.kt:10"), html);
         }
 
         @Test
         void markdownLinkResolvedViaFilePath() {
             String html = renderWithFilePath("[file](file:///src/Main.kt)",
-                    ref -> "/src/Main.kt".equals(ref) ? "/resolved/Main.kt" : null);
+                ref -> "/src/Main.kt".equals(ref) ? "/resolved/Main.kt" : null);
             assertTrue(html.contains("openfile:///resolved/Main.kt"), html);
         }
 
@@ -726,7 +738,7 @@ class MarkdownRendererTest {
         void codexStyleAbsoluteFileMarkdownLinkResolvesToOpenFileAnchor() {
             String path = "/home/user/project/src/main/MyFile.kt";
             String html = renderWithFilePath("[" + path + "](" + path + ")",
-                    ref -> path.equals(ref) ? path : null);
+                ref -> path.equals(ref) ? path : null);
             assertTrue(html.contains("<a href='openfile://" + path + "'>" + path + "</a>"), html);
         }
 
@@ -745,28 +757,28 @@ class MarkdownRendererTest {
         @Test
         void absoluteFilePathResolvedInPlainText() {
             String html = renderWithFilePath("See /src/main/Foo.kt for details",
-                    ref -> "/src/main/Foo.kt".equals(ref) ? "/src/main/Foo.kt" : null);
+                ref -> "/src/main/Foo.kt".equals(ref) ? "/src/main/Foo.kt" : null);
             assertTrue(html.contains("<a href='openfile:///src/main/Foo.kt'>/src/main/Foo.kt</a>"), html);
         }
 
         @Test
         void relativeFilePathResolvedInPlainText() {
             String html = renderWithFilePath("See src/main/Foo.kt for details",
-                    ref -> "src/main/Foo.kt".equals(ref) ? "/abs/src/main/Foo.kt" : null);
+                ref -> "src/main/Foo.kt".equals(ref) ? "/abs/src/main/Foo.kt" : null);
             assertTrue(html.contains("openfile:///abs/src/main/Foo.kt"), html);
         }
 
         @Test
         void filePathWithLineNumber() {
             String html = renderWithFilePath("See /src/Foo.kt:42 for details",
-                    ref -> "/src/Foo.kt".equals(ref) ? "/src/Foo.kt" : null);
+                ref -> "/src/Foo.kt".equals(ref) ? "/src/Foo.kt" : null);
             assertTrue(html.contains("openfile:///src/Foo.kt:42"), html);
         }
 
         @Test
         void filePathNotResolvedStaysAsPlainText() {
             String html = renderWithFilePath("See /src/main/Foo.kt for details",
-                    ref -> null);
+                ref -> null);
             assertFalse(html.contains("<a "), html);
             assertTrue(html.contains("/src/main/Foo.kt"), html);
         }
@@ -774,14 +786,14 @@ class MarkdownRendererTest {
         @Test
         void dotRelativeFilePath() {
             String html = renderWithFilePath("Edit ./src/Foo.kt now",
-                    ref -> "./src/Foo.kt".equals(ref) ? "/abs/src/Foo.kt" : null);
+                ref -> "./src/Foo.kt".equals(ref) ? "/abs/src/Foo.kt" : null);
             assertTrue(html.contains("openfile:///abs/src/Foo.kt"), html);
         }
 
         @Test
         void dotDotRelativeFilePath() {
             String html = renderWithFilePath("Check ../lib/Bar.java here",
-                    ref -> "../lib/Bar.java".equals(ref) ? "/abs/lib/Bar.java" : null);
+                ref -> "../lib/Bar.java".equals(ref) ? "/abs/lib/Bar.java" : null);
             assertTrue(html.contains("openfile:///abs/lib/Bar.java"), html);
         }
     }
@@ -1054,31 +1066,31 @@ class MarkdownRendererTest {
         @Test
         void fullDocumentRender() {
             String md = String.join("\n",
-                    "# Project Setup",
-                    "",
-                    "Follow these steps:",
-                    "",
-                    "- Install **Java 17**",
-                    "- Run `gradle build`",
-                    "- Check [docs](https://docs.example.com)",
-                    "",
-                    "> Note: this is a **warning**",
-                    "",
-                    "---",
-                    "",
-                    "## Code Example",
-                    "",
-                    "```kotlin",
-                    "fun main() {",
-                    "    println(\"Hello\")",
-                    "}",
-                    "```",
-                    "",
-                    "| Feature | Status |",
-                    "| --- | --- |",
-                    "| Build | Done |",
-                    "",
-                    "That's all!"
+                "# Project Setup",
+                "",
+                "Follow these steps:",
+                "",
+                "- Install **Java 17**",
+                "- Run `gradle build`",
+                "- Check [docs](https://docs.example.com)",
+                "",
+                "> Note: this is a **warning**",
+                "",
+                "---",
+                "",
+                "## Code Example",
+                "",
+                "```kotlin",
+                "fun main() {",
+                "    println(\"Hello\")",
+                "}",
+                "```",
+                "",
+                "| Feature | Status |",
+                "| --- | --- |",
+                "| Build | Done |",
+                "",
+                "That's all!"
             );
             String html = render(md);
             assertTrue(html.contains("<h2>Project Setup</h2>"), html);
@@ -1104,7 +1116,7 @@ class MarkdownRendererTest {
         @Test
         void defaultStateAllFalse() {
             MarkdownRenderer.MarkdownState state = new MarkdownRenderer.MarkdownState(
-                    false, false, true, false, false, false);
+                false, false, true, false, false, false);
             assertFalse(state.getInCode());
             assertFalse(state.getInTable());
             assertTrue(state.getFirstTR());
@@ -1116,7 +1128,7 @@ class MarkdownRendererTest {
         @Test
         void stateFieldsAreMutable() {
             MarkdownRenderer.MarkdownState state = new MarkdownRenderer.MarkdownState(
-                    false, false, true, false, false, false);
+                false, false, true, false, false, false);
             state.setInCode(true);
             assertTrue(state.getInCode());
             state.setInTable(true);
@@ -1140,9 +1152,9 @@ class MarkdownRendererTest {
         void inlineCodeFileRefAndBarePathResolveBothWays() {
             String md = "See `Config.kt` and /src/main/Config.kt";
             String html = renderFull(md,
-                    ref -> "Config.kt".equals(ref) ? new Pair<>("/abs/Config.kt", null) : null,
-                    ref -> "/src/main/Config.kt".equals(ref) ? "/src/main/Config.kt" : null,
-                    sha -> false);
+                ref -> "Config.kt".equals(ref) ? new Pair<>("/abs/Config.kt", null) : null,
+                ref -> "/src/main/Config.kt".equals(ref) ? "/src/main/Config.kt" : null,
+                sha -> false);
             assertTrue(html.contains("<a href='openfile:///abs/Config.kt'><code>Config.kt</code></a>"), html);
             assertTrue(html.contains("<a href='openfile:///src/main/Config.kt'>/src/main/Config.kt</a>"), html);
         }
@@ -1151,9 +1163,9 @@ class MarkdownRendererTest {
         void markdownLinkFallsThroughFromFileRefToFilePath() {
             // resolveFileReference returns null, but resolveFilePath resolves
             String html = renderFull("[config](file:///src/Config.kt)",
-                    ref -> null,
-                    ref -> "/src/Config.kt".equals(ref) ? "/resolved/Config.kt" : null,
-                    sha -> false);
+                ref -> null,
+                ref -> "/src/Config.kt".equals(ref) ? "/resolved/Config.kt" : null,
+                sha -> false);
             assertTrue(html.contains("openfile:///resolved/Config.kt"), html);
         }
 
@@ -1161,9 +1173,9 @@ class MarkdownRendererTest {
         void markdownLinkFallsThroughToGitCommit() {
             String sha = "abcdef12";
             String html = renderFull("[fix](" + sha + ")",
-                    ref -> null,
-                    ref -> null,
-                    s -> sha.equals(s));
+                ref -> null,
+                ref -> null,
+                s -> sha.equals(s));
             assertTrue(html.contains("gitshow://" + sha), html);
         }
     }
