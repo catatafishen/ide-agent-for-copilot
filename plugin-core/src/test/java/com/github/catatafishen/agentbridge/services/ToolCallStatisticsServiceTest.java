@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for {@link ToolCallStatisticsService} — exercises the actual service code
- * (recordCall, queryAggregates, querySummary, getDistinctClients) against a
- * test-owned in-memory SQLite database via {@code initializeWithConnection()}.
+ * (recordCall, queryAggregates, querySummary, getDistinctClients, queryRecentErrors)
+ * against a test-owned in-memory SQLite database via {@code initializeWithConnection()}.
  */
 class ToolCallStatisticsServiceTest {
 
@@ -50,7 +50,7 @@ class ToolCallStatisticsServiceTest {
     @Test
     void recordAndQuerySingleCall() {
         service.recordCall(new ToolCallRecord(
-            "read_file", "FILE", 256, 4096, 42, true, "copilot",
+            "read_file", "FILE", 256, 4096, 42, true, null, "copilot",
             Instant.parse("2026-01-15T10:30:00Z")));
 
         var aggregates = service.queryAggregates(null, null);
@@ -70,9 +70,9 @@ class ToolCallStatisticsServiceTest {
     @Test
     void aggregatesMultipleCallsSameTool() {
         Instant base = Instant.parse("2026-01-15T10:00:00Z");
-        service.recordCall(new ToolCallRecord("search_text", "NAV", 100, 2000, 50, true, "copilot", base));
-        service.recordCall(new ToolCallRecord("search_text", "NAV", 200, 3000, 150, true, "copilot", base.plusSeconds(60)));
-        service.recordCall(new ToolCallRecord("search_text", "NAV", 150, 1000, 100, false, "copilot", base.plusSeconds(120)));
+        service.recordCall(new ToolCallRecord("search_text", "NAV", 100, 2000, 50, true, null, "copilot", base));
+        service.recordCall(new ToolCallRecord("search_text", "NAV", 200, 3000, 150, true, null, "copilot", base.plusSeconds(60)));
+        service.recordCall(new ToolCallRecord("search_text", "NAV", 150, 1000, 100, false, "Error: test", "copilot", base.plusSeconds(120)));
 
         var aggregates = service.queryAggregates(null, null);
         assertEquals(1, aggregates.size());
@@ -88,9 +88,9 @@ class ToolCallStatisticsServiceTest {
 
     @Test
     void filterByTimestamp() {
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, "copilot",
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, null, "copilot",
             Instant.parse("2026-01-10T00:00:00Z")));
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 300, 400, 20, true, "copilot",
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 300, 400, 20, true, null, "copilot",
             Instant.parse("2026-01-20T00:00:00Z")));
 
         var filtered = service.queryAggregates("2026-01-15T00:00:00Z", null);
@@ -101,8 +101,8 @@ class ToolCallStatisticsServiceTest {
     @Test
     void filterByClient() {
         Instant ts = Instant.parse("2026-01-15T10:00:00Z");
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, "copilot", ts));
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 300, 400, 20, true, "opencode", ts));
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, null, "copilot", ts));
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 300, 400, 20, true, null, "opencode", ts));
 
         var filtered = service.queryAggregates(null, "opencode");
         assertEquals(1, filtered.size());
@@ -111,11 +111,11 @@ class ToolCallStatisticsServiceTest {
 
     @Test
     void filterByBothTimestampAndClient() {
-        service.recordCall(new ToolCallRecord("tool_a", "CAT", 100, 200, 10, true, "copilot",
+        service.recordCall(new ToolCallRecord("tool_a", "CAT", 100, 200, 10, true, null, "copilot",
             Instant.parse("2026-01-10T00:00:00Z")));
-        service.recordCall(new ToolCallRecord("tool_a", "CAT", 200, 300, 20, true, "copilot",
+        service.recordCall(new ToolCallRecord("tool_a", "CAT", 200, 300, 20, true, null, "copilot",
             Instant.parse("2026-01-20T00:00:00Z")));
-        service.recordCall(new ToolCallRecord("tool_a", "CAT", 400, 500, 30, true, "opencode",
+        service.recordCall(new ToolCallRecord("tool_a", "CAT", 400, 500, 30, true, null, "opencode",
             Instant.parse("2026-01-20T00:00:00Z")));
 
         var filtered = service.queryAggregates("2026-01-15T00:00:00Z", "copilot");
@@ -126,9 +126,9 @@ class ToolCallStatisticsServiceTest {
     @Test
     void distinctClients() {
         Instant ts = Instant.now();
-        service.recordCall(new ToolCallRecord("a", null, 0, 0, 0, true, "copilot", ts));
-        service.recordCall(new ToolCallRecord("b", null, 0, 0, 0, true, "opencode", ts));
-        service.recordCall(new ToolCallRecord("c", null, 0, 0, 0, true, "copilot", ts));
+        service.recordCall(new ToolCallRecord("a", null, 0, 0, 0, true, null, "copilot", ts));
+        service.recordCall(new ToolCallRecord("b", null, 0, 0, 0, true, null, "opencode", ts));
+        service.recordCall(new ToolCallRecord("c", null, 0, 0, 0, true, null, "copilot", ts));
 
         List<String> clients = service.getDistinctClients();
         assertEquals(2, clients.size());
@@ -139,8 +139,8 @@ class ToolCallStatisticsServiceTest {
     @Test
     void querySummary() {
         Instant ts = Instant.now();
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 50, true, "copilot", ts));
-        service.recordCall(new ToolCallRecord("write_file", "FILE", 300, 400, 150, false, "copilot", ts));
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 50, true, null, "copilot", ts));
+        service.recordCall(new ToolCallRecord("write_file", "FILE", 300, 400, 150, false, "Error: write failed", "copilot", ts));
 
         Map<String, Long> summary = service.querySummary(null, null);
         assertEquals(2L, summary.get("totalCalls"));
@@ -161,7 +161,7 @@ class ToolCallStatisticsServiceTest {
 
     @Test
     void nullCategoryStoredCorrectly() {
-        service.recordCall(new ToolCallRecord("custom_tool", null, 50, 100, 30, true, "copilot", Instant.now()));
+        service.recordCall(new ToolCallRecord("custom_tool", null, 50, 100, 30, true, null, "copilot", Instant.now()));
 
         var aggregates = service.queryAggregates(null, null);
         assertEquals(1, aggregates.size());
@@ -172,9 +172,9 @@ class ToolCallStatisticsServiceTest {
     void groupsByToolNameAndCategory() {
         // Calls from different clients with the same tool are collapsed into one aggregate row
         Instant ts = Instant.now();
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, "copilot", ts));
-        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, "opencode", ts));
-        service.recordCall(new ToolCallRecord("write_file", "FILE", 100, 200, 10, true, "copilot", ts));
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, null, "copilot", ts));
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, null, "opencode", ts));
+        service.recordCall(new ToolCallRecord("write_file", "FILE", 100, 200, 10, true, null, "copilot", ts));
 
         var aggregates = service.queryAggregates(null, null);
         assertEquals(2, aggregates.size());
@@ -190,8 +190,8 @@ class ToolCallStatisticsServiceTest {
     @Test
     void querySummaryWithFilters() {
         Instant ts = Instant.parse("2026-01-20T00:00:00Z");
-        service.recordCall(new ToolCallRecord("tool", "CAT", 100, 200, 50, true, "copilot", ts));
-        service.recordCall(new ToolCallRecord("tool", "CAT", 300, 400, 100, false, "opencode", ts));
+        service.recordCall(new ToolCallRecord("tool", "CAT", 100, 200, 50, true, null, "copilot", ts));
+        service.recordCall(new ToolCallRecord("tool", "CAT", 300, 400, 100, false, "Error: test", "opencode", ts));
 
         Map<String, Long> summary = service.querySummary(null, "copilot");
         assertEquals(1L, summary.get("totalCalls"));
@@ -203,8 +203,10 @@ class ToolCallStatisticsServiceTest {
     void highVolumeRecordAndQuery() {
         Instant base = Instant.parse("2026-01-15T00:00:00Z");
         for (int i = 0; i < 100; i++) {
+            boolean success = i % 10 != 0;
             service.recordCall(new ToolCallRecord(
-                "tool_" + (i % 5), "CAT", i * 10, i * 20, i, i % 10 != 0,
+                "tool_" + (i % 5), "CAT", i * 10, i * 20, i, success,
+                success ? null : "Error: iteration " + i,
                 "client_" + (i % 3), base.plusSeconds(i)));
         }
 
@@ -213,5 +215,60 @@ class ToolCallStatisticsServiceTest {
 
         long totalCalls = aggregates.stream().mapToLong(ToolCallStatisticsService.ToolAggregate::callCount).sum();
         assertEquals(100, totalCalls);
+    }
+
+    @Test
+    void queryRecentErrors() {
+        Instant base = Instant.parse("2026-01-15T10:00:00Z");
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 0, 10, false,
+            "Error: File not found", "copilot", base));
+        service.recordCall(new ToolCallRecord("write_file", "FILE", 200, 0, 20, false,
+            "Error: Permission denied", "copilot", base.plusSeconds(60)));
+        service.recordCall(new ToolCallRecord("search_text", "NAV", 50, 1000, 5, true,
+            null, "copilot", base.plusSeconds(30)));
+
+        var errors = service.queryRecentErrors(null, null, 10);
+        assertEquals(2, errors.size());
+        // Most recent first
+        assertEquals("write_file", errors.get(0).toolName());
+        assertEquals("Error: Permission denied", errors.get(0).errorMessage());
+        assertEquals("read_file", errors.get(1).toolName());
+        assertEquals("Error: File not found", errors.get(1).errorMessage());
+    }
+
+    @Test
+    void queryRecentErrorsFilterByClient() {
+        Instant ts = Instant.parse("2026-01-15T10:00:00Z");
+        service.recordCall(new ToolCallRecord("tool_a", "CAT", 100, 0, 10, false,
+            "Error: A failed", "copilot", ts));
+        service.recordCall(new ToolCallRecord("tool_b", "CAT", 100, 0, 10, false,
+            "Error: B failed", "opencode", ts));
+
+        var errors = service.queryRecentErrors(null, "opencode", 10);
+        assertEquals(1, errors.size());
+        assertEquals("tool_b", errors.get(0).toolName());
+        assertEquals("opencode", errors.get(0).clientId());
+    }
+
+    @Test
+    void errorMessageNullOnSuccess() {
+        service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true,
+            null, "copilot", Instant.now()));
+
+        var errors = service.queryRecentErrors(null, null, 10);
+        assertTrue(errors.isEmpty());
+    }
+
+    @Test
+    void schemaMigrationIdempotent() throws Exception {
+        // Calling initializeWithConnection again should not fail (migration re-runs safely)
+        service.dispose();
+        Path dbPath2 = tempDir.resolve("tool-stats-2.db");
+        Connection conn2 = DriverManager.getConnection("jdbc:sqlite:" + dbPath2);
+        var service2 = new ToolCallStatisticsService();
+        service2.initializeWithConnection(conn2);
+        // Second init on same connection — migration should be idempotent
+        service2.initializeWithConnection(conn2);
+        service2.dispose();
     }
 }

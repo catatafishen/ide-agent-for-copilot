@@ -92,30 +92,45 @@ public final class ToolCallStatisticsService implements Disposable {
         try (var stmt = connection.createStatement()) {
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS tool_calls (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tool_name  TEXT    NOT NULL,
-                    category   TEXT,
-                    input_size INTEGER NOT NULL,
-                    output_size INTEGER NOT NULL,
-                    duration_ms INTEGER NOT NULL,
-                    success    INTEGER NOT NULL,
-                    client_id  TEXT    NOT NULL,
-                    timestamp  TEXT    NOT NULL
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tool_name     TEXT    NOT NULL,
+                    category      TEXT,
+                    input_size    INTEGER NOT NULL,
+                    output_size   INTEGER NOT NULL,
+                    duration_ms   INTEGER NOT NULL,
+                    success       INTEGER NOT NULL,
+                    error_message TEXT,
+                    client_id     TEXT    NOT NULL,
+                    timestamp     TEXT    NOT NULL
                 )
                 """);
             stmt.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp)");
             stmt.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name)");
+            // Migration: add error_message column to existing databases
+            migrateAddErrorMessageColumn(stmt);
+        }
+    }
+
+    private void migrateAddErrorMessageColumn(java.sql.Statement stmt) {
+        try {
+            stmt.execute("ALTER TABLE tool_calls ADD COLUMN error_message TEXT");
+            LOG.info("Migrated tool_calls table: added error_message column");
+        } catch (SQLException e) {
+            // Column already exists — expected for new databases or already-migrated ones
+            if (e.getMessage() == null || !e.getMessage().contains("duplicate column")) {
+                LOG.debug("error_message column migration skipped", e);
+            }
         }
     }
 
     private void subscribeToToolCallEvents() {
         disconnectHandle = PlatformApiCompat.subscribeToolCallListener(project,
-            (toolName, durationMs, success, inputSizeBytes, outputSizeBytes, clientId, category) ->
+            (toolName, durationMs, success, inputSizeBytes, outputSizeBytes, clientId, category, errorMessage) ->
                 recordCall(new ToolCallRecord(
                     toolName, category, inputSizeBytes, outputSizeBytes,
-                    durationMs, success, clientId, Instant.now())));
+                    durationMs, success, errorMessage, clientId, Instant.now())));
     }
 
     public synchronized void recordCall(@NotNull ToolCallRecord callRecord) {
@@ -137,8 +152,8 @@ public final class ToolCallStatisticsService implements Disposable {
 
     private void insertRecord(@NotNull ToolCallRecord callRecord) throws SQLException {
         String sql = """
-            INSERT INTO tool_calls (tool_name, category, input_size, output_size, duration_ms, success, client_id, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tool_calls (tool_name, category, input_size, output_size, duration_ms, success, error_message, client_id, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setString(1, callRecord.toolName());
@@ -147,8 +162,9 @@ public final class ToolCallStatisticsService implements Disposable {
             stmt.setLong(4, callRecord.outputSizeBytes());
             stmt.setLong(5, callRecord.durationMs());
             stmt.setInt(6, callRecord.success() ? 1 : 0);
-            stmt.setString(7, callRecord.clientId());
-            stmt.setString(8, callRecord.timestamp().toString());
+            stmt.setString(7, callRecord.errorMessage());
+            stmt.setString(8, callRecord.clientId());
+            stmt.setString(9, callRecord.timestamp().toString());
             stmt.executeUpdate();
         }
     }
@@ -310,6 +326,54 @@ public final class ToolCallStatisticsService implements Disposable {
             LOG.warn("Failed to query tool call summary", e);
         }
         return summary;
+    }
+
+    /**
+     * A single failed tool call with its error message, for display in the errors tab.
+     */
+    public record ToolError(
+        @NotNull String toolName,
+        @Nullable String category,
+        @NotNull String clientId,
+        long durationMs,
+        @NotNull String errorMessage,
+        @NotNull String timestamp
+    ) {
+    }
+
+    /**
+     * Returns recent failed tool calls with their error messages, ordered by most recent first.
+     */
+    public synchronized List<ToolError> queryRecentErrors(@Nullable String since, @Nullable String clientId, int limit) {
+        if (connection == null) return List.of();
+        StringBuilder sql = new StringBuilder("""
+            SELECT tool_name, category, client_id, duration_ms, error_message, timestamp
+            FROM tool_calls
+            WHERE success = 0 AND error_message IS NOT NULL
+            """);
+        List<String> params = appendFilters(sql, since, clientId);
+        sql.append(" ORDER BY timestamp DESC LIMIT ?");
+
+        List<ToolError> results = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(sql.toString())) {
+            bindParams(stmt, params);
+            stmt.setInt(params.size() + 1, limit);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    results.add(new ToolError(
+                        rs.getString("tool_name"),
+                        rs.getString("category"),
+                        rs.getString("client_id"),
+                        rs.getLong("duration_ms"),
+                        rs.getString("error_message"),
+                        rs.getString("timestamp")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            LOG.warn("Failed to query recent errors", e);
+        }
+        return results;
     }
 
     public static ToolCallStatisticsService getInstance(@NotNull Project project) {
