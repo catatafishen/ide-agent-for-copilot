@@ -34,7 +34,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -569,18 +568,16 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
 
         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() ->
-            NotificationGroupManager.getInstance()
-                .getNotificationGroup("AgentBridge Notifications")
-                .createNotification(
-                    displayName() + " session resume not available",
-                    "Session load was requested but " + displayName() + " could not resume session "
-                        + requestedId + ". "
-                        + "Conversation history injection has been enabled as a fallback — "
-                        + "a compressed summary of the previous session will be prepended to "
-                        + "your first prompt. You can configure this in "
-                        + "Settings → AgentBridge → Chat History.",
-                    NotificationType.INFORMATION)
-                .notify(project));
+            com.github.catatafishen.agentbridge.psi.PlatformApiCompat.showNotification(
+                project,
+                displayName() + " session resume not available",
+                "Session load was requested but " + displayName() + " could not resume session "
+                    + requestedId + ". "
+                    + "Conversation history injection has been enabled as a fallback — "
+                    + "a compressed summary of the previous session will be prepended to "
+                    + "your first prompt. You can configure this in "
+                    + "Settings → AgentBridge → Chat History.",
+                NotificationType.INFORMATION));
     }
 
     @Override

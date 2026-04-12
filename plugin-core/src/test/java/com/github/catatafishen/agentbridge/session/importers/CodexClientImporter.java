@@ -110,6 +110,18 @@ public final class CodexClientImporter {
             String type = JsonlUtil.getStr(item, "type");
             if (type == null) continue;
 
+            // Skip metadata lines produced by the exporter
+            if ("session_meta".equals(type) || "event_msg".equals(type) || "turn_context".equals(type)) continue;
+
+            // Unwrap response_item envelopes
+            if ("response_item".equals(type)) {
+                JsonObject payload = item.getAsJsonObject("payload");
+                if (payload == null) continue;
+                item = payload;
+                type = JsonlUtil.getStr(item, "type");
+                if (type == null) continue;
+            }
+
             switch (type) {
                 case "message" -> handleMessage(item, entries, pendingAssistantParts);
                 case "function_call" -> handleFunctionCall(item, pendingAssistantParts, pendingCalls);
@@ -148,12 +160,16 @@ public final class CodexClientImporter {
         @NotNull Map<String, EntryData.ToolCall> pendingCalls
     ) {
         String callId = JsonlUtil.getStr(item, "call_id");
-        String name = JsonlUtil.getStr(item, "name");
+        String rawName = JsonlUtil.getStr(item, "name");
         String arguments = JsonlUtil.getStr(item, "arguments");
 
-        EntryData.ToolCall toolCall = new EntryData.ToolCall(
-            name != null ? name : "unknown",
-            arguments);
+        // Strip the agentbridge_ prefix added during export for Codex tool name matching
+        String name = rawName != null ? rawName : "unknown";
+        if (name.startsWith("agentbridge_")) {
+            name = name.substring("agentbridge_".length());
+        }
+
+        EntryData.ToolCall toolCall = new EntryData.ToolCall(name, arguments);
 
         pendingAssistantParts.add(toolCall);
 

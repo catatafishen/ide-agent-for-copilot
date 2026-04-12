@@ -325,7 +325,34 @@ public final class PlatformApiCompat {
     }
 
     /**
-     * Creates a JCEF load handler that calls the given callback when the main frame finishes loading.
+     * Shows an IDE balloon notification in the "AgentBridge Notifications" group.
+     *
+     * <p><b>Why extracted:</b> {@code NotificationGroup.createNotification(String, String, NotificationType)}
+     * — the 3-argument overload with a content string — is not resolved by the IDE daemon when the
+     * development IDE version differs from the target SDK. The method exists in both the minimum and
+     * maximum supported IDE versions (2024.3–2025.2) and the Gradle build compiles cleanly; the error
+     * is a false positive in the editor. Centralising all notification creation here eliminates the
+     * daemon error from every caller.</p>
+     *
+     * <p>Must be called on the EDT. Wrap with {@code invokeLater} if calling from a background thread.</p>
+     *
+     * @param project the project to scope the notification to (may be null for app-level notifications)
+     * @param title   notification balloon title
+     * @param content notification body text (HTML is supported)
+     * @param type    notification type (INFO, WARNING, or ERROR)
+     */
+    public static void showNotification(
+        @Nullable Project project,
+        @NotNull String title,
+        @NotNull String content,
+        @NotNull com.intellij.notification.NotificationType type) {
+        com.intellij.notification.NotificationGroupManager.getInstance()
+            .getNotificationGroup("AgentBridge Notifications")
+            .createNotification(title, content, type)
+            .notify(project);
+    }
+
+    /**
      *
      * <p><b>Why extracted:</b> {@code CefLoadHandlerAdapter} provides default implementations for all
      * {@code CefLoadHandler} methods, but the JCEF version bundled with the dev IDE may declare
