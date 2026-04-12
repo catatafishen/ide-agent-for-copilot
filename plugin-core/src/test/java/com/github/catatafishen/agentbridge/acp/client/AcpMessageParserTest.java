@@ -1,12 +1,17 @@
 package com.github.catatafishen.agentbridge.acp.client;
 
 import com.github.catatafishen.agentbridge.acp.model.SessionUpdate;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for {@link AcpMessageParser} verifying correct parsing of all ACP
@@ -228,6 +233,373 @@ class AcpMessageParserTest {
         SessionUpdate update = parser.parse(params);
 
         assertNull(update, "Missing sessionUpdate field should return null");
+    }
+
+    // ── usage_update — OpenCode usage tracking ───────────────────────────
+
+    @Test
+    void parsesUsageUpdate_withUsedAndCost() {
+        JsonObject params = updateParams("usage_update");
+        params.addProperty("used", 5000);
+        JsonObject cost = new JsonObject();
+        cost.addProperty("amount", 0.025);
+        cost.addProperty("currency", "USD");
+        params.add("cost", cost);
+
+        SessionUpdate update = parser.parse(params);
+
+        assertInstanceOf(SessionUpdate.TurnUsage.class, update);
+        SessionUpdate.TurnUsage usage = (SessionUpdate.TurnUsage) update;
+        assertEquals(5000, usage.inputTokens(), "used → inputTokens");
+        assertEquals(0, usage.outputTokens(), "outputTokens always 0 for usage_update");
+        assertEquals(0.025, usage.costUsd(), 0.001);
+    }
+
+    @Test
+    void parsesUsageUpdate_withUsedOnly() {
+        JsonObject params = updateParams("usage_update");
+        params.addProperty("used", 3000);
+
+        SessionUpdate update = parser.parse(params);
+
+        assertInstanceOf(SessionUpdate.TurnUsage.class, update);
+        SessionUpdate.TurnUsage usage = (SessionUpdate.TurnUsage) update;
+        assertEquals(3000, usage.inputTokens());
+        assertNull(usage.costUsd(), "No cost object → null costUsd");
+    }
+
+    @Test
+    void parsesUsageUpdate_missingUsedDefaultsToZero() {
+        JsonObject params = updateParams("usage_update");
+
+        SessionUpdate update = parser.parse(params);
+
+        assertInstanceOf(SessionUpdate.TurnUsage.class, update);
+        assertEquals(0, ((SessionUpdate.TurnUsage) update).inputTokens());
+    }
+
+    @Test
+    void parsesUsageUpdate_costNotAnObjectIgnored() {
+        JsonObject params = updateParams("usage_update");
+        params.addProperty("used", 100);
+        params.addProperty("cost", "free");
+
+        SessionUpdate update = parser.parse(params);
+
+        assertInstanceOf(SessionUpdate.TurnUsage.class, update);
+        assertNull(((SessionUpdate.TurnUsage) update).costUsd());
+    }
+
+    // ── Content block edge cases ────────────────────────────────────────
+
+    @Test
+    void parsesContentAsSingleObject() {
+        JsonObject params = updateParams("agent_message_chunk");
+        JsonObject content = new JsonObject();
+        content.addProperty("type", "text");
+        content.addProperty("text", "single object");
+        params.add("content", content);
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("single object", update.text());
+    }
+
+    @Test
+    void parsesContentAsPrimitiveString() {
+        JsonObject params = updateParams("agent_message_chunk");
+        params.addProperty("content", "just a string");
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("just a string", update.text());
+    }
+
+    @Test
+    void parsesContentFromTextFieldFallback() {
+        JsonObject params = updateParams("agent_message_chunk");
+        params.addProperty("text", "fallback text");
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("fallback text", update.text());
+    }
+
+    @Test
+    void parsesEmptyContentBlocksWhenNoContentOrText() {
+        JsonObject params = updateParams("agent_message_chunk");
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("", update.text());
+    }
+
+    @Test
+    void parsesThinkingContentBlock() {
+        JsonObject params = updateParams("agent_thought_chunk");
+        JsonArray arr = new JsonArray();
+        JsonObject block = new JsonObject();
+        block.addProperty("type", "thinking");
+        block.addProperty("thinking", "reasoning step");
+        arr.add(block);
+        params.add("content", arr);
+
+        var update = (SessionUpdate.AgentThoughtChunk) parser.parse(params);
+        assertEquals("reasoning step", update.text());
+    }
+
+    @Test
+    void parsesNestedContentTypeBlock() {
+        // Spec: tool_call_update content items wrap blocks as {type:"content", content:{type,text}}
+        JsonObject params = updateParams("agent_message_chunk");
+        JsonArray arr = new JsonArray();
+        JsonObject wrapper = new JsonObject();
+        wrapper.addProperty("type", "content");
+        JsonObject inner = new JsonObject();
+        inner.addProperty("type", "text");
+        inner.addProperty("text", "nested text");
+        wrapper.add("content", inner);
+        arr.add(wrapper);
+        params.add("content", arr);
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("nested text", update.text());
+    }
+
+    @Test
+    void parsesArrayWithPrimitiveStrings() {
+        JsonObject params = updateParams("agent_message_chunk");
+        JsonArray arr = new JsonArray();
+        arr.add("hello ");
+        arr.add("world");
+        params.add("content", arr);
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("hello world", update.text());
+    }
+
+    @Test
+    void parsesUnknownBlockTypeAsEmptyText() {
+        JsonObject params = updateParams("agent_message_chunk");
+        JsonArray arr = new JsonArray();
+        JsonObject block = new JsonObject();
+        block.addProperty("type", "image");
+        block.addProperty("data", "base64...");
+        arr.add(block);
+        params.add("content", arr);
+
+        var update = (SessionUpdate.AgentMessageChunk) parser.parse(params);
+        assertEquals("", update.text(), "Unknown block type should produce empty text");
+    }
+
+    // ── tool_call with locations and sub-agent ──────────────────────────
+
+    @Test
+    void parsesToolCall_withLocations() {
+        JsonObject params = updateParams("tool_call");
+        params.addProperty("toolCallId", "call_loc");
+        params.addProperty("title", "edit_file");
+
+        JsonArray locations = new JsonArray();
+        JsonObject loc1 = new JsonObject();
+        loc1.addProperty("uri", "file:///src/main/App.java");
+        locations.add(loc1);
+        JsonObject loc2 = new JsonObject();
+        loc2.addProperty("path", "/src/test/AppTest.java");
+        locations.add(loc2);
+        params.add("locations", locations);
+
+        var tc = (SessionUpdate.ToolCall) parser.parse(params);
+        assertNotNull(tc.locations());
+        assertEquals(2, tc.locations().size());
+        assertEquals("file:///src/main/App.java", tc.locations().get(0).uri());
+        assertEquals("/src/test/AppTest.java", tc.locations().get(1).uri(),
+            "Should fall back to 'path' when 'uri' is missing");
+    }
+
+    @Test
+    void parsesToolCall_withArguments() {
+        JsonObject params = updateParams("tool_call");
+        params.addProperty("toolCallId", "call_args");
+        params.addProperty("title", "read_file");
+        JsonObject args = new JsonObject();
+        args.addProperty("path", "/etc/hosts");
+        params.add("arguments", args);
+
+        var tc = (SessionUpdate.ToolCall) parser.parse(params);
+        assertNotNull(tc.arguments());
+        assertTrue(tc.arguments().contains("/etc/hosts"));
+    }
+
+    @Test
+    void parsesToolCall_withSubAgent() {
+        // Use a parser with a delegate that detects sub-agents
+        var subAgentParser = new AcpMessageParser(
+            new AcpMessageParser.Delegate() {
+                @Override
+                public String resolveToolId(String protocolTitle) {
+                    return protocolTitle;
+                }
+
+                @Override
+                public @Nullable JsonObject parseToolCallArguments(@NotNull JsonObject params) {
+                    return params.has("arguments") && params.get("arguments").isJsonObject()
+                        ? params.getAsJsonObject("arguments") : null;
+                }
+
+                @Override
+                public @Nullable String extractSubAgentType(@NotNull JsonObject params,
+                                                            @NotNull String resolvedTitle,
+                                                            @Nullable JsonObject argumentsObj) {
+                    return "explore"; // Always detect as sub-agent for testing
+                }
+            },
+            () -> "test-agent"
+        );
+
+        JsonObject params = updateParams("tool_call");
+        params.addProperty("toolCallId", "call_sub");
+        params.addProperty("title", "task");
+        JsonObject args = new JsonObject();
+        args.addProperty("description", "Explore the codebase");
+        args.addProperty("prompt", "Find all test files");
+        params.add("arguments", args);
+
+        var tc = (SessionUpdate.ToolCall) subAgentParser.parse(params);
+        assertEquals("explore", tc.agentType());
+        assertEquals("Explore the codebase", tc.subAgentDescription());
+        assertEquals("Find all test files", tc.subAgentPrompt());
+    }
+
+    // ── tool_call_update with result/error/description ──────────────────
+
+    @Test
+    void parsesToolCallUpdate_withPrimitiveResult() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_r1");
+        params.addProperty("status", "completed");
+        params.addProperty("result", "File contents here");
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertEquals("File contents here", tcu.result());
+    }
+
+    @Test
+    void parsesToolCallUpdate_withJsonObjectResult() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_r2");
+        params.addProperty("status", "completed");
+        JsonObject result = new JsonObject();
+        result.addProperty("files", 3);
+        params.add("result", result);
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertNotNull(tcu.result());
+        assertTrue(tcu.result().contains("\"files\":3") || tcu.result().contains("\"files\": 3"));
+    }
+
+    @Test
+    void parsesToolCallUpdate_withContentBlocksAsResult() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_r3");
+        params.addProperty("status", "completed");
+        JsonArray content = new JsonArray();
+        JsonObject block = new JsonObject();
+        block.addProperty("type", "text");
+        block.addProperty("text", "result from content");
+        content.add(block);
+        params.add("content", content);
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertEquals("result from content", tcu.result());
+    }
+
+    @Test
+    void parsesToolCallUpdate_withError() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_err");
+        params.addProperty("status", "failed");
+        params.addProperty("error", "Permission denied");
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertEquals(SessionUpdate.ToolCallStatus.FAILED, tcu.status());
+        assertEquals("Permission denied", tcu.error());
+    }
+
+    @Test
+    void parsesToolCallUpdate_withDescription() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_d");
+        params.addProperty("status", "completed");
+        params.addProperty("description", "Edited 3 files");
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertEquals("Edited 3 files", tcu.description());
+    }
+
+    @Test
+    void parsesToolCallUpdate_withRawInputArguments() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_raw");
+        params.addProperty("status", "completed");
+        params.addProperty("result", "ok");
+        JsonObject rawInput = new JsonObject();
+        rawInput.addProperty("path", "/src/main.java");
+        params.add("rawInput", rawInput);
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertNotNull(tcu.arguments());
+        assertTrue(tcu.arguments().contains("/src/main.java"));
+    }
+
+    @Test
+    void parsesToolCallUpdate_noResultOrContentReturnsNull() {
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_empty");
+        params.addProperty("status", "completed");
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertNull(tcu.result());
+    }
+
+    // ── turn_usage edge cases ──────────────────────────────────────────
+
+    @Test
+    void parsesTurnUsage_missingFieldsDefaultToZero() {
+        JsonObject params = updateParams("turn_usage");
+
+        var usage = (SessionUpdate.TurnUsage) parser.parse(params);
+        assertEquals(0, usage.inputTokens());
+        assertEquals(0, usage.outputTokens());
+        assertEquals(0.0, usage.costUsd());
+    }
+
+    @Test
+    void parsesTurnUsage_withCostUsd() {
+        JsonObject params = updateParams("turn_usage");
+        params.addProperty("inputTokens", 100);
+        params.addProperty("outputTokens", 50);
+        params.addProperty("costUsd", 0.003);
+
+        var usage = (SessionUpdate.TurnUsage) parser.parse(params);
+        assertEquals(0.003, usage.costUsd(), 0.0001);
+    }
+
+    // ── getStringOrEmpty utility ────────────────────────────────────────
+
+    @Test
+    void getStringOrEmpty_returnsValueWhenPresent() {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("key", "value");
+        assertEquals("value", AcpMessageParser.getStringOrEmpty(obj, "key"));
+    }
+
+    @Test
+    void getStringOrEmpty_returnsEmptyWhenMissing() {
+        assertEquals("", AcpMessageParser.getStringOrEmpty(new JsonObject(), "missing"));
+    }
+
+    @Test
+    void getStringOrEmpty_returnsEmptyWhenNotPrimitive() {
+        JsonObject obj = new JsonObject();
+        obj.add("key", new JsonArray());
+        assertEquals("", AcpMessageParser.getStringOrEmpty(obj, "key"));
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

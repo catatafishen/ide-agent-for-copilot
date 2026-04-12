@@ -10,7 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for {@link ClaudeCliCredentials}.
@@ -33,12 +36,11 @@ class ClaudeCliCredentialsTest {
         System.setProperty("user.home", originalUserHome);
     }
 
-    private Path createCredentialsFile(String json) throws IOException {
+    private void createCredentialsFile(String json) throws IOException {
         Path claudeDir = tempDir.resolve(".claude");
         Files.createDirectories(claudeDir);
         Path file = claudeDir.resolve(".credentials.json");
         Files.writeString(file, json, StandardCharsets.UTF_8);
-        return file;
     }
 
     // ── file absent ───────────────────────────────────────────────────────────
@@ -139,6 +141,45 @@ class ClaudeCliCredentialsTest {
         assertTrue(ClaudeCliCredentials.logout(), "logout must return true when file existed");
         assertFalse(Files.exists(ClaudeCliCredentials.credentialsPath()),
             "credentials file must be deleted after logout");
+    }
+
+    // ── parseCredentials (pure parsing, no filesystem) ─────────────────────
+
+    @Test
+    void parseCredentials_validFullCredentials() {
+        String json = """
+            {
+                "claudeAiOauth": {"accessToken": "sk-ant-123"},
+                "oauthAccount": {"displayName": "John", "emailAddress": "john@example.com"}
+            }""";
+
+        ClaudeCliCredentials creds = ClaudeCliCredentials.parseCredentials(json);
+        assertTrue(creds.isLoggedIn());
+        assertEquals("John", creds.getDisplayName());
+    }
+
+    @Test
+    void parseCredentials_fallsBackToEmail() {
+        String json = """
+            {
+                "claudeAiOauth": {"accessToken": "sk-ant-123"},
+                "oauthAccount": {"emailAddress": "user@example.com"}
+            }""";
+
+        ClaudeCliCredentials creds = ClaudeCliCredentials.parseCredentials(json);
+        assertTrue(creds.isLoggedIn());
+        assertEquals("user@example.com", creds.getDisplayName());
+    }
+
+    @Test
+    void parseCredentials_emptyObjectNotLoggedIn() {
+        assertFalse(ClaudeCliCredentials.parseCredentials("{}").isLoggedIn());
+    }
+
+    @Test
+    void parseCredentials_invalidJsonNotLoggedIn() {
+        ClaudeCliCredentials creds = ClaudeCliCredentials.parseCredentials("not json");
+        assertFalse(creds.isLoggedIn());
     }
 
     // ── path ──────────────────────────────────────────────────────────────────

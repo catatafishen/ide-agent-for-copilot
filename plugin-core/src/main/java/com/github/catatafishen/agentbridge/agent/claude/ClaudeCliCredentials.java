@@ -42,7 +42,20 @@ public final class ClaudeCliCredentials {
             if (!Files.exists(path)) {
                 return new ClaudeCliCredentials(false, null);
             }
-            String content = Files.readString(path);
+            return parseCredentials(Files.readString(path));
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("Failed to read Claude CLI credentials: " + e.getMessage());
+            return new ClaudeCliCredentials(false, null);
+        }
+    }
+
+    /**
+     * Parses the credential JSON content and returns a snapshot.
+     * Extracted from {@link #read()} for testability — no filesystem dependency.
+     */
+    @NotNull
+    static ClaudeCliCredentials parseCredentials(@NotNull String content) {
+        try {
             JsonObject root = JsonParser.parseString(content).getAsJsonObject();
             if (!root.has("claudeAiOauth")) {
                 return new ClaudeCliCredentials(false, null);
@@ -63,8 +76,8 @@ public final class ClaudeCliCredentials {
                 }
             }
             return new ClaudeCliCredentials(true, name);
-        } catch (IOException | RuntimeException e) {
-            LOG.warn("Failed to read Claude CLI credentials: " + e.getMessage());
+        } catch (RuntimeException e) {
+            LOG.warn("Failed to parse Claude CLI credentials: " + e.getMessage());
             return new ClaudeCliCredentials(false, null);
         }
     }
