@@ -145,11 +145,12 @@ public final class ToolCallStatisticsService implements Disposable {
 
     /**
      * Aggregated statistics for a single tool, used by the UI table.
+     * {@code clientId} is absent because aggregation always collapses across clients — the
+     * client filter is applied in the WHERE clause, not the GROUP BY.
      */
     public record ToolAggregate(
         @NotNull String toolName,
         @Nullable String category,
-        @NotNull String clientId,
         long callCount,
         long avgDurationMs,
         long totalInputBytes,
@@ -184,7 +185,7 @@ public final class ToolCallStatisticsService implements Disposable {
         if (connection == null) return List.of();
 
         StringBuilder sql = new StringBuilder("""
-            SELECT tool_name, category, client_id,
+            SELECT tool_name, category,
                    COUNT(*) AS call_count,
                    AVG(duration_ms) AS avg_duration,
                    SUM(input_size) AS total_input,
@@ -194,7 +195,7 @@ public final class ToolCallStatisticsService implements Disposable {
             WHERE 1=1
             """);
         List<String> params = appendFilters(sql, since, clientId);
-        sql.append(" GROUP BY tool_name, category, client_id ORDER BY call_count DESC");
+        sql.append(" GROUP BY tool_name, category ORDER BY call_count DESC");
 
         List<ToolAggregate> results = new ArrayList<>();
         try (PreparedStatement stmt = connection.prepareStatement(sql.toString())) {
@@ -204,7 +205,6 @@ public final class ToolCallStatisticsService implements Disposable {
                     results.add(new ToolAggregate(
                         rs.getString("tool_name"),
                         rs.getString("category"),
-                        rs.getString("client_id"),
                         rs.getLong("call_count"),
                         rs.getLong("avg_duration"),
                         rs.getLong("total_input"),

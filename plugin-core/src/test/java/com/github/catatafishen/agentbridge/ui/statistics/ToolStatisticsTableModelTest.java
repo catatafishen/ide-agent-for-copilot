@@ -23,26 +23,25 @@ class ToolStatisticsTableModelTest {
     @Test
     void emptyModelHasZeroRows() {
         assertEquals(0, model.getRowCount());
-        assertEquals(8, model.getColumnCount());
+        assertEquals(7, model.getColumnCount());
     }
 
     @Test
     void columnNames() {
         assertEquals("Tool", model.getColumnName(0));
         assertEquals("Category", model.getColumnName(1));
-        assertEquals("Client", model.getColumnName(2));
-        assertEquals("Calls", model.getColumnName(3));
-        assertEquals("Avg Duration (ms)", model.getColumnName(4));
-        assertEquals("Total Input", model.getColumnName(5));
-        assertEquals("Total Output", model.getColumnName(6));
-        assertEquals("Error Rate (%)", model.getColumnName(7));
+        assertEquals("Calls", model.getColumnName(2));
+        assertEquals("Avg Duration (ms)", model.getColumnName(3));
+        assertEquals("Total Input", model.getColumnName(4));
+        assertEquals("Total Output", model.getColumnName(5));
+        assertEquals("Error Rate (%)", model.getColumnName(6));
     }
 
     @Test
     void setDataPopulatesRows() {
         model.setData(List.of(
-            new ToolAggregate("read_file", "FILE", "copilot", 10, 42, 2048, 8192, 1),
-            new ToolAggregate("write_file", "FILE", "opencode", 5, 100, 512, 1024, 0)
+            new ToolAggregate("read_file", "FILE", 10, 42, 2048, 8192, 1),
+            new ToolAggregate("write_file", "FILE", 5, 100, 512, 1024, 0)
         ));
         assertEquals(2, model.getRowCount());
     }
@@ -50,23 +49,22 @@ class ToolStatisticsTableModelTest {
     @Test
     void getValueAtReturnsCorrectValues() {
         model.setData(List.of(
-            new ToolAggregate("search_text", "NAV", "copilot", 25, 75, 10240, 2097152, 3)
+            new ToolAggregate("search_text", "NAV", 25, 75, 10240, 2097152, 3)
         ));
 
         assertEquals("search_text", model.getValueAt(0, 0));
         assertEquals("NAV", model.getValueAt(0, 1));
-        assertEquals("copilot", model.getValueAt(0, 2));
-        assertEquals(25L, model.getValueAt(0, 3));
-        assertEquals(75L, model.getValueAt(0, 4));
-        assertEquals("10.0 KB", model.getValueAt(0, 5));
-        assertEquals("2.0 MB", model.getValueAt(0, 6));
-        assertEquals("12.0", model.getValueAt(0, 7)); // 3/25 * 100
+        assertEquals(25L, model.getValueAt(0, 2));
+        assertEquals(75L, model.getValueAt(0, 3));
+        assertEquals("10.0 KB", model.getValueAt(0, 4));
+        assertEquals("2.0 MB", model.getValueAt(0, 5));
+        assertEquals("12.0", model.getValueAt(0, 6)); // 3/25 * 100
     }
 
     @Test
     void nullCategoryShowsDash() {
         model.setData(List.of(
-            new ToolAggregate("custom", null, "copilot", 1, 10, 100, 200, 0)
+            new ToolAggregate("custom", null, 1, 10, 100, 200, 0)
         ));
         assertEquals("—", model.getValueAt(0, 1));
     }
@@ -74,9 +72,9 @@ class ToolStatisticsTableModelTest {
     @Test
     void zeroCallsShowsZeroErrorRate() {
         model.setData(List.of(
-            new ToolAggregate("tool", "CAT", "client", 0, 0, 0, 0, 0)
+            new ToolAggregate("tool", "CAT", 0, 0, 0, 0, 0)
         ));
-        assertEquals("0.0", model.getValueAt(0, 7));
+        assertEquals("0.0", model.getValueAt(0, 6));
     }
 
     @Test
@@ -102,13 +100,13 @@ class ToolStatisticsTableModelTest {
     @Test
     void setDataClearsPrevious() {
         model.setData(List.of(
-            new ToolAggregate("a", null, "c", 1, 1, 1, 1, 0),
-            new ToolAggregate("b", null, "c", 1, 1, 1, 1, 0)
+            new ToolAggregate("a", null, 1, 1, 1, 1, 0),
+            new ToolAggregate("b", null, 1, 1, 1, 1, 0)
         ));
         assertEquals(2, model.getRowCount());
 
         model.setData(List.of(
-            new ToolAggregate("x", null, "c", 1, 1, 1, 1, 0)
+            new ToolAggregate("x", null, 1, 1, 1, 1, 0)
         ));
         assertEquals(1, model.getRowCount());
         assertEquals("x", model.getValueAt(0, 0));
@@ -118,11 +116,10 @@ class ToolStatisticsTableModelTest {
     void columnTypes() {
         assertEquals(String.class, model.getColumnClass(0));
         assertEquals(String.class, model.getColumnClass(1));
-        assertEquals(String.class, model.getColumnClass(2));
+        assertEquals(Long.class, model.getColumnClass(2));
         assertEquals(Long.class, model.getColumnClass(3));
-        assertEquals(Long.class, model.getColumnClass(4));
+        assertEquals(String.class, model.getColumnClass(4));
         assertEquals(String.class, model.getColumnClass(5));
         assertEquals(String.class, model.getColumnClass(6));
-        assertEquals(String.class, model.getColumnClass(7));
     }
 }
