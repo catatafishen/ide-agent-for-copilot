@@ -8,18 +8,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Table model for the Tool Statistics tab. Columns: Tool, Category, Client,
- * Calls, Avg Duration (ms), Total Input, Total Output, Error Rate (%).
+ * Table model for the Tool Statistics tab. Columns: Tool, Category, Calls,
+ * Avg Duration (ms), Total Input, Total Output, Error Rate (%).
+ * The Client column is omitted — it is redundant because the client filter
+ * is shown in the toolbar dropdown above the table.
  */
 public class ToolStatisticsTableModel extends AbstractTableModel {
 
     private static final String[] COLUMN_NAMES = {
-        "Tool", "Category", "Client", "Calls", "Avg Duration (ms)",
+        "Tool", "Category", "Calls", "Avg Duration (ms)",
         "Total Input", "Total Output", "Error Rate (%)"
     };
 
     private static final Class<?>[] COLUMN_TYPES = {
-        String.class, String.class, String.class, Long.class, Long.class,
+        String.class, String.class, Long.class, Long.class,
         String.class, String.class, String.class
     };
 
@@ -51,12 +53,11 @@ public class ToolStatisticsTableModel extends AbstractTableModel {
         return switch (columnIndex) {
             case 0 -> row.toolName();
             case 1 -> row.category() != null ? row.category() : "—";
-            case 2 -> row.clientId();
-            case 3 -> row.callCount();
-            case 4 -> row.avgDurationMs();
-            case 5 -> formatBytes(row.totalInputBytes());
-            case 6 -> formatBytes(row.totalOutputBytes());
-            case 7 -> row.callCount() > 0
+            case 2 -> row.callCount();
+            case 3 -> row.avgDurationMs();
+            case 4 -> formatBytes(row.totalInputBytes());
+            case 5 -> formatBytes(row.totalOutputBytes());
+            case 6 -> row.callCount() > 0
                 ? String.format("%.1f", 100.0 * row.errorCount() / row.callCount())
                 : "0.0";
             default -> "";

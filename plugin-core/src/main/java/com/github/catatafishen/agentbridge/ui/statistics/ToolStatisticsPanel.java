@@ -71,14 +71,13 @@ public class ToolStatisticsPanel extends JPanel {
         table.setFillsViewportHeight(true);
         table.getTableHeader().setReorderingAllowed(false);
 
-        table.getColumnModel().getColumn(0).setPreferredWidth(180);
-        table.getColumnModel().getColumn(1).setPreferredWidth(100);
-        table.getColumnModel().getColumn(2).setPreferredWidth(100);
-        table.getColumnModel().getColumn(3).setPreferredWidth(60);
-        table.getColumnModel().getColumn(4).setPreferredWidth(100);
-        table.getColumnModel().getColumn(5).setPreferredWidth(90);
-        table.getColumnModel().getColumn(6).setPreferredWidth(90);
-        table.getColumnModel().getColumn(7).setPreferredWidth(80);
+        table.getColumnModel().getColumn(0).setPreferredWidth(200); // Tool
+        table.getColumnModel().getColumn(1).setPreferredWidth(120); // Category
+        table.getColumnModel().getColumn(2).setPreferredWidth(60);  // Calls
+        table.getColumnModel().getColumn(3).setPreferredWidth(120); // Avg Duration
+        table.getColumnModel().getColumn(4).setPreferredWidth(90);  // Total Input
+        table.getColumnModel().getColumn(5).setPreferredWidth(90);  // Total Output
+        table.getColumnModel().getColumn(6).setPreferredWidth(80);  // Error Rate
 
         return new JBScrollPane(table);
     }
