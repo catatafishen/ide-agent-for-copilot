@@ -24,6 +24,12 @@ updates:
       gradle-dependencies:
         patterns:
           - "*"
+    ignore:
+      # Kotlin 2.3.20+ is not supported by GitHub CodeQL (as of April 2026).
+      # Bumping causes CI failures in the code-scanning workflow.
+      # Remove this ignore rule once CodeQL adds support for newer Kotlin versions.
+      - dependency-name: "org.jetbrains.kotlin:*"
+        versions: [ ">= 2.3.20" ]
     cooldown:
       default-days: 7
       semver-major-days: 30
