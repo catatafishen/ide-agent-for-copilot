@@ -210,16 +210,16 @@ internal class ProcessingTimerPanel(
     private fun refreshTurnMode() {
         toolTipText = "Turn stats · Click for session"
         updateLabel()
-        toolsLabel.text = if (toolCallCount > 0) "\u2022 $toolCallCount tools" else ""
+        toolsLabel.text = TimerDisplayFormatter.formatToolCount(toolCallCount)
         toolsLabel.isVisible = toolCallCount > 0
 
-        addedLabel.text = if (addedLineCount > 0) "+$addedLineCount" else ""
+        addedLabel.text = TimerDisplayFormatter.formatLinesAdded(addedLineCount)
         addedLabel.isVisible = addedLineCount > 0
-        removedLabel.text = if (removedLineCount > 0) "-$removedLineCount" else ""
+        removedLabel.text = TimerDisplayFormatter.formatLinesRemoved(removedLineCount)
         removedLabel.isVisible = removedLineCount > 0
 
         val hasUsage =
-            !isRunning && (turnCostUsd?.let { it > 0.0 } ?: false || (turnInputTokens + turnOutputTokens) > 0)
+            TimerDisplayFormatter.hasDisplayableUsage(isRunning, turnCostUsd, turnInputTokens, turnOutputTokens)
         if (hasUsage) {
             requestsLabel.text =
                 "\u2022 ${BillingManager.formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)}"
@@ -235,16 +235,16 @@ internal class ProcessingTimerPanel(
     private fun refreshSessionMode() {
         val totalMs = sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
         val totalSec = totalMs / 1000
-        timerLabel.text = if (totalSec < 60) "${totalSec}s" else "${totalSec / 60}m ${totalSec % 60}s"
+        timerLabel.text = TimerDisplayFormatter.formatElapsedTime(totalSec)
         val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
-        toolsLabel.text = if (totalTools > 0) "\u2022 $totalTools tools" else ""
+        toolsLabel.text = TimerDisplayFormatter.formatToolCount(totalTools)
         toolsLabel.isVisible = totalTools > 0
 
         val totalAdded = sessionTotalAddedLines + if (isRunning) addedLineCount else 0
         val totalRemoved = sessionTotalRemovedLines + if (isRunning) removedLineCount else 0
-        addedLabel.text = if (totalAdded > 0) "+$totalAdded" else ""
+        addedLabel.text = TimerDisplayFormatter.formatLinesAdded(totalAdded)
         addedLabel.isVisible = totalAdded > 0
-        removedLabel.text = if (totalRemoved > 0) "-$totalRemoved" else ""
+        removedLabel.text = TimerDisplayFormatter.formatLinesRemoved(totalRemoved)
         removedLabel.isVisible = totalRemoved > 0
 
         toolTipText = "Session totals · Click for turn"
@@ -272,6 +272,6 @@ internal class ProcessingTimerPanel(
 
     private fun updateLabel() {
         val elapsed = (System.currentTimeMillis() - startedAt) / 1000
-        timerLabel.text = if (elapsed < 60) "${elapsed}s" else "${elapsed / 60}m ${elapsed % 60}s"
+        timerLabel.text = TimerDisplayFormatter.formatElapsedTime(elapsed)
     }
 }

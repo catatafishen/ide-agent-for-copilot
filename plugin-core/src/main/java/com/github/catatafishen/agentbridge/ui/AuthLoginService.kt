@@ -21,12 +21,6 @@ class AuthLoginService(private val project: Project) {
     private companion object {
         private val LOG = Logger.getInstance(AuthLoginService::class.java)
         private const val OS_NAME_PROPERTY = "os.name"
-
-        /** Matches device codes like ABCD-1234, AB12-CD34, etc. */
-        private val CODE_PATTERN = Regex("\\b[A-Z0-9]{4,8}-[A-Z0-9]{4,8}\\b")
-
-        /** Matches verification URLs (GitHub device flow endpoints). */
-        private val URL_PATTERN = Regex("https?://[\\w.-]+(?:/[\\w./-]*)?/device(?:/[\\w./-]*)?")
     }
 
     // ── Auth error tracking ─────────────────────────────────────────────────
@@ -78,12 +72,8 @@ class AuthLoginService(private val project: Project) {
     }
 
     /** Returns true when [message] indicates a Copilot CLI authentication failure. */
-    fun isAuthenticationError(message: String): Boolean {
-        val lower = message.lowercase()
-        return lower.contains("auth") ||
-            lower.contains("copilot cli") ||
-            lower.contains("authenticated")
-    }
+    fun isAuthenticationError(message: String): Boolean =
+        AuthCommandBuilder.isAuthenticationError(message)
 
     // ── Login flows ──────────────────────────────────────────────────────────
 
@@ -205,26 +195,12 @@ class AuthLoginService(private val project: Project) {
         // If we did show a code but exit != 0, user probably cancelled — do nothing
     }
 
-    private data class ParseResult(val code: String?, val url: String?)
-
-    /**
-     * Tries to extract a device code or verification URL from a single line of CLI output.
-     * Returns any newly found values; previous partial results are passed in so the caller
-     * can accumulate across lines (code and URL may appear on separate lines).
-     *
-     * Patterns are intentionally broad so minor CLI format changes don't break parsing.
-     */
-    private fun parseDeviceCode(line: String, existingCode: String?, existingUrl: String?): ParseResult {
-        // Device codes: 4-8 uppercase-alphanumeric groups separated by a hyphen
-        val codeMatch = CODE_PATTERN.find(line)
-        val code = codeMatch?.value ?: existingCode
-
-        // Verification URLs: any https URL containing "login/device" or "/device" path
-        val urlMatch = URL_PATTERN.find(line)
-        val url = urlMatch?.value ?: existingUrl
-
-        return ParseResult(code, url)
-    }
+    private fun parseDeviceCode(
+        line: String,
+        existingCode: String?,
+        existingUrl: String?,
+    ): AuthCommandBuilder.ParseResult =
+        AuthCommandBuilder.parseDeviceCode(line, existingCode, existingUrl)
 
     fun startCopilotLogin() {
         val command = resolveAuthCommand().joinToString(" ")
@@ -466,19 +442,6 @@ class AuthLoginService(private val project: Project) {
      * Builds a shell command that exports environment variables before running the main command.
      * Handles both Unix-like and Windows shells.
      */
-    private fun buildCommandWithEnvironment(command: String, envVars: Map<String, String>): String {
-        if (envVars.isEmpty()) return command
-
-        val isWindows = System.getProperty("os.name").lowercase().contains("win")
-
-        return if (isWindows) {
-            // Windows cmd: set VAR=value && command
-            val exports = envVars.entries.joinToString(" && ") { (key, value) -> "set $key=$value" }
-            "$exports && $command"
-        } else {
-            // Unix shells: export VAR=value; command
-            val exports = envVars.entries.joinToString("; ") { (key, value) -> "export $key='$value'" }
-            "$exports; $command"
-        }
-    }
+    private fun buildCommandWithEnvironment(command: String, envVars: Map<String, String>): String =
+        AuthCommandBuilder.buildCommandWithEnvironment(command, envVars)
 }

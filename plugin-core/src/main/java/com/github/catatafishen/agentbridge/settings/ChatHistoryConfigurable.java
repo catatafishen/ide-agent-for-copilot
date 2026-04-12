@@ -444,31 +444,15 @@ public final class ChatHistoryConfigurable implements Configurable {
     }
 
     private static int countMessages(Path file) {
-        try {
-            String content = Files.readString(file);
-            JsonArray array = JsonParser.parseString(content).getAsJsonArray();
-            return array.size();
-        } catch (Exception e) {
-            return -1;
-        }
+        return ConversationFileUtils.countMessages(file);
     }
 
     private static String formatTimestamp(String timestamp) {
-        try {
-            LocalDateTime dateTime = LocalDateTime.parse(timestamp, TIMESTAMP_PARSER);
-            return dateTime.format(DISPLAY_FORMATTER);
-        } catch (DateTimeParseException e) {
-            return timestamp;
-        }
+        return ConversationFileUtils.formatTimestamp(timestamp);
     }
 
     private static long parseTimestampMillis(String timestamp, long fallback) {
-        try {
-            LocalDateTime dateTime = LocalDateTime.parse(timestamp, TIMESTAMP_PARSER);
-            return dateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        } catch (DateTimeParseException e) {
-            return fallback;
-        }
+        return ConversationFileUtils.parseTimestampMillis(timestamp, fallback);
     }
 
     private void updateSummary(List<ConversationEntry> entries) {
@@ -489,16 +473,11 @@ public final class ChatHistoryConfigurable implements Configurable {
     // ── Formatting utilities ──
 
     static String formatFileSize(long bytes) {
-        if (bytes < KB) return bytes + " B";
-        if (bytes < MB) return String.format("%.1f KB", bytes / (double) KB);
-        return String.format("%.1f MB", bytes / (double) MB);
+        return ConversationFileUtils.formatFileSize(bytes);
     }
 
     static String formatDateMillis(long millis) {
-        if (millis <= 0) return "—";
-        LocalDateTime dateTime = LocalDateTime.ofInstant(
-            Instant.ofEpochMilli(millis), ZoneId.systemDefault());
-        return dateTime.format(DISPLAY_FORMATTER);
+        return ConversationFileUtils.formatDateMillis(millis);
     }
 
     // ── Data record ──

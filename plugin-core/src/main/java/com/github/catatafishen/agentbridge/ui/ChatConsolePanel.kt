@@ -10,7 +10,6 @@ import com.github.catatafishen.agentbridge.settings.ScratchTypeSettings
 import com.github.catatafishen.agentbridge.ui.MessageFormatter.ChipStatus
 import com.github.catatafishen.agentbridge.ui.renderers.ArgumentAwareRenderer
 import com.github.catatafishen.agentbridge.ui.renderers.ToolRenderers
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -121,15 +120,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         private const val STREAMING_FRAME_RATE = 60
         private const val IDLE_FRAME_RATE = 10
 
-        private val TERMINAL_TOOLS = setOf(
-            "run_in_terminal", "read_terminal_output", "write_terminal_input", "list_terminals"
-        )
-        private val RUN_TOOLS = setOf(
-            "run_command", "read_run_output", "run_configuration", "run_tests"
-        )
-        private val BUILD_TOOLS = setOf(
-            "read_build_output", "build_project"
-        )
         private val GIT_HISTORY_TOOLS = setOf("git_log", "git_show")
     }
 
@@ -825,20 +815,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     private var batchIdCounter = 0
 
-    /**
-     * Normalize a stored chip status string to a valid [ChipStatus] CSS class token.
-     * Any non-canonical value (e.g. "Unknown error" from a legacy session) falls back
-     * to [ChipStatus.FAILED] so that `classList.add("status-${value}")` never crashes.
-     */
-    private fun normalizeChipStatus(raw: String?): String {
-        return when (raw) {
-            ChipStatus.PENDING, ChipStatus.RUNNING, ChipStatus.COMPLETE,
-            ChipStatus.FAILED, ChipStatus.DENIED, ChipStatus.THINKING -> raw
-
-            null, "completed" -> ChipStatus.COMPLETE
-            else -> ChipStatus.FAILED
-        }
-    }
+    private fun normalizeChipStatus(raw: String?): String = ToolCallArgParser.normalizeChipStatus(raw)
 
     private fun serializeBatchTurns(entries: List<EntryData>): String {
         val turns = mutableListOf<Map<String, Any?>>()
@@ -1448,62 +1425,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
     }
 
-    private fun resolveToolWindowId(baseName: String?): String? {
-        val name = baseName?.trim('\'', '"') ?: return null
-        return when (name) {
-            in TERMINAL_TOOLS -> "Terminal"
-            in RUN_TOOLS -> "Run"
-            in BUILD_TOOLS -> "Build"
-            else -> null
-        }
-    }
+    private fun resolveToolWindowId(baseName: String?): String? = ToolCallArgParser.resolveToolWindowId(baseName)
 
-    private fun extractTabName(baseName: String?, arguments: String?): String? {
-        if (arguments.isNullOrBlank()) return null
-        val name = baseName?.trim('\'', '"') ?: return null
-        return try {
-            val json = JsonParser.parseString(arguments).asJsonObject
-            when (name) {
-                "run_in_terminal", "read_terminal_output", "write_terminal_input" ->
-                    json["tab_name"]?.asString
+    private fun extractTabName(baseName: String?, arguments: String?): String? =
+        ToolCallArgParser.extractTabName(baseName, arguments)
 
-                "run_command" ->
-                    json["title"]?.asString
-
-                "read_run_output", "read_build_output" ->
-                    json["tab_name"]?.asString
-
-                "run_configuration" ->
-                    json["name"]?.asString
-
-                "run_tests" ->
-                    json["target"]?.asString
-
-                else -> null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Extracts before/after text from tool arguments for diff viewing.
-     * Supports `edit_text` (old_str/new_str) and `replace_symbol_body` (symbol/new_body with result diff).
-     */
-    private fun extractDiffFromArgs(arguments: String?): Pair<String, String>? {
-        if (arguments.isNullOrBlank()) return null
-        return try {
-            val json = JsonParser.parseString(arguments).asJsonObject
-            val oldStr = json["old_str"]?.asString
-            val newStr = json["new_str"]?.asString
-            if (oldStr != null && newStr != null && (oldStr.isNotBlank() || newStr.isNotBlank())) {
-                return Pair(oldStr, newStr)
-            }
-            null
-        } catch (_: Exception) {
-            null
-        }
-    }
+    private fun extractDiffFromArgs(arguments: String?): Pair<String, String>? =
+        ToolCallArgParser.extractDiffFromArgs(arguments)
 
     private fun activateToolWindowTab(toolWindowId: String, tabName: String?) {
         val toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
@@ -1569,8 +1497,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         return true
     }
 
-    private fun isJson(text: String): Boolean =
-        (text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))
+    private fun isJson(text: String): Boolean = ToolCallArgParser.isJson(text)
 
     /** Resolves the display label for a tool chip: "DisplayName — subtitle" or just "DisplayName". */
     private fun toolChipTitle(baseName: String?, arguments: String?): String {
@@ -1629,52 +1556,13 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         executeJs("ChatController.updateSubAgent('$did','$jsStatus','$encoded')")
     }
 
-    private fun prettyJson(json: String): String {
-        return try {
-            val el = JsonParser.parseString(json)
-            GsonBuilder().setPrettyPrinting().create().toJson(el)
-        } catch (_: Exception) {
-            json
-        }
-    }
+    private fun prettyJson(json: String): String = ToolCallArgParser.prettyJson(json)
 
-    private fun extractFilePathFromArgs(arguments: String?): String? {
-        if (arguments.isNullOrBlank()) return null
-        try {
-            val json = JsonParser.parseString(arguments)
-            if (!json.isJsonObject) return null
-            val obj = json.asJsonObject
-            // Check common file path parameter names
-            for (key in listOf("path", "file", "filename", "filepath")) {
-                if (obj.has(key) && obj.get(key).isJsonPrimitive) {
-                    return obj.get(key).asString
-                }
-            }
-        } catch (_: Exception) {
-            // Ignore parse errors
-        }
-        return null
-    }
+    private fun extractFilePathFromArgs(arguments: String?): String? =
+        ToolCallArgParser.extractFilePathFromArgs(arguments)
 
-    /**
-     * Extract the summary text from task_complete arguments JSON.
-     * Returns the "summary" field if present, otherwise the raw arguments string.
-     */
-    private fun extractTaskCompleteSummary(arguments: String?): String {
-        if (arguments.isNullOrBlank()) return ""
-        try {
-            val json = JsonParser.parseString(arguments)
-            if (json.isJsonObject) {
-                val obj = json.asJsonObject
-                if (obj.has("summary") && obj.get("summary").isJsonPrimitive) {
-                    return obj.get("summary").asString
-                }
-            }
-        } catch (_: Exception) {
-            // not valid JSON — fall through to raw text
-        }
-        return arguments
-    }
+    private fun extractTaskCompleteSummary(arguments: String?): String =
+        ToolCallArgParser.extractTaskCompleteSummary(arguments)
 
     private fun buildInitialPage(): String {
         val cssVars = buildCssVars()

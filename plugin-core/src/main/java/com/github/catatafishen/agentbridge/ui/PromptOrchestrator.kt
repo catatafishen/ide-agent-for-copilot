@@ -5,7 +5,6 @@ import com.github.catatafishen.agentbridge.acp.model.PromptRequest
 import com.github.catatafishen.agentbridge.acp.model.ResourceReference
 import com.github.catatafishen.agentbridge.acp.model.SessionUpdate
 import com.github.catatafishen.agentbridge.agent.AbstractAgentClient
-import com.github.catatafishen.agentbridge.agent.AgentException
 import com.github.catatafishen.agentbridge.bridge.PermissionResponse
 import com.github.catatafishen.agentbridge.psi.CodeChangeTracker
 import com.github.catatafishen.agentbridge.psi.PsiBridgeService
@@ -733,32 +732,14 @@ class PromptOrchestrator(
     }
 
     private fun handlePromptError(e: Exception) {
-        val isCancelled = e is InterruptedException || e.cause is InterruptedException
-        var msg = if (isCancelled) "Request cancelled" else e.message ?: "Unknown error"
+        val c = PromptErrorClassifier.classify(
+            exception = e,
+            turnHadContent = turnHadContent,
+            isAuthenticationError = { authService.isAuthenticationError(it) },
+            isClientHealthy = agentManager.isClientHealthy(),
+        )
 
-        // Check if the root cause is an authentication error
-        var cause: Throwable? = e
-        while (cause != null) {
-            val causeMsg = cause.message ?: ""
-            if (authService.isAuthenticationError(causeMsg)) {
-                log.info("Detected authentication error in cause chain: $causeMsg")
-                msg = causeMsg
-                break
-            }
-            cause = cause.cause
-        }
-
-        // For ACP errors, ensure the message is descriptive
-        if (e is AgentException && msg.startsWith("(") && msg.contains(")")) {
-            // Keep the enhanced message format: (code) Message: Data
-        } else if (e is AgentException) {
-            msg = "ACP error: $msg"
-        }
-
-        // If the prompt was never delivered (no content streamed) and the user didn't
-        // cancel, remove the failed prompt bubble and restore the text to the input box.
-        val shouldRestore = !turnHadContent && !isCancelled
-        if (shouldRestore) {
+        if (c.shouldRestorePrompt) {
             consolePanel().removePromptEntry(pendingPromptEntryId)
         }
 
@@ -766,50 +747,36 @@ class PromptOrchestrator(
         consolePanel().finishResponse(turnToolCallCount, turnModelId, "")
         callbacks.appendNewEntries()
 
-        if (shouldRestore) {
+        if (c.shouldRestorePrompt) {
             callbacks.restorePromptText(pendingRawText)
         }
 
-        if (authService.isAuthenticationError(msg)) {
-            log.info("Authentication error detected: $msg")
-            authService.markAuthError(msg)
-            val banner = copilotBanner()
-            log.info("Banner instance: $banner")
-            banner?.triggerCheck()
-            consolePanel().addErrorEntry("Error: $msg")
+        if (c.isAuthError) {
+            log.info("Authentication error detected: ${c.displayMessage}")
+            authService.markAuthError(c.displayMessage)
+            copilotBanner()?.triggerCheck()
+            consolePanel().addErrorEntry("Error: ${c.displayMessage}")
             e.printStackTrace()
             return
         }
 
-        val isRecoverable = isCancelled || (e is AgentException && e.isRecoverable)
-        // If the agent process crashed but a new process has already started and restored the
-        // session, preserve the session so the next prompt reuses the context instead of
-        // starting fresh. isClientHealthy() does not trigger an auto-restart.
-        val isProcessCrashWithRecovery = !isCancelled
-            && generateSequence(e as Throwable?) { it.cause }.any {
-            it.message?.contains("process exited unexpectedly", ignoreCase = true) == true
-        }
-            && agentManager.isClientHealthy()
-        if (!isRecoverable) {
-            if (isProcessCrashWithRecovery) {
-                log.info("Agent process crashed but recovered — preserving session $currentSessionId for retry")
+        if (!c.isRecoverable) {
+            if (c.isProcessCrashWithRecovery) {
+                log.info("Agent process crashed but recovered — preserving session ...")
             } else {
-                // Drop the ACP client's cached session ID too, so the next createSession()
-                // goes through the full load/new flow instead of hitting the early-return
-                // "reuse" path with the still-invalid session (mirrors handleSessionCorrupted).
                 agentManager.client.dropCurrentSession()
                 currentSessionId = null
             }
             callbacks.updateSessionInfo()
         }
 
-        // stop() already added "Stopped by user" — don't add a redundant error entry.
         if (!stopped) {
-            consolePanel().addErrorEntry("Error: $msg")
+            consolePanel().addErrorEntry("Error: ${c.displayMessage}")
         }
-        if (!isCancelled) {
-            val bannerMsg = if (shouldRestore) "$msg — your message has been restored to the input box"
-            else msg
+        if (!c.isCancelled) {
+            val bannerMsg = if (c.shouldRestorePrompt)
+                "${c.displayMessage} — your message has been restored to the input box"
+            else c.displayMessage
             statusBanner()?.showError(bannerMsg, "Reconnect") { reconnectAfterError() }
         }
 
@@ -839,8 +806,6 @@ class PromptOrchestrator(
             null
         }
 
-    private fun detectQuickReplies(responseText: String): List<String> {
-        val match = QUICK_REPLY_TAG_REGEX.findAll(responseText).lastOrNull() ?: return emptyList()
-        return match.groupValues[1].split("|").map { it.trim() }.filter { it.isNotEmpty() }
-    }
+    private fun detectQuickReplies(responseText: String): List<String> =
+        PromptErrorClassifier.detectQuickReplies(responseText)
 }
