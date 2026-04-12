@@ -1254,7 +1254,7 @@ public final class ChatWebServer implements Disposable {
     private void broadcast(String json) {
         for (SseClient c : sseClients) {
             if (!c.offer(json)) {
-                LOG.warn("SSE event dropped for a client — queue full (capacity 300). " +
+                LOG.info("SSE event dropped for a client — queue full (capacity 300). " +
                     "PWA may show stale or incomplete content.");
             }
         }
