@@ -1,11 +1,11 @@
-// Setup: load the web components into the happy-dom environment
-import {readFileSync} from 'node:fs';
-import {resolve} from 'node:path';
+// Setup: load the web components into the happy-dom environment.
+//
+// Import the TypeScript source directly through Vitest's module system
+// so V8 coverage can attribute lines to individual .ts files.
+// (The previous approach — new Function(bundleCode)() — produced 0/0 coverage
+//  because V8 can't map anonymous eval'd code back to source files.)
 
-const componentsPath = resolve(__dirname, '../build/generated/resources/chat-ui/chat/chat-components.js');
-const code = readFileSync(componentsPath, 'utf-8');
-
-// Provide a minimal _bridge stub
+// Provide a minimal _bridge stub before components register
 globalThis._bridge = {
     openFile: () => {
     },
@@ -17,11 +17,11 @@ globalThis._bridge = {
     },
     quickReply: () => {
     },
+    openScratch: () => {
+    },
+    showToolPopup: () => {
+    },
 };
 
-// Execute the components code in global scope
-const script = document.createElement('script');
-script.textContent = code;
-
-// happy-dom doesn't execute script tags, so use Function constructor
-new Function(code)();
+// Import the chat-ui entry point — registers custom elements + exposes ChatController
+import '../chat-ui/src/index.ts';
