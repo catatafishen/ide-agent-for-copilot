@@ -1,9 +1,11 @@
 package com.github.catatafishen.agentbridge.session.exporters;
 
 import com.github.catatafishen.agentbridge.ui.EntryData;
+import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -168,6 +170,216 @@ class OpenCodeClientExporterTest {
         assertTrue(result.isEmpty());
     }
 
+    // ── buildMessageData ───────────────────────────────────────────────────
+
+    @Test
+    void buildMessageData_userRole_hasTimeAgentModel() throws Exception {
+        JsonObject data = invokeBuildMessageData("user", "coder", "gpt-4", 1000L, "/proj", null);
+        assertEquals("user", data.get("role").getAsString());
+        assertEquals(1000L, data.getAsJsonObject("time").get("created").getAsLong());
+        assertEquals("coder", data.get("agent").getAsString());
+        JsonObject model = data.getAsJsonObject("model");
+        assertEquals("imported", model.get("providerID").getAsString());
+        assertEquals("gpt-4", model.get("modelID").getAsString());
+        // user role should NOT have parentID, tokens, cost, path
+        assertFalse(data.has("parentID"));
+        assertFalse(data.has("tokens"));
+        assertFalse(data.has("cost"));
+        assertFalse(data.has("path"));
+    }
+
+    @Test
+    void buildMessageData_assistantRole_hasParentIdTokensPathCost() throws Exception {
+        JsonObject data = invokeBuildMessageData("assistant", "coder", "gpt-4", 2000L, "/proj", "msg_parent");
+        assertEquals("assistant", data.get("role").getAsString());
+        assertEquals("msg_parent", data.get("parentID").getAsString());
+        assertEquals("gpt-4", data.get("modelID").getAsString());
+        assertEquals("imported", data.get("providerID").getAsString());
+        assertEquals("build", data.get("mode").getAsString());
+        assertEquals("coder", data.get("agent").getAsString());
+        // path
+        JsonObject path = data.getAsJsonObject("path");
+        assertEquals("/proj", path.get("cwd").getAsString());
+        assertEquals("/proj", path.get("root").getAsString());
+        // cost & tokens
+        assertEquals(0, data.get("cost").getAsInt());
+        JsonObject tokens = data.getAsJsonObject("tokens");
+        assertEquals(0, tokens.get("input").getAsInt());
+        assertEquals(0, tokens.get("output").getAsInt());
+        assertEquals(0, tokens.get("reasoning").getAsInt());
+        JsonObject cache = tokens.getAsJsonObject("cache");
+        assertEquals(0, cache.get("read").getAsInt());
+        assertEquals(0, cache.get("write").getAsInt());
+        // time
+        JsonObject time = data.getAsJsonObject("time");
+        assertEquals(2000L, time.get("created").getAsLong());
+        assertEquals(2000L, time.get("completed").getAsLong());
+        // assistant should NOT have model object
+        assertFalse(data.has("model"));
+    }
+
+    @Test
+    void buildMessageData_nullAgent_defaultsToBuild() throws Exception {
+        JsonObject data = invokeBuildMessageData("user", null, null, 1L, "/p", null);
+        assertEquals("build", data.get("agent").getAsString());
+        assertEquals("imported", data.getAsJsonObject("model").get("modelID").getAsString());
+    }
+
+    @Test
+    void buildMessageData_emptyAgentAndModel_defaultsToBuildAndImported() throws Exception {
+        JsonObject data = invokeBuildMessageData("assistant", "", "", 1L, "/p", null);
+        assertEquals("build", data.get("agent").getAsString());
+        assertEquals("imported", data.get("modelID").getAsString());
+        assertEquals("imported", data.get("providerID").getAsString());
+    }
+
+    // ── buildToolInvocationPart ──────────────────────────────────────────────
+
+    @Test
+    void buildToolInvocationPart_completedToolCall_statusCompleted() throws Exception {
+        EntryData.ToolCall tc = new EntryData.ToolCall("read_file");
+        tc.setResult("file contents here");
+        JsonObject part = invokeBuildToolInvocationPart(tc, 5000L);
+        assertEquals("tool", part.get("type").getAsString());
+        assertEquals("read_file", part.get("tool").getAsString());
+        JsonObject state = part.getAsJsonObject("state");
+        assertEquals("completed", state.get("status").getAsString());
+        assertEquals("file contents here", state.get("output").getAsString());
+        assertTrue(state.has("title"));
+        assertTrue(state.has("metadata"));
+        JsonObject time = state.getAsJsonObject("time");
+        assertEquals(5000L, time.get("start").getAsLong());
+        assertEquals(5000L, time.get("end").getAsLong());
+    }
+
+    @Test
+    void buildToolInvocationPart_runningToolCall_statusRunning() throws Exception {
+        EntryData.ToolCall tc = new EntryData.ToolCall("bash");
+        // result is null by default → running
+        JsonObject part = invokeBuildToolInvocationPart(tc, 3000L);
+        JsonObject state = part.getAsJsonObject("state");
+        assertEquals("running", state.get("status").getAsString());
+        assertFalse(state.has("output"));
+        assertFalse(state.has("title"));
+        assertFalse(state.has("metadata"));
+        JsonObject time = state.getAsJsonObject("time");
+        assertEquals(3000L, time.get("start").getAsLong());
+        assertFalse(time.has("end"));
+    }
+
+    @Test
+    void buildToolInvocationPart_jsonArgs_parsedAsInputObject() throws Exception {
+        EntryData.ToolCall tc = new EntryData.ToolCall("edit_text", "{\"path\":\"a.txt\",\"old\":\"x\"}");
+        tc.setResult("ok");
+        JsonObject part = invokeBuildToolInvocationPart(tc, 1L);
+        JsonObject state = part.getAsJsonObject("state");
+        JsonObject input = state.getAsJsonObject("input");
+        assertEquals("a.txt", input.get("path").getAsString());
+        assertEquals("x", input.get("old").getAsString());
+    }
+
+    @Test
+    void buildToolInvocationPart_nonJsonArgs_wrappedInRaw() throws Exception {
+        EntryData.ToolCall tc = new EntryData.ToolCall("bash", "not valid json");
+        tc.setResult("done");
+        JsonObject part = invokeBuildToolInvocationPart(tc, 1L);
+        JsonObject state = part.getAsJsonObject("state");
+        JsonObject input = state.getAsJsonObject("input");
+        assertEquals("not valid json", input.get("raw").getAsString());
+    }
+
+    @Test
+    void buildToolInvocationPart_nullArgs_emptyObject() throws Exception {
+        EntryData.ToolCall tc = new EntryData.ToolCall("read_file", null);
+        tc.setResult("ok");
+        JsonObject part = invokeBuildToolInvocationPart(tc, 1L);
+        JsonObject state = part.getAsJsonObject("state");
+        JsonObject input = state.getAsJsonObject("input");
+        assertEquals(0, input.size(), "null args should produce empty input object");
+    }
+
+    @Test
+    void buildToolInvocationPart_emptyArgs_emptyObject() throws Exception {
+        EntryData.ToolCall tc = new EntryData.ToolCall("read_file", "   ");
+        tc.setResult("ok");
+        JsonObject part = invokeBuildToolInvocationPart(tc, 1L);
+        JsonObject state = part.getAsJsonObject("state");
+        JsonObject input = state.getAsJsonObject("input");
+        assertEquals(0, input.size(), "blank args should produce empty input object");
+    }
+
+    // ── hasExportableEntries ─────────────────────────────────────────────────
+
+    @Test
+    void hasExportableEntries_emptyList_returnsFalse() throws Exception {
+        assertFalse(invokeHasExportableEntries(List.of()));
+    }
+
+    @Test
+    void hasExportableEntries_onlyNonExportable_returnsFalse() throws Exception {
+        List<EntryData> entries = List.of(
+            new EntryData.SessionSeparator("2024-01-01T00:00:00Z")
+        );
+        assertFalse(invokeHasExportableEntries(entries));
+    }
+
+    @Test
+    void hasExportableEntries_withPrompt_returnsTrue() throws Exception {
+        List<EntryData> entries = List.of(new EntryData.Prompt("hello"));
+        assertTrue(invokeHasExportableEntries(entries));
+    }
+
+    @Test
+    void hasExportableEntries_withText_returnsTrue() throws Exception {
+        List<EntryData> entries = new ArrayList<>();
+        entries.add(new EntryData.Text("reply"));
+        assertTrue(invokeHasExportableEntries(entries));
+    }
+
+    @Test
+    void hasExportableEntries_withToolCall_returnsTrue() throws Exception {
+        List<EntryData> entries = new ArrayList<>();
+        entries.add(new EntryData.ToolCall("bash"));
+        assertTrue(invokeHasExportableEntries(entries));
+    }
+
+    // ── buildSubAgentPart ────────────────────────────────────────────────────
+
+    @Test
+    void buildSubAgentPart_withDescriptionAndResult() throws Exception {
+        EntryData.SubAgent sub = new EntryData.SubAgent("Explore", "Search the codebase");
+        sub.setResult("Found 3 matches");
+        JsonObject part = invokeBuildSubAgentPart(sub);
+        assertEquals("text", part.get("type").getAsString());
+        String text = part.get("text").getAsString();
+        assertTrue(text.contains("Subagent"), "Should contain 'Subagent'");
+        assertTrue(text.contains("Explore"), "Should contain agent type");
+        assertTrue(text.contains("Search the codebase"), "Should contain description");
+        assertTrue(text.contains("Found 3 matches"), "Should contain result");
+    }
+
+    @Test
+    void buildSubAgentPart_withoutDescription() throws Exception {
+        EntryData.SubAgent sub = new EntryData.SubAgent("Plan", "");
+        sub.setResult("Done planning");
+        JsonObject part = invokeBuildSubAgentPart(sub);
+        String text = part.get("text").getAsString();
+        assertTrue(text.contains("Plan"), "Should contain agent type");
+        assertFalse(text.contains(": ]"), "Should not have dangling colon for empty desc");
+        assertTrue(text.contains("Done planning"), "Should contain result");
+    }
+
+    @Test
+    void buildSubAgentPart_withoutResult() throws Exception {
+        EntryData.SubAgent sub = new EntryData.SubAgent("Explore", "Look around");
+        // result stays null
+        JsonObject part = invokeBuildSubAgentPart(sub);
+        String text = part.get("text").getAsString();
+        assertTrue(text.contains("Look around"), "Should contain description");
+        // Text should end after the bracket — no result appended
+        assertTrue(text.endsWith("]"), "Should end with ] when no result: " + text);
+    }
+
     // ── Reflection helpers ───────────────────────────────────────────────────
 
     private static String invokeSha1Hex(String input) throws Exception {
@@ -193,5 +405,33 @@ class OpenCodeClientExporterTest {
         Method m = OpenCodeClientExporter.class.getDeclaredMethod("trimEntriesToBudget", List.class, int.class);
         m.setAccessible(true);
         return (List<EntryData>) m.invoke(null, entries, maxChars);
+    }
+
+    private static JsonObject invokeBuildMessageData(
+        String role, String agent, String model, long timeCreated, String projectDir, String parentMessageId)
+        throws Exception {
+        Method m = OpenCodeClientExporter.class.getDeclaredMethod(
+            "buildMessageData", String.class, String.class, String.class, long.class, String.class, String.class);
+        m.setAccessible(true);
+        return (JsonObject) m.invoke(null, role, agent, model, timeCreated, projectDir, parentMessageId);
+    }
+
+    private static JsonObject invokeBuildToolInvocationPart(EntryData.ToolCall toolCall, long timeMs) throws Exception {
+        Method m = OpenCodeClientExporter.class.getDeclaredMethod(
+            "buildToolInvocationPart", EntryData.ToolCall.class, long.class);
+        m.setAccessible(true);
+        return (JsonObject) m.invoke(null, toolCall, timeMs);
+    }
+
+    private static boolean invokeHasExportableEntries(List<EntryData> entries) throws Exception {
+        Method m = OpenCodeClientExporter.class.getDeclaredMethod("hasExportableEntries", List.class);
+        m.setAccessible(true);
+        return (boolean) m.invoke(null, entries);
+    }
+
+    private static JsonObject invokeBuildSubAgentPart(EntryData.SubAgent subAgent) throws Exception {
+        Method m = OpenCodeClientExporter.class.getDeclaredMethod("buildSubAgentPart", EntryData.SubAgent.class);
+        m.setAccessible(true);
+        return (JsonObject) m.invoke(null, subAgent);
     }
 }

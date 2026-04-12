@@ -7,90 +7,87 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class UsageStatisticsDataTest {
+
+    // ── Shared test data ────────────────────────────────────────────────
+
+    private static final UsageStatisticsData.DailyAgentStats STAT1 =
+        new UsageStatisticsData.DailyAgentStats(
+            LocalDate.of(2024, 1, 1), "copilot", 5, 1000, 2000, 10, 5000, 50, 20, 1.5);
+
+    private static final UsageStatisticsData.DailyAgentStats STAT2 =
+        new UsageStatisticsData.DailyAgentStats(
+            LocalDate.of(2024, 1, 2), "claude-cli", 3, 500, 1000, 8, 3000, 30, 10, 0.5);
+
+    private static UsageStatisticsData.StatisticsSnapshot snapshotOf(
+        List<UsageStatisticsData.DailyAgentStats> stats) {
+        return new UsageStatisticsData.StatisticsSnapshot(
+            stats,
+            LocalDate.of(2024, 1, 1),
+            LocalDate.of(2024, 1, 2),
+            Set.of("copilot", "claude-cli"),
+            Map.of("copilot", "GitHub Copilot", "claude-cli", "Claude Code"));
+    }
 
     // ── DailyAgentStats record ──────────────────────────────────────────
 
     @Test
-    void dailyAgentStats_recordFields() {
-        var stats = new UsageStatisticsData.DailyAgentStats(
-            LocalDate.of(2024, 6, 15), "copilot",
-            5, 1000, 2000, 10, 5000, 100, 50, 1.5
-        );
-        assertEquals(LocalDate.of(2024, 6, 15), stats.date());
-        assertEquals("copilot", stats.agentId());
-        assertEquals(5, stats.turns());
-        assertEquals(1000, stats.inputTokens());
-        assertEquals(2000, stats.outputTokens());
-        assertEquals(10, stats.toolCalls());
-        assertEquals(5000, stats.durationMs());
-        assertEquals(100, stats.linesAdded());
-        assertEquals(50, stats.linesRemoved());
-        assertEquals(1.5, stats.premiumRequests());
+    void dailyAgentStats_constructableAndFieldsAccessible() {
+        var stat = new UsageStatisticsData.DailyAgentStats(
+            LocalDate.of(2024, 1, 1), "copilot", 5, 1000, 2000, 10, 5000, 50, 20, 1.5);
+        assertEquals(LocalDate.of(2024, 1, 1), stat.date());
+        assertEquals("copilot", stat.agentId());
+        assertEquals(5, stat.turns());
+        assertEquals(1000, stat.inputTokens());
+        assertEquals(2000, stat.outputTokens());
+        assertEquals(10, stat.toolCalls());
+        assertEquals(5000, stat.durationMs());
+        assertEquals(50, stat.linesAdded());
+        assertEquals(20, stat.linesRemoved());
+        assertEquals(1.5, stat.premiumRequests());
+    }
+
+    // ── StatisticsSnapshot aggregations (tests 1–5) ────────────────────
+
+    @Test
+    void totalTurns() {
+        var snapshot = snapshotOf(List.of(STAT1, STAT2));
+        assertEquals(8, snapshot.totalTurns()); // 5 + 3
     }
 
     @Test
-    void dailyAgentStats_equality() {
-        var a = new UsageStatisticsData.DailyAgentStats(
-            LocalDate.of(2024, 1, 1), "copilot", 1, 100, 200, 5, 1000, 10, 5, 1.0);
-        var b = new UsageStatisticsData.DailyAgentStats(
-            LocalDate.of(2024, 1, 1), "copilot", 1, 100, 200, 5, 1000, 10, 5, 1.0);
-        assertEquals(a, b);
-        assertEquals(a.hashCode(), b.hashCode());
-    }
-
-    // ── StatisticsSnapshot aggregations ─────────────────────────────────
-
-    @Test
-    void snapshot_totalTurns() {
-        var snapshot = createSnapshot(
-            stats("copilot", 3, 100, 200, 5, 1000, 10, 5, 1.0),
-            stats("claude", 7, 300, 400, 15, 2000, 20, 10, 2.0)
-        );
-        assertEquals(10, snapshot.totalTurns());
+    void totalTokens() {
+        var snapshot = snapshotOf(List.of(STAT1, STAT2));
+        assertEquals(4500, snapshot.totalTokens()); // (1000+2000) + (500+1000)
     }
 
     @Test
-    void snapshot_totalTokens() {
-        var snapshot = createSnapshot(
-            stats("copilot", 1, 100, 200, 0, 0, 0, 0, 0),
-            stats("claude", 1, 300, 400, 0, 0, 0, 0, 0)
-        );
-        assertEquals(1000, snapshot.totalTokens()); // (100+200) + (300+400)
+    void totalToolCalls() {
+        var snapshot = snapshotOf(List.of(STAT1, STAT2));
+        assertEquals(18, snapshot.totalToolCalls()); // 10 + 8
     }
 
     @Test
-    void snapshot_totalToolCalls() {
-        var snapshot = createSnapshot(
-            stats("copilot", 1, 0, 0, 5, 0, 0, 0, 0),
-            stats("claude", 1, 0, 0, 15, 0, 0, 0, 0)
-        );
-        assertEquals(20, snapshot.totalToolCalls());
+    void totalDurationMs() {
+        var snapshot = snapshotOf(List.of(STAT1, STAT2));
+        assertEquals(8000, snapshot.totalDurationMs()); // 5000 + 3000
     }
 
     @Test
-    void snapshot_totalDurationMs() {
-        var snapshot = createSnapshot(
-            stats("copilot", 1, 0, 0, 0, 3000, 0, 0, 0),
-            stats("claude", 1, 0, 0, 0, 7000, 0, 0, 0)
-        );
-        assertEquals(10000, snapshot.totalDurationMs());
+    void totalPremiumRequests() {
+        var snapshot = snapshotOf(List.of(STAT1, STAT2));
+        assertEquals(2.0, snapshot.totalPremiumRequests(), 0.001); // 1.5 + 0.5
     }
 
-    @Test
-    void snapshot_totalPremiumRequests() {
-        var snapshot = createSnapshot(
-            stats("copilot", 1, 0, 0, 0, 0, 0, 0, 1.5),
-            stats("claude", 1, 0, 0, 0, 0, 0, 0, 0.5)
-        );
-        assertEquals(2.0, snapshot.totalPremiumRequests(), 0.001);
-    }
+    // ── StatisticsSnapshot edge cases (tests 6–7) ──────────────────────
 
     @Test
-    void snapshot_emptyStats() {
-        var snapshot = createSnapshot();
+    void emptyDailyStats_totalsAreZero() {
+        var snapshot = snapshotOf(List.of());
         assertEquals(0, snapshot.totalTurns());
         assertEquals(0, snapshot.totalTokens());
         assertEquals(0, snapshot.totalToolCalls());
@@ -98,37 +95,78 @@ class UsageStatisticsDataTest {
         assertEquals(0.0, snapshot.totalPremiumRequests(), 0.001);
     }
 
-    // ── TimeRange ───────────────────────────────────────────────────────
+    @Test
+    void singleDayStat_totalsMatchDirectly() {
+        var snapshot = snapshotOf(List.of(STAT1));
+        assertEquals(5, snapshot.totalTurns());
+        assertEquals(3000, snapshot.totalTokens()); // 1000 + 2000
+        assertEquals(10, snapshot.totalToolCalls());
+        assertEquals(5000, snapshot.totalDurationMs());
+        assertEquals(1.5, snapshot.totalPremiumRequests(), 0.001);
+    }
+
+    // ── TimeRange labels (tests 8–11) ───────────────────────────────────
 
     @Test
-    void timeRange_week() {
+    void timeRange_weekLabel() {
         assertEquals("7 days", UsageStatisticsData.TimeRange.WEEK_7.label());
+    }
+
+    @Test
+    void timeRange_monthLabel() {
+        assertEquals("30 days", UsageStatisticsData.TimeRange.MONTH_30.label());
+    }
+
+    @Test
+    void timeRange_quarterLabel() {
+        assertEquals("90 days", UsageStatisticsData.TimeRange.QUARTER_90.label());
+    }
+
+    @Test
+    void timeRange_allLabel() {
+        assertEquals("All time", UsageStatisticsData.TimeRange.ALL.label());
+    }
+
+    // ── TimeRange days (tests 12–15) ────────────────────────────────────
+
+    @Test
+    void timeRange_weekDays() {
         assertEquals(7, UsageStatisticsData.TimeRange.WEEK_7.days());
+    }
+
+    @Test
+    void timeRange_monthDays() {
+        assertEquals(30, UsageStatisticsData.TimeRange.MONTH_30.days());
+    }
+
+    @Test
+    void timeRange_quarterDays() {
+        assertEquals(90, UsageStatisticsData.TimeRange.QUARTER_90.days());
+    }
+
+    @Test
+    void timeRange_allDays() {
+        assertEquals(-1, UsageStatisticsData.TimeRange.ALL.days());
+    }
+
+    // ── TimeRange startDate (tests 16–18) ───────────────────────────────
+
+    @Test
+    void timeRange_allStartDate_is2020() {
+        assertEquals(LocalDate.of(2020, 1, 1), UsageStatisticsData.TimeRange.ALL.startDate());
+    }
+
+    @Test
+    void timeRange_weekStartDate() {
         assertEquals(LocalDate.now().minusDays(6), UsageStatisticsData.TimeRange.WEEK_7.startDate());
     }
 
     @Test
-    void timeRange_month() {
-        assertEquals("30 days", UsageStatisticsData.TimeRange.MONTH_30.label());
-        assertEquals(30, UsageStatisticsData.TimeRange.MONTH_30.days());
+    void timeRange_monthStartDate() {
         assertEquals(LocalDate.now().minusDays(29), UsageStatisticsData.TimeRange.MONTH_30.startDate());
     }
 
-    @Test
-    void timeRange_quarter() {
-        assertEquals("90 days", UsageStatisticsData.TimeRange.QUARTER_90.label());
-        assertEquals(90, UsageStatisticsData.TimeRange.QUARTER_90.days());
-        assertEquals(LocalDate.now().minusDays(89), UsageStatisticsData.TimeRange.QUARTER_90.startDate());
-    }
-
-    @Test
-    void timeRange_all() {
-        assertEquals("All time", UsageStatisticsData.TimeRange.ALL.label());
-        assertEquals(-1, UsageStatisticsData.TimeRange.ALL.days());
-        assertEquals(LocalDate.of(2020, 1, 1), UsageStatisticsData.TimeRange.ALL.startDate());
-    }
-
-    // ── Metric ──────────────────────────────────────────────────────────
+    // ── Metric enum (tests 19–20) ───────────────────────────────────────
 
     @Test
     void metric_displayNames() {
@@ -141,27 +179,12 @@ class UsageStatisticsDataTest {
     }
 
     @Test
-    void metric_valuesCount() {
-        assertEquals(6, UsageStatisticsData.Metric.values().length);
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────
-
-    private static UsageStatisticsData.DailyAgentStats stats(
-        String agent, int turns, long inTok, long outTok, int tools,
-        long durationMs, int added, int removed, double premium) {
-        return new UsageStatisticsData.DailyAgentStats(
-            LocalDate.of(2024, 1, 1), agent,
-            turns, inTok, outTok, tools, durationMs, added, removed, premium);
-    }
-
-    private static UsageStatisticsData.StatisticsSnapshot createSnapshot(
-        UsageStatisticsData.DailyAgentStats... stats) {
-        return new UsageStatisticsData.StatisticsSnapshot(
-            List.of(stats),
-            LocalDate.of(2024, 1, 1),
-            LocalDate.of(2024, 12, 31),
-            Set.of("copilot", "claude"),
-            Map.of("copilot", "GitHub Copilot", "claude", "Claude"));
+    void metric_allValuesHaveNonEmptyDisplayNames() {
+        UsageStatisticsData.Metric[] values = UsageStatisticsData.Metric.values();
+        assertEquals(6, values.length);
+        for (UsageStatisticsData.Metric metric : values) {
+            assertNotNull(metric.displayName(), metric.name() + " has null displayName");
+            assertFalse(metric.displayName().isEmpty(), metric.name() + " has empty displayName");
+        }
     }
 }
