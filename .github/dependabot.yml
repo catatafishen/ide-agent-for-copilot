@@ -10,9 +10,9 @@ updates:
       github-actions:
         patterns:
           - "*"
+    # github-actions uses tag-based versioning — semver-major-days is not supported
     cooldown:
       default-days: 7
-      semver-major-days: 30
 
   - package-ecosystem: "gradle"
     directory: "/"
