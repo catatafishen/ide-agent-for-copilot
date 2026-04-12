@@ -7,14 +7,23 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -1221,5 +1230,383 @@ class SessionStoreV2Test {
         parts.add(textPart);
         msg.add("parts", parts);
         return msg;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Instance method tests — file I/O via @TempDir
+    // ══════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("InstanceMethodTests")
+    class InstanceMethodTests {
+
+        @TempDir
+        Path tempDir;
+
+        private SessionStoreV2 newStore() {
+            SessionStoreV2 store = new SessionStoreV2();
+            store.setCurrentAgent("test-agent");
+            return store;
+        }
+
+        /** Returns the sessions directory for the given tempDir base path. */
+        private Path sessionsDir() {
+            return tempDir.resolve(".agent-work").resolve("sessions");
+        }
+
+        private Path currentSessionIdFile() {
+            return sessionsDir().resolve(".current-session-id");
+        }
+
+        private Path sessionsIndexFile() {
+            return sessionsDir().resolve("sessions-index.json");
+        }
+
+        // ── getCurrentSessionId ───────────────────────────────────────────────
+
+        @Test
+        @DisplayName("getCurrentSessionId creates the .current-session-id file on first call")
+        void getCurrentSessionId_createsFileOnFirstCall() {
+            SessionStoreV2 store = newStore();
+
+            String id = store.getCurrentSessionId(tempDir.toString());
+
+            assertNotNull(id);
+            assertFalse(id.isBlank());
+            assertTrue(currentSessionIdFile().toFile().exists(),
+                ".current-session-id file should exist after first call");
+        }
+
+        @Test
+        @DisplayName("getCurrentSessionId returns the same ID on repeated calls (cached on disk)")
+        void getCurrentSessionId_returnsSameIdOnRepeatedCalls() {
+            SessionStoreV2 store = newStore();
+
+            String first = store.getCurrentSessionId(tempDir.toString());
+            String second = store.getCurrentSessionId(tempDir.toString());
+            String third = store.getCurrentSessionId(tempDir.toString());
+
+            assertEquals(first, second);
+            assertEquals(second, third);
+        }
+
+        @Test
+        @DisplayName("after resetCurrentSessionId the next call generates a new ID")
+        void getCurrentSessionId_newIdAfterReset() {
+            SessionStoreV2 store = newStore();
+
+            String original = store.getCurrentSessionId(tempDir.toString());
+            store.resetCurrentSessionId(tempDir.toString());
+            String fresh = store.getCurrentSessionId(tempDir.toString());
+
+            assertNotEquals(original, fresh, "a fresh UUID should be generated after reset");
+        }
+
+        @Test
+        @DisplayName("two different basePaths produce different session IDs")
+        void getCurrentSessionId_differentBasePathsProduceDifferentIds(@TempDir Path other) {
+            SessionStoreV2 store = newStore();
+
+            String id1 = store.getCurrentSessionId(tempDir.toString());
+            String id2 = store.getCurrentSessionId(other.toString());
+
+            assertNotEquals(id1, id2);
+        }
+
+        // ── resetCurrentSessionId ─────────────────────────────────────────────
+
+        @Test
+        @DisplayName("resetCurrentSessionId deletes the .current-session-id file when it exists")
+        void resetCurrentSessionId_deletesFile() throws IOException {
+            SessionStoreV2 store = newStore();
+            store.getCurrentSessionId(tempDir.toString()); // create the file
+            assertTrue(currentSessionIdFile().toFile().exists(), "prerequisite: file must exist");
+
+            store.resetCurrentSessionId(tempDir.toString());
+
+            assertFalse(currentSessionIdFile().toFile().exists(), "file should be deleted");
+        }
+
+        @Test
+        @DisplayName("resetCurrentSessionId is a no-op when the file does not exist")
+        void resetCurrentSessionId_noOpWhenFileMissing() {
+            SessionStoreV2 store = newStore();
+            assertFalse(currentSessionIdFile().toFile().exists(), "prerequisite: file must not exist");
+
+            assertDoesNotThrow(() -> store.resetCurrentSessionId(tempDir.toString()));
+        }
+
+        // ── listSessions ──────────────────────────────────────────────────────
+
+        @Test
+        @DisplayName("listSessions returns empty list when no sessions index exists")
+        void listSessions_emptyWhenNoIndex() {
+            SessionStoreV2 store = newStore();
+
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+
+            assertNotNull(sessions);
+            assertTrue(sessions.isEmpty());
+        }
+
+        @Test
+        @DisplayName("listSessions skips records with missing or empty id")
+        void listSessions_skipsMissingOrEmptyId() throws IOException {
+            Files.createDirectories(sessionsDir());
+            String json = "[{\"agent\":\"test\",\"updatedAt\":1000},{\"id\":\"\",\"agent\":\"test\",\"updatedAt\":2000}]";
+            Files.writeString(sessionsIndexFile(), json, StandardCharsets.UTF_8);
+
+            SessionStoreV2 store = newStore();
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+
+            assertTrue(sessions.isEmpty(), "records without a valid id should be skipped");
+        }
+
+        @Test
+        @DisplayName("listSessions parses all fields and sorts descending by updatedAt")
+        void listSessions_parsesFieldsAndSortsDescending() throws IOException {
+            Files.createDirectories(sessionsDir());
+            String json = "["
+                + "{\"id\":\"aa\",\"agent\":\"bot-a\",\"name\":\"Session A\","
+                + "\"createdAt\":1000,\"updatedAt\":3000,\"turnCount\":5},"
+                + "{\"id\":\"bb\",\"agent\":\"bot-b\",\"name\":\"Session B\","
+                + "\"createdAt\":2000,\"updatedAt\":5000,\"turnCount\":2}"
+                + "]";
+            Files.writeString(sessionsIndexFile(), json, StandardCharsets.UTF_8);
+
+            SessionStoreV2 store = newStore();
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+
+            assertEquals(2, sessions.size());
+            // sorted descending by updatedAt: bb (5000) first, then aa (3000)
+            assertEquals("bb", sessions.get(0).id());
+            assertEquals("bot-b", sessions.get(0).agent());
+            assertEquals("Session B", sessions.get(0).name());
+            assertEquals(2000L, sessions.get(0).createdAt());
+            assertEquals(5000L, sessions.get(0).updatedAt());
+            assertEquals(2, sessions.get(0).turnCount());
+
+            assertEquals("aa", sessions.get(1).id());
+            assertEquals(5, sessions.get(1).turnCount());
+        }
+
+        @Test
+        @DisplayName("listSessions defaults missing optional fields")
+        void listSessions_defaultsMissingOptionalFields() throws IOException {
+            Files.createDirectories(sessionsDir());
+            // Only id is present; all other fields use defaults
+            String json = "[{\"id\":\"cc\"}]";
+            Files.writeString(sessionsIndexFile(), json, StandardCharsets.UTF_8);
+
+            SessionStoreV2 store = newStore();
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+
+            assertEquals(1, sessions.size());
+            SessionStoreV2.SessionRecord rec = sessions.get(0);
+            assertEquals("cc", rec.id());
+            assertEquals("Unknown", rec.agent());
+            assertEquals("", rec.name());
+            assertEquals(0L, rec.createdAt());
+            assertEquals(0L, rec.updatedAt());
+            assertEquals(0, rec.turnCount());
+        }
+
+        // ── appendEntries + loadEntries round-trip ────────────────────────────
+
+        @Test
+        @DisplayName("appendEntries + loadEntries round-trips a Prompt entry")
+        void appendAndLoad_promptRoundTrip() {
+            SessionStoreV2 store = newStore();
+            EntryData.Prompt prompt = new EntryData.Prompt("Hello world", "2024-01-01T00:00:00Z",
+                null, "eid-1", "eid-1");
+
+            store.appendEntries(tempDir.toString(), List.of(prompt));
+            List<EntryData> loaded = store.loadEntries(tempDir.toString());
+
+            assertNotNull(loaded);
+            assertEquals(1, loaded.size());
+            assertInstanceOf(EntryData.Prompt.class, loaded.get(0));
+            assertEquals("Hello world", ((EntryData.Prompt) loaded.get(0)).getText());
+        }
+
+        @Test
+        @DisplayName("appendEntries + loadEntries round-trips Text, ToolCall, and Thinking entries")
+        void appendAndLoad_multipleEntryTypesRoundTrip() {
+            SessionStoreV2 store = newStore();
+            List<EntryData> entries = List.of(
+                new EntryData.Prompt("Question", "2024-01-01T00:00:00Z", null, "p1", "p1"),
+                new EntryData.Text("Answer", "2024-01-01T00:00:01Z", "test-agent", "gpt-4", "t1"),
+                new EntryData.Thinking("hmm...", "2024-01-01T00:00:02Z", "test-agent", "gpt-4", "th1"),
+                new EntryData.ToolCall("readFile", "{\"path\":\"a.txt\"}", "filesystem",
+                    "contents", "completed", "Read a file", "/a.txt",
+                    false, null, null, "2024-01-01T00:00:03Z", "test-agent", "gpt-4", "tc1")
+            );
+
+            store.appendEntries(tempDir.toString(), entries);
+            List<EntryData> loaded = store.loadEntries(tempDir.toString());
+
+            assertNotNull(loaded);
+            assertEquals(4, loaded.size());
+            assertInstanceOf(EntryData.Prompt.class, loaded.get(0));
+            assertInstanceOf(EntryData.Text.class, loaded.get(1));
+            assertInstanceOf(EntryData.Thinking.class, loaded.get(2));
+            assertInstanceOf(EntryData.ToolCall.class, loaded.get(3));
+            assertEquals("readFile", ((EntryData.ToolCall) loaded.get(3)).getTitle());
+        }
+
+        @Test
+        @DisplayName("loadEntries returns null when no session file exists")
+        void loadEntries_nullWhenNoSessionFile() {
+            SessionStoreV2 store = newStore();
+            // No file created, no getCurrentSessionId called — no session exists
+
+            List<EntryData> loaded = store.loadEntries(tempDir.toString());
+
+            assertNull(loaded);
+        }
+
+        @Test
+        @DisplayName("multiple appendEntries calls accumulate entries in the JSONL file")
+        void appendEntries_multipleAppendsAccumulate() {
+            SessionStoreV2 store = newStore();
+
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("First", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Text("Second", "2024-01-01T00:00:01Z", "test-agent", "gpt-4", "t1")));
+
+            List<EntryData> loaded = store.loadEntries(tempDir.toString());
+
+            assertNotNull(loaded);
+            assertEquals(2, loaded.size());
+            assertInstanceOf(EntryData.Prompt.class, loaded.get(0));
+            assertInstanceOf(EntryData.Text.class, loaded.get(1));
+        }
+
+        // ── sessions index updated via appendEntries ───────────────────────────
+
+        @Test
+        @DisplayName("after appendEntries the session appears in listSessions")
+        void appendEntries_sessionAppearsInListSessions() {
+            SessionStoreV2 store = newStore();
+
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("Fix the bug", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+
+            assertEquals(1, sessions.size());
+            assertEquals("test-agent", sessions.get(0).agent());
+            assertEquals("Fix the bug", sessions.get(0).name());
+            assertEquals(1, sessions.get(0).turnCount());
+        }
+
+        @Test
+        @DisplayName("appendEntries increments turnCount for each Prompt in the batch")
+        void appendEntries_incrementsTurnCount() {
+            SessionStoreV2 store = newStore();
+
+            store.appendEntries(tempDir.toString(), List.of(
+                new EntryData.Prompt("First turn", "2024-01-01T00:00:00Z", null, "p1", "p1"),
+                new EntryData.Text("Reply", "2024-01-01T00:00:01Z", "test-agent", "gpt-4", "t1"),
+                new EntryData.Prompt("Second turn", "2024-01-01T00:00:02Z", null, "p2", "p2")
+            ));
+
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+            assertEquals(1, sessions.size());
+            assertEquals(2, sessions.get(0).turnCount());
+        }
+
+        @Test
+        @DisplayName("appendEntries does not overwrite existing session name on second call")
+        void appendEntries_doesNotOverwriteExistingName() {
+            SessionStoreV2 store = newStore();
+
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("First prompt", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("Second prompt", "2024-01-01T00:00:01Z", null, "p2", "p2")));
+
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+            assertEquals("First prompt", sessions.get(0).name(),
+                "session name should remain from the very first prompt");
+        }
+
+        // ── branchCurrentSession ──────────────────────────────────────────────
+
+        @Test
+        @DisplayName("branchCurrentSession is a no-op when no current-session-id file exists")
+        void branchCurrentSession_noOpWhenNoIdFile() {
+            SessionStoreV2 store = newStore();
+            assertFalse(currentSessionIdFile().toFile().exists(), "prerequisite: no id file");
+
+            assertDoesNotThrow(() -> store.branchCurrentSession(tempDir.toString()));
+
+            // No sessions should have been created
+            assertTrue(store.listSessions(tempDir.toString()).isEmpty());
+        }
+
+        @Test
+        @DisplayName("branchCurrentSession creates a copy with a new ID when current session has content")
+        void branchCurrentSession_createsCopyWithNewId() {
+            SessionStoreV2 store = newStore();
+
+            // Seed the current session with some content
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("Branch me", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String originalId = store.getCurrentSessionId(tempDir.toString());
+
+            store.branchCurrentSession(tempDir.toString());
+
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+            // The original + one branch should be in the index
+            assertEquals(2, sessions.size());
+
+            boolean hasOriginal = sessions.stream().anyMatch(r -> r.id().equals(originalId));
+            boolean hasBranch = sessions.stream().anyMatch(r -> !r.id().equals(originalId)
+                && r.agent().contains("(branch"));
+            assertTrue(hasOriginal, "original session should still be in the index");
+            assertTrue(hasBranch, "a branch entry should have been added");
+        }
+
+        @Test
+        @DisplayName("branchCurrentSession does not change the current-session-id file")
+        void branchCurrentSession_originalIdFileUnchanged() {
+            SessionStoreV2 store = newStore();
+
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("Seed", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String originalId = store.getCurrentSessionId(tempDir.toString());
+
+            store.branchCurrentSession(tempDir.toString());
+
+            String idAfterBranch = store.getCurrentSessionId(tempDir.toString());
+            assertEquals(originalId, idAfterBranch, "current-session-id must not change after branching");
+        }
+
+        @Test
+        @DisplayName("branched session content matches original session")
+        void branchCurrentSession_branchedContentMatchesOriginal() {
+            SessionStoreV2 store = newStore();
+            String promptText = "Original content";
+
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt(promptText, "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String originalId = store.getCurrentSessionId(tempDir.toString());
+            store.branchCurrentSession(tempDir.toString());
+
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+            String branchId = sessions.stream()
+                .map(SessionStoreV2.SessionRecord::id)
+                .filter(id -> !id.equals(originalId))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("branch not found in sessions index"));
+
+            List<EntryData> branchEntries = store.loadEntriesBySessionId(tempDir.toString(), branchId);
+            assertNotNull(branchEntries);
+            assertEquals(1, branchEntries.size());
+            assertInstanceOf(EntryData.Prompt.class, branchEntries.get(0));
+            assertEquals(promptText, ((EntryData.Prompt) branchEntries.get(0)).getText());
+        }
     }
 }
