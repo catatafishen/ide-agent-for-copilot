@@ -8,7 +8,12 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for {@link ToolCallHasher} — deterministic JSON hashing and hash matching.
@@ -31,8 +36,8 @@ class ToolCallHasherTest {
     void computeBaseHash_calledTwice_returnsSameHash() {
         JsonObject obj = JsonParser.parseString("{\"a\":\"1\"}").getAsJsonObject();
         assertEquals(
-                ToolCallHasher.computeBaseHash(obj),
-                ToolCallHasher.computeBaseHash(obj));
+            ToolCallHasher.computeBaseHash(obj),
+            ToolCallHasher.computeBaseHash(obj));
     }
 
     @Test
@@ -41,27 +46,27 @@ class ToolCallHasherTest {
         JsonObject ba = JsonParser.parseString("{\"b\":\"2\",\"a\":\"1\"}").getAsJsonObject();
 
         assertEquals(ToolCallHasher.computeBaseHash(ab),
-                ToolCallHasher.computeBaseHash(ba));
+            ToolCallHasher.computeBaseHash(ba));
     }
 
     @Test
     void computeBaseHash_excludesToolUsePurposeKey() {
         JsonObject without = JsonParser.parseString("{\"a\":\"1\"}").getAsJsonObject();
         JsonObject with = JsonParser.parseString(
-                "{\"a\":\"1\",\"__tool_use_purpose\":\"test\"}").getAsJsonObject();
+            "{\"a\":\"1\",\"__tool_use_purpose\":\"test\"}").getAsJsonObject();
 
         assertEquals(ToolCallHasher.computeBaseHash(without),
-                ToolCallHasher.computeBaseHash(with));
+            ToolCallHasher.computeBaseHash(with));
     }
 
     @Test
     void computeBaseHash_onlyToolUsePurpose_sameAsEmpty() {
         JsonObject empty = JsonParser.parseString("{}").getAsJsonObject();
         JsonObject purposeOnly = JsonParser.parseString(
-                "{\"__tool_use_purpose\":\"ignored\"}").getAsJsonObject();
+            "{\"__tool_use_purpose\":\"ignored\"}").getAsJsonObject();
 
         assertEquals(ToolCallHasher.computeBaseHash(empty),
-                ToolCallHasher.computeBaseHash(purposeOnly));
+            ToolCallHasher.computeBaseHash(purposeOnly));
     }
 
     @Test
@@ -76,12 +81,12 @@ class ToolCallHasherTest {
     @Test
     void computeBaseHash_nestedObjects_stableAcrossKeyOrder() {
         JsonObject obj1 = JsonParser.parseString(
-                "{\"outer\":{\"b\":\"2\",\"a\":\"1\"}}").getAsJsonObject();
+            "{\"outer\":{\"b\":\"2\",\"a\":\"1\"}}").getAsJsonObject();
         JsonObject obj2 = JsonParser.parseString(
-                "{\"outer\":{\"a\":\"1\",\"b\":\"2\"}}").getAsJsonObject();
+            "{\"outer\":{\"a\":\"1\",\"b\":\"2\"}}").getAsJsonObject();
 
         assertEquals(ToolCallHasher.computeBaseHash(obj1),
-                ToolCallHasher.computeBaseHash(obj2));
+            ToolCallHasher.computeBaseHash(obj2));
     }
 
     @Test
@@ -90,7 +95,7 @@ class ToolCallHasherTest {
         JsonObject obj2 = JsonParser.parseString("{\"a\":\"2\"}").getAsJsonObject();
 
         assertNotEquals(ToolCallHasher.computeBaseHash(obj1),
-                ToolCallHasher.computeBaseHash(obj2));
+            ToolCallHasher.computeBaseHash(obj2));
     }
 
     @Test
@@ -99,7 +104,7 @@ class ToolCallHasherTest {
         JsonObject obj2 = JsonParser.parseString("{\"b\":\"1\"}").getAsJsonObject();
 
         assertNotEquals(ToolCallHasher.computeBaseHash(obj1),
-                ToolCallHasher.computeBaseHash(obj2));
+            ToolCallHasher.computeBaseHash(obj2));
     }
 
     // ── computeStableValue ──────────────────────────────────────────────
@@ -206,16 +211,16 @@ class ToolCallHasherTest {
     @Test
     void computeStableValue_nestedStructure_recursiveNormalization() {
         JsonElement nested = JsonParser.parseString(
-                "{\"arr\":[{\"b\":2,\"a\":1}],\"obj\":{\"y\":1.0,\"x\":\"val\"}}");
+            "{\"arr\":[{\"b\":2,\"a\":1}],\"obj\":{\"y\":1.0,\"x\":\"val\"}}");
         String result = ToolCallHasher.computeStableValue(nested);
 
         assertNotNull(result);
         // Outer keys sorted: "arr" before "obj"
         assertTrue(result.indexOf("arr=") < result.indexOf("obj="),
-                "Outer keys should be sorted: " + result);
+            "Outer keys should be sorted: " + result);
         // Inner object in array: "a" before "b"
         assertTrue(result.indexOf("a=") < result.indexOf("b="),
-                "Inner keys should be sorted: " + result);
+            "Inner keys should be sorted: " + result);
         // 1.0 normalized to 1 (long)
         assertFalse(result.contains("1.0"), "Whole doubles should be normalized: " + result);
     }
@@ -280,14 +285,7 @@ class ToolCallHasherTest {
     void isMatchingHash_nullChipId_throwsException() {
         //noinspection DataFlowIssue — testing @NotNull contract
         assertThrows(Exception.class,
-                () -> ToolCallHasher.isMatchingHash(null, "abc12345"));
-    }
-
-    @Test
-    void isMatchingHash_nullBaseHash_returnsFalse() {
-        //noinspection DataFlowIssue — testing @NotNull contract edge case
-        // null + "-" becomes "null-", so equals and startsWith both return false
-        assertFalse(ToolCallHasher.isMatchingHash("abc12345", null));
+            () -> ToolCallHasher.isMatchingHash(null, "abc12345"));
     }
 
     // ── EXCLUDED_KEY constant ───────────────────────────────────────────

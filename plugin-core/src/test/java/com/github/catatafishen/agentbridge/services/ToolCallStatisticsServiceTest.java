@@ -37,8 +37,8 @@ class ToolCallStatisticsServiceTest {
         Path dbPath = tempDir.resolve("tool-stats.db");
         connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
 
-        // Use the package-private initializeWithConnection to inject a test DB
-        service = new ToolCallStatisticsService(null);
+        // Use the package-private no-arg constructor for testing
+        service = new ToolCallStatisticsService();
         service.initializeWithConnection(connection);
     }
 

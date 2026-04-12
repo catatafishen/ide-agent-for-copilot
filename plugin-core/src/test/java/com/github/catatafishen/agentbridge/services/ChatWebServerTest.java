@@ -1,5 +1,6 @@
 package com.github.catatafishen.agentbridge.services;
 
+import com.github.catatafishen.agentbridge.ui.MessageFormatter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -174,7 +175,7 @@ class ChatWebServerTest {
         "'\"attr\"',      '&quot;attr&quot;'",
         "'a & <b> \"c\"', 'a &amp; &lt;b&gt; &quot;c&quot;'",
     })
-    void escHtml_escapesSpecialCharacters(String input, String expected) throws Exception {
+    void escHtml_escapesSpecialCharacters(String input, String expected) {
         assertEquals(expected, invokeEscHtml(input));
     }
 
@@ -237,10 +238,8 @@ class ChatWebServerTest {
         return (String) m.invoke(null, js);
     }
 
-    private static String invokeEscHtml(String s) throws Exception {
-        Method m = ChatWebServer.class.getDeclaredMethod("escHtml", String.class);
-        m.setAccessible(true);
-        return (String) m.invoke(null, s);
+    private static String invokeEscHtml(String s) {
+        return MessageFormatter.INSTANCE.escapeHtml(s);
     }
 
     private static String invokeEscJs(String s) throws Exception {

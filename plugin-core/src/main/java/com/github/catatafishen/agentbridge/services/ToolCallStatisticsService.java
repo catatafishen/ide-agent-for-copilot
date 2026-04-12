@@ -49,6 +49,14 @@ public final class ToolCallStatisticsService implements Disposable {
     }
 
     /**
+     * Test-only constructor that bypasses the Project requirement.
+     * Use {@link #initializeWithConnection(Connection)} to set up the database.
+     */
+    ToolCallStatisticsService() {
+        this.project = null;
+    }
+
+    /**
      * Initialize the SQLite database and subscribe to tool call events.
      * Called lazily on first access via {@code getInstance()}.
      */
