@@ -291,3 +291,73 @@ See [JUNIE-TOOL-WORKAROUND.md](docs/JUNIE-TOOL-WORKAROUND.md).
 
 See [.agent-work/OPENCODE-AGENT-FINDINGS.md](.agent-work/OPENCODE-AGENT-FINDINGS.md) for detailed OpenCode
 investigation and [.agent-work/KIRO-AGENT-FINDINGS.md](.agent-work/KIRO-AGENT-FINDINGS.md) for Kiro findings.
+
+# UI / Logic Separation
+
+## Principle
+
+UI classes (Swing panels, JCEF wrappers, IntelliJ Configurable implementations) must not contain
+testable business logic. If a method has **no dependency on Swing, JCEF, or IntelliJ UI APIs**, it
+belongs in a standalone class that can be unit-tested in isolation.
+
+## What Qualifies as Extractable Logic
+
+Any pure function or stateless computation embedded in a UI class:
+
+| Logic Type | Example | Extract To |
+|---|---|---|
+| Data serialization | EntryData → JSON map for JS bridge | `ChatEntrySerializer` |
+| String formatting | Billing usage → display text, time → "2m 15s" | `BillingCalculator`, `TimerDisplayFormatter` |
+| HTML construction | Building bubble HTML with ORC placeholders | `ChatBubbleBuilder` |
+| JSON parsing | Extracting file path from tool arguments | `ToolCallArgParser` |
+| Error classification | Cause-chain analysis → recoverability decision | `PromptErrorClassifier` |
+| Command construction | OS detection → terminal command args | `AuthCommandBuilder` |
+| Date arithmetic | Billing cycle start/end, projection | `BillingCalculator` |
+| State normalization | Raw chip status → canonical enum value | `ChatEntrySerializer` |
+| File metadata | Timestamp parsing, size formatting | `ConversationFileUtils` |
+
+## How to Extract
+
+1. **Identify pure methods** — methods whose inputs and outputs don't reference `JComponent`,
+   `JBColor`, `ConsoleView`, `JPanel`, `JCEF*`, `invokeLater`, etc.
+2. **Create a dedicated class** in the same package (or a `util` sub-package if reused across
+   packages). Name it by responsibility: `XxxFormatter`, `XxxCalculator`, `XxxParser`, `XxxBuilder`.
+3. **Make methods static** where possible (pure functions). If they need shared state, use a
+   lightweight data class as input rather than passing the UI panel.
+4. **Delegate from the UI class** — the UI class calls the extracted method and applies the result
+   to its components. The UI method becomes a thin wrapper:
+   ```java
+   // Before (in BillingManager.kt)
+   private fun refreshUsageDisplay() {
+       val text = /* 30 lines of formatting logic */
+       usageLabel.text = text
+   }
+   
+   // After
+   private fun refreshUsageDisplay() {
+       usageLabel.text = BillingCalculator.formatUsageDisplay(stats, mode)
+   }
+   ```
+5. **Write unit tests** for the extracted class — this is the payoff.
+
+## Exemplary Patterns Already in the Codebase
+
+These files demonstrate good separation and should be used as reference:
+
+- **`MessageFormatter.kt`** — pure formatting utilities (`formatTimestamp`, `escapeHtml`, `escapeJs`).
+  Zero UI dependencies. 97 lines of testable code.
+- **`MarkdownRenderer.kt`** — pure Markdown→HTML conversion. External dependencies (file resolution,
+  git detection) injected via lambda parameters. Exemplary testability design.
+- **`ConversationSerializer.kt`** — pure JSON parsing for conversation data. No UI imports.
+- **`ChatDataModel.kt`** — pure data classes and lookup tables. No behavior to test, but clean
+  separation of data from presentation.
+
+## Anti-Patterns to Avoid
+
+- **Don't create god utility classes** (e.g., `ChatUtils` with 50 unrelated methods). Each extracted
+  class should have a single, cohesive responsibility.
+- **Don't pass UI components as parameters** to extracted methods. Pass the data they contain instead.
+- **Don't extract trivially** — a one-line format call inside a UI method isn't worth extracting
+  unless it's reused or complex enough to warrant a test.
+- **Don't add section-comment banners** to organize logic within a UI class. If you need section
+  headers, the file is too large — extract instead.
