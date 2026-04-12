@@ -96,6 +96,45 @@ class ExportUtilsTest {
             "first char mismatch for input: " + input);
     }
 
+    // ── normalizeToolNameForCodex ────────────────────────────────────────────
+
+    @Test
+    void codexStripsDashPrefix() {
+        assertEquals("agentbridge_read_file",
+            ExportUtils.normalizeToolNameForCodex("agentbridge-read_file"));
+    }
+
+    @Test
+    void codexStripsUnderscorePrefix() {
+        assertEquals("agentbridge_read_file",
+            ExportUtils.normalizeToolNameForCodex("agentbridge_read_file"));
+    }
+
+    @Test
+    void codexStripsKiroPrefix() {
+        assertEquals("agentbridge_read_file",
+            ExportUtils.normalizeToolNameForCodex("@agentbridge/read_file"));
+    }
+
+    @Test
+    void codexAddsCanonicalPrefix() {
+        assertEquals("agentbridge_git_status",
+            ExportUtils.normalizeToolNameForCodex("git_status"));
+    }
+
+    @Test
+    void codexSanitizesBaseName() {
+        // "my tool!@#" → sanitize: "my_tool___" → collapse: "my_tool__" → strip trailing _: "my_tool_"
+        assertEquals("agentbridge_my_tool_",
+            ExportUtils.normalizeToolNameForCodex("my tool!@#"));
+    }
+
+    @Test
+    void codexIdempotentForCanonicalName() {
+        String canonical = "agentbridge_write_file";
+        assertEquals(canonical, ExportUtils.normalizeToolNameForCodex(canonical));
+    }
+
     // ── sessionsDir ───────────────────────────────────────────────────────────
 
     @Test
