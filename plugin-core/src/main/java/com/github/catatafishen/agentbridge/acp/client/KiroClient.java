@@ -11,6 +11,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public final class KiroClient extends AcpClient {
 
@@ -18,6 +19,11 @@ public final class KiroClient extends AcpClient {
     private static final String KEY_RAW_INPUT = "rawInput";
     private static final String KEY_AGENTBRIDGE = "@agentbridge/";
     private static final String KEY_STATUS = "status";
+
+    /**
+     * Matches ANSI escape sequences (e.g. {@code \033[31m}, {@code \033[0m}).
+     */
+    private static final Pattern ANSI_ESCAPE = Pattern.compile("\\x1b\\[[\\d;]*[a-zA-Z]");
 
     /**
      * Rolling buffer of the last few stderr lines for crash diagnostics.
@@ -39,6 +45,13 @@ public final class KiroClient extends AcpClient {
 
     @Override
     protected void registerHandlers() {
+        // Clear crash state from any previous process lifecycle so stale panic lines
+        // don't leak into error messages after a restart.
+        capturedPanicLine = null;
+        synchronized (recentStderr) {
+            recentStderr.clear();
+        }
+
         // Register combined handler for both standard and Kiro-specific notifications
         transport.onNotification(notification -> {
             String method = notification.method();
@@ -62,7 +75,7 @@ public final class KiroClient extends AcpClient {
             // With RUST_BACKTRACE=1, the backtrace can exceed the rolling buffer size,
             // evicting the panic header before tryRecoverPromptException is called.
             if (capturedPanicLine == null && isPanicLine(line)) {
-                capturedPanicLine = line.trim();
+                capturedPanicLine = stripAnsi(line.trim());
             }
             // When Kiro's agent-loop thread panics, the Rust panic hook prints the message to
             // stderr but the main process thread stays alive — stdout remains open, so readLoop
@@ -294,6 +307,14 @@ public final class KiroClient extends AcpClient {
     }
 
     /**
+     * Strips ANSI escape sequences (color codes, bold, etc.) from a string.
+     * Kiro's Rust stderr output includes ANSI codes that would appear as garbled text in the UI.
+     */
+    static String stripAnsi(@NotNull String s) {
+        return ANSI_ESCAPE.matcher(s).replaceAll("");
+    }
+
+    /**
      * When Kiro crashes (Rust panic), the process writes the panic message to stderr and the
      * transport stops. The generic "Transport stopped" message is unhelpful; this override
      * inspects the eagerly-captured panic line (or falls back to the rolling buffer) and surfaces
@@ -314,6 +335,7 @@ public final class KiroClient extends AcpClient {
                 panicLine = recentStderr.stream()
                     .filter(l -> l.contains("panicked") || l.contains("Message:"))
                     .reduce((first, second) -> second) // keep last matching line
+                    .map(l -> stripAnsi(l.trim()))
                     .orElse(null);
             }
         }
