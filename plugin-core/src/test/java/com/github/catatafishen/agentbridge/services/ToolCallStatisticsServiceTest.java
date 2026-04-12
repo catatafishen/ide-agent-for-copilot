@@ -167,14 +167,15 @@ class ToolCallStatisticsServiceTest {
     }
 
     @Test
-    void groupsByToolClientCombination() {
+    void groupsByToolNameAndCategory() {
+        // Calls from different clients with the same tool are collapsed into one aggregate row
         Instant ts = Instant.now();
         service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, "copilot", ts));
         service.recordCall(new ToolCallRecord("read_file", "FILE", 100, 200, 10, true, "opencode", ts));
         service.recordCall(new ToolCallRecord("write_file", "FILE", 100, 200, 10, true, "copilot", ts));
 
         var aggregates = service.queryAggregates(null, null);
-        assertEquals(3, aggregates.size());
+        assertEquals(2, aggregates.size());
     }
 
     @Test
