@@ -118,12 +118,24 @@ public final class ToolCallStatisticsService implements Disposable {
                     durationMs, success, clientId, Instant.now())));
     }
 
-    /**
-     * Records a single tool call. Synchronized because a single {@link Connection} is shared
-     * across MCP handler threads and the EDT.
-     */
     public synchronized void recordCall(@NotNull ToolCallRecord callRecord) {
         if (connection == null) return;
+        try {
+            insertRecord(callRecord);
+        } catch (SQLException e) {
+            if (isDbMoved(e) && tryReconnect()) {
+                try {
+                    insertRecord(callRecord);
+                } catch (SQLException retryEx) {
+                    LOG.warn("Failed to record tool call after reconnect", retryEx);
+                }
+            } else {
+                LOG.warn("Failed to record tool call", e);
+            }
+        }
+    }
+
+    private void insertRecord(@NotNull ToolCallRecord callRecord) throws SQLException {
         String sql = """
             INSERT INTO tool_calls (tool_name, category, input_size, output_size, duration_ms, success, client_id, timestamp)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -138,8 +150,38 @@ public final class ToolCallStatisticsService implements Disposable {
             stmt.setString(7, callRecord.clientId());
             stmt.setString(8, callRecord.timestamp().toString());
             stmt.executeUpdate();
+        }
+    }
+
+    private static boolean isDbMoved(@NotNull SQLException e) {
+        return e.getMessage() != null && e.getMessage().contains("SQLITE_READONLY_DBMOVED");
+    }
+
+    private boolean tryReconnect() {
+        if (project == null) return false;
+        closeConnectionQuietly();
+        try {
+            String basePath = project.getBasePath();
+            if (basePath == null) return false;
+            Path dbPath = Path.of(basePath, ".agentbridge", DB_FILENAME);
+            initializeWithConnection(DriverManager.getConnection("jdbc:sqlite:" + dbPath));
+            LOG.info("Reconnected to ToolCallStatisticsService database after file move");
+            return true;
         } catch (SQLException e) {
-            LOG.warn("Failed to record tool call", e);
+            LOG.warn("Failed to reconnect to ToolCallStatisticsService database", e);
+            connection = null;
+            return false;
+        }
+    }
+
+    private void closeConnectionQuietly() {
+        if (connection == null) return;
+        try {
+            connection.close();
+        } catch (SQLException ignored) {
+            // Best-effort close of stale connection
+        } finally {
+            connection = null;
         }
     }
 
@@ -285,12 +327,6 @@ public final class ToolCallStatisticsService implements Disposable {
         if (disconnectHandle != null) {
             disconnectHandle.run();
         }
-        if (connection != null) {
-            try {
-                connection.close();
-            } catch (SQLException e) {
-                LOG.debug("Failed to close tool-stats DB", e);
-            }
-        }
+        closeConnectionQuietly();
     }
 }
