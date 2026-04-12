@@ -1,6 +1,26 @@
 codecov:
   require_ci_to_pass: yes
 
-# Map TypeScript coverage paths from test output to repository structure
-fixes:
-  - "../chat-ui/::plugin-core/chat-ui/"  # lcov.info has ../chat-ui/src/*, map to plugin-core/chat-ui/src/*
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+
+flags:
+  plugin-core:
+    paths:
+      - plugin-core/src/main/
+    carryforward: true
+  chat-ui:
+    paths:
+      - plugin-core/chat-ui/src/
+    carryforward: true
+  mcp-server:
+    paths:
+      - mcp-server/src/main/
+    carryforward: true
