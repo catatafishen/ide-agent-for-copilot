@@ -31,6 +31,9 @@ class AcpMessageParser {
     private static final String KEY_STATUS = "status";
     private static final String KEY_RESULT = "result";
     private static final String KEY_TOOL_CALL_ID = "toolCallId";
+    private static final String KEY_DESCRIPTION = "description";
+    private static final String KEY_RAW_INPUT = "rawInput";
+    private static final String KEY_THINKING = "thinking";
 
     /**
      * Callbacks into the owning client for the three points where agent-specific logic is needed.
@@ -90,6 +93,12 @@ class AcpMessageParser {
             // Currently used by: OpenCode (fields: used, size, cost.amount, cost.currency).
             // 'used' is cumulative context tokens (not per-turn delta), so the toolbar value grows each turn.
             case "usage_update" -> parseUsageUpdate(params);
+            // config_option_update: sent by Copilot CLI when agent configuration changes (e.g. model,
+            // tool filters). Fields are undocumented; we acknowledge and ignore for now.
+            case "config_option_update" -> {
+                LOG.debug(displayName.get() + ": received config_option_update (not yet handled)");
+                yield null;
+            }
             default -> {
                 LOG.warn(displayName.get() + ": unknown session update type: '" + type + "'");
                 yield null;
@@ -138,7 +147,7 @@ class AcpMessageParser {
         String subAgentDesc = null;
         String subAgentPrompt = null;
         if (agentType != null && argumentsObj != null) {
-            subAgentDesc = argumentsObj.has("description") ? argumentsObj.get("description").getAsString() : null;
+            subAgentDesc = argumentsObj.has(KEY_DESCRIPTION) ? argumentsObj.get(KEY_DESCRIPTION).getAsString() : null;
             subAgentPrompt = argumentsObj.has("prompt") ? argumentsObj.get("prompt").getAsString() : null;
         }
 
@@ -154,13 +163,13 @@ class AcpMessageParser {
         }
 
         String error = params.has("error") ? params.get("error").getAsString() : null;
-        String description = params.has("description") ? params.get("description").getAsString() : null;
+        String description = params.has(KEY_DESCRIPTION) ? params.get(KEY_DESCRIPTION).getAsString() : null;
         String result = extractResultText(params);
 
         // Extract rawInput for tool correlation - this contains the actual tool arguments
         String arguments = null;
-        if (params.has("rawInput") && params.get("rawInput").isJsonObject()) {
-            arguments = params.get("rawInput").getAsJsonObject().toString();
+        if (params.has(KEY_RAW_INPUT) && params.get(KEY_RAW_INPUT).isJsonObject()) {
+            arguments = params.get(KEY_RAW_INPUT).getAsJsonObject().toString();
         }
 
         return new SessionUpdate.ToolCallUpdate(toolCallId, status, result, error, description, false, null, arguments);
@@ -264,8 +273,8 @@ class AcpMessageParser {
         String blockType = block.has("type") ? block.get("type").getAsString() : "text";
         if ("text".equals(blockType) && block.has("text")) {
             return new ContentBlock.Text(block.get("text").getAsString());
-        } else if ("thinking".equals(blockType) && block.has("thinking")) {
-            return new ContentBlock.Thinking(block.get("thinking").getAsString());
+        } else if (KEY_THINKING.equals(blockType) && block.has(KEY_THINKING)) {
+            return new ContentBlock.Thinking(block.get(KEY_THINKING).getAsString());
         } else if (KEY_CONTENT.equals(blockType) && block.has(KEY_CONTENT)) {
             // Spec: tool_call_update content items wrap blocks as {type:"content", content:{type,text}}
             JsonElement inner = block.get(KEY_CONTENT);
