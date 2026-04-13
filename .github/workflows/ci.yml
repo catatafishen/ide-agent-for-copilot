@@ -70,6 +70,7 @@ jobs:
         with:
           files: mcp-server/build/reports/jacoco/test/jacocoTestReport.xml
           flags: mcp-server
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -132,11 +133,15 @@ jobs:
         with:
           cache-disabled: true
 
+      - name: Build chat-ui with sourcemaps (for coverage)
+        run: BUILD_SOURCEMAPS=1 npm run build
+        working-directory: plugin-core/chat-ui
+
       - name: Run chat-ui tests with coverage
         run: npm run test:coverage
         working-directory: plugin-core/js-tests
 
-      - name: Build chat-ui
+      - name: Build chat-ui (production, no sourcemaps)
         run: npm run build
         working-directory: plugin-core/chat-ui
 
@@ -152,6 +157,7 @@ jobs:
         with:
           files: plugin-core/js-tests/coverage/lcov.info
           flags: chat-ui
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -162,6 +168,7 @@ jobs:
         with:
           files: plugin-core/build/reports/jacoco/test/jacocoTestReport.xml
           flags: plugin-core
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

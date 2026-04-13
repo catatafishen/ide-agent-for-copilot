@@ -1,5 +1,4 @@
 import * as esbuild from 'esbuild';
-import * as fs from 'fs';
 
 const banner = `/*
  * ⚠️  AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY!
@@ -12,13 +11,14 @@ const banner = `/*
  *   3. The changes will be compiled into this file
  *
  * See plugin-core/chat-ui/README.md for more information.
- */
-
-`;
+ */`;
 
 const sourcemaps = process.env.BUILD_SOURCEMAPS === '1';
 
 async function build() {
+    // Use esbuild's banner option so sourcemaps account for banner line offsets.
+    const jsBanner = {js: banner};
+
     // 1. Chat components — custom elements + ChatController (loaded first)
     await esbuild.build({
         entryPoints: ['src/index.ts'],
@@ -28,6 +28,7 @@ async function build() {
         outfile: 'dist/chat-components.js',
         target: 'es2022',
         sourcemap: sourcemaps ? 'inline' : false,
+        banner: jsBanner,
     });
 
     // 2. Web app — PWA page logic (loaded after chat-components)
@@ -39,6 +40,7 @@ async function build() {
         outfile: 'dist/web-app.js',
         target: 'es2022',
         sourcemap: sourcemaps ? 'inline' : false,
+        banner: jsBanner,
     });
 
     // 3. Service worker — runs in SW context, no DOM
@@ -49,13 +51,8 @@ async function build() {
         outfile: 'dist/sw.js',
         target: 'es2022',
         sourcemap: sourcemaps ? 'inline' : false,
+        banner: jsBanner,
     });
-
-    // Prepend banner to JS output files
-    for (const file of ['dist/chat-components.js', 'dist/web-app.js', 'dist/sw.js']) {
-        const content = fs.readFileSync(file, 'utf8');
-        fs.writeFileSync(file, banner + content);
-    }
 
     console.log('✓ Built: chat-components.js, web-app.js, sw.js');
 }
