@@ -10,7 +10,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for the pure static methods in {@link SearchConversationHistoryTool}.
@@ -263,6 +269,90 @@ class SearchConversationHistoryToolTest {
         assertTrue(result.contains("2025"), "Should contain year 2025");
     }
 
+    // ── formatTimestamp ─────────────────────────────────────
+
+    @Test
+    void formatTimestamp_validIso8601FormatsCorrectly() throws Exception {
+        String result = invokeFormatTimestamp("2025-06-15T12:00:00Z");
+        assertNotNull(result);
+        assertTrue(result.contains("2025"), "Should contain year 2025");
+        assertFalse(result.contains("T"), "Should not contain ISO 'T' separator");
+        assertFalse(result.contains("Z"), "Should not contain 'Z' suffix");
+    }
+
+    @Test
+    void formatTimestamp_invalidStringReturnsInputAsIs() throws Exception {
+        assertEquals("not-a-date", invokeFormatTimestamp("not-a-date"));
+    }
+
+    @Test
+    void formatTimestamp_emptyStringReturnsEmpty() throws Exception {
+        assertEquals("", invokeFormatTimestamp(""));
+    }
+
+    @Test
+    void formatTimestamp_partialIsoReturnsInputAsIs() throws Exception {
+        // "2025-06-15" is not a valid Instant, so it should fall through to the catch
+        String result = invokeFormatTimestamp("2025-06-15");
+        assertEquals("2025-06-15", result, "Partial ISO should be returned as-is");
+    }
+
+    // ── formatAndFilterEntries (truncation) ─────────────────
+
+    @Test
+    void formatAndFilterEntries_truncatesAtMaxChars() throws Exception {
+        List<EntryData> entries = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            entries.add(new EntryData.Text("Line number " + i + " with some extra text to fill space"));
+        }
+        Object options = createFilterOptions(null, null, null, null, null, null, 100);
+        String result = invokeFormatAndFilterEntries(entries, options);
+        assertTrue(result.contains("truncated"), "Should contain truncation marker");
+        assertTrue(result.contains("100"), "Should mention maxChars limit");
+    }
+
+    @Test
+    void formatAndFilterEntries_noTruncationWhenUnderLimit() throws Exception {
+        List<EntryData> entries = List.of(new EntryData.Text("Short text"));
+        Object options = createFilterOptions(null, null, null, null, null, null, 8000);
+        String result = invokeFormatAndFilterEntries(entries, options);
+        assertFalse(result.contains("truncated"), "Should not truncate short content");
+        assertTrue(result.contains("Short text"));
+    }
+
+    @Test
+    void formatAndFilterEntries_queryFiltersEntries() throws Exception {
+        List<EntryData> entries = List.of(
+            new EntryData.Text("apple pie"),
+            new EntryData.Text("banana split"),
+            new EntryData.Text("apple sauce")
+        );
+        Object options = createFilterOptions("apple", null, null, null, null, null, 8000);
+        String result = invokeFormatAndFilterEntries(entries, options);
+        assertTrue(result.contains("apple pie"), "Should include matching entries");
+        assertTrue(result.contains("apple sauce"), "Should include matching entries");
+        assertFalse(result.contains("banana"), "Should exclude non-matching entries");
+    }
+
+    @Test
+    void formatAndFilterEntries_emptyEntriesReturnsEmpty() throws Exception {
+        Object options = createFilterOptions(null, null, null, null, null, null, 8000);
+        String result = invokeFormatAndFilterEntries(Collections.emptyList(), options);
+        assertTrue(result.isEmpty(), "Empty entries should produce empty output");
+    }
+
+    @Test
+    void formatAndFilterEntries_thinkingEntriesWithBlankContentSkipped() throws Exception {
+        List<EntryData> entries = List.of(
+            new EntryData.Thinking("  "),
+            new EntryData.Text("visible text")
+        );
+        Object options = createFilterOptions(null, null, null, null, null, null, 8000);
+        String result = invokeFormatAndFilterEntries(entries, options);
+        assertFalse(result.contains("[thinking]"), "Blank thinking should be skipped");
+        assertTrue(result.contains("visible text"));
+    }
+
     // ── Helpers: build test data ────────────────────────────
 
     /**
@@ -320,6 +410,21 @@ class SearchConversationHistoryToolTest {
         Method m = SearchConversationHistoryTool.class.getDeclaredMethod("formatEpochMillis", long.class);
         m.setAccessible(true);
         return (String) m.invoke(null, epochMillis);
+    }
+
+    private static String invokeFormatTimestamp(String ts) throws Exception {
+        Method m = SearchConversationHistoryTool.class.getDeclaredMethod("formatTimestamp", String.class);
+        m.setAccessible(true);
+        return (String) m.invoke(null, ts);
+    }
+
+    private static String invokeFormatAndFilterEntries(List<EntryData> entries, Object options) throws Exception {
+        Class<?> filterOptionsClass = Class.forName(
+            SearchConversationHistoryTool.class.getName() + "$FilterOptions");
+        Method m = SearchConversationHistoryTool.class.getDeclaredMethod(
+            "formatAndFilterEntries", List.class, filterOptionsClass);
+        m.setAccessible(true);
+        return (String) m.invoke(null, entries, options);
     }
 
     private static Object createFilterOptions(String query, Instant since, Instant until,

@@ -491,6 +491,8 @@ tasks {
             "**/psi/java/RefactoringJavaSupport*", // PsiClass/PsiMethod traversal
             "**/psi/java/CodeNavigationJavaSupport*", // PsiClass outline + hierarchy
             "**/psi/java/ClassResolverUtil*",     // JavaPsiFacade class resolution
+            // ── Platform compatibility shim ──────────────────────────────────
+            "**/psi/PlatformApiCompat*",          // IDE API version shim (pure logic tested separately)
         )
         val allExcludes = uiExcludes + otherExcludes
 

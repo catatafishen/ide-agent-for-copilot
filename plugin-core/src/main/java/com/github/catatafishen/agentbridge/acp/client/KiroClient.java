@@ -302,13 +302,7 @@ public final class KiroClient extends AcpClient {
     protected SessionUpdate processUpdate(SessionUpdate update) {
         // Kiro sends thinking as agent_message_chunk with ContentBlock.Thinking blocks —
         // convert to agent_thought_chunk for proper UI rendering.
-        if (update instanceof SessionUpdate.AgentMessageChunk(var content)) {
-            boolean hasThinking = content.stream()
-                .anyMatch(block -> block instanceof ContentBlock.Thinking);
-            if (hasThinking) {
-                return new SessionUpdate.AgentThoughtChunk(content);
-            }
-        }
+        update = convertThinkingToThought(update);
         if (update instanceof SessionUpdate.ToolCall tc) {
             // Kiro sends multiple tool_call updates for the same toolCallId:
             // 1. First with just title (e.g., "search_text") - NO rawInput
@@ -320,6 +314,22 @@ public final class KiroClient extends AcpClient {
             return extractPurpose(tc);
         }
         return update;  // Pass through all other update types unchanged
+    }
+
+    /**
+     * Converts an {@link SessionUpdate.AgentMessageChunk} containing {@link ContentBlock.Thinking}
+     * blocks to an {@link SessionUpdate.AgentThoughtChunk} for proper UI rendering.
+     * Returns the original update unchanged if no conversion is needed.
+     */
+    static SessionUpdate convertThinkingToThought(SessionUpdate update) {
+        if (update instanceof SessionUpdate.AgentMessageChunk(var content)) {
+            boolean hasThinking = content.stream()
+                .anyMatch(block -> block instanceof ContentBlock.Thinking);
+            if (hasThinking) {
+                return new SessionUpdate.AgentThoughtChunk(content);
+            }
+        }
+        return update;
     }
 
     /**
@@ -373,23 +383,39 @@ public final class KiroClient extends AcpClient {
     }
 
     private SessionUpdate.ToolCall extractPurpose(SessionUpdate.ToolCall tc) {
-        String args = tc.arguments();
-        if (args != null && args.contains("__tool_use_purpose")) {
-            int start = args.indexOf("\"__tool_use_purpose\"");
-            if (start >= 0) {
-                int colonIdx = args.indexOf(':', start);
-                int quoteStart = args.indexOf('"', colonIdx + 1);
-                int quoteEnd = args.indexOf('"', quoteStart + 1);
-                if (quoteStart >= 0 && quoteEnd > quoteStart) {
-                    String purpose = args.substring(quoteStart + 1, quoteEnd);
-                    return new SessionUpdate.ToolCall(
-                        tc.toolCallId(), tc.title(), tc.kind(), tc.arguments(),
-                        tc.locations(), tc.agentType(), tc.subAgentDescription(),
-                        tc.subAgentPrompt(), purpose
-                    );
-                }
-            }
+        String purpose = extractPurposeFromArgs(tc.arguments());
+        if (purpose != null) {
+            return new SessionUpdate.ToolCall(
+                tc.toolCallId(), tc.title(), tc.kind(), tc.arguments(),
+                tc.locations(), tc.agentType(), tc.subAgentDescription(),
+                tc.subAgentPrompt(), purpose
+            );
         }
         return tc;
+    }
+
+    /**
+     * Extracts the {@code __tool_use_purpose} value from a JSON arguments string.
+     * Uses index-based parsing to avoid a full JSON parse for every tool call.
+     *
+     * @param args raw tool arguments JSON string
+     * @return the purpose string, or {@code null} if not found
+     */
+    @org.jetbrains.annotations.Nullable
+    static String extractPurposeFromArgs(@org.jetbrains.annotations.Nullable String args) {
+        if (args == null || !args.contains("__tool_use_purpose")) {
+            return null;
+        }
+        int start = args.indexOf("\"__tool_use_purpose\"");
+        if (start < 0) return null;
+        int colonIdx = args.indexOf(':', start);
+        if (colonIdx < 0) return null;
+        int quoteStart = args.indexOf('"', colonIdx + 1);
+        if (quoteStart < 0) return null;
+        int quoteEnd = args.indexOf('"', quoteStart + 1);
+        if (quoteEnd > quoteStart) {
+            return args.substring(quoteStart + 1, quoteEnd);
+        }
+        return null;
     }
 }
