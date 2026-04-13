@@ -15,10 +15,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -233,24 +231,23 @@ class UsageStatisticsLoaderTest {
             Files.writeString(jsonlPath, line1 + "\n" + line2 + "\n");
 
             Map<Object, Object> accumulators = new LinkedHashMap<>();
-            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
 
             assertEquals(1, accumulators.size(),
                 "Two entries on the same date/agent should produce exactly one accumulator bucket");
         }
 
         @Test
-        void tracksAgentChangesWithinSession(@TempDir Path tempDir) throws Exception {
+        void usesSessionAgentEvenWhenEntriesHaveDifferentAgentFields(@TempDir Path tempDir) throws Exception {
             Path jsonlPath = tempDir.resolve("mixed.jsonl");
+            // Text entries with different agent names (one is a client, one is a model name)
             String line1 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"GitHub Copilot\","
                 + "\"entryId\":\"e1\"}";
             String line2 = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
                 + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
                 + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
                 + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e2\"}";
-            String line3 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"Claude Code\","
+            String line3 = "{\"type\":\"text\",\"raw\":\"hello\",\"agent\":\"claude-3.5-sonnet\","
                 + "\"entryId\":\"e3\"}";
             String line4 = "{\"type\":\"turnStats\",\"turnId\":\"t2\",\"durationMs\":3000,"
                 + "\"inputTokens\":50,\"outputTokens\":100,\"toolCallCount\":1,"
@@ -259,24 +256,20 @@ class UsageStatisticsLoaderTest {
             Files.writeString(jsonlPath, line1 + "\n" + line2 + "\n" + line3 + "\n" + line4 + "\n");
 
             Map<Object, Object> accumulators = new LinkedHashMap<>();
-            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-            invokeCollectTurnStats(jsonlPath, "unknown", accumulators, agentIds, agentDisplayNames);
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
 
             Method buildMethod = UsageStatisticsLoader.class.getDeclaredMethod("buildDailyStats", Map.class);
             buildMethod.setAccessible(true);
             List<?> result = (List<?>) buildMethod.invoke(null, accumulators);
 
-            assertEquals(2, result.size());
-            assertTrue(agentIds.contains("copilot"));
-            assertTrue(agentIds.contains("claude-cli"));
-            assertEquals("GitHub Copilot", agentDisplayNames.get("copilot"));
-            assertEquals("Claude Code", agentDisplayNames.get("claude-cli"));
-
-            UsageStatisticsData.DailyAgentStats first = (UsageStatisticsData.DailyAgentStats) result.get(0);
-            UsageStatisticsData.DailyAgentStats second = (UsageStatisticsData.DailyAgentStats) result.get(1);
-            assertTrue(Set.of(first.agentId(), second.agentId()).contains("copilot"));
-            assertTrue(Set.of(first.agentId(), second.agentId()).contains("claude-cli"));
+            // Both TurnStats entries should be attributed to the session-level agent "copilot",
+            // NOT split into separate series based on the entry-level "agent" field
+            assertEquals(1, result.size(), "All entries in a session should use the session-level agent");
+            UsageStatisticsData.DailyAgentStats stats = (UsageStatisticsData.DailyAgentStats) result.get(0);
+            assertEquals("copilot", stats.agentId());
+            assertEquals(2, stats.turns());
+            assertEquals(150, stats.inputTokens());
+            assertEquals(300, stats.outputTokens());
         }
 
         @Test
@@ -285,9 +278,7 @@ class UsageStatisticsLoaderTest {
             Files.writeString(jsonlPath, "");
 
             Map<Object, Object> accumulators = new LinkedHashMap<>();
-            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
 
             assertTrue(accumulators.isEmpty());
         }
@@ -302,9 +293,7 @@ class UsageStatisticsLoaderTest {
             Files.writeString(jsonlPath, line + "\n");
 
             Map<Object, Object> accumulators = new LinkedHashMap<>();
-            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
 
             assertTrue(accumulators.isEmpty());
         }
@@ -326,9 +315,7 @@ class UsageStatisticsLoaderTest {
             Files.writeString(jsonlPath, line + "\n");
 
             Map<Object, Object> accumulators = new LinkedHashMap<>();
-            LinkedHashSet<String> agentIds = new LinkedHashSet<>();
-            Map<String, String> agentDisplayNames = new LinkedHashMap<>();
-            invokeCollectTurnStats(jsonlPath, "copilot", accumulators, agentIds, agentDisplayNames);
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
 
             assertFalse(accumulators.isEmpty(), "Precondition: accumulators must be populated");
 
@@ -356,14 +343,12 @@ class UsageStatisticsLoaderTest {
     }
 
     private static void invokeCollectTurnStats(Path jsonlPath, String agentId,
-                                               Map<Object, Object> accumulators,
-                                               Set<String> agentIds,
-                                               Map<String, String> agentDisplayNames) throws Exception {
+                                               Map<Object, Object> accumulators) throws Exception {
         Method m = UsageStatisticsLoader.class.getDeclaredMethod(
-            "collectTurnStats", Path.class, String.class, LocalDate.class, LocalDate.class, Map.class, Set.class, Map.class);
+            "collectTurnStats", Path.class, String.class, LocalDate.class, LocalDate.class, Map.class);
         m.setAccessible(true);
         m.invoke(null, jsonlPath, agentId,
             LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31),
-            accumulators, agentIds, agentDisplayNames);
+            accumulators);
     }
 }
