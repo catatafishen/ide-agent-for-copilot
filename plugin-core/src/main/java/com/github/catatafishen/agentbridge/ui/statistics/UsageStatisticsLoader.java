@@ -1,5 +1,6 @@
 package com.github.catatafishen.agentbridge.ui.statistics;
 
+import com.github.catatafishen.agentbridge.services.AgentIdMapper;
 import com.github.catatafishen.agentbridge.session.exporters.ExportUtils;
 import com.github.catatafishen.agentbridge.session.v2.EntryDataJsonAdapter;
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2;
@@ -193,15 +194,7 @@ final class UsageStatisticsLoader {
      * for color lookup via {@code ChatTheme.agentColorIndex()}.
      */
     static String toAgentId(String agentDisplayName) {
-        if (agentDisplayName == null || agentDisplayName.isEmpty()) return "unknown";
-        String lower = agentDisplayName.toLowerCase();
-        if (lower.contains("copilot")) return "copilot";
-        if (lower.contains("claude")) return "claude-cli";
-        if (lower.contains("opencode")) return "opencode";
-        if (lower.contains("junie")) return "junie";
-        if (lower.contains("kiro")) return "kiro";
-        if (lower.contains("codex")) return "codex";
-        return lower.replaceAll("[^a-z0-9]", "-");
+        return AgentIdMapper.toAgentId(agentDisplayName);
     }
 
     private static double parsePremiumMultiplier(String multiplier) {
