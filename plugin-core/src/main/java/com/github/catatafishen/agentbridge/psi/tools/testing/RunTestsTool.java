@@ -197,8 +197,7 @@ public final class RunTestsTool extends TestingTool {
             final String resolvedClass = classInfo.fqn();
             final Module resolvedModule = classInfo.module();
             String simpleName = resolvedClass.substring(resolvedClass.lastIndexOf('.') + 1);
-            String configName = "Test: " + (testMethod != null
-                ? simpleName + "." + testMethod : simpleName);
+            String configName = buildJUnitConfigName(simpleName, testMethod);
 
             CompletableFuture<ProcessHandler> handlerFuture = new CompletableFuture<>();
             AtomicReference<Runnable> disconnect = new AtomicReference<>(() -> {
@@ -238,7 +237,7 @@ public final class RunTestsTool extends TestingTool {
             List<String> matchingClasses = resolveMatchingTestClasses(target);
             if (matchingClasses.isEmpty()) return null;
 
-            String configName = "Test: " + target + " (" + matchingClasses.size() + " classes)";
+            String configName = buildPatternConfigName(target, matchingClasses.size());
 
             CompletableFuture<ProcessHandler> handlerFuture = new CompletableFuture<>();
             AtomicReference<Runnable> disconnect = new AtomicReference<>(() -> {
@@ -339,7 +338,7 @@ public final class RunTestsTool extends TestingTool {
 
     private String runTestsViaGradleConfig(String target, String module) {
         try {
-            String taskPrefix = module.isEmpty() ? "" : ":" + module + ":";
+            String taskPrefix = buildGradleTaskPrefix(module);
             String configName = "Gradle Test: " + target;
 
             CompletableFuture<ProcessHandler> handlerFuture = new CompletableFuture<>();
@@ -676,9 +675,7 @@ public final class RunTestsTool extends TestingTool {
         try {
             var getTextMethod = console.getClass().getMethod("getText");
             String text = (String) getTextMethod.invoke(console);
-            if (text != null && !text.isBlank()) {
-                return "\n=== Console Output ===\n" + ToolUtils.truncateOutput(text);
-            }
+            return formatConsoleSection(text);
         } catch (ReflectiveOperationException ignored) {
             // getText not available on this console type
         }
@@ -692,36 +689,91 @@ public final class RunTestsTool extends TestingTool {
         String name = (String) getName.invoke(test);
         boolean passed = (boolean) isPassed.invoke(test);
         boolean defect = (boolean) isDefect.invoke(test);
-        String status;
-        if (passed) {
-            status = "PASSED";
-        } else if (defect) {
-            status = "FAILED";
-        } else {
-            status = "UNKNOWN";
-        }
-        sb.append("  ").append(status).append(" ").append(name).append("\n");
 
+        String errorMsg = null;
+        String stacktrace = null;
         if (defect) {
             try {
-                String errorMsg = (String) test.getClass().getMethod("getErrorMessage").invoke(test);
-                if (errorMsg != null && !errorMsg.isEmpty()) {
-                    sb.append("    Error: ").append(errorMsg).append("\n");
-                }
-                String stacktrace = (String) test.getClass().getMethod("getStacktrace").invoke(test);
-                if (stacktrace != null && !stacktrace.isEmpty()) {
-                    sb.append("    Stacktrace:\n").append(stacktrace).append("\n");
-                }
+                errorMsg = (String) test.getClass().getMethod("getErrorMessage").invoke(test);
+                stacktrace = (String) test.getClass().getMethod("getStacktrace").invoke(test);
             } catch (NoSuchMethodException ignored) {
                 // Method not available on this test result type
             }
         }
+        sb.append(formatTestDetail(name, passed, defect, errorMsg, stacktrace));
     }
 
     // ── JUnit XML result parsing ─────────────────────────────
 
     private String parseJunitXmlResults(String basePath, String module) {
         return JunitXmlParser.parseJunitXmlResults(basePath, module);
+    }
+
+    // ── Extracted pure helpers ────────────────────────────────
+
+    /**
+     * Builds a JUnit run configuration name from the test class simple name and optional method.
+     * Pure function — no IDE dependency.
+     */
+    static String buildJUnitConfigName(@NotNull String simpleName, @Nullable String testMethod) {
+        return "Test: " + (testMethod != null ? simpleName + "." + testMethod : simpleName);
+    }
+
+    /**
+     * Builds a pattern-based run configuration name from the glob target and match count.
+     * Pure function — no IDE dependency.
+     */
+    static String buildPatternConfigName(@NotNull String target, int classCount) {
+        return "Test: " + target + " (" + classCount + " classes)";
+    }
+
+    /**
+     * Builds a Gradle task prefix from the module name.
+     * Returns an empty string for no module, or {@code ":module:"} for a named module.
+     * Pure function — no IDE dependency.
+     */
+    static String buildGradleTaskPrefix(@NotNull String module) {
+        return module.isEmpty() ? "" : ":" + module + ":";
+    }
+
+    /**
+     * Determines the test status label from passed/defect flags.
+     * Pure function — no IDE dependency.
+     */
+    static String determineTestStatus(boolean passed, boolean defect) {
+        if (passed) return "PASSED";
+        if (defect) return "FAILED";
+        return "UNKNOWN";
+    }
+
+    /**
+     * Formats a single test detail line with optional failure information.
+     * Pure function — no IDE dependency.
+     */
+    static String formatTestDetail(@NotNull String name, boolean passed, boolean defect,
+                                   @Nullable String errorMsg, @Nullable String stacktrace) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("  ").append(determineTestStatus(passed, defect)).append(" ").append(name).append("\n");
+        if (defect) {
+            if (errorMsg != null && !errorMsg.isEmpty()) {
+                sb.append("    Error: ").append(errorMsg).append("\n");
+            }
+            if (stacktrace != null && !stacktrace.isEmpty()) {
+                sb.append("    Stacktrace:\n").append(stacktrace).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Formats raw console text into a labelled console output section.
+     * Returns {@code null} if text is null or blank.
+     * Pure function — no IDE dependency.
+     */
+    @Nullable
+    static String formatConsoleSection(@Nullable String text) {
+        if (text == null || text.isBlank()) return null;
+        return "\n=== Console Output ===\n" + ToolUtils.truncateOutput(text);
     }
 
 }

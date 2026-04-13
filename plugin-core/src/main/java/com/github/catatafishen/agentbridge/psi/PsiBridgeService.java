@@ -137,7 +137,7 @@ public final class PsiBridgeService implements Disposable {
             pendingNudge.set(null);
             return;
         }
-        pendingNudge.updateAndGet(existing -> (existing == null || existing.isEmpty()) ? nudge : existing + "\n\n" + nudge);
+        pendingNudge.updateAndGet(existing -> mergeNudges(existing, nudge));
     }
 
     public void setOnNudgeConsumed(@Nullable Runnable callback) {
@@ -236,7 +236,7 @@ public final class PsiBridgeService implements Disposable {
         boolean chatWasActive = isChatToolWindowActive(project);
 
         // Determine if this tool requires synchronous execution (file/git/editing tools).
-        boolean requiresSync = def.category() != null && SYNC_TOOL_CATEGORIES.contains(def.category().name());
+        boolean requiresSync = isSyncCategory(def.category() != null ? def.category().name() : null);
 
         // Global write semaphore: serialize PSI-mutating tools to prevent EDT flooding and race
         // conditions. Multiple concurrent writes each posting lambdas via invokeLater can saturate
@@ -346,10 +346,7 @@ public final class PsiBridgeService implements Disposable {
                 }
             }
             // Append pending nudge (user guidance injected on next tool call)
-            String nudge = consumePendingNudge();
-            if (nudge != null) {
-                result = result + "\n\n[User nudge]: " + nudge;
-            }
+            result = appendNudgeToResult(result, consumePendingNudge());
             outputSize = result.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
             return result;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
@@ -361,14 +358,8 @@ public final class PsiBridgeService implements Disposable {
             LOG.warn("Tool call error: " + toolName, e);
             success = false;
             if (writeRegistered) writeBatchCoordinator.unregisterWrite();
-            String modalDetail = EdtUtil.describeModalBlocker();
-            String base = "Error: " + e.getMessage();
-            if (!modalDetail.isEmpty()) {
-                errorMessage = base + "\n" + modalDetail.trim()
-                    + "\nUse the interact_with_modal tool to respond to the dialog.";
-            } else {
-                errorMessage = base;
-            }
+            errorMessage = buildErrorWithModalDetail(
+                "Error: " + e.getMessage(), EdtUtil.describeModalBlocker());
             return errorMessage;
         } finally {
             if (needsGlobalLock && !semaphoreReleasedEarly) writeToolSemaphore.release();
@@ -670,6 +661,58 @@ public final class PsiBridgeService implements Disposable {
     }
 
     /**
+     * Merges a new nudge with any existing nudge text.
+     * Returns just the new nudge if there's no existing text; concatenates with double-newline otherwise.
+     */
+    static String mergeNudges(@Nullable String existing, @NotNull String newNudge) {
+        return (existing == null || existing.isEmpty()) ? newNudge : existing + "\n\n" + newNudge;
+    }
+
+    /**
+     * Appends a nudge message to a tool result, or returns the result unchanged if nudge is null.
+     */
+    static String appendNudgeToResult(@NotNull String result, @Nullable String nudge) {
+        return nudge != null ? result + "\n\n[User nudge]: " + nudge : result;
+    }
+
+    /**
+     * Formats the combined write result and highlight output.
+     * Returns the write result unchanged if highlights are null.
+     */
+    static String formatHighlightResult(@NotNull String writeResult, @Nullable String highlights) {
+        return highlights != null
+            ? writeResult + "\n\n--- Highlights (auto) ---\n" + highlights
+            : writeResult;
+    }
+
+    /**
+     * Builds an error message, optionally including modal dialog detail and a hint
+     * to use the interact_with_modal tool.
+     */
+    static String buildErrorWithModalDetail(@NotNull String baseError, @NotNull String modalDetail) {
+        if (!modalDetail.isEmpty()) {
+            return baseError + "\n" + modalDetail.trim()
+                + "\nUse the interact_with_modal tool to respond to the dialog.";
+        }
+        return baseError;
+    }
+
+    /**
+     * Returns true if the given category name identifies a synchronous (serialized) tool category.
+     */
+    static boolean isSyncCategory(@Nullable String categoryName) {
+        return categoryName != null && SYNC_TOOL_CATEGORIES.contains(categoryName);
+    }
+
+    /**
+     * Computes how much additional sleep time is needed for the daemon debounce to settle.
+     * Returns a non-positive value if no more sleep is needed.
+     */
+    static long computeExtraSleep(long lastFinishedAt, long settleMs, long now) {
+        return (lastFinishedAt + settleMs) - now;
+    }
+
+    /**
      * Returns the document's current modification stamp for the given file,
      * or -1 if the document is not loaded or the file is null.
      * Must be called inside a read action (or from EDT); wraps itself if needed.
@@ -761,9 +804,7 @@ public final class PsiBridgeService implements Disposable {
             LOG.info("Auto-highlights: appended " + highlights.split("\n").length + " lines for " + path);
         }
 
-        return highlights != null
-            ? writeResult + "\n\n--- Highlights (auto) ---\n" + highlights
-            : writeResult;
+        return formatHighlightResult(writeResult, highlights);
     }
 
     private DaemonWaiter resolveActiveWaiter(
@@ -903,7 +944,7 @@ public final class PsiBridgeService implements Disposable {
             // If a second pass fired while we slept (e.g. SonarLint's external annotator),
             // wait out the remaining settle time from that latest event.
             if (lastFinishedAt != snapshotAt) {
-                long extraSleep = (lastFinishedAt + SETTLE_MS) - System.currentTimeMillis();
+                long extraSleep = computeExtraSleep(lastFinishedAt, SETTLE_MS, System.currentTimeMillis());
                 if (extraSleep > 0) {
                     Thread.sleep(extraSleep);
                 }

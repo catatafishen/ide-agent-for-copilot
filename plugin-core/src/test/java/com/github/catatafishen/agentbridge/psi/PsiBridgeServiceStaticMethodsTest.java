@@ -518,4 +518,220 @@ class PsiBridgeServiceStaticMethodsTest {
             assertTrue(PsiBridgeService.isPathUnderBase("/any/file.txt", "/"));
         }
     }
+
+    // ---------------------------------------------------------------
+    // mergeNudges
+    // ---------------------------------------------------------------
+    @Nested
+    class MergeNudgesTest {
+
+        @Test
+        void nullExistingReturnNewNudge() {
+            assertEquals("hello", PsiBridgeService.mergeNudges(null, "hello"));
+        }
+
+        @Test
+        void emptyExistingReturnNewNudge() {
+            assertEquals("hello", PsiBridgeService.mergeNudges("", "hello"));
+        }
+
+        @Test
+        void existingAndNewAreConcatenatedWithDoubleNewline() {
+            assertEquals("first\n\nsecond", PsiBridgeService.mergeNudges("first", "second"));
+        }
+
+        @Test
+        void multipleAccumulatedNudges() {
+            String merged = PsiBridgeService.mergeNudges("a", "b");
+            merged = PsiBridgeService.mergeNudges(merged, "c");
+            assertEquals("a\n\nb\n\nc", merged);
+        }
+
+        @Test
+        void existingWithWhitespaceOnlyIsNotConsideredEmpty() {
+            // " " is not null and not isEmpty(), so it merges
+            assertEquals(" \n\nnew", PsiBridgeService.mergeNudges(" ", "new"));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // appendNudgeToResult
+    // ---------------------------------------------------------------
+    @Nested
+    class AppendNudgeToResultTest {
+
+        @Test
+        void nullNudgeReturnsResultUnchanged() {
+            assertEquals("OK: done", PsiBridgeService.appendNudgeToResult("OK: done", null));
+        }
+
+        @Test
+        void nonNullNudgeAppendsWithPrefix() {
+            String result = PsiBridgeService.appendNudgeToResult("OK: done", "please use foo");
+            assertEquals("OK: done\n\n[User nudge]: please use foo", result);
+        }
+
+        @Test
+        void emptyNudgeStillAppends() {
+            // Empty string is non-null, so it appends (the nudge prefix is still visible)
+            String result = PsiBridgeService.appendNudgeToResult("result", "");
+            assertEquals("result\n\n[User nudge]: ", result);
+        }
+
+        @Test
+        void emptyResultWithNudge() {
+            String result = PsiBridgeService.appendNudgeToResult("", "nudge");
+            assertEquals("\n\n[User nudge]: nudge", result);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // formatHighlightResult
+    // ---------------------------------------------------------------
+    @Nested
+    class FormatHighlightResultTest {
+
+        @Test
+        void nullHighlightsReturnsWriteResultUnchanged() {
+            assertEquals("Written: 10 lines",
+                PsiBridgeService.formatHighlightResult("Written: 10 lines", null));
+        }
+
+        @Test
+        void nonNullHighlightsAppendsSection() {
+            String result = PsiBridgeService.formatHighlightResult(
+                "Edited: file.java", "line 5: warning");
+            assertEquals("Edited: file.java\n\n--- Highlights (auto) ---\nline 5: warning", result);
+        }
+
+        @Test
+        void emptyHighlightsStillAppendsSection() {
+            String result = PsiBridgeService.formatHighlightResult("Edited: file.java", "");
+            assertEquals("Edited: file.java\n\n--- Highlights (auto) ---\n", result);
+        }
+
+        @Test
+        void multiLineHighlights() {
+            String highlights = "line 1: error\nline 5: warning\nline 10: info";
+            String result = PsiBridgeService.formatHighlightResult("OK", highlights);
+            assertTrue(result.startsWith("OK\n\n--- Highlights (auto) ---\n"));
+            assertTrue(result.contains("line 1: error"));
+            assertTrue(result.contains("line 10: info"));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // buildErrorWithModalDetail
+    // ---------------------------------------------------------------
+    @Nested
+    class BuildErrorWithModalDetailTest {
+
+        @Test
+        void emptyModalDetailReturnsBaseError() {
+            assertEquals("Error: something broke",
+                PsiBridgeService.buildErrorWithModalDetail("Error: something broke", ""));
+        }
+
+        @Test
+        void nonEmptyModalDetailAppendsDetailAndHint() {
+            String result = PsiBridgeService.buildErrorWithModalDetail(
+                "Error: blocked", "Dialog: Save changes?");
+            assertEquals("Error: blocked\nDialog: Save changes?"
+                + "\nUse the interact_with_modal tool to respond to the dialog.", result);
+        }
+
+        @Test
+        void modalDetailIsTrimmed() {
+            String result = PsiBridgeService.buildErrorWithModalDetail(
+                "Error: x", "  padded detail  ");
+            assertTrue(result.contains("padded detail"));
+            assertFalse(result.contains("  padded detail  \n"));
+        }
+
+        @Test
+        void modalDetailWithNewlinesPreservesContent() {
+            String result = PsiBridgeService.buildErrorWithModalDetail(
+                "Error: fail", "Line1\nLine2");
+            assertTrue(result.contains("Line1\nLine2"));
+            assertTrue(result.endsWith("Use the interact_with_modal tool to respond to the dialog."));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // isSyncCategory
+    // ---------------------------------------------------------------
+    @Nested
+    class IsSyncCategoryTest {
+
+        @ParameterizedTest
+        @ValueSource(strings = {"FILE", "EDITING", "REFACTOR", "GIT"})
+        void syncCategoriesReturnTrue(String category) {
+            assertTrue(PsiBridgeService.isSyncCategory(category));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"NAVIGATION", "TESTING", "PROJECT", "TERMINAL", "UNKNOWN", ""})
+        void nonSyncCategoriesReturnFalse(String category) {
+            assertFalse(PsiBridgeService.isSyncCategory(category));
+        }
+
+        @Test
+        void nullCategoryReturnsFalse() {
+            assertFalse(PsiBridgeService.isSyncCategory(null));
+        }
+
+        @Test
+        void lowercaseSyncCategoryReturnsFalse() {
+            // Category names are case-sensitive
+            assertFalse(PsiBridgeService.isSyncCategory("file"));
+            assertFalse(PsiBridgeService.isSyncCategory("git"));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // computeExtraSleep
+    // ---------------------------------------------------------------
+    @Nested
+    class ComputeExtraSleepTest {
+
+        @Test
+        void noSleepNeededWhenSettleTimeElapsed() {
+            // lastFinished=1000, settle=600, now=1700 → 1000+600-1700 = -100 (no sleep)
+            long result = PsiBridgeService.computeExtraSleep(1000L, 600L, 1700L);
+            assertTrue(result < 0, "Should be negative when settle time has elapsed");
+        }
+
+        @Test
+        void exactlyAtSettleTimeReturnsZero() {
+            // lastFinished=1000, settle=600, now=1600 → 1000+600-1600 = 0
+            assertEquals(0L, PsiBridgeService.computeExtraSleep(1000L, 600L, 1600L));
+        }
+
+        @Test
+        void positiveSleepNeededWhenWithinSettleWindow() {
+            // lastFinished=1000, settle=600, now=1400 → 1000+600-1400 = 200
+            assertEquals(200L, PsiBridgeService.computeExtraSleep(1000L, 600L, 1400L));
+        }
+
+        @Test
+        void fullSettleSleepNeededImmediatelyAfterFinish() {
+            // lastFinished=1000, settle=600, now=1000 → 1000+600-1000 = 600
+            assertEquals(600L, PsiBridgeService.computeExtraSleep(1000L, 600L, 1000L));
+        }
+
+        @Test
+        void zeroSettleMsAlwaysReturnsNonPositive() {
+            // With settle=0, extra sleep is always <= 0 (no debounce)
+            assertTrue(PsiBridgeService.computeExtraSleep(5000L, 0L, 5000L) <= 0);
+        }
+
+        @Test
+        void largeTimestampsDoNotOverflow() {
+            long now = System.currentTimeMillis();
+            long lastFinished = now - 100;
+            long settle = 600;
+            // Should be 500 (600 - 100 = 500)
+            assertEquals(500L, PsiBridgeService.computeExtraSleep(lastFinished, settle, now));
+        }
+    }
 }

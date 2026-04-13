@@ -196,23 +196,15 @@ public final class SessionSwitchService implements Disposable {
         }
 
         // Export to the new client's native format.
-        switch (toProfileId) {
-            case ClaudeCliClient.PROFILE_ID -> exportToClaudeCli(entries, basePath);
-            case CodexAppServerClient.PROFILE_ID -> exportToCodex(entries, basePath);
-            default -> {
-                if (toProfileId.equals(AgentProfileManager.KIRO_PROFILE_ID)) {
-                    exportToKiro(entries, basePath, toProfileId);
-                } else if (toProfileId.equals(AgentProfileManager.JUNIE_PROFILE_ID)) {
-                    exportToJunie(entries, basePath, toProfileId);
-                } else if (toProfileId.equals(AgentProfileManager.OPENCODE_PROFILE_ID)) {
-                    exportToOpenCode(entries, basePath);
-                } else if (toProfileId.startsWith(COPILOT_ID_PREFIX)) {
-                    exportToCopilot(entries, basePath, toProfileId);
-                } else {
-                    LOG.info("ACP client '" + toProfileId
-                        + "' — no native export format; will resume via resumeSessionId");
-                }
-            }
+        switch (classifyExportTarget(toProfileId)) {
+            case "claude" -> exportToClaudeCli(entries, basePath);
+            case "codex" -> exportToCodex(entries, basePath);
+            case "kiro" -> exportToKiro(entries, basePath, toProfileId);
+            case "junie" -> exportToJunie(entries, basePath, toProfileId);
+            case "opencode" -> exportToOpenCode(entries, basePath);
+            case "copilot" -> exportToCopilot(entries, basePath, toProfileId);
+            default -> LOG.info("ACP client '" + toProfileId
+                + "' — no native export format; will resume via resumeSessionId");
         }
     }
 
@@ -318,19 +310,9 @@ public final class SessionSwitchService implements Disposable {
             Files.createDirectories(sessionDir);
 
             // Write session.json
-            JsonObject sessionJson = new JsonObject();
-            sessionJson.addProperty("id", newSessionId);
-            JsonArray workspacePaths = new JsonArray();
-            workspacePaths.add(basePath != null ? basePath : "");
-            sessionJson.add(WORKSPACE_PATHS_KEY, workspacePaths);
-            sessionJson.addProperty("title", "Imported from AgentBridge");
-            long now = System.currentTimeMillis();
-            sessionJson.addProperty("createdAt", Instant.ofEpochMilli(now).toString());
-            sessionJson.addProperty("lastModifiedAt", Instant.ofEpochMilli(now).toString());
-            sessionJson.addProperty("schemaVersion", 1);
             Files.writeString(
                 sessionDir.resolve("session.json"),
-                GSON.toJson(sessionJson),
+                buildAcpSessionJson(newSessionId, basePath, System.currentTimeMillis()),
                 StandardCharsets.UTF_8);
 
             // Write messages.jsonl via AnthropicMessageExporter
@@ -385,7 +367,7 @@ public final class SessionSwitchService implements Disposable {
         try {
             String base = basePath != null ? basePath : "";
             String newSessionId = UUID.randomUUID().toString();
-            Path sessionDir = Path.of(System.getProperty(USER_HOME_PROPERTY), ".copilot", SESSION_STATE_DIR, newSessionId);
+            Path sessionDir = copilotSessionDir(newSessionId);
             Files.createDirectories(sessionDir);
 
             // Create required subdirectories that Copilot CLI expects
@@ -438,6 +420,62 @@ public final class SessionSwitchService implements Disposable {
             + "summary_count: 0\n"
             + "created_at: " + timestamp + "\n"
             + "updated_at: " + timestamp + "\n";
+    }
+
+    /**
+     * Builds the JSON content for an ACP local session's {@code session.json} file.
+     *
+     * <p>The JSON includes the session ID, workspace paths, title, timestamps,
+     * and schema version. This is used by Kiro and Junie for session import.</p>
+     *
+     * @param sessionId   unique session identifier
+     * @param basePath    project base path (may be null)
+     * @param epochMillis timestamp in milliseconds since epoch
+     * @return JSON string for session.json
+     */
+    static String buildAcpSessionJson(@NotNull String sessionId, @Nullable String basePath, long epochMillis) {
+        JsonObject sessionJson = new JsonObject();
+        sessionJson.addProperty("id", sessionId);
+        JsonArray workspacePaths = new JsonArray();
+        workspacePaths.add(basePath != null ? basePath : "");
+        sessionJson.add(WORKSPACE_PATHS_KEY, workspacePaths);
+        sessionJson.addProperty("title", "Imported from AgentBridge");
+        String ts = Instant.ofEpochMilli(epochMillis).toString();
+        sessionJson.addProperty("createdAt", ts);
+        sessionJson.addProperty("lastModifiedAt", ts);
+        sessionJson.addProperty("schemaVersion", 1);
+        return GSON.toJson(sessionJson);
+    }
+
+    /**
+     * Classifies a profile ID into an export target category.
+     *
+     * <p>Returns one of: {@code "claude"}, {@code "codex"}, {@code "kiro"},
+     * {@code "junie"}, {@code "opencode"}, {@code "copilot"}, or {@code "generic"}.</p>
+     *
+     * @param profileId the agent profile ID to classify
+     * @return the export target category string
+     */
+    static String classifyExportTarget(@NotNull String profileId) {
+        if (ClaudeCliClient.PROFILE_ID.equals(profileId)) return "claude";
+        if (CodexAppServerClient.PROFILE_ID.equals(profileId)) return "codex";
+        if (AgentProfileManager.KIRO_PROFILE_ID.equals(profileId)) return "kiro";
+        if (AgentProfileManager.JUNIE_PROFILE_ID.equals(profileId)) return "junie";
+        if (AgentProfileManager.OPENCODE_PROFILE_ID.equals(profileId)) return "opencode";
+        if (profileId.startsWith(COPILOT_ID_PREFIX)) return "copilot";
+        return "generic";
+    }
+
+    /**
+     * Returns the path to a Copilot CLI session directory:
+     * {@code ~/.copilot/session-state/<sessionId>/}.
+     *
+     * @param sessionId the session UUID
+     * @return path to the session directory (may not exist on disk)
+     */
+    @NotNull
+    static Path copilotSessionDir(@NotNull String sessionId) {
+        return Path.of(System.getProperty(USER_HOME_PROPERTY, ""), ".copilot", SESSION_STATE_DIR, sessionId);
     }
 
     /**

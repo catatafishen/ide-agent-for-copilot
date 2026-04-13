@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -116,7 +118,7 @@ class RunTestsToolStaticMethodsTest {
             assertTrue(result.contains("Tests PASSED"), "should contain PASSED marker");
             assertTrue(result.contains("MyTestConfig"), "should contain config name");
             assertTrue(result.contains("Results are visible in the IntelliJ test runner panel."),
-                    "should contain runner panel message when output is empty");
+                "should contain runner panel message when output is empty");
             assertFalse(result.contains("FAILED"), "should not contain FAILED");
         }
 
@@ -129,7 +131,7 @@ class RunTestsToolStaticMethodsTest {
             assertTrue(result.contains("MyTestConfig"), "should contain config name");
             assertTrue(result.contains("\n5 tests, 5 passed"), "should append test output after newline");
             assertFalse(result.contains("Results are visible in the IntelliJ test runner panel."),
-                    "should not contain runner panel message when output is present");
+                "should not contain runner panel message when output is present");
         }
 
         @Test
@@ -140,7 +142,7 @@ class RunTestsToolStaticMethodsTest {
             assertTrue(result.contains("Tests FAILED (exit code 1)"), "should contain FAILED with exit code");
             assertTrue(result.contains("FailConfig"), "should contain config name");
             assertTrue(result.contains("Results are visible in the IntelliJ test runner panel."),
-                    "should contain runner panel message when output is empty");
+                "should contain runner panel message when output is empty");
             assertFalse(result.contains("Tests PASSED"), "should not contain PASSED");
         }
 
@@ -153,7 +155,7 @@ class RunTestsToolStaticMethodsTest {
             assertTrue(result.contains("FailConfig"), "should contain config name");
             assertTrue(result.contains("\n2 tests, 1 failed"), "should append test output after newline");
             assertFalse(result.contains("Results are visible in the IntelliJ test runner panel."),
-                    "should not contain runner panel message when output is present");
+                "should not contain runner panel message when output is present");
         }
 
         @Test
@@ -171,7 +173,226 @@ class RunTestsToolStaticMethodsTest {
             String result = RunTestsTool.formatTestSummary(0, "DashTest", "");
 
             assertTrue(result.contains("Tests PASSED — DashTest"),
-                    "should use em dash separator between status and config name");
+                "should use em dash separator between status and config name");
+        }
+    }
+
+    // ── buildJUnitConfigName ─────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("buildJUnitConfigName")
+    class BuildJUnitConfigName {
+
+        @Test
+        @DisplayName("class only produces 'Test: ClassName'")
+        void classOnly() {
+            assertEquals("Test: MyTest", RunTestsTool.buildJUnitConfigName("MyTest", null));
+        }
+
+        @Test
+        @DisplayName("class with method produces 'Test: ClassName.methodName'")
+        void classAndMethod() {
+            assertEquals("Test: MyTest.testFoo", RunTestsTool.buildJUnitConfigName("MyTest", "testFoo"));
+        }
+
+        @Test
+        @DisplayName("simple name with single-char method")
+        void singleCharMethod() {
+            assertEquals("Test: A.x", RunTestsTool.buildJUnitConfigName("A", "x"));
+        }
+    }
+
+    // ── buildPatternConfigName ───────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("buildPatternConfigName")
+    class BuildPatternConfigName {
+
+        @Test
+        @DisplayName("wildcard pattern with class count")
+        void wildcardPattern() {
+            assertEquals("Test: *Test (5 classes)",
+                RunTestsTool.buildPatternConfigName("*Test", 5));
+        }
+
+        @Test
+        @DisplayName("single matching class")
+        void singleClass() {
+            assertEquals("Test: *Integration* (1 classes)",
+                RunTestsTool.buildPatternConfigName("*Integration*", 1));
+        }
+
+        @Test
+        @DisplayName("zero matching classes")
+        void zeroClasses() {
+            assertEquals("Test: *Nothing* (0 classes)",
+                RunTestsTool.buildPatternConfigName("*Nothing*", 0));
+        }
+    }
+
+    // ── buildGradleTaskPrefix ────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("buildGradleTaskPrefix")
+    class BuildGradleTaskPrefix {
+
+        @Test
+        @DisplayName("empty module returns empty prefix")
+        void emptyModule() {
+            assertEquals("", RunTestsTool.buildGradleTaskPrefix(""));
+        }
+
+        @Test
+        @DisplayName("named module returns ':module:' prefix")
+        void namedModule() {
+            assertEquals(":plugin-core:", RunTestsTool.buildGradleTaskPrefix("plugin-core"));
+        }
+
+        @Test
+        @DisplayName("simple module name")
+        void simpleModule() {
+            assertEquals(":app:", RunTestsTool.buildGradleTaskPrefix("app"));
+        }
+    }
+
+    // ── determineTestStatus ──────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("determineTestStatus")
+    class DetermineTestStatus {
+
+        @Test
+        @DisplayName("passed=true returns PASSED regardless of defect flag")
+        void passedTrue() {
+            assertEquals("PASSED", RunTestsTool.determineTestStatus(true, false));
+        }
+
+        @Test
+        @DisplayName("passed=true and defect=true still returns PASSED (passed takes priority)")
+        void passedTrueDefectTrue() {
+            assertEquals("PASSED", RunTestsTool.determineTestStatus(true, true));
+        }
+
+        @Test
+        @DisplayName("passed=false and defect=true returns FAILED")
+        void defectTrue() {
+            assertEquals("FAILED", RunTestsTool.determineTestStatus(false, true));
+        }
+
+        @Test
+        @DisplayName("passed=false and defect=false returns UNKNOWN")
+        void unknown() {
+            assertEquals("UNKNOWN", RunTestsTool.determineTestStatus(false, false));
+        }
+    }
+
+    // ── formatTestDetail ─────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("formatTestDetail")
+    class FormatTestDetail {
+
+        @Test
+        @DisplayName("passed test shows PASSED status with name")
+        void passedTest() {
+            String result = RunTestsTool.formatTestDetail("testFoo", true, false, null, null);
+            assertEquals("  PASSED testFoo\n", result);
+        }
+
+        @Test
+        @DisplayName("failed test with error message and stacktrace")
+        void failedWithErrorAndStack() {
+            String result = RunTestsTool.formatTestDetail(
+                "testBar", false, true, "expected 1 but was 2", "at com.Foo.testBar(Foo.java:10)");
+            assertTrue(result.startsWith("  FAILED testBar\n"), "should start with FAILED status line");
+            assertTrue(result.contains("    Error: expected 1 but was 2\n"), "should contain error message");
+            assertTrue(result.contains("    Stacktrace:\nat com.Foo.testBar(Foo.java:10)\n"),
+                "should contain stacktrace");
+        }
+
+        @Test
+        @DisplayName("failed test with null error message and null stacktrace")
+        void failedNullMessages() {
+            String result = RunTestsTool.formatTestDetail("testBaz", false, true, null, null);
+            assertEquals("  FAILED testBaz\n", result, "should only have status line when messages are null");
+        }
+
+        @Test
+        @DisplayName("failed test with empty error message is omitted")
+        void failedEmptyErrorMsg() {
+            String result = RunTestsTool.formatTestDetail("testEmpty", false, true, "", "");
+            assertEquals("  FAILED testEmpty\n", result, "should omit empty error and stacktrace");
+        }
+
+        @Test
+        @DisplayName("failed test with error only (no stacktrace)")
+        void failedErrorOnly() {
+            String result = RunTestsTool.formatTestDetail("testErr", false, true, "assertion failed", null);
+            assertTrue(result.contains("    Error: assertion failed\n"), "should contain error");
+            assertFalse(result.contains("Stacktrace"), "should not contain stacktrace when null");
+        }
+
+        @Test
+        @DisplayName("failed test with stacktrace only (no error message)")
+        void failedStacktraceOnly() {
+            String result = RunTestsTool.formatTestDetail("testStack", false, true, null, "at X.y(X.java:5)");
+            assertFalse(result.contains("Error:"), "should not contain Error when null");
+            assertTrue(result.contains("    Stacktrace:\nat X.y(X.java:5)\n"), "should contain stacktrace");
+        }
+
+        @Test
+        @DisplayName("unknown status test ignores error/stacktrace even if provided")
+        void unknownStatus() {
+            String result = RunTestsTool.formatTestDetail("testUnknown", false, false, "some error", "some stack");
+            assertEquals("  UNKNOWN testUnknown\n", result,
+                "should not include error/stacktrace when defect=false");
+        }
+    }
+
+    // ── formatConsoleSection ─────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("formatConsoleSection")
+    class FormatConsoleSection {
+
+        @Test
+        @DisplayName("null text returns null")
+        void nullText() {
+            assertNull(RunTestsTool.formatConsoleSection(null));
+        }
+
+        @Test
+        @DisplayName("empty text returns null")
+        void emptyText() {
+            assertNull(RunTestsTool.formatConsoleSection(""));
+        }
+
+        @Test
+        @DisplayName("blank text (whitespace only) returns null")
+        void blankText() {
+            assertNull(RunTestsTool.formatConsoleSection("   \n  \t  "));
+        }
+
+        @Test
+        @DisplayName("non-blank text is wrapped with console header")
+        void normalText() {
+            String result = RunTestsTool.formatConsoleSection("some test output");
+            assertNotNull(result);
+            assertTrue(result.startsWith("\n=== Console Output ===\n"),
+                "should start with console header");
+            assertTrue(result.contains("some test output"), "should contain original text");
+        }
+
+        @Test
+        @DisplayName("long text is truncated via ToolUtils.truncateOutput")
+        void longTextIsTruncated() {
+            // Create text longer than 8000 chars (default truncation limit)
+            String longText = "x".repeat(10000);
+            String result = RunTestsTool.formatConsoleSection(longText);
+            assertNotNull(result);
+            assertTrue(result.startsWith("\n=== Console Output ===\n"),
+                "should start with console header");
+            assertTrue(result.contains("truncated"), "long text should be truncated");
         }
     }
 }
