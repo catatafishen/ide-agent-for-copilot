@@ -3,6 +3,7 @@ package com.github.catatafishen.agentbridge.services;
 import com.github.catatafishen.agentbridge.psi.PlatformApiCompat;
 import com.github.catatafishen.agentbridge.psi.PsiBridgeService;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -179,6 +180,40 @@ public final class ToolCallStatisticsService implements Disposable {
             stmt.setString(8, callRecord.clientId());
             stmt.setString(9, callRecord.timestamp().toString());
             stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Checks whether a tool call record already exists at the given timestamp
+     * and tool name. Used by {@link ToolCallStatisticsBackfill} for deduplication.
+     */
+    public synchronized boolean hasRecordAt(@NotNull Instant timestamp, @NotNull String toolName) {
+        if (connection == null) return false;
+        String sql = "SELECT COUNT(*) FROM tool_calls WHERE timestamp = ? AND tool_name = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, timestamp.toString());
+            stmt.setString(2, toolName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() && rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            LOG.warn("Failed to check for existing record", e);
+            return false;
+        }
+    }
+
+    /**
+     * Returns the total number of tool call records in the database.
+     * Used to determine whether a backfill is needed.
+     */
+    public synchronized int getRecordCount() {
+        if (connection == null) return 0;
+        try (PreparedStatement stmt = connection.prepareStatement("SELECT COUNT(*) FROM tool_calls");
+             ResultSet rs = stmt.executeQuery()) {
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            LOG.warn("Failed to count records", e);
+            return 0;
         }
     }
 
@@ -389,6 +424,32 @@ public final class ToolCallStatisticsService implements Disposable {
         return results;
     }
 
+    /**
+     * Threshold below which the database is considered empty enough to warrant backfill.
+     * If the DB has fewer records than this, session JSONL files are scanned.
+     */
+    private static final int BACKFILL_THRESHOLD = 10;
+
+    private static void triggerBackfillIfNeeded(@NotNull ToolCallStatisticsService service,
+                                                @NotNull Project project) {
+        String basePath = project.getBasePath();
+        if (basePath == null) return;
+
+        if (service.getRecordCount() >= BACKFILL_THRESHOLD) return;
+
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            try {
+                ToolCallStatisticsBackfill.BackfillResult result =
+                    ToolCallStatisticsBackfill.backfill(service, basePath);
+                if (result.inserted() > 0) {
+                    LOG.info("Tool statistics backfill: " + result);
+                }
+            } catch (Exception e) {
+                LOG.warn("Tool statistics backfill failed", e);
+            }
+        });
+    }
+
     public static ToolCallStatisticsService getInstance(@NotNull Project project) {
         ToolCallStatisticsService service = PlatformApiCompat.getService(project, ToolCallStatisticsService.class);
         if (!service.initialized) {
@@ -397,6 +458,7 @@ public final class ToolCallStatisticsService implements Disposable {
                     try {
                         service.initialize();
                         service.initialized = true;
+                        triggerBackfillIfNeeded(service, project);
                     } catch (RuntimeException e) {
                         LOG.error("ToolCallStatisticsService initialization failed — "
                             + "tool call recording will be disabled until restart", e);
