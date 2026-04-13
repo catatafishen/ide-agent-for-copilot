@@ -3,6 +3,8 @@ package com.github.catatafishen.agentbridge.acp.client;
 import com.github.catatafishen.agentbridge.acp.model.Model;
 import com.github.catatafishen.agentbridge.acp.model.PromptResponse;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -12,7 +14,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CopilotClientTest {
 
@@ -310,5 +315,94 @@ class CopilotClientTest {
         Method m = CopilotClient.class.getDeclaredMethod("buildSingleToolReprimand", String.class);
         m.setAccessible(true);
         return (String) m.invoke(null, toolId);
+    }
+
+    @Nested
+    class MergeMcpConfig {
+
+        @Test
+        void createsNewConfigWhenNoneExists(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+            CopilotClient.mergeMcpConfigStatic(tempDir, 9876, "agentbridge", "http");
+
+            java.nio.file.Path configPath = tempDir.resolve("mcp-config.json");
+            assertTrue(java.nio.file.Files.exists(configPath));
+
+            JsonObject root = JsonParser.parseString(
+                java.nio.file.Files.readString(configPath)).getAsJsonObject();
+            assertTrue(root.has("mcpServers"));
+            JsonObject servers = root.getAsJsonObject("mcpServers");
+            assertTrue(servers.has("agentbridge"));
+            JsonObject entry = servers.getAsJsonObject("agentbridge");
+            assertEquals("http", entry.get("type").getAsString());
+            assertEquals("http://localhost:9876/mcp", entry.get("url").getAsString());
+        }
+
+        @Test
+        void preservesExistingServers(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+            // Pre-populate with an existing server
+            JsonObject existingServer = new JsonObject();
+            existingServer.addProperty("type", "stdio");
+            existingServer.addProperty("command", "some-server");
+            JsonObject servers = new JsonObject();
+            servers.add("my-server", existingServer);
+            JsonObject root = new JsonObject();
+            root.add("mcpServers", servers);
+
+            java.nio.file.Path configPath = tempDir.resolve("mcp-config.json");
+            java.nio.file.Files.writeString(configPath, root.toString());
+
+            CopilotClient.mergeMcpConfigStatic(tempDir, 1234, "agentbridge", "http");
+
+            JsonObject updated = JsonParser.parseString(
+                java.nio.file.Files.readString(configPath)).getAsJsonObject();
+            JsonObject updatedServers = updated.getAsJsonObject("mcpServers");
+
+            // Existing server should still be there
+            assertTrue(updatedServers.has("my-server"));
+            assertEquals("stdio", updatedServers.getAsJsonObject("my-server").get("type").getAsString());
+
+            // New server should be added
+            assertTrue(updatedServers.has("agentbridge"));
+            assertEquals("http://localhost:1234/mcp",
+                updatedServers.getAsJsonObject("agentbridge").get("url").getAsString());
+        }
+
+        @Test
+        void updatesExistingAgentbridgeEntry(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+            // Pre-populate with an old agentbridge entry
+            JsonObject oldEntry = new JsonObject();
+            oldEntry.addProperty("type", "http");
+            oldEntry.addProperty("url", "http://localhost:9999/mcp");
+            JsonObject servers = new JsonObject();
+            servers.add("agentbridge", oldEntry);
+            JsonObject root = new JsonObject();
+            root.add("mcpServers", servers);
+
+            java.nio.file.Files.writeString(tempDir.resolve("mcp-config.json"), root.toString());
+
+            CopilotClient.mergeMcpConfigStatic(tempDir, 5555, "agentbridge", "http");
+
+            JsonObject updated = JsonParser.parseString(
+                java.nio.file.Files.readString(tempDir.resolve("mcp-config.json"))).getAsJsonObject();
+            assertEquals("http://localhost:5555/mcp",
+                updated.getAsJsonObject("mcpServers").getAsJsonObject("agentbridge")
+                    .get("url").getAsString());
+        }
+
+        @Test
+        void handlesCorruptedMcpServersField(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+            // mcpServers is a string instead of object
+            JsonObject root = new JsonObject();
+            root.addProperty("mcpServers", "corrupted");
+            java.nio.file.Files.writeString(tempDir.resolve("mcp-config.json"), root.toString());
+
+            CopilotClient.mergeMcpConfigStatic(tempDir, 4321, "agentbridge", "http");
+
+            JsonObject updated = JsonParser.parseString(
+                java.nio.file.Files.readString(tempDir.resolve("mcp-config.json"))).getAsJsonObject();
+            // Should have replaced the corrupted field with a proper object
+            assertTrue(updated.get("mcpServers").isJsonObject());
+            assertTrue(updated.getAsJsonObject("mcpServers").has("agentbridge"));
+        }
     }
 }
