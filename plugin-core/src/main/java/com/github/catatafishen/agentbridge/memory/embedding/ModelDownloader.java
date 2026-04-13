@@ -136,6 +136,9 @@ public final class ModelDownloader {
      * Called automatically by {@link #ensureModelAvailable} during migration
      * from ONNX Runtime to pure-Java inference.
      *
+     * <p><b>Deprecation:</b> Remove this method after the next Marketplace release,
+     * once all users have migrated from ONNX to safetensors.
+     *
      * @param modelDir the directory to check for the legacy model file
      */
     static void migrateLegacyModel(@NotNull Path modelDir) {
