@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -47,15 +46,9 @@ class ClientBinaryDetectorTest {
         assertTrue(binary.toFile().setExecutable(true), "Failed to set executable bit");
 
         var detector = new TestDetector(null, List.of(binary.toString()));
-        // This will skip configured path (null), skip BinaryDetector (not installed),
-        // then find the additional path
-        String result = detector.resolve("nonexistent-primary-name");
-        // Result could be the additional path or null (if BinaryDetector finds the primary).
-        // Since "nonexistent-primary-name" won't be found by BinaryDetector on most systems,
-        // the additional path should be returned.
-        if (result != null) {
-            assertEquals(binary.toString(), result);
-        }
+        String result = detector.resolve("__agentbridge_test_nonexistent_binary__");
+        assertEquals(binary.toString(), result,
+            "Should fall through to additional paths when configured=null and auto-detect finds nothing");
     }
 
     @Test
@@ -65,12 +58,8 @@ class ClientBinaryDetectorTest {
         // Do NOT set executable
 
         var detector = new TestDetector(null, List.of(binary.toString()));
-        String result = detector.resolve("nonexistent-primary");
-        // The non-executable file should not be returned
-        if (result != null) {
-            assertNotEquals(binary.toString(), result,
-                "Non-executable additional paths should be skipped");
-        }
+        String result = detector.resolve("__agentbridge_test_nonexistent_binary__");
+        assertNull(result, "Non-executable additional paths should be skipped");
     }
 
     // ── No path found at all ───────────────────────────────

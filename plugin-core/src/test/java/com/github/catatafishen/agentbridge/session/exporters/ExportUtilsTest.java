@@ -106,7 +106,7 @@ class ExportUtilsTest {
     }
 
     @Test
-    void codexStripsUnderscorePrefix() {
+    void codexLeavesCanonicalPrefixIntact() {
         assertEquals("agentbridge_read_file",
             ExportUtils.normalizeToolNameForCodex("agentbridge_read_file"));
     }

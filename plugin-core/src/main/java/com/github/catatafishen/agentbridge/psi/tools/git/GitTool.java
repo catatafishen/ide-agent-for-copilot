@@ -196,6 +196,7 @@ public abstract class GitTool extends Tool {
      * Counts the number of stash entries from {@code git stash list} output. Pure function.
      */
     static long countStashEntries(String stashList) {
+        if (stashList.isEmpty()) return 0;
         long count = stashList.chars().filter(c -> c == '\n').count();
         if (!stashList.endsWith("\n")) count++;
         return count;
