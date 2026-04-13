@@ -65,6 +65,12 @@ class PermissionDefaultsTest {
     }
 
     @Test
+    @DisplayName("PERMISSIVE: OTHER is ASK (hardcoded fallback)")
+    void permissive_otherAsks() {
+        assertEquals(ToolPermission.ASK, PermissionDefaults.PERMISSIVE.forCategory(ToolCategory.OTHER));
+    }
+
+    @Test
     @DisplayName("PERMISSIVE: DESTRUCTIVE is ASK")
     void permissive_destructiveAsks() {
         assertEquals(ToolPermission.ASK, PermissionDefaults.PERMISSIVE.forCategory(ToolCategory.DESTRUCTIVE));

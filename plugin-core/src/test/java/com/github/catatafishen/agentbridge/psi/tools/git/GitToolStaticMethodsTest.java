@@ -106,6 +106,11 @@ class GitToolStaticMethodsTest {
         void singleLineWithNewline() {
             assertEquals(1, GitTool.countStashEntries("a\n"));
         }
+
+        @Test
+        void emptyStringReturnsZero() {
+            assertEquals(0, GitTool.countStashEntries(""));
+        }
     }
 
     // ── extractFirstCommitHash ──────────────────────────────
