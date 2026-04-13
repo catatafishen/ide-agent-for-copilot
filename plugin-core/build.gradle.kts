@@ -483,6 +483,14 @@ tasks {
             // These are excluded because they're thin wrappers around OS/network I/O.
             // Protocol logic (parsing, state machines) should be extracted and tested.
             "**/psi/QodanaAnalyzer*",          // Runs external Qodana process
+            // ── IDE-coupled tool implementations (need full IntelliJ runtime) ────────
+            "**/psi/tools/project/RunScratchFileTool*", // ScratchFileService + RunManager
+            "**/psi/tools/project/DownloadSourcesTool*", // Reflection into Gradle/Maven internals
+            "**/psi/tools/quality/InteractWithModalTool*", // Swing dialog traversal
+            // ── PSI Java support (need full PSI infrastructure) ──────────────────────
+            "**/psi/java/RefactoringJavaSupport*", // PsiClass/PsiMethod traversal
+            "**/psi/java/CodeNavigationJavaSupport*", // PsiClass outline + hierarchy
+            "**/psi/java/ClassResolverUtil*",     // JavaPsiFacade class resolution
         )
         val allExcludes = uiExcludes + otherExcludes
 

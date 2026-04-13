@@ -475,6 +475,200 @@ class SessionSwitchServiceStaticMethodsTest {
         }
     }
 
+    // ── buildAcpSessionJson ─────────────────────────────────
+
+    @Nested
+    class BuildAcpSessionJsonTest {
+
+        @Test
+        void containsSessionId() {
+            String json = SessionSwitchService.buildAcpSessionJson("sess-42", "/my/project", 1_700_000_000_000L);
+            assertTrue(json.contains("\"id\":\"sess-42\""), "JSON should contain session id: " + json);
+        }
+
+        @Test
+        void containsWorkspacePaths() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/my/path", 0L);
+            assertTrue(json.contains("\"workspacePaths\":[\"/my/path\"]"),
+                "JSON should contain workspacePaths array: " + json);
+        }
+
+        @Test
+        void nullBasePath_workspacePathIsEmptyString() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", null, 0L);
+            assertTrue(json.contains("\"workspacePaths\":[\"\"]"),
+                "Null basePath should produce empty string in workspacePaths: " + json);
+        }
+
+        @Test
+        void containsTitle() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/p", 0L);
+            assertTrue(json.contains("\"title\":\"Imported from AgentBridge\""),
+                "JSON should contain title: " + json);
+        }
+
+        @Test
+        void containsTimestamps() {
+            long epochMillis = 1_700_000_000_000L; // 2023-11-14T22:13:20Z
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/p", epochMillis);
+            String expectedTs = java.time.Instant.ofEpochMilli(epochMillis).toString();
+            assertTrue(json.contains("\"createdAt\":\"" + expectedTs + "\""),
+                "JSON should contain createdAt timestamp: " + json);
+            assertTrue(json.contains("\"lastModifiedAt\":\"" + expectedTs + "\""),
+                "JSON should contain lastModifiedAt timestamp: " + json);
+        }
+
+        @Test
+        void timestampsMatchBetweenCreatedAndModified() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/p", 12345L);
+            // Both timestamps should be identical
+            String ts = java.time.Instant.ofEpochMilli(12345L).toString();
+            int createdIdx = json.indexOf("\"createdAt\":\"" + ts + "\"");
+            int modifiedIdx = json.indexOf("\"lastModifiedAt\":\"" + ts + "\"");
+            assertTrue(createdIdx >= 0, "createdAt timestamp missing");
+            assertTrue(modifiedIdx >= 0, "lastModifiedAt timestamp missing");
+        }
+
+        @Test
+        void containsSchemaVersion() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/p", 0L);
+            assertTrue(json.contains("\"schemaVersion\":1"),
+                "JSON should contain schemaVersion 1: " + json);
+        }
+
+        @Test
+        void isValidJson() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/project", 1_000L);
+            // Should parse without error
+            com.google.gson.JsonObject parsed = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            assertEquals("s1", parsed.get("id").getAsString());
+            assertEquals("/project", parsed.getAsJsonArray("workspacePaths").get(0).getAsString());
+            assertEquals("Imported from AgentBridge", parsed.get("title").getAsString());
+            assertEquals(1, parsed.get("schemaVersion").getAsInt());
+        }
+
+        @Test
+        void epochZero_producesEpochTimestamp() {
+            String json = SessionSwitchService.buildAcpSessionJson("s1", "/p", 0L);
+            String zeroTs = java.time.Instant.EPOCH.toString();
+            assertTrue(json.contains(zeroTs),
+                "Epoch 0 should produce '" + zeroTs + "' timestamp: " + json);
+        }
+    }
+
+    // ── classifyExportTarget ──────────────────────────────
+
+    @Nested
+    class ClassifyExportTargetTest {
+
+        @Test
+        void claudeCli_returnsClaude() {
+            assertEquals("claude", SessionSwitchService.classifyExportTarget("claude-cli"));
+        }
+
+        @Test
+        void codex_returnsCodex() {
+            assertEquals("codex", SessionSwitchService.classifyExportTarget("codex"));
+        }
+
+        @Test
+        void kiro_returnsKiro() {
+            assertEquals("kiro", SessionSwitchService.classifyExportTarget("kiro"));
+        }
+
+        @Test
+        void junie_returnsJunie() {
+            assertEquals("junie", SessionSwitchService.classifyExportTarget("junie"));
+        }
+
+        @Test
+        void opencode_returnsOpencode() {
+            assertEquals("opencode", SessionSwitchService.classifyExportTarget("opencode"));
+        }
+
+        @Test
+        void copilot_returnsCopilot() {
+            assertEquals("copilot", SessionSwitchService.classifyExportTarget("copilot"));
+        }
+
+        @Test
+        void copilotWithSuffix_returnsCopilot() {
+            // Profile IDs like "copilot-custom" or "copilot-v2" should still classify as copilot
+            assertEquals("copilot", SessionSwitchService.classifyExportTarget("copilot-custom"));
+            assertEquals("copilot", SessionSwitchService.classifyExportTarget("copilot-v2"));
+        }
+
+        @Test
+        void unknownProfileId_returnsGeneric() {
+            assertEquals("generic", SessionSwitchService.classifyExportTarget("some-other-agent"));
+        }
+
+        @Test
+        void emptyString_returnsGeneric() {
+            assertEquals("generic", SessionSwitchService.classifyExportTarget(""));
+        }
+
+        @Test
+        void caseMatters_claudeCliUpperCase_returnsGeneric() {
+            // Profile matching should be case-sensitive
+            assertEquals("generic", SessionSwitchService.classifyExportTarget("Claude-CLI"));
+        }
+
+        @Test
+        void partialMatch_doesNotClassify() {
+            // "claud" should not match "claude-cli"
+            assertEquals("generic", SessionSwitchService.classifyExportTarget("claud"));
+            // "code" should not match "codex"
+            assertEquals("generic", SessionSwitchService.classifyExportTarget("code"));
+        }
+    }
+
+    // ── copilotSessionDir ─────────────────────────────────
+
+    @Nested
+    class CopilotSessionDirTest {
+
+        @Test
+        void containsExpectedPathComponents() {
+            Path result = SessionSwitchService.copilotSessionDir("abc-123");
+            assertTrue(result.endsWith(Path.of(".copilot", "session-state", "abc-123")),
+                "Path should end with .copilot/session-state/abc-123: " + result);
+        }
+
+        @Test
+        void startsWithUserHome() {
+            Path result = SessionSwitchService.copilotSessionDir("any-id");
+            String userHome = System.getProperty("user.home", "");
+            assertTrue(result.startsWith(userHome),
+                "Path should start with user.home (" + userHome + "): " + result);
+        }
+
+        @Test
+        void lastComponentIsSessionId() {
+            Path result = SessionSwitchService.copilotSessionDir("my-session-uuid");
+            assertEquals("my-session-uuid", result.getFileName().toString(),
+                "Last path component should be the session ID");
+        }
+
+        @Test
+        void differentSessionIds_produceDifferentPaths() {
+            Path dir1 = SessionSwitchService.copilotSessionDir("id-1");
+            Path dir2 = SessionSwitchService.copilotSessionDir("id-2");
+            assertFalse(dir1.equals(dir2),
+                "Different session IDs should produce different paths");
+            assertEquals(dir1.getParent(), dir2.getParent(),
+                "Parent directories should be the same");
+        }
+
+        @Test
+        void uuidSessionId_preservedAsIs() {
+            String uuid = "550e8400-e29b-41d4-a716-446655440000";
+            Path result = SessionSwitchService.copilotSessionDir(uuid);
+            assertEquals(uuid, result.getFileName().toString(),
+                "UUID session ID should be preserved verbatim");
+        }
+    }
+
     // ── Reflection helpers ─────────────────────────────────
 
     private static Path invokeClaudeProjectDir(String basePath) throws Exception {
