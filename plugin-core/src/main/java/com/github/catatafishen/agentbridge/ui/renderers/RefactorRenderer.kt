@@ -12,14 +12,14 @@ import javax.swing.JComponent
  */
 object RefactorRenderer : ToolResultRenderer {
 
-    private val RENAME = Regex("""^Renamed '(.+)' to '(.+)'""")
-    private val DELETE_OK = Regex("""^Safely deleted '(.+)'""")
-    private val EXTRACT = Regex("""^Extracted method '(.+)'""")
-    private val INLINE = Regex("""^Inlined '(.+)'""")
-    private val DELETE_FAIL = Regex("""^Cannot safely delete '(.+)' — it has (\d+) usages?:""")
-    private val REF_COUNT = Regex("""Updated (\d+) references?""")
-    private val FILE_LINE = Regex("""^\s*File:\s+(.+)$""")
-    private val USAGE_LINE = Regex("""^\s+(.+?):(\d+)""")
+    val RENAME = Regex("""^Renamed '(.+)' to '(.+)'""")
+    val DELETE_OK = Regex("""^Safely deleted '(.+)'""")
+    val EXTRACT = Regex("""^Extracted method '(.+)'""")
+    val INLINE = Regex("""^Inlined '(.+)'""")
+    val DELETE_FAIL = Regex("""^Cannot safely delete '(.+)' — it has (\d+) usages?:""")
+    val REF_COUNT = Regex("""Updated (\d+) references?""")
+    val FILE_LINE = Regex("""^\s*File:\s+(.+)$""")
+    val USAGE_LINE = Regex("""^\s+(.+?):(\d+)""")
 
     override fun render(output: String): JComponent? {
         val lines = output.trimEnd().lines()

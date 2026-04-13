@@ -13,10 +13,10 @@ import javax.swing.JComponent
  */
 object TypeHierarchyRenderer : ToolResultRenderer {
 
-    private val HEADER = Regex("""^Type hierarchy for:\s+(.+?)\s+\((class|interface)\)""")
-    private val SECTION_HEADER = Regex("""^(Supertypes|Subtypes|Implementations):""")
-    private val TYPE_ENTRY = Regex("""^\s+(class|interface|enum|annotation)\s+(\S+)(?:\s+\[(.+)])?""")
-    private val NONE_FOUND = Regex("""^\s+\(none found""")
+    val HEADER = Regex("""^Type hierarchy for:\s+(.+?)\s+\((class|interface)\)""")
+    val SECTION_HEADER = Regex("""^(Supertypes|Subtypes|Implementations):""")
+    val TYPE_ENTRY = Regex("""^\s+(class|interface|enum|annotation)\s+(\S+)(?:\s+\[(.+)])?""")
+    val NONE_FOUND = Regex("""^\s+\(none found""")
 
     override fun render(output: String): JComponent? {
         val lines = output.trimEnd().lines()

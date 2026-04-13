@@ -11,12 +11,12 @@ import javax.swing.JComponent
  */
 object RunConfigCrudRenderer : ToolResultRenderer {
 
-    private val CREATED = Regex("""^Created run configuration '(.+?)'\s*(?:\[(.+?)])?""")
-    private val UPDATED = Regex("""^Updated run configuration '(.+?)'""")
-    private val DELETED = Regex("""^Deleted run configuration '(.+?)'""")
-    private val STARTED = Regex("""^(?:Started|Executed|Running) '(.+?)'""")
-    private val RUN_TAB = Regex("""^Run tab:\s*(.+)""")
-    private val ERROR = Regex("""^Error:\s+(.+)""", RegexOption.DOT_MATCHES_ALL)
+    val CREATED = Regex("""^Created run configuration '(.+?)'\s*(?:\[(.+?)])?""")
+    val UPDATED = Regex("""^Updated run configuration '(.+?)'""")
+    val DELETED = Regex("""^Deleted run configuration '(.+?)'""")
+    val STARTED = Regex("""^(?:Started|Executed|Running) '(.+?)'""")
+    val RUN_TAB = Regex("""^Run tab:\s*(.+)""")
+    val ERROR = Regex("""^Error:\s+(.+)""", RegexOption.DOT_MATCHES_ALL)
 
     override fun render(output: String): JComponent? {
         val text = output.trimEnd()

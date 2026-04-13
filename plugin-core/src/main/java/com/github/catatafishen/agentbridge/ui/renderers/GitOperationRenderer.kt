@@ -12,12 +12,12 @@ import javax.swing.JComponent
  */
 object GitOperationRenderer : ToolResultRenderer {
 
-    private val SUCCESS_LINE = Regex("""^✓\s+(.+)""")
-    private val ERROR_LINE = Regex("""^Error:\s+(.+)""", RegexOption.DOT_MATCHES_ALL)
-    private val CONFLICT_LINE = Regex("""(?i)conflict|CONFLICT""")
-    private val ALREADY_UP_TO_DATE = Regex("""(?i)already up[- ]to[- ]date""")
-    private val NOTHING_TO = Regex("""(?i)nothing to""")
-    private val FETCH_COMPLETE = Regex("""^Fetch completed successfully""")
+    val SUCCESS_LINE = Regex("""^✓\s+(.+)""")
+    val ERROR_LINE = Regex("""^Error:\s+(.+)""", RegexOption.DOT_MATCHES_ALL)
+    val CONFLICT_LINE = Regex("""(?i)conflict|CONFLICT""")
+    val ALREADY_UP_TO_DATE = Regex("""(?i)already up[- ]to[- ]date""")
+    val NOTHING_TO = Regex("""(?i)nothing to""")
+    val FETCH_COMPLETE = Regex("""^Fetch completed successfully""")
 
     override fun render(output: String): JComponent? {
         val text = output.trimEnd()

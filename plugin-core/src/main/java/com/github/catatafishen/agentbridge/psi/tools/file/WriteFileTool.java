@@ -459,7 +459,7 @@ public class WriteFileTool extends FileTool {
      * Finds the closest line in {@code text} containing the first non-blank line of
      * {@code normalizedOld}, returning a hint to help the agent understand mismatches.
      */
-    private static String closestMatchHint(String text, String normalizedOld) {
+    static String closestMatchHint(String text, String normalizedOld) {
         String firstLine = null;
         for (String l : normalizedOld.split("\n")) {
             String t = l.trim();
@@ -562,7 +562,7 @@ public class WriteFileTool extends FileTool {
         return sb.toString();
     }
 
-    private static boolean resolveAutoFormat(JsonObject args) {
+    static boolean resolveAutoFormat(JsonObject args) {
         if (args.has(PARAM_AUTO_FORMAT)) return args.get(PARAM_AUTO_FORMAT).getAsBoolean();
         if (args.has(PARAM_AUTO_FORMAT_LEGACY)) return args.get(PARAM_AUTO_FORMAT_LEGACY).getAsBoolean();
         return true;

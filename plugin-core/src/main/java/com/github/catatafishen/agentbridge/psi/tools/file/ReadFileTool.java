@@ -24,7 +24,7 @@ public class ReadFileTool extends FileTool {
 
     private static final String PARAM_START_LINE = "start_line";
     private static final String PARAM_END_LINE = "end_line";
-    private static final int MAX_READ_LINES = 2000;
+    static final int MAX_READ_LINES = 2000;
 
     public ReadFileTool(Project project) {
         super(project);
@@ -136,7 +136,7 @@ public class ReadFileTool extends FileTool {
         return null;
     }
 
-    private String applyReadHintAndTruncate(String content, String hint) {
+    static String applyReadHintAndTruncate(String content, String hint) {
         String[] lines = content.split("\n", -1);
         int totalLines = lines.length;
         StringBuilder sb = new StringBuilder();
@@ -162,7 +162,7 @@ public class ReadFileTool extends FileTool {
         return sb.toString();
     }
 
-    private static String extractLineRange(String content, int startLine, int endLine) {
+    static String extractLineRange(String content, int startLine, int endLine) {
         String[] lines = content.split("\n", -1);
         int from = Math.max(0, (startLine > 0 ? startLine - 1 : 0));
         int to = Math.min(lines.length, (endLine > 0 ? endLine : lines.length));

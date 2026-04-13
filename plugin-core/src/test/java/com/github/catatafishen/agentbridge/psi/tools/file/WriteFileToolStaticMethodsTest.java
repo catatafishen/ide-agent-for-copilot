@@ -3,143 +3,111 @@ package com.github.catatafishen.agentbridge.psi.tools.file;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for pure static methods in {@link WriteFileTool}.
+ * Tests for pure static methods in {@link WriteFileTool}:
+ * {@code closestMatchHint} and {@code resolveAutoFormat}.
  */
 class WriteFileToolStaticMethodsTest {
-
-    private static final Method CLOSEST_MATCH_HINT;
-    private static final Method INDEX_OF;
-    private static final Method RESOLVE_AUTO_FORMAT;
-
-    static {
-        try {
-            CLOSEST_MATCH_HINT = WriteFileTool.class
-                .getDeclaredMethod("closestMatchHint", String.class, String.class);
-            CLOSEST_MATCH_HINT.setAccessible(true);
-
-            INDEX_OF = WriteFileTool.class
-                .getDeclaredMethod("indexOf", String.class, String.class, boolean.class);
-            INDEX_OF.setAccessible(true);
-
-            RESOLVE_AUTO_FORMAT = WriteFileTool.class
-                .getDeclaredMethod("resolveAutoFormat", JsonObject.class);
-            RESOLVE_AUTO_FORMAT.setAccessible(true);
-        } catch (NoSuchMethodException e) {
-            throw new AssertionError("Method not found — signature changed?", e);
-        }
-    }
 
     // ── closestMatchHint ────────────────────────────────────
 
     @Test
-    void closestMatchHint_findsLineContainingFirstNonBlankLine() throws Exception {
-        String text = "line1\nfoo bar\nbaz qux\nend";
-        String result = invokeClosestMatchHint(text, "foo bar");
-        assertTrue(result.contains("Closest match found at line 2"), result);
-        assertTrue(result.contains("foo bar"), result);
+    void closestMatchHint_findsMatchAtMiddleOfFile() {
+        String text = "line1\nline2\nline3\nline4\ntarget line\nline6\nline7\nline8\nline9\nline10";
+        String result = WriteFileTool.closestMatchHint(text, "target line");
+        assertTrue(result.contains("Closest match found at line 5"), result);
+        // Context should include lines around the match (L4–L8)
+        assertTrue(result.contains("L4:"), "Should show context line before match");
+        assertTrue(result.contains("L5:"), "Should show the matched line");
+        assertTrue(result.contains("L8:"), "Should show context line after match");
     }
 
     @Test
-    void closestMatchHint_returnsEmptyWhenNoMatch() throws Exception {
-        String text = "line1\nline2";
-        assertEquals("", invokeClosestMatchHint(text, "nonexistent"));
+    void closestMatchHint_returnsEmptyForAllBlankNormalizedOld() {
+        assertEquals("", WriteFileTool.closestMatchHint("line1\nline2", "  \n  \n"));
     }
 
     @Test
-    void closestMatchHint_returnsEmptyForAllBlankLines() throws Exception {
-        assertEquals("", invokeClosestMatchHint("line1\nline2", "  \n  \n"));
+    void closestMatchHint_returnsEmptyWhenNotFound() {
+        assertEquals("", WriteFileTool.closestMatchHint("line1\nline2", "nonexistent"));
     }
 
     @Test
-    void closestMatchHint_skipsBlankLinesInSearchText() throws Exception {
-        String text = "alpha\nbeta\ngamma";
-        String result = invokeClosestMatchHint(text, "\n  \nbeta");
-        assertTrue(result.contains("Closest match found at line 2"), result);
-    }
-
-    @Test
-    void closestMatchHint_includesContext() throws Exception {
-        String text = "a\nb\ntarget\nd\ne\nf";
-        String result = invokeClosestMatchHint(text, "target");
-        // Should include lines around the match (1 before, 3 after)
-        assertTrue(result.contains("L2:"), "Should show line before match");
-        assertTrue(result.contains("L3:"), "Should show match line");
-        assertTrue(result.contains("L4:"), "Should show line after");
-    }
-
-    @Test
-    void closestMatchHint_matchAtFirstLine() throws Exception {
-        String text = "target\nsecond\nthird";
-        String result = invokeClosestMatchHint(text, "target");
+    void closestMatchHint_matchAtFirstLine() {
+        String text = "function foo()\nrest of code\nmore code";
+        String normalizedOld = "\n  \nfunction foo()";
+        String result = WriteFileTool.closestMatchHint(text, normalizedOld);
         assertTrue(result.contains("Closest match found at line 1"), result);
-        assertTrue(result.contains("L1:"), "Should show first line");
-    }
-
-    // ── indexOf ─────────────────────────────────────────────
-
-    @Test
-    void indexOf_caseSensitive() throws Exception {
-        assertEquals(0, invokeIndexOf("Hello World", "Hello", true));
-        assertEquals(-1, invokeIndexOf("Hello World", "hello", true));
+        assertTrue(result.contains("L1:"), "Should show first line in context");
     }
 
     @Test
-    void indexOf_caseInsensitive() throws Exception {
-        assertEquals(0, invokeIndexOf("Hello World", "hello", false));
-        assertEquals(6, invokeIndexOf("Hello World", "world", false));
+    void closestMatchHint_skipsLeadingBlankLinesInSearchText() {
+        String text = "alpha\nbeta\ngamma";
+        String result = WriteFileTool.closestMatchHint(text, "\n  \nbeta");
+        assertTrue(result.contains("Closest match found at line 2"), result);
     }
 
     @Test
-    void indexOf_notFound() throws Exception {
-        assertEquals(-1, invokeIndexOf("Hello", "xyz", true));
-        assertEquals(-1, invokeIndexOf("Hello", "xyz", false));
+    void closestMatchHint_includesContextLines() {
+        String text = "a\nb\ntarget\nd\ne\nf";
+        String result = WriteFileTool.closestMatchHint(text, "target");
+        // 1 line before, the match itself, and up to 3 lines after
+        assertTrue(result.contains("L2:"), "Should include line before match");
+        assertTrue(result.contains("L3:"), "Should include the match line");
+        assertTrue(result.contains("L4:"), "Should include line after match");
     }
 
     // ── resolveAutoFormat ───────────────────────────────────
 
     @Test
-    void resolveAutoFormat_defaultsToTrue() throws Exception {
-        assertTrue(invokeResolveAutoFormat(new JsonObject()));
+    void resolveAutoFormat_primaryTrue() {
+        JsonObject args = new JsonObject();
+        args.addProperty("auto_format_and_optimize_imports", true);
+        assertTrue(WriteFileTool.resolveAutoFormat(args));
     }
 
     @Test
-    void resolveAutoFormat_respectsPrimaryParam() throws Exception {
+    void resolveAutoFormat_primaryFalse() {
         JsonObject args = new JsonObject();
         args.addProperty("auto_format_and_optimize_imports", false);
-        assertFalse(invokeResolveAutoFormat(args));
+        assertFalse(WriteFileTool.resolveAutoFormat(args));
     }
 
     @Test
-    void resolveAutoFormat_fallsBackToLegacyParam() throws Exception {
+    void resolveAutoFormat_legacyTrue() {
+        JsonObject args = new JsonObject();
+        args.addProperty("auto_format", true);
+        assertTrue(WriteFileTool.resolveAutoFormat(args));
+    }
+
+    @Test
+    void resolveAutoFormat_legacyFalse() {
         JsonObject args = new JsonObject();
         args.addProperty("auto_format", false);
-        assertFalse(invokeResolveAutoFormat(args));
+        assertFalse(WriteFileTool.resolveAutoFormat(args));
     }
 
     @Test
-    void resolveAutoFormat_primaryOverridesLegacy() throws Exception {
+    void resolveAutoFormat_defaultsToTrue() {
+        assertTrue(WriteFileTool.resolveAutoFormat(new JsonObject()));
+    }
+
+    @Test
+    void resolveAutoFormat_primaryOverridesLegacy() {
         JsonObject args = new JsonObject();
         args.addProperty("auto_format_and_optimize_imports", true);
         args.addProperty("auto_format", false);
-        assertTrue(invokeResolveAutoFormat(args));
+        assertTrue(WriteFileTool.resolveAutoFormat(args));
     }
 
-    // ── Reflection helpers ──────────────────────────────────
-
-    private static String invokeClosestMatchHint(String text, String normalizedOld) throws Exception {
-        return (String) CLOSEST_MATCH_HINT.invoke(null, text, normalizedOld);
-    }
-
-    private static int invokeIndexOf(String text, String target, boolean caseSensitive) throws Exception {
-        return (int) INDEX_OF.invoke(null, text, target, caseSensitive);
-    }
-
-    private static boolean invokeResolveAutoFormat(JsonObject args) throws Exception {
-        return (boolean) RESOLVE_AUTO_FORMAT.invoke(null, args);
+    @Test
+    void resolveAutoFormat_primaryFalseOverridesLegacyTrue() {
+        JsonObject args = new JsonObject();
+        args.addProperty("auto_format_and_optimize_imports", false);
+        args.addProperty("auto_format", true);
+        assertFalse(WriteFileTool.resolveAutoFormat(args));
     }
 }

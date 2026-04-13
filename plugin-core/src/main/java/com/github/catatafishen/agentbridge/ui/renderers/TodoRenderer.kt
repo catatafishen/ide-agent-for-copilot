@@ -15,8 +15,8 @@ import javax.swing.JComponent
  */
 object TodoRenderer : ArgumentAwareRenderer {
 
-    private val CHECKBOX_LINE = Regex("""^-\s+\[([ xX])]\s+(.+)$""")
-    private val HEADER_LINE = Regex("""^#{1,4}\s+(.+)$""")
+    val CHECKBOX_LINE = Regex("""^-\s+\[([ xX])]\s+(.+)$""")
+    val HEADER_LINE = Regex("""^#{1,4}\s+(.+)$""")
 
     override fun render(output: String, arguments: String?): JComponent? {
         val markdown = extractTodos(arguments) ?: output

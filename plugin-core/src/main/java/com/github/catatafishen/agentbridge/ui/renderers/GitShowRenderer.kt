@@ -12,10 +12,10 @@ import javax.swing.JComponent
  */
 object GitShowRenderer : ToolResultRenderer {
 
-    private val SUMMARY_PATTERN = Regex(""".*\d+ files? changed.*""")
-    private const val COMMIT_PREFIX = "commit "
+    val SUMMARY_PATTERN = Regex(""".*\d+ files? changed.*""")
+    const val COMMIT_PREFIX = "commit "
 
-    private data class ParsedShow(
+    data class ParsedShow(
         val hash: String,
         var author: String = "",
         var date: String = "",
@@ -41,7 +41,7 @@ object GitShowRenderer : ToolResultRenderer {
         return panel
     }
 
-    private fun parseLines(lines: List<String>): ParsedShow {
+    fun parseLines(lines: List<String>): ParsedShow {
         val parsed = ParsedShow(hash = lines.first().removePrefix(COMMIT_PREFIX).trim().take(8))
         var inMessage = false
         var inDiff = false
