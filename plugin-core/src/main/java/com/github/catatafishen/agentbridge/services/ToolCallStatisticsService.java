@@ -59,23 +59,32 @@ public final class ToolCallStatisticsService implements Disposable {
     /**
      * Initialize the SQLite database and subscribe to tool call events.
      * Called lazily on first access via {@code getInstance()}.
+     *
+     * @throws RuntimeException if initialization fails (JDBC driver not found,
+     *                          database cannot be created, or subscription fails). The caller
+     *                          must not set {@code initialized = true} unless this method
+     *                          completes without exception.
      */
     public void initialize() {
         try {
             Class.forName("org.sqlite.JDBC");
-            String basePath = project.getBasePath();
-            if (basePath == null) {
-                LOG.warn("Cannot initialize ToolCallStatisticsService: project has no base path");
-                return;
-            }
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("SQLite JDBC driver not found on classpath", e);
+        }
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            throw new IllegalStateException(
+                "Cannot initialize ToolCallStatisticsService: project has no base path");
+        }
+        try {
             Path dbDir = Path.of(basePath, ".agentbridge");
             Files.createDirectories(dbDir);
             Path dbPath = dbDir.resolve(DB_FILENAME);
             initializeWithConnection(DriverManager.getConnection("jdbc:sqlite:" + dbPath));
             subscribeToToolCallEvents();
             LOG.info("ToolCallStatisticsService initialized at " + dbPath);
-        } catch (ClassNotFoundException | SQLException | IOException e) {
-            LOG.error("Failed to initialize ToolCallStatisticsService", e);
+        } catch (SQLException | IOException e) {
+            throw new IllegalStateException("Failed to initialize ToolCallStatisticsService", e);
         }
     }
 
@@ -134,7 +143,11 @@ public final class ToolCallStatisticsService implements Disposable {
     }
 
     public synchronized void recordCall(@NotNull ToolCallRecord callRecord) {
-        if (connection == null) return;
+        if (connection == null) {
+            LOG.warn("ToolCallStatisticsService: dropping tool call '" + callRecord.toolName()
+                + "' — database connection is not available (initialization may have failed)");
+            return;
+        }
         try {
             insertRecord(callRecord);
         } catch (SQLException e) {
@@ -381,8 +394,14 @@ public final class ToolCallStatisticsService implements Disposable {
         if (!service.initialized) {
             synchronized (service) {
                 if (!service.initialized) {
-                    service.initialize();
-                    service.initialized = true;
+                    try {
+                        service.initialize();
+                        service.initialized = true;
+                    } catch (RuntimeException e) {
+                        LOG.error("ToolCallStatisticsService initialization failed — "
+                            + "tool call recording will be disabled until restart", e);
+                        service.initialized = true;
+                    }
                 }
             }
         }

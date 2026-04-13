@@ -70,7 +70,7 @@ final class UsageStatisticsLoader {
             }
 
             collectTurnStats(jsonlPath, fallbackAgentId, startDate, endDate,
-                accumulators, agentIds, agentDisplayNames);
+                accumulators);
         }
 
         List<UsageStatisticsData.DailyAgentStats> dailyStats = buildDailyStats(accumulators);
@@ -109,14 +109,11 @@ final class UsageStatisticsLoader {
         return result;
     }
 
-    private static void collectTurnStats(Path jsonlPath, String fallbackAgentId,
+    private static void collectTurnStats(Path jsonlPath, String sessionAgentId,
                                          LocalDate startDate, LocalDate endDate,
-                                         Map<DayAgentKey, Accumulator> accumulators,
-                                         Set<String> agentIds,
-                                         Map<String, String> agentDisplayNames) {
+                                         Map<DayAgentKey, Accumulator> accumulators) {
         try (BufferedReader reader = Files.newBufferedReader(jsonlPath)) {
             String lastSeenTimestamp = null;
-            String currentAgentId = fallbackAgentId;
             String line;
             while ((line = reader.readLine()) != null) {
                 // Track timestamps from all entries for date attribution.
@@ -134,22 +131,9 @@ final class UsageStatisticsLoader {
                     }
                 }
 
-                int agentIdx = line.indexOf("\"agent\":\"");
-                if (agentIdx >= 0) {
-                    try {
-                        JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
-                        if (obj.has("agent")) {
-                            String agentDisplay = obj.get("agent").getAsString();
-                            if (!agentDisplay.isEmpty()) {
-                                currentAgentId = toAgentId(agentDisplay);
-                                agentIds.add(currentAgentId);
-                                agentDisplayNames.putIfAbsent(currentAgentId, agentDisplay);
-                            }
-                        }
-                    } catch (Exception e) {
-                        LOG.debug("Skipping agent metadata in " + jsonlPath.getFileName() + ": " + e.getMessage());
-                    }
-                }
+                // Agent attribution uses the session-level agent exclusively.
+                // Individual entry "agent" fields are ignored here because they can contain
+                // model names or sub-agent identifiers that would create phantom chart series.
 
                 if (!line.contains("\"turnStats\"")) continue;
 
@@ -165,7 +149,7 @@ final class UsageStatisticsLoader {
                     }
                     if (date.isBefore(startDate) || date.isAfter(endDate)) continue;
 
-                    DayAgentKey key = new DayAgentKey(date, currentAgentId);
+                    DayAgentKey key = new DayAgentKey(date, sessionAgentId);
                     Accumulator acc = accumulators.computeIfAbsent(key, k -> new Accumulator());
                     acc.turns++;
                     acc.inputTokens += stats.getInputTokens();
