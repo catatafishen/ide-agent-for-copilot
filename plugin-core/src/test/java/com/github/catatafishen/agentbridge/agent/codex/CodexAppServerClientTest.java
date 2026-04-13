@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -250,6 +251,140 @@ class CodexAppServerClientTest {
         @Test
         void emptyString_returnsFalse() throws Exception {
             assertFalse(invokeIsMcpToolApprovalQuestion(""));
+        }
+    }
+
+    // ── classifyMessageType (package-private static) ────────────────────
+
+    @Nested
+    class ClassifyMessageType {
+
+        @Test
+        void response_hasIdAndResult_noMethod() {
+            JsonObject msg = new JsonObject();
+            msg.addProperty("id", 1);
+            msg.add("result", new JsonObject());
+            assertEquals(CodexAppServerClient.MessageType.RESPONSE,
+                CodexAppServerClient.classifyMessageType(msg));
+        }
+
+        @Test
+        void response_hasIdAndError_noMethod() {
+            JsonObject msg = new JsonObject();
+            msg.addProperty("id", 2);
+            msg.add("error", new JsonObject());
+            assertEquals(CodexAppServerClient.MessageType.RESPONSE,
+                CodexAppServerClient.classifyMessageType(msg));
+        }
+
+        @Test
+        void serverRequest_hasIdAndMethod() {
+            JsonObject msg = new JsonObject();
+            msg.addProperty("id", 3);
+            msg.addProperty("method", "item/tool/call");
+            assertEquals(CodexAppServerClient.MessageType.SERVER_REQUEST,
+                CodexAppServerClient.classifyMessageType(msg));
+        }
+
+        @Test
+        void notification_hasMethod_noId() {
+            JsonObject msg = new JsonObject();
+            msg.addProperty("method", "turn/updated");
+            assertEquals(CodexAppServerClient.MessageType.NOTIFICATION,
+                CodexAppServerClient.classifyMessageType(msg));
+        }
+
+        @Test
+        void notification_hasMethod_nullId() {
+            JsonObject msg = new JsonObject();
+            msg.add("id", JsonNull.INSTANCE);
+            msg.addProperty("method", "turn/updated");
+            assertEquals(CodexAppServerClient.MessageType.NOTIFICATION,
+                CodexAppServerClient.classifyMessageType(msg));
+        }
+
+        @Test
+        void unknown_emptyObject() {
+            assertEquals(CodexAppServerClient.MessageType.UNKNOWN,
+                CodexAppServerClient.classifyMessageType(new JsonObject()));
+        }
+    }
+
+    // ── buildServerCommandStatic (package-private static) ───────────────
+
+    @Nested
+    class BuildServerCommandStatic {
+
+        @Test
+        void positiveMcpPort_includesMcpConfig() {
+            List<String> cmd = CodexAppServerClient.buildServerCommandStatic("/usr/bin/codex", 8080);
+            assertTrue(cmd.contains("mcp_servers.agentbridge.url=http://localhost:8080/mcp"),
+                "Expected MCP config entry");
+        }
+
+        @Test
+        void zeroMcpPort_excludesMcpConfig() {
+            List<String> cmd = CodexAppServerClient.buildServerCommandStatic("/usr/bin/codex", 0);
+            assertTrue(cmd.stream().noneMatch(s -> s.contains("mcp_servers")),
+                "Should not contain MCP config when port is 0");
+        }
+
+        @Test
+        void alwaysContainsBinaryPathAndAppServer() {
+            List<String> cmd = CodexAppServerClient.buildServerCommandStatic("/path/to/codex", 0);
+            assertEquals("/path/to/codex", cmd.get(0));
+            assertEquals("app-server", cmd.get(1));
+        }
+
+        @Test
+        void alwaysDisablesShellAndUnifiedExec() {
+            List<String> cmd = CodexAppServerClient.buildServerCommandStatic("/bin/codex", 0);
+            assertTrue(cmd.contains("features.shell_tool=false"),
+                "Should disable shell_tool");
+            assertTrue(cmd.contains("features.unified_exec=false"),
+                "Should disable unified_exec");
+        }
+    }
+
+    // ── buildCommandArgsJson (package-private static) ───────────────────
+
+    @Nested
+    class BuildCommandArgsJson {
+
+        @Test
+        void simpleCommand_noQuotes() {
+            assertEquals("{\"command\":\"ls -la\"}", CodexAppServerClient.buildCommandArgsJson("ls -la"));
+        }
+
+        @Test
+        void commandWithQuotes_properlyEscaped() {
+            assertEquals("{\"command\":\"echo \\\"hello\\\"\"}",
+                CodexAppServerClient.buildCommandArgsJson("echo \"hello\""));
+        }
+
+        @Test
+        void emptyCommand() {
+            assertEquals("{\"command\":\"\"}", CodexAppServerClient.buildCommandArgsJson(""));
+        }
+    }
+
+    // ── extractJsonRpcErrorMessage (package-private static) ─────────────
+
+    @Nested
+    class ExtractJsonRpcErrorMessage {
+
+        @Test
+        void hasMessageField_returnsIt() {
+            JsonObject err = new JsonObject();
+            err.addProperty("message", "rate limit exceeded");
+            assertEquals("rate limit exceeded", CodexAppServerClient.extractJsonRpcErrorMessage(err));
+        }
+
+        @Test
+        void noMessageField_returnsToString() {
+            JsonObject err = new JsonObject();
+            err.addProperty("code", -32600);
+            assertEquals(err.toString(), CodexAppServerClient.extractJsonRpcErrorMessage(err));
         }
     }
 }

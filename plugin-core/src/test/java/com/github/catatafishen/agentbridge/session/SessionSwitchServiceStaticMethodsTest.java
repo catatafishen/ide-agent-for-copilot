@@ -360,6 +360,121 @@ class SessionSwitchServiceStaticMethodsTest {
         }
     }
 
+    // ── parseGitBranchFromHead ──────────────────────────────
+
+    @Nested
+    class ParseGitBranchFromHeadTest {
+
+        @Test
+        void symbolicRef_returnsBranchName() {
+            assertEquals("main",
+                SessionSwitchService.parseGitBranchFromHead("ref: refs/heads/main"));
+        }
+
+        @Test
+        void symbolicRefWithNewline_returnsTrimmedBranch() {
+            assertEquals("feature/foo",
+                SessionSwitchService.parseGitBranchFromHead("ref: refs/heads/feature/foo\n"));
+        }
+
+        @Test
+        void detachedHead_returnsUnknown() {
+            assertEquals("unknown",
+                SessionSwitchService.parseGitBranchFromHead("abc123def456789012345678901234567890abcd"));
+        }
+
+        @Test
+        void nullContent_returnsUnknown() {
+            assertEquals("unknown",
+                SessionSwitchService.parseGitBranchFromHead(null));
+        }
+
+        @Test
+        void emptyString_returnsUnknown() {
+            assertEquals("unknown",
+                SessionSwitchService.parseGitBranchFromHead(""));
+        }
+
+        @Test
+        void blankString_returnsUnknown() {
+            assertEquals("unknown",
+                SessionSwitchService.parseGitBranchFromHead("   \t\n  "));
+        }
+
+        @Test
+        void refsTagsNotABranch_returnsUnknown() {
+            assertEquals("unknown",
+                SessionSwitchService.parseGitBranchFromHead("ref: refs/tags/v1.0"));
+        }
+    }
+
+    // ── buildWorkspaceYamlContent ──────────────────────────
+
+    @Nested
+    class BuildWorkspaceYamlContentTest {
+
+        private static final String SESSION_ID = "sess-1234";
+        private static final String BASE_PATH = "/home/user/project";
+        private static final String BRANCH = "main";
+        private static final String TIMESTAMP = "2025-01-15T10:30:00Z";
+
+        @Test
+        void containsAllFields() {
+            String yaml = SessionSwitchService.buildWorkspaceYamlContent(
+                SESSION_ID, BASE_PATH, BRANCH, TIMESTAMP);
+
+            assertTrue(yaml.contains("id: " + SESSION_ID));
+            assertTrue(yaml.contains("cwd: " + BASE_PATH));
+            assertTrue(yaml.contains("git_root: " + BASE_PATH));
+            assertTrue(yaml.contains("branch: " + BRANCH));
+            assertTrue(yaml.contains("summary_count: 0"));
+            assertTrue(yaml.contains("created_at: " + TIMESTAMP));
+            assertTrue(yaml.contains("updated_at: " + TIMESTAMP));
+        }
+
+        @Test
+        void eachFieldOnOwnLine() {
+            String yaml = SessionSwitchService.buildWorkspaceYamlContent(
+                SESSION_ID, BASE_PATH, BRANCH, TIMESTAMP);
+
+            String[] lines = yaml.split("\n", -1);
+            // 7 content lines + 1 trailing empty element from the final newline
+            assertEquals(8, lines.length,
+                "Expected 7 YAML lines plus trailing empty from final newline");
+            assertTrue(lines[0].startsWith("id: "));
+            assertTrue(lines[1].startsWith("cwd: "));
+            assertTrue(lines[2].startsWith("git_root: "));
+            assertTrue(lines[3].startsWith("branch: "));
+            assertTrue(lines[4].startsWith("summary_count: "));
+            assertTrue(lines[5].startsWith("created_at: "));
+            assertTrue(lines[6].startsWith("updated_at: "));
+        }
+
+        @Test
+        void endsWithTrailingNewline() {
+            String yaml = SessionSwitchService.buildWorkspaceYamlContent(
+                SESSION_ID, BASE_PATH, BRANCH, TIMESTAMP);
+
+            assertTrue(yaml.endsWith("\n"), "YAML content should end with a newline");
+        }
+
+        @Test
+        void valuesInterpolatedCorrectly() {
+            String yaml = SessionSwitchService.buildWorkspaceYamlContent(
+                "my-session", "/my/path", "develop", "2025-06-01T00:00:00Z");
+
+            String expected = "id: my-session\n"
+                + "cwd: /my/path\n"
+                + "git_root: /my/path\n"
+                + "branch: develop\n"
+                + "summary_count: 0\n"
+                + "created_at: 2025-06-01T00:00:00Z\n"
+                + "updated_at: 2025-06-01T00:00:00Z\n";
+
+            assertEquals(expected, yaml);
+        }
+    }
+
     // ── Reflection helpers ─────────────────────────────────
 
     private static Path invokeClaudeProjectDir(String basePath) throws Exception {

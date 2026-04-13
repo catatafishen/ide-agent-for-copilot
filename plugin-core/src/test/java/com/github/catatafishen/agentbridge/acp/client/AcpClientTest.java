@@ -1,16 +1,26 @@
 package com.github.catatafishen.agentbridge.acp.client;
 
+import com.github.catatafishen.agentbridge.acp.model.NewSessionResponse;
+import com.github.catatafishen.agentbridge.agent.AbstractAgentClient;
+import com.github.catatafishen.agentbridge.bridge.SessionOption;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
 import org.mockito.Mockito;
 
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AcpClientTest {
 
@@ -691,6 +701,178 @@ class AcpClientTest {
             argsObj.addProperty("agent_type", "from-args");
 
             assertEquals("from-args", client.extractSubAgentType(params, "title", argsObj));
+        }
+    }
+
+    // ── mapModesStatic ────────────────────────────────────────────────────
+
+    @Nested
+    class MapModesStatic {
+
+        @Test
+        void nullInputReturnsEmpty() {
+            List<AbstractAgentClient.AgentMode> result = AcpClient.mapModesStatic(null);
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        void emptyListReturnsEmpty() {
+            List<AbstractAgentClient.AgentMode> result = AcpClient.mapModesStatic(List.of());
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        void singleModeIsMapped() {
+            var mode = new NewSessionResponse.AvailableMode("code", "Code", "Write code");
+            List<AbstractAgentClient.AgentMode> result = AcpClient.mapModesStatic(List.of(mode));
+
+            assertEquals(1, result.size());
+            assertEquals("code", result.get(0).slug());
+            assertEquals("Code", result.get(0).name());
+            assertEquals("Write code", result.get(0).description());
+        }
+
+        @Test
+        void multipleModesWithNullDescription() {
+            var m1 = new NewSessionResponse.AvailableMode("ask", "Ask", null);
+            var m2 = new NewSessionResponse.AvailableMode("edit", "Edit", "Edit files");
+            List<AbstractAgentClient.AgentMode> result = AcpClient.mapModesStatic(List.of(m1, m2));
+
+            assertEquals(2, result.size());
+            assertEquals("ask", result.get(0).slug());
+            assertNull(result.get(0).description());
+            assertEquals("edit", result.get(1).slug());
+            assertEquals("Edit files", result.get(1).description());
+        }
+    }
+
+    // ── mapConfigOptionsStatic ──────────────────────────────────────────
+
+    @Nested
+    class MapConfigOptionsStatic {
+
+        @Test
+        void nullInputReturnsEmpty() {
+            List<AbstractAgentClient.AgentConfigOption> result = AcpClient.mapConfigOptionsStatic(null);
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        void emptyListReturnsEmpty() {
+            List<AbstractAgentClient.AgentConfigOption> result = AcpClient.mapConfigOptionsStatic(List.of());
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        void optionWithValues() {
+            var v1 = new NewSessionResponse.SessionConfigOptionValue("v1", "Value 1");
+            var v2 = new NewSessionResponse.SessionConfigOptionValue("v2", "Value 2");
+            var opt = new NewSessionResponse.SessionConfigOption("opt1", "Option 1", "desc", List.of(v1, v2), "v1");
+
+            List<AbstractAgentClient.AgentConfigOption> result = AcpClient.mapConfigOptionsStatic(List.of(opt));
+
+            assertEquals(1, result.size());
+            var mapped = result.get(0);
+            assertEquals("opt1", mapped.id());
+            assertEquals("Option 1", mapped.label());
+            assertEquals("desc", mapped.description());
+            assertEquals(2, mapped.values().size());
+            assertEquals("v1", mapped.values().get(0).id());
+            assertEquals("Value 1", mapped.values().get(0).label());
+            assertEquals("v1", mapped.selectedValueId());
+        }
+
+        @Test
+        void optionWithNullIdAndLabelUseFallbacks() {
+            var opt = new NewSessionResponse.SessionConfigOption(null, null, "desc", List.of(), null);
+
+            List<AbstractAgentClient.AgentConfigOption> result = AcpClient.mapConfigOptionsStatic(List.of(opt));
+
+            assertEquals(1, result.size());
+            assertEquals("", result.get(0).id());
+            assertEquals("", result.get(0).label()); // label falls back to optId which is ""
+        }
+
+        @Test
+        void optionWithNullValuesListReturnsEmptyValues() {
+            var opt = new NewSessionResponse.SessionConfigOption("x", "X", null, null, null);
+
+            List<AbstractAgentClient.AgentConfigOption> result = AcpClient.mapConfigOptionsStatic(List.of(opt));
+
+            assertEquals(1, result.size());
+            assertTrue(result.get(0).values().isEmpty());
+        }
+    }
+
+    // ── filterSessionOptionsStatic ──────────────────────────────────────
+
+    @Nested
+    class FilterSessionOptionsStatic {
+
+        private AbstractAgentClient.AgentConfigOption makeOpt(String id, String label,
+                                                              String... valueIds) {
+            List<AbstractAgentClient.AgentConfigOptionValue> vals = new java.util.ArrayList<>();
+            for (String vid : valueIds) {
+                vals.add(new AbstractAgentClient.AgentConfigOptionValue(vid, "Label-" + vid));
+            }
+            return new AbstractAgentClient.AgentConfigOption(id, label, null, vals, null);
+        }
+
+        @Test
+        void emptyModelIdsPassesAllThrough() {
+            var opt1 = makeOpt("o1", "Opt1", "a", "b");
+            var opt2 = makeOpt("o2", "Opt2", "c");
+
+            List<SessionOption> result = AcpClient.filterSessionOptionsStatic(
+                List.of(opt1, opt2), Collections.emptySet());
+
+            assertEquals(2, result.size());
+            assertEquals("o1", result.get(0).key());
+            assertEquals("o2", result.get(1).key());
+        }
+
+        @Test
+        void exactMatchIsFilteredOut() {
+            var opt = makeOpt("models", "Model", "m1", "m2");
+
+            List<SessionOption> result = AcpClient.filterSessionOptionsStatic(
+                List.of(opt), Set.of("m1", "m2"));
+
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        void modelIdsSupersetOfOptionValuesIsFilteredOut() {
+            var opt = makeOpt("models", "Model", "m1");
+
+            List<SessionOption> result = AcpClient.filterSessionOptionsStatic(
+                List.of(opt), Set.of("m1", "m2", "m3"));
+
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        void partialOverlapIsIncluded() {
+            var opt = makeOpt("theme", "Theme", "dark", "light", "m1");
+
+            List<SessionOption> result = AcpClient.filterSessionOptionsStatic(
+                List.of(opt), Set.of("m1", "m2"));
+
+            assertEquals(1, result.size());
+            assertEquals("theme", result.get(0).key());
+            assertEquals(List.of("dark", "light", "m1"), result.get(0).values());
+            assertEquals("Label-dark", result.get(0).labels().get("dark"));
+        }
+
+        @Test
+        void optionWithNoValuesIsIncluded() {
+            var opt = makeOpt("empty", "Empty");
+
+            List<SessionOption> result = AcpClient.filterSessionOptionsStatic(
+                List.of(opt), Set.of("m1", "m2"));
+
+            // optValueIds is empty; containsAll(empty) is always true → filtered out
+            assertTrue(result.isEmpty());
         }
     }
 

@@ -413,6 +413,34 @@ public final class SessionSwitchService implements Disposable {
     // ── OpenCode export ───────────────────────────────────────────────────────
 
     /**
+     * Parses the branch name from the contents of a {@code .git/HEAD} file.
+     * Returns the branch name for symbolic refs (e.g. {@code "ref: refs/heads/main"} → {@code "main"}),
+     * or {@code "unknown"} for detached HEAD or unrecognised formats.
+     */
+    static String parseGitBranchFromHead(@Nullable String headContent) {
+        if (headContent == null || headContent.isBlank()) return "unknown";
+        String trimmed = headContent.trim();
+        if (trimmed.startsWith("ref: refs/heads/")) {
+            return trimmed.substring("ref: refs/heads/".length());
+        }
+        return "unknown";
+    }
+
+    /**
+     * Builds the YAML content for a Copilot CLI {@code workspace.yaml} file.
+     */
+    static String buildWorkspaceYamlContent(@NotNull String sessionId, @NotNull String basePath,
+                                            @NotNull String branch, @NotNull String timestamp) {
+        return "id: " + sessionId + "\n"
+            + "cwd: " + basePath + "\n"
+            + "git_root: " + basePath + "\n"
+            + "branch: " + branch + "\n"
+            + "summary_count: 0\n"
+            + "created_at: " + timestamp + "\n"
+            + "updated_at: " + timestamp + "\n";
+    }
+
+    /**
      * Writes a minimal {@code workspace.yaml} that Copilot CLI requires to recognize a session.
      * Fields mirror what the CLI writes natively when creating a session.
      */
@@ -423,10 +451,8 @@ public final class SessionSwitchService implements Disposable {
             if (Files.isDirectory(gitDir)) {
                 Path headFile = gitDir.resolve("HEAD");
                 if (Files.exists(headFile)) {
-                    String headContent = Files.readString(headFile, StandardCharsets.UTF_8).trim();
-                    if (headContent.startsWith("ref: refs/heads/")) {
-                        branch = headContent.substring("ref: refs/heads/".length());
-                    }
+                    String headContent = Files.readString(headFile, StandardCharsets.UTF_8);
+                    branch = parseGitBranchFromHead(headContent);
                 }
             }
         } catch (Exception e) {
@@ -434,13 +460,7 @@ public final class SessionSwitchService implements Disposable {
         }
 
         String now = Instant.now().toString();
-        String yaml = "id: " + sessionId + "\n"
-            + "cwd: " + basePath + "\n"
-            + "git_root: " + basePath + "\n"
-            + "branch: " + branch + "\n"
-            + "summary_count: 0\n"
-            + "created_at: " + now + "\n"
-            + "updated_at: " + now + "\n";
+        String yaml = buildWorkspaceYamlContent(sessionId, basePath, branch, now);
 
         Files.writeString(sessionDir.resolve("workspace.yaml"), yaml, StandardCharsets.UTF_8,
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
