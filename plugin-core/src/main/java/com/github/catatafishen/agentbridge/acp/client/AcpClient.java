@@ -44,12 +44,14 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Abstract ACP protocol client.
@@ -406,13 +408,16 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
     }
 
+    static List<AbstractAgentClient.AgentMode> mapModesStatic(@Nullable List<NewSessionResponse.AvailableMode> modes) {
+        if (modes == null) return List.of();
+        return modes.stream()
+            .map(m -> new AbstractAgentClient.AgentMode(m.slug(), m.name(), m.description()))
+            .toList();
+    }
+
     private void updateModes(NewSessionResponse response) {
         availableModes.clear();
-        if (response.modes() != null) {
-            for (NewSessionResponse.AvailableMode m : response.modes()) {
-                availableModes.add(new AbstractAgentClient.AgentMode(m.slug(), m.name(), m.description()));
-            }
-        }
+        availableModes.addAll(mapModesStatic(response.modes()));
         if (currentModeSlug == null) {
             String reportedMode = response.currentModeId();
             currentModeSlug = reportedMode != null ? reportedMode : defaultModeSlug();
@@ -422,21 +427,25 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
     }
 
+    static List<AbstractAgentClient.AgentConfigOption> mapConfigOptionsStatic(
+        @Nullable List<NewSessionResponse.SessionConfigOption> options) {
+        if (options == null) return List.of();
+        List<AbstractAgentClient.AgentConfigOption> result = new ArrayList<>();
+        for (NewSessionResponse.SessionConfigOption opt : options) {
+            List<AbstractAgentClient.AgentConfigOptionValue> vals = opt.values() == null ? List.of()
+                : opt.values().stream()
+                  .map(v -> new AbstractAgentClient.AgentConfigOptionValue(v.id(), v.label()))
+                  .toList();
+            String optId = opt.id() != null ? opt.id() : "";
+            String label = opt.label() != null ? opt.label() : optId;
+            result.add(new AbstractAgentClient.AgentConfigOption(optId, label, opt.description(), vals, opt.selectedValueId()));
+        }
+        return result;
+    }
+
     private void updateConfigOptions(NewSessionResponse response) {
         availableConfigOptions.clear();
-        if (response.configOptions() != null) {
-            for (NewSessionResponse.SessionConfigOption opt : response.configOptions()) {
-                List<AbstractAgentClient.AgentConfigOptionValue> vals = opt.values() == null ? List.of()
-                    : opt.values().stream()
-                      .map(v -> new AbstractAgentClient.AgentConfigOptionValue(v.id(), v.label()))
-                      .toList();
-                String optId = opt.id() != null ? opt.id() : "";
-                String label = opt.label() != null ? opt.label() : optId;
-                availableConfigOptions.add(
-                    new AbstractAgentClient.AgentConfigOption(optId, label, opt.description(), vals, opt.selectedValueId())
-                );
-            }
-        }
+        availableConfigOptions.addAll(mapConfigOptionsStatic(response.configOptions()));
         LOG.debug(displayName() + ": session/new: " + availableConfigOptions.size() + " config option(s)");
     }
 
@@ -833,34 +842,39 @@ public abstract class AcpClient extends AbstractAgentClient {
      * for clients that don't advertise models at session start; exposing them alongside the
      * primary model selector would render a duplicate model dropdown.</p>
      */
-    @Override
-    @NotNull
-    public final List<SessionOption> listSessionOptions() {
-        Set<String> sessionModelIds = availableModels.isEmpty()
-            ? Collections.emptySet()
-            : availableModels.stream().map(Model::id).collect(java.util.stream.Collectors.toSet());
-
-        return availableConfigOptions.stream()
+    static List<SessionOption> filterSessionOptionsStatic(
+        @NotNull List<AbstractAgentClient.AgentConfigOption> configOptions,
+        @NotNull Set<String> sessionModelIds) {
+        return configOptions.stream()
             .filter(opt -> {
                 if (sessionModelIds.isEmpty()) return true;
                 Set<String> optValueIds = opt.values().stream()
                     .map(AbstractAgentClient.AgentConfigOptionValue::id)
-                    .collect(java.util.stream.Collectors.toSet());
+                    .collect(Collectors.toSet());
                 return !sessionModelIds.equals(optValueIds) && !sessionModelIds.containsAll(optValueIds);
             })
             .map(opt -> {
                 List<String> valueIds = opt.values().stream()
                     .map(AbstractAgentClient.AgentConfigOptionValue::id)
                     .toList();
-                java.util.Map<String, String> labels = opt.values().stream()
-                    .collect(java.util.stream.Collectors.toMap(
+                Map<String, String> labels = opt.values().stream()
+                    .collect(Collectors.toMap(
                         AbstractAgentClient.AgentConfigOptionValue::id,
                         AbstractAgentClient.AgentConfigOptionValue::label,
                         (a, b) -> a,
-                        java.util.LinkedHashMap::new));
+                        LinkedHashMap::new));
                 return new SessionOption(opt.id(), opt.label(), valueIds, labels, opt.selectedValueId());
             })
             .toList();
+    }
+
+    @Override
+    @NotNull
+    public final List<SessionOption> listSessionOptions() {
+        Set<String> sessionModelIds = availableModels.isEmpty()
+            ? Collections.emptySet()
+            : availableModels.stream().map(Model::id).collect(Collectors.toSet());
+        return filterSessionOptionsStatic(availableConfigOptions, sessionModelIds);
     }
 
     /**

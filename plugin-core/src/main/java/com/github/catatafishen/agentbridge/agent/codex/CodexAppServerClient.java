@@ -104,6 +104,10 @@ public final class CodexAppServerClient extends AbstractAgentClient {
 
     private static final long TURN_WAIT_POLL_MILLIS = 1000;
 
+    // ── Message classification enum ──────────────────────────────────────────
+
+    enum MessageType {RESPONSE, SERVER_REQUEST, NOTIFICATION, UNKNOWN}
+
     // ── Session options ──────────────────────────────────────────────────────
 
     private static final SessionOption EFFORT_OPTION = new SessionOption(
@@ -502,8 +506,12 @@ public final class CodexAppServerClient extends AbstractAgentClient {
 
     @NotNull
     private List<String> buildServerCommand() {
+        return buildServerCommandStatic(resolvedBinaryPath, mcpPort);
+    }
+
+    static List<String> buildServerCommandStatic(@NotNull String binaryPath, int mcpPort) {
         List<String> cmd = new ArrayList<>();
-        cmd.add(resolvedBinaryPath);
+        cmd.add(binaryPath);
         cmd.add("app-server");
 
         // Disable native shell execution tools; model must use MCP tools instead
@@ -850,20 +858,23 @@ public final class CodexAppServerClient extends AbstractAgentClient {
      * </ol>
      */
     private void dispatchMessage(@NotNull JsonObject msg) {
-        // id is "present and non-null" — some implementations send "id": null in notifications
-        boolean hasId = msg.has(F_ID) && !msg.get(F_ID).isJsonNull();
-        boolean hasMethod = msg.has(F_METHOD);
-        boolean hasResult = msg.has(F_RESULT) || msg.has(F_ERROR);
-
-        if (hasId && hasResult && !hasMethod) {
-            handleResponse(msg);
-        } else if (hasMethod && hasId) {
-            // Server-initiated request (approval or tool call) — has an id we must echo back
-            handleServerRequest(msg);
-        } else if (hasMethod) {
-            // Notification from server
-            handleNotification(msg);
+        switch (classifyMessageType(msg)) {
+            case RESPONSE -> handleResponse(msg);
+            case SERVER_REQUEST -> handleServerRequest(msg);
+            case NOTIFICATION -> handleNotification(msg);
+            default -> {
+            }
         }
+    }
+
+    static MessageType classifyMessageType(@NotNull JsonObject msg) {
+        boolean hasId = msg.has("id") && !msg.get("id").isJsonNull();
+        boolean hasMethod = msg.has("method");
+        boolean hasResult = msg.has("result") || msg.has("error");
+        if (hasId && hasResult && !hasMethod) return MessageType.RESPONSE;
+        if (hasMethod && hasId) return MessageType.SERVER_REQUEST;
+        if (hasMethod) return MessageType.NOTIFICATION;
+        return MessageType.UNKNOWN;
     }
 
     private void handleResponse(@NotNull JsonObject msg) {
@@ -884,12 +895,15 @@ public final class CodexAppServerClient extends AbstractAgentClient {
                                         @NotNull JsonObject msg) {
         if (msg.has(F_ERROR)) {
             JsonObject err = msg.getAsJsonObject(F_ERROR);
-            String errMsg = err.has(F_MESSAGE) ? err.get(F_MESSAGE).getAsString() : err.toString();
-            f.completeExceptionally(new AgentException("JSON-RPC error: " + errMsg, null, false));
+            f.completeExceptionally(new AgentException("JSON-RPC error: " + extractJsonRpcErrorMessage(err), null, false));
         } else {
             JsonElement result = msg.get(F_RESULT);
             f.complete(result.isJsonObject() ? result.getAsJsonObject() : new JsonObject());
         }
+    }
+
+    static String extractJsonRpcErrorMessage(@NotNull JsonObject errorObj) {
+        return errorObj.has("message") ? errorObj.get("message").getAsString() : errorObj.toString();
     }
 
     // ── Server-initiated request handling ────────────────────────────────────
@@ -1243,9 +1257,13 @@ public final class CodexAppServerClient extends AbstractAgentClient {
         String id = item.has(F_ID) ? item.get(F_ID).getAsString() : UUID.randomUUID().toString();
         String cmd = item.has(F_COMMAND) ? item.get(F_COMMAND).getAsString() : "shell";
         cb.accept(new SessionUpdate.ToolCall(id, "shell_command", SessionUpdate.ToolKind.OTHER,
-            "{\"command\":\"" + cmd.replace("\"", "\\\"") + "\"}", null, null, null, null, null));
+            buildCommandArgsJson(cmd), null, null, null, null, null));
         cb.accept(new SessionUpdate.ToolCallUpdate(id, SessionUpdate.ToolCallStatus.FAILED,
             null, "Declined: native shell execution is not permitted. Use MCP tools instead.", null));
+    }
+
+    static String buildCommandArgsJson(@NotNull String command) {
+        return "{\"command\":\"" + command.replace("\"", "\\\"") + "\"}";
     }
 
     /**
