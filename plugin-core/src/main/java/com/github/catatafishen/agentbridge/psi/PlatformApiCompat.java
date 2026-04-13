@@ -48,6 +48,13 @@ public final class PlatformApiCompat {
     private static final String LANG_JAVASCRIPT = "JavaScript";
     private static final String LANG_PYTHON = "Python";
 
+    /**
+     * Categories of source root types, used by {@link #classifySourceRootType(String)}.
+     */
+    enum SourceRootKind {
+        SOURCE, TEST_SOURCE, RESOURCE, TEST_RESOURCE, GENERATED_SOURCE
+    }
+
     private PlatformApiCompat() {
     }
 
@@ -593,7 +600,18 @@ public final class PlatformApiCompat {
         if (result.success()) {
             return result.getOutputAsJoinedString();
         }
-        return "Error (exit " + result.getExitCode() + "): " + result.getErrorOutputAsJoinedString();
+        return formatGitCommandError(result.getExitCode(), result.getErrorOutputAsJoinedString());
+    }
+
+    /**
+     * Formats a git command error into a human-readable message.
+     *
+     * @param exitCode    the process exit code
+     * @param errorOutput the stderr content
+     * @return formatted error string, e.g. {@code "Error (exit 128): fatal: not a git repository"}
+     */
+    static String formatGitCommandError(int exitCode, @NotNull String errorOutput) {
+        return "Error (exit " + exitCode + "): " + errorOutput;
     }
 
     private static final java.util.Map<String, git4idea.commands.GitCommand> IDE_GIT_COMMAND_MAP = java.util.Map.ofEntries(
@@ -635,7 +653,41 @@ public final class PlatformApiCompat {
         var descriptor = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
             com.intellij.openapi.extensions.PluginId.getId(pluginId));
         if (descriptor == null) return null;
-        return descriptor.getName() + " v" + descriptor.getVersion();
+        return formatPluginVersionInfo(descriptor.getName(), descriptor.getVersion());
+    }
+
+    /**
+     * Formats a plugin name and version into the standard display string.
+     *
+     * @param name    plugin display name
+     * @param version plugin version string
+     * @return formatted string, e.g. {@code "My Plugin v1.2.3"}
+     */
+    static String formatPluginVersionInfo(@NotNull String name, @NotNull String version) {
+        return name + " v" + version;
+    }
+
+    /**
+     * Classifies a source-root type string (e.g. "sources", "test_sources", "resources",
+     * "test_resources", "generated_sources") into a {@link SourceRootKind}.
+     *
+     * <p>Rules:</p>
+     * <ul>
+     *   <li>If the type contains "resources" → RESOURCE or TEST_RESOURCE (depending on "test_" prefix)</li>
+     *   <li>If the type is "generated_sources" → GENERATED_SOURCE</li>
+     *   <li>If the type starts with "test_" → TEST_SOURCE</li>
+     *   <li>Otherwise → SOURCE</li>
+     * </ul>
+     */
+    static SourceRootKind classifySourceRootType(@NotNull String type) {
+        boolean isTest = type.startsWith("test_");
+        if (type.contains("resources")) {
+            return isTest ? SourceRootKind.TEST_RESOURCE : SourceRootKind.RESOURCE;
+        }
+        if ("generated_sources".equals(type)) {
+            return SourceRootKind.GENERATED_SOURCE;
+        }
+        return isTest ? SourceRootKind.TEST_SOURCE : SourceRootKind.SOURCE;
     }
 
     /**
@@ -650,21 +702,18 @@ public final class PlatformApiCompat {
     public static void addSourceFolder(@NotNull com.intellij.openapi.roots.ContentEntry entry,
                                        @NotNull com.intellij.openapi.vfs.VirtualFile dir,
                                        @NotNull String type) {
-        boolean isTest = type.startsWith("test_");
-        if (type.contains("resources")) {
-            var rootType = isTest
-                ? org.jetbrains.jps.model.java.JavaResourceRootType.TEST_RESOURCE
-                : org.jetbrains.jps.model.java.JavaResourceRootType.RESOURCE;
-            entry.addSourceFolder(dir, rootType);
-        } else if ("generated_sources".equals(type)) {
-            var rootType = org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE;
-            var props = org.jetbrains.jps.model.java.JpsJavaExtensionService.getInstance()
-                .createSourceRootProperties("", true);
-            entry.addSourceFolder(dir, rootType, props);
-        } else if (isTest) {
-            entry.addSourceFolder(dir, org.jetbrains.jps.model.java.JavaSourceRootType.TEST_SOURCE);
-        } else {
-            entry.addSourceFolder(dir, org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE);
+        switch (classifySourceRootType(type)) {
+            case TEST_RESOURCE ->
+                entry.addSourceFolder(dir, org.jetbrains.jps.model.java.JavaResourceRootType.TEST_RESOURCE);
+            case RESOURCE -> entry.addSourceFolder(dir, org.jetbrains.jps.model.java.JavaResourceRootType.RESOURCE);
+            case GENERATED_SOURCE -> {
+                var rootType = org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE;
+                var props = org.jetbrains.jps.model.java.JpsJavaExtensionService.getInstance()
+                    .createSourceRootProperties("", true);
+                entry.addSourceFolder(dir, rootType, props);
+            }
+            case TEST_SOURCE -> entry.addSourceFolder(dir, org.jetbrains.jps.model.java.JavaSourceRootType.TEST_SOURCE);
+            case SOURCE -> entry.addSourceFolder(dir, org.jetbrains.jps.model.java.JavaSourceRootType.SOURCE);
         }
     }
 

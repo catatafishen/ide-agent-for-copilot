@@ -335,7 +335,7 @@ public final class KiroClientExporter {
      * messages or when a rate-limit/error turn is followed immediately by a retry prompt.
      * We drop the earlier duplicate and keep the later one.</p>
      */
-    private static void mergeConsecutivePrompts(@NotNull List<JsonObject> messages) {
+    static void mergeConsecutivePrompts(@NotNull List<JsonObject> messages) {
         int i = 0;
         while (i < messages.size() - 1) {
             JsonObject current = messages.get(i);
@@ -360,7 +360,7 @@ public final class KiroClientExporter {
      * while the second turn opens with tool calls. In Kiro's format this is invalid —
      * AssistantMessages must alternate with Prompts (and optional ToolResults in between).</p>
      */
-    private static void mergeConsecutiveAssistantMessages(@NotNull List<JsonObject> messages) {
+    static void mergeConsecutiveAssistantMessages(@NotNull List<JsonObject> messages) {
         int i = 0;
         while (i < messages.size() - 1) {
             JsonObject current = messages.get(i);
@@ -566,7 +566,7 @@ public final class KiroClientExporter {
     }
 
     @NotNull
-    private static JsonObject textContentBlock(@NotNull String text) {
+    static JsonObject textContentBlock(@NotNull String text) {
         JsonObject block = new JsonObject();
         block.addProperty("kind", CONTENT_KIND_TEXT);
         block.addProperty("data", text);
@@ -574,7 +574,7 @@ public final class KiroClientExporter {
     }
 
     @NotNull
-    private static JsonObject wrapMessage(
+    static JsonObject wrapMessage(
         @NotNull String kind,
         @NotNull String messageId,
         @NotNull JsonArray content) {

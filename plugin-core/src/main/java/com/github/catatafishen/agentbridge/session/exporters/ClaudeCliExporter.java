@@ -221,7 +221,7 @@ public final class ClaudeCliExporter {
     // Message extraction
     // ------------------------------------------------------------------
 
-    private static String extractLastUserPromptText(@NotNull List<AnthropicMessage> messages) {
+    static String extractLastUserPromptText(@NotNull List<AnthropicMessage> messages) {
         String lastText = "";
         for (AnthropicMessage msg : messages) {
             if (!"user".equals(msg.role())) continue;
@@ -333,7 +333,7 @@ public final class ClaudeCliExporter {
         return GSON.toJson(event);
     }
 
-    private static boolean hasContentBlockType(@NotNull AnthropicMessage msg, @NotNull String role, @NotNull String blockType) {
+    static boolean hasContentBlockType(@NotNull AnthropicMessage msg, @NotNull String role, @NotNull String blockType) {
         return role.equals(msg.role()) && msg.contentBlocks().stream()
             .anyMatch(b -> b.has("type") && blockType.equals(b.get("type").getAsString()));
     }

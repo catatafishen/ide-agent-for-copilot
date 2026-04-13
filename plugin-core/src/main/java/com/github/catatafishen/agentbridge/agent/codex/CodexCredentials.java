@@ -54,7 +54,20 @@ public final class CodexCredentials {
             if (!Files.exists(path)) {
                 return new CodexCredentials(false, null);
             }
-            String content = Files.readString(path);
+            return parseCredentials(Files.readString(path));
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("Failed to read Codex credentials from " + path + ": " + e.getMessage());
+            return new CodexCredentials(false, null);
+        }
+    }
+
+    /**
+     * Parses the credential JSON content and returns a snapshot.
+     * Extracted from {@link #read()} for testability — no filesystem dependency.
+     */
+    @NotNull
+    static CodexCredentials parseCredentials(@NotNull String content) {
+        try {
             JsonObject root = JsonParser.parseString(content).getAsJsonObject();
 
             // API key auth: presence of api_key is sufficient
@@ -95,8 +108,8 @@ public final class CodexCredentials {
             }
 
             return new CodexCredentials(false, null);
-        } catch (IOException | RuntimeException e) {
-            LOG.warn("Failed to read Codex credentials from " + path + ": " + e.getMessage());
+        } catch (RuntimeException e) {
+            LOG.warn("Failed to parse Codex credentials: " + e.getMessage());
             return new CodexCredentials(false, null);
         }
     }

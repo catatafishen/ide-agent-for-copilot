@@ -673,7 +673,7 @@ public final class SessionStoreV2 implements Disposable {
      * Reads a per-entry timestamp from a legacy V2 part, falling back to the message-level timestamp.
      */
     @NotNull
-    private static String readLegacyTimestamp(@NotNull JsonObject part, @NotNull String messageLevelTs) {
+    static String readLegacyTimestamp(@NotNull JsonObject part, @NotNull String messageLevelTs) {
         if (part.has("ts")) {
             String partTs = part.get("ts").getAsString();
             if (!partTs.isEmpty()) return partTs;
@@ -693,7 +693,7 @@ public final class SessionStoreV2 implements Disposable {
      * returning them as context file triples (name, path, line). Skips non-file parts.
      * Records consumed indices in {@code consumed} so the caller can skip them.
      */
-    private static List<ContextFileRef> collectLegacyFileParts(
+    static List<ContextFileRef> collectLegacyFileParts(
         List<JsonObject> parts, int startIdx, java.util.Set<Integer> consumed) {
         List<ContextFileRef> files = new ArrayList<>();
         for (int i = startIdx; i < parts.size(); i++) {

@@ -160,7 +160,7 @@ public final class CopilotClientExporter {
     }
 
     @NotNull
-    private static Instant resolveStartTime(@NotNull List<EntryData> entries) {
+    static Instant resolveStartTime(@NotNull List<EntryData> entries) {
         for (EntryData entry : entries) {
             String ts = entry.getTimestamp();
             if (!ts.isEmpty()) {
@@ -301,7 +301,7 @@ public final class CopilotClientExporter {
     }
 
     @Nullable
-    private static String findFirstModel(@NotNull List<EntryData> entries) {
+    static String findFirstModel(@NotNull List<EntryData> entries) {
         for (EntryData entry : entries) {
             String model = null;
             if (entry instanceof EntryData.Text t) model = t.getModel();

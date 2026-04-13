@@ -371,7 +371,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
             cmd.add("--dangerously-skip-permissions");
         }
 
-        String profileName = extractProfileName();
+        String profileName = extractProfileName(profile.getAcpArgs());
         if (profileName != null) {
             cmd.add(PROFILE_FLAG);
             cmd.add(profileName);
@@ -402,14 +402,13 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
     }
 
     /**
-     * Extract Claude CLI profile name from agent profile's acpArgs if configured.
-     * Looks for "--profile <name>" in the acpArgs list.
+     * Extract Claude CLI profile name from an args list if configured.
+     * Looks for "--profile &lt;name&gt;" in the args list.
      *
      * @return the profile name, or null if not configured
      */
     @Nullable
-    private String extractProfileName() {
-        List<String> args = profile.getAcpArgs();
+    static String extractProfileName(@NotNull List<String> args) {
         for (int i = 0; i < args.size() - 1; i++) {
             if (PROFILE_FLAG.equals(args.get(i))) {
                 return args.get(i + 1);

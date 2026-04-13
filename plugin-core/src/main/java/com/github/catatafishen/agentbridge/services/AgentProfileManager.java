@@ -202,12 +202,17 @@ public final class AgentProfileManager implements PersistentStateComponent<Agent
     @Nullable
     public static String getClaudeCliAuthStatus() {
         ClaudeCliCredentials creds = ClaudeCliCredentials.read();
-        if (creds.isLoggedIn()) {
-            String name = creds.getDisplayName();
-            return "✓ Logged in" + (name != null ? " as " + name : "");
-        } else {
-            return null;
-        }
+        return formatAuthStatus(creds.isLoggedIn(), creds.getDisplayName());
+    }
+
+    /**
+     * Formats a human-readable authentication status string.
+     * Returns {@code null} if not logged in.
+     */
+    @Nullable
+    static String formatAuthStatus(boolean loggedIn, @Nullable String displayName) {
+        if (!loggedIn) return null;
+        return "✓ Logged in" + (displayName != null ? " as " + displayName : "");
     }
 
     @NotNull
