@@ -169,9 +169,9 @@ class McpHttpServerStaticMethodsTest {
         @Test
         void projectNameWithQuotesIsEscaped() {
             String json = McpHttpServer.buildHealthResponse(true, "SSE", "my \"project\"");
-            // Quotes in project name should be replaced with single quotes for safe embedding
-            assertTrue(json.contains("my 'project'"));
-            assertFalse(json.contains("my \\\"project\\\""));
+            // Gson properly escapes double quotes; the result should be valid JSON
+            JsonObject parsed = JsonParser.parseString(json).getAsJsonObject();
+            assertEquals("my \"project\"", parsed.get("project").getAsString());
         }
 
         @Test

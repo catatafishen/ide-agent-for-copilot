@@ -252,9 +252,11 @@ public final class McpHttpServer implements Disposable, McpServerControl {
      * Builds a health-check JSON response string. Package-private for testing.
      */
     static String buildHealthResponse(boolean serverRunning, String transportName, String projectName) {
-        return "{\"status\":\"" + (serverRunning ? "ok" : "stopped") + "\","
-            + "\"transport\":\"" + transportName + "\","
-            + "\"project\":\"" + projectName.replace("\"", "'") + "\"}";
+        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+        obj.addProperty("status", serverRunning ? "ok" : "stopped");
+        obj.addProperty("transport", transportName);
+        obj.addProperty("project", projectName);
+        return obj.toString();
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {

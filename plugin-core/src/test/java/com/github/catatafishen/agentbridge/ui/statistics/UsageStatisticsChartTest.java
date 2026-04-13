@@ -12,7 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for helper methods in {@link UsageStatisticsChart},
@@ -368,75 +369,75 @@ class UsageStatisticsChartTest {
 
     @Test
     void computeMinMax_emptySeries_sensibleDefaults() {
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of());
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of());
         // xMin, xMax default to 0; yMin=0, yMax = yMin+1 = 1
-        assertEquals(0.0, bounds[0], "xMin");
-        assertEquals(0.0, bounds[1], "xMax");
-        assertEquals(0.0, bounds[2], "yMin");
-        assertEquals(1.0, bounds[3], "yMax");
+        assertEquals(0L, bounds.xMin(), "xMin");
+        assertEquals(0L, bounds.xMax(), "xMax");
+        assertEquals(0L, bounds.yMin(), "yMin");
+        assertEquals(1L, bounds.yMax(), "yMax");
     }
 
     @Test
     void computeMinMax_singleDataPoint() {
         var s = series(pt(100, 50));
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of(s));
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of(s));
 
-        assertEquals(100.0, bounds[0], "xMin");
-        assertEquals(100.0, bounds[1], "xMax");
+        assertEquals(100L, bounds.xMin(), "xMin");
+        assertEquals(100L, bounds.xMax(), "xMax");
         // yMin = min(0, 50) = 0; yMax = max(0, 50) = 50
         // padding = 50/10 = 5; yMax = 55
-        assertEquals(0.0, bounds[2], "yMin");
-        assertEquals(55.0, bounds[3], "yMax");
+        assertEquals(0L, bounds.yMin(), "yMin");
+        assertEquals(55L, bounds.yMax(), "yMax");
     }
 
     @Test
     void computeMinMax_multipleSeries_globalBounds() {
         var s1 = series(pt(10, 20), pt(30, 40));
         var s2 = series(pt(15, 5), pt(25, 100));
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of(s1, s2));
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of(s1, s2));
 
-        assertEquals(10.0, bounds[0], "xMin");
-        assertEquals(30.0, bounds[1], "xMax");
+        assertEquals(10L, bounds.xMin(), "xMin");
+        assertEquals(30L, bounds.xMax(), "xMax");
         // yMin = min(0, 5) = 0; yMax = max(0, 100) = 100
         // padding = 100/10 = 10; yMax = 110
-        assertEquals(0.0, bounds[2], "yMin");
-        assertEquals(110.0, bounds[3], "yMax");
+        assertEquals(0L, bounds.yMin(), "yMin");
+        assertEquals(110L, bounds.yMax(), "yMax");
     }
 
     @Test
     void computeMinMax_negativeValues_paddingOnBothSides() {
         var s = series(pt(0, -30), pt(100, 70));
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of(s));
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of(s));
 
-        assertEquals(0.0, bounds[0], "xMin");
-        assertEquals(100.0, bounds[1], "xMax");
+        assertEquals(0L, bounds.xMin(), "xMin");
+        assertEquals(100L, bounds.xMax(), "xMax");
         // yMin = min(0, -30) = -30; yMax = max(0, 70) = 70
         // padding = (70 - (-30))/10 = 10
         // yMax = 80; yMin = -40 (since yMin < 0)
-        assertEquals(-40.0, bounds[2], "yMin");
-        assertEquals(80.0, bounds[3], "yMax");
+        assertEquals(-40L, bounds.yMin(), "yMin");
+        assertEquals(80L, bounds.yMax(), "yMax");
     }
 
     @Test
     void computeMinMax_allZeroValues_noDivisionByZero() {
         var s = series(pt(0, 0), pt(100, 0));
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of(s));
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of(s));
 
-        assertEquals(0.0, bounds[0], "xMin");
-        assertEquals(100.0, bounds[1], "xMax");
+        assertEquals(0L, bounds.xMin(), "xMin");
+        assertEquals(100L, bounds.xMax(), "xMax");
         // yMin=0, yMax=0, so yMax == yMin → yMax = yMin + 1 = 1
-        assertEquals(0.0, bounds[2], "yMin");
-        assertEquals(1.0, bounds[3], "yMax");
+        assertEquals(0L, bounds.yMin(), "yMin");
+        assertEquals(1L, bounds.yMax(), "yMax");
     }
 
     @Test
     void computeMinMax_singleSeriesAllPositive_zeroBaseline() {
         // Even though min data value is 10, yMin should still be 0 (zero baseline)
         var s = series(pt(0, 10), pt(50, 20));
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of(s));
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of(s));
 
-        assertEquals(0.0, bounds[2], "yMin should include zero baseline");
-        assertTrue(bounds[3] > 20.0, "yMax should be padded above max value");
+        assertEquals(0L, bounds.yMin(), "yMin should include zero baseline");
+        assertTrue(bounds.yMax() > 20L, "yMax should be padded above max value");
     }
 
     @Test
@@ -444,12 +445,12 @@ class UsageStatisticsChartTest {
         // A series with no data points mixed with a populated series
         var empty = new UsageStatisticsChart.DataSeries("empty", TEST_COLOR, List.of());
         var populated = series(pt(10, 50));
-        double[] bounds = UsageStatisticsChart.computeMinMax(List.of(empty, populated));
+        UsageStatisticsChart.Bounds bounds = UsageStatisticsChart.computeMinMax(List.of(empty, populated));
 
-        assertEquals(10.0, bounds[0], "xMin");
-        assertEquals(10.0, bounds[1], "xMax");
-        assertEquals(0.0, bounds[2], "yMin");
-        assertEquals(55.0, bounds[3], "yMax");
+        assertEquals(10L, bounds.xMin(), "xMin");
+        assertEquals(10L, bounds.xMax(), "xMax");
+        assertEquals(0L, bounds.yMin(), "yMin");
+        assertEquals(55L, bounds.yMax(), "yMax");
     }
 
     // ── computeNiceTickCount tests ──────────────────────────────────────

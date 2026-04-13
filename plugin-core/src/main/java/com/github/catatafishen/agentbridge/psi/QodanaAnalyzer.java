@@ -355,7 +355,7 @@ public final class QodanaAnalyzer {
         }
     }
 
-    static void collectSarifRunProblems(JsonObject run, String basePath,
+    static void collectSarifRunProblems(JsonObject run, @Nullable String basePath,
                                         int limit, List<String> problems, Set<String> filesSet) {
         var results = run.getAsJsonArray("results");
         if (results == null) return;
@@ -384,7 +384,7 @@ public final class QodanaAnalyzer {
         return "";
     }
 
-    static SarifLocation extractSarifLocation(JsonObject result, String basePath) {
+    static SarifLocation extractSarifLocation(JsonObject result, @Nullable String basePath) {
         String filePath = "";
         int line = -1;
         if (!result.has("locations")) return new SarifLocation(filePath, line);
