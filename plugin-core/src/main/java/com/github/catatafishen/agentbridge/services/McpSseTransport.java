@@ -181,8 +181,8 @@ final class McpSseTransport {
             exchange.close();
             // Try to send error through SSE stream
             try {
-                String errJson = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,"
-                    + "\"message\":\"Internal error: " + e.getMessage().replace("\"", "'") + "\"}}";
+                String errJson = McpHttpServer.buildJsonRpcErrorResponse(-32603,
+                    "Internal error: " + e.getMessage());
                 session.sendEvent("message", errJson);
             } catch (IOException ioEx) {
                 LOG.warn("Failed to send error via SSE", ioEx);
@@ -212,14 +212,22 @@ final class McpSseTransport {
     }
 
     /**
-     * Formats an SSE event frame. Package-private for testing.
+     * Formats an SSE event frame. Multi-line data payloads are split so that
+     * each line is prefixed with {@code data:} as required by the SSE specification.
+     * Package-private for testing.
      *
      * @param event the event type (e.g. "endpoint", "message")
      * @param data  the event data payload
-     * @return SSE-formatted string: {@code "event: <event>\ndata: <data>\n\n"}
+     * @return SSE-formatted string
      */
     static String formatSseEvent(String event, String data) {
-        return "event: " + event + "\ndata: " + data + "\n\n";
+        StringBuilder sb = new StringBuilder();
+        sb.append("event: ").append(event).append('\n');
+        for (String line : data.split("\n", -1)) {
+            sb.append("data: ").append(line).append('\n');
+        }
+        sb.append('\n');
+        return sb.toString();
     }
 
     /**
@@ -233,7 +241,9 @@ final class McpSseTransport {
      * Builds a simple JSON error response string. Package-private for testing.
      */
     static String buildJsonErrorResponse(String message) {
-        return "{\"error\":\"" + message.replace("\"", "'") + "\"}";
+        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+        obj.addProperty("error", message);
+        return obj.toString();
     }
 
     private static String parseSessionId(String query) {

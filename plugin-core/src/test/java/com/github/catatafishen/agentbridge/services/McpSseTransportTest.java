@@ -174,13 +174,11 @@ class McpSseTransportTest {
         }
 
         @Test
-        void quotesInMessageAreReplaced() {
+        void quotesInMessageAreEscaped() {
             String json = McpSseTransport.buildJsonErrorResponse("Error with \"quotes\"");
-            // Quotes should be replaced with single quotes
-            assertTrue(json.contains("Error with 'quotes'"));
-            // Should still be valid JSON
+            // Gson properly escapes double quotes; the result should be valid JSON
             JsonObject parsed = JsonParser.parseString(json).getAsJsonObject();
-            assertEquals("Error with 'quotes'", parsed.get("error").getAsString());
+            assertEquals("Error with \"quotes\"", parsed.get("error").getAsString());
         }
 
         @Test

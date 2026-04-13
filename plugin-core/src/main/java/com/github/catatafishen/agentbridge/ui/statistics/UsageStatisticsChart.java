@@ -182,6 +182,9 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
     record DataSeries(String agentId, JBColor color, List<DataPoint> points) {
     }
 
+    record Bounds(long xMin, long xMax, long yMin, long yMax) {
+    }
+
     /**
      * Custom JPanel that renders the chart using Java2D.
      */
@@ -204,11 +207,11 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
         }
 
         private void computeMinMax() {
-            double[] bounds = UsageStatisticsChart.computeMinMax(seriesList);
-            xMin = (long) bounds[0];
-            xMax = (long) bounds[1];
-            yMin = (long) bounds[2];
-            yMax = (long) bounds[3];
+            Bounds bounds = UsageStatisticsChart.computeMinMax(seriesList);
+            xMin = bounds.xMin();
+            xMax = bounds.xMax();
+            yMin = bounds.yMin();
+            yMax = bounds.yMax();
         }
 
         @Override
@@ -369,7 +372,7 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
         }
     }
 
-    static double[] computeMinMax(List<DataSeries> allSeries) {
+    static Bounds computeMinMax(List<DataSeries> allSeries) {
         boolean first = true;
         long xLo = 0, xHi = 0, yLo = 0, yHi = 0;
         for (DataSeries series : allSeries) {
@@ -399,7 +402,7 @@ class UsageStatisticsChart extends JBPanel<UsageStatisticsChart> {
         } else {
             yMax = yMin + 1;
         }
-        return new double[]{xMin, xMax, yMin, yMax};
+        return new Bounds(xMin, xMax, yMin, yMax);
     }
 
     static int computeNiceTickCount(int plotH, int scaledMinSpacing) {
