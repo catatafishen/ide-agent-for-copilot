@@ -404,6 +404,15 @@ public final class CopilotClient extends AcpClient {
      * without clobbering other user-configured MCP servers.
      */
     private void mergeMcpConfig(Path copilotDir, int mcpPort) throws IOException {
+        mergeMcpConfigStatic(copilotDir, mcpPort, MCP_SERVER_NAME, MCP_TYPE_HTTP);
+    }
+
+    /**
+     * Merges the agentbridge MCP server entry into the user's existing {@code mcp-config.json}.
+     * Extracted as a static method for testability.
+     */
+    static void mergeMcpConfigStatic(Path copilotDir, int mcpPort,
+                                     String serverName, String transportType) throws IOException {
         Path configPath = copilotDir.resolve("mcp-config.json");
         JsonObject root;
         if (Files.exists(configPath)) {
@@ -416,9 +425,9 @@ public final class CopilotClient extends AcpClient {
             root.add(KEY_MCP_SERVERS, new JsonObject());
         }
         JsonObject entry = new JsonObject();
-        entry.addProperty("type", MCP_TYPE_HTTP);
+        entry.addProperty("type", transportType);
         entry.addProperty("url", "http://localhost:" + mcpPort + "/mcp");
-        root.getAsJsonObject(KEY_MCP_SERVERS).add(MCP_SERVER_NAME, entry);
+        root.getAsJsonObject(KEY_MCP_SERVERS).add(serverName, entry);
         Files.createDirectories(configPath.getParent());
         Files.writeString(configPath, root.toString(), StandardCharsets.UTF_8);
     }

@@ -351,6 +351,109 @@ class ClaudeCliClientTest {
         }
     }
 
+    @Nested
+    class RespondToControlRequest {
+
+        @Test
+        void canUseToolSubtype_writesAllowDecision() throws Exception {
+            JsonObject event = new JsonObject();
+            event.addProperty("subtype", "can_use_tool");
+            event.addProperty("requestId", "req-42");
+
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ClaudeCliClient.respondToControlRequest(event, baos);
+
+            String output = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+            JsonObject parsed = JsonParser.parseString(output.trim()).getAsJsonObject();
+
+            assertEquals("control_response", parsed.get("type").getAsString());
+            assertEquals("can_use_tool", parsed.get("subtype").getAsString());
+            assertEquals("req-42", parsed.get("requestId").getAsString());
+            assertTrue(parsed.has("response"));
+            assertEquals("allow", parsed.getAsJsonObject("response").get("decision").getAsString());
+        }
+
+        @Test
+        void nonToolSubtype_noResponseField() throws Exception {
+            JsonObject event = new JsonObject();
+            event.addProperty("subtype", "something_else");
+            event.addProperty("requestId", "req-99");
+
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ClaudeCliClient.respondToControlRequest(event, baos);
+
+            String output = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+            JsonObject parsed = JsonParser.parseString(output.trim()).getAsJsonObject();
+
+            assertEquals("control_response", parsed.get("type").getAsString());
+            assertEquals("something_else", parsed.get("subtype").getAsString());
+            assertEquals("req-99", parsed.get("requestId").getAsString());
+            assertFalse(parsed.has("response"));
+        }
+
+        @Test
+        void missingSubtype_defaultsToEmpty() throws Exception {
+            JsonObject event = new JsonObject();
+            event.addProperty("requestId", "req-1");
+
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ClaudeCliClient.respondToControlRequest(event, baos);
+
+            String output = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+            JsonObject parsed = JsonParser.parseString(output.trim()).getAsJsonObject();
+
+            assertEquals("", parsed.get("subtype").getAsString());
+            assertEquals("req-1", parsed.get("requestId").getAsString());
+            assertFalse(parsed.has("response"));
+        }
+
+        @Test
+        void missingRequestId_defaultsToEmpty() throws Exception {
+            JsonObject event = new JsonObject();
+            event.addProperty("subtype", "can_use_tool");
+
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ClaudeCliClient.respondToControlRequest(event, baos);
+
+            String output = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+            JsonObject parsed = JsonParser.parseString(output.trim()).getAsJsonObject();
+
+            assertEquals("can_use_tool", parsed.get("subtype").getAsString());
+            assertEquals("", parsed.get("requestId").getAsString());
+            assertTrue(parsed.has("response"));
+        }
+
+        @Test
+        void outputEndsWithNewline() throws Exception {
+            JsonObject event = new JsonObject();
+            event.addProperty("subtype", "test");
+            event.addProperty("requestId", "r");
+
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ClaudeCliClient.respondToControlRequest(event, baos);
+
+            String output = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(output.endsWith("\n"), "Output should end with newline");
+        }
+
+        @Test
+        void ioException_doesNotPropagate() {
+            JsonObject event = new JsonObject();
+            event.addProperty("subtype", "can_use_tool");
+            event.addProperty("requestId", "req-1");
+
+            java.io.OutputStream failingStream = new java.io.OutputStream() {
+                @Override
+                public void write(int b) throws java.io.IOException {
+                    throw new java.io.IOException("simulated write failure");
+                }
+            };
+
+            // Should not throw — IOException is caught and logged
+            ClaudeCliClient.respondToControlRequest(event, failingStream);
+        }
+    }
+
     // ── Reflection helpers ──────────────────────────────────────────────
 
     private static String invokeExtractErrorText(com.google.gson.JsonElement el) throws Exception {
