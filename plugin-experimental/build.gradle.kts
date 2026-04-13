@@ -180,7 +180,7 @@ tasks {
 
     test {
         useJUnitPlatform()
-        finalizedBy(tasks.named("jacocoTestReport"))
+        finalizedBy("jacocoTestReport")
     }
 }
 

@@ -7,6 +7,8 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -248,7 +250,7 @@ public final class QodanaAnalyzer {
             var sarifPath = (Path) getSarifPath.invoke(latest);
             if (sarifPath != null && Files.exists(sarifPath)) {
                 String sarif = Files.readString(sarifPath);
-                resultFuture.complete(parseSarifResults(sarif, limit));
+                resultFuture.complete(parseSarifResults(sarif, limit, project.getBasePath()));
                 return;
             }
         }
@@ -277,7 +279,7 @@ public final class QodanaAnalyzer {
                     String sarif = Files.readString(candidate);
                     if (sarif.length() > 10) {
                         LOG.info("Found Qodana SARIF output at candidate path: " + candidate);
-                        return parseSarifResults(sarif, limit);
+                        return parseSarifResults(sarif, limit, basePath);
                     }
                 } catch (Exception e) {
                     LOG.warn("Failed to read SARIF file at " + candidate, e);
@@ -308,7 +310,7 @@ public final class QodanaAnalyzer {
                 if (sarifFile.isPresent()) {
                     String sarif = Files.readString(sarifFile.get());
                     LOG.info("Found Qodana SARIF output via recursive search: " + sarifFile.get());
-                    return parseSarifResults(sarif, limit);
+                    return parseSarifResults(sarif, limit, basePath);
                 }
             }
         } catch (Exception e) {
@@ -317,7 +319,7 @@ public final class QodanaAnalyzer {
         return null;
     }
 
-    String parseSarifResults(String sarifJson, int limit) {
+    static String parseSarifResults(String sarifJson, int limit, @Nullable String basePath) {
         try {
             var sarif = JsonParser.parseString(sarifJson).getAsJsonObject();
             var runs = sarif.getAsJsonArray("runs");
@@ -327,7 +329,6 @@ public final class QodanaAnalyzer {
 
             List<String> problems = new ArrayList<>();
             Set<String> filesSet = new HashSet<>();
-            String basePath = project.getBasePath();
 
             for (var runElement : runs) {
                 collectSarifRunProblems(runElement.getAsJsonObject(), basePath, limit, problems, filesSet);
@@ -354,8 +355,8 @@ public final class QodanaAnalyzer {
         }
     }
 
-    private void collectSarifRunProblems(JsonObject run, String basePath,
-                                         int limit, List<String> problems, Set<String> filesSet) {
+    static void collectSarifRunProblems(JsonObject run, String basePath,
+                                        int limit, List<String> problems, Set<String> filesSet) {
         var results = run.getAsJsonArray("results");
         if (results == null) return;
 
@@ -373,17 +374,17 @@ public final class QodanaAnalyzer {
         }
     }
 
-    private record SarifLocation(String filePath, int line) {
+    record SarifLocation(String filePath, int line) {
     }
 
-    private String extractSarifMessage(JsonObject result) {
+    static String extractSarifMessage(JsonObject result) {
         if (result.has(PARAM_MESSAGE) && result.getAsJsonObject(PARAM_MESSAGE).has("text")) {
             return result.getAsJsonObject(PARAM_MESSAGE).get("text").getAsString();
         }
         return "";
     }
 
-    private SarifLocation extractSarifLocation(JsonObject result, String basePath) {
+    static SarifLocation extractSarifLocation(JsonObject result, String basePath) {
         String filePath = "";
         int line = -1;
         if (!result.has("locations")) return new SarifLocation(filePath, line);

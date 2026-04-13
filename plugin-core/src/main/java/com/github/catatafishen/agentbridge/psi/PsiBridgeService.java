@@ -591,7 +591,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     @Nullable
-    private static String extractPathArg(JsonObject args) {
+    static String extractPathArg(JsonObject args) {
         for (String key : new String[]{"path", "file", "file1", "file2"}) {
             if (args.has(key) && args.get(key).isJsonPrimitive()) {
                 return args.get(key).getAsString();
@@ -619,7 +619,7 @@ public final class PsiBridgeService implements Disposable {
         }
     }
 
-    private static String buildArgSummary(JsonObject args) {
+    static String buildArgSummary(JsonObject args) {
         if (args.isEmpty()) return "No arguments.";
         StringBuilder sb = new StringBuilder("<table>");
         int count = 0;
@@ -642,7 +642,7 @@ public final class PsiBridgeService implements Disposable {
     /**
      * Returns true if the tool name is a write operation that should get auto-highlights.
      */
-    private static boolean isWriteToolName(String toolName) {
+    static boolean isWriteToolName(String toolName) {
         return switch (toolName) {
             case "write_file", "edit_text", "create_file",
                  "replace_symbol_body", "insert_before_symbol",
@@ -651,7 +651,7 @@ public final class PsiBridgeService implements Disposable {
         };
     }
 
-    private static boolean isSuccessfulWrite(String toolName, String result) {
+    static boolean isSuccessfulWrite(String toolName, String result) {
         return switch (toolName) {
             case "write_file", "edit_text" -> result.startsWith("Edited:") || result.startsWith("Written:");
             case "create_file" -> result.startsWith("✓ Created file:");
@@ -663,7 +663,7 @@ public final class PsiBridgeService implements Disposable {
     }
 
     @Nullable
-    private static String extractFilePath(JsonObject arguments) {
+    static String extractFilePath(JsonObject arguments) {
         if (arguments.has("path")) return arguments.get("path").getAsString();
         if (arguments.has("file")) return arguments.get("file").getAsString();
         return null;
