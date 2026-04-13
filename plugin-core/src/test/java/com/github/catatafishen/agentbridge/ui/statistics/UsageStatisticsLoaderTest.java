@@ -297,6 +297,43 @@ class UsageStatisticsLoaderTest {
 
             assertTrue(accumulators.isEmpty());
         }
+
+        @Test
+        void turnStatsWithoutOwnTimestampUsesPrecedingEntryTimestamp(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("session.jsonl");
+            // A text entry with a timestamp provides the lastSeenTimestamp fallback
+            String textLine = "{\"type\":\"text\",\"content\":\"hello\","
+                + "\"timestamp\":\"2024-06-15T10:00:00Z\",\"entryId\":\"e1\"}";
+            // TurnStats with no timestamp field: must use the fallback from the preceding line
+            String turnStatsNoTs = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
+                + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
+                + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
+                + "\"entryId\":\"e2\"}";
+            Files.writeString(jsonlPath, textLine + "\n" + turnStatsNoTs + "\n");
+
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
+
+            assertEquals(1, accumulators.size(),
+                "TurnStats without its own timestamp should use the preceding entry's timestamp as fallback");
+        }
+
+        @Test
+        void turnStatsWithNoResolvableTimestampIsSkipped(@TempDir Path tempDir) throws Exception {
+            Path jsonlPath = tempDir.resolve("session.jsonl");
+            // Single TurnStats with no timestamp and no preceding line to provide a fallback
+            String turnStatsNoTs = "{\"type\":\"turnStats\",\"turnId\":\"t1\",\"durationMs\":5000,"
+                + "\"inputTokens\":100,\"outputTokens\":200,\"toolCallCount\":3,"
+                + "\"linesAdded\":10,\"linesRemoved\":5,\"multiplier\":\"1x\","
+                + "\"entryId\":\"e1\"}";
+            Files.writeString(jsonlPath, turnStatsNoTs + "\n");
+
+            Map<Object, Object> accumulators = new LinkedHashMap<>();
+            invokeCollectTurnStats(jsonlPath, "copilot", accumulators);
+
+            assertTrue(accumulators.isEmpty(),
+                "TurnStats with no resolvable timestamp should be skipped");
+        }
     }
 
     // ── buildDailyStats (private static, via reflection) ────────────────

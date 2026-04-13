@@ -188,6 +188,103 @@ class ToolCallStatisticsBackfillTest {
         assertTrue(clients.contains("claude-cli"));
     }
 
+    @Test
+    @DisplayName("invalid timestamp in tool entry is counted as error")
+    void invalidTimestampCountedAsError() throws IOException {
+        String basePath = tempDir.toString();
+        createSessionIndex(basePath, "session-1", "GitHub Copilot");
+        // Entry has a non-empty but unparseable timestamp → Instant.parse() throws
+        createSessionJsonl(basePath, "session-1",
+            toolEntry("read_file", "completed", "NOT-AN-ISO-DATE", "{}", "ok"));
+
+        ToolCallStatisticsBackfill.BackfillResult result =
+            ToolCallStatisticsBackfill.backfill(service, basePath);
+
+        assertEquals(0, result.inserted());
+        assertEquals(1, result.errors(), "Invalid timestamp should increment the error count");
+    }
+
+    @Test
+    @DisplayName("entry with empty tool name is ignored (not inserted and not an error)")
+    void emptyToolNameIsIgnored() throws IOException {
+        String basePath = tempDir.toString();
+        createSessionIndex(basePath, "session-1", "GitHub Copilot");
+        createSessionJsonl(basePath, "session-1",
+            toolEntry("", "completed", "2025-01-15T10:00:00Z", "{}", "ok"));
+
+        ToolCallStatisticsBackfill.BackfillResult result =
+            ToolCallStatisticsBackfill.backfill(service, basePath);
+
+        assertEquals(0, result.inserted());
+        assertEquals(0, result.errors(), "Empty title is an ignored entry, not an error");
+        assertEquals(0, service.getRecordCount());
+    }
+
+    @Test
+    @DisplayName("entry with empty timestamp is ignored (not inserted and not an error)")
+    void emptyTimestampIsIgnored() throws IOException {
+        String basePath = tempDir.toString();
+        createSessionIndex(basePath, "session-1", "GitHub Copilot");
+        createSessionJsonl(basePath, "session-1",
+            toolEntry("read_file", "completed", "", "{}", "ok"));
+
+        ToolCallStatisticsBackfill.BackfillResult result =
+            ToolCallStatisticsBackfill.backfill(service, basePath);
+
+        assertEquals(0, result.inserted());
+        assertEquals(0, result.errors(), "Empty timestamp is an ignored entry, not an error");
+        assertEquals(0, service.getRecordCount());
+    }
+
+    @Test
+    @DisplayName("kind field is stored as category on the inserted record")
+    void kindFieldStoredAsCategory() throws IOException {
+        String basePath = tempDir.toString();
+        createSessionIndex(basePath, "session-1", "GitHub Copilot");
+        String entryWithKind = "{\"type\":\"tool\",\"title\":\"read_file\","
+            + "\"kind\":\"FILE\","
+            + "\"timestamp\":\"2025-01-15T10:00:00Z\",\"status\":\"completed\","
+            + "\"arguments\":\"{}\",\"result\":\"file contents\"}";
+        createSessionJsonl(basePath, "session-1", entryWithKind);
+
+        ToolCallStatisticsBackfill.BackfillResult result =
+            ToolCallStatisticsBackfill.backfill(service, basePath);
+
+        assertEquals(1, result.inserted(), "Entry with kind field should be inserted");
+        assertEquals(0, result.errors());
+    }
+
+    @Test
+    @DisplayName("error message longer than 500 chars is truncated before storing")
+    void longErrorMessageIsTruncated() throws IOException {
+        String basePath = tempDir.toString();
+        createSessionIndex(basePath, "session-1", "GitHub Copilot");
+        createSessionJsonl(basePath, "session-1",
+            toolEntry("write_file", "error", "2025-01-15T10:00:00Z", "{}", "E".repeat(600)));
+
+        ToolCallStatisticsBackfill.backfill(service, basePath);
+
+        var errors = service.queryRecentErrors(null, null, 10);
+        assertEquals(1, errors.size());
+        assertEquals(500, errors.getFirst().errorMessage().length(),
+            "Error message should be truncated to 500 characters");
+    }
+
+    @Test
+    @DisplayName("session in index with no corresponding JSONL file is silently skipped")
+    void missingJsonlFileIsSkipped() throws IOException {
+        String basePath = tempDir.toString();
+        createSessionIndex(basePath, "session-missing", "GitHub Copilot");
+        // Intentionally NOT calling createSessionJsonl — the file does not exist
+
+        ToolCallStatisticsBackfill.BackfillResult result =
+            ToolCallStatisticsBackfill.backfill(service, basePath);
+
+        assertEquals(0, result.inserted());
+        assertEquals(0, result.errors(), "Missing JSONL file should be silently skipped");
+        assertEquals(0, service.getRecordCount());
+    }
+
     private static String toolEntry(String title, String status, String timestamp,
                                     String arguments, String result) {
         return "{\"type\":\"tool\",\"title\":\"" + title
