@@ -21,15 +21,37 @@ import java.util.concurrent.TimeoutException;
  */
 public final class EdtUtil {
 
-    private static final int DEFAULT_INVOKE_AND_WAIT_TIMEOUT_SECONDS = 30;
+    static final int DEFAULT_INVOKE_AND_WAIT_TIMEOUT_SECONDS = 30;
     /**
      * How often to check for blocking modal dialogs during invokeAndWait polling.
      */
-    private static final long MODAL_POLL_INTERVAL_MS = 500;
+    static final long MODAL_POLL_INTERVAL_MS = 500;
     /**
      * How long a modal must be continuously visible before we abort the wait.
      */
-    private static final long MODAL_FAIL_AFTER_MS = 1500;
+    static final long MODAL_FAIL_AFTER_MS = 1500;
+
+    /**
+     * Result of evaluating the modal dialog state during polling.
+     */
+    enum ModalCheckAction {
+        /**
+         * No modal is present — reset the timer.
+         */
+        RESET,
+        /**
+         * Modal just appeared — start tracking it (store current time as first-seen).
+         */
+        START_TIMER,
+        /**
+         * Modal is present but grace period hasn't expired — keep waiting.
+         */
+        CONTINUE,
+        /**
+         * Modal has been present too long — abort with error.
+         */
+        ABORT
+    }
 
     private EdtUtil() {
     }
@@ -109,18 +131,43 @@ public final class EdtUtil {
      */
     private static long checkModalTimeout(long modalFirstSeenMs) {
         String modalDetail = describeModalBlocker();
-        if (modalDetail.isEmpty()) {
-            return 0; // no modal — reset the timer
-        }
-        if (modalFirstSeenMs == 0) {
-            return System.currentTimeMillis(); // modal just appeared — start timer
-        }
-        if (System.currentTimeMillis() - modalFirstSeenMs >= MODAL_FAIL_AFTER_MS) {
-            throw new IllegalStateException(
+        ModalCheckAction action = evaluateModalState(modalFirstSeenMs, modalDetail, System.currentTimeMillis(), MODAL_FAIL_AFTER_MS);
+        return switch (action) {
+            case RESET -> 0;
+            case START_TIMER -> System.currentTimeMillis();
+            case CONTINUE -> modalFirstSeenMs;
+            case ABORT -> throw new IllegalStateException(
                 "EDT blocked by modal dialog." + modalDetail
                     + " Use the interact_with_modal tool to respond to the dialog.", null);
+        };
+    }
+
+    /**
+     * Pure decision logic for modal dialog timeout handling.
+     * <p>
+     * Given the timestamp when a modal was first detected, the current modal state description,
+     * the current time, and the failure threshold, returns the action to take.
+     * <p>
+     * This is extracted as a static pure function for testability — all AWT/time dependencies
+     * are injected as parameters.
+     *
+     * @param modalFirstSeenMs 0 if no modal was previously tracked, else timestamp of first detection
+     * @param modalDetail      empty string if no modal visible, non-empty description otherwise
+     * @param nowMs            current time in milliseconds
+     * @param failAfterMs      how long a modal must be visible before aborting
+     * @return the action the caller should take
+     */
+    static ModalCheckAction evaluateModalState(long modalFirstSeenMs, String modalDetail, long nowMs, long failAfterMs) {
+        if (modalDetail.isEmpty()) {
+            return ModalCheckAction.RESET;
         }
-        return modalFirstSeenMs; // modal present but grace period not expired yet
+        if (modalFirstSeenMs == 0) {
+            return ModalCheckAction.START_TIMER;
+        }
+        if (nowMs - modalFirstSeenMs >= failAfterMs) {
+            return ModalCheckAction.ABORT;
+        }
+        return ModalCheckAction.CONTINUE;
     }
 
     /**

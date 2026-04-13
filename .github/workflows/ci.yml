@@ -75,7 +75,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Run plugin-experimental tests
-        run: ./gradlew :plugin-experimental:test :plugin-experimental:jacocoTestReport --no-daemon --quiet --build-cache
+        run: ./gradlew :plugin-experimental:test :plugin-experimental:jacocoTestReport --no-daemon --quiet --build-cache -x :plugin-core:buildChatUi
 
       - name: Upload plugin-experimental coverage to Codecov
         if: always()

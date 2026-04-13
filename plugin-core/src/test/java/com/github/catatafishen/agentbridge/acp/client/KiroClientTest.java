@@ -1,14 +1,109 @@
 package com.github.catatafishen.agentbridge.acp.client;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class KiroClientTest {
+
+    // ── resolveToolIdStatic ─────────────────────────────────────────────
+
+    @ParameterizedTest
+    @CsvSource({
+        "@agentbridge/read_file, read_file",
+        "@agentbridge/search_text, search_text",
+        "@agentbridge/git_status, git_status",
+        "@agentbridge/web_fetch, web_fetch",
+    })
+    void resolveToolId_stripsAgentbridgePrefix(String input, String expected) {
+        assertEquals(expected, KiroClient.resolveToolIdStatic(input));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "Running: @agentbridge/read_file, read_file",
+        "Running: @agentbridge/git_commit, git_commit",
+    })
+    void resolveToolId_stripsRunningPrefix(String input, String expected) {
+        assertEquals(expected, KiroClient.resolveToolIdStatic(input));
+    }
+
+    @Test
+    void resolveToolId_mapsSearchingTheWeb() {
+        assertEquals("web_search", KiroClient.resolveToolIdStatic("Searching the web"));
+    }
+
+    @Test
+    void resolveToolId_mapsFetchingWebContent() {
+        assertEquals("web_fetch", KiroClient.resolveToolIdStatic("Fetching web content"));
+    }
+
+    @Test
+    void resolveToolId_unknownPassthrough() {
+        assertEquals("some_unknown_tool", KiroClient.resolveToolIdStatic("some_unknown_tool"));
+    }
+
+    // ── isMcpToolTitleStatic ────────────────────────────────────────────
+
+    @Test
+    void isMcpToolTitle_runningPrefix() {
+        assertTrue(KiroClient.isMcpToolTitleStatic("Running: @agentbridge/read_file"));
+    }
+
+    @Test
+    void isMcpToolTitle_directPrefix() {
+        assertTrue(KiroClient.isMcpToolTitleStatic("@agentbridge/git_status"));
+    }
+
+    @Test
+    void isMcpToolTitle_humanReadableTitle() {
+        assertFalse(KiroClient.isMcpToolTitleStatic("Searching the web"));
+    }
+
+    @Test
+    void isMcpToolTitle_emptyString() {
+        assertFalse(KiroClient.isMcpToolTitleStatic(""));
+    }
+
+    @Test
+    void isMcpToolTitle_randomText() {
+        assertFalse(KiroClient.isMcpToolTitleStatic("agentbridge_ without at sign"));
+    }
+
+    // ── buildCommandStatic ──────────────────────────────────────────────
+
+    @Test
+    void buildCommand_returnsCorrectArgOrder() {
+        List<String> cmd = KiroClient.buildCommandStatic();
+        assertEquals(List.of("kiro-cli", "acp", "--agent", "intellij-task", "--trust-all-tools"), cmd);
+    }
+
+    @Test
+    void buildCommand_agentAfterAcp() {
+        List<String> cmd = KiroClient.buildCommandStatic();
+        int acpIdx = cmd.indexOf("acp");
+        int agentIdx = cmd.indexOf("--agent");
+        assertTrue(agentIdx > acpIdx, "--agent must come after acp subcommand");
+    }
+
+    // ── buildEnvironmentStatic ──────────────────────────────────────────
+
+    @Test
+    void buildEnvironment_includesRustBacktrace() {
+        Map<String, String> env = KiroClient.buildEnvironmentStatic();
+        assertEquals("1", env.get("RUST_BACKTRACE"));
+    }
+
+    @Test
+    void buildEnvironment_onlyOneEntry() {
+        assertEquals(1, KiroClient.buildEnvironmentStatic().size());
+    }
 
     // ── isPanicLine (private static) ────────────────────────────────────
 

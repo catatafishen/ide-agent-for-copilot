@@ -190,11 +190,19 @@ public final class KiroClient extends AcpClient {
 
     @Override
     protected String resolveToolId(String protocolTitle) {
+        return resolveToolIdStatic(protocolTitle);
+    }
+
+    /**
+     * Maps a Kiro protocol title to the underlying MCP tool name.
+     * Strips the {@code @agentbridge/} or {@code Running: @agentbridge/} prefix,
+     * and maps human-readable Kiro titles to tool names.
+     */
+    static String resolveToolIdStatic(String protocolTitle) {
         if (protocolTitle.startsWith(KEY_AGENTBRIDGE)) {
             return protocolTitle.substring(KEY_AGENTBRIDGE.length());
         }
         String cleaned = protocolTitle.replaceFirst("^Running: @agentbridge/", "");
-        // Map Kiro's human-readable titles to actual tool names
         return switch (cleaned) {
             case "Searching the web" -> "web_search";
             case "Fetching web content" -> "web_fetch";
@@ -204,16 +212,29 @@ public final class KiroClient extends AcpClient {
 
     @Override
     protected boolean isMcpToolTitle(@org.jetbrains.annotations.NotNull String protocolTitle) {
+        return isMcpToolTitleStatic(protocolTitle);
+    }
+
+    /**
+     * Checks whether a Kiro protocol title refers to an agentbridge MCP tool.
+     */
+    static boolean isMcpToolTitleStatic(String protocolTitle) {
         return protocolTitle.startsWith("Running: " + KEY_AGENTBRIDGE)
             || protocolTitle.startsWith(KEY_AGENTBRIDGE);
     }
 
     @Override
     protected List<String> buildCommand(String cwd, int mcpPort) {
-        // --agent must come AFTER the 'acp' subcommand; as a global flag it starts a chat
-        // session instead. --trust-all-tools bypasses per-tool TTY permission prompts that
-        // would block forever because stdin/stdout are wired to JSON-RPC. Tool-level
-        // permissions are still enforced by the MCP server (PermissionResolver).
+        return buildCommandStatic();
+    }
+
+    /**
+     * Returns the Kiro CLI command with the correct argument order.
+     * {@code --agent} must come AFTER {@code acp} subcommand (as a global flag it starts a chat
+     * session). {@code --trust-all-tools} bypasses per-tool TTY permission prompts that would
+     * block forever since stdin/stdout are wired to JSON-RPC.
+     */
+    static List<String> buildCommandStatic() {
         return List.of("kiro-cli", "acp", "--agent", "intellij-task", "--trust-all-tools");
     }
 
@@ -246,8 +267,14 @@ public final class KiroClient extends AcpClient {
 
     @Override
     protected Map<String, String> buildEnvironment(int mcpPort, String cwd) {
-        // RUST_BACKTRACE=1 causes the Kiro process to print full stack traces on panic,
-        // making crash diagnostics significantly easier.
+        return buildEnvironmentStatic();
+    }
+
+    /**
+     * Returns Kiro-specific environment variables.
+     * {@code RUST_BACKTRACE=1} enables full stack traces on Rust panics.
+     */
+    static Map<String, String> buildEnvironmentStatic() {
         return Map.of("RUST_BACKTRACE", "1");
     }
 

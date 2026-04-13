@@ -42,6 +42,10 @@ public final class JunieClient extends AcpClient {
     private volatile boolean restartBeforeNextSession = false;
 
     private static final String KEY_CONTENT = "content";
+    private static final String KEY_RAW_INPUT = "rawInput";
+    private static final String PREFIX_AGENTBRIDGE_UNDERSCORE = "agentbridge_";
+    private static final String PREFIX_TOOL_AGENTBRIDGE_SLASH = "Tool: agentbridge/";
+    private static final String KEY_DEFAULT_BEHAVIOR = "defaultBehavior";
 
     /**
      * Args extracted from {@code session/request_permission} content, keyed by toolCallId.
@@ -72,15 +76,24 @@ public final class JunieClient extends AcpClient {
 
     @Override
     protected String resolveToolId(String protocolTitle) {
+        return resolveToolIdStatic(protocolTitle);
+    }
+
+    /**
+     * Maps a Junie protocol title to the underlying MCP tool name.
+     * Handles: {@code agentbridge_} prefix, {@code Tool: agentbridge/} prefix,
+     * natural language titles (e.g. "Open file.txt" → "read_file"), and
+     * case-insensitive exact matches (e.g. "build project" → "build_project").
+     */
+    static String resolveToolIdStatic(String protocolTitle) {
         String title = protocolTitle.trim();
-        if (title.startsWith("agentbridge_")) {
-            return title.substring("agentbridge_".length());
+        if (title.startsWith(PREFIX_AGENTBRIDGE_UNDERSCORE)) {
+            return title.substring(PREFIX_AGENTBRIDGE_UNDERSCORE.length());
         }
-        if (title.startsWith("Tool: agentbridge/")) {
-            return title.substring("Tool: agentbridge/".length());
+        if (title.startsWith(PREFIX_TOOL_AGENTBRIDGE_SLASH)) {
+            return title.substring(PREFIX_TOOL_AGENTBRIDGE_SLASH.length());
         }
 
-        // Handle natural language titles Junie sends for its built-in tools (as fallbacks)
         String lower = title.toLowerCase();
         if (lower.startsWith("open ")) return "read_file";
         if (lower.startsWith("searched ") || lower.startsWith("found ")) return "search_text";
@@ -88,20 +101,27 @@ public final class JunieClient extends AcpClient {
         if (lower.startsWith("bash ") || lower.startsWith("run ")) return "run_command";
         if (lower.startsWith("build ")) return "build_project";
 
-        // Handle case-insensitive match for common tools not explicitly prefixed
-        if ("build project".equals(lower)) return "build_project";
-        if ("read file".equals(lower)) return "read_file";
-        if ("edit text".equals(lower)) return "edit_text";
-        if ("search text".equals(lower)) return "search_text";
-        if ("run command".equals(lower)) return "run_command";
-
-        return title.replaceFirst("^Tool: ", "");
+        return switch (lower) {
+            case "build project" -> "build_project";
+            case "read file" -> "read_file";
+            case "edit text" -> "edit_text";
+            case "search text" -> "search_text";
+            case "run command" -> "run_command";
+            default -> title.replaceFirst("^Tool: ", "");
+        };
     }
 
     @Override
     protected boolean isMcpToolTitle(@NotNull String protocolTitle) {
-        return protocolTitle.startsWith("agentbridge_")
-            || protocolTitle.startsWith("Tool: agentbridge/");
+        return isMcpToolTitleStatic(protocolTitle);
+    }
+
+    /**
+     * Checks whether a Junie protocol title refers to an agentbridge MCP tool.
+     */
+    static boolean isMcpToolTitleStatic(String protocolTitle) {
+        return protocolTitle.startsWith(PREFIX_AGENTBRIDGE_UNDERSCORE)
+            || protocolTitle.startsWith(PREFIX_TOOL_AGENTBRIDGE_SLASH);
     }
 
     @Override
@@ -129,7 +149,7 @@ public final class JunieClient extends AcpClient {
         java.nio.file.Path allowlistPath = junieDir.resolve("allowlist.json");
 
         JsonObject allowlist = new JsonObject();
-        allowlist.addProperty("defaultBehavior", "deny");
+        allowlist.addProperty(KEY_DEFAULT_BEHAVIOR, "deny");
         allowlist.addProperty("allowReadonlyCommands", false);
 
         JsonObject rules = new JsonObject();
@@ -145,11 +165,11 @@ public final class JunieClient extends AcpClient {
         rules.add("mcpTools", mcpTools);
 
         JsonObject terminal = new JsonObject();
-        terminal.addProperty("defaultBehavior", "deny");
+        terminal.addProperty(KEY_DEFAULT_BEHAVIOR, "deny");
         rules.add("terminal", terminal);
 
         JsonObject fileEditing = new JsonObject();
-        fileEditing.addProperty("defaultBehavior", "deny");
+        fileEditing.addProperty(KEY_DEFAULT_BEHAVIOR, "deny");
         rules.add("fileEditing", fileEditing);
 
         allowlist.add("rules", rules);
@@ -229,8 +249,8 @@ public final class JunieClient extends AcpClient {
         if (standard != null) return standard;
 
         // Try rawInput (Junie sometimes puts arguments there for built-in tools)
-        if (params.has("rawInput") && params.get("rawInput").isJsonObject()) {
-            return params.getAsJsonObject("rawInput");
+        if (params.has(KEY_RAW_INPUT) && params.get(KEY_RAW_INPUT).isJsonObject()) {
+            return params.getAsJsonObject(KEY_RAW_INPUT);
         }
 
         if (params.has("toolCallId")) {
@@ -241,8 +261,14 @@ public final class JunieClient extends AcpClient {
 
     @Override
     protected JsonObject buildPermissionOutcome(String optionId, @Nullable JsonObject chosenOption) {
-        // Junie uses kotlinx.serialization with classDiscriminator = "kind" for RequestPermissionOutcome.
-        // The discriminator value must match the option's "kind" field. "outcome" is per ACP spec.
+        return buildPermissionOutcomeStatic(optionId, chosenOption);
+    }
+
+    /**
+     * Builds the permission outcome JSON for Junie's kotlinx.serialization format.
+     * The discriminator value ({@code kind}) must match the option's "kind" field.
+     */
+    static JsonObject buildPermissionOutcomeStatic(String optionId, @Nullable JsonObject chosenOption) {
         JsonObject outcome = new JsonObject();
         outcome.addProperty("outcome", "selected");
         String kind = chosenOption != null && chosenOption.has("kind")
@@ -331,6 +357,14 @@ public final class JunieClient extends AcpClient {
     }
 
     private String buildInstructions(@Nullable String userInstructions) {
+        return buildInstructionsStatic(userInstructions);
+    }
+
+    /**
+     * Builds the system instructions for a Junie session, prepending the mandatory
+     * agentbridge-only directive before any user-configured instructions.
+     */
+    static String buildInstructionsStatic(@Nullable String userInstructions) {
         StringBuilder sb = new StringBuilder();
         sb.append("CRITICAL: You are running inside an IntelliJ IDEA plugin. ")
             .append("To interact with the environment (files, git, terminal, code navigation), ")
