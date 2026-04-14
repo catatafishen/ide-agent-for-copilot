@@ -58,10 +58,18 @@ public final class ActiveAgentManager implements Disposable {
     private volatile boolean started;
 
     /**
+     * Project-level key for persisting the Copilot remote mode setting.
+     * Remote mode is Copilot-specific, but stored at project level so different
+     * repositories can have different settings.
+     */
+    private static final String KEY_REMOTE_MODE = "copilot.remoteMode";
+
+    /**
      * Whether the next {@link #start()} should launch Copilot in remote control mode
      * ({@code --remote} flag). Only applies to {@link CopilotClient} instances.
+     * Persisted to and loaded from project-level {@link PropertiesComponent}.
      */
-    private boolean remoteModeNextStart = false;
+    private boolean remoteModeNextStart;
 
     /**
      * URL listener to attach to the next {@link CopilotClient} when remote mode is active.
@@ -77,6 +85,7 @@ public final class ActiveAgentManager implements Disposable {
 
     public ActiveAgentManager(@NotNull Project project) {
         this.project = project;
+        this.remoteModeNextStart = PropertiesComponent.getInstance(project).getBoolean(KEY_REMOTE_MODE, false);
         LOG.info("ActiveAgentManager initialised for project: " + project.getName());
     }
 
@@ -89,12 +98,12 @@ public final class ActiveAgentManager implements Disposable {
 
     /**
      * Enables or disables Copilot remote control mode for the next {@link #start()}.
-     * When {@code true}, the Copilot CLI will be launched with {@code --remote} and
-     * the session URL extracted from stderr will be forwarded to any registered listener.
-     * Automatically reset to {@code false} after each connect to avoid stale state.
+     * When {@code true}, the Copilot CLI will be launched with {@code --remote}.
+     * The setting is persisted at project level.
      */
     public synchronized void setRemoteMode(boolean remote) {
         this.remoteModeNextStart = remote;
+        PropertiesComponent.getInstance(project).setValue(KEY_REMOTE_MODE, remote, false);
     }
 
     /**
