@@ -8,6 +8,7 @@ import com.github.catatafishen.agentbridge.memory.kg.KnowledgeGraph;
 import com.github.catatafishen.agentbridge.memory.kg.TripleExtractor;
 import com.github.catatafishen.agentbridge.memory.store.DrawerDocument;
 import com.github.catatafishen.agentbridge.memory.store.MemoryStore;
+import com.github.catatafishen.agentbridge.memory.validation.EvidenceExtractor;
 import com.github.catatafishen.agentbridge.ui.EntryData;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -139,6 +140,7 @@ public final class TurnMiner {
         try {
             float[] vector = embedder.embed(combinedText);
             String drawerId = MemoryStore.generateDrawerId(wing, room, combinedText);
+            String evidenceJson = EvidenceExtractor.extractAsJson(combinedText);
             DrawerDocument drawer = DrawerDocument.builder()
                 .id(drawerId)
                 .wing(wing)
@@ -151,11 +153,12 @@ public final class TurnMiner {
                 .addedBy(DrawerDocument.ADDED_BY_MINER)
                 .sourceTurnIndex(String.valueOf(turnIndex))
                 .sourceCommits(commits)
+                .evidence(evidenceJson)
                 .build();
 
             String result = store.addDrawer(drawer, vector);
             if (result != null) {
-                extractTriples(combinedText, wing, drawerId, kg);
+                extractTriples(combinedText, wing, drawerId, kg, evidenceJson);
                 return new MineExchangeResult(1, 0, 0);
             }
             return new MineExchangeResult(0, 0, 1);
@@ -166,7 +169,7 @@ public final class TurnMiner {
     }
 
     private static void extractTriples(String text, String wing, String drawerId,
-                                       @Nullable KnowledgeGraph kg) {
+                                       @Nullable KnowledgeGraph kg, String evidenceJson) {
         if (kg == null) return;
 
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, wing, drawerId);
@@ -177,6 +180,7 @@ public final class TurnMiner {
                     .predicate(extracted.predicate())
                     .object(extracted.object())
                     .sourceDrawer(extracted.sourceDrawerId())
+                    .evidence(evidenceJson)
                     .build();
                 kg.addTriple(triple);
             } catch (Exception e) {

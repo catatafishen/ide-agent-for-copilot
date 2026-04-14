@@ -67,8 +67,8 @@ public final class KnowledgeGraph implements Disposable {
      */
     public long addTriple(@NotNull KgTriple triple) throws IOException {
         String sql = """
-            INSERT INTO triples (subject, predicate, object, valid_from, valid_until, source_closet, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO triples (subject, predicate, object, valid_from, valid_until, source_closet, created_at, evidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setString(1, triple.subject());
@@ -78,6 +78,7 @@ public final class KnowledgeGraph implements Disposable {
             setNullableInstant(stmt, 5, triple.validUntil());
             setNullableString(stmt, 6, triple.sourceDrawer());
             stmt.setString(7, triple.createdAt().toString());
+            stmt.setString(8, triple.evidence());
             stmt.executeUpdate();
 
             try (ResultSet rs = stmt.getGeneratedKeys()) {
@@ -105,7 +106,7 @@ public final class KnowledgeGraph implements Disposable {
                                          @Nullable String object,
                                          int limit) throws IOException {
         StringBuilder sql = new StringBuilder(
-            "SELECT id, subject, predicate, object, valid_from, valid_until, source_closet, created_at FROM triples WHERE 1=1");
+            "SELECT id, subject, predicate, object, valid_from, valid_until, source_closet, created_at, evidence FROM triples WHERE 1=1");
         List<Object> params = new ArrayList<>();
 
         if (subject != null && !subject.isEmpty()) {
@@ -178,7 +179,7 @@ public final class KnowledgeGraph implements Disposable {
      */
     public @NotNull List<KgTriple> getTimeline(@NotNull String subject, int limit) throws IOException {
         String sql = """
-            SELECT id, subject, predicate, object, valid_from, valid_until, source_closet, created_at
+            SELECT id, subject, predicate, object, valid_from, valid_until, source_closet, created_at, evidence
             FROM triples WHERE subject = ?
             ORDER BY created_at DESC LIMIT ?
             """;
@@ -217,6 +218,22 @@ public final class KnowledgeGraph implements Disposable {
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_subject ON triples(subject)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_object ON triples(object)");
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_predicate ON triples(predicate)");
+            migrateSchema(stmt);
+        }
+    }
+
+    private static void migrateSchema(@NotNull java.sql.Statement stmt) throws SQLException {
+        try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(triples)")) {
+            boolean hasEvidence = false;
+            while (rs.next()) {
+                if ("evidence".equals(rs.getString("name"))) {
+                    hasEvidence = true;
+                    break;
+                }
+            }
+            if (!hasEvidence) {
+                stmt.executeUpdate("ALTER TABLE triples ADD COLUMN evidence TEXT DEFAULT ''");
+            }
         }
     }
 
@@ -254,12 +271,21 @@ public final class KnowledgeGraph implements Disposable {
             .validUntil(parseNullableInstant(rs.getString("valid_until")))
             .sourceDrawer(rs.getString("source_closet"))
             .createdAt(Instant.parse(rs.getString("created_at")))
+            .evidence(getNullableString(rs, "evidence"))
             .build();
     }
 
     private static @Nullable Instant parseNullableInstant(@Nullable String value) {
         if (value == null || value.isEmpty()) return null;
         return Instant.parse(value);
+    }
+
+    /**
+     * Read a nullable string column, returning empty string for null.
+     */
+    private static @NotNull String getNullableString(@NotNull ResultSet rs, @NotNull String column) throws SQLException {
+        String value = rs.getString(column);
+        return value != null ? value : "";
     }
 
     private static void setNullableInstant(@NotNull PreparedStatement stmt, int index,

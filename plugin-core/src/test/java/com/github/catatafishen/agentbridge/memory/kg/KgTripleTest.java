@@ -155,4 +155,26 @@ class KgTripleTest {
         assertEquals("code", triple.sourceDrawer());
         assertEquals(now, triple.createdAt());
     }
+
+    @Test
+    void builder_evidenceDefaultsToEmpty() {
+        KgTriple triple = KgTriple.builder()
+            .subject("TestSubject")
+            .predicate("has-method")
+            .object("doSomething")
+            .build();
+        assertEquals("", triple.evidence());
+    }
+
+    @Test
+    void builder_evidenceSetAndRetrieved() {
+        String evidenceJson = "[\"com.example.Foo\",\"Bar.java:42\"]";
+        KgTriple triple = KgTriple.builder()
+            .subject("TestSubject")
+            .predicate("has-method")
+            .object("doSomething")
+            .evidence(evidenceJson)
+            .build();
+        assertEquals(evidenceJson, triple.evidence());
+    }
 }
