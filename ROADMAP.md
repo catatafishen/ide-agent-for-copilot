@@ -87,6 +87,15 @@ with IntelliJ-native tools for code intelligence, formatting, and file operation
 - [ ] E2E integration tests with mock agent
 - [ ] Performance benchmarks for tool execution
 
+### Semantic Memory
+
+- [ ] Grounded memory — codebase-verified claims with evidence linking
+  (see [docs/GROUNDED-MEMORY.md](docs/GROUNDED-MEMORY.md))
+- [ ] Automatic per-turn mining hook
+- [ ] Wake-up context injection on session start
+- [ ] Cross-project memory (`~/.agentbridge/memory/`)
+- [ ] Retention policies (age-based cleanup, importance pruning)
+
 ### Platform Expansion
 
 - [ ] JetBrains Marketplace publication

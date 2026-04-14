@@ -485,6 +485,77 @@ policies (age-based cleanup, importance-based pruning) can be added later.
 
 ---
 
+## Grounded Memory — Codebase-Verified Claims
+
+> **Status**: Planned. See [GROUNDED-MEMORY.md](GROUNDED-MEMORY.md) for the full
+> architecture and implementation plan.
+
+The current memory system stores information derived from **conversations** — what
+was said, decided, or discussed. This works well for preferences and high-level
+decisions, but has a fundamental limitation: **memories drift from the actual codebase
+over time**. A class gets renamed, a method is deleted, a dependency changes — and the
+stored memory becomes silently wrong.
+
+**Grounded memory** evolves the system from "what was said" to "verified claims backed
+by code evidence":
+
+- **Evidence linking** — each memory references specific files, symbols, or line
+  numbers that support it
+- **Symbol validation** — IntelliJ PSI verifies that referenced classes, methods, and
+  files actually exist
+- **Verification states** — memories are `unverified`, `verified`, or `stale` (not a
+  float confidence score — three states are sufficient)
+- **File-change staleness** — when files change, only memories with evidence in those
+  files are re-checked (via `BulkFileListener`)
+- **Refactor awareness** — when IntelliJ renames or moves a symbol, KG triples
+  referencing it are updated automatically (via `RefactoringEventListener`)
+- **Retrieval ranking** — verified memories rank higher than unverified; stale memories
+  are deprioritized or excluded
+
+### Schema Additions
+
+**DrawerDocument** gains three fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `evidence` | JSON string array | File paths, FQN symbols, line refs (e.g., `["com.example.UserService", "AuthController.kt:42"]`) |
+| `verificationState` | String enum | `unverified` (default), `verified`, `stale` |
+| `lastVerifiedAt` | ISO 8601 | When last validated against the codebase |
+
+**KgTriple** gains:
+
+| Field | Type | Description |
+|---|---|---|
+| `evidence` | JSON string array | Same format as DrawerDocument evidence |
+
+### New MCP Tools
+
+| Tool | Description |
+|---|---|
+| `memory_validate` | Validate specific memories or a topic — checks evidence against PSI |
+| `memory_refresh` | Re-scan a topic's memories, update states, extract fresh evidence |
+
+### Design Decisions
+
+1. **No PSI element serialization** — PSI elements are transient in-memory objects
+   that don't survive IDE restarts. We store fully-qualified symbol names (FQNs) as
+   strings and resolve them on demand via `JavaPsiFacade.findClass()`.
+
+2. **No float confidence** — A three-state enum (`unverified`/`verified`/`stale`) is
+   simpler, avoids arbitrary threshold debates, and maps cleanly to retrieval behavior.
+
+3. **Lazy validation, not eager** — Verification runs on retrieval or file change, not
+   on every ingestion. The mining pipeline should stay fast.
+
+4. **File-change triggered, not periodic** — A `BulkFileListener` debounced to 5s is
+   both cheaper and more timely than a periodic background job.
+
+5. **Evidence auto-extraction** — The mining pipeline already sees tool results (file
+   reads, search results, git diffs). We extract references from these automatically,
+   not relying on agents to provide them.
+
+---
+
 ## Future Work
 
 ### Per-Turn Auto-Mining Hook
