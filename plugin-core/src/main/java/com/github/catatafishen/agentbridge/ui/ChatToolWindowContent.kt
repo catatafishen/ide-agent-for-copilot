@@ -253,11 +253,12 @@ class ChatToolWindowContent(
         if (::promptOrchestrator.isInitialized) resetSessionState()
 
         // Register remote URL listener before loadModelsAsync triggers acpClient.start().
+        // If the CLI ever emits a GitHub URL to stderr, surface it via the status banner.
         if (agentManager.isRemoteMode) {
             agentManager.setRemoteUrlListener { url ->
                 agentManager.setRemoteUrlListener(null)
                 ApplicationManager.getApplication().invokeLater {
-                    showRemoteSessionUrl(url)
+                    statusBanner?.showRemoteSessionUrl(url)
                 }
             }
         } else {
@@ -271,7 +272,12 @@ class ChatToolWindowContent(
                 loadedModels = models
                 buildAndShowChatPanel()
                 restoreModelSelection(models)
-                statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
+                val name = agentManager.activeProfile.displayName
+                if (agentManager.isRemoteMode) {
+                    statusBanner?.showInfo("$name · Remote mode active")
+                } else {
+                    statusBanner?.showInfo("Connected to $name")
+                }
             },
             onFailure = { error ->
                 connectPanel.showError(error.message ?: "Connection failed")
@@ -283,10 +289,6 @@ class ChatToolWindowContent(
                 )
             }
         )
-    }
-
-    private fun showRemoteSessionUrl(url: String) {
-        RemoteSessionPanel(project, url).show()
     }
 
     private fun promptPlaceholder(): String {

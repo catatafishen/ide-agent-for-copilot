@@ -636,11 +636,6 @@ class AcpConnectPanel(
         // Apply session selection: clear or set the resume session ID
         applySessionChoice(profileId)
 
-        // Register URL listener before connect so it's ready when the process starts.
-        if (agentManager.isRemoteMode) {
-            agentManager.setRemoteUrlListener { url -> statusBanner.showRemoteSessionUrl(url) }
-        }
-
         statusBanner.dismissCurrent()
         connectButton.isEnabled = false
         connectButton.text = "Connecting\u2026"
