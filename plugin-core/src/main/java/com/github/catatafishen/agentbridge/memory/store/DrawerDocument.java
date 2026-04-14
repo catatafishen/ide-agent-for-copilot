@@ -1,16 +1,10 @@
 package com.github.catatafishen.agentbridge.memory.store;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 
-/**
- * Immutable POJO representing a single memory "drawer" stored in the Lucene index.
- * Each drawer is one semantically meaningful chunk extracted from a conversation turn.
- *
- * <p><b>Attribution:</b> drawer concept and ID generation scheme adapted from
- * <a href="https://github.com/milla-jovovich/mempalace">MemPalace</a> (MIT License).
- */
 public record DrawerDocument(
     @NotNull String id,
     @NotNull String wing,
@@ -23,8 +17,24 @@ public record DrawerDocument(
     @NotNull Instant filedAt,
     @NotNull String addedBy,
     @NotNull String sourceTurnIndex,
-    @NotNull String sourceCommits
+    @NotNull String sourceCommits,
+    @NotNull String evidence,
+    @NotNull String verificationState,
+    @Nullable Instant lastVerifiedAt
 ) {
+
+    /**
+     * Verification state: not yet validated against codebase.
+     */
+    public static final String STATE_UNVERIFIED = "unverified";
+    /**
+     * Verification state: all evidence validated successfully.
+     */
+    public static final String STATE_VERIFIED = "verified";
+    /**
+     * Verification state: some evidence no longer valid.
+     */
+    public static final String STATE_STALE = "stale";
 
     /**
      * Maximum content length allowed (from MemPalace config.py sanitize_content).
@@ -80,6 +90,9 @@ public record DrawerDocument(
         private String addedBy = ADDED_BY_MINER;
         private String sourceTurnIndex = "";
         private String sourceCommits = "";
+        private String evidence = "";
+        private String verificationState = STATE_UNVERIFIED;
+        private Instant lastVerifiedAt;
 
         public Builder id(@NotNull String id) {
             this.id = id;
@@ -141,9 +154,28 @@ public record DrawerDocument(
             return this;
         }
 
+        /**
+         * JSON array of evidence references (e.g., FQNs, file:line refs).
+         */
+        public Builder evidence(@NotNull String evidence) {
+            this.evidence = evidence;
+            return this;
+        }
+
+        public Builder verificationState(@NotNull String verificationState) {
+            this.verificationState = verificationState;
+            return this;
+        }
+
+        public Builder lastVerifiedAt(@Nullable Instant lastVerifiedAt) {
+            this.lastVerifiedAt = lastVerifiedAt;
+            return this;
+        }
+
         public DrawerDocument build() {
             return new DrawerDocument(id, wing, room, content, memoryType, sourceSession,
-                sourceFile, agent, filedAt, addedBy, sourceTurnIndex, sourceCommits);
+                sourceFile, agent, filedAt, addedBy, sourceTurnIndex, sourceCommits,
+                evidence, verificationState, lastVerifiedAt);
         }
     }
 

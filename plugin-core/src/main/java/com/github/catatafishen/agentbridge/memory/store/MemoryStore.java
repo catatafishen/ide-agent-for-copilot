@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.KnnFloatVectorField;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
@@ -71,6 +72,9 @@ public final class MemoryStore implements Disposable {
     private static final String FLD_ADDED_BY = "added_by";
     private static final String FLD_SOURCE_TURN_INDEX = "source_turn_index";
     private static final String FLD_SOURCE_COMMITS = "source_commits";
+    private static final String FLD_EVIDENCE = "evidence";
+    private static final String FLD_VERIFICATION_STATE = "verification_state";
+    private static final String FLD_LAST_VERIFIED_AT = "last_verified_at";
 
     private static final float DUPLICATE_THRESHOLD = 0.9f;
 
@@ -142,6 +146,10 @@ public final class MemoryStore implements Disposable {
         doc.add(new StringField(FLD_ADDED_BY, drawer.addedBy(), Field.Store.YES));
         doc.add(new StringField(FLD_SOURCE_TURN_INDEX, drawer.sourceTurnIndex(), Field.Store.YES));
         doc.add(new StringField(FLD_SOURCE_COMMITS, drawer.sourceCommits(), Field.Store.YES));
+        doc.add(new StoredField(FLD_EVIDENCE, drawer.evidence()));
+        doc.add(new StringField(FLD_VERIFICATION_STATE, drawer.verificationState(), Field.Store.YES));
+        String verifiedAt = drawer.lastVerifiedAt() != null ? drawer.lastVerifiedAt().toString() : "";
+        doc.add(new StringField(FLD_LAST_VERIFIED_AT, verifiedAt, Field.Store.YES));
 
         // WAL before write
         JsonObject walPayload = new JsonObject();
@@ -321,6 +329,9 @@ public final class MemoryStore implements Disposable {
             .addedBy(getString(doc, FLD_ADDED_BY))
             .sourceTurnIndex(getString(doc, FLD_SOURCE_TURN_INDEX))
             .sourceCommits(getString(doc, FLD_SOURCE_COMMITS))
+            .evidence(getString(doc, FLD_EVIDENCE))
+            .verificationState(parseVerificationState(doc))
+            .lastVerifiedAt(parseNullableInstant(doc, FLD_LAST_VERIFIED_AT))
             .build();
     }
 
@@ -331,6 +342,22 @@ public final class MemoryStore implements Disposable {
     private static String getString(@NotNull Document doc, @NotNull String field) {
         String value = doc.get(field);
         return value != null ? value : "";
+    }
+
+    private static @NotNull String parseVerificationState(@NotNull Document doc) {
+        String state = doc.get(FLD_VERIFICATION_STATE);
+        if (state == null || state.isEmpty()) return DrawerDocument.STATE_UNVERIFIED;
+        return state;
+    }
+
+    private static @Nullable Instant parseNullableInstant(@NotNull Document doc, @NotNull String field) {
+        String value = doc.get(field);
+        if (value == null || value.isEmpty()) return null;
+        try {
+            return Instant.parse(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

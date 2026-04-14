@@ -6,6 +6,7 @@ import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 /**
@@ -120,5 +121,35 @@ class DrawerDocumentTest {
     @Test
     void maxNameLength() {
         assertEquals(128, DrawerDocument.MAX_NAME_LENGTH);
+    }
+
+    @Test
+    void builderEvidenceFields_defaults() {
+        DrawerDocument doc = DrawerDocument.builder().build();
+        assertEquals("", doc.evidence());
+        assertEquals(DrawerDocument.STATE_UNVERIFIED, doc.verificationState());
+        assertNull(doc.lastVerifiedAt());
+    }
+
+    @Test
+    void builderEvidenceFields_customValues() {
+        Instant verified = Instant.parse("2024-06-15T10:30:00Z");
+        DrawerDocument doc = DrawerDocument.builder()
+            .id("test-evidence")
+            .evidence("[\"com.example.Foo\",\"Bar.java:42\"]")
+            .verificationState(DrawerDocument.STATE_VERIFIED)
+            .lastVerifiedAt(verified)
+            .build();
+
+        assertEquals("[\"com.example.Foo\",\"Bar.java:42\"]", doc.evidence());
+        assertEquals(DrawerDocument.STATE_VERIFIED, doc.verificationState());
+        assertEquals(verified, doc.lastVerifiedAt());
+    }
+
+    @Test
+    void stateConstantsAreDefined() {
+        assertEquals("unverified", DrawerDocument.STATE_UNVERIFIED);
+        assertEquals("verified", DrawerDocument.STATE_VERIFIED);
+        assertEquals("stale", DrawerDocument.STATE_STALE);
     }
 }
