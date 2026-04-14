@@ -630,7 +630,7 @@ class PromptOrchestrator(
     private fun handleStreamingToolCallUpdate(update: SessionUpdate.ToolCallUpdate) {
         val status = update.status()
         val toolCallId = update.toolCallId()
-        val result = update.result()
+        val result = update.result() ?: update.error()
         val description = update.description()
         val autoDenied = update.autoDenied()
         val denialReason = update.denialReason()

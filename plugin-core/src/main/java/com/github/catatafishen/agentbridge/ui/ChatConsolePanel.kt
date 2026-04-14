@@ -1098,10 +1098,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     // ── Tool result panel rendering ─────────────────────────────
 
-    /**
-     * Creates a Swing component for the tool result, dispatching to a custom renderer
-     * or falling back to a monospace code panel.
-     */
     private fun renderToolResultPanel(
         baseName: String?,
         status: String?,
@@ -1132,7 +1128,12 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             })
         }
 
-        // 2. Determine if we have a real tool result or if we should fallback to showing arguments
+        // 2. For failed tools, show error details prominently
+        if (status == "failed") {
+            return renderFailedToolPanel(container, baseName, details)
+        }
+
+        // 3. Determine if we have a real tool result or if we should fallback to showing arguments
         val finalDetails = if (details.isNullOrBlank() && !arguments.isNullOrBlank()) {
             // No result but we have arguments? Junie often doesn't stream the raw tool output.
             // As a fallback, we show the parameters so the user knows what was called.
@@ -1142,20 +1143,19 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         }
         if (finalDetails.isNullOrBlank()) {
             val label = when (status) {
-                "failed" -> "✖ Failed"
                 "running" -> "⏳ Running…"
                 else -> if (baseName != null) "Tool $baseName completed with no output." else "Completed"
             }
             container.add(JBLabel(label).apply {
-                foreground = if (status == "failed") ToolRenderers.FAIL_COLOR else ToolRenderers.MUTED_COLOR
+                foreground = ToolRenderers.MUTED_COLOR
                 border = JBUI.Borders.empty(4, 0)
                 alignmentX = LEFT_ALIGNMENT
             })
             return container
         }
 
-        // 3. Attempt to use a custom renderer for the result
-        if (status != "failed" && baseName != null) {
+        // 4. Attempt to use a custom renderer for the result
+        if (baseName != null) {
             val renderer = ToolRenderers.get(baseName, toolRegistry)
             LOG.debug("Renderer for $baseName: ${renderer?.javaClass?.simpleName ?: "null"}")
 
@@ -1170,13 +1170,61 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
             }
         }
 
-        // 4. Fallback: monospace code or JSON editor; long text gets a scratch-file link
+        // 5. Fallback: monospace code or JSON editor; long text gets a scratch-file link
         val fallbackContent = if (isJson(finalDetails)) {
             ToolRenderers.jsonEditor(prettyJson(finalDetails), project)
         } else {
             ToolRenderers.codeOrScratchPanel(finalDetails)
         }
         container.add(fallbackContent)
+
+        return container
+    }
+
+    private fun renderFailedToolPanel(
+        container: JBPanel<*>,
+        baseName: String?,
+        details: String?
+    ): JComponent {
+        if (details.isNullOrBlank()) {
+            val label = if (baseName != null) "✖ Tool $baseName failed with no error details." else "✖ Failed"
+            container.add(JBLabel(label).apply {
+                foreground = ToolRenderers.FAIL_COLOR
+                border = JBUI.Borders.empty(4, 0)
+                alignmentX = LEFT_ALIGNMENT
+            })
+            return container
+        }
+
+        // Error header
+        container.add(JBLabel("✖ Error").apply {
+            foreground = ToolRenderers.FAIL_COLOR
+            font = JBUI.Fonts.label().asBold()
+            border = JBUI.Borders.empty(4, 0, 4, 0)
+            alignmentX = LEFT_ALIGNMENT
+        })
+
+        // Error details in a red-bordered panel
+        val errorBorderColor = com.intellij.ui.JBColor(
+            java.awt.Color(0xCF, 0x22, 0x2E, 0x40),
+            java.awt.Color(0xF8, 0x53, 0x49, 0x40)
+        )
+        val errorBgColor = com.intellij.ui.JBColor(
+            java.awt.Color(0xCF, 0x22, 0x2E, 0x0A),
+            java.awt.Color(0xF8, 0x53, 0x49, 0x0A)
+        )
+        val errorContent = ToolRenderers.codeOrScratchPanel(details)
+        val errorPanel = JBPanel<JBPanel<*>>().apply {
+            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+            background = errorBgColor
+            border = JBUI.Borders.compound(
+                JBUI.Borders.customLine(errorBorderColor, 1),
+                JBUI.Borders.empty(6)
+            )
+            alignmentX = LEFT_ALIGNMENT
+            add(errorContent)
+        }
+        container.add(errorPanel)
 
         return container
     }
@@ -1368,33 +1416,38 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val mcpDescription = if (toolDef != null && !toolDef.isBuiltIn) toolDef.description() else null
         val autoDenied = entry?.autoDenied ?: false
         val denialReason = entry?.denialReason
+        val failed = entry?.status == "failed"
 
-        val toolWindowId = resolveToolWindowId(baseName)
-        if (toolWindowId != null) {
-            val tabName = extractTabName(baseName, entry?.arguments)
-            ApplicationManager.getApplication().invokeLater {
-                activateToolWindowTab(toolWindowId, tabName)
+        // When a tool failed, always show the error popup so the user can see what went wrong.
+        // Don't redirect to tool windows, git log, or diff viewer — those won't have the error.
+        if (!failed) {
+            val toolWindowId = resolveToolWindowId(baseName)
+            if (toolWindowId != null) {
+                val tabName = extractTabName(baseName, entry?.arguments)
+                ApplicationManager.getApplication().invokeLater {
+                    activateToolWindowTab(toolWindowId, tabName)
+                }
+                return
             }
-            return
-        }
-        if (baseName?.trim('\'', '"') == "git_commit" && tryNavigateToCommit(entry?.result)) {
-            return
-        }
-        if (baseName?.trim('\'', '"') in GIT_HISTORY_TOOLS && tryNavigateToGitLog(entry?.result)) {
-            return
-        }
-        // If the tool arguments contain old_str/new_str, open IntelliJ's diff viewer directly.
-        val diff = extractDiffFromArgs(entry?.arguments)
-        if (diff != null) {
-            ApplicationManager.getApplication().invokeLater {
-                val left = com.intellij.diff.DiffContentFactory.getInstance().create(diff.first)
-                val right = com.intellij.diff.DiffContentFactory.getInstance().create(diff.second)
-                val request = com.intellij.diff.requests.SimpleDiffRequest(
-                    chipTitle, left, right, "Before", "After"
-                )
-                com.intellij.diff.DiffManager.getInstance().showDiff(project, request)
+            if (baseName?.trim('\'', '"') == "git_commit" && tryNavigateToCommit(entry?.result)) {
+                return
             }
-            return
+            if (baseName?.trim('\'', '"') in GIT_HISTORY_TOOLS && tryNavigateToGitLog(entry?.result)) {
+                return
+            }
+            // If the tool arguments contain old_str/new_str, open IntelliJ's diff viewer directly.
+            val diff = extractDiffFromArgs(entry?.arguments)
+            if (diff != null) {
+                ApplicationManager.getApplication().invokeLater {
+                    val left = com.intellij.diff.DiffContentFactory.getInstance().create(diff.first)
+                    val right = com.intellij.diff.DiffContentFactory.getInstance().create(diff.second)
+                    val request = com.intellij.diff.requests.SimpleDiffRequest(
+                        chipTitle, left, right, "Before", "After"
+                    )
+                    com.intellij.diff.DiffManager.getInstance().showDiff(project, request)
+                }
+                return
+            }
         }
 
         val resultPanel =
@@ -1420,7 +1473,8 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
                 resultPanel,
                 mcpDescription,
                 autoDenied,
-                denialReason
+                denialReason,
+                failed
             )
         }
     }

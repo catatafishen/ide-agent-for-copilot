@@ -523,6 +523,42 @@ class AcpMessageParserTest {
     }
 
     @Test
+    void failedToolCallUpdate_errorUsedAsResultFallback() {
+        // Verifies the pattern used by PromptOrchestrator: result ?: error
+        // When a tool fails, the ACP stream typically puts the error text in the "error" field
+        // and leaves "result" absent. The orchestrator must use error as fallback.
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_fail");
+        params.addProperty("status", "failed");
+        params.addProperty("error", "Error: binary not found at /usr/bin/copilot");
+        // Note: no "result" field — this is the typical failed tool pattern
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertNull(tcu.result());
+        assertEquals("Error: binary not found at /usr/bin/copilot", tcu.error());
+        // The orchestrator applies: result ?: error
+        String displayText = tcu.result() != null ? tcu.result() : tcu.error();
+        assertEquals("Error: binary not found at /usr/bin/copilot", displayText);
+    }
+
+    @Test
+    void failedToolCallUpdate_resultTakesPriorityOverError() {
+        // When both result and error are present, result should take priority
+        JsonObject params = updateParams("tool_call_update");
+        params.addProperty("toolCallId", "call_both");
+        params.addProperty("status", "failed");
+        params.addProperty("result", "Detailed error output from tool");
+        params.addProperty("error", "Short error summary");
+
+        var tcu = (SessionUpdate.ToolCallUpdate) parser.parse(params);
+        assertEquals("Detailed error output from tool", tcu.result());
+        assertEquals("Short error summary", tcu.error());
+        // The orchestrator applies: result ?: error — result wins
+        String displayText = tcu.result() != null ? tcu.result() : tcu.error();
+        assertEquals("Detailed error output from tool", displayText);
+    }
+
+    @Test
     void parsesToolCallUpdate_withDescription() {
         JsonObject params = updateParams("tool_call_update");
         params.addProperty("toolCallId", "call_d");

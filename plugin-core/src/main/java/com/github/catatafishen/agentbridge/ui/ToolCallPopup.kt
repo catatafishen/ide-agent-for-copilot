@@ -39,6 +39,7 @@ internal object ToolCallPopup {
      * @param toolDescription optional one-liner description for MCP tools, shown at the top of the popup
      * @param autoDenied      true if the tool was automatically denied by the plugin (security/policy)
      * @param denialReason    human-readable reason for the auto-denial, or null
+     * @param failed          true if the tool call failed — changes the "Result" section label to "Error"
      */
     fun show(
         project: Project,
@@ -48,7 +49,8 @@ internal object ToolCallPopup {
         resultPanel: JComponent,
         toolDescription: String? = null,
         autoDenied: Boolean = false,
-        denialReason: String? = null
+        denialReason: String? = null,
+        failed: Boolean = false
     ) {
         currentPopup?.cancel()
 
@@ -62,7 +64,8 @@ internal object ToolCallPopup {
             paramsPanel,
             toolDescription,
             autoDenied,
-            denialReason
+            denialReason,
+            failed
         )
 
         val width = popupWidth()
@@ -113,6 +116,7 @@ internal object ToolCallPopup {
         toolDescription: String? = null,
         autoDenied: Boolean = false,
         denialReason: String? = null,
+        failed: Boolean = false,
     ): JBPanel<JBPanel<*>> {
         val panel = object : JBPanel<JBPanel<*>>(), Scrollable {
             override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
@@ -185,7 +189,7 @@ internal object ToolCallPopup {
             })
         }
 
-        panel.add(sectionLabel("Result"))
+        panel.add(sectionLabel(if (failed) "Error" else "Result"))
         resultPanel.alignmentX = JComponent.LEFT_ALIGNMENT
         panel.add(resultPanel)
 
