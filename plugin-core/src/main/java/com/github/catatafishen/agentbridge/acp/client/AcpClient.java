@@ -238,8 +238,14 @@ public abstract class AcpClient extends AbstractAgentClient {
         if (!isHealthy()) {
             return "Agent not started";
         }
-        // For ACP agents, try to create a session to check if authentication is required
-        // This catches auth errors early instead of waiting for the first message
+        // If a session was already created for this process instance, auth was verified during
+        // authenticate() in start(). Calling createSession() again would trigger session resumption
+        // and show spurious "session resume not available" notifications from banner polling.
+        if (currentSessionId != null) {
+            return null;
+        }
+        // No session yet (eagerFetchModels() may have failed) — try creating one to surface
+        // auth errors that only manifest on the first API call.
         try {
             String cwd = project.getBasePath();
             if (cwd == null) {
@@ -347,6 +353,9 @@ public abstract class AcpClient extends AbstractAgentClient {
                 } catch (Exception e) {
                     LOG.warn(displayName() + ": session/load failed for " + requestedResumeId
                         + ", falling back to session/new: " + e.getMessage());
+                    // Clear the stale ID so the next start doesn't retry the same dead session.
+                    // If session/new below succeeds, persistResumeSessionId() replaces this with the new ID.
+                    persistResumeSessionId(null);
                     enableInjectionFallback(requestedResumeId, supportsSessionResumption());
                 }
             }

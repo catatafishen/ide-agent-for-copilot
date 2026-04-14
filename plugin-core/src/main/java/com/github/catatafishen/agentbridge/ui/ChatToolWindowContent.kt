@@ -285,6 +285,9 @@ class ChatToolWindowContent(
 
     fun disconnectFromAgent() {
         LOG.info("disconnectFromAgent: stopping agent and switching to connect panel")
+        // Invalidate any in-flight loadModelsAsync() threads so they don't restart the agent
+        // or apply stale model results after the user has explicitly disconnected.
+        ++modelLoadGeneration
         try {
             agentManager.stop()
         } catch (e: Exception) {
@@ -2185,9 +2188,14 @@ class ChatToolWindowContent(
         // the export from the previous agent runs concurrently on a pooled thread.
         SessionSwitchService.getInstance(project).awaitPendingExport(10_000)
 
+        val startGeneration = modelLoadGeneration
         var lastError: Exception? = null
         for (attempt in 1..3) {
-            if (attempt > 1) Thread.sleep(2000L)
+            if (attempt > 1) {
+                Thread.sleep(2000L)
+                // If the user disconnected during the sleep, abort rather than restarting the agent.
+                if (modelLoadGeneration != startGeneration) return emptyList()
+            }
             try {
                 return agentManager.client.getAvailableModels()
             } catch (e: Exception) {
