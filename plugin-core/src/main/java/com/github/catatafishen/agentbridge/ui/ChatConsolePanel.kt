@@ -479,7 +479,11 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         val resultLen = details?.length ?: 0
         LOG.debug("updateToolCall: id=$id, chipId=$chipId, status=$status, resultLen=$resultLen, hasDesc=${description != null}, denied=$autoDenied")
         toolCallEntries[did]?.let {
-            it.result = details
+            // Prefer the actual MCP execution result over what the ACP reported.
+            // Copilot CLI may send tool_call_update:failed with no error text even when our MCP
+            // tool returned a detailed error message. The stored plugin result is more accurate.
+            val storedResult = chipId?.let { cid -> registry.getStoredPluginResult(cid) }
+            it.result = storedResult ?: details
             it.status = status
             it.autoDenied = autoDenied
             it.denialReason = denialReason

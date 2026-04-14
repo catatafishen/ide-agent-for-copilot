@@ -1,6 +1,6 @@
 package com.github.catatafishen.agentbridge.services;
 
-import com.google.gson.JsonElement;
+import com.github.catatafishen.agentbridge.psi.PlatformApiCompat;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
@@ -84,6 +84,8 @@ public final class ToolChipRegistry {
     private final Map<String, String> clientToChip = new LinkedHashMap<>();
     // base hash → count, for collision disambiguation
     private final Map<String, Integer> hashCounts = new LinkedHashMap<>();
+    // chipId → MCP result text (stored by PsiBridgeService after execution)
+    private final Map<String, String> chipResults = new LinkedHashMap<>();
 
     private final List<BiConsumer<String, ChipState>> listeners = new ArrayList<>();
     private final List<ChipStateWithKindListener> kindListeners = new ArrayList<>();
@@ -93,7 +95,7 @@ public final class ToolChipRegistry {
     }
 
     public static ToolChipRegistry getInstance(@NotNull Project project) {
-        return project.getService(ToolChipRegistry.class);
+        return PlatformApiCompat.getService(project, ToolChipRegistry.class);
     }
 
     // ── Client-side registration (ACP or Claude) ─────────────────────────────
@@ -325,6 +327,32 @@ public final class ToolChipRegistry {
     // ── Turn management ───────────────────────────────────────────────────────
 
     /**
+     * Stores the result text from our MCP tool execution so the UI can display it even when the
+     * Copilot CLI sends a {@code tool_call_update: failed} without forwarding the error text.
+     * Called by {@link com.github.catatafishen.agentbridge.psi.PsiBridgeService} after executing.
+     */
+    public synchronized void storeMcpResult(@NotNull String toolName, @NotNull JsonObject args, @NotNull String result) {
+        String hash = computeBaseHash(args);
+        String targetChipId = null;
+        for (var chip : chips.values()) {
+            if (chip.pluginRegistered() && toolName.equals(chip.mcpToolName()) && isMatchingHash(chip.chipId(), hash)) {
+                targetChipId = chip.chipId(); // last match = newest
+            }
+        }
+        if (targetChipId != null) {
+            chipResults.put(targetChipId, result);
+            LOG.debug("storeMcpResult: chip=" + targetChipId + " (" + toolName + ")");
+        }
+    }
+
+    /**
+     * Returns the stored MCP result text for the given chip, or {@code null} if not available.
+     */
+    public synchronized @Nullable String getStoredPluginResult(@NotNull String chipId) {
+        return chipResults.get(chipId);
+    }
+
+    /**
      * Clear current-turn state. Call when a new agent response starts.
      */
     public synchronized void clearTurn() {
@@ -332,6 +360,7 @@ public final class ToolChipRegistry {
         chips.clear();
         clientToChip.clear();
         hashCounts.clear();
+        chipResults.clear();
         if (count > 0) LOG.debug("ToolChipRegistry: cleared " + count + " chips");
     }
 
@@ -393,14 +422,6 @@ public final class ToolChipRegistry {
         return ToolCallHasher.isMatchingHash(chipId, baseHash);
     }
 
-    private void fireState(@NotNull String chipId, @NotNull ChipState state) {
-        fireState(chipId, state, null, null);
-    }
-
-    private void fireState(@NotNull String chipId, @NotNull ChipState state, @Nullable String kind) {
-        fireState(chipId, state, kind, null);
-    }
-
     private void fireState(@NotNull String chipId, @NotNull ChipState state, @Nullable String kind, @Nullable String mcpToolName) {
         List<BiConsumer<String, ChipState>> snapshot;
         List<ChipStateWithKindListener> kindSnapshot;
@@ -430,9 +451,5 @@ public final class ToolChipRegistry {
 
     public static @NotNull String computeBaseHash(@NotNull JsonObject args) {
         return ToolCallHasher.computeBaseHash(args);
-    }
-
-    private static String computeStableValue(JsonElement value) {
-        return ToolCallHasher.computeStableValue(value);
     }
 }

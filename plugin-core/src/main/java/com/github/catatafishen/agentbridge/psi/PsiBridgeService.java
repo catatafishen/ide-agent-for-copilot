@@ -348,11 +348,15 @@ public final class PsiBridgeService implements Disposable {
             // Append pending nudge (user guidance injected on next tool call)
             result = appendNudgeToResult(result, consumePendingNudge());
             outputSize = result.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            // Cache result so the UI can display the actual error even when the ACP
+            // tool_call_update:failed doesn't forward our error text back.
+            ToolChipRegistry.getInstance(project).storeMcpResult(toolName, arguments, result);
             return result;
         } catch (com.intellij.openapi.application.ex.ApplicationUtil.CannotRunReadActionException e) {
             success = false;
             errorMessage = "Error: IDE is busy, please retry. " + e.getMessage();
             if (writeRegistered) writeBatchCoordinator.unregisterWrite();
+            ToolChipRegistry.getInstance(project).storeMcpResult(toolName, arguments, errorMessage);
             return errorMessage;
         } catch (Exception e) {
             LOG.warn("Tool call error: " + toolName, e);
@@ -360,6 +364,7 @@ public final class PsiBridgeService implements Disposable {
             if (writeRegistered) writeBatchCoordinator.unregisterWrite();
             errorMessage = buildErrorWithModalDetail(
                 "Error: " + e.getMessage(), EdtUtil.describeModalBlocker());
+            ToolChipRegistry.getInstance(project).storeMcpResult(toolName, arguments, errorMessage);
             return errorMessage;
         } finally {
             if (needsGlobalLock && !semaphoreReleasedEarly) writeToolSemaphore.release();
