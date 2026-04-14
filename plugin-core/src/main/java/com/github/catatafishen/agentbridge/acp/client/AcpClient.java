@@ -24,7 +24,7 @@ import com.github.catatafishen.agentbridge.services.ActiveAgentManager;
 import com.github.catatafishen.agentbridge.services.AgentProfileManager;
 import com.github.catatafishen.agentbridge.services.McpServerControl;
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2;
-import com.github.catatafishen.agentbridge.settings.AcpClientBinaryDetector;
+import com.github.catatafishen.agentbridge.settings.AcpClientBinaryResolver;
 import com.github.catatafishen.agentbridge.settings.BinaryDetector;
 import com.github.catatafishen.agentbridge.settings.McpServerSettings;
 import com.github.catatafishen.agentbridge.settings.ShellEnvironment;
@@ -1053,20 +1053,11 @@ public abstract class AcpClient extends AbstractAgentClient {
         // does not search PATH the same way a shell does.
         List<String> resolvedCommand = resolveCommand(command);
 
-        // Check if binary exists before trying to launch
-        String binaryPath = resolvedCommand.getFirst();
-        File binaryFile = new File(binaryPath);
-        if (!binaryPath.contains("/") && !binaryPath.contains("\\")) {
-            // Relative name - check if it's in PATH
-            String foundPath = BinaryDetector.findBinaryPath(binaryPath);
-            if (foundPath == null) {
-                throw new IOException(displayName() + " binary '" + binaryPath + "' not found in PATH. " +
-                    "Please install it or configure the path in Settings → Tools → AgentBridge → " + displayName());
-            }
-        } else if (!binaryFile.exists()) {
-            throw new IOException(displayName() + " binary not found at: " + binaryPath + ". " +
-                "Please install it or configure the correct path in Settings → Tools → AgentBridge → " + displayName());
-        }
+        // Validate the resolved binary exists before launching. resolveCommand() already tried
+        // the user-configured override, primary name, and all alternate names via the same
+        // AgentBinaryResolver used by the settings page. If it still couldn't resolve to an
+        // absolute path, the binary genuinely isn't installed.
+        validateResolvedBinary(resolvedCommand.getFirst(), displayName());
 
         ProcessBuilder pb = new ProcessBuilder(resolvedCommand);
         pb.directory(new File(cwd));
@@ -1122,12 +1113,14 @@ public abstract class AcpClient extends AbstractAgentClient {
         // Already an absolute or relative path — no resolution needed
         if (binaryName.startsWith("/") || binaryName.startsWith("./")) return command;
 
-        // Check user-configured override first, then auto-detect via shell environment
+        // Use AgentBinaryResolver — the same resolution logic used by the settings page.
+        // This ensures binary detection is consistent between settings and connect.
         var profile = AgentProfileManager.getInstance().getProfile(agentId());
         String[] alternates = profile != null ? profile.getAlternateNames().toArray(new String[0]) : new String[0];
 
-        String resolvedPath = new AcpClientBinaryDetector(agentId()).resolve(binaryName, alternates);
+        String resolvedPath = new AcpClientBinaryResolver(agentId(), binaryName, alternates).resolve();
         if (resolvedPath != null && !resolvedPath.isEmpty()) {
+            resolvedPath = tryResolveBareName(resolvedPath);
             List<String> resolved = new ArrayList<>(command);
             resolved.set(0, resolvedPath);
             return resolved;
@@ -1135,6 +1128,40 @@ public abstract class AcpClient extends AbstractAgentClient {
 
         LOG.warn("Could not resolve absolute path for '" + binaryName + "'; attempting launch with unresolved name");
         return command;
+    }
+
+    /**
+     * If the resolved path is a bare name (no path separators), attempt to resolve it
+     * to an absolute path via {@link BinaryDetector#findBinaryPath}. This handles the
+     * edge case where a user sets a custom binary path to just a name (e.g. {@code "copilot"})
+     * rather than a full path — the resolver returns it as-is, but ProcessBuilder needs
+     * an absolute path or a name findable via {@code execvp}.
+     */
+    static String tryResolveBareName(String resolvedPath) {
+        if (!resolvedPath.contains("/") && !resolvedPath.contains("\\")) {
+            String absolutePath = BinaryDetector.findBinaryPath(resolvedPath);
+            if (absolutePath != null) {
+                return absolutePath;
+            }
+        }
+        return resolvedPath;
+    }
+
+    /**
+     * Validates that a resolved binary path points to an existing file. If the path is
+     * a bare name (no path separators), it means resolution failed — the binary is not
+     * installed. Throws {@link IOException} with an actionable message on failure.
+     */
+    static void validateResolvedBinary(String binaryPath, String displayName) throws IOException {
+        if (binaryPath.contains("/") || binaryPath.contains("\\")) {
+            if (!new File(binaryPath).exists()) {
+                throw new IOException(displayName + " binary not found at: " + binaryPath + ". "
+                    + "Please install it or configure the correct path in Settings → Tools → AgentBridge → " + displayName);
+            }
+        } else {
+            throw new IOException(displayName + " binary '" + binaryPath + "' not found in PATH. "
+                + "Please install it or configure the path in Settings → Tools → AgentBridge → " + displayName);
+        }
     }
 
     private InitializeResponse initialize() throws Exception {

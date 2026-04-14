@@ -117,12 +117,14 @@ public final class CopilotClient extends AcpClient {
 
     public CopilotClient(Project project) {
         super(project);
-        // Force refresh to pick up charset fix for non-ASCII usernames
-        ShellEnvironment.refresh();
     }
 
     @Override
     protected void beforeLaunch(String cwd, int mcpPort) throws IOException {
+        // Refresh shell environment before launch — picks up any tools installed since last capture
+        // (e.g., charset fix for non-ASCII usernames). Done here instead of the constructor so the
+        // re-captured environment is immediately available for binary detection in launchProcess().
+        ShellEnvironment.refresh();
         Path home = copilotHome();
         writeAgentDefinitions(home.toString());
         String basePath = project.getBasePath();
