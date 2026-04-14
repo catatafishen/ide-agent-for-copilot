@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AcpClientTest {
@@ -889,6 +890,71 @@ class AcpClientTest {
         JsonObject params = new JsonObject();
         params.add("options", options);
         return params;
+    }
+
+    // ── validateResolvedBinary (static package-private) ─────────────────
+
+    @Nested
+    class ValidateResolvedBinary {
+
+        @Test
+        void absolutePathExists_noException() throws Exception {
+            // /bin/sh always exists on Unix systems
+            AcpClient.validateResolvedBinary("/bin/sh", "TestAgent");
+        }
+
+        @Test
+        void absolutePathMissing_throwsIOException() {
+            var ex = assertThrows(java.io.IOException.class, () ->
+                AcpClient.validateResolvedBinary("/nonexistent/path/binary", "TestAgent"));
+            assertTrue(ex.getMessage().contains("binary not found at:"));
+            assertTrue(ex.getMessage().contains("TestAgent"));
+        }
+
+        @Test
+        void bareName_throwsIOException() {
+            var ex = assertThrows(java.io.IOException.class, () ->
+                AcpClient.validateResolvedBinary("copilot", "TestAgent"));
+            assertTrue(ex.getMessage().contains("not found in PATH"));
+            assertTrue(ex.getMessage().contains("TestAgent"));
+        }
+
+        @Test
+        void windowsStyleAbsolutePath_missing_throwsIOException() {
+            var ex = assertThrows(java.io.IOException.class, () ->
+                AcpClient.validateResolvedBinary("C:\\nonexistent\\binary.exe", "TestAgent"));
+            assertTrue(ex.getMessage().contains("binary not found at:"));
+        }
+    }
+
+    // ── tryResolveBareName (static package-private) ─────────────────────
+
+    @Nested
+    class TryResolveBareName {
+
+        @Test
+        void absolutePath_returnsUnchanged() {
+            assertEquals("/usr/bin/something", AcpClient.tryResolveBareName("/usr/bin/something"));
+        }
+
+        @Test
+        void windowsPath_returnsUnchanged() {
+            assertEquals("C:\\Program Files\\bin.exe", AcpClient.tryResolveBareName("C:\\Program Files\\bin.exe"));
+        }
+
+        @Test
+        void nonexistentBareName_returnsOriginal() {
+            // A made-up binary name that doesn't exist on any system
+            String original = "xyzzy_nonexistent_binary_42";
+            assertEquals(original, AcpClient.tryResolveBareName(original));
+        }
+
+        @Test
+        void existingBareName_resolvesToAbsolutePath() {
+            // 'sh' is universally available on Unix systems
+            String result = AcpClient.tryResolveBareName("sh");
+            assertTrue(result.contains("/"), "expected 'sh' to be resolved to an absolute path, got: " + result);
+        }
     }
 
 }
