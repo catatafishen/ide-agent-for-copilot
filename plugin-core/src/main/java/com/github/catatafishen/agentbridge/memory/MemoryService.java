@@ -3,6 +3,8 @@ package com.github.catatafishen.agentbridge.memory;
 import com.github.catatafishen.agentbridge.memory.embedding.EmbeddingService;
 import com.github.catatafishen.agentbridge.memory.kg.KnowledgeGraph;
 import com.github.catatafishen.agentbridge.memory.store.MemoryStore;
+import com.github.catatafishen.agentbridge.memory.validation.MemoryRefactorListener;
+import com.github.catatafishen.agentbridge.memory.validation.MemoryStalenessTrigger;
 import com.github.catatafishen.agentbridge.memory.wal.WriteAheadLog;
 import com.github.catatafishen.agentbridge.psi.PlatformApiCompat;
 import com.intellij.openapi.Disposable;
@@ -148,6 +150,17 @@ public final class MemoryService implements Disposable {
                 Disposer.register(this, knowledgeGraph);
 
                 initialized = true;
+
+                // Start staleness detection for grounded memory
+                MemoryStalenessTrigger stalenessTrigger = new MemoryStalenessTrigger(project);
+                stalenessTrigger.register(this);
+                Disposer.register(this, stalenessTrigger);
+
+                // Listen for refactors (rename/move) to update evidence references
+                MemoryRefactorListener refactorListener = new MemoryRefactorListener(project);
+                refactorListener.register(this);
+                Disposer.register(this, refactorListener);
+
                 LOG.info("MemoryService initialized for project: " + project.getName());
             } catch (IOException e) {
                 LOG.error("Failed to initialize MemoryService", e);
