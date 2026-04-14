@@ -466,7 +466,7 @@ public final class PsiBridgeService implements Disposable {
 
         if (perm == ToolPermission.DENY) {
             LOG.info("PSI Bridge: DENY for tool " + toolName);
-            return "Permission denied: tool '" + toolName + "' is disabled in Tool Permissions settings.";
+            return "Error: Permission denied: tool '" + toolName + "' is disabled in Tool Permissions settings.";
         }
 
         // Session-scoped allow: if user previously chose "Allow for session", skip the prompt
@@ -510,10 +510,10 @@ public final class PsiBridgeService implements Disposable {
                 response = future.get(120, java.util.concurrent.TimeUnit.SECONDS);
             } catch (java.util.concurrent.TimeoutException e) {
                 LOG.info("PSI Bridge: ASK timed out for " + toolName);
-                return "Permission request timed out for tool '" + toolName + "'.";
+                return "Error: Permission request timed out for tool '" + toolName + "'.";
             } catch (InterruptedException | java.util.concurrent.ExecutionException e) {
                 Thread.currentThread().interrupt();
-                return "Permission request interrupted for tool '" + toolName + "'.";
+                return "Error: Permission request interrupted for tool '" + toolName + "'.";
             }
         } else {
             // Fallback: modal dialog when JCEF / chat panel is unavailable.
@@ -538,10 +538,10 @@ public final class PsiBridgeService implements Disposable {
                     : com.github.catatafishen.agentbridge.bridge.PermissionResponse.DENY;
             } catch (java.util.concurrent.TimeoutException e) {
                 LOG.info("PSI Bridge: modal permission timed out for " + toolName);
-                return "Permission request timed out for tool '" + toolName + "'.";
+                return "Error: Permission request timed out for tool '" + toolName + "'.";
             } catch (InterruptedException | java.util.concurrent.ExecutionException e) {
                 Thread.currentThread().interrupt();
-                return "Permission request interrupted for tool '" + toolName + "'.";
+                return "Error: Permission request interrupted for tool '" + toolName + "'.";
             }
         }
 
@@ -563,7 +563,7 @@ public final class PsiBridgeService implements Disposable {
             }
             default -> {
                 LOG.info("PSI Bridge: ASK denied by user for " + toolName);
-                yield "Permission denied by user for tool '" + toolName + "'.";
+                yield "Error: Permission denied by user for tool '" + toolName + "'.";
             }
         };
     }
