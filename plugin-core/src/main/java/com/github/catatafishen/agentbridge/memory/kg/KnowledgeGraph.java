@@ -174,6 +174,34 @@ public final class KnowledgeGraph implements Disposable {
     }
 
     /**
+     * Update evidence references in all currently valid triples, replacing old references with new ones.
+     * Used when a symbol is renamed or moved to keep KG evidence current.
+     *
+     * @return number of triples updated
+     */
+    public int updateEvidence(@NotNull String oldRef, @NotNull String newRef) throws IOException {
+        String sql = "UPDATE triples SET evidence = REPLACE(evidence, ?, ?) WHERE evidence LIKE ? AND valid_until IS NULL";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, oldRef);
+            stmt.setString(2, newRef);
+            stmt.setString(3, "%" + oldRef + "%");
+            int updated = stmt.executeUpdate();
+
+            if (updated > 0) {
+                JsonObject walPayload = new JsonObject();
+                walPayload.addProperty("old_ref", oldRef);
+                walPayload.addProperty("new_ref", newRef);
+                walPayload.addProperty("updated_count", updated);
+                wal.log("kg_update_evidence", oldRef, walPayload);
+            }
+
+            return updated;
+        } catch (SQLException e) {
+            throw new IOException("Failed to update evidence references", e);
+        }
+    }
+
+    /**
      * Get the timeline of all triples for a subject (including invalidated ones),
      * ordered by creation date.
      */

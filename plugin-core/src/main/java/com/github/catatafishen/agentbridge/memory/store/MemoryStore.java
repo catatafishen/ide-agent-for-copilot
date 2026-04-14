@@ -426,6 +426,67 @@ public final class MemoryStore implements Disposable {
         return results;
     }
 
+    /**
+     * Update evidence references in all drawer documents, replacing old references with new ones.
+     * Used when a symbol is renamed or moved. Marks affected documents as stale so they
+     * get re-validated on next access.
+     *
+     * @return number of drawers updated
+     */
+    public int updateEvidenceRef(@NotNull String oldRef, @NotNull String newRef) throws IOException {
+        IndexWriter w = writer;
+        if (w == null) throw new IOException("MemoryStore not initialized");
+
+        List<DrawerDocument> affected = findByEvidence(oldRef);
+        int updated = 0;
+
+        for (DrawerDocument drawer : affected) {
+            String updatedEvidence = drawer.evidence().replace(oldRef, newRef);
+
+            Term idTerm = new Term(FLD_ID, drawer.id());
+            try (DirectoryReader reader = DirectoryReader.open(w)) {
+                IndexSearcher searcher = new IndexSearcher(reader);
+                TopDocs docs = searcher.search(new TermQuery(idTerm), 1);
+                if (docs.totalHits.value() == 0) continue;
+
+                int docId = docs.scoreDocs[0].doc;
+                float[] vector = readVectorFromIndex(reader, docId);
+
+                DrawerDocument updatedDrawer = DrawerDocument.builder()
+                    .id(drawer.id())
+                    .wing(drawer.wing())
+                    .room(drawer.room())
+                    .content(drawer.content())
+                    .memoryType(drawer.memoryType())
+                    .sourceSession(drawer.sourceSession())
+                    .sourceFile(drawer.sourceFile())
+                    .agent(drawer.agent())
+                    .filedAt(drawer.filedAt())
+                    .addedBy(drawer.addedBy())
+                    .sourceTurnIndex(drawer.sourceTurnIndex())
+                    .sourceCommits(drawer.sourceCommits())
+                    .evidence(updatedEvidence)
+                    .verificationState(DrawerDocument.STATE_STALE)
+                    .lastVerifiedAt(Instant.now())
+                    .build();
+
+                w.deleteDocuments(idTerm);
+                Document newDoc = buildLuceneDocument(updatedDrawer, vector);
+                w.addDocument(newDoc);
+                updated++;
+            }
+        }
+
+        if (updated > 0) {
+            w.commit();
+            if (searcherManager != null) {
+                searcherManager.maybeRefresh();
+            }
+        }
+
+        return updated;
+    }
+
     private Document buildLuceneDocument(@NotNull DrawerDocument drawer, float @Nullable [] vector) {
         Document doc = new Document();
         doc.add(new StringField(FLD_ID, drawer.id(), Field.Store.YES));
