@@ -327,4 +327,78 @@ class StatusBanner(parentDisposable: Disposable) :
             dismiss()
         }
     }
+
+    /**
+     * Shows the Copilot remote session URL with Copy URL and Open in Browser actions.
+     * Displayed when the CLI is launched with {@code --remote} and emits a GitHub session URL to stderr.
+     */
+    fun showRemoteSessionUrl(url: String) {
+        ApplicationManager.getApplication().invokeLater {
+            dismiss()
+            val status = EditorNotificationPanel.Status.Info
+            val borderColor = statusBorderColor(status)
+
+            val urlRow = JBPanel<JBPanel<*>>().apply {
+                layout = BoxLayout(this, BoxLayout.X_AXIS)
+                isOpaque = false
+                border = JBUI.Borders.empty(4, 8)
+            }
+            val copyUrlLink = HyperlinkLabel("Copy URL").apply {
+                icon = AllIcons.Actions.Copy
+            }
+            val openBrowserLink = HyperlinkLabel("Open in Browser").apply {
+                icon = AllIcons.Ide.External_link_arrow
+            }
+            copyUrlLink.addHyperlinkListener {
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                    .setContents(StringSelection(url), null)
+                copyUrlLink.setHyperlinkText("Copied!")
+                AppExecutorUtil.getAppScheduledExecutorService().schedule(
+                    { ApplicationManager.getApplication().invokeLater { copyUrlLink.setHyperlinkText("Copy URL") } },
+                    2L, TimeUnit.SECONDS,
+                )
+            }
+            openBrowserLink.addHyperlinkListener {
+                com.intellij.ide.BrowserUtil.browse(url)
+            }
+            urlRow.add(JBLabel("Remote session:"))
+            urlRow.add(Box.createHorizontalStrut(JBUI.scale(8)))
+            urlRow.add(copyUrlLink)
+            urlRow.add(Box.createHorizontalStrut(JBUI.scale(8)))
+            urlRow.add(openBrowserLink)
+
+            val banner = object : InlineBanner(
+                "Copilot remote session ready — open the URL to connect from another browser or device.",
+                status
+            ) {
+                override fun paintComponent(g: Graphics) {
+                    val g2 = g.create() as java.awt.Graphics2D
+                    try {
+                        g2.color = background
+                        g2.fillRect(0, 0, width, height)
+                        g2.color = borderColor
+                        g2.fillRect(0, 0, width, 1)
+                        g2.fillRect(0, height - 1, width, 1)
+                    } finally {
+                        g2.dispose()
+                    }
+                    paintChildren(g)
+                }
+            }
+            banner.showCloseButton(true)
+            banner.setCloseAction { dismiss() }
+
+            val wrapper = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+                isOpaque = false
+                add(banner, BorderLayout.CENTER)
+                add(urlRow, BorderLayout.SOUTH)
+            }
+
+            currentBanner = banner
+            add(wrapper, BorderLayout.CENTER)
+            isVisible = true
+            revalidate()
+            repaint()
+        }
+    }
 }
