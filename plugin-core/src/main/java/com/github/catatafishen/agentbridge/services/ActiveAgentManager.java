@@ -107,6 +107,16 @@ public final class ActiveAgentManager implements Disposable {
         this.pendingRemoteUrlListener = listener;
     }
 
+    void configureCopilotClientForStart(@NotNull CopilotClient copilotClient) {
+        if (remoteModeNextStart) {
+            copilotClient.setRemoteMode(true);
+        }
+        java.util.function.Consumer<String> listener = pendingRemoteUrlListener;
+        if (listener != null) {
+            copilotClient.setRemoteUrlListener(listener);
+        }
+    }
+
     // ── Active profile ───────────────────────────────────────────────────────
 
     private final java.util.List<Runnable> switchListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -340,13 +350,7 @@ public final class ActiveAgentManager implements Disposable {
 
             // Wire remote mode before start() so buildCommand() picks up the --remote flag.
             if (acpClient instanceof CopilotClient copilotClient) {
-                if (remoteModeNextStart) {
-                    copilotClient.setRemoteMode(true);
-                }
-                java.util.function.Consumer<String> listener = pendingRemoteUrlListener;
-                if (listener != null) {
-                    copilotClient.setRemoteUrlListener(listener);
-                }
+                configureCopilotClientForStart(copilotClient);
             }
 
             acpClient.start();

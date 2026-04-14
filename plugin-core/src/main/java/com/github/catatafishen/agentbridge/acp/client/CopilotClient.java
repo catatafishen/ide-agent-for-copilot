@@ -234,7 +234,7 @@ public final class CopilotClient extends AcpClient {
         // The Copilot CLI ignores both resumeSessionId (ACP param) and --resume (CLI flag) in
         // ACP mode as of v1.0.12. The flag is sent anyway in case a future version honours it.
         // Resume failure is handled by AcpClient.loadSession() → enableInjectionFallback().
-        String resumeId = ActiveAgentManager.getInstance(project).getSettings().getResumeSessionId();
+        String resumeId = getResumeSessionId();
         if (resumeId != null) {
             cmd.add("--resume=" + resumeId);
             Path sessionDir = copilotHome().resolve(SESSION_STATE_DIR).resolve(resumeId);
@@ -253,6 +253,13 @@ public final class CopilotClient extends AcpClient {
     }
 
     /**
+     * Returns the persisted resume session ID, or {@code null} if none. Package-private for testing.
+     */
+    @Nullable String getResumeSessionId() {
+        return ActiveAgentManager.getInstance(project).getSettings().getResumeSessionId();
+    }
+
+    /**
      * Overrides the default stderr handler to scan for remote session URLs when
      * {@link #remoteMode} is enabled. Strips ANSI escape codes before matching.
      * Fires {@link #remoteUrlListener} (at most once) when a GitHub URL is found.
@@ -263,16 +270,25 @@ public final class CopilotClient extends AcpClient {
         if (!remoteMode) return;
         transport.onStderr(line -> {
             LOG.warn("[copilot stderr] " + line);
-            String stripped = line.replaceAll("\u001B\\[[;\\d]*[A-Za-z]", "");
-            Matcher m = REMOTE_URL_PATTERN.matcher(stripped);
-            if (m.find()) {
+            String url = extractGitHubUrl(line);
+            if (url != null) {
                 Consumer<String> cb = remoteUrlListener;
                 if (cb != null) {
                     remoteUrlListener = null; // fire-once
-                    cb.accept(m.group());
+                    cb.accept(url);
                 }
             }
         });
+    }
+
+    /**
+     * Strips ANSI escape sequences from {@code line} and returns the first GitHub remote
+     * session URL found, or {@code null} if no such URL is present.
+     */
+    static @Nullable String extractGitHubUrl(@org.jetbrains.annotations.NotNull String line) {
+        String stripped = line.replaceAll("\u001B\\[[;\\d]*[A-Za-z]", "");
+        Matcher m = REMOTE_URL_PATTERN.matcher(stripped);
+        return m.find() ? m.group() : null;
     }
 
     @Override
