@@ -1,293 +1,94 @@
 <idea-plugin require-restart="false">
   <id>com.github.catatafishen.ideagentforcopilot</id>
   <name>AgentBridge</name>
-  <vendor email="henrik@westergard.org" url="https://github.com/catatafishen/ide-agent-for-copilot">
+  <vendor email="henrik@westergard.org" url="https://github.com/catatafishen/agentbridge">
     AgentBridge Contributors
   </vendor>
 
   <category>AI Assistant</category>
 
   <description><![CDATA[
-    <p><b>AgentBridge</b> &mdash; ACP &amp; MCP bridge connecting AI coding agents to your JetBrains IDE
-    through <b>92 native MCP tools</b>.</p>
+<p><b>AgentBridge — Bring IntelliJ Code Intelligence to Coding Agents</b></p>
 
-    <p>Instead of operating through a terminal or generating diffs in isolation, agents work through
-    IntelliJ inspections, refactorings, the test runner, the build system, and Git &mdash; the same
-    tools you use.</p>
+<p>AgentBridge connects coding agents to your JetBrains IDE using MCP and ACP, giving them access to the same tools and feedback that human developers rely on.</p>
 
-    <h3>Multi-Agent Support</h3>
-    <p>Connect your preferred AI coding agent and switch between them with one click. Supported agents:</p>
-    <ul>
-        <li><b>GitHub Copilot</b> &mdash; OAuth sign-in, dynamic model discovery</li>
-        <li><b>Claude CLI</b> (Claude Code) &mdash; Anthropic's Claude via the <code>claude</code> CLI</li>
-        <li><b>Codex</b> &mdash; OpenAI Codex via <code>codex app-server</code>, with device-auth sign-in</li>
-        <li><b>Kiro</b> &mdash; Amazon Kiro agent</li>
-        <li><b>Junie</b> &mdash; JetBrains Junie agent</li>
-        <li><b>opencode</b> &mdash; open-source multi-model agent</li>
-    </ul>
-    <p>Each agent has its own connection settings, tool permissions, and instructions.</p>
+<p>Instead of working blindly through a terminal, agents can operate directly through the IDE:</p>
+<ul>
+  <li>Edit files with full undo, formatting, and VCS integration</li>
+  <li>Navigate code using IntelliJ’s code intelligence (PSI)</li>
+  <li>Run builds, tests, and git operations through the IDE</li>
+  <li>You see files open and update in real time while they work</li>
+</ul>
 
-    <h3>Real IDE Integration, Not Just a Shell</h3>
-    <p>Other coding agents can build, test, and use Git. AgentBridge does it through native JetBrains
-    platform APIs &mdash; keeping you in the loop with visible, reviewable actions:</p>
-    <ul>
-        <li><b>Inspections &amp; quick-fixes</b> &mdash; the agent sees the same warnings you see and can apply IDE-suggested fixes</li>
-        <li><b>Refactoring</b> &mdash; rename, extract method, inline &mdash; through IntelliJ's refactoring engine, not text replacement</li>
-        <li><b>Test runner</b> &mdash; executes tests in the IDE's Run panel so you can watch results live</li>
-        <li><b>Build tools</b> &mdash; triggers incremental builds through IntelliJ, not a blind <code>gradle build</code></li>
-        <li><b>Git operations</b> &mdash; commits, diffs, and branches through the IDE's VCS layer with full editor buffer awareness</li>
-        <li><b>Code navigation</b> &mdash; go-to-declaration, find references, type hierarchy, call hierarchy &mdash; using the IDE's semantic index</li>
-        <li><b>Static analysis</b> &mdash; Qodana, SonarQube, and IntelliJ inspections available as agent tools</li>
-    </ul>
-    <p>Every action is visible in the IDE. Nothing happens behind your back.</p>
+<p>The key difference is the feedback loop.</p>
 
-    <h3>Human in the Loop</h3>
-    <p>The agent works <em>with</em> you, not around you. You see every file change in the editor,
-    every test result in the Run panel, every Git operation in the VCS log. You can pause, review,
-    undo, or redirect at any point. Fine-grained per-tool permissions let you control exactly what
-    the agent can do.</p>
+<p>After every edit, the agent receives immediate feedback from the IDE, including errors, warnings, and inspections (e.g. SonarLint). This allows the agent to correct issues as they appear, instead of discovering them later after multiple changes.</p>
 
-    <h3>Works for Tasks of Any Size</h3>
-    <ul>
-        <li>Fix a failing test or a single inspection warning</li>
-        <li>Refactor across multiple files</li>
-        <li>Explore an unfamiliar codebase using IDE navigation</li>
-        <li>Implement a feature end-to-end with build and test verification</li>
-    </ul>
+<p>This leads to more stable and maintainable code over longer sessions.</p>
 
-    <h3>Privacy &amp; Local-First Design</h3>
-    <ul>
-        <li>No telemetry or data collection</li>
-        <li>All operations executed locally inside your IDE</li>
-        <li>Your code never leaves your environment except through the connected agent</li>
-    </ul>
+<p><b>Supported agents</b><br>
+GitHub Copilot, Claude Code, OpenAI Codex, JetBrains Junie, Amazon Kiro, and OpenCode</p>
 
-    <h3>Requirements</h3>
-    <ul>
-        <li>A supported JetBrains IDE (IntelliJ IDEA, WebStorm, PyCharm, GoLand, etc.) version 2025.3+</li>
-        <li>An ACP-compatible agent CLI (GitHub Copilot, Claude CLI, Codex, Kiro, Junie, opencode, or custom)</li>
-    </ul>
+<p><b>Modes</b></p>
+<ul>
+  <li>MCP server: connect any external agent</li>
+  <li>ACP client: run supported agents directly inside the IDE</li>
+</ul>
 
-    <h3>Open Source</h3>
-    <p>Apache 2.0 License &mdash;
-    <a href="https://github.com/catatafishen/ide-agent-for-copilot">AgentBridge on GitHub</a></p>
-
-    <p><em>This plugin is an independent open-source project and is not affiliated with or endorsed by GitHub, Anthropic, Amazon, JetBrains, or OpenAI.</em></p>
-    ]]></description>
+<p>The plugin runs locally and does not collect or send telemetry.</p>
+]]></description>
 
   <change-notes><![CDATA[
-    <h3>1.47.0 &mdash; Session Continuity, Long-Term Memory &amp; Statistics</h3>
+    <h3>1.50.1 &mdash; Memory, Sessions &amp; Insights</h3>
 
-    <h4>Cross-Client Session Continuity</h4>
-    <p>Conversations started in one agent can now be resumed in another. The full session history is exported in each
-    agent's native format when you switch &mdash; Kiro, Codex, Junie, opencode, and Copilot all supported.</p>
-
-    <h4>Long-Term Memory</h4>
-    <p>Agents can build and query a persistent memory store that survives session boundaries, backed by IntelliJ's
-    built-in embedded database &mdash; no external services required. Inspired by
-    <a href="https://github.com/milla-jovovich/mempalace">MemPalace</a>.</p>
     <ul>
-        <li>Organised into a <b>Memory Palace</b> hierarchy: wings (projects) &rarr; rooms (topics) &rarr; drawers (facts)</li>
-        <li>Semantic search via on-device vector embeddings &mdash; no API calls</li>
-        <li><b>Knowledge Graph</b> &mdash; typed subject &rarr; predicate &rarr; object triples with timeline support</li>
-        <li>Automatic memory mining from conversation history</li>
-        <li>9 new MCP tools: <code>memory_store</code>, <code>memory_search</code>, <code>memory_recall</code>,
-        <code>memory_wake_up</code>, <code>memory_status</code>, <code>memory_kg_add</code>,
-        <code>memory_kg_query</code>, <code>memory_kg_invalidate</code>, <code>memory_kg_timeline</code></li>
+        <li>1000+ downloads from marketplace</li>
+        <li>Cross-client session continuity &mdash; maps session formats from one client to another</li>
+        <li>Long-term agent memory with local storage and semantic search (no external services)</li>
+        <li>Statistics view for tool usage and performance insights</li>
+        <li>General stability improvements and fixes</li>
     </ul>
-
-    <h4>Tool Usage Statistics</h4>
-    <p>New <b>Statistics</b> view in the AgentBridge tool window &mdash; per-tool call counts, average duration,
-    average data size, total I/O, and error rate. Charts tab shows usage breakdown by category and client.
-    Filter by time range and agent. Backed by a local SQLite database.</p>
 
     <h3>1.16.0 &mdash; Codex, Nudge &amp; PWA</h3>
 
-    <h4>OpenAI Codex Support</h4>
-    <p>Full support for OpenAI Codex agents &mdash; drives the locally-installed <code>codex</code> CLI via
-    JSON-RPC 2.0 over stdio. Routes user input requests to the built-in <code>ask_user</code> flow; shows a
-    window notification when a prompt arrives while the IDE is unfocused.</p>
-
-    <h4>Nudge While the Agent Works</h4>
-    <p>New <b>Nudge</b> action (<code>Ctrl+Enter</code>) lets you guide or redirect the agent mid-turn without
-    stopping it. The nudge waits in a queue and is injected at the next opportunity. Cancel with the ✕ button
-    if you change your mind.</p>
-
-    <h4>Install the Chat as a PWA</h4>
     <ul>
-        <li>Open the chat web UI in any browser and install it as a home-screen app</li>
-        <li>Download the certificate from <code>/cert.crt</code> and install it as a <b>CA certificate</b> once to trust HTTPS over your local network</li>
-        <li><b>Android:</b> Settings &rarr; Security &rarr; Encryption &amp; credentials &rarr; Install a certificate &rarr; <b>CA certificate</b> &rarr; pick the downloaded file (do not just tap the file &mdash; that asks for a private key)</li>
-        <li><b>iOS/iPadOS:</b> open the <code>.pem</code> file to install the profile, then enable it under Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</li>
-        <li>Certificate automatically includes your machine's LAN IP &mdash; no manual setup needed</li>
+        <li>OpenAI Codex support</li>
+        <li>Nudge feature to guide the agent mid-task without stopping execution</li>
+        <li>Web-based chat UI with PWA support for remote interaction</li>
     </ul>
 
-    <h3>1.15.0 &mdash; AgentBridge: New Agents &amp; Rebranding</h3>
+    <h3>1.15.0 &mdash; Multi-Agent Foundation</h3>
 
-    <p>The plugin is now named <b>AgentBridge</b>.</p>
-
-    <h4>New Agents</h4>
     <ul>
-        <li><b>Claude CLI</b> (Claude Code) &mdash; Anthropic's Claude via the <code>claude</code> CLI</li>
-        <li><b>Kiro</b> &mdash; Amazon Kiro agent with thinking support</li>
-        <li><b>Junie</b> &mdash; JetBrains Junie agent</li>
-        <li><b>Codex</b> &mdash; OpenAI Codex via <code>codex app-server</code>; Sign In button
-        runs <code>codex login --device-auth</code> in the IDE terminal</li>
+        <li>Added support for Claude Code, Kiro, Junie, and Codex</li>
+        <li>Per-agent configuration and profile system</li>
+        <li>Expanded access to IDE actions and inspections</li>
     </ul>
 
-    <h4>New MCP Tools</h4>
+    <h3>1.12.0 &mdash; Multi-Agent Configuration</h3>
+
     <ul>
-        <li><code>get_available_actions</code> / <code>apply_action</code> / <code>get_action_options</code>
-        &mdash; invoke any IDE quick-fix or intention action by name</li>
-        <li><code>get_sonar_rule_description</code> &mdash; look up SonarQube rule explanations</li>
+        <li>Switch between multiple agent profiles</li>
+        <li>Per-profile settings for tools, permissions, and instructions</li>
+        <li>Structured settings UI for MCP and ACP configuration</li>
     </ul>
 
-    <h4>Per-Agent Settings</h4>
-    <p>Each agent has its own settings page with binary auto-detection, model selection, and a dedicated
-    Agent Instructions section.</p>
+    <h3>1.5.0 &mdash; Live IDE Integration</h3>
 
-    <h3>1.12.0</h3>
-
-    <h4>Multi-Agent Support</h4>
-    <p>AgentBridge is no longer limited to a single agent. Configure and switch between multiple agents:</p>
     <ul>
-        <li>Agent profile selector in the connection panel &mdash; switch agents with one click</li>
-        <li>Per-profile settings: connection command, tool permissions, built-in tool blocking, custom instructions</li>
-        <li>Built-in profiles for GitHub Copilot and opencode, plus fully custom profiles</li>
-        <li>Agent and sub-agent names shown in chat bubble headers</li>
-        <li>Profile-specific message coloring in chat</li>
-    </ul>
-
-    <h4>Comprehensive Settings UI</h4>
-    <p>Settings reorganized into structured sections:</p>
-    <ul>
-        <li><b>MCP</b> &mdash; Server configuration and individual tool enable/disable</li>
-        <li><b>ACP</b> &mdash; Agent settings, profiles, and tool permissions</li>
-        <li><b>Other</b> &mdash; Scratch file types, project files, and billing data</li>
-        <li>Plugin version and build info shown in the settings page footer</li>
-    </ul>
-
-    <h4>New MCP Tools (92 total)</h4>
-    <ul>
-        <li><code>undo</code> / <code>redo</code> &mdash; undo and redo file changes</li>
-        <li><code>edit_text</code> &mdash; surgical find-and-replace within a file</li>
-        <li><code>rename_file</code> / <code>move_file</code> &mdash; file renaming and moving via IntelliJ VFS</li>
-        <li><code>find_implementations</code> &mdash; find all implementations of a class/interface or method overrides</li>
-        <li><code>get_call_hierarchy</code> &mdash; find all callers of a method</li>
-        <li><code>get_file_history</code> &mdash; git history for a specific file (including renames)</li>
-        <li><code>read_build_output</code> &mdash; read from the Build tool window</li>
-        <li><code>list_terminals</code> / <code>read_terminal_output</code> &mdash; terminal tab management</li>
-        <li><code>list_project_files</code> now supports sorting, size filters, and date filters</li>
-    </ul>
-
-    <h4>Permission System</h4>
-    <ul>
-        <li>Three-way permission prompt: Deny / Allow / Allow for Session</li>
-        <li>MCP tool annotations for granular permission control</li>
-        <li>Sub-agent built-in write tools automatically blocked via permission denial</li>
-        <li>Agent-level permission injection per profile</li>
-    </ul>
-
-    <h4>Follow Agent Mode Improvements</h4>
-    <ul>
-        <li>Status bar feedback during search operations</li>
-        <li><code>build_project</code> no longer steals editor focus when Follow Agent is off</li>
-    </ul>
-
-    <h4>MCP Instructions</h4>
-    <p>Plugin instructions are now sent via the MCP <code>initialize</code> response, with a fallback to
-    <code>copilot-instructions.md</code> for agents that don't support it.</p>
-
-    <h4>Code Quality</h4>
-    <ul>
-        <li>Gradle compile abuse detection &mdash; prevents runaway compilation tasks</li>
-        <li>Extensive SonarQube finding fixes across the codebase</li>
-        <li>Reduced cognitive complexity in core tool handlers</li>
-    </ul>
-
-    <h4>UI Cleanup</h4>
-    <ul>
-        <li>Removed debug, timeline, and help panels &mdash; cleaner tool window</li>
-        <li>Version number shown on the root connection panel and settings page</li>
-    </ul>
-
-    <h4>Bug Fixes</h4>
-    <ul>
-        <li>Profile names no longer gain "(Copy)" suffix on every settings open</li>
-        <li>MCP tools now work during modal dialogs</li>
-        <li>Fixed paste-to-scratch file bugs</li>
-        <li>Fixed <code>git_reset</code> path+commit handling</li>
-        <li>Fixed <code>read_run_output</code> for Gradle consoles and JUnit runners</li>
-        <li>Fixed backtick escaping in chat messages</li>
-    </ul>
-
-    <h3>1.5.0</h3>
-
-    <h4>Follow Agent Mode</h4>
-    <p>The IDE now visually follows the agent as it works, enabled by default:</p>
-    <ul>
-        <li>Highlight code as the agent reads/edits it</li>
-        <li>Editor shows "Agent is reading/editing" inlay labels</li>
-        <li>Project explorer marks files with read/write indicators</li>
-        <li>Git Log opens and selects commits after the agent commits</li>
-    </ul>
-
-    <h4>Redesigned Chat UI</h4>
-    <p>Chat now looks and feels native to JetBrains:</p>
-    <ul>
-        <li>JetBrains-style markdown &mdash; tables, accent-bordered code blocks, heading hierarchy, blockquote support</li>
-        <li>Quick-reply buttons &mdash; clickable suggestions with semantic colors and dismiss support</li>
-        <li>Code block enhancements &mdash; language labels, "Open in Scratch" button, word wrap toggle</li>
-        <li>Native Swing banners &mdash; status/auth/git banners use JetBrains InlineBanner</li>
-    </ul>
-
-    <h4>Scratch File Execution</h4>
-    <p>Run code directly from chat &mdash; Java, JavaScript, TypeScript, Kotlin Script, Groovy, and Python scratch files.</p>
-
-    <h4>Project Structure Management</h4>
-    <p>New tool to manage module dependencies, libraries, and SDKs programmatically.</p>
-
-    <h4>Conversation History</h4>
-    <p>Search and recall past conversations across sessions.</p>
-
-    <h4>Git Enhancements</h4>
-    <ul>
-        <li>7 new git tools: fetch, pull, merge, rebase, cherry-pick, tag, reset</li>
-        <li>Commit hashes in chat are clickable links that navigate to the VCS Log</li>
-        <li>Git operations routed through IntelliJ Git4Idea infrastructure</li>
-        <li>Agent commits automatically appear in the Git Log</li>
-    </ul>
-
-    <h4>Theme and Terminal Tools</h4>
-    <ul>
-        <li>list_themes / set_theme &mdash; agent can switch your IDE theme</li>
-        <li>write_terminal_input &mdash; agent can interact with terminal sessions</li>
-    </ul>
-
-    <h4>Multi-IDE Compatibility</h4>
-    <p>Java-specific code isolated so the plugin can run in WebStorm, PyCharm, and other non-Java IDEs.</p>
-
-    <h4>Reliability</h4>
-    <ul>
-        <li>Auto-retry on stale Copilot sessions</li>
-        <li>Graceful handling of Copilot process crashes</li>
-        <li>Chat saved incrementally during streaming</li>
-        <li>Reduced rendering artifacts during streaming</li>
+        <li>IDE follows the agent in real time (file reads, edits, git activity)</li>
+        <li>Clickable links to files and commits in chat</li>
+        <li>Improved chat UI with code blocks and quick actions</li>
     </ul>
 
     <h3>1.0.0 &mdash; Initial Release</h3>
+
     <ul>
-        <li>Introduces AgentBridge</li>
-        <li><b>Dynamic model discovery</b> &mdash; automatically supports all Copilot models without plugin updates</li>
-        <li>Enables multi-step task execution inside the IDE</li>
-        <li>Project navigation and context awareness</li>
-        <li>Multi-file editing capabilities</li>
-        <li>Integration with inspections and refactorings</li>
-        <li>Test and build execution support</li>
-        <li>Git operation support</li>
+        <li>First version of AgentBridge</li>
+        <li>IDE-integrated agent workflows with editing, navigation, build, and git support</li>
         <li>Local-first design with no telemetry</li>
     </ul>
-    ]]></change-notes>
+]]></change-notes>
 
   <!-- Require IntelliJ Platform 2025.3+ (no upper bound) -->
   <idea-version since-build="253"/>
