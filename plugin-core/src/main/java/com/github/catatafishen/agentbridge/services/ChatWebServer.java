@@ -362,6 +362,8 @@ public final class ChatWebServer implements Disposable {
         server.createContext("/load-more", ex -> handleAction(ex, body -> {
             if (onLoadMore != null) onLoadMore.run();
         }));
+        server.createContext("/file", this::handleFileRead);
+        server.createContext("/list-files", this::handleListFiles);
     }
 
     private void registerCertOnlyContext(HttpServer server) {
@@ -1250,6 +1252,154 @@ public final class ChatWebServer implements Disposable {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void handleFileRead(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = null;
+        if (query != null) {
+            for (String param : query.split("&")) {
+                if (param.startsWith("path=")) {
+                    path = java.net.URLDecoder.decode(param.substring(5), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        if (path == null || path.isEmpty()) {
+            String error = "{\"error\":\"Missing 'path' query parameter\"}";
+            sendJson(exchange, error);
+            return;
+        }
+
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            sendJson(exchange, "{\"error\":\"Project base path not available\"}");
+            return;
+        }
+
+        java.nio.file.Path projectRoot = java.nio.file.Path.of(basePath);
+        java.nio.file.Path resolved = projectRoot.resolve(path).normalize();
+
+        // Security: prevent path traversal outside project root
+        if (!resolved.startsWith(projectRoot)) {
+            exchange.sendResponseHeaders(403, -1);
+            exchange.close();
+            return;
+        }
+
+        if (!java.nio.file.Files.isRegularFile(resolved)) {
+            String error = "{\"error\":\"File not found: " + path.replace("\"", "\\\"") + "\"}";
+            byte[] bytes = error.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(404, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+            return;
+        }
+
+        // Limit file size to 1 MB to avoid memory issues
+        long size = java.nio.file.Files.size(resolved);
+        if (size > 1_048_576) {
+            sendJson(exchange, "{\"error\":\"File too large (max 1 MB)\"}");
+            return;
+        }
+
+        String content = java.nio.file.Files.readString(resolved, StandardCharsets.UTF_8);
+        String relativePath = projectRoot.relativize(resolved).toString().replace('\\', '/');
+
+        com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+        json.addProperty("path", relativePath);
+        json.addProperty("content", content);
+        json.addProperty("size", size);
+        sendJson(exchange, GSON.toJson(json));
+    }
+
+    private void handleListFiles(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = "";
+        if (query != null) {
+            for (String param : query.split("&")) {
+                if (param.startsWith("path=")) {
+                    path = java.net.URLDecoder.decode(param.substring(5), StandardCharsets.UTF_8);
+                }
+            }
+        }
+
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            sendJson(exchange, "{\"error\":\"Project base path not available\"}");
+            return;
+        }
+
+        java.nio.file.Path projectRoot = java.nio.file.Path.of(basePath);
+        java.nio.file.Path dir = path.isEmpty() ? projectRoot : projectRoot.resolve(path).normalize();
+
+        // Security: prevent path traversal outside project root
+        if (!dir.startsWith(projectRoot)) {
+            exchange.sendResponseHeaders(403, -1);
+            exchange.close();
+            return;
+        }
+
+        if (!java.nio.file.Files.isDirectory(dir)) {
+            sendJson(exchange, "{\"error\":\"Not a directory\"}");
+            return;
+        }
+
+        com.google.gson.JsonArray entries = new com.google.gson.JsonArray();
+        try (var stream = java.nio.file.Files.list(dir)) {
+            stream
+                .filter(p -> !p.getFileName().toString().startsWith("."))
+                .filter(p -> !isExcludedDir(p))
+                .sorted((a, b) -> {
+                    boolean aDir = java.nio.file.Files.isDirectory(a);
+                    boolean bDir = java.nio.file.Files.isDirectory(b);
+                    if (aDir != bDir) return aDir ? -1 : 1;
+                    return a.getFileName().toString().compareToIgnoreCase(b.getFileName().toString());
+                })
+                .forEach(p -> {
+                    com.google.gson.JsonObject entry = new com.google.gson.JsonObject();
+                    String name = p.getFileName().toString();
+                    String relPath = projectRoot.relativize(p).toString().replace('\\', '/');
+                    entry.addProperty("name", name);
+                    entry.addProperty("path", relPath);
+                    entry.addProperty("isDirectory", java.nio.file.Files.isDirectory(p));
+                    if (java.nio.file.Files.isRegularFile(p)) {
+                        try {
+                            entry.addProperty("size", java.nio.file.Files.size(p));
+                        } catch (IOException ignored) {
+                            // Size unavailable — omit
+                        }
+                    }
+                    entries.add(entry);
+                });
+        }
+
+        com.google.gson.JsonObject result = new com.google.gson.JsonObject();
+        result.addProperty("path", path.isEmpty() ? "." : path);
+        result.add("entries", entries);
+        sendJson(exchange, GSON.toJson(result));
+    }
+
+    private static boolean isExcludedDir(java.nio.file.Path p) {
+        if (!java.nio.file.Files.isDirectory(p)) return false;
+        String name = p.getFileName().toString();
+        return "node_modules".equals(name) || "build".equals(name) || "out".equals(name)
+            || ".gradle".equals(name) || ".git".equals(name) || ".idea".equals(name)
+            || "dist".equals(name) || "__pycache__".equals(name) || "target".equals(name);
+    }
 
     private void broadcast(String json) {
         for (SseClient c : sseClients) {
