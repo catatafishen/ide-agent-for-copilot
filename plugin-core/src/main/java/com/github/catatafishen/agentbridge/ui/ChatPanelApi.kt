@@ -26,7 +26,6 @@ interface ChatPanelApi : Disposable {
 
     fun removePromptEntry(entryId: String)
 
-    fun setPromptStats(modelId: String, multiplier: String)
     fun setCodeChangeStats(linesAdded: Int, linesRemoved: Int)
     fun setCurrentModel(modelId: String)
     fun setCurrentProfile(profileId: String)

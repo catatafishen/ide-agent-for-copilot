@@ -612,7 +612,18 @@ const ChatController = {
         if (!options?.length) return;
         const el = document.createElement('quick-replies');
         (el as any).options = options;
-        this._insertMsg(el);
+        // Insert inside the last agent-row so quick-replies appear above the turn-summary-bar
+        const row = this._lastAgentRow();
+        if (row) {
+            const summaryBar = row.querySelector('.turn-summary-bar');
+            if (summaryBar) {
+                row.insertBefore(el, summaryBar);
+            } else {
+                row.appendChild(el);
+            }
+        } else {
+            this._insertMsg(el);
+        }
         this._container()?.scrollIfNeeded();
     },
 
@@ -626,19 +637,6 @@ const ChatController = {
         document.querySelectorAll('thinking-chip[status="running"], thinking-chip[status="thinking"]').forEach(c => c.setAttribute('status', 'complete'));
         document.querySelectorAll('subagent-chip[status="running"]').forEach(c => c.setAttribute('status', 'failed'));
         document.querySelectorAll('message-bubble[streaming]').forEach(b => b.removeAttribute('streaming'));
-    },
-
-    setPromptStats(model: string, multiplier: string): void {
-        if (!this._turnActive) return;
-        const row = this._lastAgentRow();
-        if (!row) return;
-        const meta = this._ensureStatsFooter(row);
-        const chip = document.createElement('span');
-        chip.className = 'turn-chip stats';
-        chip.textContent = multiplier;
-        chip.dataset.tip = model;
-        chip.setAttribute('title', model);
-        meta.appendChild(chip);
     },
 
     setCodeChangeStats(_added: number, _removed: number): void {
@@ -675,25 +673,6 @@ const ChatController = {
     _lastAgentRow(): Element | null {
         const rows = document.querySelectorAll('.agent-row');
         return rows[rows.length - 1] ?? null;
-    },
-
-    /**
-     * Ensures a stats footer exists on the given agent row.
-     * Removes any previously placed stats footer from OTHER agent rows so
-     * only the latest row displays live stats (fixes "stats on multiple messages").
-     */
-    _ensureStatsFooter(agentRow: Element): HTMLElement {
-        // Remove footers from all OTHER rows
-        document.querySelectorAll('message-meta.stats-footer').forEach(el => {
-            if (el.parentElement !== agentRow) el.remove();
-        });
-        let meta = agentRow.querySelector('message-meta.stats-footer') as HTMLElement | null;
-        if (!meta) {
-            meta = document.createElement('message-meta');
-            meta.classList.add('stats-footer', 'show');
-            agentRow.appendChild(meta);
-        }
-        return meta;
     },
 
     setCurrentProfile(profileId: string): void {

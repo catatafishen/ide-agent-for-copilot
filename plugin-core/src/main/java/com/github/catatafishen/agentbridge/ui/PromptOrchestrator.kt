@@ -277,14 +277,6 @@ class PromptOrchestrator(
         ApplicationManager.getApplication().invokeLater {
             consolePanel().setCurrentProfile(agentManager.activeProfileId)
             consolePanel().setCurrentModel(selectedModelId)
-            // Show the multiplier chip for clients that support it (e.g. Copilot), only when known.
-            // For non-multiplier clients the chip is token/cost-based and shown after completion.
-            if (agentManager.client.supportsMultiplier()) {
-                val multiplier = getModelMultiplier(selectedModelId)
-                if (multiplier != null) {
-                    consolePanel().setPromptStats(selectedModelId, multiplier)
-                }
-            }
         }
         return selectedModelId
     }
@@ -421,12 +413,6 @@ class PromptOrchestrator(
             callbacks.onTimerRecordUsage(0, 0, 0.0)
         } else {
             consolePanel().finishResponse(turnToolCallCount, turnModelId, "")
-            val usageChip = BillingManager.formatUsageChip(turnInputTokens, turnOutputTokens, turnCostUsd)
-            if (usageChip.isNotEmpty() && usageChip != "1x") {
-                ApplicationManager.getApplication().invokeLater {
-                    consolePanel().setPromptStats(turnModelId, usageChip)
-                }
-            }
             callbacks.onTimerRecordUsage(turnInputTokens, turnOutputTokens, turnCostUsd)
         }
 
@@ -439,13 +425,6 @@ class PromptOrchestrator(
 
         callbacks.notifyIfUnfocused(turnToolCallCount)
 
-        val turnDuration = System.currentTimeMillis() - turnStartedAt
-        val turnMultiplier = if (client.supportsMultiplier()) getModelMultiplier(turnModelId) ?: "" else ""
-        consolePanel().emitTurnStats(
-            turnDuration, turnInputTokens, turnOutputTokens, turnCostUsd ?: 0.0,
-            turnToolCallCount, codeChanges[0], codeChanges[1], turnModelId, turnMultiplier
-        )
-
         callbacks.saveTurnStatistics(prompt, turnToolCallCount, turnModelId)
         callbacks.appendNewEntries()
         val lastResponse = consolePanel().getLastResponseText()
@@ -453,6 +432,13 @@ class PromptOrchestrator(
         if (quickReplies.isNotEmpty()) {
             ApplicationManager.getApplication().invokeLater { consolePanel().showQuickReplies(quickReplies) }
         }
+
+        val turnDuration = System.currentTimeMillis() - turnStartedAt
+        val turnMultiplier = if (client.supportsMultiplier()) getModelMultiplier(turnModelId) ?: "" else ""
+        consolePanel().emitTurnStats(
+            turnDuration, turnInputTokens, turnOutputTokens, turnCostUsd ?: 0.0,
+            turnToolCallCount, codeChanges[0], codeChanges[1], turnModelId, turnMultiplier
+        )
 
         val nextMsg = PsiBridgeService.getInstance(project).nextQueuedMessage
         if (nextMsg != null) {

@@ -290,11 +290,6 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
         setFrameRate(STREAMING_FRAME_RATE)
     }
 
-    override fun setPromptStats(modelId: String, multiplier: String) {
-        val short = escJs(modelId.substringAfterLast("/").take(30))
-        executeJs("ChatController.setPromptStats('$short','${escJs(multiplier)}')")
-    }
-
     override fun setCodeChangeStats(linesAdded: Int, linesRemoved: Int) {
         executeJs("ChatController.setCodeChangeStats($linesAdded,$linesRemoved)")
     }

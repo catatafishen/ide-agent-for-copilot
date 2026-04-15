@@ -329,11 +329,6 @@ class ChatToolWindowContent(
         selectedModelIndex = idx
         agentManager.settings.setSelectedModel(modelId)
         consolePanel.setCurrentModel(modelId)
-        val supportsMultiplier = agentManager.client.supportsMultiplier()
-        if (supportsMultiplier) {
-            val multiplier = getModelMultiplier(modelId)
-            if (multiplier != null) consolePanel.setPromptStats(modelId, multiplier)
-        }
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val sessionId = promptOrchestrator.currentSessionId
@@ -1472,7 +1467,6 @@ class ChatToolWindowContent(
                 LOG.debug("Model selected: ${model.id()} (index=$index)")
                 ApplicationManager.getApplication().invokeLater {
                     consolePanel.setCurrentModel(model.id())
-                    if (cost != null) consolePanel.setPromptStats(model.id(), cost)
                 }
                 ApplicationManager.getApplication().executeOnPooledThread {
                     try {

@@ -340,16 +340,6 @@ working-indicator .working-text {
     font-size: 0.82em;
 }
 
-.meta.stats-footer {
-    margin-bottom: 0;
-    margin-top: var(--sp-1);
-}
-
-/* Hide turn stats footers when the setting is disabled */
-.hide-turn-stats .stats-footer {
-    display: none !important;
-}
-
 /* ── Turn summary bar (horizontal rule with centered stats) ── */
 .turn-summary-bar {
     display: flex;
