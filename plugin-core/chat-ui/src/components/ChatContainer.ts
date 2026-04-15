@@ -11,6 +11,10 @@ export default class ChatContainer extends HTMLElement {
     private _prevScrollTop = 0;
     private _onScroll: (() => void) | null = null;
     private _onWheel: ((e: WheelEvent) => void) | null = null;
+    private _onTouchStart: ((e: TouchEvent) => void) | null = null;
+    private _onTouchMove: ((e: TouchEvent) => void) | null = null;
+    private _onTouchEnd: (() => void) | null = null;
+    private _touchStartY = 0;
     private _wheelRAF: number | null = null;
     private _resizeObs: ResizeObserver | null = null;
 
@@ -49,6 +53,32 @@ export default class ChatContainer extends HTMLElement {
             }
         };
         this.addEventListener('wheel', this._onWheel, {passive: true});
+
+        // Touch events: on mobile/tablet, wheel events don't fire for finger scrolling.
+        // Track touch gestures to disable autoscroll when dragging upward.
+        this._onTouchStart = (e: TouchEvent) => {
+            this._touchStartY = e.touches[0].clientY;
+        };
+        this.addEventListener('touchstart', this._onTouchStart, {passive: true});
+
+        this._onTouchMove = (e: TouchEvent) => {
+            const currentY = e.touches[0].clientY;
+            if (this._autoScroll && currentY > this._touchStartY + 10) {
+                // Finger dragged downward → user wants to scroll up (see earlier content)
+                this._autoScroll = false;
+                globalThis._bridge?.autoScrollDisabled?.();
+            }
+            this._touchStartY = currentY;
+        };
+        this.addEventListener('touchmove', this._onTouchMove, {passive: true});
+
+        this._onTouchEnd = () => {
+            if (!this._autoScroll && this._isAtBottom()) {
+                this._autoScroll = true;
+                globalThis._bridge?.autoScrollEnabled?.();
+            }
+        };
+        this.addEventListener('touchend', this._onTouchEnd, {passive: true});
 
         // Scroll handler: only used for load-more trigger at the top.
         this._onScroll = () => {
@@ -212,6 +242,9 @@ export default class ChatContainer extends HTMLElement {
         this._resizeObs?.disconnect();
         if (this._onScroll) this.removeEventListener('scroll', this._onScroll);
         if (this._onWheel) this.removeEventListener('wheel', this._onWheel);
+        if (this._onTouchStart) this.removeEventListener('touchstart', this._onTouchStart);
+        if (this._onTouchMove) this.removeEventListener('touchmove', this._onTouchMove);
+        if (this._onTouchEnd) this.removeEventListener('touchend', this._onTouchEnd);
         if (this._wheelRAF) {
             cancelAnimationFrame(this._wheelRAF);
             this._wheelRAF = null;
