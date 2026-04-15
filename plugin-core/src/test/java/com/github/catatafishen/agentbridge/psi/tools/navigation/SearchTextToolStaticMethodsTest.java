@@ -218,4 +218,33 @@ class SearchTextToolStaticMethodsTest {
                     "CASE_INSENSITIVE flag should be set");
         }
     }
+
+    @Nested
+    @DisplayName("Constants")
+    class Constants {
+
+        @Test
+        @DisplayName("MAX_OUTPUT_BYTES is 256 KB")
+        void maxOutputBytes() throws ReflectiveOperationException {
+            var field = SearchTextTool.class.getDeclaredField("MAX_OUTPUT_BYTES");
+            field.setAccessible(true);
+            assertEquals(256 * 1024, field.getInt(null));
+        }
+    }
+
+    @Nested
+    @DisplayName("SearchParams record")
+    class SearchParamsRecord {
+
+        @Test
+        @DisplayName("totalOutputBytes field exists in SearchParams")
+        void totalOutputBytesFieldExists() throws ReflectiveOperationException {
+            // Verify the record has the totalOutputBytes component (added by this PR)
+            var recordClass = Class.forName(
+                    "com.github.catatafishen.agentbridge.psi.tools.navigation.SearchTextTool$SearchParams");
+            var field = recordClass.getDeclaredField("totalOutputBytes");
+            assertNotNull(field, "SearchParams should have totalOutputBytes field");
+            assertEquals(java.util.concurrent.atomic.AtomicInteger.class, field.getType());
+        }
+    }
 }
