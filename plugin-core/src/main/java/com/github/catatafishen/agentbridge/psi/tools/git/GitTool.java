@@ -358,7 +358,7 @@ public abstract class GitTool extends Tool {
         return stdout;
     }
 
-    private void refreshVcsState() {
+    protected void refreshVcsState() {
         String basePath = project.getBasePath();
         if (basePath == null) return;
         EdtUtil.invokeLater(() -> {

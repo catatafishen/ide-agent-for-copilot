@@ -568,20 +568,8 @@ public final class PlatformApiCompat {
         git4idea.commands.GitCommand command = IDE_GIT_COMMAND_MAP.get(args[0]);
         if (command == null) return null;
 
-        java.util.List<git4idea.repo.GitRepository> repos =
-            git4idea.repo.GitRepositoryManager.getInstance(project).getRepositories();
-        if (repos.isEmpty()) return null;
-
-        git4idea.repo.GitRepository repo = repos.getFirst();
-        String basePath = project.getBasePath();
-        if (basePath != null && repos.size() > 1) {
-            for (git4idea.repo.GitRepository r : repos) {
-                if (r.getRoot().getPath().equals(basePath)) {
-                    repo = r;
-                    break;
-                }
-            }
-        }
+        git4idea.repo.GitRepository repo = getRepository(project);
+        if (repo == null) return null;
 
         git4idea.commands.GitLineHandler handler =
             new git4idea.commands.GitLineHandler(project, repo.getRoot(), command);
@@ -600,6 +588,81 @@ public final class PlatformApiCompat {
         if (result.success()) {
             return result.getOutputAsJoinedString();
         }
+        return formatGitCommandError(result.getExitCode(), result.getErrorOutputAsJoinedString());
+    }
+
+    /**
+     * Returns the primary GitRepository for the project, preferring the repo rooted at
+     * the project base path when multiple repos exist (e.g. submodules).
+     * Returns null if Git4Idea is unavailable or no repositories are registered.
+     */
+    public static @Nullable git4idea.repo.GitRepository getRepository(@NotNull Project project) {
+        java.util.List<git4idea.repo.GitRepository> repos =
+            git4idea.repo.GitRepositoryManager.getInstance(project).getRepositories();
+        if (repos.isEmpty()) return null;
+
+        git4idea.repo.GitRepository repo = repos.getFirst();
+        String basePath = project.getBasePath();
+        if (basePath != null && repos.size() > 1) {
+            for (git4idea.repo.GitRepository r : repos) {
+                if (r.getRoot().getPath().equals(basePath)) return r;
+            }
+        }
+        return repo;
+    }
+
+    /**
+     * Switches to an existing branch using Git4Idea's high-level checkout API.
+     * Uses IntelliJ's configured git executable and properly refreshes the GitRepository state.
+     * Returns null to signal that the caller should fall back to CLI.
+     */
+    public static @Nullable String ideCheckout(@NotNull Project project, @NotNull String branchName) {
+        git4idea.repo.GitRepository repo = getRepository(project);
+        if (repo == null) return null;
+        git4idea.commands.GitCommandResult result =
+            git4idea.commands.Git.getInstance().checkout(repo, branchName, null, false, false);
+        if (result.success()) return "";
+        return formatGitCommandError(result.getExitCode(), result.getErrorOutputAsJoinedString());
+    }
+
+    /**
+     * Creates a new branch and switches to it using Git4Idea's high-level API.
+     * When base is null, creates from HEAD. When base is specified, falls back to CLI
+     * (Git4Idea's checkoutNewBranch has no start-point parameter).
+     * Returns null to signal that the caller should fall back to CLI.
+     */
+    public static @Nullable String ideCheckoutNewBranch(@NotNull Project project,
+                                                        @NotNull String branchName,
+                                                        @Nullable String base) {
+        git4idea.repo.GitRepository repo = getRepository(project);
+        if (repo == null) return null;
+        git4idea.commands.GitCommandResult result;
+        if (base == null) {
+            result = git4idea.commands.Git.getInstance().checkoutNewBranch(repo, branchName, null);
+        } else {
+            // branchCreate(repo, name, startPoint) creates without switching; then checkout
+            result = git4idea.commands.Git.getInstance().branchCreate(repo, branchName, base);
+            if (!result.success()) {
+                return formatGitCommandError(result.getExitCode(), result.getErrorOutputAsJoinedString());
+            }
+            result = git4idea.commands.Git.getInstance().checkout(repo, branchName, null, false, false);
+        }
+        if (result.success()) return "";
+        return formatGitCommandError(result.getExitCode(), result.getErrorOutputAsJoinedString());
+    }
+
+    /**
+     * Deletes a branch using Git4Idea's high-level API.
+     * Returns null to signal that the caller should fall back to CLI.
+     */
+    public static @Nullable String ideDeleteBranch(@NotNull Project project,
+                                                   @NotNull String branchName,
+                                                   boolean force) {
+        git4idea.repo.GitRepository repo = getRepository(project);
+        if (repo == null) return null;
+        git4idea.commands.GitCommandResult result =
+            git4idea.commands.Git.getInstance().branchDelete(repo, branchName, force);
+        if (result.success()) return "";
         return formatGitCommandError(result.getExitCode(), result.getErrorOutputAsJoinedString());
     }
 
@@ -630,8 +693,10 @@ public final class PlatformApiCompat {
         java.util.Map.entry("push", git4idea.commands.GitCommand.PUSH),
         java.util.Map.entry("rebase", git4idea.commands.GitCommand.REBASE),
         java.util.Map.entry("remote", git4idea.commands.GitCommand.REMOTE),
+        java.util.Map.entry("ls-files", git4idea.commands.GitCommand.LS_FILES),
         java.util.Map.entry("reset", git4idea.commands.GitCommand.RESET),
         java.util.Map.entry("restore", git4idea.commands.GitCommand.RESTORE),
+        java.util.Map.entry("rev-list", git4idea.commands.GitCommand.REV_LIST),
         java.util.Map.entry("rev-parse", git4idea.commands.GitCommand.REV_PARSE),
         java.util.Map.entry("revert", git4idea.commands.GitCommand.REVERT),
         java.util.Map.entry("show", git4idea.commands.GitCommand.SHOW),

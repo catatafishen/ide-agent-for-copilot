@@ -1,5 +1,6 @@
 package com.github.catatafishen.agentbridge.psi.tools.git;
 
+import com.github.catatafishen.agentbridge.psi.PlatformApiCompat;
 import com.github.catatafishen.agentbridge.ui.renderers.GitBranchRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
@@ -75,18 +76,14 @@ public final class GitBranchTool extends GitTool {
                 String base = args.has(PARAM_BASE) && !args.get(PARAM_BASE).getAsString().isEmpty()
                     ? args.get(PARAM_BASE).getAsString()
                     : null;
-                // Use `git checkout -b` — `git switch -c` is not supported by Git4Idea's
-                // command mapping (it maps "switch" → CHECKOUT, turning -c into an invalid flag)
-                String result = base != null
-                    ? runGit(CMD_CHECKOUT, "-b", name, base)
-                    : runGit(CMD_CHECKOUT, "-b", name);
+                String result = ideCreate(name, base);
                 if (result.startsWith("Error")) yield result;
                 yield "Created and switched to branch '" + name + "'\n" + getBranchContext();
             }
             case "switch", CMD_CHECKOUT -> {
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'switch'";
-                String result = runGit(CMD_CHECKOUT, name);
+                String result = ideSwitch(name);
                 if (result.startsWith("Error")) yield result;
                 yield "Switched to branch '" + name + "'\n" + getBranchContext();
             }
@@ -94,10 +91,61 @@ public final class GitBranchTool extends GitTool {
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'delete'";
                 boolean force = args.has(PARAM_FORCE) && args.get(PARAM_FORCE).getAsBoolean();
-                yield runGit(CMD_BRANCH, force ? "-D" : "-d", name);
+                yield ideDelete(name, force);
             }
             default -> "Error: unknown action '" + action + "'. Use: list, create, switch, delete";
         };
+    }
+
+    /**
+     * Create a new branch and switch to it. Prefers Git4Idea high-level API; falls back to CLI.
+     */
+    private String ideCreate(String name, @Nullable String base) throws Exception {
+        try {
+            String result = PlatformApiCompat.ideCheckoutNewBranch(project, name, base);
+            if (result != null) {
+                refreshVcsState();
+                return result;
+            }
+        } catch (NoClassDefFoundError ignored) {
+            // Git4Idea unavailable
+        }
+        // CLI fallback
+        return base != null
+            ? runGit(CMD_CHECKOUT, "-b", name, base)
+            : runGit(CMD_CHECKOUT, "-b", name);
+    }
+
+    /**
+     * Switch to an existing branch. Prefers Git4Idea high-level API; falls back to CLI.
+     */
+    private String ideSwitch(String name) throws Exception {
+        try {
+            String result = PlatformApiCompat.ideCheckout(project, name);
+            if (result != null) {
+                refreshVcsState();
+                return result;
+            }
+        } catch (NoClassDefFoundError ignored) {
+            // Git4Idea unavailable
+        }
+        return runGit(CMD_CHECKOUT, name);
+    }
+
+    /**
+     * Delete a branch. Prefers Git4Idea high-level API; falls back to CLI.
+     */
+    private String ideDelete(String name, boolean force) throws Exception {
+        try {
+            String result = PlatformApiCompat.ideDeleteBranch(project, name, force);
+            if (result != null) {
+                refreshVcsState();
+                return result;
+            }
+        } catch (NoClassDefFoundError ignored) {
+            // Git4Idea unavailable
+        }
+        return runGit(CMD_BRANCH, force ? "-D" : "-d", name);
     }
 
     private static @Nullable String requireName(JsonObject args) {
