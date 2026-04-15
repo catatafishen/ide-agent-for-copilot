@@ -23,8 +23,61 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ── Step 1: Extract and display the changelog for review ──────────────
+  preview:
+    name: Preview changelog for ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176  # v2.17.0
+        with:
+          egress-policy: audit
+
+      - name: Download plugin ZIP from GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "agentbridge-*.zip" \
+            --dir release-artifacts
+          ls -la release-artifacts/
+
+      - name: Extract and display changelog
+        run: |
+          PLUGIN_ZIP=$(ls release-artifacts/agentbridge-*.zip | head -1)
+          echo "Plugin ZIP: $PLUGIN_ZIP"
+
+          # plugin.xml is inside the JAR inside the ZIP
+          INNER_JAR=$(unzip -l "$PLUGIN_ZIP" | grep '\.jar$' | awk '{print $NF}' | head -1)
+          if [[ -n "$INNER_JAR" ]]; then
+            unzip -o -q "$PLUGIN_ZIP" "$INNER_JAR" -d /tmp/plugin-extract
+            CHANGE_NOTES=$(unzip -p "/tmp/plugin-extract/$INNER_JAR" META-INF/plugin.xml \
+              | sed -n '/<change-notes>/,/<\/change-notes>/p' \
+              | sed 's/<change-notes><!\[CDATA\[//;s/\]\]><\/change-notes>//' \
+              | sed '/^$/d')
+          fi
+
+          echo "### 📋 Changelog for ${{ inputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${CHANGE_NOTES:-}" ]]; then
+            echo "$CHANGE_NOTES" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_Could not extract changelog — plugin.xml may use the dev placeholder._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Channel:** \`${{ inputs.channel }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> ✅ Review the changelog above, then approve the **publish** environment to upload." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Step 2: Upload (requires 'marketplace' environment approval) ──────
   publish:
     name: Upload ${{ inputs.tag }} to JetBrains Marketplace
+    needs: preview
     runs-on: ubuntu-latest
     environment: marketplace
     permissions:

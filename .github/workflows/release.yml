@@ -108,10 +108,24 @@ jobs:
           echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - name: Generate changelog
+        if: steps.version.outputs.skip != 'true'
+        env:
+          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          mkdir -p build
+          bash scripts/generate-changelog.sh > build/changelog.html
+          echo "### 📋 Generated Changelog" >> "$GITHUB_STEP_SUMMARY"
+          echo '```html' >> "$GITHUB_STEP_SUMMARY"
+          cat build/changelog.html >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build release ZIPs
         if: steps.version.outputs.skip != 'true'
         env:
           PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          CHANGELOG_FILE: build/changelog.html
         run: ./gradlew :plugin-core:buildPlugin :plugin-experimental:buildPlugin --no-daemon --quiet
 
       - name: Collect release artifacts
