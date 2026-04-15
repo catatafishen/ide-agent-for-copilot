@@ -489,29 +489,29 @@ public class GitToolsTest extends BasePlatformTestCase {
     }
 
     /**
-     * Attempting a commit with a valid message but nothing staged must return
-     * the "nothing staged" error from the pre-flight check — not a raw git error
+     * Attempting a commit with a valid message but nothing to commit must return
+     * the "nothing to commit" error from the pre-flight check — not a raw git error
      * and not a Java exception. The working tree is clean after the setUp commit,
      * so the pre-flight branch that detects "nothing to commit" is exercised.
+     * Note: git_commit defaults to all: true, so it runs 'git add -A' first,
+     * then checks for staged changes.
      */
     public void testGitCommitNothingStagedReturnsError() throws Exception {
         GitCommitTool tool = new GitCommitTool(getProject());
         String result = tool.execute(args("message", "test: must not be committed"));
 
         assertNotNull(result);
-        // All three "nothing staged" variants begin with this prefix:
-        // • "...The working tree is clean — there is nothing to commit."
-        // • "...There are unstaged changes — use git_stage first, …"
-        // • "...There are untracked files — use git_stage to add them first."
-        assertTrue("Expected 'nothing staged' error, got: " + result,
-            result.startsWith("Error: nothing staged for commit."));
+        // With all: true (default), the tool stages everything first, then detects
+        // nothing was staged. The error prefix is "Error: nothing to commit."
+        assertTrue("Expected 'nothing to commit' error, got: " + result,
+            result.startsWith("Error: nothing to commit."));
         // Must not surface a raw Java exception
         assertFalse("Result must not contain a Java exception, got: " + result,
             result.contains("Exception"));
     }
 
     /**
-     * The error message for "nothing staged" must provide actionable guidance —
+     * The error message for "nothing to commit" must provide actionable guidance —
      * it must not be a bare "nothing to commit" with no hint.
      */
     public void testGitCommitNothingStagedErrorContainsHint() throws Exception {
@@ -519,13 +519,13 @@ public class GitToolsTest extends BasePlatformTestCase {
         String result = tool.execute(args("message", "test: must not be committed"));
 
         assertNotNull(result);
-        assertTrue("Expected 'nothing staged' error", result.startsWith("Error: nothing staged for commit."));
-        // The hint appended after the base message must contain some guidance keyword.
-        // The three variants contain: "working tree", "unstaged changes", or "untracked files".
+        assertTrue("Expected 'nothing to commit' error", result.startsWith("Error: nothing to commit."));
+        // The hint appended after the base message must contain a guidance phrase.
+        // • "The working tree is clean." when no changes exist
+        // • "There are unstaged changes not picked up by --all" for edge cases
         boolean containsHint =
             result.contains("working tree")
-                || result.contains("unstaged")
-                || result.contains("untracked");
+                || result.contains("unstaged");
         assertTrue("Error must include actionable guidance, got: " + result, containsHint);
     }
 
