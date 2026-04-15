@@ -9,8 +9,8 @@ export default class ChatContainer extends HTMLElement {
     private _observer!: MutationObserver;
     private _copyObs!: MutationObserver;
     private _prevScrollTop = 0;
-    private _programmaticScroll = false;
     private _onScroll: (() => void) | null = null;
+    private _onWheel: (() => void) | null = null;
     private _resizeObs: ResizeObserver | null = null;
 
     connectedCallback(): void {
@@ -24,19 +24,18 @@ export default class ChatContainer extends HTMLElement {
         this._workingIndicator = document.createElement('working-indicator');
         this.appendChild(this._workingIndicator);
 
-        this._onScroll = () => {
-            // Ignore scroll events caused by our own scrollTop assignments
-            if (this._programmaticScroll) {
-                this._programmaticScroll = false;
-                this._prevScrollTop = this.scrollTop;
-                return;
-            }
-            // Any manual scroll disables auto-scroll — the button is the only way to re-enable
+        // Wheel events are user-initiated — never fired by programmatic scrollTop changes.
+        // Using wheel (not scroll) eliminates the programmatic-vs-manual race condition.
+        this._onWheel = () => {
             if (this._autoScroll) {
                 this._autoScroll = false;
                 globalThis._bridge?.autoScrollDisabled?.();
             }
-            // Trigger load-more when scrolled near the top while scrolling up
+        };
+        this.addEventListener('wheel', this._onWheel, {passive: true});
+
+        // Scroll handler: only used for load-more trigger at the top.
+        this._onScroll = () => {
             if (this.scrollTop < this._prevScrollTop && this.scrollTop <= 30) {
                 const lm = this._messages.querySelector<HTMLElement>('load-more:not([loading])');
                 if (lm) {
@@ -50,7 +49,6 @@ export default class ChatContainer extends HTMLElement {
         // When the container or its content resizes, re-anchor to bottom if auto-scrolling
         this._resizeObs = new ResizeObserver(() => {
             if (this._autoScroll && !this._restoring) {
-                this._programmaticScroll = true;
                 this.scrollTop = this.scrollHeight;
             }
         });
@@ -160,20 +158,17 @@ export default class ChatContainer extends HTMLElement {
     set autoScroll(enabled: boolean) {
         this._autoScroll = enabled;
         if (enabled) {
-            this._programmaticScroll = true;
             this.scrollTop = this.scrollHeight;
         }
     }
 
     scrollIfNeeded(): void {
         if (this._autoScroll && !this._restoring) {
-            this._programmaticScroll = true;
             this.scrollTop = this.scrollHeight;
         }
     }
 
     forceScroll(): void {
-        this._programmaticScroll = true;
         this.scrollTop = this.scrollHeight;
     }
 
@@ -188,7 +183,6 @@ export default class ChatContainer extends HTMLElement {
     }
 
     compensateScroll(targetY: number): void {
-        this._programmaticScroll = true;
         this.scrollTop = targetY;
     }
 
@@ -197,6 +191,7 @@ export default class ChatContainer extends HTMLElement {
         this._copyObs?.disconnect();
         this._resizeObs?.disconnect();
         if (this._onScroll) this.removeEventListener('scroll', this._onScroll);
+        if (this._onWheel) this.removeEventListener('wheel', this._onWheel);
         if (this._scrollRAF) {
             cancelAnimationFrame(this._scrollRAF);
             this._scrollRAF = null;
