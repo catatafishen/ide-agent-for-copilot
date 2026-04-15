@@ -532,10 +532,10 @@ public class WriteFileTool extends FileTool {
         }
     }
 
-    private static final int MAX_PSI_NODES = 10_000;
+    static final int MAX_PSI_NODES = 10_000;
 
-    private static void collectPsiErrors(com.intellij.psi.PsiElement element, Document doc,
-                                         List<String> errors, int[] nodeCount) {
+    static void collectPsiErrors(com.intellij.psi.PsiElement element, Document doc,
+                                 List<String> errors, int[] nodeCount) {
         if (nodeCount[0]++ >= MAX_PSI_NODES) return;
         if (element instanceof PsiErrorElement err) {
             int line = doc != null ? doc.getLineNumber(err.getTextOffset()) + 1 : -1;

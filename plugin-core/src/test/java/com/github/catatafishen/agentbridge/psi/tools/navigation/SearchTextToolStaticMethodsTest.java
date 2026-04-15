@@ -8,7 +8,11 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 import java.util.regex.Pattern;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pure-unit tests for the private static
@@ -25,7 +29,7 @@ class SearchTextToolStaticMethodsTest {
     @BeforeAll
     static void setUp() throws NoSuchMethodException {
         compileSearchPattern = SearchTextTool.class.getDeclaredMethod(
-                "compileSearchPattern", String.class, boolean.class, boolean.class);
+            "compileSearchPattern", String.class, boolean.class, boolean.class);
         compileSearchPattern.setAccessible(true);
     }
 
@@ -35,7 +39,7 @@ class SearchTextToolStaticMethodsTest {
      * @return the compiled {@link Pattern}, or {@code null} when the method returns null
      */
     private static Pattern compile(String query, boolean isRegex, boolean caseSensitive)
-            throws ReflectiveOperationException {
+        throws ReflectiveOperationException {
         return (Pattern) compileSearchPattern.invoke(null, query, isRegex, caseSensitive);
     }
 
@@ -71,7 +75,7 @@ class SearchTextToolStaticMethodsTest {
             assertNotNull(p);
             assertTrue(p.matcher("file.txt").find(), "Should match literal 'file.txt'");
             assertFalse(p.matcher("filextxt").find(),
-                    "Dot must NOT act as regex wildcard in literal mode");
+                "Dot must NOT act as regex wildcard in literal mode");
         }
 
         @Test
@@ -81,7 +85,7 @@ class SearchTextToolStaticMethodsTest {
             assertNotNull(p);
             assertTrue(p.matcher("a.*b").find(), "Should match the literal string 'a.*b'");
             assertFalse(p.matcher("aXXXb").find(),
-                    "'.*' must NOT act as regex wildcard in literal mode");
+                "'.*' must NOT act as regex wildcard in literal mode");
         }
     }
 
@@ -152,7 +156,7 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("", true, true);
             assertNotNull(p, "Empty regex should compile (matches empty string)");
             assertTrue(p.matcher("anything").find(),
-                    "Empty regex matches at every position");
+                "Empty regex matches at every position");
         }
 
         @Test
@@ -161,7 +165,7 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("", false, true);
             assertNotNull(p, "Empty literal should compile");
             assertTrue(p.matcher("anything").find(),
-                    "Empty literal matches at every position");
+                "Empty literal matches at every position");
         }
     }
 
@@ -177,7 +181,7 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("test", true, false);
             assertNotNull(p);
             assertTrue((p.flags() & Pattern.CASE_INSENSITIVE) != 0,
-                    "CASE_INSENSITIVE flag should be set");
+                "CASE_INSENSITIVE flag should be set");
         }
 
         @Test
@@ -186,7 +190,7 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("test", true, true);
             assertNotNull(p);
             assertEquals(0, p.flags() & Pattern.CASE_INSENSITIVE,
-                    "CASE_INSENSITIVE flag should NOT be set");
+                "CASE_INSENSITIVE flag should NOT be set");
         }
 
         @Test
@@ -195,7 +199,7 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("test", false, true);
             assertNotNull(p);
             assertTrue((p.flags() & Pattern.LITERAL) != 0,
-                    "LITERAL flag should be set when isRegex=false");
+                "LITERAL flag should be set when isRegex=false");
         }
 
         @Test
@@ -204,7 +208,7 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("test", true, true);
             assertNotNull(p);
             assertEquals(0, p.flags() & Pattern.LITERAL,
-                    "LITERAL flag should NOT be set when isRegex=true");
+                "LITERAL flag should NOT be set when isRegex=true");
         }
 
         @Test
@@ -213,9 +217,9 @@ class SearchTextToolStaticMethodsTest {
             Pattern p = compile("test", false, false);
             assertNotNull(p);
             assertTrue((p.flags() & Pattern.LITERAL) != 0,
-                    "LITERAL flag should be set");
+                "LITERAL flag should be set");
             assertTrue((p.flags() & Pattern.CASE_INSENSITIVE) != 0,
-                    "CASE_INSENSITIVE flag should be set");
+                "CASE_INSENSITIVE flag should be set");
         }
     }
 
@@ -241,7 +245,7 @@ class SearchTextToolStaticMethodsTest {
         void totalOutputBytesFieldExists() throws ReflectiveOperationException {
             // Verify the record has the totalOutputBytes component (added by this PR)
             var recordClass = Class.forName(
-                    "com.github.catatafishen.agentbridge.psi.tools.navigation.SearchTextTool$SearchParams");
+                "com.github.catatafishen.agentbridge.psi.tools.navigation.SearchTextTool$SearchParams");
             var field = recordClass.getDeclaredField("totalOutputBytes");
             assertNotNull(field, "SearchParams should have totalOutputBytes field");
             assertEquals(java.util.concurrent.atomic.AtomicInteger.class, field.getType());
