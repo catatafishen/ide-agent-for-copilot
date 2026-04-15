@@ -70,7 +70,7 @@ dependencies {
     testImplementation("org.mockito:mockito-core:${providers.gradleProperty("mockitoVersion").get()}")
     // Jazzer API stubs — presence of the import satisfies OpenSSF Scorecard fuzzing check;
     // actual fuzz runs use the full Jazzer engine invoked separately (not during `gradle test`).
-    testImplementation("com.code_intelligence:jazzer-api:${providers.gradleProperty("jazzerVersion").get()}")
+    testImplementation("com.code-intelligence:jazzer-api:${providers.gradleProperty("jazzerVersion").get()}")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:${providers.gradleProperty("junitVersion").get()}")
 }
