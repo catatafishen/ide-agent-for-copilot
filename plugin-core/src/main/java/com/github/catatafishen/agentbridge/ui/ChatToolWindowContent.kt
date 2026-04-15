@@ -462,45 +462,7 @@ class ChatToolWindowContent(
             pollIntervalUp = 60,
             diagnosticsFn = { authService.copilotSetupDiagnostics() },
             onFixed = onFixed,
-        ) { diag ->
-            val profile = agentManager.activeProfile
-            val isCLINotFound = "copilot cli not found" in diag.lowercase() ||
-                ("not found" in diag.lowercase() && ("copilot" in diag.lowercase() || "claude" in diag.lowercase()))
-            when {
-                isCLINotFound && profile.installUrl.isNotEmpty() -> {
-                    val url = profile.installUrl
-                    updateState(
-                        "${profile.displayName} is not installed \u2014 install from $url",
-                        showInstall = true,
-                    )
-                }
-
-                isCLINotFound -> {
-                    val cmd = if (System.getProperty("os.name").lowercase().contains("win"))
-                        "winget install GitHub.Copilot" else "npm install -g @github/copilot-cli"
-                    updateState("Copilot CLI is not installed \u2014 install with: $cmd", showInstall = true)
-                }
-
-                !profile.isSupportsOAuthSignIn && profile.terminalSignInCommand != null && authService.isAuthenticationError(
-                    diag
-                ) ->
-                    updateState(
-                        "Not signed in to ${profile.displayName} \u2014 click Sign In to authenticate, then Retry.",
-                        showSignIn = true,
-                    )
-
-                !profile.isSupportsOAuthSignIn && authService.isAuthenticationError(diag) ->
-                    updateState(
-                        "Not signed in to ${profile.displayName} \u2014 check credentials and click Retry.",
-                        showSignIn = false,
-                    )
-
-                authService.isAuthenticationError(diag) ->
-                    updateState("Not signed in to Copilot \u2014 click Sign In, then click Retry.", showSignIn = true)
-
-                else -> updateState("${profile.displayName} unavailable")
-            }
-        }
+        ) { diag -> updateStateForCopilotDiagnostic(diag) }
         banner.installHandler = {
             val url = agentManager.activeProfile.installUrl
             if (url.isNotEmpty()) {
@@ -534,6 +496,43 @@ class ChatToolWindowContent(
             }
         }
         return banner
+    }
+
+    private fun AuthSetupBanner.updateStateForCopilotDiagnostic(diag: String) {
+        val profile = agentManager.activeProfile
+        val isCLINotFound = "copilot cli not found" in diag.lowercase() ||
+            ("not found" in diag.lowercase() && ("copilot" in diag.lowercase() || "claude" in diag.lowercase()))
+        val isAuthError = authService.isAuthenticationError(diag)
+        when {
+            isCLINotFound && profile.installUrl.isNotEmpty() ->
+                updateState(
+                    "${profile.displayName} is not installed \u2014 install from ${profile.installUrl}",
+                    showInstall = true,
+                )
+
+            isCLINotFound -> {
+                val cmd = if (System.getProperty("os.name").lowercase().contains("win"))
+                    "winget install GitHub.Copilot" else "npm install -g @github/copilot-cli"
+                updateState("Copilot CLI is not installed \u2014 install with: $cmd", showInstall = true)
+            }
+
+            !profile.isSupportsOAuthSignIn && profile.terminalSignInCommand != null && isAuthError ->
+                updateState(
+                    "Not signed in to ${profile.displayName} \u2014 click Sign In to authenticate, then Retry.",
+                    showSignIn = true,
+                )
+
+            !profile.isSupportsOAuthSignIn && isAuthError ->
+                updateState(
+                    "Not signed in to ${profile.displayName} \u2014 check credentials and click Retry.",
+                    showSignIn = false,
+                )
+
+            isAuthError ->
+                updateState("Not signed in to Copilot \u2014 click Sign In, then click Retry.", showSignIn = true)
+
+            else -> updateState("${profile.displayName} unavailable")
+        }
     }
 
     /** Creates a banner for GH CLI setup issues (not installed / not authenticated). */
@@ -824,7 +823,11 @@ class ChatToolWindowContent(
         val text = contextManager.replaceOrcsWithTextRefs(rawText, contextItems)
 
         promptTextArea.text = ""
+        submitNudge(text)
+    }
 
+    /** Shows or appends a nudge bubble and arms the PsiBridge consume handler. */
+    private fun submitNudge(text: String) {
         val existingId = pendingNudgeId
         if (existingId != null) {
             pendingNudgeText = (pendingNudgeText ?: "") + "\n\n" + text
@@ -835,7 +838,6 @@ class ChatToolWindowContent(
             pendingNudgeText = text
             consolePanel.showNudgeBubble(id, text)
         }
-
         val psiBridge = com.github.catatafishen.agentbridge.psi.PsiBridgeService.getInstance(project)
         psiBridge.setPendingNudge(text)
         val resolveId = pendingNudgeId!!
@@ -851,6 +853,16 @@ class ChatToolWindowContent(
                 }
             }
         }
+    }
+
+    /** Clears pending nudge state and removes the nudge bubble from the chat panel. */
+    private fun clearAndRemoveNudge(nudgeId: String) {
+        pendingNudgeId = null
+        pendingNudgeText = null
+        val psiBridge = com.github.catatafishen.agentbridge.psi.PsiBridgeService.getInstance(project)
+        psiBridge.setPendingNudge(null)
+        psiBridge.setOnNudgeConsumed(null)
+        ApplicationManager.getApplication().invokeLater { consolePanel.removeNudgeBubble(nudgeId) }
     }
 
     private fun buildBubbleHtml(rawText: String, items: List<ContextItemData>): String? =
@@ -1098,112 +1110,10 @@ class ChatToolWindowContent(
         override fun actionPerformed(e: AnActionEvent) {
             val inputEvent = e.inputEvent ?: return
             val component = inputEvent.source as? Component ?: return
-
             val group = DefaultActionGroup()
-
-            // ── Agent selection ──────────────────────────────────────
-            val agents = try {
-                agentManager.client.availableAgents
-            } catch (_: Exception) {
-                emptyList()
-            }
-            if (agents.isNotEmpty()) {
-                group.addSeparator("Agent")
-                val currentSlug = try {
-                    agentManager.client.currentAgentSlug
-                } catch (_: Exception) {
-                    null
-                }
-                agents.forEach { agent ->
-                    group.add(object : AnAction(agent.name()) {
-                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                        override fun update(e: AnActionEvent) {
-                            e.presentation.icon = if (agent.slug() == currentSlug) AllIcons.Actions.Checked else null
-                        }
-
-                        override fun actionPerformed(e: AnActionEvent) {
-                            if (agent.slug() != currentSlug) restartWithNewAgent(agent.slug())
-                        }
-                    })
-                }
-            }
-
-            // ── Session options (modes, etc.) ────────────────────────
-            val options = try {
-                agentManager.client.listSessionOptions()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            for (option in options) {
-                group.addSeparator(option.displayName)
-                val stored = agentManager.settings.getSessionOptionValue(option.key)
-                val current = stored.ifEmpty { option.initialValue ?: "" }
-                for (value in option.values) {
-                    group.add(object : AnAction(option.labelFor(value)) {
-                        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                        override fun update(e: AnActionEvent) {
-                            e.presentation.icon = if (value == current) AllIcons.Actions.Checked else null
-                        }
-
-                        override fun actionPerformed(e: AnActionEvent) {
-                            agentManager.settings.setSessionOptionValue(option.key, value)
-                            val sessionId = promptOrchestrator.currentSessionId ?: return
-                            ApplicationManager.getApplication().executeOnPooledThread {
-                                try {
-                                    agentManager.client.setSessionOption(sessionId, option.key, value)
-                                } catch (ex: Exception) {
-                                    LOG.warn("Failed to set session option ${option.key}=$value", ex)
-                                }
-                            }
-                        }
-                    })
-                }
-            }
-
-            // ── Session management ───────────────────────────────────
-            if (agents.isNotEmpty() || options.isNotEmpty()) group.addSeparator()
-            group.add(object : AnAction(
-                "Disconnect",
-                "Stop the ACP process and return to the connection screen",
-                AllIcons.Actions.Cancel
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
-            })
-
-            val dangerousActionsGroup = DefaultActionGroup("Session", true)
-            dangerousActionsGroup.add(object : AnAction(
-                "Restart (Keep History)",
-                "Start a new agent session while keeping the conversation visible",
-                AllIcons.Actions.Restart
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = resetSessionKeepingHistory()
-            })
-            dangerousActionsGroup.add(object : AnAction(
-                "Clear and Restart",
-                "Clear the conversation and start a completely fresh session",
-                AllIcons.Actions.GC
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) = resetSession()
-            })
-            dangerousActionsGroup.addSeparator()
-            dangerousActionsGroup.add(object : AnAction(
-                "Logout",
-                "Delete authentication tokens for the current agent",
-                AllIcons.Actions.Exit
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                override fun actionPerformed(e: AnActionEvent) {
-                    LOG.info("Logout: disabling auto-connect and disconnecting")
-                    agentManager.isAutoConnect = false
-                    authService.logout()
-                    disconnectFromAgent()
-                }
-            })
-            group.add(dangerousActionsGroup)
-
+            val hasAgents = addAgentSelectionSection(group)
+            val hasOptions = addSessionOptionsSection(group)
+            addSessionManagementSection(group, hasAgents || hasOptions)
             val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance().createActionGroupPopup(
                 null, group, e.dataContext,
                 com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false
@@ -1212,7 +1122,113 @@ class ChatToolWindowContent(
         }
     }
 
-    /** Toolbar button that opens the usage statistics dialog. */
+    private fun addAgentSelectionSection(group: DefaultActionGroup): Boolean {
+        val agents = try {
+            agentManager.client.availableAgents
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (agents.isEmpty()) return false
+        group.addSeparator("Agent")
+        val currentSlug = try {
+            agentManager.client.currentAgentSlug
+        } catch (_: Exception) {
+            null
+        }
+        agents.forEach { agent ->
+            group.add(object : AnAction(agent.name()) {
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                override fun update(e: AnActionEvent) {
+                    e.presentation.icon = if (agent.slug() == currentSlug) AllIcons.Actions.Checked else null
+                }
+
+                override fun actionPerformed(e: AnActionEvent) {
+                    if (agent.slug() != currentSlug) restartWithNewAgent(agent.slug())
+                }
+            })
+        }
+        return true
+    }
+
+    private fun addSessionOptionsSection(group: DefaultActionGroup): Boolean {
+        val options = try {
+            agentManager.client.listSessionOptions()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (options.isEmpty()) return false
+        for (option in options) {
+            group.addSeparator(option.displayName)
+            val stored = agentManager.settings.getSessionOptionValue(option.key)
+            val current = stored.ifEmpty { option.initialValue ?: "" }
+            for (value in option.values) {
+                group.add(object : AnAction(option.labelFor(value)) {
+                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.icon = if (value == current) AllIcons.Actions.Checked else null
+                    }
+
+                    override fun actionPerformed(e: AnActionEvent) {
+                        agentManager.settings.setSessionOptionValue(option.key, value)
+                        val sessionId = promptOrchestrator.currentSessionId ?: return
+                        ApplicationManager.getApplication().executeOnPooledThread {
+                            try {
+                                agentManager.client.setSessionOption(sessionId, option.key, value)
+                            } catch (ex: Exception) {
+                                LOG.warn("Failed to set session option ${option.key}=$value", ex)
+                            }
+                        }
+                    }
+                })
+            }
+        }
+        return true
+    }
+
+    private fun addSessionManagementSection(group: DefaultActionGroup, hasPreviousSections: Boolean) {
+        if (hasPreviousSections) group.addSeparator()
+        group.add(object : AnAction(
+            "Disconnect",
+            "Stop the ACP process and return to the connection screen",
+            AllIcons.Actions.Cancel
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun actionPerformed(e: AnActionEvent) = disconnectFromAgent()
+        })
+        val dangerousActionsGroup = DefaultActionGroup("Session", true)
+        dangerousActionsGroup.add(object : AnAction(
+            "Restart (Keep History)",
+            "Start a new agent session while keeping the conversation visible",
+            AllIcons.Actions.Restart
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun actionPerformed(e: AnActionEvent) = resetSessionKeepingHistory()
+        })
+        dangerousActionsGroup.add(object : AnAction(
+            "Clear and Restart",
+            "Clear the conversation and start a completely fresh session",
+            AllIcons.Actions.GC
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun actionPerformed(e: AnActionEvent) = resetSession()
+        })
+        dangerousActionsGroup.addSeparator()
+        dangerousActionsGroup.add(object : AnAction(
+            "Logout",
+            "Delete authentication tokens for the current agent",
+            AllIcons.Actions.Exit
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun actionPerformed(e: AnActionEvent) {
+                LOG.info("Logout: disabling auto-connect and disconnecting")
+                agentManager.isAutoConnect = false
+                authService.logout()
+                disconnectFromAgent()
+            }
+        })
+        group.add(dangerousActionsGroup)
+    }
+
     private inner class StatisticsAction : AnAction(
         "Usage Statistics", "View usage statistics across agent sessions",
         AllIcons.Actions.ProfileCPU
@@ -1429,41 +1445,7 @@ class ChatToolWindowContent(
             val supportsMultiplier = agentManager.client.supportsMultiplier()
             loadedModels.forEachIndexed { index, model ->
                 val cost = if (supportsMultiplier) getModelMultiplier(model.id()) else null
-                val label = if (cost != null) "${model.name()}  ($cost)" else model.name()
-                group.add(object : AnAction(label) {
-                    override fun actionPerformed(e: AnActionEvent) {
-                        if (index == selectedModelIndex) return
-
-                        selectedModelIndex = index
-                        agentManager.settings.setSelectedModel(model.id())
-                        LOG.debug("Model selected: ${model.id()} (index=$index)")
-                        ApplicationManager.getApplication().invokeLater {
-                            consolePanel.setCurrentModel(model.id())
-                            if (supportsMultiplier) {
-                                val multiplier = getModelMultiplier(model.id())
-                                if (multiplier != null) {
-                                    consolePanel.setPromptStats(model.id(), multiplier)
-                                }
-                            }
-                        }
-                        ApplicationManager.getApplication().executeOnPooledThread {
-                            try {
-                                val client = agentManager.client
-                                val sessionId = promptOrchestrator.currentSessionId
-                                if (sessionId != null) {
-                                    client.setModel(sessionId, model.id())
-                                    LOG.debug("Model switched to ${model.id()} on session $sessionId")
-                                } else {
-                                    LOG.debug("No active session; model ${model.id()} will be used on next session")
-                                }
-                            } catch (ex: Exception) {
-                                LOG.warn("Failed to set model ${model.id()} via session/set_model", ex)
-                            }
-                        }
-                    }
-
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                })
+                group.add(createModelSelectionAction(model, index, cost))
             }
             return group
         }
@@ -1477,6 +1459,38 @@ class ChatToolWindowContent(
             // Hide entirely when models loaded successfully but list is empty
             // (agent uses configOptions for model selection instead)
             e.presentation.isVisible = modelsStatusText != null || loadedModels.isNotEmpty()
+        }
+    }
+
+    private fun createModelSelectionAction(model: Model, index: Int, cost: String?): AnAction {
+        val label = if (cost != null) "${model.name()}  ($cost)" else model.name()
+        return object : AnAction(label) {
+            override fun actionPerformed(e: AnActionEvent) {
+                if (index == selectedModelIndex) return
+                selectedModelIndex = index
+                agentManager.settings.setSelectedModel(model.id())
+                LOG.debug("Model selected: ${model.id()} (index=$index)")
+                ApplicationManager.getApplication().invokeLater {
+                    consolePanel.setCurrentModel(model.id())
+                    if (cost != null) consolePanel.setPromptStats(model.id(), cost)
+                }
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    try {
+                        val client = agentManager.client
+                        val sessionId = promptOrchestrator.currentSessionId
+                        if (sessionId != null) {
+                            client.setModel(sessionId, model.id())
+                            LOG.debug("Model switched to ${model.id()} on session $sessionId")
+                        } else {
+                            LOG.debug("No active session; model ${model.id()} will be used on next session")
+                        }
+                    } catch (ex: Exception) {
+                        LOG.warn("Failed to set model ${model.id()} via session/set_model", ex)
+                    }
+                }
+            }
+
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
         }
     }
 
@@ -1515,14 +1529,7 @@ class ChatToolWindowContent(
         consolePanel = chatConsolePanel
         chatConsolePanel.onLoadMoreRequested = ::onLoadMoreHistory
         chatConsolePanel.onCancelNudge = { id ->
-            if (pendingNudgeId == id) {
-                pendingNudgeId = null
-                pendingNudgeText = null
-                val psiBridge = com.github.catatafishen.agentbridge.psi.PsiBridgeService.getInstance(project)
-                psiBridge.setPendingNudge(null)
-                psiBridge.setOnNudgeConsumed(null)
-                ApplicationManager.getApplication().invokeLater { consolePanel.removeNudgeBubble(id) }
-            }
+            if (pendingNudgeId == id) clearAndRemoveNudge(id)
         }
         chatConsolePanel.onCancelQueuedMessage = { id, text ->
             val psiBridge = com.github.catatafishen.agentbridge.psi.PsiBridgeService.getInstance(project)
@@ -1539,76 +1546,50 @@ class ChatToolWindowContent(
         com.intellij.openapi.util.Disposer.register(project, consolePanel)
 
         ChatWebServer.getInstance(project)?.also { ws ->
-            ws.onSendPrompt = { prompt ->
-                ApplicationManager.getApplication().invokeLater { sendPromptDirectly(prompt) }
-            }
-            ws.onQuickReply = { text ->
-                ApplicationManager.getApplication().invokeLater {
-                    if (!consolePanel.consumePendingAskUserResponse(text)) {
-                        sendQuickReply(text)
-                    }
-                }
-            }
-            ws.onNudge = { text ->
-                ApplicationManager.getApplication().invokeLater {
-                    if (isSending) {
-                        val existingId = pendingNudgeId
-                        if (existingId != null) {
-                            pendingNudgeText = (pendingNudgeText ?: "") + "\n\n" + text
-                            consolePanel.showNudgeBubble(existingId, pendingNudgeText!!)
-                        } else {
-                            val id = System.currentTimeMillis().toString()
-                            pendingNudgeId = id
-                            pendingNudgeText = text
-                            consolePanel.showNudgeBubble(id, text)
-                        }
-                        val psiBridge =
-                            com.github.catatafishen.agentbridge.psi.PsiBridgeService.getInstance(project)
-                        psiBridge.setPendingNudge(text)
-                        val resolveId = pendingNudgeId!!
-                        psiBridge.setOnNudgeConsumed {
-                            val capturedText = pendingNudgeText
-                            pendingNudgeId = null
-                            pendingNudgeText = null
-                            ApplicationManager.getApplication()
-                                .invokeLater {
-                                    consolePanel.resolveNudgeBubble(resolveId)
-                                    if (capturedText != null) {
-                                        consolePanel.addNudgeEntry(resolveId, capturedText)
-                                        appendNewEntries()
-                                    }
-                                }
-                        }
-                    }
-                }
-            }
-            ws.onStop = {
-                ApplicationManager.getApplication().invokeLater {
-                    if (isSending) {
-                        promptOrchestrator.stop()
-                        setSendingState(false)
-                    }
-                }
-            }
-            ws.onCancelNudge = { id ->
-                ApplicationManager.getApplication().invokeLater {
-                    chatConsolePanel.onCancelNudge?.invoke(id)
-                }
-            }
-            ws.onPermissionResponse = java.util.function.Consumer { data ->
-                ApplicationManager.getApplication().invokeLater {
-                    chatConsolePanel.handleWebPermissionResponse(data)
-                }
-            }
-            ws.onSelectModel = java.util.function.Consumer { modelId ->
-                ApplicationManager.getApplication().invokeLater { selectModelById(modelId) }
-            }
-            ws.onLoadMore = Runnable {
-                ApplicationManager.getApplication().invokeLater { onLoadMoreHistory() }
-            }
+            setupWebServerCallbacks(ws)
         }
 
         return consolePanel.component
+    }
+
+    private fun setupWebServerCallbacks(ws: ChatWebServer) {
+        ws.onSendPrompt = { prompt ->
+            ApplicationManager.getApplication().invokeLater { sendPromptDirectly(prompt) }
+        }
+        ws.onQuickReply = { text ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!consolePanel.consumePendingAskUserResponse(text)) sendQuickReply(text)
+            }
+        }
+        ws.onNudge = { text ->
+            ApplicationManager.getApplication().invokeLater {
+                if (isSending) submitNudge(text)
+            }
+        }
+        ws.onStop = {
+            ApplicationManager.getApplication().invokeLater {
+                if (isSending) {
+                    promptOrchestrator.stop()
+                    setSendingState(false)
+                }
+            }
+        }
+        ws.onCancelNudge = { id ->
+            ApplicationManager.getApplication().invokeLater {
+                chatConsolePanel.onCancelNudge?.invoke(id)
+            }
+        }
+        ws.onPermissionResponse = java.util.function.Consumer { data ->
+            ApplicationManager.getApplication().invokeLater {
+                chatConsolePanel.handleWebPermissionResponse(data)
+            }
+        }
+        ws.onSelectModel = java.util.function.Consumer { modelId ->
+            ApplicationManager.getApplication().invokeLater { selectModelById(modelId) }
+        }
+        ws.onLoadMore = Runnable {
+            ApplicationManager.getApplication().invokeLater { onLoadMoreHistory() }
+        }
     }
 
     private fun appendResponse(text: String) {
@@ -1711,15 +1692,8 @@ class ChatToolWindowContent(
         if (rawText.isEmpty()) return
         if (isSending) {
             // Discard any pending nudge before stopping so setSendingState doesn't auto-send it
-            if (pendingNudgeId != null) {
-                val nudgeId = pendingNudgeId!!
-                pendingNudgeId = null
-                pendingNudgeText = null
-                val psiBridge = com.github.catatafishen.agentbridge.psi.PsiBridgeService.getInstance(project)
-                psiBridge.setPendingNudge(null)
-                psiBridge.setOnNudgeConsumed(null)
-                ApplicationManager.getApplication().invokeLater { consolePanel.removeNudgeBubble(nudgeId) }
-            }
+            val nudgeId = pendingNudgeId
+            if (nudgeId != null) clearAndRemoveNudge(nudgeId)
             promptOrchestrator.stop()
             setSendingState(false)
         }
