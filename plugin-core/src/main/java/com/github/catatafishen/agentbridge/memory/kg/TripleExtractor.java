@@ -67,8 +67,8 @@ public final class TripleExtractor {
      * @return list of extracted triples (may be empty, never null)
      */
     public static @NotNull List<ExtractedTriple> extract(@NotNull String text,
-                                                          @NotNull String wing,
-                                                          @NotNull String drawerId) {
+                                                         @NotNull String wing,
+                                                         @NotNull String drawerId) {
         String cleaned = stripMarkdown(text);
         List<String> sentences = splitSentences(cleaned);
         List<ExtractedTriple> triples = new ArrayList<>();
@@ -93,15 +93,21 @@ public final class TripleExtractor {
     }
 
     /**
-     * Strip markdown formatting from text, preserving the underlying words.
+     * Strip markdown formatting and tool-call fragments from text,
+     * preserving the underlying conversational words.
      * Code blocks are removed entirely (code is not conversational prose).
      * Bold/italic markers are unwrapped, keeping the emphasized text.
+     * Tool evidence brackets {@code [tool:...]} and {@code [...result:...]}
+     * are removed to prevent false pattern matches on operational metadata.
      */
     static @NotNull String stripMarkdown(@NotNull String text) {
         // Remove fenced code blocks entirely (content is code, not prose)
         String result = text.replaceAll("```[\\s\\S]*?```", " ");
         // Remove inline code spans
         result = result.replaceAll("`[^`]+`", " ");
+        // Remove tool evidence brackets: [tool:...], [...result:...]
+        result = result.replaceAll("\\[tool:[^]]*]", " ");
+        result = result.replaceAll("\\[[^]]{0,40} result:[^]]*]", " ");
         // Unwrap bold/italic — keep the text, remove the markers
         result = result.replaceAll("\\*{1,3}([^*]+)\\*{1,3}", "$1");
         result = result.replaceAll("_{1,3}([^_]+)_{1,3}", "$1");
@@ -166,29 +172,40 @@ public final class TripleExtractor {
     }
 
     private static void extractFromSentence(@NotNull String sentence, @NotNull String wing,
-                                             @NotNull String drawerId,
-                                             @NotNull List<ExtractedTriple> triples) {
+                                            @NotNull String drawerId,
+                                            @NotNull List<ExtractedTriple> triples) {
         for (ExtractionRule rule : RULES) {
-            if (triples.size() >= MAX_TRIPLES_PER_TEXT) break;
-            Matcher matcher = rule.pattern.matcher(sentence);
-            if (matcher.find()) {
-                String rawObject = matcher.group(rule.objectGroup).strip();
-                String object = cleanObject(rawObject);
-                if (!isQualityObject(object)) continue;
-
-                String subject = rule.subjectGroup > 0
-                    ? cleanSubject(matcher.group(rule.subjectGroup))
-                    : wing;
-
-                if (isDuplicate(triples, rule.predicate, object)) continue;
-
-                triples.add(new ExtractedTriple(subject, rule.predicate, object, drawerId));
+            if (triples.size() >= MAX_TRIPLES_PER_TEXT) return;
+            ExtractedTriple triple = tryMatchRule(rule, sentence, wing, drawerId, triples);
+            if (triple != null) {
+                triples.add(triple);
             }
         }
     }
 
+    private static ExtractedTriple tryMatchRule(@NotNull ExtractionRule rule,
+                                                @NotNull String sentence,
+                                                @NotNull String wing,
+                                                @NotNull String drawerId,
+                                                @NotNull List<ExtractedTriple> existing) {
+        Matcher matcher = rule.pattern.matcher(sentence);
+        if (!matcher.find()) return null;
+
+        String rawObject = matcher.group(rule.objectGroup).strip();
+        String object = cleanObject(rawObject);
+        if (!isQualityObject(object)) return null;
+
+        String subject = rule.subjectGroup > 0
+            ? cleanSubject(matcher.group(rule.subjectGroup))
+            : wing;
+        if (subject.isEmpty()) subject = wing;
+
+        if (isDuplicate(existing, rule.predicate, object)) return null;
+        return new ExtractedTriple(subject, rule.predicate, object, drawerId);
+    }
+
     private static boolean isDuplicate(@NotNull List<ExtractedTriple> existing,
-                                        @NotNull String predicate, @NotNull String object) {
+                                       @NotNull String predicate, @NotNull String object) {
         String objectLower = object.toLowerCase();
         return existing.stream().anyMatch(t ->
             t.predicate().equals(predicate)
@@ -221,53 +238,69 @@ public final class TripleExtractor {
     }
 
     private static List<ExtractionRule> buildRules() {
+        // Object terminator: sentence-ending punctuation or end of string
+        String end = "(?=[.,;!?\\n]|$)";
         List<ExtractionRule> rules = new ArrayList<>();
 
-        // Decision patterns: "decided to use X", "went with X", "chose X"
+        // Decision: "decided to use X", "chose X", "went with X"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |i )?(?:decided to|chose|went with|going with)\\s+(.+?)(?:\\s+(?:because|since|due to|for|instead|and|but)|[.\\n])",
+            Pattern.compile("(?:decided to|chose|went with|going with)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "decided", 0, 1));
 
-        // Usage patterns: "we use X", "project uses X", "using X for"
+        // Usage with subject: "The auth module uses JWT" → auth-module → uses → JWT
+        // Requires "the" or "our" prefix to avoid matching pronouns as subjects
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |project |it )?(?:uses?|using)\\s+(.+?)(?:\\s+(?:for|to|in|because|since|which|that|and|but)|[.,\\n])",
+            Pattern.compile("(?:the |our )(\\w[\\w -]{1,25})\\s+uses?\\s+(.+?)" + end,
+                Pattern.CASE_INSENSITIVE),
+            "uses", 1, 2));
+
+        // Usage without subject: "we use X", "using X"
+        rules.add(new ExtractionRule(
+            Pattern.compile("(?:we |i )?(?:use|using)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "uses", 0, 1));
 
-        // Preference patterns: "prefer X", "always use X"
+        // Preference: "prefer X", "always use X"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |i )?(?:prefer|prefers|always use|always do)\\s+(.+?)(?:\\s+(?:over|instead|because|since|for|and|but)|[.,\\n])",
+            Pattern.compile("(?:we |i )?(?:prefer|prefers|always use)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "prefers", 0, 1));
 
-        // Dependency patterns: "depends on X", "requires X"
+        // Dependency with subject: "The plugin depends on X"
+        // Requires "the" or "our" prefix to avoid matching pronouns as subjects
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:it |this )?(?:depends on|requires|needs)\\s+(.+?)(?:\\s+(?:for|to|because|in order|and|but)|[.,\\n])",
+            Pattern.compile("(?:the |our )(\\w[\\w -]{1,25})\\s+(?:depends on|requires|needs)\\s+(.+?)" + end,
+                Pattern.CASE_INSENSITIVE),
+            "depends-on", 1, 2));
+
+        // Dependency without subject: "depends on X"
+        rules.add(new ExtractionRule(
+            Pattern.compile("(?:depends on|requires|needs)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "depends-on", 0, 1));
 
-        // Implementation patterns: "implemented X", "created X", "added X"
+        // Implementation: "implemented X", "created X", "added X"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |i )?(?:implemented|created|added|built)\\s+(?:the |a |an )?(.+?)(?:\\s+(?:for|to|in|using|that|which|with|and|but)|[.,\\n])",
+            Pattern.compile("(?:implemented|created|added|built)\\s+(?:the |a |an )?(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "implemented", 0, 1));
 
-        // Resolution patterns: "fixed X", "resolved X", "solved X"
+        // Resolution: "fixed X", "resolved X", "solved X"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |i )?(?:fixed|resolved|solved)\\s+(?:the |a |an )?(.+?)(?:\\s+(?:by|with|using|via|and|but)|[.,\\n])",
+            Pattern.compile("(?:fixed|resolved|solved)\\s+(?:the |a |an )?(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "resolved", 0, 1));
 
-        // Root cause patterns: "root cause was X", "caused by X"
+        // Root cause: "root cause was X", "caused by X"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:root cause (?:is|was)|caused by|due to)\\s+(.+?)(?:\\s+(?:which|that|so|and|but)|[.,\\n])",
+            Pattern.compile("(?:root cause (?:is|was)|caused by|due to)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "caused-by", 0, 1));
 
         // Technology stack: "written in X", "built with X"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:written in|built with|powered by|runs on)\\s+(.+?)(?:\\s+(?:and|with|for|using|but)|[.,\\n])",
+            Pattern.compile("(?:written in|built with|powered by|runs on)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "built-with", 0, 1));
 

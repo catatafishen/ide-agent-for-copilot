@@ -35,11 +35,13 @@ class TripleExtractorTest {
     }
 
     @Test
-    void usagePattern() {
+    void usagePatternWithSubject() {
         String text = "The project uses Gradle for building.";
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
 
         assertContainsTriple(triples, "uses", "Gradle");
+        assertEquals("project", triples.getFirst().subject(),
+            "Subject should be extracted from 'The project uses ...'");
     }
 
     @Test
@@ -51,11 +53,13 @@ class TripleExtractorTest {
     }
 
     @Test
-    void dependencyPattern() {
+    void dependencyPatternWithSubject() {
         String text = "The plugin depends on Lucene for vector search.";
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
 
         assertContainsTriple(triples, "depends-on", "Lucene");
+        assertEquals("plugin", triples.getFirst().subject(),
+            "Subject should be extracted from 'The plugin depends on ...'");
     }
 
     @Test
@@ -105,15 +109,6 @@ class TripleExtractorTest {
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
 
         assertTrue(triples.isEmpty());
-    }
-
-    @Test
-    void subjectDefaultsToWing() {
-        String text = "We use Gradle for building.";
-        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
-
-        assertFalse(triples.isEmpty());
-        assertEquals(WING, triples.getFirst().subject());
     }
 
     @Test
@@ -217,7 +212,69 @@ class TripleExtractorTest {
         assertTrue(result.contains("Architecture"));
     }
 
-    // ── Quality filtering tests ───────────────────────────────────────────
+    @Test
+    void toolEvidenceBracketsAreStripped() {
+        String result = TripleExtractor.stripMarkdown(
+            "I read the file.\n[tool:read_file file:src/main/java/Foo.java]\nThe class uses Gradle.");
+
+        assertFalse(result.contains("[tool:"), "Tool bracket should be stripped: " + result);
+        assertFalse(result.contains("read_file"), "Tool name should be stripped: " + result);
+        assertTrue(result.contains("uses Gradle"));
+    }
+
+    @Test
+    void searchResultEvidenceIsStripped() {
+        String result = TripleExtractor.stripMarkdown(
+            "Found the issue.\n[search_text result: Found 3 matches in Bar.java:42]\nFixed it.");
+
+        assertFalse(result.contains("[search_text"), "Search result bracket should be stripped: " + result);
+        assertFalse(result.contains("Bar.java"), "Search result content should be stripped: " + result);
+    }
+
+    @Test
+    void toolFragmentsDoNotProduceFalseTriples() {
+        String text = """
+            [tool:search_text file:src/main/java/Foo.java]
+            [search_text result: Found uses of HashMap in 3 files]
+            We use Gradle for building.""";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        assertContainsTriple(triples, "uses", "Gradle");
+        for (TripleExtractor.ExtractedTriple triple : triples) {
+            assertFalse(triple.object().contains("HashMap"),
+                "Extracted from tool fragment: " + triple.object());
+        }
+    }
+
+    // ── Subject extraction tests ──────────────────────────────────────────
+
+    @Test
+    void subjectExtractedFromUsagePattern() {
+        String text = "The auth module uses JWT tokens.";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        assertContainsTriple(triples, "uses", "JWT tokens");
+        assertEquals("auth-module", triples.getFirst().subject());
+    }
+
+    @Test
+    void subjectExtractedFromDependencyPattern() {
+        String text = "The API depends on Lucene.";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        assertContainsTriple(triples, "depends-on", "Lucene");
+        assertEquals("api", triples.getFirst().subject());
+    }
+
+    @Test
+    void subjectFallsBackToWingWithoutExplicitSubject() {
+        String text = "We use Gradle for building.";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        assertFalse(triples.isEmpty());
+        assertEquals(WING, triples.getFirst().subject(),
+            "Subject should default to wing when no explicit subject in sentence");
+    }
 
     @Test
     void rejectsAllStopwordObjects() {
@@ -286,11 +343,12 @@ class TripleExtractorTest {
 
     @Test
     void duplicatePredicateObjectIsSkipped() {
-        String text = "We use Gradle for building.\nThe project uses Gradle for compilation.";
+        // Same tool mentioned twice in different sentences — should deduplicate
+        String text = "We use Gradle.\nWe also use Gradle.";
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
 
         long gradleCount = triples.stream()
-            .filter(t -> t.predicate().equals("uses") && t.object().equals("Gradle"))
+            .filter(t -> t.predicate().equals("uses") && t.object().equalsIgnoreCase("Gradle"))
             .count();
         assertEquals(1, gradleCount, "Duplicate Gradle triple should be deduplicated");
     }

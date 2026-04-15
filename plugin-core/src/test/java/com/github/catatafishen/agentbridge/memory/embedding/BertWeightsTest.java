@@ -93,13 +93,14 @@ class BertWeightsTest {
 
     private static List<String> buildTensorNames() {
         List<String> names = new ArrayList<>(101);
-        names.add("bert.embeddings.word_embeddings.weight");
-        names.add("bert.embeddings.position_embeddings.weight");
-        names.add("bert.embeddings.token_type_embeddings.weight");
-        names.add("bert.embeddings.LayerNorm.weight");
-        names.add("bert.embeddings.LayerNorm.bias");
+        // sentence-transformers/all-MiniLM-L6-v2 safetensors omit the "bert." prefix
+        names.add("embeddings.word_embeddings.weight");
+        names.add("embeddings.position_embeddings.weight");
+        names.add("embeddings.token_type_embeddings.weight");
+        names.add("embeddings.LayerNorm.weight");
+        names.add("embeddings.LayerNorm.bias");
         for (int i = 0; i < 6; i++) {
-            String p = "bert.encoder.layer." + i + ".";
+            String p = "encoder.layer." + i + ".";
             names.add(p + "attention.self.query.weight");
             names.add(p + "attention.self.query.bias");
             names.add(p + "attention.self.key.weight");

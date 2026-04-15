@@ -20,13 +20,11 @@ public final class BertWeights {
 
     // ---- Architecture constants for all-MiniLM-L6-v2 ----------------------------
 
-    public static final int VOCAB_SIZE = 30522;
     public static final int HIDDEN_DIM = 384;
     public static final int NUM_HEADS = 12;
     public static final int HEAD_DIM = 32;
     public static final int INTERMEDIATE_DIM = 1536;
     public static final int NUM_LAYERS = 6;
-    public static final int MAX_POSITION_EMBEDDINGS = 512;
 
     // ---- Embedding weights ------------------------------------------------------
 
@@ -143,16 +141,17 @@ public final class BertWeights {
      */
     public BertWeights(@NotNull SafetensorsReader reader) throws IOException {
         // ---- Embeddings ---------------------------------------------------------
-        wordEmbeddings = reader.loadTensor("bert.embeddings.word_embeddings.weight");
-        positionEmbeddings = reader.loadTensor("bert.embeddings.position_embeddings.weight");
-        tokenTypeEmbeddings = reader.loadTensor("bert.embeddings.token_type_embeddings.weight");
-        embeddingLayerNormWeight = reader.loadTensor("bert.embeddings.LayerNorm.weight");
-        embeddingLayerNormBias = reader.loadTensor("bert.embeddings.LayerNorm.bias");
+        // sentence-transformers/all-MiniLM-L6-v2 safetensors omit the "bert." prefix
+        wordEmbeddings = reader.loadTensor("embeddings.word_embeddings.weight");
+        positionEmbeddings = reader.loadTensor("embeddings.position_embeddings.weight");
+        tokenTypeEmbeddings = reader.loadTensor("embeddings.token_type_embeddings.weight");
+        embeddingLayerNormWeight = reader.loadTensor("embeddings.LayerNorm.weight");
+        embeddingLayerNormBias = reader.loadTensor("embeddings.LayerNorm.bias");
 
         // ---- Encoder layers -----------------------------------------------------
         layers = new LayerWeights[NUM_LAYERS];
         for (int i = 0; i < NUM_LAYERS; i++) {
-            String prefix = "bert.encoder.layer." + i + ".";
+            String prefix = "encoder.layer." + i + ".";
             layers[i] = new LayerWeights(
                 reader.loadTensor(prefix + "attention.self.query.weight"),
                 reader.loadTensor(prefix + "attention.self.query.bias"),
