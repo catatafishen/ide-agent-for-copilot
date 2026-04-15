@@ -82,7 +82,10 @@ public final class ToolsConfigurable implements Configurable {
         // Global enable/disable row at top
         JButton enableAllBtn = new JButton("Enable All");
         JButton disableAllBtn = new JButton("Disable All");
-        enableAllBtn.addActionListener(e -> enableUpToMax(toolCheckboxes.values()));
+        enableAllBtn.addActionListener(e -> {
+            toolCheckboxes.values().forEach(cb -> cb.setSelected(true));
+            updateCounter();
+        });
         disableAllBtn.addActionListener(e -> {
             toolCheckboxes.values().forEach(cb -> cb.setSelected(false));
             updateCounter();
@@ -123,7 +126,7 @@ public final class ToolsConfigurable implements Configurable {
 
             JBCheckBox cb = new JBCheckBox(tool.displayName(), settings.isToolEnabled(tool.id()));
             cb.setBorder(JBUI.Borders.empty(1, 0, 0, 0));
-            cb.addItemListener(e -> onCheckboxToggled(cb));
+            cb.addItemListener(e -> onCheckboxToggled());
             toolCheckboxes.put(tool.id(), cb);
             categoryCheckboxes.computeIfAbsent(tool.category(), k -> new ArrayList<>()).add(cb);
             toolRow.add(cb);
@@ -185,29 +188,9 @@ public final class ToolsConfigurable implements Configurable {
     }
 
     /**
-     * Called when a tool checkbox is toggled. If enabling would exceed the limit,
-     * revert the selection.
+     * Called when a tool checkbox is toggled. Updates the counter display.
      */
-    private void onCheckboxToggled(JBCheckBox cb) {
-        if (cb.isSelected() && countEnabled() > McpToolFilter.MAX_TOOLS) {
-            cb.setSelected(false);
-            return;
-        }
-        updateCounter();
-    }
-
-    /**
-     * Enables checkboxes in iteration order until the global limit is reached.
-     * Already-enabled checkboxes count towards the limit but are not toggled off.
-     */
-    private void enableUpToMax(java.util.Collection<JBCheckBox> checkboxes) {
-        int enabled = countEnabled();
-        for (JBCheckBox cb : checkboxes) {
-            if (cb.isSelected()) continue;
-            if (enabled >= McpToolFilter.MAX_TOOLS) break;
-            cb.setSelected(true);
-            enabled++;
-        }
+    private void onCheckboxToggled() {
         updateCounter();
     }
 
@@ -229,7 +212,10 @@ public final class ToolsConfigurable implements Configurable {
 
         sectionEnableBtn.addActionListener(e -> {
             List<JBCheckBox> cbs = categoryCheckboxes.get(category);
-            if (cbs != null) enableUpToMax(cbs);
+            if (cbs != null) {
+                cbs.forEach(cb -> cb.setSelected(true));
+                updateCounter();
+            }
         });
         sectionDisableBtn.addActionListener(e -> {
             List<JBCheckBox> cbs = categoryCheckboxes.get(category);

@@ -198,12 +198,6 @@ public final class McpProtocolHandler {
         McpServerSettings settings = McpServerSettings.getInstance(project);
         settings.ensureDefaultsApplied();
         List<ToolDefinition> enabledTools = McpToolFilter.getEnabledTools(settings, project);
-        if (enabledTools.size() > McpToolFilter.MAX_TOOLS) {
-            LOG.warn("Enabled tool count (" + enabledTools.size()
-                + ") exceeds MCP client limit (" + McpToolFilter.MAX_TOOLS
-                + "); truncating to first " + McpToolFilter.MAX_TOOLS + " tools");
-            enabledTools = enabledTools.subList(0, McpToolFilter.MAX_TOOLS);
-        }
 
         JsonArray tools = new JsonArray();
         for (ToolDefinition entry : enabledTools) {
