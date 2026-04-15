@@ -302,8 +302,8 @@ class ToolDefinitionContractTest {
         return Stream.of(
             new RefactorTool(null),
             new GoToDeclarationTool(null),
-            new GetTypeHierarchyTool(null),
-            new FindImplementationsTool(null),
+            new GetTypeHierarchyTool(null, true),
+            new FindImplementationsTool(null, true),
             new GetCallHierarchyTool(null),
             new GetDocumentationTool(null),
             new GetSymbolInfoTool(null)
