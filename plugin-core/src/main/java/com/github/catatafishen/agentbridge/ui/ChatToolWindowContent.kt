@@ -649,12 +649,6 @@ class ChatToolWindowContent(
             JBUI.Borders.empty(0, 0, 2, 0)
         )
 
-        shortcutHintPanel = PromptShortcutHintPanel { dismissShortcutHints() }
-        shortcutHintPanel.alignmentX = Component.LEFT_ALIGNMENT
-        shortcutHintPanel.isVisible =
-            com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
-        footer.add(shortcutHintPanel)
-
         val controlsRow = createControlsRow()
         controlsRow.alignmentX = Component.LEFT_ALIGNMENT
         footer.add(controlsRow)
@@ -710,6 +704,18 @@ class ChatToolWindowContent(
             )
         )
 
+        // Shortcut hint overlay — initialized here so the focus listener below can reference it.
+        shortcutHintPanel = PromptShortcutHintPanel { dismissShortcutHints() }
+        shortcutHintPanel.isVisible =
+            com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
+        // Clicking the panel background (between key badges) focuses the input.
+        shortcutHintPanel.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                promptTextArea.requestFocusInWindow()
+            }
+        })
+        shortcutHintPanel.cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
+
         setupPromptDragDrop(promptTextArea)
         promptTextArea.addSettingsProvider { editor ->
             setupPromptKeyBindings(editor)
@@ -719,6 +725,11 @@ class ChatToolWindowContent(
             editor.settings.isUseSoftWraps =
                 com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isSoftWrapsEnabled
             editor.setBorder(null)
+            // Overlay hides while the user types; reappears when the input is idle and empty.
+            editor.contentComponent.addFocusListener(object : java.awt.event.FocusAdapter() {
+                override fun focusGained(e: java.awt.event.FocusEvent) = updateShortcutHintVisibility()
+                override fun focusLost(e: java.awt.event.FocusEvent) = updateShortcutHintVisibility()
+            })
         }
 
         promptTextArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
@@ -726,12 +737,35 @@ class ChatToolWindowContent(
                 ApplicationManager.getApplication().invokeLater {
                     promptTextArea.revalidate()
                     checkSlashCommandAutocomplete()
+                    updateShortcutHintVisibility()
                 }
             }
         })
 
+        // Overlay container: promptTextArea fills all bounds; shortcutHintPanel is centered on top.
+        // null layout with doLayout() gives precise control without resize listeners.
+        val inputContainer = object : JPanel(null) {
+            override fun doLayout() {
+                promptTextArea.setBounds(0, 0, width, height)
+                if (shortcutHintPanel.isVisible) {
+                    val pref = shortcutHintPanel.preferredSize
+                    shortcutHintPanel.setBounds(
+                        (width - pref.width) / 2,
+                        (height - pref.height) / 2,
+                        pref.width, pref.height
+                    )
+                }
+            }
+
+            override fun getPreferredSize(): Dimension = promptTextArea.preferredSize
+            override fun getMinimumSize(): Dimension = promptTextArea.minimumSize
+        }
+        inputContainer.isOpaque = false
+        inputContainer.add(promptTextArea)
+        inputContainer.add(shortcutHintPanel) // added last = higher z-order, painted on top
+
         row.border = JBUI.Borders.empty()
-        row.add(promptTextArea, BorderLayout.CENTER)
+        row.add(inputContainer, BorderLayout.CENTER)
 
         return row
     }
@@ -822,20 +856,27 @@ class ChatToolWindowContent(
     private fun buildBubbleHtml(rawText: String, items: List<ContextItemData>): String? =
         PromptBubbleBuilder.buildBubbleHtml(rawText, items)
 
-    private fun escHtml(s: String) = PromptBubbleBuilder.escapeHtml(s)
-
     fun setSoftWrapsEnabled(enabled: Boolean) {
         promptTextArea.editor?.settings?.isUseSoftWraps = enabled
     }
 
     fun setShortcutHintsVisible() {
         if (!::shortcutHintPanel.isInitialized) return
+        updateShortcutHintVisibility()
+    }
+
+    /** Shows or hides the hint overlay based on current focus and text state. */
+    private fun updateShortcutHintVisibility() {
+        if (!::shortcutHintPanel.isInitialized) return
+        val hasText = promptTextArea.text.isNotEmpty()
+        val isFocused = promptTextArea.editor?.contentComponent?.hasFocus() == true
         shortcutHintPanel.isVisible =
             com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
+                && !hasText && !isFocused
     }
 
     private fun dismissShortcutHints() {
-        com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().setShowShortcutHints(false)
+        com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints = false
         if (::shortcutHintPanel.isInitialized) {
             shortcutHintPanel.isVisible = false
         }
