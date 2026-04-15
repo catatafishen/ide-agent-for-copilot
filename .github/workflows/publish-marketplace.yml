@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'GitHub release tag to publish (e.g. v1.52.0)'
-        required: true
+        description: 'Release tag to publish (leave empty for latest release)'
+        required: false
         type: string
+        default: ''
       channel:
         description: 'Marketplace channel (leave as "stable" for production releases)'
         required: true
@@ -23,9 +24,60 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ── Step 0: Resolve release tag ──────────────────────────────────────
+  resolve-tag:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176  # v2.17.0
+        with:
+          egress-policy: audit
+
+      - name: Resolve tag from input or latest release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "Using provided tag: $INPUT_TAG"
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            LATEST=$(gh release list --repo "${{ github.repository }}" --limit 5 \
+              --json tagName,isPrerelease,isDraft \
+              --jq '[.[] | select(.isPrerelease == false and .isDraft == false)][0].tagName')
+            if [ -z "$LATEST" ]; then
+              echo "::error::No releases found. Please specify a tag manually."
+              exit 1
+            fi
+            echo "No tag provided — using latest release: $LATEST"
+            echo "tag=$LATEST" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Show recent releases for reference
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "### 🏷️ Recent releases" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | Date | Title |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          gh release list --repo "${{ github.repository }}" --limit 10 \
+            --json tagName,publishedAt,name \
+            --jq '.[] | "| \(.tagName) | \(.publishedAt | split("T")[0]) | \(.name) |"' \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Selected:** \`${{ steps.resolve.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+
   # ── Step 1: Extract and display the changelog for review ──────────────
   preview:
-    name: Preview changelog for ${{ inputs.tag }}
+    name: Preview changelog for ${{ needs.resolve-tag.outputs.tag }}
+    needs: resolve-tag
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,7 +90,7 @@ jobs:
       - name: Download plugin ZIP from GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           gh release download "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
@@ -48,7 +100,7 @@ jobs:
 
       - name: Extract and display changelog
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
           CHANNEL: ${{ inputs.channel }}
         run: |
           PLUGIN_ZIP=$(ls release-artifacts/agentbridge-*.zip | head -1)
@@ -79,8 +131,8 @@ jobs:
 
   # ── Step 2: Upload (requires 'marketplace' environment approval) ──────
   publish:
-    name: Upload ${{ inputs.tag }} to JetBrains Marketplace
-    needs: preview
+    name: Upload ${{ needs.resolve-tag.outputs.tag }} to JetBrains Marketplace
+    needs: [ resolve-tag, preview ]
     runs-on: ubuntu-latest
     environment: marketplace
     permissions:
@@ -99,7 +151,7 @@ jobs:
       - name: Download plugin ZIP from GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           gh release download "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
@@ -141,7 +193,7 @@ jobs:
       - name: Update marketplace-latest tag
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           gh auth setup-git
           # Move the marketplace-latest tag to the commit of the published release.

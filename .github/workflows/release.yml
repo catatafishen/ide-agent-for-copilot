@@ -177,16 +177,47 @@ jobs:
           # Generate release notes from conventional commits
           LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
           if [ -z "$LATEST_TAG" ]; then
-            NOTES=$(git log --pretty=format:"- %s" HEAD)
+            COMMIT_BULLETS=$(git log --pretty=format:"- %s" HEAD)
           else
-            NOTES=$(git log --pretty=format:"- %s" "${LATEST_TAG}..HEAD")
+            COMMIT_BULLETS=$(git log --pretty=format:"- %s" "${LATEST_TAG}..HEAD")
           fi
+
+          # Convert the generated changelog HTML to Markdown for the release body.
+          # Strip the static header (everything before the version <h3>) and convert
+          # <h3> → ##, <li> → bullet points, drop remaining tags.
+          CHANGELOG_MD=""
+          if [ -f build/changelog.html ]; then
+            CHANGELOG_MD=$(sed -n '/<h3>/,$ p' build/changelog.html \
+              | sed 's|<h3>\(.*\)</h3>|## \1|' \
+              | sed 's|^[[:space:]]*<li>\(.*\)</li>|- \1|' \
+              | sed 's|<ul>||g; s|</ul>||g' \
+              | sed 's|&mdash;|—|g' \
+              | sed '/^$/d')
+          fi
+
+          # Assemble release body: changelog first, then raw commit list.
+          # Written to a file to avoid YAML/shell quoting issues with --- separator.
+          {
+            if [ -n "$CHANGELOG_MD" ]; then
+              echo "$CHANGELOG_MD"
+              echo ""
+              echo "---"
+              echo ""
+              echo "<details><summary>Commits</summary>"
+              echo ""
+              echo "$COMMIT_BULLETS"
+              echo ""
+              echo "</details>"
+            else
+              echo "$COMMIT_BULLETS"
+            fi
+          } > build/release-notes.md
 
           # Create tag + release via GitHub API (no git credentials needed;
           # persist-credentials: false is set on checkout for security)
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title "Release $TAG" \
-            --notes "$NOTES" \
+            --notes-file build/release-notes.md \
             "$ARTIFACTS_DIR"/*.zip \
             "$ARTIFACTS_DIR"/*.sigstore.json
