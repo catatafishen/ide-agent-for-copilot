@@ -45,7 +45,7 @@ public class RefactoringToolsTest extends BasePlatformTestCase {
         PropertiesComponent.getInstance(getProject())
             .setValue(ToolLayerSettings.FOLLOW_AGENT_FILES_KEY, "false");
         getDocumentationTool = new GetDocumentationTool(getProject());
-        getTypeHierarchyTool = new GetTypeHierarchyTool(getProject());
+        getTypeHierarchyTool = new GetTypeHierarchyTool(getProject(), true);
     }
 
     @Override
@@ -63,7 +63,9 @@ public class RefactoringToolsTest extends BasePlatformTestCase {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Builds a {@link JsonObject} from alternating key/value String pairs. */
+    /**
+     * Builds a {@link JsonObject} from alternating key/value String pairs.
+     */
     private static JsonObject args(String... pairs) {
         JsonObject obj = new JsonObject();
         for (int i = 0; i < pairs.length; i += 2) {

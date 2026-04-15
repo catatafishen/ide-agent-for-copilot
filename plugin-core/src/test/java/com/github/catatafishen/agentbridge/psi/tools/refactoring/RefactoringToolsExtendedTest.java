@@ -64,7 +64,7 @@ public class RefactoringToolsExtendedTest extends BasePlatformTestCase {
         PropertiesComponent.getInstance(getProject())
             .setValue(ToolLayerSettings.FOLLOW_AGENT_FILES_KEY, "false");
 
-        findImplementationsTool = new FindImplementationsTool(getProject());
+        findImplementationsTool = new FindImplementationsTool(getProject(), true);
         getCallHierarchyTool = new GetCallHierarchyTool(getProject());
         goToDeclarationTool = new GoToDeclarationTool(getProject());
         getSymbolInfoTool = new GetSymbolInfoTool(getProject());
