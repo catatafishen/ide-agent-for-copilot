@@ -177,16 +177,6 @@ jobs:
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-path: '${{ steps.artifacts.outputs.dir }}/*.zip'
-          push-to-registry: false
-
-      - name: Collect provenance attestations
-        if: steps.version.outputs.skip != 'true'
-        env:
-          ARTIFACTS_DIR: ${{ steps.artifacts.outputs.dir }}
-        run: |
-          # Move attestation files (created in current directory) to artifacts directory
-          mv *.attestation "$ARTIFACTS_DIR/" 2>/dev/null || true
-          ls -la "$ARTIFACTS_DIR"
 
       - name: Install cosign
         if: steps.version.outputs.skip != 'true'
@@ -223,5 +213,4 @@ jobs:
             --title "Release $TAG" \
             --notes-file build/release-notes.md \
             "$ARTIFACTS_DIR"/*.zip \
-            "$ARTIFACTS_DIR"/*.sigstore.json \
-            "$ARTIFACTS_DIR"/*.attestation
+            "$ARTIFACTS_DIR"/*.sigstore.json
