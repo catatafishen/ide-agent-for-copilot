@@ -819,8 +819,12 @@ file-nav {
     border-bottom: 1px solid var(--fg-a16);
     box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
     max-height: 60vh;
-    display: flex;
+    display: none;
     flex-direction: column;
+}
+
+.fn-dropdown.fn-open {
+    display: flex;
 }
 
 .fn-search-row {

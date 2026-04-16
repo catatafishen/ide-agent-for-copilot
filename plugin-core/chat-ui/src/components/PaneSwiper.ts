@@ -26,7 +26,7 @@ export class PaneSwiper extends HTMLElement {
     private _tracking = false;
     private _horizontal = false;
     private _currentOffset = 0;
-    private _startedInScroller = false;
+    private _scrollerEl: HTMLElement | null = null;
 
     connectedCallback(): void {
         this.innerHTML = `
@@ -38,17 +38,17 @@ export class PaneSwiper extends HTMLElement {
                 <span class="ps-dot" data-index="0"></span>
                 <span class="ps-dot active" data-index="1"></span>
             </div>`;
-        this._track = this.querySelector('.ps-track')!;
-        this._leftPane = this.querySelector('.ps-left')!;
-        this._rightPane = this.querySelector('.ps-right')!;
-        this._dots = this.querySelector('.ps-dots')!;
+        this._track = this.querySelector('.ps-track') as HTMLElement;
+        this._leftPane = this.querySelector('.ps-left') as HTMLElement;
+        this._rightPane = this.querySelector('.ps-right') as HTMLElement;
+        this._dots = this.querySelector('.ps-dots') as HTMLElement;
 
         this._applyTransform(false);
 
         // Touch events for swipe
-        this.addEventListener('touchstart', this._onTouchStart.bind(this), { passive: true });
-        this.addEventListener('touchmove', this._onTouchMove.bind(this), { passive: false });
-        this.addEventListener('touchend', this._onTouchEnd.bind(this), { passive: true });
+        this.addEventListener('touchstart', this._onTouchStart.bind(this), {passive: true});
+        this.addEventListener('touchmove', this._onTouchMove.bind(this), {passive: false});
+        this.addEventListener('touchend', this._onTouchEnd.bind(this), {passive: true});
 
         // Dot click
         this._dots.addEventListener('click', (e) => {
@@ -57,9 +57,17 @@ export class PaneSwiper extends HTMLElement {
         });
     }
 
-    get leftPane(): HTMLElement { return this._leftPane; }
-    get rightPane(): HTMLElement { return this._rightPane; }
-    get activeIndex(): number { return this._activeIndex; }
+    get leftPane(): HTMLElement {
+        return this._leftPane;
+    }
+
+    get rightPane(): HTMLElement {
+        return this._rightPane;
+    }
+
+    get activeIndex(): number {
+        return this._activeIndex;
+    }
 
     /** Switch to pane by index (0=left/files, 1=right/chat). */
     switchTo(index: number): void {
@@ -67,7 +75,7 @@ export class PaneSwiper extends HTMLElement {
         this._activeIndex = index;
         this._applyTransform(true);
         this._updateDots();
-        this.dispatchEvent(new CustomEvent('pane-changed', { detail: { index } }));
+        this.dispatchEvent(new CustomEvent('pane-changed', {detail: {index}}));
     }
 
     private _applyTransform(animate: boolean): void {
@@ -91,7 +99,7 @@ export class PaneSwiper extends HTMLElement {
         this._tracking = true;
         this._horizontal = false;
         this._currentOffset = 0;
-        this._startedInScroller = this._hasHorizontalScroll(e.target as HTMLElement | null);
+        this._scrollerEl = this._findHorizontalScroller(e.target as HTMLElement | null);
     }
 
     private _onTouchMove(e: TouchEvent): void {
@@ -109,10 +117,25 @@ export class PaneSwiper extends HTMLElement {
         }
         if (!this._horizontal) return;
 
-        // Let native horizontal scroll handle the gesture inside scrollable elements
-        if (this._startedInScroller) {
-            this._tracking = false;
-            return;
+        // Inside a horizontally scrollable element — defer to native scroll
+        // unless already scrolled all the way in the swipe direction
+        if (this._scrollerEl) {
+            const el = this._scrollerEl;
+            const atLeftEdge = el.scrollLeft <= 0;
+            const atRightEdge = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+
+            if (dx > 0 && !atLeftEdge) {
+                // Swiping right but scroller can still scroll left → native scroll
+                this._tracking = false;
+                return;
+            }
+            if (dx < 0 && !atRightEdge) {
+                // Swiping left but scroller can still scroll right → native scroll
+                this._tracking = false;
+                return;
+            }
+            // At boundary in swipe direction — take over as pane swipe
+            this._scrollerEl = null;
         }
 
         e.preventDefault();
@@ -150,16 +173,16 @@ export class PaneSwiper extends HTMLElement {
         }
         this._applyTransform(true);
         this._updateDots();
-        this.dispatchEvent(new CustomEvent('pane-changed', { detail: { index: this._activeIndex } }));
+        this.dispatchEvent(new CustomEvent('pane-changed', {detail: {index: this._activeIndex}}));
     }
 
-    /** Check if any ancestor of the target has horizontal overflow. */
-    private _hasHorizontalScroll(target: HTMLElement | null): boolean {
+    /** Find the nearest ancestor with horizontal overflow, or null. */
+    private _findHorizontalScroller(target: HTMLElement | null): HTMLElement | null {
         let el = target;
         while (el && el !== this) {
-            if (el.scrollWidth > el.clientWidth + 1) return true;
+            if (el.scrollWidth > el.clientWidth + 1) return el;
             el = el.parentElement;
         }
-        return false;
+        return null;
     }
 }

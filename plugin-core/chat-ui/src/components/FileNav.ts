@@ -34,7 +34,7 @@ export class FileNav extends HTMLElement {
                 </button>
                 <div class="fn-breadcrumb"></div>
             </div>
-            <div class="fn-dropdown" hidden>
+            <div class="fn-dropdown">
                 <div class="fn-search-row">
                     <input class="fn-search" type="text" placeholder="Filter…" />
                 </div>
@@ -106,21 +106,21 @@ export class FileNav extends HTMLElement {
             this._closeDropdown();
         } else {
             this._expanded = true;
-            this._dropdown.hidden = false;
+            this._dropdown.classList.add('fn-open');
             this._loadDir(this._currentDir);
         }
     }
 
     private _closeDropdown(): void {
         this._expanded = false;
-        this._dropdown.hidden = true;
+        this._dropdown.classList.remove('fn-open');
     }
 
     private async _navigateDir(dir: string): Promise<void> {
         this._currentDir = dir;
         if (!this._expanded) {
             this._expanded = true;
-            this._dropdown.hidden = false;
+            this._dropdown.classList.add('fn-open');
         }
         await this._loadDir(dir);
     }
