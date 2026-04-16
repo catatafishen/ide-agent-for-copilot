@@ -382,9 +382,9 @@ class UsageStatisticsLoaderTest {
     private static void invokeCollectTurnStats(Path jsonlPath, String agentId,
                                                Map<Object, Object> accumulators) throws Exception {
         Method m = UsageStatisticsLoader.class.getDeclaredMethod(
-            "collectTurnStats", Path.class, String.class, LocalDate.class, LocalDate.class, Map.class);
+            "collectTurnStats", List.class, String.class, LocalDate.class, LocalDate.class, Map.class);
         m.setAccessible(true);
-        m.invoke(null, jsonlPath, agentId,
+        m.invoke(null, List.of(jsonlPath), agentId,
             LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31),
             accumulators);
     }
