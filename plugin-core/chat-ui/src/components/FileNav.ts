@@ -22,7 +22,7 @@ export class FileNav extends HTMLElement {
     private _currentDir = '';
     private _fetchDir!: FetchDirFn;
     private _openFile!: OpenFileFn;
-    private _cache = new Map<string, FileEntry[]>();
+    private readonly _cache = new Map<string, FileEntry[]>();
 
     connectedCallback(): void {
         this.innerHTML = `
@@ -65,8 +65,9 @@ export class FileNav extends HTMLElement {
         this._openFile = openFile;
     }
 
-    /** Update the breadcrumb to show a file path. */
+    /** Update the breadcrumb to show a file path. Closes any open dropdown. */
     showPath(filePath: string): void {
+        this._closeDropdown();
         this._currentDir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
         this._renderBreadcrumb(filePath);
     }
@@ -206,6 +207,6 @@ export class FileNav extends HTMLElement {
     }
 
     private _escHtml(s: string): string {
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     }
 }

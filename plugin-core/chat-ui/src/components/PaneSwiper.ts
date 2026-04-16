@@ -26,6 +26,7 @@ export class PaneSwiper extends HTMLElement {
     private _tracking = false;
     private _horizontal = false;
     private _currentOffset = 0;
+    private _startedInScroller = false;
 
     connectedCallback(): void {
         this.innerHTML = `
@@ -90,6 +91,7 @@ export class PaneSwiper extends HTMLElement {
         this._tracking = true;
         this._horizontal = false;
         this._currentOffset = 0;
+        this._startedInScroller = this._hasHorizontalScroll(e.target as HTMLElement | null);
     }
 
     private _onTouchMove(e: TouchEvent): void {
@@ -106,6 +108,12 @@ export class PaneSwiper extends HTMLElement {
             this._horizontal = true;
         }
         if (!this._horizontal) return;
+
+        // Let native horizontal scroll handle the gesture inside scrollable elements
+        if (this._startedInScroller) {
+            this._tracking = false;
+            return;
+        }
 
         e.preventDefault();
 
@@ -143,5 +151,15 @@ export class PaneSwiper extends HTMLElement {
         this._applyTransform(true);
         this._updateDots();
         this.dispatchEvent(new CustomEvent('pane-changed', { detail: { index: this._activeIndex } }));
+    }
+
+    /** Check if any ancestor of the target has horizontal overflow. */
+    private _hasHorizontalScroll(target: HTMLElement | null): boolean {
+        let el = target;
+        while (el && el !== this) {
+            if (el.scrollWidth > el.clientWidth + 1) return true;
+            el = el.parentElement;
+        }
+        return false;
     }
 }

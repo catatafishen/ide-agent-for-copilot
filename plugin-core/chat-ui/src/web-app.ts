@@ -153,8 +153,9 @@ requestAnimationFrame(() => {
 
     // Listen for pane changes to re-focus appropriately
     swiper.addEventListener('pane-changed', (e) => {
-        if ((e as CustomEvent).detail?.index === 1) {
-            // Switched back to chat — re-enable input focus
+        const index = (e as CustomEvent).detail?.index;
+        footerEl.style.display = index === 0 ? 'none' : '';
+        if (index === 1) {
             inputEl.focus();
         }
     });
