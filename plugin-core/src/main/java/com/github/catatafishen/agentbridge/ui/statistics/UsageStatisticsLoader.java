@@ -1,6 +1,7 @@
 package com.github.catatafishen.agentbridge.ui.statistics;
 
 import com.github.catatafishen.agentbridge.services.AgentIdMapper;
+import com.github.catatafishen.agentbridge.services.ToolCallStatisticsService;
 import com.github.catatafishen.agentbridge.session.exporters.ExportUtils;
 import com.github.catatafishen.agentbridge.session.v2.EntryDataJsonAdapter;
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2;
@@ -45,6 +46,88 @@ final class UsageStatisticsLoader {
         LocalDate startDate = range.startDate();
         LocalDate endDate = LocalDate.now();
 
+        // Try SQLite first — much faster than scanning JSONL files
+        UsageStatisticsData.StatisticsSnapshot sqliteResult =
+            loadFromSqlite(project, range, startDate, endDate);
+        if (sqliteResult != null) return sqliteResult;
+
+        // Fall back to JSONL scan (DB empty or not initialized)
+        return loadFromJsonl(project, range, startDate, endDate);
+    }
+
+    /**
+     * Loads statistics from the SQLite turn_stats table. Returns null if the
+     * table is empty (triggers JSONL fallback with backfill).
+     */
+    @Nullable
+    private static UsageStatisticsData.StatisticsSnapshot loadFromSqlite(
+        @NotNull Project project,
+        @NotNull UsageStatisticsData.TimeRange range,
+        @NotNull LocalDate startDate,
+        @NotNull LocalDate endDate) {
+
+        ToolCallStatisticsService service = ToolCallStatisticsService.getInstance(project);
+        if (service.getTurnStatsCount() == 0) return null;
+
+        String startStr = startDate.toString();
+        String endStr = endDate.toString();
+        List<ToolCallStatisticsService.DailyTurnAggregate> aggregates =
+            service.queryDailyTurnStats(startStr, endStr);
+        if (aggregates.isEmpty()) return null;
+
+        // Build agent display names from the sessions index
+        String basePath = project.getBasePath();
+        Map<String, String> agentDisplayNames = new LinkedHashMap<>();
+        Set<String> agentIds = new LinkedHashSet<>();
+
+        List<SessionStoreV2.SessionRecord> sessions =
+            SessionStoreV2.getInstance(project).listSessions(basePath);
+        for (SessionStoreV2.SessionRecord session : sessions) {
+            String agentId = toAgentId(session.agent());
+            agentIds.add(agentId);
+            agentDisplayNames.putIfAbsent(agentId, session.agent());
+        }
+
+        // Also include agents from the query results
+        for (ToolCallStatisticsService.DailyTurnAggregate agg : aggregates) {
+            agentIds.add(agg.agentId());
+        }
+
+        // Convert to DailyAgentStats
+        List<UsageStatisticsData.DailyAgentStats> dailyStats = new ArrayList<>();
+        for (ToolCallStatisticsService.DailyTurnAggregate agg : aggregates) {
+            dailyStats.add(new UsageStatisticsData.DailyAgentStats(
+                agg.date(), agg.agentId(),
+                agg.turns(), agg.inputTokens(), agg.outputTokens(),
+                agg.toolCalls(), agg.durationMs(),
+                agg.linesAdded(), agg.linesRemoved(), agg.premiumRequests()
+            ));
+        }
+
+        // For "all time", narrow start to earliest data date
+        if (range == UsageStatisticsData.TimeRange.ALL) {
+            LocalDate earliest = service.getEarliestTurnDate();
+            if (earliest != null) {
+                startDate = earliest;
+            }
+        }
+
+        LOG.info("Statistics (SQLite): loaded " + dailyStats.size() + " day/agent buckets, "
+            + dailyStats.stream().mapToInt(UsageStatisticsData.DailyAgentStats::turns).sum() + " total turns");
+
+        return new UsageStatisticsData.StatisticsSnapshot(
+            dailyStats, startDate, endDate, agentIds, agentDisplayNames);
+    }
+
+    /**
+     * Original JSONL-based loader — used as fallback when the SQLite table is empty.
+     */
+    private static UsageStatisticsData.StatisticsSnapshot loadFromJsonl(
+        @NotNull Project project,
+        @NotNull UsageStatisticsData.TimeRange range,
+        @NotNull LocalDate startDate,
+        @NotNull LocalDate endDate) {
+
         String basePath = project.getBasePath();
         List<SessionStoreV2.SessionRecord> sessions =
             SessionStoreV2.getInstance(project).listSessions(basePath);
@@ -76,12 +159,10 @@ final class UsageStatisticsLoader {
         }
 
         List<UsageStatisticsData.DailyAgentStats> dailyStats = buildDailyStats(accumulators);
-        LOG.info("Statistics: loaded " + sessions.size() + " sessions, "
+        LOG.info("Statistics (JSONL fallback): loaded " + sessions.size() + " sessions, "
             + accumulators.size() + " day/agent buckets, "
             + dailyStats.stream().mapToInt(UsageStatisticsData.DailyAgentStats::turns).sum() + " total turns");
 
-        // For "all time", start from the earliest data date instead of 2020-01-01
-        // to avoid creating thousands of zero-fill points in the chart
         if (range == UsageStatisticsData.TimeRange.ALL && !accumulators.isEmpty()) {
             startDate = accumulators.keySet().stream()
                 .map(DayAgentKey::date)
