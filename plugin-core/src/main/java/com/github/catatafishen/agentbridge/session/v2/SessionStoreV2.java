@@ -23,7 +23,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -72,8 +74,11 @@ public final class SessionStoreV2 implements Disposable {
     /**
      * Tracks the most recent async save so that {@link #awaitPendingSave(long)} can
      * block until the write completes before reading the v2 JSONL from disk.
+     * Guarded by {@link #saveLock} for atomic read-modify-write in future chaining.
      */
-    private volatile CompletableFuture<Void> pendingSave = CompletableFuture.completedFuture(null);
+    private CompletableFuture<Void> pendingSave = CompletableFuture.completedFuture(null);
+
+    private final Object saveLock = new Object();
 
     /**
      * Cached transient session ID used when the session-id file is unreadable (I/O error).
@@ -175,12 +180,11 @@ public final class SessionStoreV2 implements Disposable {
     }
 
     /**
-     * Snapshots the current session JSONL as a new immutable branch entry in the sessions index.
-     * Called at agent startup when "Branch session at startup" is enabled.
-     *
-     * <p>The branch is a verbatim copy of the current JSONL assigned a new UUID and registered
+     * Creates a read-only snapshot ("branch") of the current session and registers it
      * in the sessions index with a {@code "(branch)"} label. It appears in the session history
-     * picker so the user can reload it.</p>
+     * picker so the user can reload it.
+     * <p>
+     * Copies all part files and the active JSONL to the branch ID.
      *
      * @param basePath project base path (may be null)
      */
@@ -201,18 +205,30 @@ public final class SessionStoreV2 implements Disposable {
         }
         if (sessionId.isEmpty()) return;
 
-        File sourceFile = new File(sessionsDir, sessionId + JSONL_EXT);
-        if (!sourceFile.exists() || sourceFile.length() < 2) {
+        List<Path> allFiles = SessionFileRotation.listAllFiles(sessionsDir, sessionId);
+        if (allFiles.isEmpty()) {
             LOG.info("branchCurrentSession: no JSONL data to snapshot (session " + sessionId + ")");
             return;
         }
 
         String branchId = UUID.randomUUID().toString();
-        File branchFile = new File(sessionsDir, branchId + JSONL_EXT);
 
         try {
             Files.createDirectories(sessionsDir.toPath());
-            Files.copy(sourceFile.toPath(), branchFile.toPath());
+
+            // Copy all part files with the new branch ID prefix
+            List<File> partFiles = SessionFileRotation.listPartFiles(sessionsDir, sessionId);
+            for (int i = 0; i < partFiles.size(); i++) {
+                String partName = String.format("%s.part-%03d.jsonl", branchId, i + 1);
+                Files.copy(partFiles.get(i).toPath(), sessionsDir.toPath().resolve(partName));
+            }
+
+            // Copy the active (tail) file
+            File sourceFile = new File(sessionsDir, sessionId + JSONL_EXT);
+            File branchFile = new File(sessionsDir, branchId + JSONL_EXT);
+            if (sourceFile.exists()) {
+                Files.copy(sourceFile.toPath(), branchFile.toPath());
+            }
 
             File indexFile = new File(sessionsDir, SESSIONS_INDEX);
             List<JsonObject> records = readIndexRecords(indexFile);
@@ -246,7 +262,9 @@ public final class SessionStoreV2 implements Disposable {
             Files.writeString(indexFile.toPath(), GSON.toJson(arr), StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
-            LOG.info("Branched session " + sessionId + " → " + branchId + " at " + timestamp);
+            int totalFiles = partFiles.size() + (sourceFile.exists() ? 1 : 0);
+            LOG.info("Branched session " + sessionId + " → " + branchId
+                + " at " + timestamp + " (" + totalFiles + " file(s))");
         } catch (IOException e) {
             LOG.warn("Failed to branch session " + sessionId, e);
         }
@@ -262,7 +280,8 @@ public final class SessionStoreV2 implements Disposable {
 
     /**
      * Appends {@code entries} to the current session JSONL without overwriting existing content.
-     * Creates the file if it does not yet exist. The sessions index is updated incrementally:
+     * Creates the file if it does not yet exist. Rotates the file first if it exceeds the size
+     * limit or crosses a date boundary. The sessions index is updated incrementally:
      * {@code turnCount} is incremented by the number of {@link EntryData.Prompt} entries in
      * the batch, and the session name is set from the first prompt only if not already stored.
      */
@@ -277,6 +296,9 @@ public final class SessionStoreV2 implements Disposable {
             dir.mkdirs();
 
             File jsonlFile = new File(dir, sessionId + JSONL_EXT);
+
+            SessionFileRotation.rotateIfNeeded(jsonlFile, dir, sessionId, Clock.systemDefaultZone());
+
             StringBuilder sb = new StringBuilder();
             int additionalTurns = 0;
             String firstPromptText = "";
@@ -301,14 +323,16 @@ public final class SessionStoreV2 implements Disposable {
 
     /**
      * Appends entries on a pooled thread (non-blocking).
-     * The resulting future is tracked so that {@link #awaitPendingSave(long)} can wait
-     * for the write to complete before reading the v2 JSONL from disk.
+     * Futures are chained (not replaced) so that concurrent appends are serialized
+     * and {@link #awaitPendingSave(long)} waits for <em>all</em> in-flight writes.
      */
     public void appendEntriesAsync(@Nullable String basePath, @NotNull List<EntryData> entries) {
         List<EntryData> snapshot = List.copyOf(entries);
-        pendingSave = CompletableFuture.runAsync(
-            () -> appendEntries(basePath, snapshot),
-            AppExecutorUtil.getAppExecutorService());
+        synchronized (saveLock) {
+            pendingSave = pendingSave.thenRunAsync(
+                () -> appendEntries(basePath, snapshot),
+                AppExecutorUtil.getAppExecutorService());
+        }
     }
 
     /**
@@ -321,7 +345,10 @@ public final class SessionStoreV2 implements Disposable {
      * @param timeoutMs maximum wait in milliseconds
      */
     public void awaitPendingSave(long timeoutMs) {
-        CompletableFuture<Void> future = pendingSave;
+        CompletableFuture<Void> future;
+        synchronized (saveLock) {
+            future = pendingSave;
+        }
         if (future.isDone()) return;
         try {
             future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -355,16 +382,16 @@ public final class SessionStoreV2 implements Disposable {
 
     /**
      * Loads entries for a specific session by ID from V2 JSONL.
-     * Returns {@code null} if the session file does not exist or cannot be read.
+     * Reads all part files and the current active file, merging them in order.
+     * Returns {@code null} if no session files exist.
      */
     @Nullable
     public List<EntryData> loadEntriesBySessionId(@Nullable String basePath, @NotNull String sessionId) {
         File dir = sessionsDir(basePath);
-        File jsonlFile = new File(dir, sessionId + JSONL_EXT);
-        if (!jsonlFile.exists() || jsonlFile.length() < 2) return null;
+        List<Path> files = SessionFileRotation.listAllFiles(dir, sessionId);
+        if (files.isEmpty()) return null;
         try {
-            String content = Files.readString(jsonlFile.toPath(), StandardCharsets.UTF_8);
-            return parseJsonlAutoDetect(content);
+            return loadEntriesFromFiles(files);
         } catch (Exception e) {
             LOG.warn("Failed to parse v2 JSONL for session " + sessionId, e);
             return null;
@@ -372,7 +399,8 @@ public final class SessionStoreV2 implements Disposable {
     }
 
     /**
-     * Loads entries directly from V2 JSONL file.
+     * Loads entries directly from V2 JSONL file(s) for the current session.
+     * Reads all part files and the current active file, merging them in order.
      * Auto-detects format per line: {@code "type":} → new EntryData format,
      * {@code "role":} → old legacy message format (converted via {@link #convertLegacyMessages}).
      */
@@ -391,16 +419,60 @@ public final class SessionStoreV2 implements Disposable {
         }
         if (sessionId.isEmpty()) return null;
 
-        File jsonlFile = new File(dir, sessionId + JSONL_EXT);
-        if (!jsonlFile.exists() || jsonlFile.length() < 2) return null;
+        List<Path> files = SessionFileRotation.listAllFiles(dir, sessionId);
+        if (files.isEmpty()) return null;
 
         try {
-            String content = Files.readString(jsonlFile.toPath(), StandardCharsets.UTF_8);
-            return parseJsonlAutoDetect(content);
+            return loadEntriesFromFiles(files);
         } catch (Exception e) {
             LOG.warn("Failed to parse v2 JSONL for session " + sessionId, e);
             return null;
         }
+    }
+
+    /**
+     * Reads and parses entries from one or more JSONL files, merging results in order.
+     * Uses buffered line-by-line reading to avoid loading entire files into memory.
+     */
+    @Nullable
+    private List<EntryData> loadEntriesFromFiles(@NotNull List<Path> files) {
+        List<EntryData> allDirectEntries = new ArrayList<>();
+        List<JsonObject> allLegacyMessages = new ArrayList<>();
+        int skippedLines = 0;
+
+        for (Path file : files) {
+            try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty()) continue;
+                    try {
+                        JsonObject obj = GSON.fromJson(line, JsonObject.class);
+                        if (EntryDataJsonAdapter.isEntryFormat(line)) {
+                            EntryData entry = EntryDataJsonAdapter.deserialize(obj);
+                            if (entry != null) allDirectEntries.add(entry);
+                        } else {
+                            if (obj != null) allLegacyMessages.add(obj);
+                        }
+                    } catch (Exception e) {
+                        skippedLines++;
+                        LOG.warn("Skipping malformed JSONL line: " + line + " (" + e.getMessage() + ")");
+                    }
+                }
+            } catch (IOException e) {
+                LOG.warn("Failed to read session file: " + file, e);
+            }
+        }
+
+        if (skippedLines > 0) {
+            int totalParsed = allDirectEntries.size() + allLegacyMessages.size();
+            LOG.warn("JSONL parse: loaded " + totalParsed + " entries across "
+                + files.size() + " file(s), skipped " + skippedLines + " malformed lines");
+        }
+
+        if (!allDirectEntries.isEmpty()) return allDirectEntries;
+        if (!allLegacyMessages.isEmpty()) return convertLegacyMessages(allLegacyMessages);
+        return null;
     }
 
     /**

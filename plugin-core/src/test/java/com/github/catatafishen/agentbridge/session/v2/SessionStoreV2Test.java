@@ -1682,5 +1682,128 @@ class SessionStoreV2Test {
             assertEquals("backfill-agent", rec.get().agent(),
                 "agent should be set when the existing record had no agent field");
         }
+
+        // ── Multi-part session file tests ─────────────────────────────────────
+
+        @Test
+        @DisplayName("loadEntriesBySessionId loads entries across multiple part files")
+        void loadEntriesBySessionId_multiplePartsLoaded() throws IOException {
+            SessionStoreV2 store = newStore();
+            String sessionId = store.getCurrentSessionId(tempDir.toString());
+            Path dir = sessionsDir();
+
+            // Create two part files and an active file manually
+            String entry1 = toJsonl(List.of(
+                new EntryData.Prompt("Part 1 prompt", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String entry2 = toJsonl(List.of(
+                new EntryData.Text("Part 2 response", "2024-01-01T00:01:00Z", "e2", "e2")));
+            String entry3 = toJsonl(List.of(
+                new EntryData.Prompt("Active prompt", "2024-01-01T00:02:00Z", null, "p3", "p3")));
+
+            Files.writeString(dir.resolve(sessionId + ".part-001.jsonl"), entry1, StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve(sessionId + ".part-002.jsonl"), entry2, StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve(sessionId + ".jsonl"), entry3, StandardCharsets.UTF_8);
+
+            List<EntryData> entries = store.loadEntriesBySessionId(tempDir.toString(), sessionId);
+            assertNotNull(entries);
+            assertEquals(3, entries.size());
+            assertInstanceOf(EntryData.Prompt.class, entries.get(0));
+            assertInstanceOf(EntryData.Text.class, entries.get(1));
+            assertInstanceOf(EntryData.Prompt.class, entries.get(2));
+            assertEquals("Part 1 prompt", ((EntryData.Prompt) entries.get(0)).getText());
+            assertEquals("Active prompt", ((EntryData.Prompt) entries.get(2)).getText());
+        }
+
+        @Test
+        @DisplayName("branchCurrentSession copies all part files")
+        void branchCurrentSession_copiesAllPartFiles() throws IOException {
+            SessionStoreV2 store = newStore();
+
+            // Append entries to create a session
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("Prompt 1", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String originalId = store.getCurrentSessionId(tempDir.toString());
+            Path dir = sessionsDir();
+
+            // Simulate prior rotations by creating part files
+            String partContent = toJsonl(List.of(
+                new EntryData.Text("Old content", "2024-01-01T00:00:00Z", "e1", "e1")));
+            Files.writeString(dir.resolve(originalId + ".part-001.jsonl"), partContent, StandardCharsets.UTF_8);
+
+            store.branchCurrentSession(tempDir.toString());
+
+            // Find the branch ID
+            List<SessionStoreV2.SessionRecord> sessions = store.listSessions(tempDir.toString());
+            String branchId = sessions.stream()
+                .map(SessionStoreV2.SessionRecord::id)
+                .filter(id -> !id.equals(originalId))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("branch not found"));
+
+            // Load branch entries — should include part file + active file
+            List<EntryData> branchEntries = store.loadEntriesBySessionId(tempDir.toString(), branchId);
+            assertNotNull(branchEntries);
+            assertEquals(2, branchEntries.size(), "branch should contain entries from both part and active file");
+        }
+
+        @Test
+        @DisplayName("loadEntriesFromV2 handles multi-part sessions")
+        void loadEntriesFromV2_multiPart() throws IOException {
+            SessionStoreV2 store = newStore();
+            String sessionId = store.getCurrentSessionId(tempDir.toString());
+            Path dir = sessionsDir();
+
+            // Write content to a part file and active file
+            String part1 = toJsonl(List.of(
+                new EntryData.Prompt("First", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String active = toJsonl(List.of(
+                new EntryData.Prompt("Second", "2024-01-02T00:00:00Z", null, "p2", "p2")));
+
+            Files.writeString(dir.resolve(sessionId + ".part-001.jsonl"), part1, StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve(sessionId + ".jsonl"), active, StandardCharsets.UTF_8);
+
+            // Update the index so loadEntriesFromV2 can find the jsonlPath
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Text("Third", "2024-01-02T00:01:00Z", "e3", "e3")));
+
+            List<EntryData> entries = store.loadEntriesBySessionId(tempDir.toString(), sessionId);
+            assertNotNull(entries);
+            assertTrue(entries.size() >= 3, "should load from part file + active file");
+        }
+
+        @Test
+        @DisplayName("loadEntriesBySessionId returns entries only from active file when no parts exist")
+        void loadEntriesBySessionId_noPartsOnlyActive() {
+            SessionStoreV2 store = newStore();
+
+            store.appendEntries(tempDir.toString(),
+                List.of(new EntryData.Prompt("Solo prompt", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+            String sessionId = store.getCurrentSessionId(tempDir.toString());
+
+            List<EntryData> entries = store.loadEntriesBySessionId(tempDir.toString(), sessionId);
+            assertNotNull(entries);
+            assertEquals(1, entries.size());
+            assertEquals("Solo prompt", ((EntryData.Prompt) entries.get(0)).getText());
+        }
+
+        @Test
+        @DisplayName("loadEntriesBySessionId skips malformed lines across parts")
+        void loadEntriesBySessionId_skipsMalformedLines() throws IOException {
+            SessionStoreV2 store = newStore();
+            String sessionId = store.getCurrentSessionId(tempDir.toString());
+            Path dir = sessionsDir();
+
+            String validEntry = toJsonl(List.of(
+                new EntryData.Prompt("Valid", "2024-01-01T00:00:00Z", null, "p1", "p1")));
+
+            Files.writeString(dir.resolve(sessionId + ".part-001.jsonl"),
+                "not json at all\n" + validEntry, StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve(sessionId + ".jsonl"),
+                "{invalid json\n", StandardCharsets.UTF_8);
+
+            List<EntryData> entries = store.loadEntriesBySessionId(tempDir.toString(), sessionId);
+            assertNotNull(entries);
+            assertEquals(1, entries.size(), "only the valid entry should be loaded");
+        }
     }
 }

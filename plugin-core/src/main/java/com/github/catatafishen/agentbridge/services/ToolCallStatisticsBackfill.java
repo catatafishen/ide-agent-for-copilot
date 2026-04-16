@@ -1,6 +1,7 @@
 package com.github.catatafishen.agentbridge.services;
 
 import com.github.catatafishen.agentbridge.session.exporters.ExportUtils;
+import com.github.catatafishen.agentbridge.session.v2.SessionFileRotation;
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -75,11 +76,11 @@ public final class ToolCallStatisticsBackfill {
         int errors = 0;
 
         for (SessionStoreV2.SessionRecord session : sessions) {
-            Path jsonlPath = sessionsDir.toPath().resolve(session.id() + ".jsonl");
-            if (!Files.exists(jsonlPath)) continue;
+            List<Path> jsonlFiles = SessionFileRotation.listAllFiles(sessionsDir, session.id());
+            if (jsonlFiles.isEmpty()) continue;
 
             String clientId = sessionToClient.get(session.id());
-            BackfillResult sessionResult = backfillSession(service, jsonlPath, clientId);
+            BackfillResult sessionResult = backfillSession(service, jsonlFiles, clientId);
             inserted += sessionResult.inserted();
             skipped += sessionResult.skipped();
             errors += sessionResult.errors();
@@ -100,26 +101,27 @@ public final class ToolCallStatisticsBackfill {
     }
 
     private static BackfillResult backfillSession(@NotNull ToolCallStatisticsService service,
-                                                  @NotNull Path jsonlPath,
+                                                  @NotNull List<Path> jsonlFiles,
                                                   @NotNull String clientId) {
         int inserted = 0;
         int skipped = 0;
         int errors = 0;
 
-        try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!line.contains("\"type\":\"tool\"")) continue;
-                EntryResult entryResult = processToolEntry(service, line, clientId);
-                switch (entryResult) {
-                    case INSERTED -> inserted++;
-                    case SKIPPED -> skipped++;
-                    case ERROR -> errors++;
-                    case IGNORED -> { /* not a valid tool entry */ }
+        for (Path jsonlPath : jsonlFiles) {
+            try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.contains("\"type\":\"tool\"")) continue;
+                    EntryResult entryResult = processToolEntry(service, line, clientId);
+                    switch (entryResult) {
+                        case INSERTED -> inserted++;
+                        case SKIPPED -> skipped++;
+                        case ERROR -> errors++;
+                    }
                 }
+            } catch (IOException e) {
+                LOG.warn("Backfill: failed to read " + jsonlPath.getFileName(), e);
             }
-        } catch (IOException e) {
-            LOG.warn("Backfill: failed to read " + jsonlPath.getFileName(), e);
         }
 
         return new BackfillResult(inserted, skipped, errors);

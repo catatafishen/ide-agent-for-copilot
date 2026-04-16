@@ -4,6 +4,7 @@ import com.github.catatafishen.agentbridge.services.AgentIdMapper;
 import com.github.catatafishen.agentbridge.services.ToolCallStatisticsService;
 import com.github.catatafishen.agentbridge.session.exporters.ExportUtils;
 import com.github.catatafishen.agentbridge.session.v2.EntryDataJsonAdapter;
+import com.github.catatafishen.agentbridge.session.v2.SessionFileRotation;
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2;
 import com.github.catatafishen.agentbridge.ui.EntryData;
 import com.google.gson.JsonObject;
@@ -148,13 +149,13 @@ final class UsageStatisticsLoader {
             agentIds.add(fallbackAgentId);
             agentDisplayNames.putIfAbsent(fallbackAgentId, agentDisplay);
 
-            Path jsonlPath = sessionsDir.toPath().resolve(session.id() + ".jsonl");
-            if (!Files.exists(jsonlPath)) {
-                LOG.debug("Statistics: JSONL file not found: " + jsonlPath);
+            List<Path> jsonlFiles = SessionFileRotation.listAllFiles(sessionsDir, session.id());
+            if (jsonlFiles.isEmpty()) {
+                LOG.debug("Statistics: no JSONL files found for session " + session.id());
                 continue;
             }
 
-            collectTurnStats(jsonlPath, fallbackAgentId, startDate, endDate,
+            collectTurnStats(jsonlFiles, fallbackAgentId, startDate, endDate,
                 accumulators);
         }
 
@@ -192,62 +193,70 @@ final class UsageStatisticsLoader {
         return result;
     }
 
-    private static void collectTurnStats(Path jsonlPath, String sessionAgentId,
+    /**
+     * Collects turn statistics from one or more JSONL files for a session.
+     * Preserves {@code lastSeenTimestamp} state across part file boundaries so that
+     * TurnStats entries without their own timestamp inherit the correct date.
+     */
+    private static void collectTurnStats(List<Path> jsonlFiles, String sessionAgentId,
                                          LocalDate startDate, LocalDate endDate,
                                          Map<DayAgentKey, Accumulator> accumulators) {
-        try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
-            String lastSeenTimestamp = null;
-            String line;
-            while ((line = reader.readLine()) != null) {
-                // Track timestamps from all entries for date attribution.
-                // TurnStats entries added before v2.5 lack their own timestamp, so we also
-                // track the most recent timestamp seen in any preceding entry as a fallback.
-                int tsIdx = line.indexOf("\"timestamp\":\"");
-                if (tsIdx >= 0) {
-                    int start = tsIdx + "\"timestamp\":\"".length();
-                    int end = line.indexOf('"', start);
-                    if (end > start) {
-                        String candidate = line.substring(start, end);
-                        if (!candidate.isEmpty()) {
-                            lastSeenTimestamp = candidate;
+        String lastSeenTimestamp = null;
+
+        for (Path jsonlPath : jsonlFiles) {
+            try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // Track timestamps from all entries for date attribution.
+                    // TurnStats entries added before v2.5 lack their own timestamp, so we also
+                    // track the most recent timestamp seen in any preceding entry as a fallback.
+                    int tsIdx = line.indexOf("\"timestamp\":\"");
+                    if (tsIdx >= 0) {
+                        int start = tsIdx + "\"timestamp\":\"".length();
+                        int end = line.indexOf('"', start);
+                        if (end > start) {
+                            String candidate = line.substring(start, end);
+                            if (!candidate.isEmpty()) {
+                                lastSeenTimestamp = candidate;
+                            }
                         }
                     }
-                }
 
-                // Agent attribution uses the session-level agent exclusively.
-                // Individual entry "agent" fields are ignored here because they can contain
-                // model names or sub-agent identifiers that would create phantom chart series.
+                    // Agent attribution uses the session-level agent exclusively.
+                    // Individual entry "agent" fields are ignored here because they can contain
+                    // model names or sub-agent identifiers that would create phantom chart series.
 
-                if (!line.contains("\"turnStats\"")) continue;
+                    if (!line.contains("\"turnStats\"")) continue;
 
-                try {
-                    JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
-                    EntryData entry = EntryDataJsonAdapter.deserialize(obj);
-                    if (!(entry instanceof EntryData.TurnStats stats)) continue;
+                    try {
+                        JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
+                        EntryData entry = EntryDataJsonAdapter.deserialize(obj);
+                        if (!(entry instanceof EntryData.TurnStats stats)) continue;
 
-                    LocalDate date = extractDate(obj, lastSeenTimestamp);
-                    if (date == null) {
-                        LOG.debug("Skipping TurnStats entry with no resolvable timestamp in " + jsonlPath.getFileName());
-                        continue;
+                        LocalDate date = extractDate(obj, lastSeenTimestamp);
+                        if (date == null) {
+                            LOG.debug("Skipping TurnStats entry with no resolvable timestamp in " + jsonlPath.getFileName());
+                            continue;
+                        }
+                        if (date.isBefore(startDate) || date.isAfter(endDate)) continue;
+
+                        DayAgentKey key = new DayAgentKey(date, sessionAgentId);
+                        Accumulator acc = accumulators.computeIfAbsent(key, k -> new Accumulator());
+                        acc.turns++;
+                        acc.inputTokens += stats.getInputTokens();
+                        acc.outputTokens += stats.getOutputTokens();
+                        acc.toolCalls += stats.getToolCallCount();
+                        acc.durationMs += stats.getDurationMs();
+                        acc.linesAdded += stats.getLinesAdded();
+                        acc.linesRemoved += stats.getLinesRemoved();
+                        acc.premiumRequests += parsePremiumMultiplier(stats.getMultiplier());
+                    } catch (Exception e) {
+                        LOG.debug("Skipping malformed JSONL line in " + jsonlPath.getFileName() + ": " + e.getMessage());
                     }
-                    if (date.isBefore(startDate) || date.isAfter(endDate)) continue;
-
-                    DayAgentKey key = new DayAgentKey(date, sessionAgentId);
-                    Accumulator acc = accumulators.computeIfAbsent(key, k -> new Accumulator());
-                    acc.turns++;
-                    acc.inputTokens += stats.getInputTokens();
-                    acc.outputTokens += stats.getOutputTokens();
-                    acc.toolCalls += stats.getToolCallCount();
-                    acc.durationMs += stats.getDurationMs();
-                    acc.linesAdded += stats.getLinesAdded();
-                    acc.linesRemoved += stats.getLinesRemoved();
-                    acc.premiumRequests += parsePremiumMultiplier(stats.getMultiplier());
-                } catch (Exception e) {
-                    LOG.debug("Skipping malformed JSONL line in " + jsonlPath.getFileName() + ": " + e.getMessage());
                 }
+            } catch (IOException e) {
+                LOG.warn("Failed to read session file: " + jsonlPath, e);
             }
-        } catch (IOException e) {
-            LOG.warn("Failed to read session file: " + jsonlPath, e);
         }
     }
 
