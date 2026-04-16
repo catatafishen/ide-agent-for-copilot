@@ -49,6 +49,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private var toolJustCompleted = false
     private var currentAgent = ""
     private var currentClientType = ""
+    private var currentProfileId = ""
     private val toolCallNames = mutableMapOf<String, String>() // domId → tool baseName
     private val toolCallEntries = mutableMapOf<String, EntryData.ToolCall>() // domId → entry
     private val toolRegistry = ToolRegistry.getInstance(project)
@@ -331,6 +332,7 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     override fun setCurrentAgent(agentName: String, profileId: String, clientType: String) {
         currentAgent = agentName
         currentClientType = clientType
+        currentProfileId = profileId
         val agentCss = ChatTheme.activeAgentCss(profileId)
         val isDark = com.intellij.ide.ui.LafManager.getInstance().currentUIThemeLookAndFeel.isDark
         val iconSvg = ChatTheme.getAgentIconSvg(profileId, isDark)
@@ -1281,44 +1283,77 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
     private fun buildCssVars(): String = ChatTheme.buildCssVars(McpServerSettings.getInstance(project))
 
     private fun updateThemeColors() {
-        val vars = buildCssVars().replace("'", "\\'")
-        executeJs("document.documentElement.style.cssText='$vars'")
+        var css = buildCssVars().replace("'", "\\'")
+        if (currentProfileId.isNotEmpty()) {
+            css += ChatTheme.activeAgentCss(currentProfileId).replace("'", "\\'")
+        }
+        executeJs("document.documentElement.style.cssText='$css'")
         val panelBg = JBUI.CurrentTheme.ToolWindow.background()
         browser?.setPageBackgroundColor("rgb(${panelBg.red},${panelBg.green},${panelBg.blue})")
     }
 
     /**
-     * Detects when the parent window moves to a different monitor by watching for
-     * [java.awt.GraphicsConfiguration] reference changes. On monitor switch:
+     * Detects when the panel moves to a different monitor (or the underlying display
+     * changes) by watching for [java.awt.GraphicsConfiguration] reference changes.
+     *
+     * Two listeners cover complementary scenarios:
+     * - **HierarchyBoundsListener**: fires when the IDE window is dragged between monitors.
+     * - **PropertyChangeListener on "graphicsConfiguration"**: fires when a display is
+     *   connected/disconnected (e.g. closing a MacBook lid), which may not produce
+     *   hierarchy bounds events.
+     *
+     * On monitor switch:
      * 1. Recalculates CSS font/color vars so sizes match the new display's DPI.
-     * 2. Notifies JCEF's OSR renderer via [org.cef.browser.CefBrowser.wasResized] to
-     *    recreate its backing surface — without this the browser freezes and JS updates
-     *    stop being painted, even though the JS engine is still running.
+     * 2. Calls [org.cef.browser.CefBrowser.notifyScreenInfoChanged] so CEF re-queries
+     *    the device scale factor from its render handler.
+     * 3. Once the component is showing at its final size, calls
+     *    [org.cef.browser.CefBrowser.wasResized] to recreate the OSR backing surface.
      */
     private fun setupMonitorChangeListener() {
         val b = browser ?: return
         var lastGc: java.awt.GraphicsConfiguration? = null
+
+        fun checkGc() {
+            val gc = b.component.graphicsConfiguration ?: return
+            if (gc !== lastGc) {
+                lastGc = gc
+                onMonitorChanged()
+            }
+        }
+
         b.component.addHierarchyBoundsListener(object : java.awt.event.HierarchyBoundsListener {
             override fun ancestorMoved(e: java.awt.event.HierarchyEvent?) = checkGc()
             override fun ancestorResized(e: java.awt.event.HierarchyEvent?) = checkGc()
-            private fun checkGc() {
-                val gc = b.component.graphicsConfiguration ?: return
-                if (gc !== lastGc) {
-                    lastGc = gc
-                    onMonitorChanged()
-                }
-            }
         })
+
+        b.component.addPropertyChangeListener("graphicsConfiguration") { checkGc() }
     }
 
     private fun onMonitorChanged() {
         updateThemeColors()
         val b = browser ?: return
         if (!browserReady) return
-        b.cefBrowser.wasResized(
-            b.component.width.coerceAtLeast(1),
-            b.component.height.coerceAtLeast(1)
-        )
+        b.cefBrowser.notifyScreenInfoChanged()
+        refreshOsrWhenStable(b, 0)
+    }
+
+    /**
+     * Waits until the browser component is showing at its final non-zero size, then
+     * forces JCEF's OSR renderer to recreate its backing surface. Retries up to 5 times
+     * with 100 ms delay — closing the MacBook lid can leave the component temporarily
+     * non-showing or 0×0 during the display transition.
+     */
+    private fun refreshOsrWhenStable(b: JBCefBrowser, attempt: Int) {
+        javax.swing.SwingUtilities.invokeLater {
+            val comp = b.component
+            if (comp.isShowing && comp.width > 0 && comp.height > 0) {
+                b.cefBrowser.wasResized(comp.width, comp.height)
+                b.cefBrowser.invalidate()
+            } else if (attempt < 5) {
+                javax.swing.Timer(100) { refreshOsrWhenStable(b, attempt + 1) }
+                    .apply { isRepeats = false; start() }
+            }
+        }
     }
 
     // ── Permission requests ────────────────────────────────────────
