@@ -9,7 +9,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -388,7 +387,7 @@ class AcpClientTest {
     @Nested
     class BuildPermissionOutcome {
 
-        private final AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
+        private final AcpClient client = new TestableAcpClient();
 
         @Test
         void normalOptionIdWithChosenOption() {
@@ -424,7 +423,7 @@ class AcpClientTest {
     @Nested
     class NormalizeSessionUpdateParams {
 
-        private final AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
+        private final AcpClient client = new TestableAcpClient();
 
         @Test
         void withUpdateWrapperUnwrapsInnerObject() {
@@ -468,7 +467,7 @@ class AcpClientTest {
     @Nested
     class GetStartupStepFromException {
 
-        private final AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
+        private final AcpClient client = new TestableAcpClient();
 
         @Test
         void launchMethod() throws Exception {
@@ -554,7 +553,7 @@ class AcpClientTest {
     @Nested
     class ParseToolCallArguments {
 
-        private final AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
+        private final AcpClient client = new TestableAcpClient();
 
         @Test
         void argumentsKeyWithJsonObjectReturnsIt() {
@@ -597,7 +596,7 @@ class AcpClientTest {
     @Nested
     class ExtractSubAgentType {
 
-        private final AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
+        private final AcpClient client = new TestableAcpClient();
 
         @Test
         void agentTypeInParams() {
@@ -966,8 +965,8 @@ class AcpClientTest {
 
         @Test
         void returnsNullWhenSessionAlreadyCreated() throws Exception {
-            AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
-            Mockito.doReturn(true).when(client).isHealthy();
+            TestableAcpClient client = new TestableAcpClient();
+            client.setHealthy(true);
             Field field = AcpClient.class.getDeclaredField("currentSessionId");
             field.setAccessible(true);
             field.set(client, "existing-session");
@@ -983,13 +982,68 @@ class AcpClientTest {
 
         @Test
         void persistsNullResumeIdWhenLoadSessionFails() {
-            AcpClient client = Mockito.mock(AcpClient.class, Mockito.CALLS_REAL_METHODS);
+            TestableAcpClient client = new TestableAcpClient();
             // Stub loadResumeSessionId so the resume path is entered (requestedResumeId != null).
             // loadSession() then throws (agent doesn't advertise the loadSession capability),
             // which drives execution into the catch block covering persistResumeSessionId(null).
-            Mockito.doReturn("stale-resume-id").when(client).loadResumeSessionId();
+            client.setResumeId("stale-resume-id");
 
             assertThrows(AgentSessionException.class, () -> client.createSession("/test/cwd"));
+        }
+    }
+
+    // ── TestableAcpClient — concrete stub replacing Mockito CALLS_REAL_METHODS ──
+
+    /**
+     * Minimal concrete AcpClient subclass for testing.
+     * JBR 25 restricts Mockito's CALLS_REAL_METHODS on abstract classes,
+     * so we use a concrete stub that provides empty implementations for
+     * all abstract methods and allows overriding specific behavior.
+     */
+    private static class TestableAcpClient extends AcpClient {
+        private boolean healthy;
+        private String resumeId;
+
+        TestableAcpClient() {
+            super(null);
+        }
+
+        void setHealthy(boolean healthy) {
+            this.healthy = healthy;
+        }
+
+        void setResumeId(String id) {
+            this.resumeId = id;
+        }
+
+        @Override
+        public String agentId() {
+            return "test";
+        }
+
+        @Override
+        public String displayName() {
+            return "Test";
+        }
+
+        @Override
+        public boolean isHealthy() {
+            return healthy;
+        }
+
+        @Override
+        protected boolean isMcpToolTitle(@org.jetbrains.annotations.NotNull String protocolTitle) {
+            return false;
+        }
+
+        @Override
+        protected List<String> buildCommand(String cwd, int mcpPort) {
+            return List.of();
+        }
+
+        @Override
+        String loadResumeSessionId() {
+            return resumeId;
         }
     }
 
