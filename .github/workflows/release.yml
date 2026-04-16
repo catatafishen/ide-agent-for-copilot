@@ -116,11 +116,43 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           mkdir -p build
+
+          # HTML changelog for plugin.xml: all changes since marketplace-latest
+          # (accumulates across releases until next marketplace publish)
           bash scripts/generate-changelog.sh > build/changelog.html
-          echo "### 📋 Generated Changelog" >> "$GITHUB_STEP_SUMMARY"
+
+          # Markdown: what changed in THIS release (since last v* tag)
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          CHANGELOG_BASELINE="${LATEST_TAG:-}" CHANGELOG_FORMAT=md \
+            bash scripts/generate-changelog.sh > build/this-release.md
+
+          # Markdown: accumulated changes since last marketplace publish
+          CHANGELOG_FORMAT=md \
+            bash scripts/generate-changelog.sh > build/since-marketplace.md
+
+          # Assemble GitHub release body with both sections
+          {
+            cat build/this-release.md
+            echo ""
+            # Only add the "since marketplace" section if the baselines differ
+            # (i.e., marketplace-latest is behind the latest v* tag)
+            if ! diff -q build/this-release.md build/since-marketplace.md >/dev/null 2>&1; then
+              echo "---"
+              echo ""
+              echo "<details><summary>📦 All changes since last Marketplace publish</summary>"
+              echo ""
+              cat build/since-marketplace.md
+              echo ""
+              echo "</details>"
+            fi
+          } > build/release-notes.md
+
+          echo "### 📋 Plugin Changelog (HTML for marketplace)" >> "$GITHUB_STEP_SUMMARY"
           echo '```html' >> "$GITHUB_STEP_SUMMARY"
           cat build/changelog.html >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📝 Release Notes (Markdown)" >> "$GITHUB_STEP_SUMMARY"
+          cat build/release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build release ZIPs
         if: steps.version.outputs.skip != 'true'
@@ -174,45 +206,6 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           ARTIFACTS_DIR: ${{ steps.artifacts.outputs.dir }}
         run: |
-          # Generate release notes from conventional commits
-          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
-          if [ -z "$LATEST_TAG" ]; then
-            COMMIT_BULLETS=$(git log --pretty=format:"- %s" HEAD)
-          else
-            COMMIT_BULLETS=$(git log --pretty=format:"- %s" "${LATEST_TAG}..HEAD")
-          fi
-
-          # Convert the generated changelog HTML to Markdown for the release body.
-          # Strip the static header (everything before the version <h3>) and convert
-          # <h3> → ##, <li> → bullet points, drop remaining tags.
-          CHANGELOG_MD=""
-          if [ -f build/changelog.html ]; then
-            CHANGELOG_MD=$(sed -n '/<h3>/,$ p' build/changelog.html \
-              | sed 's|<h3>\(.*\)</h3>|## \1|' \
-              | sed 's|^[[:space:]]*<li>\(.*\)</li>|- \1|' \
-              | sed 's|<ul>||g; s|</ul>||g' \
-              | sed 's|&mdash;|—|g' \
-              | sed '/^$/d')
-          fi
-
-          # Assemble release body: changelog first, then raw commit list.
-          # Written to a file to avoid YAML/shell quoting issues with --- separator.
-          {
-            if [ -n "$CHANGELOG_MD" ]; then
-              echo "$CHANGELOG_MD"
-              echo ""
-              echo "---"
-              echo ""
-              echo "<details><summary>Commits</summary>"
-              echo ""
-              echo "$COMMIT_BULLETS"
-              echo ""
-              echo "</details>"
-            else
-              echo "$COMMIT_BULLETS"
-            fi
-          } > build/release-notes.md
-
           # Create tag + release via GitHub API (no git credentials needed;
           # persist-credentials: false is set on checkout for security)
           gh release create "$TAG" \

@@ -1,42 +1,48 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# generate-changelog.sh — Generate plugin.xml <change-notes> HTML from git
-# commits, optionally summarised by an LLM.
-#
-# Changelog baseline:
-#   Uses the 'marketplace-latest' tag (updated by publish-marketplace.yml)
-#   to include all commits since the last JetBrains Marketplace publish.
-#   Falls back to the latest v* tag if no marketplace tag exists yet.
+# generate-changelog.sh — Generate release notes from git commits,
+# optionally summarised by an LLM.
 #
 # Usage:
 #   scripts/generate-changelog.sh [VERSION]
 #
 # Environment:
-#   PLUGIN_VERSION  — fallback if VERSION positional arg is omitted
-#   OPENAI_API_KEY  — if set, uses GPT-4o-mini to summarise commits
-#   CHANGELOG_MODEL — override the OpenAI model (default: gpt-4o-mini)
+#   PLUGIN_VERSION      — fallback if VERSION positional arg is omitted
+#   OPENAI_API_KEY      — if set, uses GPT-4o-mini to summarise commits
+#   CHANGELOG_MODEL     — override the OpenAI model (default: gpt-4o-mini)
+#   CHANGELOG_BASELINE  — override baseline tag (default: auto-detect)
+#   CHANGELOG_FORMAT    — output format: "html" (default) or "md"
 #
-# Output: HTML suitable for the <change-notes> element (stdout).
+# Baseline detection (when CHANGELOG_BASELINE is not set):
+#   1. 'marketplace-latest' tag — includes all commits since last marketplace
+#      publish (used for plugin.xml change-notes that accumulate changes)
+#   2. Falls back to latest v* tag if no marketplace tag exists
+#
+# Output: HTML (for plugin.xml <change-notes>) or Markdown (for GitHub
+#         release notes), written to stdout.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-# ── Version ────────────────────────────────────────────────────────────────
+# ── Configuration ──────────────────────────────────────────────────────────
 VERSION="${1:-${PLUGIN_VERSION:-}}"
 if [[ -z "$VERSION" ]]; then
   echo "Error: version required (pass as arg or set PLUGIN_VERSION)" >&2
   exit 1
 fi
 
-# ── Commits since last marketplace publish ─────────────────────────────────
-# Use the 'marketplace-latest' tag (set by publish-marketplace.yml after each
-# successful upload) so the changelog covers everything since the last version
-# that actually reached the JetBrains Marketplace — not just since the last
-# GitHub release.  Falls back to the latest v* tag if no marketplace tag exists.
-BASELINE_TAG=$(git tag --list 'marketplace-latest' | head -n1)
-if [[ -z "$BASELINE_TAG" ]]; then
-  BASELINE_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+FORMAT="${CHANGELOG_FORMAT:-html}"
+
+# ── Determine baseline tag ─────────────────────────────────────────────────
+if [[ -n "${CHANGELOG_BASELINE:-}" ]]; then
+  BASELINE_TAG="$CHANGELOG_BASELINE"
+else
+  BASELINE_TAG=$(git tag --list 'marketplace-latest' | head -n1)
+  if [[ -z "$BASELINE_TAG" ]]; then
+    BASELINE_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+  fi
 fi
 
+# ── Collect commit subjects ────────────────────────────────────────────────
 if [[ -z "$BASELINE_TAG" ]]; then
   COMMITS=$(git log --pretty=format:"%s" HEAD)
 else
@@ -48,7 +54,22 @@ if [[ -z "$COMMITS" ]]; then
   COMMITS="General improvements and bug fixes"
 fi
 
-# ── Static header (always shown above generated notes) ─────────────────────
+# Strip conventional-commit prefixes for cleaner LLM input and plain output.
+# "feat(scope): msg" → "msg", "fix!: msg" → "msg"
+strip_prefix() {
+  sed -E 's/^[a-z]+(\([^)]*\))?!?:[[:space:]]*//'
+}
+
+# Capitalise the first letter of each line.
+capitalise() {
+  while IFS= read -r line; do
+    echo "$(echo "${line:0:1}" | tr '[:lower:]' '[:upper:]')${line:1}"
+  done
+}
+
+CLEAN_COMMITS=$(echo "$COMMITS" | strip_prefix | capitalise)
+
+# ── Static header (HTML only, for plugin.xml) ──────────────────────────────
 STATIC_HEADER='<p><b>AgentBridge</b> connects AI coding agents to your IDE via 100+ MCP tools
 for code intelligence, navigation, editing, debugging, and git.</p>
 <p>
@@ -58,7 +79,8 @@ for code intelligence, navigation, editing, debugging, and git.</p>
 <hr/>'
 
 # ── LLM summarisation (optional) ──────────────────────────────────────────
-generate_with_llm() {
+# Returns JSON: { "title": "...", "bullets": ["...", ...] }
+call_llm() {
   local model="${CHANGELOG_MODEL:-gpt-4o-mini}"
   local prompt
   prompt=$(cat <<'SYSTEM'
@@ -75,7 +97,7 @@ Rules:
 SYSTEM
   )
 
-  local user_msg="Commits:\n${COMMITS}"
+  local user_msg="Commits:\n${CLEAN_COMMITS}"
 
   local payload
   payload=$(jq -n \
@@ -111,47 +133,76 @@ SYSTEM
 
   local title
   title=$(echo "$content" | jq -r '.title // empty')
-  local bullets_html
-  bullets_html=$(echo "$content" | jq -r '.bullets[]? // empty' | while IFS= read -r line; do
-    echo "    <li>${line}</li>"
-  done)
+  local bullets
+  bullets=$(echo "$content" | jq -r '.bullets[]? // empty')
 
-  if [[ -z "$title" || -z "$bullets_html" ]]; then
+  if [[ -z "$title" || -z "$bullets" ]]; then
     echo "LLM response missing title or bullets" >&2
     return 1
   fi
 
-  echo "<h3>${VERSION} &mdash; ${title}</h3>"
-  echo "<ul>"
-  echo "$bullets_html"
-  echo "</ul>"
+  # Return structured output: first line = title, rest = bullets
+  echo "$title"
+  echo "$bullets"
 }
 
-# ── Fallback: plain bullet list from commit subjects ───────────────────────
-generate_plain() {
-  echo "<h3>${VERSION}</h3>"
+# ── Format: HTML (for plugin.xml <change-notes>) ──────────────────────────
+format_html() {
+  local title="$1"
+  shift
+  local bullets=("$@")
+
+  if [[ -n "$title" ]]; then
+    echo "<h3>${VERSION} &mdash; ${title}</h3>"
+  else
+    echo "<h3>${VERSION}</h3>"
+  fi
   echo "<ul>"
-  echo "$COMMITS" | while IFS= read -r line; do
-    # Strip conventional-commit prefix: "feat(scope): msg" → "msg"
-    clean=$(echo "$line" | sed -E 's/^[a-z]+(\([^)]*\))?!?:[[:space:]]*//')
-    # Capitalise first letter
-    clean="$(echo "${clean:0:1}" | tr '[:lower:]' '[:upper:]')${clean:1}"
-    echo "    <li>${clean}</li>"
+  for bullet in "${bullets[@]}"; do
+    echo "    <li>${bullet}</li>"
   done
   echo "</ul>"
 }
 
-# ── Assemble output ───────────────────────────────────────────────────────
-changelog=""
+# ── Format: Markdown (for GitHub release notes) ───────────────────────────
+format_md() {
+  local title="$1"
+  shift
+  local bullets=("$@")
+
+  if [[ -n "$title" ]]; then
+    echo "## ${VERSION} — ${title}"
+  else
+    echo "## ${VERSION}"
+  fi
+  echo ""
+  for bullet in "${bullets[@]}"; do
+    echo "- ${bullet}"
+  done
+}
+
+# ── Generate content ──────────────────────────────────────────────────────
+LLM_TITLE=""
+LLM_BULLETS=()
+
 if [[ -n "${OPENAI_API_KEY:-}" ]] && command -v jq &>/dev/null; then
-  changelog=$(generate_with_llm) || true
+  llm_output=$(call_llm) || true
+  if [[ -n "$llm_output" ]]; then
+    LLM_TITLE=$(echo "$llm_output" | head -1)
+    mapfile -t LLM_BULLETS < <(echo "$llm_output" | tail -n +2)
+  fi
 fi
 
-if [[ -z "$changelog" ]]; then
-  changelog=$(generate_plain)
+# Fall back to cleaned commit subjects if LLM didn't produce output
+if [[ ${#LLM_BULLETS[@]} -eq 0 ]]; then
+  mapfile -t LLM_BULLETS < <(echo "$CLEAN_COMMITS")
 fi
 
-cat <<EOF
-${STATIC_HEADER}
-${changelog}
-EOF
+# ── Output ─────────────────────────────────────────────────────────────────
+if [[ "$FORMAT" == "md" ]]; then
+  format_md "$LLM_TITLE" "${LLM_BULLETS[@]}"
+else
+  echo "$STATIC_HEADER"
+  echo ""
+  format_html "$LLM_TITLE" "${LLM_BULLETS[@]}"
+fi
