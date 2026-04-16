@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.lang.reflect.Method;
 import java.nio.file.Path;
@@ -284,7 +283,9 @@ class CopilotClientTest {
     // ── Reflection helpers (instance methods via Mockito) ───────────────
 
     private static CopilotClient allocateClient() {
-        return Mockito.mock(CopilotClient.class, Mockito.CALLS_REAL_METHODS);
+        // JBR 25 restricts Mockito's CALLS_REAL_METHODS — construct directly.
+        // Constructor only stores the project; null is acceptable for the methods tested here.
+        return new CopilotClient(null);
     }
 
     private static String invokeResolveToolId(String title) throws Exception {

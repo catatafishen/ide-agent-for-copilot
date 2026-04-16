@@ -5,18 +5,26 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @DisplayName("AgentProcessRegistry")
 class AgentProcessRegistryTest {
 
-    /** Clear the static PROCESSES set between tests to avoid cross-test pollution. */
+    /**
+     * Clear the static PROCESSES set between tests to avoid cross-test pollution.
+     */
     @AfterEach
     void cleanup() throws Exception {
         getProcesses().clear();
@@ -41,8 +49,7 @@ class AgentProcessRegistryTest {
 
     @Test
     void registerAndKillAllKillsAliveProcess() throws Exception {
-        Process p = mock(Process.class);
-        when(p.isAlive()).thenReturn(true);
+        Process p = new TestProcess(true);
 
         AgentProcessRegistry.register(p);
 
@@ -54,7 +61,7 @@ class AgentProcessRegistryTest {
 
     @Test
     void unregisterRemovesProcessFromTracking() throws Exception {
-        Process p = mock(Process.class);
+        Process p = new TestProcess(true);
 
         AgentProcessRegistry.register(p);
         AgentProcessRegistry.unregister(p);
@@ -64,11 +71,8 @@ class AgentProcessRegistryTest {
 
     @Test
     void killAllWithMixedAliveAndDeadProcesses() throws Exception {
-        Process alive = mock(Process.class);
-        when(alive.isAlive()).thenReturn(true);
-
-        Process dead = mock(Process.class);
-        when(dead.isAlive()).thenReturn(false);
+        Process alive = new TestProcess(true);
+        Process dead = new TestProcess(false);
 
         AgentProcessRegistry.register(alive);
         AgentProcessRegistry.register(dead);
@@ -88,8 +92,7 @@ class AgentProcessRegistryTest {
 
     @Test
     void killAllAfterUnregisterDoesNotKillRemovedProcess() throws Exception {
-        Process p = mock(Process.class);
-        when(p.isAlive()).thenReturn(true);
+        Process p = new TestProcess(true);
 
         AgentProcessRegistry.register(p);
         AgentProcessRegistry.unregister(p);
@@ -102,14 +105,14 @@ class AgentProcessRegistryTest {
 
     @Test
     void killAllIsIdempotent() throws Exception {
-        Process p = mock(Process.class);
         // First call: alive → destroyed; second call: dead → skipped.
-        when(p.isAlive()).thenReturn(true).thenReturn(false);
+        TestProcess p = new TestProcess(true);
 
         AgentProcessRegistry.register(p);
 
         try (MockedStatic<AcpClient> acpMock = mockStatic(AcpClient.class)) {
             invokeKillAll();
+            p.setAlive(false);
             invokeKillAll();
             // Only one actual destroy because second call sees isAlive() == false
             acpMock.verify(() -> AcpClient.destroyProcessTree(p), times(1));
@@ -119,5 +122,58 @@ class AgentProcessRegistryTest {
     @Test
     void unregisterNullIsHandledGracefully() {
         assertDoesNotThrow(() -> AgentProcessRegistry.unregister(null));
+    }
+
+    // ── Test stub ───────────────────────────────────────────────────────
+
+    /**
+     * Concrete Process stub replacing {@code Mockito.mock(Process.class)} for JBR 25 compatibility.
+     * Mockito cannot bytecode-instrument JDK classes like {@link Process} on JBR 25.
+     */
+    private static final class TestProcess extends Process {
+        private volatile boolean alive;
+
+        TestProcess(boolean alive) {
+            this.alive = alive;
+        }
+
+        void setAlive(boolean alive) {
+            this.alive = alive;
+        }
+
+        @Override
+        public boolean isAlive() {
+            return alive;
+        }
+
+        @Override
+        public OutputStream getOutputStream() {
+            return OutputStream.nullOutputStream();
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return InputStream.nullInputStream();
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            return InputStream.nullInputStream();
+        }
+
+        @Override
+        public int waitFor() {
+            return 0;
+        }
+
+        @Override
+        public int exitValue() {
+            return alive ? -1 : 0;
+        }
+
+        @Override
+        public void destroy() {
+            alive = false;
+        }
     }
 }

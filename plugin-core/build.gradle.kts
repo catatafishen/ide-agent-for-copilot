@@ -548,10 +548,20 @@ tasks {
     }
 
     test {
-        // Allow Mockito to mock final classes under Java 21's module system
+        // Resolve the mockito-core JAR for use as a Java agent (required for JBR/JDK 25+
+        // since ByteBuddy/Mockito self-attachment is restricted on newer JVMs).
+        // See: https://github.com/mockito/mockito/issues/3754
+        val mockitoAgent = configurations.testRuntimeClasspath.get().resolvedConfiguration
+            .resolvedArtifacts
+            .firstOrNull { it.moduleVersion.id.group == "org.mockito" && it.moduleVersion.id.name == "mockito-core" }
+            ?.file
         jvmArgs(
+            // Allow Mockito to mock final classes under Java 21's module system
             "--add-opens", "java.base/java.lang=ALL-UNNAMED"
         )
+        if (mockitoAgent != null) {
+            jvmArgs("-javaagent:${mockitoAgent.absolutePath}")
+        }
     }
 
     runIde {
