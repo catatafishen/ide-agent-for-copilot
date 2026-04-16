@@ -80,6 +80,31 @@ configurations.all {
     resolutionStrategy.force("org.jetbrains:annotations:${providers.gradleProperty("annotationsVersion").get()}")
 }
 
+// Strip unused SQLite native libraries from sqlite-jdbc JAR.
+// sqlite-jdbc bundles 24 platform/arch combinations (~14 MB), but only 3 are needed:
+// - Linux x86_64
+// - macOS aarch64
+// - Windows x86_64
+// This task repacks the JAR keeping only these 3, saving ~10 MB.
+val stripSqliteNatives = tasks.register("stripSqliteNatives") {
+    group = "build"
+    description = "Strip unused native libraries from sqlite-jdbc JAR"
+
+    val sqliteJdbcConfig = configurations.runtimeClasspath.get()
+    val sqliteJar = sqliteJdbcConfig.find { it.name.startsWith("sqlite-jdbc-") }
+        ?: error("sqlite-jdbc not found in runtime classpath")
+
+    val buildDir = layout.buildDirectory.asFile.get()
+    val outputJar = File(buildDir, "libs/sqlite-jdbc-stripped.jar")
+
+    inputs.file(sqliteJar)
+    outputs.file(outputJar)
+
+    doLast {
+        SqliteJarStripper().strip(sqliteJar, outputJar)
+    }
+}
+
 // Copy MCP server JAR into plugin lib for bundling
 tasks.named("prepareSandbox") {
     dependsOn(project(":mcp-server").tasks.named("jar"))
