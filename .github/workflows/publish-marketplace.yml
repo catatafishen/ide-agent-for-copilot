@@ -106,11 +106,18 @@ jobs:
           PLUGIN_ZIP=$(ls release-artifacts/agentbridge-*.zip | head -1)
           echo "Plugin ZIP: $PLUGIN_ZIP"
 
-          # plugin.xml is inside the JAR inside the ZIP
-          INNER_JAR=$(unzip -l "$PLUGIN_ZIP" | grep '\.jar$' | awk '{print $NF}' | head -1)
-          if [[ -n "$INNER_JAR" ]]; then
-            unzip -o -q "$PLUGIN_ZIP" "$INNER_JAR" -d /tmp/plugin-extract
-            CHANGE_NOTES=$(unzip -p "/tmp/plugin-extract/$INNER_JAR" META-INF/plugin.xml \
+          # plugin.xml is inside the main plugin JAR inside the ZIP.
+          # Extract all JARs, then find the one that contains META-INF/plugin.xml
+          # (the first JAR alphabetically is a dependency, not the plugin JAR).
+          rm -rf /tmp/plugin-extract
+          unzip -o -q "$PLUGIN_ZIP" '*.jar' -d /tmp/plugin-extract
+          PLUGIN_JAR=$(find /tmp/plugin-extract -name '*.jar' -exec \
+            sh -c 'unzip -l "$1" META-INF/plugin.xml >/dev/null 2>&1 && echo "$1"' _ {} \; \
+            | head -1)
+          echo "Plugin JAR: ${PLUGIN_JAR:-<not found>}"
+
+          if [[ -n "$PLUGIN_JAR" ]]; then
+            CHANGE_NOTES=$(unzip -p "$PLUGIN_JAR" META-INF/plugin.xml \
               | sed -n '/<change-notes>/,/<\/change-notes>/p' \
               | sed 's/<change-notes><!\[CDATA\[//;s/\]\]><\/change-notes>//' \
               | sed '/^$/d')

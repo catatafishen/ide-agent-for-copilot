@@ -300,16 +300,16 @@ agentbridge/
 
 ## Documentation
 
-| Document                                         | Description                                           |
-|--------------------------------------------------|-------------------------------------------------------|
-| [QUICK-START.md](QUICK-START.md)                 | Fast setup instructions                               |
-| [FEATURES.md](FEATURES.md)                       | Complete MCP tool reference                           |
-| [DEVELOPMENT.md](DEVELOPMENT.md)                 | Build, deploy, architecture, extending for new agents |
-| [INSTALLATION.md](INSTALLATION.md)               | Detailed installation for all platforms               |
-| [TESTING.md](TESTING.md)                         | Test running and coverage                             |
-| [RELEASE_NOTES.md](RELEASE_NOTES.md)             | Current release details                               |
-| [docs/SESSION-RESUME.md](docs/SESSION-RESUME.md) | Cross-client session migration                        |
-| [docs/PERMISSIONS.md](docs/PERMISSIONS.md)       | Per-agent tool permission architecture                |
+| Document                                                         | Description                                           |
+|------------------------------------------------------------------|-------------------------------------------------------|
+| [QUICK-START.md](QUICK-START.md)                                 | Fast setup instructions                               |
+| [FEATURES.md](FEATURES.md)                                       | Complete MCP tool reference                           |
+| [DEVELOPMENT.md](DEVELOPMENT.md)                                 | Build, deploy, architecture, extending for new agents |
+| [INSTALLATION.md](INSTALLATION.md)                               | Detailed installation for all platforms               |
+| [TESTING.md](TESTING.md)                                         | Test running and coverage                             |
+| [Releases](https://github.com/catatafishen/agentbridge/releases) | Per-version changelog and downloads                   |
+| [docs/SESSION-RESUME.md](docs/SESSION-RESUME.md)                 | Cross-client session migration                        |
+| [docs/PERMISSIONS.md](docs/PERMISSIONS.md)                       | Per-agent tool permission architecture                |
 
 ## Contributing
 
