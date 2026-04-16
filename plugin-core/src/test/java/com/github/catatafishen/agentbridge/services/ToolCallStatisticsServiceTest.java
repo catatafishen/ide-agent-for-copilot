@@ -3,6 +3,7 @@ package com.github.catatafishen.agentbridge.services;
 import com.intellij.openapi.project.Project;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
@@ -12,9 +13,11 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -356,5 +359,157 @@ class ToolCallStatisticsServiceTest {
 
         ToolCallStatisticsService svc = new ToolCallStatisticsService(mockProject);
         assertThrows(IllegalStateException.class, svc::initialize);
+    }
+
+    // --- Turn stats tests ---
+
+    private static ToolCallStatisticsService.TurnStatsRecord turnRecord(
+        String sessionId, String agentId, String date,
+        long inputTokens, long outputTokens, int toolCalls,
+        long durationMs, int linesAdded, int linesRemoved,
+        double premiumRequests, String timestamp) {
+        return new ToolCallStatisticsService.TurnStatsRecord(
+            sessionId, agentId, date, inputTokens, outputTokens, toolCalls,
+            durationMs, linesAdded, linesRemoved, premiumRequests, timestamp);
+    }
+
+    @Test
+    @DisplayName("recordTurnStats inserts and getTurnStatsCount returns correct count")
+    void recordTurnStatsInsertsCorrectly() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z"));
+
+        assertEquals(1, service.getTurnStatsCount());
+    }
+
+    @Test
+    @DisplayName("hasTurnStatsAt detects existing record by timestamp")
+    void hasTurnStatsAtFindsExisting() {
+        String ts = "2025-01-15T10:00:00Z";
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            100, 200, 3, 5000, 10, 2, 1.0, ts));
+
+        assertTrue(service.hasTurnStatsAt(ts));
+        assertFalse(service.hasTurnStatsAt("2025-01-15T11:00:00Z"));
+    }
+
+    @Test
+    @DisplayName("queryDailyTurnStats aggregates multiple turns for same date/agent")
+    void queryDailyTurnStatsAggregates() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z"));
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            150, 300, 5, 7000, 20, 5, 0.5, "2025-01-15T10:05:00Z"));
+
+        var results = service.queryDailyTurnStats("2025-01-15", "2025-01-15");
+        assertEquals(1, results.size());
+
+        var agg = results.getFirst();
+        assertEquals(LocalDate.of(2025, 1, 15), agg.date());
+        assertEquals("copilot", agg.agentId());
+        assertEquals(2, agg.turns());
+        assertEquals(250, agg.inputTokens());
+        assertEquals(500, agg.outputTokens());
+        assertEquals(8, agg.toolCalls());
+        assertEquals(12000, agg.durationMs());
+        assertEquals(30, agg.linesAdded());
+        assertEquals(7, agg.linesRemoved());
+        assertEquals(1.5, agg.premiumRequests(), 0.001);
+    }
+
+    @Test
+    @DisplayName("queryDailyTurnStats separates different agents on same day")
+    void queryDailyTurnStatsSeparatesAgents() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z"));
+        service.recordTurnStats(turnRecord("s2", "claude-cli", "2025-01-15",
+            50, 100, 1, 3000, 5, 1, 0.5, "2025-01-15T10:01:00Z"));
+
+        var results = service.queryDailyTurnStats("2025-01-15", "2025-01-15");
+        assertEquals(2, results.size());
+        assertEquals("claude-cli", results.get(0).agentId());
+        assertEquals("copilot", results.get(1).agentId());
+    }
+
+    @Test
+    @DisplayName("queryDailyTurnStats filters by date range")
+    void queryDailyTurnStatsDateFilter() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-14",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-14T10:00:00Z"));
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            50, 100, 1, 3000, 5, 1, 1.0, "2025-01-15T10:00:00Z"));
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-16",
+            75, 150, 2, 4000, 8, 3, 1.0, "2025-01-16T10:00:00Z"));
+
+        var results = service.queryDailyTurnStats("2025-01-15", "2025-01-16");
+        assertEquals(2, results.size());
+        assertEquals(LocalDate.of(2025, 1, 15), results.get(0).date());
+        assertEquals(LocalDate.of(2025, 1, 16), results.get(1).date());
+    }
+
+    @Test
+    @DisplayName("getDistinctTurnAgents returns all unique agent IDs")
+    void getDistinctTurnAgentsReturnsAll() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z"));
+        service.recordTurnStats(turnRecord("s2", "claude-cli", "2025-01-15",
+            50, 100, 1, 3000, 5, 1, 1.0, "2025-01-15T10:01:00Z"));
+        service.recordTurnStats(turnRecord("s3", "copilot", "2025-01-16",
+            75, 150, 2, 4000, 8, 3, 1.0, "2025-01-16T10:00:00Z"));
+
+        var agents = service.getDistinctTurnAgents();
+        assertEquals(2, agents.size());
+        assertTrue(agents.contains("copilot"));
+        assertTrue(agents.contains("claude-cli"));
+    }
+
+    @Test
+    @DisplayName("getEarliestTurnDate returns the earliest date")
+    void getEarliestTurnDateReturnsMin() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-16",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-16T10:00:00Z"));
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-14",
+            50, 100, 1, 3000, 5, 1, 1.0, "2025-01-14T10:00:00Z"));
+
+        assertEquals(LocalDate.of(2025, 1, 14), service.getEarliestTurnDate());
+    }
+
+    @Test
+    @DisplayName("getEarliestTurnDate returns null when table is empty")
+    void getEarliestTurnDateNullWhenEmpty() {
+        assertNull(service.getEarliestTurnDate());
+    }
+
+    @Test
+    @DisplayName("queryDailyTurnStats returns empty for no matching range")
+    void queryDailyTurnStatsEmptyRange() {
+        service.recordTurnStats(turnRecord("s1", "copilot", "2025-01-15",
+            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z"));
+
+        var results = service.queryDailyTurnStats("2025-02-01", "2025-02-28");
+        assertTrue(results.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getTurnStatsCount with null connection returns 0")
+    void getTurnStatsCountNullConnectionReturnsZero() {
+        ToolCallStatisticsService nullService = new ToolCallStatisticsService();
+        assertEquals(0, nullService.getTurnStatsCount());
+    }
+
+    @Test
+    @DisplayName("hasTurnStatsAt with null connection returns false")
+    void hasTurnStatsAtNullConnectionReturnsFalse() {
+        ToolCallStatisticsService nullService = new ToolCallStatisticsService();
+        assertFalse(nullService.hasTurnStatsAt("2025-01-15T10:00:00Z"));
+    }
+
+    @Test
+    @DisplayName("recordTurnStats with null connection does not throw")
+    void recordTurnStatsNullConnectionDoesNotThrow() {
+        ToolCallStatisticsService nullService = new ToolCallStatisticsService();
+        assertDoesNotThrow(() -> nullService.recordTurnStats(
+            turnRecord("s1", "copilot", "2025-01-15",
+                100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z")));
     }
 }

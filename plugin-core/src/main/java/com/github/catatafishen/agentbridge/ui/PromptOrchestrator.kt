@@ -11,6 +11,7 @@ import com.github.catatafishen.agentbridge.psi.PsiBridgeService
 import com.github.catatafishen.agentbridge.services.ActiveAgentManager
 import com.github.catatafishen.agentbridge.services.AgentScratchTracker
 import com.github.catatafishen.agentbridge.services.AgentTabTracker
+import com.github.catatafishen.agentbridge.services.ToolCallStatisticsService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -440,6 +441,11 @@ class PromptOrchestrator(
             turnToolCallCount, codeChanges[0], codeChanges[1], turnModelId, turnMultiplier
         )
 
+        recordTurnStatsToSqlite(
+            turnDuration, turnInputTokens, turnOutputTokens,
+            turnToolCallCount, codeChanges[0], codeChanges[1], turnMultiplier
+        )
+
         val nextMsg = PsiBridgeService.getInstance(project).nextQueuedMessage
         if (nextMsg != null) {
             ApplicationManager.getApplication().invokeLater {
@@ -783,6 +789,39 @@ class PromptOrchestrator(
                 }
             }
         }
+    }
+
+    private fun recordTurnStatsToSqlite(
+        durationMs: Long, inputTokens: Int, outputTokens: Int,
+        toolCallCount: Int, linesAdded: Int, linesRemoved: Int, multiplier: String
+    ) {
+        val sessionId = currentSessionId ?: return
+        val agentId = agentManager.activeProfileId
+        val premiumRequests = parsePremiumMultiplier(multiplier)
+        val now = java.time.Instant.now()
+        val date = java.time.LocalDate.now().toString()
+        val timestamp = now.toString()
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val service = ToolCallStatisticsService.getInstance(project)
+                service.recordTurnStats(
+                    ToolCallStatisticsService.TurnStatsRecord(
+                        sessionId, agentId, date,
+                        inputTokens.toLong(), outputTokens.toLong(), toolCallCount,
+                        durationMs, linesAdded, linesRemoved, premiumRequests, timestamp
+                    )
+                )
+            } catch (e: Exception) {
+                log.warn("Failed to record turn stats to SQLite", e)
+            }
+        }
+    }
+
+    private fun parsePremiumMultiplier(multiplier: String): Double {
+        if (multiplier.isEmpty()) return 1.0
+        val cleaned = if (multiplier.endsWith("x")) multiplier.dropLast(1) else multiplier
+        return cleaned.toDoubleOrNull() ?: 1.0
     }
 
     private fun getModelMultiplier(modelId: String): String? =

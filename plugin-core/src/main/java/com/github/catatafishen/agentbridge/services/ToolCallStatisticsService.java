@@ -19,10 +19,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Project-level service that records every MCP tool call in a SQLite database
@@ -122,6 +125,27 @@ public final class ToolCallStatisticsService implements Disposable {
                 "CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name)");
             // Migration: add error_message column to existing databases
             migrateAddErrorMessageColumn(stmt);
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS turn_stats (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id       TEXT    NOT NULL,
+                    agent_id         TEXT    NOT NULL,
+                    date             TEXT    NOT NULL,
+                    input_tokens     INTEGER NOT NULL DEFAULT 0,
+                    output_tokens    INTEGER NOT NULL DEFAULT 0,
+                    tool_calls       INTEGER NOT NULL DEFAULT 0,
+                    duration_ms      INTEGER NOT NULL DEFAULT 0,
+                    lines_added      INTEGER NOT NULL DEFAULT 0,
+                    lines_removed    INTEGER NOT NULL DEFAULT 0,
+                    premium_requests REAL    NOT NULL DEFAULT 1.0,
+                    timestamp        TEXT    NOT NULL
+                )
+                """);
+            stmt.execute(
+                "CREATE INDEX IF NOT EXISTS idx_turn_stats_date ON turn_stats(date)");
+            stmt.execute(
+                "CREATE INDEX IF NOT EXISTS idx_turn_stats_session ON turn_stats(session_id)");
         }
     }
 
@@ -431,6 +455,212 @@ public final class ToolCallStatisticsService implements Disposable {
     }
 
     /**
+     * Records per-turn statistics for the usage charts.
+     *
+     * @param record the turn statistics to store
+     */
+    public synchronized void recordTurnStats(@NotNull TurnStatsRecord record) {
+        if (connection == null) return;
+        String sql = """
+            INSERT INTO turn_stats (session_id, agent_id, date, input_tokens, output_tokens,
+                                    tool_calls, duration_ms, lines_added, lines_removed,
+                                    premium_requests, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, record.sessionId());
+            stmt.setString(2, record.agentId());
+            stmt.setString(3, record.date());
+            stmt.setLong(4, record.inputTokens());
+            stmt.setLong(5, record.outputTokens());
+            stmt.setInt(6, record.toolCalls());
+            stmt.setLong(7, record.durationMs());
+            stmt.setInt(8, record.linesAdded());
+            stmt.setInt(9, record.linesRemoved());
+            stmt.setDouble(10, record.premiumRequests());
+            stmt.setString(11, record.timestamp());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            if (isDbMoved(e) && tryReconnect()) {
+                try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+                    stmt.setString(1, record.sessionId());
+                    stmt.setString(2, record.agentId());
+                    stmt.setString(3, record.date());
+                    stmt.setLong(4, record.inputTokens());
+                    stmt.setLong(5, record.outputTokens());
+                    stmt.setInt(6, record.toolCalls());
+                    stmt.setLong(7, record.durationMs());
+                    stmt.setInt(8, record.linesAdded());
+                    stmt.setInt(9, record.linesRemoved());
+                    stmt.setDouble(10, record.premiumRequests());
+                    stmt.setString(11, record.timestamp());
+                    stmt.executeUpdate();
+                } catch (SQLException retryEx) {
+                    LOG.warn("Failed to record turn stats after reconnect", retryEx);
+                }
+            } else {
+                LOG.warn("Failed to record turn stats", e);
+            }
+        }
+    }
+
+    /**
+     * Checks whether a turn stats record already exists at the given timestamp.
+     * Used by {@link TurnStatisticsBackfill} for deduplication.
+     */
+    public synchronized boolean hasTurnStatsAt(@NotNull String timestamp) {
+        if (connection == null) return false;
+        try (PreparedStatement stmt = connection.prepareStatement(
+            "SELECT 1 FROM turn_stats WHERE timestamp = ? LIMIT 1")) {
+            stmt.setString(1, timestamp);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            LOG.warn("Failed to check for existing turn stats", e);
+            return false;
+        }
+    }
+
+    /**
+     * Returns the total number of turn stats records in the database.
+     * Used to determine whether a backfill is needed.
+     */
+    public synchronized int getTurnStatsCount() {
+        if (connection == null) return 0;
+        try (PreparedStatement stmt = connection.prepareStatement("SELECT COUNT(*) FROM turn_stats");
+             ResultSet rs = stmt.executeQuery()) {
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            LOG.warn("Failed to count turn stats", e);
+            return 0;
+        }
+    }
+
+    /**
+     * Queries daily per-agent turn statistics aggregated by date and agent_id.
+     * Returns one row per (date, agentId) bucket within the specified date range.
+     *
+     * @param startDate inclusive start date (YYYY-MM-DD)
+     * @param endDate   inclusive end date (YYYY-MM-DD)
+     * @return aggregated daily stats sorted by date then agent_id
+     */
+    public synchronized List<DailyTurnAggregate> queryDailyTurnStats(
+        @NotNull String startDate, @NotNull String endDate) {
+        if (connection == null) return List.of();
+        String sql = """
+            SELECT date, agent_id,
+                   COUNT(*)          AS turns,
+                   SUM(input_tokens)     AS input_tokens,
+                   SUM(output_tokens)    AS output_tokens,
+                   SUM(tool_calls)       AS tool_calls,
+                   SUM(duration_ms)      AS duration_ms,
+                   SUM(lines_added)      AS lines_added,
+                   SUM(lines_removed)    AS lines_removed,
+                   SUM(premium_requests) AS premium_requests
+            FROM turn_stats
+            WHERE date BETWEEN ? AND ?
+            GROUP BY date, agent_id
+            ORDER BY date, agent_id
+            """;
+        List<DailyTurnAggregate> results = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, startDate);
+            stmt.setString(2, endDate);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    results.add(new DailyTurnAggregate(
+                        LocalDate.parse(rs.getString("date")),
+                        rs.getString("agent_id"),
+                        rs.getInt("turns"),
+                        rs.getLong("input_tokens"),
+                        rs.getLong("output_tokens"),
+                        rs.getInt("tool_calls"),
+                        rs.getLong("duration_ms"),
+                        rs.getInt("lines_added"),
+                        rs.getInt("lines_removed"),
+                        rs.getDouble("premium_requests")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            LOG.warn("Failed to query daily turn stats", e);
+        }
+        return results;
+    }
+
+    /**
+     * Returns all distinct agent IDs that have turn statistics, along with
+     * their display names from the sessions index.
+     */
+    public synchronized Set<String> getDistinctTurnAgents() {
+        if (connection == null) return Set.of();
+        Set<String> agents = new LinkedHashSet<>();
+        try (ResultSet rs = connection.createStatement()
+            .executeQuery("SELECT DISTINCT agent_id FROM turn_stats ORDER BY agent_id")) {
+            while (rs.next()) {
+                agents.add(rs.getString("agent_id"));
+            }
+        } catch (SQLException e) {
+            LOG.warn("Failed to query distinct turn agents", e);
+        }
+        return agents;
+    }
+
+    /**
+     * Returns the earliest date in the turn_stats table, or null if empty.
+     */
+    @Nullable
+    public synchronized LocalDate getEarliestTurnDate() {
+        if (connection == null) return null;
+        try (ResultSet rs = connection.createStatement()
+            .executeQuery("SELECT MIN(date) AS min_date FROM turn_stats")) {
+            if (rs.next()) {
+                String minDate = rs.getString("min_date");
+                if (minDate != null) return LocalDate.parse(minDate);
+            }
+        } catch (SQLException e) {
+            LOG.warn("Failed to query earliest turn date", e);
+        }
+        return null;
+    }
+
+    /**
+     * Aggregated daily turn statistics for a single (date, agent) bucket.
+     */
+    public record DailyTurnAggregate(
+        @NotNull LocalDate date,
+        @NotNull String agentId,
+        int turns,
+        long inputTokens,
+        long outputTokens,
+        int toolCalls,
+        long durationMs,
+        int linesAdded,
+        int linesRemoved,
+        double premiumRequests
+    ) {
+    }
+
+    /**
+     * A single turn stats record for insertion.
+     */
+    public record TurnStatsRecord(
+        @NotNull String sessionId,
+        @NotNull String agentId,
+        @NotNull String date,
+        long inputTokens,
+        long outputTokens,
+        int toolCalls,
+        long durationMs,
+        int linesAdded,
+        int linesRemoved,
+        double premiumRequests,
+        @NotNull String timestamp
+    ) {
+    }
+
+    /**
      * Threshold below which the database is considered empty enough to warrant backfill.
      * If the DB has fewer records than this, session JSONL files are scanned.
      */
@@ -441,17 +671,31 @@ public final class ToolCallStatisticsService implements Disposable {
         String basePath = project.getBasePath();
         if (basePath == null) return;
 
-        if (service.getRecordCount() >= BACKFILL_THRESHOLD) return;
-
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            try {
-                ToolCallStatisticsBackfill.BackfillResult result =
-                    ToolCallStatisticsBackfill.backfill(service, basePath);
-                if (result.inserted() > 0) {
-                    LOG.info("Tool statistics backfill: " + result);
+            // Tool calls backfill
+            if (service.getRecordCount() < BACKFILL_THRESHOLD) {
+                try {
+                    ToolCallStatisticsBackfill.BackfillResult result =
+                        ToolCallStatisticsBackfill.backfill(service, basePath);
+                    if (result.inserted() > 0) {
+                        LOG.info("Tool statistics backfill: " + result);
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Tool statistics backfill failed", e);
                 }
-            } catch (Exception e) {
-                LOG.warn("Tool statistics backfill failed", e);
+            }
+
+            // Turn stats backfill
+            if (service.getTurnStatsCount() < BACKFILL_THRESHOLD) {
+                try {
+                    TurnStatisticsBackfill.BackfillResult result =
+                        TurnStatisticsBackfill.backfill(service, basePath);
+                    if (result.inserted() > 0) {
+                        LOG.info("Turn statistics backfill: " + result);
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Turn statistics backfill failed", e);
+                }
             }
         });
     }
