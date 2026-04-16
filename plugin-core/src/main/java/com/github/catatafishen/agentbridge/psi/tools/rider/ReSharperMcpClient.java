@@ -112,15 +112,22 @@ public final class ReSharperMcpClient {
         conn.setReadTimeout(TIMEOUT_MS);
         conn.setDoOutput(true);
 
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(body.getBytes(StandardCharsets.UTF_8));
-        }
+        try {
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
 
-        int status = conn.getResponseCode();
-        InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-        if (stream == null) return "{}";
-        try (stream) {
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            int status = conn.getResponseCode();
+            if (status >= 400) {
+                throw new IOException("HTTP " + status);
+            }
+            InputStream stream = conn.getInputStream();
+            if (stream == null) return "{}";
+            try (stream) {
+                return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } finally {
+            conn.disconnect();
         }
     }
 

@@ -20,6 +20,7 @@ import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -80,10 +81,11 @@ public final class PsiBridgeService implements Disposable {
     );
 
     /**
-     * Returns the IDs of tools that are disabled in Rider without resharper-mcp.
+     * Returns the IDs of tools that are disabled in Rider without resharper-mcp,
+     * sorted alphabetically for consistent display order.
      */
-    public static Set<String> getRiderDisabledToolIds() {
-        return RIDER_DISABLED_TOOLS;
+    public static List<String> getRiderDisabledToolIds() {
+        return RIDER_DISABLED_TOOLS.stream().sorted().toList();
     }
 
     private final Map<String, ReentrantLock> toolLocks = new ConcurrentHashMap<>();

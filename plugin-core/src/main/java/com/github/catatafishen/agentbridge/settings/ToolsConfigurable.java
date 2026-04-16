@@ -4,6 +4,7 @@ import com.github.catatafishen.agentbridge.services.ToolDefinition;
 import com.github.catatafishen.agentbridge.services.ToolRegistry;
 import com.github.catatafishen.agentbridge.ui.ThemeColor;
 import com.github.catatafishen.agentbridge.ui.ToolKindColors;
+import com.intellij.ide.BrowserUtil;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.TitledSeparator;
@@ -18,12 +19,14 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import javax.swing.event.HyperlinkEvent;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Settings page: Settings → Tools → AgentBridge → MCP → Tools.
@@ -81,11 +84,37 @@ public final class ToolsConfigurable implements Configurable {
         toolsPanel.add(limitHint);
 
         // In Rider, some tools are unavailable because they depend on IntelliJ PSI not present
-        // in Rider's JVM frontend. If resharper-mcp is not installed, show an info note.
+        // in Rider's JVM frontend. Probe for resharper-mcp in background to avoid blocking the EDT.
         boolean isRider = com.github.catatafishen.agentbridge.psi.PlatformApiCompat.isPluginInstalled(
             "com.intellij.modules.rider");
-        if (isRider && !com.github.catatafishen.agentbridge.psi.tools.rider.ReSharperMcpClient.isAvailable()) {
-            toolsPanel.add(buildRiderInfoPanel());
+        if (isRider) {
+            JBPanel<?> riderInfoContainer = new JBPanel<>();
+            riderInfoContainer.setLayout(new BoxLayout(riderInfoContainer, BoxLayout.Y_AXIS));
+            riderInfoContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
+            toolsPanel.add(riderInfoContainer);
+            new SwingWorker<Boolean, Void>() {
+                @Override
+                protected Boolean doInBackground() {
+                    return com.github.catatafishen.agentbridge.psi.tools.rider.ReSharperMcpClient.isAvailable();
+                }
+
+                @Override
+                protected void done() {
+                    boolean available = false;
+                    try {
+                        available = get();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } catch (ExecutionException e) {
+                        // probe failed; treat as unavailable and show the banner
+                    }
+                    if (!available) {
+                        riderInfoContainer.add(buildRiderInfoPanel());
+                        riderInfoContainer.revalidate();
+                        riderInfoContainer.repaint();
+                    }
+                }
+            }.execute();
         }
 
         // Global enable/disable row — max height pinned to prevent vertical stretch
@@ -389,14 +418,23 @@ public final class ToolsConfigurable implements Configurable {
     private static JComponent buildRiderInfoPanel() {
         String disabledList = String.join(", ",
             com.github.catatafishen.agentbridge.psi.PsiBridgeService.getRiderDisabledToolIds());
-        JBLabel label = new JBLabel(
-            "<html><b>⚠ Rider:</b> The following tools are unavailable in Rider without the "
+        JEditorPane pane = new JEditorPane(
+            "text/html",
+            "<html><body><b>⚠ Rider:</b> The following tools are unavailable in Rider without the "
                 + "<a href='https://github.com/joshua-light/resharper-mcp'>resharper-mcp</a> "
-                + "companion plugin: <br><i>" + disabledList + "</i></html>");
-        label.setForeground(UIUtil.getContextHelpForeground());
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        label.setBorder(JBUI.Borders.empty(4, 0, 8, 0));
-        label.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
-        return label;
+                + "companion plugin: <br><i>" + disabledList + "</i></body></html>"
+        );
+        pane.setEditable(false);
+        pane.setOpaque(false);
+        pane.setForeground(UIUtil.getContextHelpForeground());
+        pane.setAlignmentX(Component.LEFT_ALIGNMENT);
+        pane.setBorder(JBUI.Borders.empty(4, 0, 8, 0));
+        pane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        pane.addHyperlinkListener(e -> {
+            if (HyperlinkEvent.EventType.ACTIVATED.equals(e.getEventType()) && e.getURL() != null) {
+                BrowserUtil.browse(e.getURL().toExternalForm());
+            }
+        });
+        return pane;
     }
 }
