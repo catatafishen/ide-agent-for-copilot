@@ -470,9 +470,9 @@ public final class ToolCallStatisticsService implements Disposable {
     /**
      * Records per-turn statistics for the usage charts.
      *
-     * @param record the turn statistics to store
+     * @param statsRecord the turn statistics to store
      */
-    public synchronized void recordTurnStats(@NotNull TurnStatsRecord record) {
+    public synchronized void recordTurnStats(@NotNull TurnStatsRecord statsRecord) {
         if (connection == null) return;
         String sql = """
             INSERT INTO turn_stats (session_id, agent_id, date, input_tokens, output_tokens,
@@ -481,34 +481,34 @@ public final class ToolCallStatisticsService implements Disposable {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, record.sessionId());
-            stmt.setString(2, record.agentId());
-            stmt.setString(3, record.date());
-            stmt.setLong(4, record.inputTokens());
-            stmt.setLong(5, record.outputTokens());
-            stmt.setInt(6, record.toolCalls());
-            stmt.setLong(7, record.durationMs());
-            stmt.setInt(8, record.linesAdded());
-            stmt.setInt(9, record.linesRemoved());
-            stmt.setDouble(10, record.premiumRequests());
-            stmt.setString(11, record.timestamp());
-            stmt.setString(12, record.commitHashes());
+            stmt.setString(1, statsRecord.sessionId());
+            stmt.setString(2, statsRecord.agentId());
+            stmt.setString(3, statsRecord.date());
+            stmt.setLong(4, statsRecord.inputTokens());
+            stmt.setLong(5, statsRecord.outputTokens());
+            stmt.setInt(6, statsRecord.toolCalls());
+            stmt.setLong(7, statsRecord.durationMs());
+            stmt.setInt(8, statsRecord.linesAdded());
+            stmt.setInt(9, statsRecord.linesRemoved());
+            stmt.setDouble(10, statsRecord.premiumRequests());
+            stmt.setString(11, statsRecord.timestamp());
+            stmt.setString(12, statsRecord.commitHashes());
             stmt.executeUpdate();
         } catch (SQLException e) {
             if (isDbMoved(e) && tryReconnect()) {
                 try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-                    stmt.setString(1, record.sessionId());
-                    stmt.setString(2, record.agentId());
-                    stmt.setString(3, record.date());
-                    stmt.setLong(4, record.inputTokens());
-                    stmt.setLong(5, record.outputTokens());
-                    stmt.setInt(6, record.toolCalls());
-                    stmt.setLong(7, record.durationMs());
-                    stmt.setInt(8, record.linesAdded());
-                    stmt.setInt(9, record.linesRemoved());
-                    stmt.setDouble(10, record.premiumRequests());
-                    stmt.setString(11, record.timestamp());
-                    stmt.setString(12, record.commitHashes());
+                    stmt.setString(1, statsRecord.sessionId());
+                    stmt.setString(2, statsRecord.agentId());
+                    stmt.setString(3, statsRecord.date());
+                    stmt.setLong(4, statsRecord.inputTokens());
+                    stmt.setLong(5, statsRecord.outputTokens());
+                    stmt.setInt(6, statsRecord.toolCalls());
+                    stmt.setLong(7, statsRecord.durationMs());
+                    stmt.setInt(8, statsRecord.linesAdded());
+                    stmt.setInt(9, statsRecord.linesRemoved());
+                    stmt.setDouble(10, statsRecord.premiumRequests());
+                    stmt.setString(11, statsRecord.timestamp());
+                    stmt.setString(12, statsRecord.commitHashes());
                     stmt.executeUpdate();
                 } catch (SQLException retryEx) {
                     LOG.warn("Failed to record turn stats after reconnect", retryEx);
@@ -682,37 +682,42 @@ public final class ToolCallStatisticsService implements Disposable {
      */
     private static final int BACKFILL_THRESHOLD = 10;
 
+    private static void runToolCallBackfill(@NotNull ToolCallStatisticsService service,
+                                            @NotNull String basePath) {
+        if (service.getRecordCount() >= BACKFILL_THRESHOLD) return;
+        try {
+            ToolCallStatisticsBackfill.BackfillResult result =
+                ToolCallStatisticsBackfill.backfill(service, basePath);
+            if (result.inserted() > 0) {
+                LOG.info("Tool statistics backfill: " + result);
+            }
+        } catch (Exception e) {
+            LOG.warn("Tool statistics backfill failed", e);
+        }
+    }
+
+    private static void runTurnStatsBackfill(@NotNull ToolCallStatisticsService service,
+                                             @NotNull String basePath) {
+        if (service.getTurnStatsCount() >= BACKFILL_THRESHOLD) return;
+        try {
+            TurnStatisticsBackfill.BackfillResult result =
+                TurnStatisticsBackfill.backfill(service, basePath);
+            if (result.inserted() > 0) {
+                LOG.info("Turn statistics backfill: " + result);
+            }
+        } catch (Exception e) {
+            LOG.warn("Turn statistics backfill failed", e);
+        }
+    }
+
     private static void triggerBackfillIfNeeded(@NotNull ToolCallStatisticsService service,
                                                 @NotNull Project project) {
         String basePath = project.getBasePath();
         if (basePath == null) return;
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            // Tool calls backfill
-            if (service.getRecordCount() < BACKFILL_THRESHOLD) {
-                try {
-                    ToolCallStatisticsBackfill.BackfillResult result =
-                        ToolCallStatisticsBackfill.backfill(service, basePath);
-                    if (result.inserted() > 0) {
-                        LOG.info("Tool statistics backfill: " + result);
-                    }
-                } catch (Exception e) {
-                    LOG.warn("Tool statistics backfill failed", e);
-                }
-            }
-
-            // Turn stats backfill
-            if (service.getTurnStatsCount() < BACKFILL_THRESHOLD) {
-                try {
-                    TurnStatisticsBackfill.BackfillResult result =
-                        TurnStatisticsBackfill.backfill(service, basePath);
-                    if (result.inserted() > 0) {
-                        LOG.info("Turn statistics backfill: " + result);
-                    }
-                } catch (Exception e) {
-                    LOG.warn("Turn statistics backfill failed", e);
-                }
-            }
+            runToolCallBackfill(service, basePath);
+            runTurnStatsBackfill(service, basePath);
         });
     }
 

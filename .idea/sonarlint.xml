@@ -9,6 +9,7 @@
         <option value="DIRECTORY:plugin-core/node_modules" />
         <option value="GLOB:**/out/**" />
         <option value="GLOB:**/build/**" />
+        <option value="GLOB:.*/**" />
       </list>
     </option>
   </component>

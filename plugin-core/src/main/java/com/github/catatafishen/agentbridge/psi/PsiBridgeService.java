@@ -14,7 +14,7 @@ import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.Computable;
+import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
@@ -67,17 +67,21 @@ public final class PsiBridgeService implements Disposable {
 
     private static final Set<String> SYNC_TOOL_CATEGORIES = Set.of("FILE", "EDITING", "REFACTOR", "GIT");
 
+    private static final String TOOL_REPLACE_SYMBOL_BODY = "replace_symbol_body";
+    private static final String TOOL_INSERT_BEFORE_SYMBOL = "insert_before_symbol";
+    private static final String TOOL_INSERT_AFTER_SYMBOL = "insert_after_symbol";
+
     /**
      * Tools disabled in Rider because they depend on detailed PSI (which lives in
      * the ReSharper backend) or on JUnit-specific test infrastructure.
      */
     private static final Set<String> RIDER_DISABLED_TOOLS = Set.of(
-        "search_symbols",       // classifyElement() fails on Rider's coarse PSI stubs
-        "list_tests",           // scans for Java @Test annotations
-        "run_tests",            // creates JUnit run configurations
-        "replace_symbol_body",  // PSI symbol resolution too coarse
-        "insert_before_symbol", // PSI symbol resolution too coarse
-        "insert_after_symbol"   // PSI symbol resolution too coarse
+        "search_symbols",          // classifyElement() fails on Rider's coarse PSI stubs
+        "list_tests",              // scans for Java @Test annotations
+        "run_tests",               // creates JUnit run configurations
+        TOOL_REPLACE_SYMBOL_BODY,  // PSI symbol resolution too coarse
+        TOOL_INSERT_BEFORE_SYMBOL, // PSI symbol resolution too coarse
+        TOOL_INSERT_AFTER_SYMBOL   // PSI symbol resolution too coarse
     );
 
     /**
@@ -468,6 +472,13 @@ public final class PsiBridgeService implements Disposable {
             // terminates cleanly rather than silently masking the cancellation.
             if (writeRegistered) writeBatchCoordinator.unregisterWrite();
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            success = false;
+            if (writeRegistered) writeBatchCoordinator.unregisterWrite();
+            errorMessage = "Error: Tool execution interrupted: " + toolName;
+            ToolChipRegistry.getInstance(project).storeMcpResult(toolName, arguments, errorMessage);
+            return errorMessage;
         } catch (Exception e) {
             LOG.warn("Tool call error: " + toolName, e);
             success = false;
@@ -769,8 +780,8 @@ public final class PsiBridgeService implements Disposable {
     static boolean isWriteToolName(String toolName) {
         return switch (toolName) {
             case "write_file", "edit_text", "create_file",
-                 "replace_symbol_body", "insert_before_symbol",
-                 "insert_after_symbol" -> true;
+                 TOOL_REPLACE_SYMBOL_BODY, TOOL_INSERT_BEFORE_SYMBOL,
+                 TOOL_INSERT_AFTER_SYMBOL -> true;
             default -> false;
         };
     }
@@ -779,9 +790,9 @@ public final class PsiBridgeService implements Disposable {
         return switch (toolName) {
             case "write_file", "edit_text" -> result.startsWith("Edited:") || result.startsWith("Written:");
             case "create_file" -> result.startsWith("✓ Created file:");
-            case "replace_symbol_body" -> result.startsWith("Replaced lines ");
-            case "insert_before_symbol" -> result.startsWith("Inserted ") && result.contains(" before ");
-            case "insert_after_symbol" -> result.startsWith("Inserted ") && result.contains(" after ");
+            case TOOL_REPLACE_SYMBOL_BODY -> result.startsWith("Replaced lines ");
+            case TOOL_INSERT_BEFORE_SYMBOL -> result.startsWith("Inserted ") && result.contains(" before ");
+            case TOOL_INSERT_AFTER_SYMBOL -> result.startsWith("Inserted ") && result.contains(" after ");
             default -> false;
         };
     }
@@ -871,7 +882,7 @@ public final class PsiBridgeService implements Disposable {
      */
     private static long getDocumentStamp(@Nullable com.intellij.openapi.vfs.VirtualFile vf) {
         if (vf == null) return -1L;
-        return ApplicationManager.getApplication().runReadAction((Computable<Long>) () -> {
+        return ApplicationManager.getApplication().runReadAction((ThrowableComputable<Long, RuntimeException>) () -> {
             com.intellij.openapi.editor.Document doc =
                 com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(vf);
             return doc != null ? doc.getModificationStamp() : -1L;
@@ -965,7 +976,7 @@ public final class PsiBridgeService implements Disposable {
         String path) {
         boolean alreadyOpen = vf != null
             && com.intellij.openapi.application.ReadAction.compute(
-            () -> com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(vf));
+            (ThrowableComputable<Boolean, RuntimeException>) () -> com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(vf));
         if (alreadyOpen) return preWriteWaiter;
         // Subscribe a file-specific waiter BEFORE opening so we can't miss the new daemon pass.
         // Use preWriteStamp = -1: the write already happened before this waiter is created, so
