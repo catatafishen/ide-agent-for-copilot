@@ -52,15 +52,14 @@ class ChatToolWindowContent(
     private val cardLayout = CardLayout()
     private val mainPanel = JBPanel<JBPanel<*>>(cardLayout)
 
-    // Splitter wrapping the card layout: review panel on LEFT, chat on RIGHT.
+    // Splitter wrapping the card layout: side panel on LEFT, chat on RIGHT.
     // Collapsed by default (proportion 0.0f). The user can drag, double-click, or use
-    // the title-bar toggle to expand.
-    private val reviewPanel = com.github.catatafishen.agentbridge.ui.review
-        .ReviewChangesPanel(project)
+    // the title-bar toggle to expand. The side panel is built lazily the first time the
+    // chat panel is created so it has access to the ChatConsolePanel for the Prompts tab.
+    private var sidePanel: com.github.catatafishen.agentbridge.ui.side.SidePanel? = null
     private val rootSplitter = com.intellij.ui.OnePixelSplitter(
         /* vertical = */ false, /* proportion = */ 0.0f
     ).also {
-        it.firstComponent = reviewPanel
         it.secondComponent = mainPanel
         it.setHonorComponentsMinimumSize(false)
     }
@@ -130,9 +129,6 @@ class ChatToolWindowContent(
 
     init {
         instances[project] = this
-        // Dispose the review panel (which owns a message-bus subscription) when the
-        // tool window content is disposed.
-        com.intellij.openapi.util.Disposer.register(toolWindow.disposable, reviewPanel)
         registerReviewPanelHandlers()
         setupUI()
         subscribeToFocusRestoreEvents()
@@ -143,10 +139,12 @@ class ChatToolWindowContent(
     /**
      * Registers expand/toggle callbacks with {@link ReviewPanelController} so non-UI code
      * (e.g. AgentEditSession gating notifications) can drive the splitter without reaching
-     * into this class directly.
+     * into this class directly. The expand handler also selects the Review tab so callers
+     * that request "show me the review" don't land on an unrelated tab.
      */
     private fun registerReviewPanelHandlers() {
         val expand = Runnable {
+            sidePanel?.selectReviewTab()
             if (rootSplitter.proportion < 0.01f) {
                 rootSplitter.proportion = defaultReviewProportion
             }
@@ -227,9 +225,7 @@ class ChatToolWindowContent(
             AutoScrollToggleAction(),
             FollowAgentFilesToggleAction(),
             DiffReviewToggleAction(),
-            ReviewPanelToggleAction(),
-            Separator.create(),
-            ProjectFilesDropdownAction(),
+            SidePanelToggleAction(),
             Separator.create(),
             StatisticsAction(),
             SettingsAction()
@@ -609,8 +605,25 @@ class ChatToolWindowContent(
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
         val responsePanel = createResponsePanel()
+        // chatConsolePanel is now initialised — build the side panel and attach it to
+        // the root splitter. Registered with the tool window so the embedded subscriptions
+        // (Review panel message-bus, Prompts listener) are disposed when the window is closed.
+        val side = com.github.catatafishen.agentbridge.ui.side.SidePanel(project, chatConsolePanel)
+        side.border = JBUI.Borders.compound(
+            JBUI.Borders.empty(2),
+            com.intellij.ui.RoundedLineBorder(JBColor.border(), JBUI.scale(8))
+        )
+        com.intellij.openapi.util.Disposer.register(toolWindow.disposable, side)
+        sidePanel = side
+        rootSplitter.firstComponent = side
+
         responsePanelContainer = JBPanel<JBPanel<*>>(BorderLayout())
         responsePanelContainer.add(responsePanel, BorderLayout.CENTER)
+        // Rounded border makes the chat area a distinct panel matching the side panel and input row.
+        val chatRoundedBorder = JBUI.Borders.compound(
+            JBUI.Borders.empty(2),
+            com.intellij.ui.RoundedLineBorder(JBColor.border(), JBUI.scale(8))
+        )
         val topPanel = JBPanel<JBPanel<*>>(BorderLayout())
         val northStack = JBPanel<JBPanel<*>>()
         northStack.layout = BoxLayout(northStack, BoxLayout.Y_AXIS)
@@ -646,13 +659,8 @@ class ChatToolWindowContent(
         statusBanner = sb
         northStack.add(sb)
 
-        val allBanners = listOf(cb, ghBanner, gitBanner, sb)
-        val greyBorder = JBUI.Borders.customLine(JBColor.border(), 1, 0, 0, 0)
-        val updateContainerBorder = java.beans.PropertyChangeListener {
-            responsePanelContainer.border = if (allBanners.none { b -> b.isVisible }) greyBorder else null
-        }
-        allBanners.forEach { it.addPropertyChangeListener("visible", updateContainerBorder) }
-        responsePanelContainer.border = if (allBanners.none { it.isVisible }) greyBorder else null
+        // Rounded border is static — banners stack above the chat area in the NORTH slot.
+        responsePanelContainer.border = chatRoundedBorder
 
         consolePanel.onStatusMessage = { type, message ->
             when (type) {
@@ -681,10 +689,7 @@ class ChatToolWindowContent(
     private fun createFixedFooter(): JBPanel<JBPanel<*>> {
         val footer = JBPanel<JBPanel<*>>()
         footer.layout = BoxLayout(footer, BoxLayout.Y_AXIS)
-        footer.border = JBUI.Borders.compound(
-            com.intellij.ui.SideBorder(JBColor.border(), com.intellij.ui.SideBorder.TOP),
-            JBUI.Borders.empty(0, 0, 2, 0)
-        )
+        footer.border = JBUI.Borders.empty(0, 0, 2, 0)
 
         val controlsRow = createControlsRow()
         controlsRow.alignmentX = Component.LEFT_ALIGNMENT
@@ -801,7 +806,10 @@ class ChatToolWindowContent(
         inputContainer.add(shortcutHintPanel) // index 0 = lowest z-order index = painted last = on top
         inputContainer.add(promptTextArea)    // index 1 = behind, visible through transparent shortcutHintPanel
 
-        row.border = JBUI.Borders.empty()
+        row.border = JBUI.Borders.compound(
+            JBUI.Borders.empty(2),
+            com.intellij.ui.RoundedLineBorder(JBColor.border(), JBUI.scale(8))
+        )
         // Make the row paint the same background as the editor text field so any space
         // around the editor (splitter gaps, layout padding) matches the input bg instead
         // of showing the panel gray.
@@ -1341,9 +1349,9 @@ class ChatToolWindowContent(
         }
     }
 
-    private inner class ReviewPanelToggleAction : ToggleAction(
-        "Review Panel",
-        "Show or hide the inline Review Changes panel (shown on the left of the chat)",
+    private inner class SidePanelToggleAction : ToggleAction(
+        "Side Panel",
+        "Show or hide the side panel (Review, Project Files, Prompts)",
         AllIcons.Actions.PreviewDetails
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -1371,159 +1379,6 @@ class ChatToolWindowContent(
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             autoScrollEnabled = state
             chatConsolePanel.setAutoScroll(state)
-        }
-    }
-
-    /** Open a project-root file in the editor if it exists. */
-    private fun openProjectFile(fileName: String) {
-        val base = project.basePath ?: return
-        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-            .findFileByPath("$base/$fileName") ?: return
-        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
-    }
-
-    /** Dropdown action for project configuration files. */
-    private inner class ProjectFilesDropdownAction : AnAction(
-        "Project Files", "Open project configuration files",
-        AllIcons.Nodes.Folder
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.BGT
-        override fun actionPerformed(e: AnActionEvent) {
-            val inputEvent = e.inputEvent ?: return
-            val component = inputEvent.source as? Component ?: return
-            showPopup(component)
-        }
-
-        private fun showPopup(owner: Component) {
-            val group = DefaultActionGroup()
-            val base = project.basePath ?: return
-
-            // Shared
-            val sharedGroup = DefaultActionGroup()
-            addFileAction(sharedGroup, base, "TODO.md", "TODO")
-            addFileAction(sharedGroup, base, "AGENTS.md", "AGENTS")
-            if (sharedGroup.childrenCount > 0) {
-                if (group.childrenCount > 0) group.addSeparator()
-                group.addSeparator("Shared")
-                group.addAll(*sharedGroup.childActionsOrStubs)
-            }
-
-            // Copilot CLI
-            val copilotGroup = DefaultActionGroup()
-            addGlobSection(copilotGroup, base, ".agent-work/copilot/agents", "*.md")
-            addGlobSection(copilotGroup, base, ".agent-work/copilot/skills", "*/SKILL.md")
-            addGlobSection(copilotGroup, base, ".agent-work/copilot/instructions", "*.instructions.md")
-            if (copilotGroup.childrenCount > 0) {
-                if (group.childrenCount > 0) group.addSeparator()
-                group.addSeparator("Copilot CLI")
-                group.addAll(*copilotGroup.childActionsOrStubs)
-            }
-
-            // OpenCode
-            val openCodeGroup = DefaultActionGroup()
-            addGlobSection(openCodeGroup, base, ".agent-work/opencode/agent", "*.md")
-            if (openCodeGroup.childrenCount > 0) {
-                if (group.childrenCount > 0) group.addSeparator()
-                group.addSeparator("OpenCode")
-                group.addAll(*openCodeGroup.childActionsOrStubs)
-            }
-
-            // Junie
-            val junieGroup = DefaultActionGroup()
-            addFileAction(junieGroup, base, ".agent-work/junie/guidelines.md", "guidelines.md")
-            addGlobSection(junieGroup, base, ".agent-work/junie/agents", "*.md")
-            if (junieGroup.childrenCount > 0) {
-                if (group.childrenCount > 0) group.addSeparator()
-                group.addSeparator("Junie")
-                group.addAll(*junieGroup.childActionsOrStubs)
-            }
-
-            // Kiro
-            val kiroGroup = DefaultActionGroup()
-            addGlobSection(kiroGroup, base, ".agent-work/kiro/agents", "*.json")
-            addGlobSection(kiroGroup, base, ".agent-work/kiro/skills", "*/SKILL.md")
-            if (kiroGroup.childrenCount > 0) {
-                if (group.childrenCount > 0) group.addSeparator()
-                group.addSeparator("Kiro")
-                group.addAll(*kiroGroup.childActionsOrStubs)
-            }
-
-            val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
-                .createActionGroupPopup(
-                    null, group, com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project),
-                    com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
-                    true
-                )
-            popup.showUnderneathOf(owner)
-        }
-
-        private fun addFileAction(group: DefaultActionGroup, base: String, path: String, label: String) {
-            val file = java.io.File(base, path)
-            val exists = file.exists()
-            val extension = path.substringAfterLast('.', "")
-            val icon = if (exists) {
-                fileIconFor(extension)
-            } else {
-                AllIcons.Actions.IntentionBulbGrey
-            }
-
-            group.add(object : AnAction(
-                label,
-                if (exists) "Open $path" else "Create $path",
-                icon
-            ) {
-                override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                override fun actionPerformed(e: AnActionEvent) {
-                    if (!exists) {
-                        file.parentFile?.mkdirs()
-                        file.writeText("")
-                    }
-                    openProjectFile(path)
-                }
-            })
-        }
-
-        private fun fileIconFor(extension: String): Icon {
-            return com.intellij.openapi.fileTypes.FileTypeManager.getInstance()
-                .getFileTypeByExtension(extension).icon ?: AllIcons.FileTypes.Text
-        }
-
-        private fun addGlobSection(
-            group: DefaultActionGroup,
-            base: String,
-            dirPath: String,
-            pattern: String
-        ) {
-            val dir = java.io.File(base, dirPath)
-            val files = findMatchingFiles(dir, pattern)
-
-            files.forEach { file ->
-                val relPath = file.relativeTo(java.io.File(base)).path
-                val extension = file.extension
-                val icon = com.intellij.openapi.fileTypes.FileTypeManager.getInstance()
-                    .getFileTypeByExtension(extension).icon
-
-                group.add(object : AnAction(file.nameWithoutExtension, "Open ${file.name}", icon) {
-                    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-                    override fun actionPerformed(e: AnActionEvent) = openProjectFile(relPath)
-                })
-            }
-        }
-
-        private fun findMatchingFiles(dir: java.io.File, pattern: String): List<java.io.File> {
-            if (!dir.exists()) return emptyList()
-
-            return if (pattern.contains("/")) {
-                // Pattern like "*/SKILL.md" - search subdirectories
-                val parts = pattern.split("/")
-                dir.listFiles()?.filter { it.isDirectory }?.flatMap { subDir ->
-                    subDir.listFiles { f -> f.isFile && f.name == parts[1] }?.toList() ?: emptyList()
-                }?.sortedBy { it.name } ?: emptyList()
-            } else {
-                // Simple pattern like "*.md"
-                val regex = Regex("^" + pattern.replace(".", "\\.").replace("*", ".*") + "$")
-                dir.listFiles { f -> f.isFile && regex.matches(f.name) }?.sortedBy { it.name }?.toList() ?: emptyList()
-            }
         }
     }
 
