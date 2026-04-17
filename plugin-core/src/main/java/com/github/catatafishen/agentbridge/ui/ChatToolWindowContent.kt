@@ -2,14 +2,12 @@ package com.github.catatafishen.agentbridge.ui
 
 import com.github.catatafishen.agentbridge.acp.model.Model
 import com.github.catatafishen.agentbridge.acp.model.SessionUpdate
-import com.github.catatafishen.agentbridge.psi.review.AgentEditSession
 import com.github.catatafishen.agentbridge.services.ActiveAgentManager
 import com.github.catatafishen.agentbridge.services.ChatWebServer
 import com.github.catatafishen.agentbridge.session.SessionSwitchService
 import com.github.catatafishen.agentbridge.session.migration.V1ToV2Migrator
 import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2
 import com.github.catatafishen.agentbridge.settings.ChatHistorySettings
-import com.github.catatafishen.agentbridge.settings.McpServerSettings
 import com.intellij.icons.AllIcons
 import com.intellij.ide.ActivityTracker
 import com.intellij.openapi.actionSystem.*
@@ -225,7 +223,6 @@ class ChatToolWindowContent(
         val actions = listOf(
             AutoScrollToggleAction(),
             FollowAgentFilesToggleAction(),
-            DiffReviewToggleAction(),
             SidePanelToggleAction(),
             Separator.create(),
             StatisticsAction(),
@@ -1304,48 +1301,6 @@ class ChatToolWindowContent(
 
         override fun setSelected(e: AnActionEvent, state: Boolean) {
             ActiveAgentManager.setFollowAgentFiles(project, state)
-        }
-    }
-
-    private inner class DiffReviewToggleAction : ToggleAction(
-        "Diff Review",
-        "Track agent edits and show diff highlights, per-file banners, and revert controls",
-        AllIcons.Actions.Diff
-    ) {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-        override fun isSelected(e: AnActionEvent): Boolean =
-            McpServerSettings.getInstance(project).isReviewAgentEdits
-
-        override fun setSelected(e: AnActionEvent, state: Boolean) {
-            if (state) {
-                McpServerSettings.getInstance(project).isReviewAgentEdits = true
-                project.messageBus.syncPublisher(
-                    com.github.catatafishen.agentbridge.psi.review.ReviewSessionTopic.TOPIC
-                ).reviewStateChanged()
-                return
-            }
-            val session = AgentEditSession.getInstance(project)
-            if (session.isActive && session.hasChanges()) {
-                val items = session.reviewItems
-                val result = com.intellij.openapi.ui.Messages.showOkCancelDialog(
-                    project,
-                    "You have ${items.size} unreviewed file(s). Disabling Diff Review will discard the review session.",
-                    "Discard Review Session?",
-                    "Discard",
-                    "Cancel",
-                    com.intellij.openapi.ui.Messages.getWarningIcon()
-                )
-                if (result != com.intellij.openapi.ui.Messages.OK) return
-            }
-            val wasActive = session.isActive
-            McpServerSettings.getInstance(project).isReviewAgentEdits = false
-            session.endSession()
-            if (!wasActive) {
-                project.messageBus.syncPublisher(
-                    com.github.catatafishen.agentbridge.psi.review.ReviewSessionTopic.TOPIC
-                ).reviewStateChanged()
-            }
         }
     }
 
