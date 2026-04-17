@@ -41,18 +41,23 @@ import java.util.List;
  * Panel displaying review items from the current {@link AgentEditSession}.
  * Shows a table of files with status, and per-file accept/reject actions.
  * Toolbar provides a stop/play toggle to enable/disable diff review, plus bulk accept-all/reject-all actions.
+ * <p>
+ * Action buttons (view, accept, reject) are always visible in the right side of the file cell.
+ * Click handling uses coordinate math in a {@link java.awt.event.MouseListener} since renderer
+ * components are paint-only in JTable (not interactive).
  */
 public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     private static final String CARD_TABLE = "table";
     private static final String CARD_EMPTY = "empty";
 
+    private static final int BUTTON_AREA_WIDTH = 82;
+
     private final Project project;
     private final ReviewTableModel tableModel;
     private final JBTable table;
     private final CardLayout cardLayout;
     private final JPanel cardPanel;
-    private final JPanel emptyStatePanel;
     private final JBLabel emptyLabel;
 
     public ReviewChangesPanel(@NotNull Project project) {
@@ -68,16 +73,13 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
         emptyLabel = new JBLabel("", SwingConstants.CENTER);
         emptyLabel.setForeground(JBColor.GRAY);
-        // Centered column: just the status label.
-        emptyStatePanel = new JPanel(new GridBagLayout());
+        JPanel emptyStatePanel = new JPanel(new GridBagLayout());
         JPanel column = new JPanel();
         column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
         emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         column.add(emptyLabel);
         emptyStatePanel.add(column);
 
-        // CardLayout keeps both children alive — switching cards avoids the
-        // bug where add/remove on BorderLayout.CENTER loses the scrollPane.
         cardLayout = new CardLayout();
         cardPanel = new JPanel(cardLayout);
         cardPanel.add(scrollPane, CARD_TABLE);
@@ -87,9 +89,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         toolbar.setTargetComponent(this);
         toolbar.getComponent().setBorder(JBUI.Borders.empty());
 
-        // Toolbar footer styled like the chat input's bottom toolbar:
-        // top gray divider line + symmetric padding + a minimum height so it lines
-        // up with the chat footer (which is taller due to the ProcessingTimerPanel).
         JPanel toolbarFooter = new JPanel(new BorderLayout());
         toolbarFooter.setBorder(JBUI.Borders.compound(
             new SideBorder(JBColor.border(), SideBorder.TOP),
@@ -104,8 +103,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         add(cardPanel, BorderLayout.CENTER);
         add(toolbarFooter, BorderLayout.SOUTH);
 
-        // Own subscription so the panel refreshes whenever the session state changes.
-        // Disposed with the panel by the tool-window content.
         project.getMessageBus().connect(this).subscribe(
             ReviewSessionTopic.TOPIC,
             () -> ApplicationManager.getApplication().invokeLater(this::refresh)
@@ -144,24 +141,18 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 0));
         table.setFillsViewportHeight(true);
-        table.getTableHeader().setReorderingAllowed(false);
+        table.setTableHeader(null);
+        table.setExpandableItemsEnabled(false);
 
-        // Column widths
         TableColumn statusCol = table.getColumnModel().getColumn(ReviewTableModel.COL_STATUS);
         statusCol.setPreferredWidth(JBUI.scale(28));
         statusCol.setMaxWidth(JBUI.scale(32));
         statusCol.setCellRenderer(new StatusCellRenderer());
 
         TableColumn fileCol = table.getColumnModel().getColumn(ReviewTableModel.COL_FILE);
-        fileCol.setPreferredWidth(JBUI.scale(150));
+        fileCol.setPreferredWidth(JBUI.scale(200));
         fileCol.setCellRenderer(new FileCellRenderer());
 
-        TableColumn actionsCol = table.getColumnModel().getColumn(ReviewTableModel.COL_ACTIONS);
-        actionsCol.setPreferredWidth(JBUI.scale(82));
-        actionsCol.setMaxWidth(JBUI.scale(82));
-        actionsCol.setCellRenderer(new ActionsCellRenderer());
-
-        // Click handler for file navigation and action buttons
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -170,11 +161,29 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 if (row < 0 || row >= tableModel.getRowCount()) return;
 
                 ReviewItem item = tableModel.getItem(row);
-                if (col == ReviewTableModel.COL_ACTIONS) {
-                    handleActionClick(item, e.getPoint(), row);
+                if (col == ReviewTableModel.COL_FILE) {
+                    Rectangle cellRect = table.getCellRect(row, ReviewTableModel.COL_FILE, true);
+                    int relX = e.getX() - cellRect.x;
+                    int buttonStart = cellRect.width - JBUI.scale(BUTTON_AREA_WIDTH);
+                    if (relX >= buttonStart) {
+                        handleFileActionClick(item, relX - buttonStart);
+                    }
                 }
             }
         });
+    }
+
+    private void handleFileActionClick(@NotNull ReviewItem item, int relXInButtonArea) {
+        int avail = JBUI.scale(BUTTON_AREA_WIDTH) - JBUI.scale(8);
+        int gap = JBUI.scale(2);
+        int btnW = (avail - 2 * gap) / 3;
+        if (relXInButtonArea < JBUI.scale(4) + btnW + gap) {
+            navigateToFile(item);
+        } else if (relXInButtonArea < JBUI.scale(4) + 2 * btnW + 2 * gap) {
+            AgentEditSession.getInstance(project).acceptFile(item.path());
+        } else {
+            showRejectDialog(item);
+        }
     }
 
     private void navigateToFile(@NotNull ReviewItem item) {
@@ -182,22 +191,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(item.path());
         if (vf != null) {
             FileEditorManager.getInstance(project).openFile(vf, true);
-        }
-    }
-
-    private void handleActionClick(@NotNull ReviewItem item, @NotNull Point point, int row) {
-        Rectangle cellRect = table.getCellRect(row, ReviewTableModel.COL_ACTIONS, true);
-        int relX = point.x - cellRect.x - JBUI.scale(4);
-        int avail = cellRect.width - JBUI.scale(8);
-        int gap = JBUI.scale(2);
-        int btnW = (avail - 2 * gap) / 3;
-
-        if (relX < btnW + gap) {
-            navigateToFile(item);
-        } else if (relX < 2 * btnW + 2 * gap) {
-            AgentEditSession.getInstance(project).acceptFile(item.path());
-        } else {
-            showRejectDialog(item);
         }
     }
 
@@ -311,21 +304,21 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             }
         });
 
-        return ActionManager.getInstance().createActionToolbar("ReviewChangesPanel", group, true);
+        return ActionManager.getInstance().createActionToolbar("ReviewChangesToolbar", group, true);
     }
 
-    private static final class ReviewTableModel extends AbstractTableModel {
+    // ── Table model ───────────────────────────────────────────────────────────
 
+    private static final class ReviewTableModel extends AbstractTableModel {
         static final int COL_STATUS = 0;
         static final int COL_FILE = 1;
-        static final int COL_ACTIONS = 2;
+        private static final String[] COLUMN_NAMES = {"", "File"};
 
-        private static final String[] COLUMN_NAMES = {"", "File", "Actions"};
+        private final List<ReviewItem> items = new ArrayList<>();
 
-        private List<ReviewItem> items = new ArrayList<>();
-
-        void setItems(@NotNull List<ReviewItem> newItems) {
-            items = new ArrayList<>(newItems);
+        void setItems(List<ReviewItem> newItems) {
+            items.clear();
+            items.addAll(newItems);
             fireTableDataChanged();
         }
 
@@ -354,12 +347,12 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             return switch (columnIndex) {
                 case COL_STATUS -> item.status().name();
                 case COL_FILE -> item.relativePath();
-                case COL_ACTIONS -> "Accept | Reject";
                 default -> null;
             };
         }
-
     }
+
+    // ── Cell renderers ────────────────────────────────────────────────────────
 
     private static final class StatusCellRenderer extends DefaultTableCellRenderer {
         @Override
@@ -399,55 +392,62 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         }
     }
 
+    /**
+     * Renders the file name with always-visible action buttons on the right side of the cell.
+     * Buttons are pre-created once to avoid allocation and layout jitter on every repaint.
+     * Click dispatch is handled by the table's {@link MouseAdapter} using coordinate math.
+     */
     private static final class FileCellRenderer extends DefaultTableCellRenderer {
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                                                       boolean isSelected, boolean hasFocus,
-                                                       int row, int column) {
-            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-            if (value instanceof String path && c instanceof JLabel label) {
-                java.nio.file.Path p = java.nio.file.Path.of(path);
-                label.setText(p.getFileName() != null ? p.getFileName().toString() : path);
-                label.setToolTipText(path);
-            }
-            return c;
-        }
-    }
+        private final JPanel cellPanel = new JPanel(new BorderLayout(JBUI.scale(4), 0));
+        private final JLabel nameLabel = new JLabel();
+        private final JPanel buttonsPanel = new JPanel(new GridLayout(1, 3, JBUI.scale(2), 0));
 
-    private static final class ActionsCellRenderer extends DefaultTableCellRenderer {
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                                                       boolean isSelected, boolean hasFocus,
-                                                       int row, int column) {
-            JPanel panel = new JPanel(new GridLayout(1, 3, JBUI.scale(2), 0));
-            panel.setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
-            panel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        FileCellRenderer() {
+            cellPanel.setOpaque(true);
+            nameLabel.setOpaque(false);
 
-            JButton viewBtn = new JButton(AllIcons.General.InspectionsEye);
-            viewBtn.setToolTipText("View file");
-            styleButton(viewBtn);
+            JButton viewBtn = createButton(AllIcons.General.InspectionsEye, "View file");
+            JButton acceptBtn = createButton(AllIcons.Actions.Checked, "Accept");
+            JButton rejectBtn = createButton(AllIcons.Actions.Rollback, "Reject");
+            buttonsPanel.add(viewBtn);
+            buttonsPanel.add(acceptBtn);
+            buttonsPanel.add(rejectBtn);
+            buttonsPanel.setOpaque(false);
+            buttonsPanel.setPreferredSize(new Dimension(JBUI.scale(BUTTON_AREA_WIDTH), 0));
 
-            JButton acceptBtn = new JButton(AllIcons.Actions.Checked);
-            acceptBtn.setToolTipText("Accept");
-            styleButton(acceptBtn);
-
-            JButton rejectBtn = new JButton(AllIcons.Actions.Rollback);
-            rejectBtn.setToolTipText("Reject");
-            styleButton(rejectBtn);
-
-            panel.add(viewBtn);
-            panel.add(acceptBtn);
-            panel.add(rejectBtn);
-            return panel;
+            cellPanel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+            cellPanel.add(nameLabel, BorderLayout.CENTER);
+            cellPanel.add(buttonsPanel, BorderLayout.EAST);
         }
 
-        private static void styleButton(JButton btn) {
+        private static JButton createButton(Icon icon, String tooltip) {
+            JButton btn = new JButton(icon);
+            btn.setToolTipText(tooltip);
             btn.putClientProperty("JButton.buttonType", "borderless");
             btn.setFocusPainted(false);
             btn.setContentAreaFilled(false);
             btn.setBorderPainted(false);
             btn.setOpaque(false);
             btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            return btn;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            String path = value instanceof String s ? s : "";
+            java.nio.file.Path p = java.nio.file.Path.of(path);
+            nameLabel.setText(p.getFileName() != null ? p.getFileName().toString() : path);
+            nameLabel.setToolTipText(path);
+
+            Color bg = isSelected ? table.getSelectionBackground() : table.getBackground();
+            Color fg = isSelected ? table.getSelectionForeground() : table.getForeground();
+            cellPanel.setBackground(bg);
+            buttonsPanel.setBackground(bg);
+            nameLabel.setForeground(fg);
+
+            return cellPanel;
         }
     }
 }
