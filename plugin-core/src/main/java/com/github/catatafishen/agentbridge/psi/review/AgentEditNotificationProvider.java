@@ -52,6 +52,11 @@ public final class AgentEditNotificationProvider implements EditorNotificationPr
 
         panel.createActionLabel("Show diff", () -> showDiff(project, file, before));
 
+        panel.createActionLabel("Accept", () -> {
+            AgentEditSession.getInstance(project).acceptFile(file.getPath());
+            EditorNotifications.getInstance(project).updateNotifications(file);
+        });
+
         panel.createActionLabel("Previous", () -> navigateFromBanner(project, file, fileEditor, false));
         panel.createActionLabel("Next", () -> navigateFromBanner(project, file, fileEditor, true));
 
