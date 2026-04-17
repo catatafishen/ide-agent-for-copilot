@@ -32,6 +32,7 @@ public final class OpenCodeClient extends AcpClient {
     private static final String EXPLORE_AGENT = "explore";
     private static final String PROJECT_AGENT_DIR = ".opencode/agent";
     private static final String PROJECT_AGENTS_DIR = ".opencode/agents";
+    private static final String DEPLOYED_AGENT_DIR = ".agent-work/opencode/agent";
 
     private static final String KEY_RAW_INPUT = "rawInput";
     private static final List<String> NATIVE_TOOLS_TO_DENY = List.of(
@@ -71,7 +72,8 @@ public final class OpenCodeClient extends AcpClient {
                 Path.of(basePath),
                 Set.of(BUILD_AGENT, PLAN_AGENT, GENERAL_AGENT, EXPLORE_AGENT),
                 PROJECT_AGENT_DIR,
-                PROJECT_AGENTS_DIR
+                PROJECT_AGENTS_DIR,
+                DEPLOYED_AGENT_DIR
             ));
         }
         return agents;
