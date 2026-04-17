@@ -17,6 +17,7 @@ import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.ui.MessageType;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
@@ -89,7 +90,7 @@ public final class AgentEditSession implements Disposable {
      * Clears the agent-edit marker for the current thread.
      */
     public static void markAgentEditEnd() {
-        agentEditActive.set(false);
+        agentEditActive.remove();
     }
 
     static boolean isAgentEditActive() {
@@ -129,7 +130,7 @@ public final class AgentEditSession implements Disposable {
      * when a blocking gate starts; completed by {@link #completeReviewIfEmpty} /
      * {@link #endSession}. Null when no gate is currently in flight.
      */
-    private volatile java.util.concurrent.CompletableFuture<Void> reviewCompletionFuture;
+    private java.util.concurrent.CompletableFuture<Void> reviewCompletionFuture;
 
     public AgentEditSession(@NotNull Project project) {
         this.project = project;
@@ -227,7 +228,7 @@ public final class AgentEditSession implements Disposable {
         Document doc = FileDocumentManager.getInstance().getDocument(vf);
         if (doc == null) return Collections.emptyList();
 
-        String after = ReadAction.compute(() -> doc.getText());
+        String after = ReadAction.compute((ThrowableComputable<String, RuntimeException>) doc::getText);
         if (before.equals(after)) return Collections.emptyList();
 
         return computeRanges(before, after);
@@ -395,56 +396,13 @@ public final class AgentEditSession implements Disposable {
     public void rejectFile(@NotNull String path, @Nullable String reason) {
         if (!active) return;
 
-        String snapshot = snapshots.remove(path);
-        if (snapshot != null && !deletedFiles.containsKey(path)) {
-            // MODIFIED file — restore original content
-            VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
-            if (vf != null) {
-                Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                if (doc != null) {
-                    WriteCommandAction.runWriteCommandAction(project, "Reject Agent Edit", null,
-                        () -> doc.setText(snapshot));
-                    FileDocumentManager.getInstance().saveDocument(doc);
-                }
-                AgentEditHighlighter.getInstance(project).clearForFile(vf);
-                com.intellij.ui.EditorNotifications.getInstance(project).updateNotifications(vf);
-            }
-        } else if (newFiles.remove(path)) {
-            // ADDED file — delete it
-            VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
-            if (vf != null) {
-                AgentEditHighlighter.getInstance(project).clearForFile(vf);
-                WriteCommandAction.runWriteCommandAction(project, "Delete Agent-Created File", null, () -> {
-                    try {
-                        vf.delete(this);
-                    } catch (Exception e) {
-                        LOG.warn("Failed to delete agent-created file: " + path, e);
-                    }
-                });
-            }
-        } else {
-            String deletedContent = deletedFiles.remove(path);
-            if (deletedContent != null) {
-                // DELETED file — recreate with original content (use snapshot if available)
-                String content = snapshot != null ? snapshot : deletedContent;
-                snapshots.remove(path); // clean up stale snapshot for deleted file
-                WriteCommandAction.runWriteCommandAction(project, "Restore Deleted File", null, () -> {
-                    try {
-                        java.io.File ioFile = new java.io.File(path);
-                        java.io.File parent = ioFile.getParentFile();
-                        if (parent != null) {
-                            VirtualFile parentVf = LocalFileSystem.getInstance()
-                                .refreshAndFindFileByIoFile(parent);
-                            if (parentVf != null) {
-                                VirtualFile created = parentVf.createChildData(this, ioFile.getName());
-                                created.setBinaryContent(content.getBytes(StandardCharsets.UTF_8));
-                            }
-                        }
-                    } catch (Exception e) {
-                        LOG.warn("Failed to restore deleted file: " + path, e);
-                    }
-                });
-            }
+        String basePath = project.getBasePath();
+        if (snapshots.containsKey(path) && !deletedFiles.containsKey(path)) {
+            rejectModifiedFile(new ReviewItem(path, relativize(path, basePath), ReviewItem.Status.MODIFIED, null));
+        } else if (newFiles.contains(path)) {
+            rejectAddedFile(new ReviewItem(path, relativize(path, basePath), ReviewItem.Status.ADDED, null));
+        } else if (deletedFiles.containsKey(path)) {
+            rejectDeletedFile(new ReviewItem(path, relativize(path, basePath), ReviewItem.Status.DELETED, null));
         }
 
         if (reason != null && !reason.isBlank()) {
@@ -497,6 +455,10 @@ public final class AgentEditSession implements Disposable {
      * @param operation description of the git operation (for the notification + error)
      * @return null if review completed in time; otherwise a timeout error message
      */
+    // S2222: syncLock.lock() in this finally block intentionally re-acquires a lock that was
+    // originally acquired by callTool(). Sonar cannot trace cross-method lock ownership.
+    // The lock is released by callTool's own finally block, maintaining correct lock ordering.
+    @SuppressWarnings("java:S2222")
     public @Nullable String awaitReviewCompletion(@NotNull String operation) {
         if (!active || !hasChanges()) {
             reviewNotificationFired = false;
@@ -634,7 +596,7 @@ public final class AgentEditSession implements Disposable {
 
     private boolean isProjectFile(@NotNull VirtualFile vf) {
         if (!vf.isValid() || vf.isDirectory()) return false;
-        return ReadAction.compute(() -> ProjectFileIndex.getInstance(project).isInContent(vf));
+        return ReadAction.compute((ThrowableComputable<Boolean, RuntimeException>) () -> ProjectFileIndex.getInstance(project).isInContent(vf));
     }
 
     private void sendRevertNudge(@NotNull VirtualFile vf, @NotNull String reason) {
@@ -664,61 +626,75 @@ public final class AgentEditSession implements Disposable {
      * Rejects a single review item without firing topic events (used in bulk reject).
      */
     private void rejectFileSilent(@NotNull ReviewItem item) {
-        String path = item.path();
         switch (item.status()) {
-            case MODIFIED -> {
-                String snapshot = snapshots.remove(path);
-                if (snapshot != null) {
-                    VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
-                    if (vf != null) {
-                        Document doc = FileDocumentManager.getInstance().getDocument(vf);
-                        if (doc != null) {
-                            WriteCommandAction.runWriteCommandAction(project, "Reject Agent Edit", null,
-                                () -> doc.setText(snapshot));
-                            FileDocumentManager.getInstance().saveDocument(doc);
-                        }
-                        AgentEditHighlighter.getInstance(project).clearForFile(vf);
+            case MODIFIED -> rejectModifiedFile(item);
+            case ADDED -> rejectAddedFile(item);
+            case DELETED -> rejectDeletedFile(item);
+        }
+    }
+
+    /**
+     * Restores a MODIFIED file to its snapshot content and clears editor decorations.
+     */
+    private void rejectModifiedFile(@NotNull ReviewItem item) {
+        String path = item.path();
+        String snapshot = snapshots.remove(path);
+        if (snapshot == null) return;
+        VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
+        if (vf == null) return;
+        Document doc = FileDocumentManager.getInstance().getDocument(vf);
+        if (doc != null) {
+            WriteCommandAction.runWriteCommandAction(project, "Reject Agent Edit", null,
+                () -> doc.setText(snapshot));
+            FileDocumentManager.getInstance().saveDocument(doc);
+        }
+        AgentEditHighlighter.getInstance(project).clearForFile(vf);
+        com.intellij.ui.EditorNotifications.getInstance(project).updateNotifications(vf);
+    }
+
+    /**
+     * Deletes an ADDED (agent-created) file and clears editor decorations.
+     */
+    private void rejectAddedFile(@NotNull ReviewItem item) {
+        String path = item.path();
+        newFiles.remove(path);
+        VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
+        if (vf == null) return;
+        AgentEditHighlighter.getInstance(project).clearForFile(vf);
+        WriteCommandAction.runWriteCommandAction(project, "Delete Agent-Created File", null, () -> {
+            try {
+                vf.delete(this);
+            } catch (Exception e) {
+                LOG.warn("Failed to delete agent-created file: " + path, e);
+            }
+        });
+    }
+
+    /**
+     * Recreates a DELETED file from its original content (prefers snapshot over deletion-time capture).
+     */
+    private void rejectDeletedFile(@NotNull ReviewItem item) {
+        String path = item.path();
+        String content = deletedFiles.remove(path);
+        String snapshotContent = snapshots.remove(path);
+        String restore = snapshotContent != null ? snapshotContent : content;
+        if (restore == null) return;
+        WriteCommandAction.runWriteCommandAction(project, "Restore Deleted File", null, () -> {
+            try {
+                java.io.File ioFile = new java.io.File(path);
+                java.io.File parent = ioFile.getParentFile();
+                if (parent != null) {
+                    VirtualFile parentVf = LocalFileSystem.getInstance()
+                        .refreshAndFindFileByIoFile(parent);
+                    if (parentVf != null) {
+                        VirtualFile created = parentVf.createChildData(this, ioFile.getName());
+                        created.setBinaryContent(restore.getBytes(StandardCharsets.UTF_8));
                     }
                 }
+            } catch (Exception e) {
+                LOG.warn("Failed to restore deleted file: " + path, e);
             }
-            case ADDED -> {
-                newFiles.remove(path);
-                VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
-                if (vf != null) {
-                    AgentEditHighlighter.getInstance(project).clearForFile(vf);
-                    WriteCommandAction.runWriteCommandAction(project, "Delete Agent-Created File", null, () -> {
-                        try {
-                            vf.delete(this);
-                        } catch (Exception e) {
-                            LOG.warn("Failed to delete agent-created file: " + path, e);
-                        }
-                    });
-                }
-            }
-            case DELETED -> {
-                String content = deletedFiles.remove(path);
-                String snapshotContent = snapshots.remove(path);
-                String restore = snapshotContent != null ? snapshotContent : content;
-                if (restore != null) {
-                    WriteCommandAction.runWriteCommandAction(project, "Restore Deleted File", null, () -> {
-                        try {
-                            java.io.File ioFile = new java.io.File(path);
-                            java.io.File parent = ioFile.getParentFile();
-                            if (parent != null) {
-                                VirtualFile parentVf = LocalFileSystem.getInstance()
-                                    .refreshAndFindFileByIoFile(parent);
-                                if (parentVf != null) {
-                                    VirtualFile created = parentVf.createChildData(this, ioFile.getName());
-                                    created.setBinaryContent(restore.getBytes(StandardCharsets.UTF_8));
-                                }
-                            }
-                        } catch (Exception e) {
-                            LOG.warn("Failed to restore deleted file: " + path, e);
-                        }
-                    });
-                }
-            }
-        }
+        });
     }
 
     private void fireReviewStateChanged() {

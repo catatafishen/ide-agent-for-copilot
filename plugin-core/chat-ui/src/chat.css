@@ -198,9 +198,15 @@ chat-container {
 }
 
 @keyframes promptFlash {
-    0%   { box-shadow: 0 0 0 0 var(--user-a25); }
-    40%  { box-shadow: 0 0 0 6px var(--user-a25); }
-    100% { box-shadow: 0 0 0 0 transparent; }
+    0% {
+        box-shadow: 0 0 0 0 var(--user-a25);
+    }
+    40% {
+        box-shadow: 0 0 0 6px var(--user-a25);
+    }
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
 }
 
 .prompt-ctx-chip {
@@ -475,10 +481,10 @@ working-indicator .working-text {
 }
 
 .turn-chip.stats {
-    background: none;
+    background: var(--think-a06);
     border-color: var(--think-a10);
     color: var(--think);
-    font-size: 0.85em;
+    font-size: 0.82em;
     font-weight: normal;
     padding: 1px var(--sp-2);
     cursor: default;
@@ -511,6 +517,8 @@ working-indicator .working-text {
     background: var(--tool-a08);
     border-color: var(--tool-a16);
     color: var(--tool);
+    /* Default border is dashed — becomes solid once AgentBridge MCP handles the call. */
+    border-style: dashed;
 }
 
 .turn-chip.tool:hover {
@@ -562,11 +570,6 @@ working-indicator .working-text {
     color: var(--kind-other);
     background: color-mix(in srgb, var(--kind-other) 8%, transparent);
     border-color: color-mix(in srgb, var(--kind-other) 18%, transparent);
-}
-
-/* Default tool chip border is dashed — becomes solid once AgentBridge MCP handles the call. */
-.turn-chip.tool {
-    border-style: dashed;
 }
 
 .turn-chip.tool.status-denied {
@@ -629,14 +632,6 @@ working-indicator .working-text {
 /* Kind-colored spinners — inherit from chip text color */
 .turn-chip[class*="kind-"] .chip-spinner {
     border-top-color: currentColor;
-}
-
-.turn-chip.stats {
-    background: var(--think-a06);
-    border-color: var(--think-a10);
-    color: var(--think);
-    cursor: default;
-    font-size: 0.82em;
 }
 
 .turn-chip.failed {

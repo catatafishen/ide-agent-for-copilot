@@ -3,7 +3,7 @@ import {renderBatchFragment} from './BatchRenderer';
 import type {TurnContext} from './types';
 
 function _showNotification(title: string, body: string, actions?: { action: string; title: string }[]): void {
-    if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
+    if (!('Notification' in globalThis) || Notification.permission !== 'granted' || !document.hidden) return;
     const sw = navigator.serviceWorker?.controller;
     if (sw) {
         const msg: Record<string, unknown> = {type: 'SHOW_NOTIFICATION', title, body};
@@ -202,7 +202,7 @@ const ChatController = {
         const msgs = this._msgs();
         const firstQueued = msgs.querySelector('.message-queued');
         if (firstQueued) {
-            msgs.insertBefore(msg, firstQueued);
+            firstQueued.before(msg);
         } else {
             msgs.appendChild(msg);
         }
@@ -590,7 +590,7 @@ const ChatController = {
         const bubble = document.createElement('message-bubble');
         bubble.dataset.reqId = reqId;
         // Safe: question is fully escaped with escHtml() before being set — lgtm[js/html-constructed-from-input]
-        bubble.innerHTML = escHtml(question).replace(/\n/g, '<br/>');
+        bubble.innerHTML = escHtml(question).replaceAll('\n', '<br/>');
         ctx.msg!.appendChild(bubble);
 
         if (options?.length) {
@@ -617,7 +617,7 @@ const ChatController = {
         if (row) {
             const summaryBar = row.querySelector('.turn-summary-bar');
             if (summaryBar) {
-                row.insertBefore(el, summaryBar);
+                summaryBar.before(el);
             } else {
                 row.appendChild(el);
             }
@@ -697,7 +697,11 @@ const ChatController = {
         const prevScrollTop = container?.scrollTop ?? 0;
         const prevHeight = container?.scrollHeight ?? 0;
 
-        msgs.insertBefore(fragment, insertBefore);
+        if (insertBefore) {
+            insertBefore.before(fragment);
+        } else {
+            msgs.appendChild(fragment);
+        }
         this._moveQueuedToBottom();
 
         // JCEF does not implement CSS scroll anchoring — compensate manually
@@ -765,7 +769,11 @@ const ChatController = {
         const prevScrollTop = container?.scrollTop ?? 0;
         const wasNearTop = prevScrollTop <= 30;
 
-        msgs.insertBefore(fragment, insertBefore);
+        if (insertBefore) {
+            insertBefore.before(fragment);
+        } else {
+            msgs.appendChild(fragment);
+        }
         this._moveQueuedToBottom();
 
         // Compensate scroll so user stays at same visual position.

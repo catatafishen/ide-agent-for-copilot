@@ -202,61 +202,93 @@ final class UsageStatisticsLoader {
                                          LocalDate startDate, LocalDate endDate,
                                          Map<DayAgentKey, Accumulator> accumulators) {
         String lastSeenTimestamp = null;
-
         for (Path jsonlPath : jsonlFiles) {
-            try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    // Track timestamps from all entries for date attribution.
-                    // TurnStats entries added before v2.5 lack their own timestamp, so we also
-                    // track the most recent timestamp seen in any preceding entry as a fallback.
-                    int tsIdx = line.indexOf("\"timestamp\":\"");
-                    if (tsIdx >= 0) {
-                        int start = tsIdx + "\"timestamp\":\"".length();
-                        int end = line.indexOf('"', start);
-                        if (end > start) {
-                            String candidate = line.substring(start, end);
-                            if (!candidate.isEmpty()) {
-                                lastSeenTimestamp = candidate;
-                            }
-                        }
-                    }
+            lastSeenTimestamp = collectTurnStatsFromFile(
+                jsonlPath, lastSeenTimestamp, sessionAgentId, startDate, endDate, accumulators);
+        }
+    }
 
-                    // Agent attribution uses the session-level agent exclusively.
-                    // Individual entry "agent" fields are ignored here because they can contain
-                    // model names or sub-agent identifiers that would create phantom chart series.
+    /**
+     * Reads one JSONL file and accumulates TurnStats into {@code accumulators}.
+     * Returns the most-recently-seen raw timestamp string (for carry-over into the next file).
+     */
+    @Nullable
+    private static String collectTurnStatsFromFile(Path jsonlPath,
+                                                   @Nullable String lastSeenTimestamp,
+                                                   String sessionAgentId,
+                                                   LocalDate startDate, LocalDate endDate,
+                                                   Map<DayAgentKey, Accumulator> accumulators) {
+        try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // Track timestamps from all entries for date attribution.
+                // TurnStats entries added before v2.5 lack their own timestamp, so we also
+                // track the most recent timestamp seen in any preceding entry as a fallback.
+                String ts = extractTimestampFromLine(line);
+                if (ts != null) lastSeenTimestamp = ts;
 
-                    if (!line.contains("\"turnStats\"")) continue;
+                // Agent attribution uses the session-level agent exclusively.
+                // Individual entry "agent" fields are ignored here because they can contain
+                // model names or sub-agent identifiers that would create phantom chart series.
+                if (!line.contains("\"turnStats\"")) continue;
 
-                    try {
-                        JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
-                        EntryData entry = EntryDataJsonAdapter.deserialize(obj);
-                        if (!(entry instanceof EntryData.TurnStats stats)) continue;
-
-                        LocalDate date = extractDate(obj, lastSeenTimestamp);
-                        if (date == null) {
-                            LOG.debug("Skipping TurnStats entry with no resolvable timestamp in " + jsonlPath.getFileName());
-                            continue;
-                        }
-                        if (date.isBefore(startDate) || date.isAfter(endDate)) continue;
-
-                        DayAgentKey key = new DayAgentKey(date, sessionAgentId);
-                        Accumulator acc = accumulators.computeIfAbsent(key, k -> new Accumulator());
-                        acc.turns++;
-                        acc.inputTokens += stats.getInputTokens();
-                        acc.outputTokens += stats.getOutputTokens();
-                        acc.toolCalls += stats.getToolCallCount();
-                        acc.durationMs += stats.getDurationMs();
-                        acc.linesAdded += stats.getLinesAdded();
-                        acc.linesRemoved += stats.getLinesRemoved();
-                        acc.premiumRequests += parsePremiumMultiplier(stats.getMultiplier());
-                    } catch (Exception e) {
-                        LOG.debug("Skipping malformed JSONL line in " + jsonlPath.getFileName() + ": " + e.getMessage());
-                    }
-                }
-            } catch (IOException e) {
-                LOG.warn("Failed to read session file: " + jsonlPath, e);
+                applyTurnStatsLine(line, jsonlPath, lastSeenTimestamp,
+                    sessionAgentId, startDate, endDate, accumulators);
             }
+        } catch (IOException e) {
+            LOG.warn("Failed to read session file: " + jsonlPath, e);
+        }
+        return lastSeenTimestamp;
+    }
+
+    /**
+     * Extracts the raw {@code "timestamp"} value from a single JSONL line using
+     * lightweight string scanning (no JSON parse). Returns {@code null} when absent.
+     */
+    @Nullable
+    private static String extractTimestampFromLine(String line) {
+        int tsIdx = line.indexOf("\"timestamp\":\"");
+        if (tsIdx < 0) return null;
+        int start = tsIdx + "\"timestamp\":\"".length();
+        int end = line.indexOf('"', start);
+        if (end <= start) return null;
+        String candidate = line.substring(start, end);
+        return candidate.isEmpty() ? null : candidate;
+    }
+
+    /**
+     * Parses one JSONL line as a {@link EntryData.TurnStats} entry and, if it falls within
+     * the requested date window, merges its counters into {@code accumulators}.
+     */
+    private static void applyTurnStatsLine(String line, Path jsonlPath,
+                                           @Nullable String lastSeenTimestamp,
+                                           String sessionAgentId,
+                                           LocalDate startDate, LocalDate endDate,
+                                           Map<DayAgentKey, Accumulator> accumulators) {
+        try {
+            JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
+            EntryData entry = EntryDataJsonAdapter.deserialize(obj);
+            if (!(entry instanceof EntryData.TurnStats stats)) return;
+
+            LocalDate date = extractDate(obj, lastSeenTimestamp);
+            if (date == null) {
+                LOG.debug("Skipping TurnStats entry with no resolvable timestamp in " + jsonlPath.getFileName());
+                return;
+            }
+            if (date.isBefore(startDate) || date.isAfter(endDate)) return;
+
+            DayAgentKey key = new DayAgentKey(date, sessionAgentId);
+            Accumulator acc = accumulators.computeIfAbsent(key, k -> new Accumulator());
+            acc.turns++;
+            acc.inputTokens += stats.getInputTokens();
+            acc.outputTokens += stats.getOutputTokens();
+            acc.toolCalls += stats.getToolCallCount();
+            acc.durationMs += stats.getDurationMs();
+            acc.linesAdded += stats.getLinesAdded();
+            acc.linesRemoved += stats.getLinesRemoved();
+            acc.premiumRequests += parsePremiumMultiplier(stats.getMultiplier());
+        } catch (Exception e) {
+            LOG.debug("Skipping malformed JSONL line in " + jsonlPath.getFileName() + ": " + e.getMessage());
         }
     }
 

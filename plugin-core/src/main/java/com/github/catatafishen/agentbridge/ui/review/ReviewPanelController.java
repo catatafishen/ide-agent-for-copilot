@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 public final class ReviewPanelController {
 
     private final Project project;
-    private volatile Runnable expandHandler;
+    private Runnable expandHandler;
 
     public ReviewPanelController(@NotNull Project project) {
         this.project = project;

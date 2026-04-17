@@ -53,7 +53,7 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     private static final int BUTTON_AREA_WIDTH = 82;
 
-    private final Project project;
+    private final transient Project project;
     private final ReviewTableModel tableModel;
     private final JBTable table;
     private final CardLayout cardLayout;
@@ -209,60 +209,7 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     private @NotNull ActionToolbar createToolbar() {
         DefaultActionGroup group = new DefaultActionGroup();
 
-        group.add(new ToggleAction("Diff Review", "Toggle diff review for agent edits", AllIcons.Actions.Diff) {
-            @Override
-            public @NotNull ActionUpdateThread getActionUpdateThread() {
-                return ActionUpdateThread.BGT;
-            }
-
-            @Override
-            public boolean isSelected(@NotNull AnActionEvent e) {
-                return McpServerSettings.getInstance(project).isReviewAgentEdits();
-            }
-
-            @Override
-            public void setSelected(@NotNull AnActionEvent e, boolean state) {
-                if (state) {
-                    McpServerSettings.getInstance(project).setReviewAgentEdits(true);
-                    project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
-                    return;
-                }
-                AgentEditSession session = AgentEditSession.getInstance(project);
-                if (session.isActive() && session.hasChanges()) {
-                    int result = Messages.showOkCancelDialog(
-                        project,
-                        "You have " + session.getReviewItems().size()
-                            + " unreviewed file(s). Disabling Diff Review will discard the review session.",
-                        "Discard Review Session?",
-                        "Discard",
-                        "Cancel",
-                        Messages.getWarningIcon()
-                    );
-                    if (result != Messages.OK) return;
-                }
-                boolean wasActive = session.isActive();
-                McpServerSettings.getInstance(project).setReviewAgentEdits(false);
-                session.endSession();
-                if (!wasActive) {
-                    project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
-                }
-            }
-
-            @Override
-            public void update(@NotNull AnActionEvent e) {
-                super.update(e);
-                boolean enabled = McpServerSettings.getInstance(project).isReviewAgentEdits();
-                if (enabled) {
-                    e.getPresentation().setIcon(AllIcons.Actions.Suspend);
-                    e.getPresentation().setText("Disable Diff Review");
-                    e.getPresentation().setDescription("Disable diff review and stop tracking agent edits");
-                } else {
-                    e.getPresentation().setIcon(AllIcons.Actions.Execute);
-                    e.getPresentation().setText("Enable Diff Review");
-                    e.getPresentation().setDescription("Enable diff review to track and review agent edits");
-                }
-            }
-        });
+        group.add(new DiffReviewToggleAction(project));
 
         group.addSeparator();
 
@@ -389,6 +336,89 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 }
             }
             return c;
+        }
+    }
+
+    // ── Toolbar actions ───────────────────────────────────────────────────────
+
+    /**
+     * Named inner class extracted from the anonymous {@link ToggleAction} in
+     * {@link #createToolbar()} to reduce cognitive complexity (SonarQube S3776).
+     * Enables or disables diff review for agent edits, with a confirmation
+     * dialog when disabling while a review session with unreviewed changes is active.
+     */
+    private static final class DiffReviewToggleAction extends ToggleAction {
+
+        private final Project project;
+
+        DiffReviewToggleAction(@NotNull Project project) {
+            super("Diff Review", "Toggle diff review for agent edits", AllIcons.Actions.Diff);
+            this.project = project;
+        }
+
+        @Override
+        public @NotNull ActionUpdateThread getActionUpdateThread() {
+            return ActionUpdateThread.BGT;
+        }
+
+        @Override
+        public boolean isSelected(@NotNull AnActionEvent e) {
+            return McpServerSettings.getInstance(project).isReviewAgentEdits();
+        }
+
+        @Override
+        public void setSelected(@NotNull AnActionEvent e, boolean state) {
+            if (state) {
+                enableDiffReview();
+            } else {
+                disableDiffReview();
+            }
+        }
+
+        private void enableDiffReview() {
+            McpServerSettings.getInstance(project).setReviewAgentEdits(true);
+            project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
+        }
+
+        private void disableDiffReview() {
+            AgentEditSession session = AgentEditSession.getInstance(project);
+            if (session.isActive() && session.hasChanges() && !confirmDiscard(session)) {
+                return;
+            }
+            boolean wasActive = session.isActive();
+            McpServerSettings.getInstance(project).setReviewAgentEdits(false);
+            session.endSession();
+            if (!wasActive) {
+                project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
+            }
+        }
+
+        private boolean confirmDiscard(@NotNull AgentEditSession session) {
+            int result = Messages.showOkCancelDialog(
+                project,
+                "You have " + session.getReviewItems().size()
+                    + " unreviewed file(s). Disabling Diff Review will discard the review session.",
+                "Discard Review Session?",
+                "Discard",
+                "Cancel",
+                Messages.getWarningIcon()
+            );
+            return result == Messages.OK;
+        }
+
+        @Override
+        public void update(@NotNull AnActionEvent e) {
+            super.update(e);
+            boolean enabled = McpServerSettings.getInstance(project).isReviewAgentEdits();
+            if (enabled) {
+                e.getPresentation().setIcon(AllIcons.Actions.Suspend);
+                e.getPresentation().setText("Disable Diff Review");
+                e.getPresentation().setDescription("Disable diff review and stop tracking agent edits");
+            } else {
+                e.getPresentation().setIcon(AllIcons.Actions.Execute);
+                e.getPresentation().setText("Enable Diff Review");
+                e.getPresentation().setDescription("Enable diff review to track and review agent edits");
+            }
         }
     }
 
