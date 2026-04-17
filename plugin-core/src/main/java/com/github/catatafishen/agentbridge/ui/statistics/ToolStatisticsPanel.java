@@ -80,6 +80,12 @@ public class ToolStatisticsPanel extends JPanel {
         table.getColumnModel().getColumn(6).setPreferredWidth(90);  // Total Output
         table.getColumnModel().getColumn(7).setPreferredWidth(80);  // Error Rate
 
+        var bytesRenderer = new BytesTableCellRenderer();
+        table.getColumnModel().getColumn(ToolStatisticsTableModel.COL_AVG_DATA).setCellRenderer(bytesRenderer);
+        table.getColumnModel().getColumn(ToolStatisticsTableModel.COL_TOTAL_INPUT).setCellRenderer(bytesRenderer);
+        table.getColumnModel().getColumn(ToolStatisticsTableModel.COL_TOTAL_OUTPUT).setCellRenderer(bytesRenderer);
+        table.getColumnModel().getColumn(ToolStatisticsTableModel.COL_ERROR_RATE).setCellRenderer(new PercentTableCellRenderer());
+
         return new JBScrollPane(table);
     }
 
