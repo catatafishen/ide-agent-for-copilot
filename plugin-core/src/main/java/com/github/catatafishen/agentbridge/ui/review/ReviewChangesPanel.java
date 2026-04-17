@@ -260,7 +260,7 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 super.update(e);
                 boolean enabled = McpServerSettings.getInstance(project).isReviewAgentEdits();
                 if (enabled) {
-                    e.getPresentation().setIcon(AllIcons.Process.Stop);
+                    e.getPresentation().setIcon(AllIcons.Actions.Suspend);
                     e.getPresentation().setText("Disable Diff Review");
                     e.getPresentation().setDescription("Disable diff review and stop tracking agent edits");
                 } else {
