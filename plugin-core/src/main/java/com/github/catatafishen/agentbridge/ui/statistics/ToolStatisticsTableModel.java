@@ -12,8 +12,21 @@ import java.util.List;
  * Avg Duration (ms), Avg Data, Total Input, Total Output, Error Rate (%).
  * The Client column is omitted — it is redundant because the client filter
  * is shown in the toolbar dropdown above the table.
+ *
+ * <p>Numeric columns (Calls, Avg Duration, byte sizes, Error Rate) return raw
+ * {@code Long} or {@code Double} values so that {@code TableRowSorter} sorts
+ * them numerically. The panel applies custom cell renderers for display formatting.</p>
  */
 public class ToolStatisticsTableModel extends AbstractTableModel {
+
+    static final int COL_TOOL = 0;
+    static final int COL_CATEGORY = 1;
+    static final int COL_CALLS = 2;
+    static final int COL_AVG_DURATION = 3;
+    static final int COL_AVG_DATA = 4;
+    static final int COL_TOTAL_INPUT = 5;
+    static final int COL_TOTAL_OUTPUT = 6;
+    static final int COL_ERROR_RATE = 7;
 
     private static final String[] COLUMN_NAMES = {
         "Tool", "Category", "Calls", "Avg Duration (ms)",
@@ -22,7 +35,7 @@ public class ToolStatisticsTableModel extends AbstractTableModel {
 
     private static final Class<?>[] COLUMN_TYPES = {
         String.class, String.class, Long.class, Long.class,
-        String.class, String.class, String.class, String.class
+        Long.class, Long.class, Long.class, Double.class
     };
 
     private final List<ToolAggregate> data = new ArrayList<>();
@@ -51,16 +64,16 @@ public class ToolStatisticsTableModel extends AbstractTableModel {
     public Object getValueAt(int rowIndex, int columnIndex) {
         ToolAggregate row = data.get(rowIndex);
         return switch (columnIndex) {
-            case 0 -> row.toolName();
-            case 1 -> row.category() != null ? row.category() : "—";
-            case 2 -> row.callCount();
-            case 3 -> row.avgDurationMs();
-            case 4 -> formatBytes(row.avgTotalBytes());
-            case 5 -> formatBytes(row.totalInputBytes());
-            case 6 -> formatBytes(row.totalOutputBytes());
-            case 7 -> row.callCount() > 0
-                ? String.format("%.1f", 100.0 * row.errorCount() / row.callCount())
-                : "0.0";
+            case COL_TOOL -> row.toolName();
+            case COL_CATEGORY -> row.category() != null ? row.category() : "—";
+            case COL_CALLS -> row.callCount();
+            case COL_AVG_DURATION -> row.avgDurationMs();
+            case COL_AVG_DATA -> row.avgTotalBytes();
+            case COL_TOTAL_INPUT -> row.totalInputBytes();
+            case COL_TOTAL_OUTPUT -> row.totalOutputBytes();
+            case COL_ERROR_RATE -> row.callCount() > 0
+                ? 100.0 * row.errorCount() / row.callCount()
+                : 0.0;
             default -> "";
         };
     }
