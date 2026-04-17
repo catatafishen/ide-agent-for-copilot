@@ -12,6 +12,8 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.ToggleAction;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -38,7 +40,7 @@ import java.util.List;
 /**
  * Panel displaying review items from the current {@link AgentEditSession}.
  * Shows a table of files with status, and per-file accept/reject actions.
- * Toolbar provides bulk accept-all/reject-all and end-session actions.
+ * Toolbar provides a stop/play toggle to enable/disable diff review, plus bulk accept-all/reject-all actions.
  */
 public final class ReviewChangesPanel extends JPanel implements Disposable {
 
@@ -52,7 +54,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     private final JPanel cardPanel;
     private final JPanel emptyStatePanel;
     private final JBLabel emptyLabel;
-    private final JButton enableButton;
 
     public ReviewChangesPanel(@NotNull Project project) {
         super(new BorderLayout());
@@ -66,20 +67,12 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
         emptyLabel = new JBLabel("", SwingConstants.CENTER);
         emptyLabel.setForeground(JBColor.GRAY);
-        enableButton = new JButton("Enable Diff Review");
-        enableButton.addActionListener(e -> {
-            McpServerSettings.getInstance(project).setReviewAgentEdits(true);
-            refresh();
-        });
-        // Centered column: message on top, button below. Button is only visible when review is off.
+        // Centered column: just the status label.
         emptyStatePanel = new JPanel(new GridBagLayout());
         JPanel column = new JPanel();
         column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
         emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        enableButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         column.add(emptyLabel);
-        column.add(Box.createVerticalStrut(JBUI.scale(8)));
-        column.add(enableButton);
         emptyStatePanel.add(column);
 
         // CardLayout keeps both children alive — switching cards avoids the
@@ -136,10 +129,8 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             boolean reviewEnabled = McpServerSettings.getInstance(project).isReviewAgentEdits();
             if (reviewEnabled) {
                 emptyLabel.setText("No agent edits to review");
-                enableButton.setVisible(false);
             } else {
                 emptyLabel.setText("<html><center>Diff Review is off.<br>Agent edits are applied directly without review.</center></html>");
-                enableButton.setVisible(true);
             }
             cardLayout.show(cardPanel, CARD_EMPTY);
         }
@@ -224,6 +215,63 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     private @NotNull ActionToolbar createToolbar() {
         DefaultActionGroup group = new DefaultActionGroup();
 
+        group.add(new ToggleAction("Diff Review", "Toggle diff review for agent edits", AllIcons.Actions.Diff) {
+            @Override
+            public @NotNull ActionUpdateThread getActionUpdateThread() {
+                return ActionUpdateThread.BGT;
+            }
+
+            @Override
+            public boolean isSelected(@NotNull AnActionEvent e) {
+                return McpServerSettings.getInstance(project).isReviewAgentEdits();
+            }
+
+            @Override
+            public void setSelected(@NotNull AnActionEvent e, boolean state) {
+                if (state) {
+                    McpServerSettings.getInstance(project).setReviewAgentEdits(true);
+                    project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
+                    return;
+                }
+                AgentEditSession session = AgentEditSession.getInstance(project);
+                if (session.isActive() && session.hasChanges()) {
+                    int result = Messages.showOkCancelDialog(
+                        project,
+                        "You have " + session.getReviewItems().size()
+                            + " unreviewed file(s). Disabling Diff Review will discard the review session.",
+                        "Discard Review Session?",
+                        "Discard",
+                        "Cancel",
+                        Messages.getWarningIcon()
+                    );
+                    if (result != Messages.OK) return;
+                }
+                boolean wasActive = session.isActive();
+                McpServerSettings.getInstance(project).setReviewAgentEdits(false);
+                session.endSession();
+                if (!wasActive) {
+                    project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
+                }
+            }
+
+            @Override
+            public void update(@NotNull AnActionEvent e) {
+                super.update(e);
+                boolean enabled = McpServerSettings.getInstance(project).isReviewAgentEdits();
+                if (enabled) {
+                    e.getPresentation().setIcon(AllIcons.Process.Stop);
+                    e.getPresentation().setText("Disable Diff Review");
+                    e.getPresentation().setDescription("Disable diff review and stop tracking agent edits");
+                } else {
+                    e.getPresentation().setIcon(AllIcons.Actions.Execute);
+                    e.getPresentation().setText("Enable Diff Review");
+                    e.getPresentation().setDescription("Enable diff review to track and review agent edits");
+                }
+            }
+        });
+
+        group.addSeparator();
+
         group.add(new DumbAwareAction("Accept All", "Accept all agent edits", AllIcons.Actions.Checked) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -259,34 +307,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                     AgentEditSession.getInstance(project).isActive()
                         && AgentEditSession.getInstance(project).hasChanges()
                 );
-            }
-        });
-
-        group.addSeparator();
-
-        group.add(new DumbAwareAction("End Review Session", "End the review session without accepting or rejecting",
-            AllIcons.Actions.Cancel) {
-            @Override
-            public void actionPerformed(@NotNull AnActionEvent e) {
-                AgentEditSession session = AgentEditSession.getInstance(project);
-                if (session.hasChanges()) {
-                    int result = Messages.showOkCancelDialog(
-                        project,
-                        "You have " + session.getReviewItems().size()
-                            + " unreviewed file(s). End the review session?",
-                        "End Review Session?",
-                        "End Session",
-                        "Cancel",
-                        Messages.getWarningIcon()
-                    );
-                    if (result != Messages.OK) return;
-                }
-                session.endSession();
-            }
-
-            @Override
-            public void update(@NotNull AnActionEvent e) {
-                e.getPresentation().setEnabled(AgentEditSession.getInstance(project).isActive());
             }
         });
 

@@ -337,10 +337,6 @@ GitHub Copilot, Claude Code, OpenAI Codex, JetBrains Junie, Amazon Kiro, and Ope
       <add-to-group group-id="EditorPopupMenu" anchor="last"/>
       <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
     </action>
-    <action id="AgentBridge.Review.EndSession"
-            class="com.github.catatafishen.agentbridge.psi.review.EndReviewSessionAction"
-            text="End Agent Review Session"
-            description="Clear all diff highlights and forget agent edit snapshots"/>
     <action id="AgentBridge.Review.NextChange"
             class="com.github.catatafishen.agentbridge.psi.review.NextAgentEditChangeAction"
             text="Next Agent Edit Change"
