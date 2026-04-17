@@ -73,6 +73,12 @@ dialog interaction, build/run output reading, user prompts.
 **Editor** — Open files, show diffs, scratch files, conversation history search, theme
 management.
 
+**Diff Review** *(opt-in)* — Review every agent edit before it lands. Persistent
+green/amber/red diff highlights, a Review panel with Accept / Revert per file,
+cross-file change navigation, and automatic gating of destructive git operations
+(commit, merge, rebase, reset --hard, …) until review is resolved. See
+[docs/INLINE-DIFF-REVIEW.md](docs/INLINE-DIFF-REVIEW.md).
+
 **Nudge system** — Send mid-turn guidance while the agent is working (Enter), force-stop
 and redirect (Ctrl+Enter), or queue follow-up messages (Ctrl+Shift+Enter).
 

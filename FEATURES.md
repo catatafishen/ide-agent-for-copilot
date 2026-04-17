@@ -288,6 +288,31 @@ Fine-grained control over what the agent can do.
 
 ---
 
+## Diff Review for Agent Edits
+
+Opt-in safety net that turns every agent-originated file edit into a reviewable change.
+See the full reference in [docs/INLINE-DIFF-REVIEW.md](docs/INLINE-DIFF-REVIEW.md).
+
+- **Persistent diff highlights** — green (added), amber (modified), red (deleted) bands
+  appear in the gutter and editor, powered by the same `RangeHighlighter` layer used by VCS
+- **Review tab** — side-panel list of every file with pending changes; per-row Open / Accept
+  / Revert plus toolbar-level Accept All and Reject All (with optional reason nudge)
+- **Editor banner** — shows `Review: File 3/7 · 5 changes` with Show-diff, Accept,
+  Previous, Next, and Revert… actions; navigation works across all tracked files
+- **Git gating** — `git_commit`, `git_merge`, `git_rebase`, `git_pull`, `git_reset --hard`,
+  `git_stash pop/apply`, `git_branch create/switch`, `git_cherry_pick`, and `git_revert`
+  block (up to 10 minutes) until review is resolved, so the agent can't commit or rebase
+  over unreviewed changes
+- **Agent-only tracking** — a thread-local marker ensures user typing, manual reformats,
+  and external edits are *not* captured; only edits made from inside tool calls become
+  review items
+- **Worktree-safe** — snapshots are invalidated automatically on branch switch,
+  `reset --hard`, rebase, and similar operations so stale baselines never linger
+- **Off by default** — toggle via Review panel toolbar or `Settings → Tools → AgentBridge →
+  Review agent edits`
+
+---
+
 ## Model Selection & Billing
 
 Choose the right model for the task and track usage in real time.
