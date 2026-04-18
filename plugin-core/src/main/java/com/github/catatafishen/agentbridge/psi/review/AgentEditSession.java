@@ -83,7 +83,9 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
 
     private static final Logger LOG = Logger.getInstance(AgentEditSession.class);
 
-    /** Skip snapshotting files larger than 5 MB to avoid memory bloat. */
+    /**
+     * Skip snapshotting files larger than 5 MB to avoid memory bloat.
+     */
     private static final long MAX_SNAPSHOT_BYTES = 5L * 1024 * 1024;
 
     /**
@@ -95,7 +97,9 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
 
     private static final long REVIEW_WAIT_TIMEOUT_MINUTES = 10;
 
-    /** UserData key for tracking old path during rename/move events. */
+    /**
+     * UserData key for tracking old path during rename/move events.
+     */
     private static final Key<String> OLD_PATH_KEY = Key.create("AgentEditSession.oldPath");
 
     /**
@@ -119,19 +123,33 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
 
     private final Project project;
 
-    /** Before-content snapshots keyed by canonical VFS path. */
+    /**
+     * Before-content snapshots keyed by canonical VFS path.
+     */
     private final Map<String, String> snapshots = new ConcurrentHashMap<>();
-    /** Content of files deleted during the session, keyed by path. */
+    /**
+     * Content of files deleted during the session, keyed by path.
+     */
     private final Map<String, String> deletedFiles = new ConcurrentHashMap<>();
-    /** Paths of files created during the session. */
+    /**
+     * Paths of files created during the session.
+     */
     private final Set<String> newFiles = ConcurrentHashMap.newKeySet();
-    /** User approval state per path. */
+    /**
+     * User approval state per path.
+     */
     private final Map<String, ApprovalState> approvals = new ConcurrentHashMap<>();
-    /** Epoch millis of the most recent agent edit per path. */
+    /**
+     * Epoch millis of the most recent agent edit per path.
+     */
     private final Map<String, Long> lastEditedAt = new ConcurrentHashMap<>();
-    /** Inserted line count vs. the snapshot baseline. */
+    /**
+     * Inserted line count vs. the snapshot baseline.
+     */
     private final Map<String, Integer> linesAdded = new ConcurrentHashMap<>();
-    /** Deleted line count vs. the snapshot baseline. */
+    /**
+     * Deleted line count vs. the snapshot baseline.
+     */
     private final Map<String, Integer> linesRemoved = new ConcurrentHashMap<>();
 
     private Disposable sessionDisposable;
@@ -338,7 +356,9 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         return false;
     }
 
-    /** True while {@link #awaitReviewCompletion} is blocking on a future. */
+    /**
+     * True while {@link #awaitReviewCompletion} is blocking on a future.
+     */
     public boolean isGateActive() {
         java.util.concurrent.CompletableFuture<Void> f = reviewCompletionFuture;
         return f != null && !f.isDone();
@@ -383,7 +403,9 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
 
     // ── Approval mutations ──────────────────────────────────────────────────
 
-    /** Flips a single row to APPROVED. Keeps the row visible. */
+    /**
+     * Flips a single row to APPROVED. Keeps the row visible.
+     */
     public void acceptFile(@NotNull String path) {
         if (!pathIsTracked(path)) return;
         approvals.put(path, ApprovalState.APPROVED);
@@ -395,7 +417,23 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         completeGateIfNoPending();
     }
 
-    /** Flips every PENDING row to APPROVED. Used by the "Auto-Approve ON" sweep. */
+    /**
+     * Flips a single row back to PENDING.
+     */
+    public void unapproveFile(@NotNull String path) {
+        if (!pathIsTracked(path)) return;
+        if (approvals.get(path) != ApprovalState.APPROVED) return;
+        approvals.put(path, ApprovalState.PENDING);
+        VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
+        if (vf != null) {
+            com.intellij.ui.EditorNotifications.getInstance(project).updateNotifications(vf);
+        }
+        fireReviewStateChanged();
+    }
+
+    /**
+     * Flips every PENDING row to APPROVED. Used by the "Auto-Approve ON" sweep.
+     */
     public void acceptAll() {
         boolean changed = false;
         for (String path : collectAllPaths()) {
@@ -420,7 +458,9 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         fireReviewStateChanged();
     }
 
-    /** Removes every APPROVED row. */
+    /**
+     * Removes every APPROVED row.
+     */
     public void removeAllApproved() {
         List<String> approved = new ArrayList<>();
         for (Map.Entry<String, ApprovalState> e : approvals.entrySet()) {
@@ -476,15 +516,23 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
 
     // ── Revert (always sends a structured nudge) ────────────────────────────
 
-    /** What to do with the in-flight gate when reverting during a blocked git op. */
+    /**
+     * What to do with the in-flight gate when reverting during a blocked git op.
+     */
     public enum RevertGateAction {
-        /** Queue the nudge into pendingNudge; keep the gate blocking so the user can
-         * reject more files. Subsequent reverts during the same gate default here. */
+        /**
+         * Queue the nudge into pendingNudge; keep the gate blocking so the user can
+         * reject more files. Subsequent reverts during the same gate default here.
+         */
         CONTINUE_REVIEWING,
-        /** Short-circuit the gate immediately — the gated tool returns the merged
-         * revert nudges as its error response so the agent can re-plan. */
+        /**
+         * Short-circuit the gate immediately — the gated tool returns the merged
+         * revert nudges as its error response so the agent can re-plan.
+         */
         SEND_NOW,
-        /** Plain revert with no gate special-casing (used when no gate is active). */
+        /**
+         * Plain revert with no gate special-casing (used when no gate is active).
+         */
         DEFAULT
     }
 
@@ -544,7 +592,9 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         completeGateIfNoPending();
     }
 
-    /** Convenience overload for callers that have a {@link VirtualFile}. */
+    /**
+     * Convenience overload for callers that have a {@link VirtualFile}.
+     */
     public void revertFile(@NotNull VirtualFile vf, @Nullable String reason) {
         revertFile(vf.getPath(), reason, RevertGateAction.DEFAULT);
     }
