@@ -522,13 +522,14 @@ public final class AgentEditSession implements Disposable {
             PsiBridgeService.getInstance(project).getWriteToolSemaphore();
         writeSemaphore.release();
         try {
-            java.util.concurrent.CompletableFuture<Void> future = getOrCreateReviewCompletionFuture();
-            future.get(REVIEW_WAIT_TIMEOUT_MINUTES, java.util.concurrent.TimeUnit.MINUTES);
-
-            // Re-check: new edits may have arrived while we yielded the lock.
-            // If so, get a fresh future and wait again (same timeout restarts).
+            // Re-check after releasing locks: the EDT can call completeReviewIfEmpty() at
+            // any time, including in the window between the checks above and getOrCreate().
+            // If it ran with a null future (no changes left), we must not hang on get().
             while (active && hasChanges()) {
-                future = getOrCreateReviewCompletionFuture();
+                java.util.concurrent.CompletableFuture<Void> future = getOrCreateReviewCompletionFuture();
+                // Guard: if the EDT cleared all changes between creating the future and now
+                // (and therefore completed or never completed it), avoid waiting.
+                if (!active || !hasChanges()) break;
                 future.get(REVIEW_WAIT_TIMEOUT_MINUTES, java.util.concurrent.TimeUnit.MINUTES);
             }
             return null;
@@ -852,6 +853,9 @@ public final class AgentEditSession implements Disposable {
         private void handleBeforeDelete(@NotNull VFileDeleteEvent event) {
             VirtualFile vf = event.getFile();
             if (vf.isDirectory() || !isProjectFile(vf)) return;
+            // Only capture agent-initiated deletes (same guard as beforeDocumentChange).
+            // User-initiated deletes must not be registered as agent edits.
+            if (!isAgentEditActive()) return;
 
             if (newFiles.remove(vf.getPath())) return;
 

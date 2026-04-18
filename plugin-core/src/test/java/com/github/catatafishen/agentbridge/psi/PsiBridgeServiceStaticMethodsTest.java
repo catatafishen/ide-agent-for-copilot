@@ -783,4 +783,52 @@ class PsiBridgeServiceStaticMethodsTest {
             assertEquals(500L, PsiBridgeService.computeExtraSleep(lastFinished, settle, now));
         }
     }
+
+    // ---------------------------------------------------------------
+    // formatBaseErrorMessage
+    // ---------------------------------------------------------------
+    @Nested
+    class FormatBaseErrorMessageTest {
+        @Test
+        void testNormalMessageReturned() {
+            Exception e = new RuntimeException("something went wrong");
+            String result = PsiBridgeService.formatBaseErrorMessage(e, "");
+            assertEquals("Error: something went wrong", result);
+        }
+
+        @Test
+        void testNullMessageFallsBackToClassName() {
+            Exception e = new NullPointerException(); // getMessage() returns null
+            String result = PsiBridgeService.formatBaseErrorMessage(e, "");
+            assertEquals("Error: NullPointerException", result);
+        }
+
+        @Test
+        void testBlankMessageFallsBackToClassName() {
+            Exception e = new RuntimeException("   ");
+            String result = PsiBridgeService.formatBaseErrorMessage(e, "");
+            assertEquals("Error: RuntimeException", result);
+        }
+
+        @Test
+        void testLiteralNullStringFallsBackToClassName() {
+            Exception e = new RuntimeException("null");
+            String result = PsiBridgeService.formatBaseErrorMessage(e, "");
+            assertEquals("Error: RuntimeException", result);
+        }
+
+        @Test
+        void testModalDetailOverridesBlankMessage() {
+            Exception e = new RuntimeException();
+            String result = PsiBridgeService.formatBaseErrorMessage(e, "Modal: Save dialog");
+            assertEquals("Error: Operation blocked by modal dialog", result);
+        }
+
+        @Test
+        void testNormalMessageTakesPriorityOverModalDetail() {
+            Exception e = new RuntimeException("actual error");
+            String result = PsiBridgeService.formatBaseErrorMessage(e, "Modal: Save dialog");
+            assertEquals("Error: actual error", result);
+        }
+    }
 }
