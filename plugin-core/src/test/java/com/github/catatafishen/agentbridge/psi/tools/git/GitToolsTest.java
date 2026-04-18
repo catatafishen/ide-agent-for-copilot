@@ -536,6 +536,46 @@ public class GitToolsTest extends BasePlatformTestCase {
         assertTrue("Error must include actionable guidance, got: " + result, containsHint);
     }
 
+    /**
+     * When there is a modified-but-not-staged file, the "nothing to commit" hint must
+     * list it under "Modified (not staged):" so the agent knows exactly what to stage.
+     */
+    public void testGitCommitHintListsUnstagedModification() throws Exception {
+        // Modify the tracked README.md without staging it.
+        Path readme = Path.of(basePath, "README.md");
+        Files.writeString(readme, "# Modified\n");
+
+        GitCommitTool tool = new GitCommitTool(getProject());
+        String result = tool.execute(args("message", "test: must not be committed", "all", "false"));
+
+        assertNotNull(result);
+        assertTrue("Expected 'nothing to commit' error, got: " + result,
+            result.startsWith("Error: nothing to commit."));
+        assertTrue("Hint must list the unstaged file under 'Modified', got: " + result,
+            result.contains("Modified") && result.contains("README.md"));
+        assertTrue("Hint must include git_stage guidance, got: " + result,
+            result.contains("git_stage"));
+    }
+
+    /**
+     * When there is a new untracked file, the "nothing to commit" hint must list it
+     * under "Untracked:" so the agent knows it exists but needs explicit staging.
+     */
+    public void testGitCommitHintListsUntrackedFile() throws Exception {
+        // Create a new untracked file that has never been staged.
+        Path newFile = Path.of(basePath, "new-untracked.txt");
+        Files.writeString(newFile, "untracked content\n");
+
+        GitCommitTool tool = new GitCommitTool(getProject());
+        String result = tool.execute(args("message", "test: must not be committed", "all", "false"));
+
+        assertNotNull(result);
+        assertTrue("Expected 'nothing to commit' error, got: " + result,
+            result.startsWith("Error: nothing to commit."));
+        assertTrue("Hint must list the untracked file under 'Untracked', got: " + result,
+            result.contains("Untracked") && result.contains("new-untracked.txt"));
+    }
+
     // ── GitLogTool — additional format/filter tests ───────────────────────────────
 
     /**
