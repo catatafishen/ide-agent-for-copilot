@@ -1,10 +1,9 @@
 package com.github.catatafishen.agentbridge.ui.review;
 
 import com.github.catatafishen.agentbridge.psi.review.AgentEditSession;
-import com.github.catatafishen.agentbridge.psi.review.ApprovalState;
+import com.github.catatafishen.agentbridge.psi.review.RevertReasonDialog;
 import com.github.catatafishen.agentbridge.psi.review.ReviewItem;
 import com.github.catatafishen.agentbridge.psi.review.ReviewSessionTopic;
-import com.github.catatafishen.agentbridge.psi.review.RevertReasonDialog;
 import com.github.catatafishen.agentbridge.settings.McpServerSettings;
 import com.github.catatafishen.agentbridge.ui.util.TimestampDisplayFormatter;
 import com.intellij.icons.AllIcons;
@@ -30,30 +29,11 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
-import javax.swing.AbstractAction;
-import javax.swing.ActionMap;
-import javax.swing.BorderFactory;
-import javax.swing.BoxLayout;
-import javax.swing.Icon;
-import javax.swing.InputMap;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JTable;
-import javax.swing.KeyStroke;
-import javax.swing.SwingConstants;
+import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumn;
-import java.awt.BorderLayout;
-import java.awt.CardLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.GridBagLayout;
-import java.awt.GridLayout;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -63,32 +43,23 @@ import java.util.List;
 
 /**
  * Side panel listing every file the agent has touched in the current
- * {@link AgentEditSession}. The session is always running; entries appear here as soon
- * as the agent edits a file and stay visible (visually muted) after the user accepts
- * them, until they are removed via:
- * <ul>
- *   <li>the per-row <kbd>Delete</kbd> shortcut (approved rows only),</li>
- *   <li>the toolbar <b>Clean Approved</b> button,</li>
- *   <li>the post-commit prune in {@code git_commit},</li>
- *   <li>the optional <b>Auto-clean on new prompt</b> toggle, or</li>
- *   <li>a worktree-changing git operation that wipes the whole session.</li>
- * </ul>
- *
- * <p>The toolbar exposes <b>Auto-Approve</b> (new edits and existing pending rows are
- * approved on toggle-on) and <b>Auto-Clean on new prompt</b> (sweep approved rows when
- * the next user message starts a fresh turn). There is no longer an on/off master
- * switch — diff review is always on.</p>
+ * {@link AgentEditSession}.
+ * <p>
+ * Columns: [status icon] [file name + meta] [approve checkbox] [remove X].
+ * Clicking a row opens the file. The approve checkbox toggles between PENDING and
+ * APPROVED (green check when approved). The X button removes approved rows.
  */
 public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     private static final String CARD_TABLE = "table";
     private static final String CARD_EMPTY = "empty";
-
-    /** Local action key for the DEL/Backspace shortcut binding. */
     private static final String ACTION_REMOVE_APPROVED = "removeApprovedRow";
 
-    private static final int BUTTON_AREA_WIDTH = 82;
-    private static final int META_AREA_WIDTH = 130;
+    /**
+     * Standard diff colors for added/removed line counts.
+     */
+    private static final JBColor DIFF_GREEN = new JBColor(new Color(0, 128, 0), new Color(80, 200, 80));
+    private static final JBColor DIFF_RED = new JBColor(new Color(200, 0, 0), new Color(255, 80, 80));
 
     private final transient Project project;
     private final ReviewTableModel tableModel;
@@ -150,7 +121,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     @Override
     public void dispose() {
-        // Message-bus connection auto-disposes via the Disposer parent link above.
     }
 
     public void refresh() {
@@ -177,31 +147,60 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         table.setTableHeader(null);
         table.setExpandableItemsEnabled(false);
 
+        // COL_STATUS — small icon column
         TableColumn statusCol = table.getColumnModel().getColumn(ReviewTableModel.COL_STATUS);
         statusCol.setPreferredWidth(JBUI.scale(28));
         statusCol.setMaxWidth(JBUI.scale(32));
         statusCol.setCellRenderer(new StatusCellRenderer());
 
+        // COL_FILE — file name + meta (takes remaining space)
         TableColumn fileCol = table.getColumnModel().getColumn(ReviewTableModel.COL_FILE);
         fileCol.setPreferredWidth(JBUI.scale(280));
         fileCol.setCellRenderer(new FileCellRenderer());
 
+        // COL_APPROVE — toggleable checkbox icon
+        TableColumn approveCol = table.getColumnModel().getColumn(ReviewTableModel.COL_APPROVE);
+        approveCol.setPreferredWidth(JBUI.scale(28));
+        approveCol.setMaxWidth(JBUI.scale(32));
+        approveCol.setCellRenderer(new ApproveCheckboxRenderer());
+
+        // COL_REMOVE — X button (only for approved rows)
+        TableColumn removeCol = table.getColumnModel().getColumn(ReviewTableModel.COL_REMOVE);
+        removeCol.setPreferredWidth(JBUI.scale(28));
+        removeCol.setMaxWidth(JBUI.scale(32));
+        removeCol.setCellRenderer(new RemoveButtonRenderer());
+
+        table.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 int row = table.rowAtPoint(e.getPoint());
                 int col = table.columnAtPoint(e.getPoint());
                 if (row < 0 || row >= tableModel.getRowCount()) return;
-
                 ReviewItem item = tableModel.getItem(row);
-                if (col == ReviewTableModel.COL_FILE) {
-                    java.awt.Rectangle cellRect = table.getCellRect(row, ReviewTableModel.COL_FILE, true);
-                    int relX = e.getX() - cellRect.x;
-                    int buttonStart = cellRect.width - JBUI.scale(BUTTON_AREA_WIDTH);
-                    if (relX >= buttonStart) {
-                        handleFileActionClick(item, relX - buttonStart);
+
+                switch (col) {
+                    case ReviewTableModel.COL_APPROVE -> toggleApproval(item);
+                    case ReviewTableModel.COL_REMOVE -> {
+                        if (item.approved()) {
+                            AgentEditSession.getInstance(project).removeApproved(item.path());
+                        }
                     }
+                    default -> navigateToFile(item);
                 }
+            }
+        });
+
+        // Right-click to revert
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) showRevertPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) showRevertPopup(e);
             }
         });
 
@@ -216,23 +215,30 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 int row = table.getSelectedRow();
                 if (row < 0 || row >= tableModel.getRowCount()) return;
                 ReviewItem item = tableModel.getItem(row);
-                if (item.approvalState() == ApprovalState.APPROVED) {
+                if (item.approved()) {
                     AgentEditSession.getInstance(project).removeApproved(item.path());
                 }
             }
         });
     }
 
-    private void handleFileActionClick(@NotNull ReviewItem item, int relXInButtonArea) {
-        int avail = JBUI.scale(BUTTON_AREA_WIDTH) - JBUI.scale(8);
-        int gap = JBUI.scale(2);
-        int btnW = (avail - 2 * gap) / 3;
-        if (relXInButtonArea < JBUI.scale(4) + btnW + gap) {
-            navigateToFile(item);
-        } else if (relXInButtonArea < JBUI.scale(4) + 2 * btnW + 2 * gap) {
-            AgentEditSession.getInstance(project).acceptFile(item.path());
+    private void showRevertPopup(MouseEvent e) {
+        int row = table.rowAtPoint(e.getPoint());
+        if (row < 0 || row >= tableModel.getRowCount()) return;
+        ReviewItem item = tableModel.getItem(row);
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+        javax.swing.JMenuItem revertItem = new javax.swing.JMenuItem("Revert…", AllIcons.Actions.Rollback);
+        revertItem.addActionListener(ev -> showRevertDialog(item));
+        menu.add(revertItem);
+        menu.show(table, e.getX(), e.getY());
+    }
+
+    private void toggleApproval(@NotNull ReviewItem item) {
+        AgentEditSession session = AgentEditSession.getInstance(project);
+        if (item.approved()) {
+            session.unapproveFile(item.path());
         } else {
-            showRevertDialog(item);
+            session.acceptFile(item.path());
         }
     }
 
@@ -260,12 +266,9 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     private @NotNull ActionToolbar createToolbar() {
         DefaultActionGroup group = new DefaultActionGroup();
-
         group.add(new AutoApproveToggleAction(project));
         group.add(new AutoCleanOnNewPromptToggleAction(project));
-
         group.addSeparator();
-
         group.add(new DumbAwareAction("Clean Approved",
             "Remove all approved rows from the list", AllIcons.Actions.GC) {
             @Override
@@ -282,22 +285,19 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             public void update(@NotNull AnActionEvent e) {
                 boolean anyApproved = false;
                 for (ReviewItem it : AgentEditSession.getInstance(project).getReviewItems()) {
-                    if (it.approvalState() == ApprovalState.APPROVED) { anyApproved = true; break; }
+                    if (it.approved()) {
+                        anyApproved = true;
+                        break;
+                    }
                 }
                 e.getPresentation().setEnabled(anyApproved);
             }
         });
-
         return ActionManager.getInstance().createActionToolbar("ReviewChangesToolbar", group, true);
     }
 
     // ── Toolbar actions ───────────────────────────────────────────────────────
 
-    /**
-     * Toggles auto-approve. When turned on, also sweeps every existing PENDING row to
-     * APPROVED via {@link AgentEditSession#onAutoApproveTurnedOn()} so the user doesn't
-     * have to click Accept on backlog items.
-     */
     private static final class AutoApproveToggleAction extends ToggleAction {
         private final Project project;
 
@@ -326,10 +326,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         }
     }
 
-    /**
-     * Toggles "Auto-clean approved on new prompt": when ON, every fresh user turn sweeps
-     * approved rows out of the list before the message is sent.
-     */
     private static final class AutoCleanOnNewPromptToggleAction extends ToggleAction {
         private final Project project;
 
@@ -361,7 +357,9 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     private static final class ReviewTableModel extends AbstractTableModel {
         static final int COL_STATUS = 0;
         static final int COL_FILE = 1;
-        private static final String[] COLUMN_NAMES = {"", "File"};
+        static final int COL_APPROVE = 2;
+        static final int COL_REMOVE = 3;
+        private static final String[] COLUMN_NAMES = {"", "File", "", ""};
 
         private final List<ReviewItem> items = new ArrayList<>();
 
@@ -392,16 +390,15 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
-            ReviewItem item = items.get(rowIndex);
-            return switch (columnIndex) {
-                case COL_STATUS, COL_FILE -> item;
-                default -> null;
-            };
+            return items.get(rowIndex);
         }
     }
 
     // ── Cell renderers ────────────────────────────────────────────────────────
 
+    /**
+     * Status icon column: Add/Edit/Remove icon with diff colors.
+     */
     private static final class StatusCellRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -411,143 +408,155 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             if (value instanceof ReviewItem item && c instanceof JLabel label) {
                 label.setText("");
                 label.setHorizontalAlignment(CENTER);
-                applyStatusIcon(item, table, isSelected, label);
+                switch (item.status()) {
+                    case ADDED -> {
+                        label.setIcon(AllIcons.General.Add);
+                        label.setToolTipText("Added");
+                    }
+                    case MODIFIED -> {
+                        label.setIcon(AllIcons.Actions.Edit);
+                        label.setToolTipText("Modified");
+                    }
+                    case DELETED -> {
+                        label.setIcon(AllIcons.General.Remove);
+                        label.setToolTipText("Deleted");
+                    }
+                }
+                if (item.approved() && !isSelected) {
+                    label.setForeground(JBColor.GRAY);
+                }
             }
             return c;
-        }
-
-        private static void applyStatusIcon(@NotNull ReviewItem item, @NotNull JTable table,
-                                            boolean isSelected, @NotNull JLabel label) {
-            switch (item.status()) {
-                case ADDED -> {
-                    label.setForeground(isSelected ? table.getSelectionForeground()
-                        : new JBColor(new Color(0, 128, 0), new Color(80, 200, 80)));
-                    label.setIcon(AllIcons.General.Add);
-                    label.setToolTipText(approvedTip("Added", item));
-                }
-                case MODIFIED -> {
-                    label.setForeground(isSelected ? table.getSelectionForeground()
-                        : new JBColor(new Color(0, 100, 200), new Color(80, 160, 255)));
-                    label.setIcon(AllIcons.Actions.Edit);
-                    label.setToolTipText(approvedTip("Modified", item));
-                }
-                case DELETED -> {
-                    label.setForeground(isSelected ? table.getSelectionForeground()
-                        : new JBColor(new Color(200, 0, 0), new Color(255, 80, 80)));
-                    label.setIcon(AllIcons.General.Remove);
-                    label.setToolTipText(approvedTip("Deleted", item));
-                }
-            }
-        }
-
-        private static @NotNull String approvedTip(@NotNull String base, @NotNull ReviewItem item) {
-            return item.approvalState() == ApprovalState.APPROVED ? base + " · Approved" : base + " · Pending";
         }
     }
 
     /**
-     * Renders a row as: [filename · meta(+N −N · 5m ago)] [view | accept | revert].
-     * Approved rows render with muted foreground/background. Pending rows look normal.
+     * File name column: shows file name, diff-colored line counts, and timestamp.
+     * Approved rows are muted.
      */
     private static final class FileCellRenderer extends DefaultTableCellRenderer {
-        private final JPanel cellPanel = new JPanel(new BorderLayout(JBUI.scale(4), 0));
-        private final JLabel nameLabel = new JLabel();
-        private final JLabel metaLabel = new JLabel();
-        private final JPanel centerPanel = new JPanel(new BorderLayout(JBUI.scale(6), 0));
-        private final JPanel buttonsPanel = new JPanel(new GridLayout(1, 3, JBUI.scale(2), 0));
-
-        FileCellRenderer() {
-            cellPanel.setOpaque(true);
-            nameLabel.setOpaque(false);
-            metaLabel.setOpaque(false);
-            metaLabel.setFont(UIUtil.getLabelFont().deriveFont(UIUtil.getLabelFont().getSize() - 1f));
-            metaLabel.setForeground(JBColor.GRAY);
-            metaLabel.setHorizontalAlignment(SwingConstants.RIGHT);
-            metaLabel.setPreferredSize(new Dimension(JBUI.scale(META_AREA_WIDTH), 0));
-
-            JButton viewBtn = createButton(AllIcons.General.InspectionsEye, "View file");
-            JButton acceptBtn = createButton(AllIcons.Actions.Checked, "Approve");
-            JButton revertBtn = createButton(AllIcons.Actions.Rollback, "Revert…");
-            buttonsPanel.add(viewBtn);
-            buttonsPanel.add(acceptBtn);
-            buttonsPanel.add(revertBtn);
-            buttonsPanel.setOpaque(false);
-            buttonsPanel.setPreferredSize(new Dimension(JBUI.scale(BUTTON_AREA_WIDTH), 0));
-
-            centerPanel.setOpaque(false);
-            centerPanel.add(nameLabel, BorderLayout.CENTER);
-            centerPanel.add(metaLabel, BorderLayout.EAST);
-
-            cellPanel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
-            cellPanel.add(centerPanel, BorderLayout.CENTER);
-            cellPanel.add(buttonsPanel, BorderLayout.EAST);
-        }
-
-        private static JButton createButton(Icon icon, String tooltip) {
-            JButton btn = new JButton(icon);
-            btn.setToolTipText(tooltip);
-            btn.putClientProperty("JButton.buttonType", "borderless");
-            btn.setFocusPainted(false);
-            btn.setContentAreaFilled(false);
-            btn.setBorderPainted(false);
-            btn.setOpaque(false);
-            btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            return btn;
-        }
-
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
                                                        int row, int column) {
             ReviewItem item = value instanceof ReviewItem ri ? ri : null;
-            String path = item != null ? item.path() : "";
-            String relativePath = item != null ? item.relativePath() : path;
-            java.nio.file.Path p = java.nio.file.Path.of(path);
-            String fileName = p.getFileName() != null ? p.getFileName().toString() : path;
+            super.getTableCellRendererComponent(table, "", isSelected, hasFocus, row, column);
 
-            boolean approved = item != null && item.approvalState() == ApprovalState.APPROVED;
-            String prefix = approved ? "✓ " : "";
-            nameLabel.setText(prefix + fileName);
-            nameLabel.setToolTipText(relativePath
-                + (approved ? " · Approved (DEL to remove)" : " · Pending review"));
+            if (item == null) return this;
 
-            metaLabel.setText(item != null ? buildMeta(item) : "");
-            metaLabel.setToolTipText(item != null && item.lastEditedMillis() > 0
-                ? "Last edited " + TimestampDisplayFormatter.formatEpochMillis(item.lastEditedMillis())
-                : null);
+            java.nio.file.Path p = java.nio.file.Path.of(item.path());
+            String fileName = p.getFileName() != null ? p.getFileName().toString() : item.path();
 
-            Color bg = isSelected ? table.getSelectionBackground() : table.getBackground();
-            Color fg = isSelected ? table.getSelectionForeground() : table.getForeground();
+            boolean approved = item.approved();
+            setText(buildHtml(fileName, item, isSelected, approved));
+            setToolTipText(item.relativePath() + (approved ? " · Approved" : " · Pending review"));
+
             if (approved && !isSelected) {
-                bg = mute(bg);
-                fg = JBColor.GRAY;
+                setForeground(JBColor.GRAY);
+                setBackground(mute(table.getBackground()));
             }
-            cellPanel.setBackground(bg);
-            buttonsPanel.setBackground(bg);
-            centerPanel.setBackground(bg);
-            nameLabel.setForeground(fg);
-
-            return cellPanel;
+            return this;
         }
 
-        private static @NotNull Color mute(@NotNull Color base) {
-            // Slight tint towards the panel background to visually de-emphasise approved rows.
-            int r = (base.getRed() + UIUtil.getPanelBackground().getRed()) / 2;
-            int g = (base.getGreen() + UIUtil.getPanelBackground().getGreen()) / 2;
-            int b = (base.getBlue() + UIUtil.getPanelBackground().getBlue()) / 2;
-            return new Color(r, g, b);
-        }
+        private @NotNull String buildHtml(@NotNull String fileName, @NotNull ReviewItem item,
+                                          boolean isSelected, boolean approved) {
+            StringBuilder sb = new StringBuilder("<html>");
+            if (approved && !isSelected) {
+                sb.append("<font color='gray'>").append(escapeHtml(fileName)).append("</font>");
+            } else {
+                sb.append(escapeHtml(fileName));
+            }
 
-        private static @NotNull String buildMeta(@NotNull ReviewItem item) {
-            StringBuilder sb = new StringBuilder();
+            // Diff-colored line counts
             if (item.linesAdded() > 0 || item.linesRemoved() > 0) {
-                sb.append("+").append(item.linesAdded()).append(" −").append(item.linesRemoved());
+                sb.append(" <font size='-2'>");
+                if (item.linesAdded() > 0) {
+                    String green = colorHex(approved && !isSelected ? JBColor.GRAY : DIFF_GREEN);
+                    sb.append("<font color='").append(green).append("'>+").append(item.linesAdded()).append("</font>");
+                }
+                if (item.linesRemoved() > 0) {
+                    if (item.linesAdded() > 0) sb.append(" ");
+                    String red = colorHex(approved && !isSelected ? JBColor.GRAY : DIFF_RED);
+                    sb.append("<font color='").append(red).append("'>-").append(item.linesRemoved()).append("</font>");
+                }
+                sb.append("</font>");
             }
+
+            // Timestamp
             if (item.lastEditedMillis() > 0) {
-                if (!sb.isEmpty()) sb.append(" · ");
+                sb.append(" <font size='-2' color='gray'>");
                 sb.append(TimestampDisplayFormatter.formatEpochMillis(item.lastEditedMillis()));
+                sb.append("</font>");
             }
+
+            sb.append("</html>");
             return sb.toString();
         }
+
+        private static @NotNull String escapeHtml(@NotNull String s) {
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        }
+
+        private static @NotNull String colorHex(@NotNull Color c) {
+            return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+        }
+    }
+
+    /**
+     * Approve checkbox column: green check when approved, gray unchecked when pending.
+     */
+    private static final class ApproveCheckboxRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, "", isSelected, hasFocus, row, column);
+            if (value instanceof ReviewItem item && c instanceof JLabel label) {
+                label.setText("");
+                label.setHorizontalAlignment(CENTER);
+                if (item.approved()) {
+                    label.setIcon(AllIcons.Diff.GutterCheckBoxSelected);
+                    label.setToolTipText("Approved — click to unapprove");
+                } else {
+                    label.setIcon(AllIcons.Diff.GutterCheckBox);
+                    label.setToolTipText("Pending — click to approve");
+                }
+            }
+            return c;
+        }
+    }
+
+    /**
+     * Remove X column: only active for approved rows.
+     */
+    private static final class RemoveButtonRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, "", isSelected, hasFocus, row, column);
+            if (value instanceof ReviewItem item && c instanceof JLabel label) {
+                label.setText("");
+                label.setHorizontalAlignment(CENTER);
+                if (item.approved()) {
+                    label.setIcon(AllIcons.Actions.Close);
+                    label.setToolTipText("Remove from list");
+                } else {
+                    label.setIcon(AllIcons.Actions.CloseHovered);
+                    // Dim the icon for pending rows — they should be reverted, not removed
+                    label.setForeground(JBColor.GRAY);
+                    label.setIcon(null);
+                    label.setToolTipText(null);
+                }
+            }
+            return c;
+        }
+    }
+
+    private static @NotNull Color mute(@NotNull Color base) {
+        int r = (base.getRed() + UIUtil.getPanelBackground().getRed()) / 2;
+        int g = (base.getGreen() + UIUtil.getPanelBackground().getGreen()) / 2;
+        int b = (base.getBlue() + UIUtil.getPanelBackground().getBlue()) / 2;
+        return new Color(r, g, b);
     }
 }
