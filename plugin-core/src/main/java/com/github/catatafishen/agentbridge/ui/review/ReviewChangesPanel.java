@@ -531,10 +531,17 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     }
 
     /**
+     * Background tint for the approved toggle state — a semi-transparent green chosen to be clearly
+     * visible against both the normal row background and the hover background.
+     * {@link JBUI.CurrentTheme.ActionButton#pressedBackground()} was tried first but it is nearly
+     * invisible against the white table background in most themes (the color has very low alpha).
+     */
+    private static final JBColor APPROVED_BG = new JBColor(
+        new Color(0, 120, 0, 55), new Color(80, 200, 80, 70));
+
+    /**
      * Renders the approve column as a toolbar-style icon toggle button.
-     * Uses {@link JBUI.CurrentTheme.ActionButton#pressedBackground()} for the highlighted
-     * background when approved — the exact same tint IntelliJ uses for toggled toolbar buttons —
-     * so the inline cell button and the Auto-Approve toolbar toggle share the same visual language.
+     * Shows {@link #APPROVED_BG} (semi-transparent green) when approved.
      */
     private static final class ApproveToggleRenderer extends JLabel implements TableCellRenderer {
         private boolean approved;
@@ -564,7 +571,7 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 int size = JBUI.scale(22);
                 int x = (getWidth() - size) / 2;
                 int y = (getHeight() - size) / 2;
-                g2.setColor(JBUI.CurrentTheme.ActionButton.pressedBackground());
+                g2.setColor(APPROVED_BG);
                 g2.fillRoundRect(x, y, size, size, JBUI.scale(4), JBUI.scale(4));
             }
             g2.dispose();

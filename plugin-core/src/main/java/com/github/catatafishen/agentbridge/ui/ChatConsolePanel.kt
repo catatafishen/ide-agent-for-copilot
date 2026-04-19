@@ -7,6 +7,7 @@ import com.github.catatafishen.agentbridge.services.ToolChipRegistry
 import com.github.catatafishen.agentbridge.services.ToolRegistry
 import com.github.catatafishen.agentbridge.settings.McpServerSettings
 import com.github.catatafishen.agentbridge.settings.ScratchTypeSettings
+import com.github.catatafishen.agentbridge.ui.ChatConsolePanel.Companion.instances
 import com.github.catatafishen.agentbridge.ui.MessageFormatter.ChipStatus
 import com.github.catatafishen.agentbridge.ui.renderers.ArgumentAwareRenderer
 import com.github.catatafishen.agentbridge.ui.renderers.ToolRenderers
