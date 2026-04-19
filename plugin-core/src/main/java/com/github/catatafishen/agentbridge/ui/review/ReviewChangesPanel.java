@@ -552,7 +552,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 approved = item.approved();
                 setToolTipText(approved ? "Approved — click to unapprove" : "Approve this change");
             }
-            setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
             return this;
         }
 
@@ -560,8 +559,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(getBackground());
-            g2.fillRect(0, 0, getWidth(), getHeight());
             if (approved) {
                 int size = JBUI.scale(22);
                 int x = (getWidth() - size) / 2;
@@ -589,7 +586,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
                                                        int row, int column) {
-            setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
             if (value instanceof ReviewItem item) {
                 if (item.approved()) {
                     setIcon(AllIcons.Actions.Close);
@@ -600,15 +596,6 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 }
             }
             return this;
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setColor(getBackground());
-            g2.fillRect(0, 0, getWidth(), getHeight());
-            g2.dispose();
-            super.paintComponent(g);
         }
     }
 }

@@ -154,7 +154,6 @@ final class TodoPanel extends JPanel implements Disposable {
     }
 
     private void pollIfVisible() {
-        if (!isShowing()) return;
         refresh();
     }
 

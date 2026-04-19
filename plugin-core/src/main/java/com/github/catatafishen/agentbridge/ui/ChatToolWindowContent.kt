@@ -41,6 +41,7 @@ class ChatToolWindowContent(
         const val AGENT_WORK_DIR = ".agent-work"
         const val CARD_CONNECT = "connect"
         const val CARD_CHAT = "chat"
+        private const val PREF_SIDE_PANEL_OPEN = "agentbridge.sidePanelOpen"
 
         private val instances = java.util.concurrent.ConcurrentHashMap<Project, ChatToolWindowContent>()
 
@@ -632,6 +633,11 @@ class ChatToolWindowContent(
         com.intellij.openapi.util.Disposer.register(toolWindow.disposable, side)
         sidePanel = side
         rootSplitter.firstComponent = side
+        // Restore open/closed state from the last session.
+        val props = com.intellij.ide.util.PropertiesComponent.getInstance(project)
+        if (props.getBoolean(PREF_SIDE_PANEL_OPEN, false)) {
+            rootSplitter.proportion = defaultReviewProportion
+        }
 
         responsePanelContainer = JBPanel<JBPanel<*>>(BorderLayout())
         responsePanelContainer.add(responsePanel, BorderLayout.CENTER)
@@ -1370,6 +1376,8 @@ class ChatToolWindowContent(
                     (toolWindow as? com.intellij.openapi.wm.ex.ToolWindowEx)?.stretchWidth(-sideWidth)
                 }
             }
+            com.intellij.ide.util.PropertiesComponent.getInstance(project)
+                .setValue(PREF_SIDE_PANEL_OPEN, state)
         }
     }
 
