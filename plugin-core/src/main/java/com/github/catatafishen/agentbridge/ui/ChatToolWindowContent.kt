@@ -2,6 +2,7 @@ package com.github.catatafishen.agentbridge.ui
 
 import com.github.catatafishen.agentbridge.acp.model.Model
 import com.github.catatafishen.agentbridge.acp.model.SessionUpdate
+import com.github.catatafishen.agentbridge.psi.review.AgentEditSession
 import com.github.catatafishen.agentbridge.services.ActiveAgentManager
 import com.github.catatafishen.agentbridge.services.ChatWebServer
 import com.github.catatafishen.agentbridge.session.SessionSwitchService
@@ -1015,7 +1016,7 @@ class ChatToolWindowContent(
         // Auto-clean approved review rows when a brand-new user turn starts (not nudge / queued follow-up).
         if (com.github.catatafishen.agentbridge.settings.McpServerSettings.getInstance(project).isAutoCleanReviewOnNewPrompt) {
             try {
-                project.getService(com.github.catatafishen.agentbridge.psi.review.AgentEditSession::class.java)
+                com.github.catatafishen.agentbridge.psi.review.AgentEditSession.getInstance(project)
                     ?.removeAllApproved()
             } catch (_: Throwable) { /* defensive: review session is best-effort */
             }
