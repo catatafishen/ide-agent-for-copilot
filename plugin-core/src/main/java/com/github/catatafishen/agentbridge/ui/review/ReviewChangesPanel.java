@@ -367,7 +367,8 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     // ── Toolbar actions ───────────────────────────────────────────────────────
 
-    private static final class AutoApproveToggleAction extends ToggleAction {
+    private static final class AutoApproveToggleAction extends ToggleAction
+        implements com.intellij.openapi.actionSystem.ex.CustomComponentAction {
         private final Project project;
 
         AutoApproveToggleAction(@NotNull Project project) {
@@ -392,6 +393,28 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
                 AgentEditSession.getInstance(project).onAutoApproveTurnedOn();
             }
             project.getMessageBus().syncPublisher(ReviewSessionTopic.TOPIC).reviewStateChanged();
+        }
+
+        @Override
+        public @NotNull JComponent createCustomComponent(
+            @NotNull com.intellij.openapi.actionSystem.Presentation presentation,
+            @NotNull String place) {
+            return new com.intellij.openapi.actionSystem.impl.ActionButton(
+                this, presentation, place, ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE) {
+                @Override
+                protected void paintButtonLook(Graphics g) {
+                    if (isSelected()) {
+                        Graphics2D g2 = (Graphics2D) g.create();
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                        g2.setColor(APPROVED_BG);
+                        int arc = JBUI.scale(4);
+                        g2.fillRoundRect(2, 2, getWidth() - 4, getHeight() - 4, arc, arc);
+                        g2.dispose();
+                    } else {
+                        super.paintButtonLook(g);
+                    }
+                }
+            };
         }
     }
 
@@ -531,13 +554,12 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     }
 
     /**
-     * Background tint for the approved toggle state — a semi-transparent green chosen to be clearly
-     * visible against both the normal row background and the hover background.
-     * {@link JBUI.CurrentTheme.ActionButton#pressedBackground()} was tried first but it is nearly
-     * invisible against the white table background in most themes (the color has very low alpha).
+     * Solid green fill used for the "approved" state in both the table cell toggle and the
+     * auto-approve toolbar button. Mirrors IntelliJ's diff-add background palette.
      */
     private static final JBColor APPROVED_BG = new JBColor(
-        new Color(0, 120, 0, 55), new Color(80, 200, 80, 70));
+        new Color(0xD1, 0xF5, 0xD0),   // light: soft diff-add green
+        new Color(0x2A, 0x45, 0x2C));  // dark: muted forest green
 
     /**
      * Renders the approve column as a toolbar-style icon toggle button.
