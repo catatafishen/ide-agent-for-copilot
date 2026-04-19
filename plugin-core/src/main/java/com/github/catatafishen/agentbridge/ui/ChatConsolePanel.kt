@@ -44,6 +44,9 @@ class ChatConsolePanel(private val project: Project) : JBPanel<ChatConsolePanel>
 
     /** Snapshot of the current entries list — safe to read from any thread as a defensive copy. */
     fun entriesSnapshot(): List<EntryData> = ArrayList(entries)
+
+    /** Returns true if an entry with the given [entryId] has already been rendered to the JCEF view. */
+    fun isEntryRendered(entryId: String): Boolean = entries.any { it.entryId == entryId }
     private var currentTextData: EntryData.Text? = null
     private var currentThinkingData: EntryData.Thinking? = null
     private var nextSubAgentColor = 0

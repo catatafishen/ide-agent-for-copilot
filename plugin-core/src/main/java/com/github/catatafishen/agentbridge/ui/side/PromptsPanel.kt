@@ -2,6 +2,7 @@ package com.github.catatafishen.agentbridge.ui.side
 
 import com.github.catatafishen.agentbridge.ui.ChatConsolePanel
 import com.github.catatafishen.agentbridge.ui.EntryData
+import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2
 import com.github.catatafishen.agentbridge.ui.side.PromptsPanel.Companion.MAX_CHARS
 import com.github.catatafishen.agentbridge.ui.side.PromptsPanel.Companion.MAX_ROWS
 import com.intellij.openapi.Disposable
@@ -18,11 +19,12 @@ import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 
 internal class PromptsPanel(
-    @Suppress("UNUSED_PARAMETER") project: Project,
+    private val project: Project,
     private val chatConsole: ChatConsolePanel
 ) : JPanel(BorderLayout()), Disposable {
 
@@ -35,12 +37,16 @@ internal class PromptsPanel(
     private val searchField = SearchTextField()
     private val listModel = DefaultListModel<PromptItem>()
     private val promptList = JBList(listModel)
+    private val sessionStore = SessionStoreV2.getInstance(project)
+    private val historyLoadSerial = AtomicInteger()
     private val entriesListener = Runnable {
-        ApplicationManager.getApplication().invokeLater(::refresh)
+        ApplicationManager.getApplication().invokeLater(::onEntriesChanged)
     }
 
     private var displayedCount = PAGE_SIZE
     private var lastQuery = ""
+    @Volatile
+    private var historyEntries: List<EntryData> = emptyList()
 
     private val loadMoreLabel = JLabel("↑ Load earlier prompts").apply {
         font = JBUI.Fonts.miniFont()
@@ -69,7 +75,12 @@ internal class PromptsPanel(
                 if (idx < 0) return
                 val item = listModel.getElementAt(idx) ?: return
                 val entryId = promptEntryId(item.prompt)
-                if (entryId.isNotEmpty()) chatConsole.scrollToEntry(entryId)
+                if (entryId.isEmpty()) return
+                if (chatConsole.isEntryRendered(entryId)) {
+                    chatConsole.scrollToEntry(entryId)
+                } else {
+                    HistoryContextWindow.open(project, historyEntries, entryId)
+                }
             }
         })
 
@@ -98,12 +109,36 @@ internal class PromptsPanel(
         add(centerPanel, BorderLayout.CENTER)
 
         chatConsole.addEntriesChangeListener(entriesListener)
+        reloadHistoryAsync()
         refresh()
+    }
+
+    private fun onEntriesChanged() {
+        if (chatConsole.entriesSnapshot().isEmpty()) {
+            historyEntries = emptyList()
+            listModel.clear()
+            loadMorePanel.isVisible = false
+            reloadHistoryAsync()
+        } else {
+            refresh()
+        }
+    }
+
+    private fun reloadHistoryAsync() {
+        val serial = historyLoadSerial.incrementAndGet()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val loaded = sessionStore.loadEntries(project.basePath).orEmpty()
+            ApplicationManager.getApplication().invokeLater {
+                if (serial != historyLoadSerial.get()) return@invokeLater
+                historyEntries = loaded
+                refresh()
+            }
+        }
     }
 
     private fun refresh() {
         val query = searchField.text.orEmpty()
-        val allEntries = chatConsole.entriesSnapshot()
+        val allEntries = mergeEntries(historyEntries, chatConsole.entriesSnapshot())
         val prompts = allEntries.filterIsInstance<EntryData.Prompt>()
         val filtered = filterPrompts(prompts, query)
         val turnDataMap = buildTurnDataMap(allEntries)
@@ -244,6 +279,26 @@ internal class PromptsPanel(
             if (q.isEmpty()) return prompts
             val needle = q.lowercase()
             return prompts.filter { it.text.lowercase().contains(needle) }
+        }
+
+        fun mergeEntries(historyEntries: List<EntryData>, liveEntries: List<EntryData>): List<EntryData> {
+            if (historyEntries.isEmpty()) return liveEntries
+            if (liveEntries.isEmpty()) return historyEntries
+
+            val merged = ArrayList<EntryData>(historyEntries.size + liveEntries.size)
+            val seen = LinkedHashSet<String>()
+
+            fun addAll(entries: List<EntryData>) {
+                for (entry in entries) {
+                    if (seen.add(entry.entryId)) {
+                        merged.add(entry)
+                    }
+                }
+            }
+
+            addAll(historyEntries)
+            addAll(liveEntries)
+            return merged
         }
 
         fun promptEntryId(p: EntryData.Prompt): String = p.id.ifEmpty { p.entryId }
