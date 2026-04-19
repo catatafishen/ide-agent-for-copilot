@@ -161,13 +161,23 @@ final class PromptsPanelLogicTest {
         List<EntryData.Prompt> all = List.of(prompt("p1", "Hello World"), prompt("p2", "Goodbye"));
         List<EntryData.Prompt> result = C.filterPrompts(all, "WORLD");
         assertEquals(1, result.size());
-        assertEquals("p1", result.getFirst().getId());
+        assertEquals("p1", result.iterator().next().getId());
     }
 
     @Test
     void filterPrompts_whitespaceOnlyQueryReturnsAll() {
         List<EntryData.Prompt> all = List.of(prompt("p1", "Hello"));
         assertEquals(all, C.filterPrompts(all, "   "));
+    }
+
+    @Test
+    void filterPrompts_searchesOlderHistoryEntriesToo() {
+        EntryData.Prompt older = prompt("h1", "Needle from history");
+        EntryData.Prompt recent = prompt("l1", "Recent prompt");
+
+        List<EntryData.Prompt> matches = C.filterPrompts(List.of(older, recent), "needle");
+        assertEquals(1, matches.size());
+        assertEquals(older, matches.iterator().next());
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

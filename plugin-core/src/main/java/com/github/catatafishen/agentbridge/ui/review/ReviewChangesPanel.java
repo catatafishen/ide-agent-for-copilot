@@ -26,7 +26,6 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -48,7 +47,7 @@ import java.util.List;
  * Columns: [file name (status-colored) + meta] [approve checkbox] [remove X].
  * File names are colored by status: green = added, blue = modified, grey = deleted.
  * Clicking a row opens the file. The approve checkbox toggles between PENDING and
- * APPROVED (green check when approved). The X button removes approved rows.
+ * APPROVED. The X button removes approved rows.
  */
 public final class ReviewChangesPanel extends JPanel implements Disposable {
 
@@ -77,6 +76,8 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     private final JPanel cardPanel;
     private final JBLabel emptyLabel;
     private final JBLabel diffTotalsLabel;
+    private final ReviewDiffCountAnimator diffCountAnimator;
+    private final Timer diffAnimationTimer;
 
     public ReviewChangesPanel(@NotNull Project project) {
         super(new BorderLayout());
@@ -84,6 +85,15 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
         tableModel = new ReviewTableModel();
         table = new JBTable(tableModel);
+        diffCountAnimator = new ReviewDiffCountAnimator();
+        diffAnimationTimer = new Timer(33, e -> {
+            long now = System.currentTimeMillis();
+            table.repaint();
+            if (!diffCountAnimator.hasActiveAnimations(now)) {
+                ((Timer) e.getSource()).stop();
+            }
+        });
+        diffAnimationTimer.setRepeats(true);
         configureTable();
 
         JBScrollPane scrollPane = new JBScrollPane(table);
@@ -135,13 +145,18 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
 
     @Override
     public void dispose() {
+        diffAnimationTimer.stop();
+        diffCountAnimator.clear();
     }
 
     public void refresh() {
         AgentEditSession session = AgentEditSession.getInstance(project);
         List<ReviewItem> items = session.getReviewItems();
+        long now = System.currentTimeMillis();
+        diffCountAnimator.sync(items, now);
         tableModel.setItems(items);
         updateDiffTotals(items);
+        updateDiffAnimationTimer(now);
 
         if (!items.isEmpty()) {
             cardLayout.show(cardPanel, CARD_TABLE);
@@ -152,6 +167,16 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
         }
         revalidate();
         repaint();
+    }
+
+    private void updateDiffAnimationTimer(long now) {
+        if (diffCountAnimator.hasActiveAnimations(now)) {
+            if (!diffAnimationTimer.isRunning()) {
+                diffAnimationTimer.start();
+            }
+        } else {
+            diffAnimationTimer.stop();
+        }
     }
 
     private void updateDiffTotals(@NotNull List<ReviewItem> items) {
@@ -436,10 +461,9 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
     // ── Cell renderers ────────────────────────────────────────────────────────
 
     /**
-     * File name column: shows file name, diff-colored line counts, and timestamp.
-     * Approved rows are muted.
+     * File name column: shows file name, animated diff-colored line counts, and timestamp.
      */
-    private static final class FileCellRenderer extends DefaultTableCellRenderer {
+    private final class FileCellRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
@@ -453,22 +477,16 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             String fileName = p.getFileName() != null ? p.getFileName().toString() : item.path();
 
             boolean approved = item.approved();
-            setText(buildHtml(fileName, item, isSelected, approved));
+            long now = System.currentTimeMillis();
+            setText(buildHtml(fileName, item, isSelected, diffCountAnimator.displayCounts(item, now)));
             setToolTipText(item.relativePath() + (approved ? " · Approved" : " · Pending review"));
-
-            if (approved && !isSelected) {
-                setForeground(JBColor.GRAY);
-                setBackground(mute(table.getBackground()));
-            }
             return this;
         }
 
         private @NotNull String buildHtml(@NotNull String fileName, @NotNull ReviewItem item,
-                                          boolean isSelected, boolean approved) {
+                                          boolean isSelected, @NotNull ReviewDiffCountAnimator.DiffCounts counts) {
             StringBuilder sb = new StringBuilder("<html>");
-            if (approved && !isSelected) {
-                sb.append("<font color='gray'>").append(escapeHtml(fileName)).append(FONT_CLOSE);
-            } else if (!isSelected) {
+            if (!isSelected) {
                 Color statusColor = switch (item.status()) {
                     case ADDED -> STATUS_ADDED;
                     case MODIFIED -> STATUS_MODIFIED;
@@ -480,16 +498,14 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             }
 
             // Diff-colored line counts
-            if (item.linesAdded() > 0 || item.linesRemoved() > 0) {
+            if (counts.added() > 0 || counts.removed() > 0) {
                 sb.append(" <font size='-2'>");
-                if (item.linesAdded() > 0) {
-                    Color green = approved && !isSelected ? JBColor.GRAY : DIFF_GREEN;
-                    sb.append(colorSpan(green, "+" + item.linesAdded()));
+                if (counts.added() > 0) {
+                    sb.append(colorSpan(DIFF_GREEN, "+" + counts.added()));
                 }
-                if (item.linesRemoved() > 0) {
-                    if (item.linesAdded() > 0) sb.append(" ");
-                    Color red = approved && !isSelected ? JBColor.GRAY : DIFF_RED;
-                    sb.append(colorSpan(red, "-" + item.linesRemoved()));
+                if (counts.removed() > 0) {
+                    if (counts.added() > 0) sb.append(" ");
+                    sb.append(colorSpan(DIFF_RED, "-" + counts.removed()));
                 }
                 sb.append(FONT_CLOSE);
             }
@@ -559,12 +575,5 @@ public final class ReviewChangesPanel extends JPanel implements Disposable {
             }
             return c;
         }
-    }
-
-    private static @NotNull Color mute(@NotNull Color base) {
-        int r = (base.getRed() + UIUtil.getPanelBackground().getRed()) / 2;
-        int g = (base.getGreen() + UIUtil.getPanelBackground().getGreen()) / 2;
-        int b = (base.getBlue() + UIUtil.getPanelBackground().getBlue()) / 2;
-        return new Color(r, g, b);
     }
 }
