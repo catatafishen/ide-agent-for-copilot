@@ -20,7 +20,7 @@ import java.awt.*;
  *   <li><b>Files</b> — configuration/agent-definition files for this project.</li>
  *   <li><b>Todos</b> — rendered view of the active agent session's {@code plan.md},
  *       with a {@code (done/total)} badge in the tab title when checkbox-style todos exist.</li>
- *   <li><b>Prompts</b> — searchable list of user prompts in the current chat, click to scroll.</li>
+ *   <li><b>Prompts</b> — searchable list of user prompts across the current conversation history, click to scroll.</li>
  * </ol>
  * Tab order is deliberate: review is the most time-sensitive and sits first.
  */
@@ -41,7 +41,7 @@ public final class SidePanel extends JPanel implements Disposable {
         ProjectFilesPanel projectFilesPanel = new ProjectFilesPanel(project);
         TodoPanel todoPanel = new TodoPanel(project);
         Disposer.register(this, todoPanel);
-        PromptsPanel promptsPanel = new PromptsPanel(chatConsole);
+        PromptsPanel promptsPanel = new PromptsPanel(project, chatConsole);
         Disposer.register(this, promptsPanel);
 
         tabsPanel = PlatformApiCompat.createJBTabsPanel(project, this);
