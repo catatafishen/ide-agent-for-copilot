@@ -1,5 +1,6 @@
 package com.github.catatafishen.agentbridge.services;
 
+import com.github.catatafishen.agentbridge.acp.client.CopilotClient;
 import com.github.catatafishen.agentbridge.agent.AbstractAgentClient;
 import com.github.catatafishen.agentbridge.agent.AgentRegistry;
 import com.github.catatafishen.agentbridge.agent.claude.ClaudeCliClient;
@@ -56,14 +57,106 @@ public final class ActiveAgentManager implements Disposable {
     private GenericAgentUiSettings cachedUiSettings;
     private volatile boolean started;
 
+    /**
+     * Project-level key for persisting the Copilot remote mode setting.
+     * Remote mode is Copilot-specific, but stored at project level so different
+     * repositories can have different settings.
+     */
+    private static final String KEY_REMOTE_MODE = "copilot.remoteMode";
+
+    /**
+     * Whether the next {@link #start()} should launch Copilot in remote control mode
+     * ({@code --remote} flag). Only applies to {@link CopilotClient} instances.
+     * Persisted to and loaded from project-level {@link PropertiesComponent}.
+     */
+    private boolean remoteModeNextStart;
+
+    /**
+     * URL listener to attach to the next {@link CopilotClient} when remote mode is active.
+     * Called once the CLI outputs the remote session URL to stderr; cleared after firing.
+     */
+    private @Nullable java.util.function.Consumer<String> pendingRemoteUrlListener = null;
+
+    /**
+     * Error listener to attach to the next {@link CopilotClient} when remote mode is active.
+     * Called if the CLI outputs a "remote sessions not enabled" error to stderr; cleared after firing.
+     */
+    private @Nullable java.util.function.Consumer<String> pendingRemoteErrorListener = null;
+
+    /**
+     * Provides access to the project-scoped {@link PropertiesComponent}.
+     * Extracted to a field so tests can substitute a stub without mocking the final class.
+     */
+    @NotNull java.util.function.Supplier<PropertiesComponent> propertiesProvider;
+
     public ActiveAgentManager(@NotNull Project project) {
         this.project = project;
+        this.propertiesProvider = () -> PropertiesComponent.getInstance(project);
+        this.remoteModeNextStart = propertiesProvider.get().getBoolean(KEY_REMOTE_MODE, false);
         LOG.info("ActiveAgentManager initialised for project: " + project.getName());
+    }
+
+    /**
+     * Returns the project-scoped {@link PropertiesComponent}. Package-private for testing.
+     */
+    @NotNull PropertiesComponent projectProperties() {
+        return propertiesProvider.get();
     }
 
     @NotNull
     public static ActiveAgentManager getInstance(@NotNull Project project) {
         return PlatformApiCompat.getService(project, ActiveAgentManager.class);
+    }
+
+    // ── Remote mode ──────────────────────────────────────────────────────────
+
+    /**
+     * Enables or disables Copilot remote control mode for the next {@link #start()}.
+     * When {@code true}, the Copilot CLI will be launched with {@code --remote}.
+     * The setting is persisted at project level.
+     */
+    public synchronized void setRemoteMode(boolean remote) {
+        this.remoteModeNextStart = remote;
+        projectProperties().setValue(KEY_REMOTE_MODE, remote, false);
+    }
+
+    /**
+     * Returns {@code true} if Copilot remote mode is enabled for the next {@link #start()}.
+     */
+    public synchronized boolean isRemoteMode() {
+        return remoteModeNextStart;
+    }
+
+    /**
+     * Registers a listener that will be called with the Copilot remote session URL once
+     * the CLI outputs it to stderr. Set to {@code null} to clear. The listener is
+     * automatically cleared after firing (fire-once semantics managed by {@link CopilotClient}).
+     */
+    public synchronized void setRemoteUrlListener(@Nullable java.util.function.Consumer<String> listener) {
+        this.pendingRemoteUrlListener = listener;
+    }
+
+    /**
+     * Registers a listener that will be called with the error message if the CLI reports
+     * that remote sessions are not enabled for this repository. Set to {@code null} to clear.
+     * Cleared after firing (fire-once semantics managed by {@link CopilotClient}).
+     */
+    public synchronized void setRemoteErrorListener(@Nullable java.util.function.Consumer<String> listener) {
+        this.pendingRemoteErrorListener = listener;
+    }
+
+    void configureCopilotClientForStart(@NotNull CopilotClient copilotClient) {
+        if (remoteModeNextStart) {
+            copilotClient.setRemoteMode(true);
+        }
+        java.util.function.Consumer<String> urlListener = pendingRemoteUrlListener;
+        if (urlListener != null) {
+            copilotClient.setRemoteUrlListener(urlListener);
+        }
+        java.util.function.Consumer<String> errorListener = pendingRemoteErrorListener;
+        if (errorListener != null) {
+            copilotClient.setRemoteErrorListener(errorListener);
+        }
     }
 
     // ── Active profile ───────────────────────────────────────────────────────
@@ -295,6 +388,11 @@ public final class ActiveAgentManager implements Disposable {
             String savedAgent = getSettings().getSelectedAgent();
             if (!savedAgent.isEmpty()) {
                 acpClient.setCurrentAgentSlug(savedAgent);
+            }
+
+            // Wire remote mode before start() so buildCommand() picks up the --remote flag.
+            if (acpClient instanceof CopilotClient copilotClient) {
+                configureCopilotClientForStart(copilotClient);
             }
 
             acpClient.start();

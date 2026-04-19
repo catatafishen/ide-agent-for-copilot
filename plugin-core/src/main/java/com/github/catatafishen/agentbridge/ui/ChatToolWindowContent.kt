@@ -299,6 +299,27 @@ class ChatToolWindowContent(
         // after a disconnect would leave currentAgent stale.
         conversationStore.setCurrentAgent(agentManager.activeProfile.displayName)
         if (::promptOrchestrator.isInitialized) resetSessionState()
+
+        // Register remote URL listener before loadModelsAsync triggers acpClient.start().
+        // If the CLI ever emits a GitHub URL to stderr, surface it via the status banner.
+        if (agentManager.isRemoteMode) {
+            agentManager.setRemoteUrlListener { url ->
+                agentManager.setRemoteUrlListener(null)
+                ApplicationManager.getApplication().invokeLater {
+                    statusBanner?.showRemoteSessionUrl(url)
+                }
+            }
+            agentManager.setRemoteErrorListener { message ->
+                agentManager.setRemoteErrorListener(null)
+                ApplicationManager.getApplication().invokeLater {
+                    statusBanner?.showError(message)
+                }
+            }
+        } else {
+            agentManager.setRemoteUrlListener(null)
+            agentManager.setRemoteErrorListener(null)
+        }
+
         // Stay on connect panel while spinner shows "Connecting…"
         // loadModelsAsync triggers agent.start() via getClient() — wait for it to complete
         loadModelsAsync(
@@ -306,7 +327,12 @@ class ChatToolWindowContent(
                 loadedModels = models
                 buildAndShowChatPanel()
                 restoreModelSelection(models)
-                statusBanner?.showInfo("Connected to ${agentManager.activeProfile.displayName}")
+                val name = agentManager.activeProfile.displayName
+                if (agentManager.isRemoteMode) {
+                    statusBanner?.showInfo("$name · Remote mode active")
+                } else {
+                    statusBanner?.showInfo("Connected to $name")
+                }
             },
             onFailure = { error ->
                 connectPanel.showError(error.message ?: "Connection failed")

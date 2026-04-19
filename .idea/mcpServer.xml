@@ -14,7 +14,7 @@
     <option name="kindEditColorKey" value="PINK" />
     <option name="kindExecuteColorKey" value="AMBER" />
     <option name="kindReadColorKey" value="GREEN" />
-    <option name="port" value="8646" />
+    <option name="port" value="8647" />
     <option name="smoothScrollEnabled" value="true" />
   </component>
 </project>
