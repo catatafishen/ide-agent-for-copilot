@@ -243,4 +243,45 @@ class TimerDisplayFormatterTest {
     void formatLinesChanged_bothNonZero() {
         assertEquals("+42 / -7", TimerDisplayFormatter.INSTANCE.formatLinesChanged(42, 7));
     }
+
+    // ── formatDiffCountHtml ─────────────────────────────────────────────
+
+    private static final java.awt.Color GREEN = new java.awt.Color(0x00, 0xAA, 0x00);
+    private static final java.awt.Color RED = new java.awt.Color(0xCC, 0x00, 0x00);
+
+    @Test
+    void formatDiffCountHtml_bothZero_returnsEmpty() {
+        assertEquals("", TimerDisplayFormatter.formatDiffCountHtml(0, 0, GREEN, RED));
+    }
+
+    @Test
+    void formatDiffCountHtml_onlyAdded() {
+        String result = TimerDisplayFormatter.formatDiffCountHtml(5, 0, GREEN, RED);
+        assertTrue(result.startsWith("<html>"), "should be wrapped in html");
+        assertTrue(result.contains("+5"), "should contain +5");
+        assertFalse(result.contains("\u2212"), "should not contain minus sign");
+    }
+
+    @Test
+    void formatDiffCountHtml_onlyRemoved() {
+        String result = TimerDisplayFormatter.formatDiffCountHtml(0, 3, GREEN, RED);
+        assertTrue(result.startsWith("<html>"));
+        assertTrue(result.contains("\u22123"), "should contain −3");
+        assertFalse(result.contains("+"), "should not contain plus sign");
+    }
+
+    @Test
+    void formatDiffCountHtml_bothNonZero() {
+        String result = TimerDisplayFormatter.formatDiffCountHtml(10, 4, GREEN, RED);
+        assertTrue(result.startsWith("<html>"));
+        assertTrue(result.contains("+10"));
+        assertTrue(result.contains("\u22124"));
+        assertTrue(result.contains("#00aa00"), "should contain green hex color");
+        assertTrue(result.contains("#cc0000"), "should contain red hex color");
+    }
+
+    @Test
+    void formatDiffCountHtml_negativeValuesIgnored() {
+        assertEquals("", TimerDisplayFormatter.formatDiffCountHtml(-1, -1, GREEN, RED));
+    }
 }

@@ -6,6 +6,8 @@ import com.github.catatafishen.agentbridge.ui.ProcessingTimerPanel;
 import com.github.catatafishen.agentbridge.ui.SessionStatsSnapshot;
 import com.github.catatafishen.agentbridge.ui.TimerDisplayFormatter;
 import com.github.catatafishen.agentbridge.ui.UsageGraphPanel;
+import com.github.catatafishen.agentbridge.ui.renderers.ToolRenderers;
+import com.intellij.openapi.Disposable;
 import com.intellij.ui.AnimatedIcon;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
@@ -16,24 +18,42 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Side panel tab displaying session statistics as labeled rows: processing status,
- * session totals (time, turns, tools, lines, tokens, cost), and a thin billing
- * usage graph with quota information.
+ * Side panel tab displaying session statistics as labeled rows: an optional
+ * "Current turn" section (visible while the agent is processing) and cumulative
+ * session totals (time, turns, tools, lines, tokens, cost), followed by a thin
+ * billing usage graph with quota information.
+ *
+ * <p>Lines-changed values are rendered with colored numbers (green for additions,
+ * red for removals) and animate smoothly when the counts update.
  *
  * <p>Subscribes to change callbacks from both {@link ProcessingTimerPanel} and
  * {@link BillingManager} for a single, consistent refresh model.
  */
-public final class SessionStatsPanel extends JPanel {
+public final class SessionStatsPanel extends JPanel implements Disposable {
 
     private static final DateTimeFormatter RESET_DATE_FMT = DateTimeFormatter.ofPattern("MMM d, yyyy");
+    private static final String LABEL_TOKENS = "Tokens";
 
     private final ProcessingTimerPanel timerPanel;
     private final BillingManager billing;
 
-    // Status row (visible only while processing)
+    private final SessionDiffAnimator sessionDiffAnimator = new SessionDiffAnimator();
+    private final SessionDiffAnimator turnDiffAnimator = new SessionDiffAnimator();
+    private final Timer animationTimer;
+
+    // Current turn section
+    private final JLabel turnHeaderLabel = new JLabel("Current turn");
     private final JLabel spinnerLabel = new JLabel(new AnimatedIcon.Default());
-    private final JLabel statusLabel = new JLabel();
-    private final JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0));
+    private final JLabel turnStatusLabel = new JLabel();
+    private final JLabel turnToolsValue = new JLabel();
+    private final JLabel turnLinesValue = new JLabel();
+    private final JLabel turnTokensRowLabel = new JLabel(LABEL_TOKENS);
+    private final JLabel turnTokensValue = new JLabel();
+    private final JLabel turnCostRowLabel = new JLabel("Cost");
+    private final JLabel turnCostValue = new JLabel();
+    private final JPanel turnTokensRow;
+    private final JPanel turnCostRow;
+    private final JPanel turnSection;
 
     // Session stats value labels
     private final JLabel timeValue = new JLabel();
@@ -44,7 +64,7 @@ public final class SessionStatsPanel extends JPanel {
     private final JLabel costValue = new JLabel();
 
     // Dynamic labels whose text changes based on provider mode
-    private final JLabel tokensRowLabel = new JLabel("Tokens");
+    private final JLabel tokensRowLabel = new JLabel(LABEL_TOKENS);
     private final JLabel costRowLabel = new JLabel("Cost");
     private final JPanel tokensRow;
     private final JPanel costRow;
@@ -70,16 +90,36 @@ public final class SessionStatsPanel extends JPanel {
         Font smallFont = UIManager.getFont("Label.font").deriveFont((float) JBUI.scale(11));
         Color dimColor = JBUI.CurrentTheme.Label.disabledForeground();
 
-        // Status indicator row
-        statusRow.setOpaque(false);
-        statusRow.setBorder(BorderFactory.createEmptyBorder(
-            JBUI.scale(6), JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
+        // Current turn section
+        JPanel turnHeader = createSectionHeader(turnHeaderLabel, smallFont, dimColor);
+        JPanel turnStatusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(4), 0));
+        turnStatusRow.setOpaque(false);
+        turnStatusRow.setBorder(BorderFactory.createEmptyBorder(
+            JBUI.scale(2), JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
         spinnerLabel.setVisible(false);
-        statusLabel.setFont(smallFont);
-        statusLabel.setForeground(dimColor);
-        statusRow.add(spinnerLabel);
-        statusRow.add(statusLabel);
-        statusRow.setVisible(false);
+        turnStatusLabel.setFont(smallFont);
+        turnStatusLabel.setForeground(dimColor);
+        turnStatusRow.add(spinnerLabel);
+        turnStatusRow.add(turnStatusLabel);
+
+        JPanel turnGrid = new JPanel(new GridBagLayout());
+        turnGrid.setOpaque(false);
+        turnGrid.setBorder(BorderFactory.createEmptyBorder(
+            JBUI.scale(2), JBUI.scale(8), JBUI.scale(4), JBUI.scale(8)));
+
+        int tRow = 0;
+        addStatRow(turnGrid, tRow++, "Tool calls", turnToolsValue, smallFont, dimColor);
+        addStatRow(turnGrid, tRow++, "Lines changed", turnLinesValue, smallFont, dimColor);
+        turnTokensRow = addStatRowWithLabel(turnGrid, tRow++, turnTokensRowLabel, turnTokensValue, smallFont, dimColor);
+        turnCostRow = addStatRowWithLabel(turnGrid, tRow, turnCostRowLabel, turnCostValue, smallFont, dimColor);
+
+        turnSection = new JPanel();
+        turnSection.setLayout(new BoxLayout(turnSection, BoxLayout.Y_AXIS));
+        turnSection.setOpaque(false);
+        turnSection.add(turnHeader);
+        turnSection.add(turnStatusRow);
+        turnSection.add(turnGrid);
+        turnSection.setVisible(false);
 
         // Session stats grid
         JPanel statsGrid = new JPanel(new GridBagLayout());
@@ -123,7 +163,7 @@ public final class SessionStatsPanel extends JPanel {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setOpaque(false);
-        content.add(statusRow);
+        content.add(turnSection);
         content.add(createSectionHeader("Session", smallFont, dimColor));
         content.add(statsGrid);
         content.add(billingHeader);
@@ -136,13 +176,31 @@ public final class SessionStatsPanel extends JPanel {
 
         add(wrapper, BorderLayout.CENTER);
 
+        animationTimer = new Timer(33, e -> {
+            long now = System.currentTimeMillis();
+            updateDiffLabels(now);
+            repaint();
+            if (!sessionDiffAnimator.isAnimating(now) && !turnDiffAnimator.isAnimating(now)) {
+                ((Timer) e.getSource()).stop();
+            }
+        });
+        animationTimer.setRepeats(true);
+
         timerPanel.setOnStatsChanged(this::refresh);
         billing.setOnBillingChanged(this::refresh);
         refresh();
     }
 
+    @Override
+    public void dispose() {
+        animationTimer.stop();
+    }
+
     private JPanel createSectionHeader(String title, Font font, Color color) {
-        JLabel label = new JLabel(title);
+        return createSectionHeader(new JLabel(title), font, color);
+    }
+
+    private JPanel createSectionHeader(JLabel label, Font font, Color color) {
         label.setFont(font.deriveFont(Font.BOLD));
         label.setForeground(color);
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0));
@@ -183,24 +241,60 @@ public final class SessionStatsPanel extends JPanel {
     private void refresh() {
         SessionStatsSnapshot snap = timerPanel.getSessionSnapshot();
         BillingDisplayData bill = billing.getBillingDisplayData();
+        long now = System.currentTimeMillis();
 
-        refreshStatus(snap);
+        sessionDiffAnimator.update(snap.getSessionLinesAdded(), snap.getSessionLinesRemoved(), now);
+        turnDiffAnimator.update(snap.getTurnLinesAdded(), snap.getTurnLinesRemoved(), now);
+
+        refreshTurnSection(snap);
         refreshSessionStats(snap);
         refreshBilling(bill);
+        updateDiffLabels(now);
+        startAnimationTimerIfNeeded(now);
 
         revalidate();
         repaint();
     }
 
-    private void refreshStatus(SessionStatsSnapshot snap) {
-        if (snap.isRunning()) {
-            spinnerLabel.setVisible(true);
-            String elapsed = TimerDisplayFormatter.INSTANCE.formatElapsedTime(snap.getTurnElapsedSec());
-            statusLabel.setText("Processing… " + elapsed);
-            statusRow.setVisible(true);
-        } else {
+    private void refreshTurnSection(SessionStatsSnapshot snap) {
+        if (!snap.isRunning()) {
             spinnerLabel.setVisible(false);
-            statusRow.setVisible(false);
+            turnSection.setVisible(false);
+            return;
+        }
+
+        turnHeaderLabel.setText("Current turn");
+        spinnerLabel.setVisible(true);
+        String elapsed = TimerDisplayFormatter.INSTANCE.formatElapsedTime(snap.getTurnElapsedSec());
+        turnStatusLabel.setText("Processing… " + elapsed);
+        turnSection.setVisible(true);
+
+        turnToolsValue.setText(String.valueOf(snap.getTurnToolCalls()));
+
+        if (snap.getMultiplierMode()) {
+            turnTokensRowLabel.setText("Premium req");
+            turnTokensValue.setText("1");
+            turnTokensRow.setVisible(true);
+            turnCostRow.setVisible(false);
+        } else {
+            long turnTok = snap.getTurnInputTokens() + snap.getTurnOutputTokens();
+            Double turnCost = snap.getTurnCostUsd();
+            boolean hasTurnUsage = turnTok > 0 || (turnCost != null && turnCost > 0.0);
+            if (hasTurnUsage) {
+                turnTokensRowLabel.setText(LABEL_TOKENS);
+                turnTokensValue.setText(
+                    TimerDisplayFormatter.INSTANCE.formatTokenCount(snap.getTurnInputTokens()) +
+                        " in / " +
+                        TimerDisplayFormatter.INSTANCE.formatTokenCount(snap.getTurnOutputTokens()) +
+                        " out");
+                turnTokensRow.setVisible(true);
+                turnCostRowLabel.setText("Cost");
+                turnCostValue.setText(TimerDisplayFormatter.INSTANCE.formatCost(turnCost != null ? turnCost : 0.0));
+                turnCostRow.setVisible(true);
+            } else {
+                turnTokensRow.setVisible(false);
+                turnCostRow.setVisible(false);
+            }
         }
     }
 
@@ -208,10 +302,6 @@ public final class SessionStatsPanel extends JPanel {
         timeValue.setText(TimerDisplayFormatter.INSTANCE.formatElapsedTime(snap.getSessionTotalTimeSec()));
         turnsValue.setText(String.valueOf(snap.getSessionTurnCount()));
         toolsValue.setText(String.valueOf(snap.getSessionToolCalls()));
-
-        String lines = TimerDisplayFormatter.INSTANCE.formatLinesChanged(
-            snap.getSessionLinesAdded(), snap.getSessionLinesRemoved());
-        linesValue.setText(lines.isEmpty() ? "—" : lines);
 
         if (snap.getMultiplierMode()) {
             tokensRowLabel.setText("Premium req");
@@ -221,7 +311,7 @@ public final class SessionStatsPanel extends JPanel {
         } else {
             long totalTokens = snap.getSessionInputTokens() + snap.getSessionOutputTokens();
             if (totalTokens > 0 || snap.getSessionCostUsd() > 0.0) {
-                tokensRowLabel.setText("Tokens");
+                tokensRowLabel.setText(LABEL_TOKENS);
                 tokensValue.setText(
                     TimerDisplayFormatter.INSTANCE.formatTokenCount(snap.getSessionInputTokens()) +
                         " in / " +
@@ -235,6 +325,31 @@ public final class SessionStatsPanel extends JPanel {
                 tokensRow.setVisible(false);
                 costRow.setVisible(false);
             }
+        }
+    }
+
+    private void updateDiffLabels(long now) {
+        Color addColor = ToolRenderers.INSTANCE.getADD_COLOR();
+        Color delColor = ToolRenderers.INSTANCE.getDEL_COLOR();
+
+        SessionDiffAnimator.DiffCounts sCounts = sessionDiffAnimator.displayCounts(now);
+        String sHtml = TimerDisplayFormatter.formatDiffCountHtml(
+            sCounts.added(), sCounts.removed(), addColor, delColor);
+        linesValue.setText(sHtml.isEmpty() ? "—" : sHtml);
+
+        if (turnSection.isVisible()) {
+            SessionDiffAnimator.DiffCounts tCounts = turnDiffAnimator.displayCounts(now);
+            String tHtml = TimerDisplayFormatter.formatDiffCountHtml(
+                tCounts.added(), tCounts.removed(), addColor, delColor);
+            turnLinesValue.setText(tHtml.isEmpty() ? "—" : tHtml);
+        }
+    }
+
+    private void startAnimationTimerIfNeeded(long now) {
+        if (sessionDiffAnimator.isAnimating(now) || turnDiffAnimator.isAnimating(now)) {
+            if (!animationTimer.isRunning()) animationTimer.start();
+        } else {
+            animationTimer.stop();
         }
     }
 
