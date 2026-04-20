@@ -38,6 +38,7 @@ public final class SidePanel extends JPanel implements Disposable {
         super(new BorderLayout());
         ReviewChangesPanel reviewPanel = new ReviewChangesPanel(project);
         Disposer.register(this, reviewPanel);
+        Disposer.register(this, sessionStatsPanel);
 
         ProjectFilesPanel projectFilesPanel = new ProjectFilesPanel(project);
         TodoPanel todoPanel = new TodoPanel(project);
