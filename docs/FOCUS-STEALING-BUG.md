@@ -1,7 +1,7 @@
 # Focus-Stealing Bug — Issue #275
 
 **Issue**: https://github.com/catatafishen/agentbridge/issues/275  
-**Status**: Substantially fixed as of PR #276 + PR #280 + Attempt 9 (see remaining edge cases below)  
+**Status**: Fixed as of PR #276 + PR #280 + Attempt 11 (VetoableChangeListener FocusGuard)  
 **Scope**: Broader than the title — affects editor focus, terminal tabs, run/search tool windows
 
 ---
@@ -109,6 +109,25 @@ fires **after** the tool call returns and the `FocusGuard` is already uninstalle
 After `git_log` / `git_commit`, shows the commit in the VCS Log via a `DataPackChangeListener`
 that fires asynchronously after VCS refresh. By the time it fires, the `FocusGuard` is gone.
 Internally calls `VcsProjectLog.showRevisionInMainLog()` which activates the VCS Log pane.
+
+### 9. `FocusGuard` — VetoableChangeListener (FocusGuard.java)
+
+The last line of defense during tool execution. Uses Java's `VetoableChangeListener` on
+`KeyboardFocusManager.focusOwner` to **prevent** programmatic focus changes from happening at all.
+
+**How it works**:
+1. Installed on EDT at tool call start (if chat is focused)
+2. When any code tries to move focus to a component **outside** the chat tool window:
+   - If target is in the same Window as chat (editor, tool window) → **vetoed** (focus stays in chat)
+   - If target is in a different Window (dialog, popup, lookup) → **allowed** (legitimate IDE UI)
+   - If triggered by user input (mouse click, keystroke) → **allowed** (user-initiated)
+3. Uninstalled on EDT after tool completes (synchronous via CountDownLatch)
+
+**Why preventive > reactive**: The previous `PropertyChangeListener` approach reclaimed focus
+*after* it moved. This required `requestFocusInWindow()` which could mis-route in JCEF contexts,
+requiring a `hasReclaimed` one-shot flag that limited protection to a single steal per tool call.
+The `VetoableChangeListener` approach prevents the focus change entirely — no reclaim needed,
+no JCEF mis-routing, no one-shot limitation. Every programmatic focus steal is vetoed.
 
 ---
 
@@ -341,7 +360,59 @@ the ACP-side path in `PromptOrchestrator` extracted file paths from the ACP even
 a focus steal during tool execution already consumed the reclaim, a later `navigate(false)` in
 `followFileIfEnabled` won't be caught. This is unlikely for file tools (no EDT focus events
 during background I/O) but possible for build tools. Fix #2 (ProjectBuildSupport guard) provides
-defense-in-depth for that case.
+defense-in-depth for that case. **Resolved in Attempt 11** by switching to VetoableChangeListener.
+
+### Attempt 11: VetoableChangeListener — preventive focus protection (zero keystroke leakage)
+
+**Problem**: The `PropertyChangeListener` approach in FocusGuard was *reactive* — it reclaimed
+focus *after* it had already moved to the wrong component. While the reclaim happened synchronously
+(before `KeyEvent` dispatch, so no keystroke leakage with a single steal), it had a fundamental
+limitation: the `hasReclaimed` one-shot flag meant only ONE reclaim per tool call. If an earlier
+focus steal consumed the flag, subsequent steals (e.g., from `followFileIfEnabled`'s deferred
+`navigate(false)`) went unprotected, with only the 150ms alarm as a fallback.
+
+**Root cause**: The reactive approach had an impedance mismatch with JCEF. When
+`requestFocusInWindow()` reclaims focus for a JCEF component, the Swing focus system sometimes
+routes focus to a parent or sibling component rather than the exact `chatFocusOwner`. This
+triggers the guard again (new component ≠ `chatFocusOwner`, not inside chat TW), creating a
+ping-pong focus storm that freezes the EDT. The `hasReclaimed` flag was a necessary mitigation
+for this, but it created the one-shot limitation.
+
+**Solution**: Switch FocusGuard from `PropertyChangeListener` (reactive reclaim) to
+`VetoableChangeListener` (preventive veto). Instead of allowing focus to move and then reclaiming,
+the guard now *prevents* the focus change from happening at all by throwing a
+`PropertyVetoException`. This eliminates the ping-pong problem entirely — focus never moves,
+so there's no reclaim to mis-route, and no `hasReclaimed` flag needed.
+
+**Key design decisions**:
+
+1. **Targeted veto, not blanket**: The guard only vetoes focus changes to components in the
+   *same Window* as the chat tool window (i.e., the IDE main frame). Focus changes to dialog
+   windows, popups, completion lookups, and other separate windows are allowed through. This
+   prevents interference with IDE plumbing.
+
+2. **User-initiated changes respected**: Same `InputEvent` check as before — mouse clicks and
+   keystrokes that move focus are allowed through.
+
+3. **Circuit breaker**: After 20 vetoes in a single guard lifecycle, the guard disables itself
+   and logs a warning. Safety net against pathological scenarios where a component retries focus
+   acquisition in a loop.
+
+4. **No `hasReclaimed` needed**: Since focus never moves, there's no reclaim to mis-route, and
+   no risk of ping-pong. Every programmatic focus steal is vetoed, providing complete protection
+   for the entire tool execution duration.
+
+**How `VetoableChangeListener` works in Java's focus system**:
+- `KeyboardFocusManager.setGlobalFocusOwner()` fires `fireVetoableChange("focusOwner", ...)`
+  *before* changing the property
+- If any listener throws `PropertyVetoException`, the focus change is **cancelled** — the old
+  focus owner is restored, and no `PropertyChangeEvent` is fired
+- The exception is **not rethrown** to callers — `Component.requestFocusInWindow()` simply
+  returns `false`
+- This is an officially supported Java API mechanism, not a hack
+
+**Files**: `FocusGuard.java` (rewritten from `PropertyChangeListener` to `VetoableChangeListener`),
+`FocusGuardTest.java` (updated to test veto semantics, added circuit breaker and window-targeting tests).
 
 ---
 
@@ -370,7 +441,7 @@ _All previously documented root causes (RC1–RC4) have been fixed. See Attempts
 | `PsiBridgeService.java` | 321 | ✅ `chatWasActive` captured at start, completion re-checks |
 | `PsiBridgeService.java` | 469 | ✅ Focus restore requires both start+end active |
 | `ChatToolWindowContent.kt` | 165 | ✅ 150ms alarm checks chat-active before firing |
-| `FocusGuard.java` | all | ✅ Synchronous reclaim with `hasReclaimed` one-shot guard; synchronous EDT uninstall via latch |
+| `FocusGuard.java` | all | ✅ `VetoableChangeListener` vetoes programmatic focus steals; targeted to same-Window only; circuit breaker at 20 vetoes; synchronous EDT uninstall via latch |
 | `FileTool.java` | 257 | ✅ `navigate(focus)` check is inside `invokeLater` |
 | `FileTool.java` | 286 | ✅ `selectInProjectView` skips if chat active; only scrolls if already open |
 | `GitTool.java` | 400 | ✅ VCS `show()`/`activate()` check is inside `invokeLater` |
