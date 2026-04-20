@@ -290,6 +290,12 @@ internal class ProcessingTimerPanel(
         return SessionStatsSnapshot(
             isRunning = isRunning,
             turnElapsedSec = if (isRunning) (System.currentTimeMillis() - startedAt) / 1000 else 0,
+            turnToolCalls = if (isRunning) toolCallCount else 0,
+            turnLinesAdded = if (isRunning) addedLineCount else 0,
+            turnLinesRemoved = if (isRunning) removedLineCount else 0,
+            turnInputTokens = if (isRunning) turnInputTokens else 0,
+            turnOutputTokens = if (isRunning) turnOutputTokens else 0,
+            turnCostUsd = if (isRunning) turnCostUsd else null,
             sessionTotalTimeSec = totalMs / 1000,
             sessionTurnCount = totalTurns,
             sessionToolCalls = totalTools,

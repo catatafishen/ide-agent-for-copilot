@@ -1,8 +1,8 @@
 package com.github.catatafishen.agentbridge.ui.side
 
+import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2
 import com.github.catatafishen.agentbridge.ui.ChatConsolePanel
 import com.github.catatafishen.agentbridge.ui.EntryData
-import com.github.catatafishen.agentbridge.session.v2.SessionStoreV2
 import com.github.catatafishen.agentbridge.ui.side.PromptsPanel.Companion.MAX_CHARS
 import com.github.catatafishen.agentbridge.ui.side.PromptsPanel.Companion.MAX_ROWS
 import com.intellij.openapi.Disposable
@@ -17,6 +17,7 @@ import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Cursor
 import java.awt.Dimension
+import java.awt.event.HierarchyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.util.concurrent.atomic.AtomicInteger
@@ -45,6 +46,7 @@ internal class PromptsPanel(
 
     private var displayedCount = PAGE_SIZE
     private var lastQuery = ""
+
     @Volatile
     private var historyEntries: List<EntryData> = emptyList()
 
@@ -113,8 +115,21 @@ internal class PromptsPanel(
         add(centerPanel, BorderLayout.CENTER)
 
         chatConsole.addEntriesChangeListener(entriesListener)
+
+        addHierarchyListener { e ->
+            if ((e.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
+                SwingUtilities.invokeLater { scrollToBottom() }
+            }
+        }
+
         reloadHistoryAsync()
         refresh()
+    }
+
+    private fun scrollToBottom() {
+        if (listModel.size() > 0) {
+            promptList.ensureIndexIsVisible(listModel.size() - 1)
+        }
     }
 
     private fun onEntriesChanged() {
@@ -141,9 +156,14 @@ internal class PromptsPanel(
     }
 
     private fun refresh() {
+        refresh(scrollToBottom = true)
+    }
+
+    private fun refresh(scrollToBottom: Boolean) {
         val query = searchField.text.orEmpty()
         val allEntries = mergeEntries(historyEntries, chatConsole.entriesSnapshot())
         val prompts = allEntries.filterIsInstance<EntryData.Prompt>()
+            .sortedBy { it.timestamp }
         val filtered = filterPrompts(prompts, query)
         val turnDataMap = buildTurnDataMap(allEntries)
 
@@ -156,13 +176,19 @@ internal class PromptsPanel(
             val data = turnDataMap[promptEntryId(p)]
             listModel.addElement(PromptItem(p, data?.stats, data?.commits ?: emptyList()))
         }
+
+        if (scrollToBottom && listModel.size() > 0) {
+            SwingUtilities.invokeLater {
+                promptList.ensureIndexIsVisible(listModel.size() - 1)
+            }
+        }
     }
 
     private fun loadMore() {
         // Preserve scroll: after adding PAGE_SIZE new items at top, scroll back to item at PAGE_SIZE
         val targetIndex = PAGE_SIZE.coerceAtMost(listModel.size())
         displayedCount += PAGE_SIZE
-        refresh()
+        refresh(scrollToBottom = false)
         if (targetIndex > 0 && targetIndex < listModel.size()) {
             val bounds = promptList.getCellBounds(targetIndex, targetIndex)
             if (bounds != null) promptList.scrollRectToVisible(bounds)
@@ -286,23 +312,15 @@ internal class PromptsPanel(
         }
 
         fun mergeEntries(historyEntries: List<EntryData>, liveEntries: List<EntryData>): List<EntryData> {
-            if (historyEntries.isEmpty()) return liveEntries
             if (liveEntries.isEmpty()) return historyEntries
+            if (historyEntries.isEmpty()) return liveEntries
 
-            val merged = ArrayList<EntryData>(historyEntries.size + liveEntries.size)
-            val seen = LinkedHashSet<String>()
-
-            fun addAll(entries: List<EntryData>) {
-                for (entry in entries) {
-                    if (seen.add(entry.entryId)) {
-                        merged.add(entry)
-                    }
-                }
-            }
-
-            addAll(historyEntries)
-            addAll(liveEntries)
-            return merged
+            // Live entries are the source of truth — they include entries loaded at startup
+            // plus any new entries added during the session. Supplement with history entries
+            // that the live set doesn't have (old entries pruned from bounded chat memory).
+            val liveIds = liveEntries.mapTo(HashSet()) { it.entryId }
+            val supplemental = historyEntries.filter { it.entryId !in liveIds }
+            return supplemental + liveEntries
         }
 
         fun promptEntryId(p: EntryData.Prompt): String = p.id.ifEmpty { p.entryId }
