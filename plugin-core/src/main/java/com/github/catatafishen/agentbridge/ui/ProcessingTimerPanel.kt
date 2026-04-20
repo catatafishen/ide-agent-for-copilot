@@ -21,6 +21,9 @@ internal class ProcessingTimerPanel(
     private val localSessionRequests: () -> Int,
 ) : JBPanel<ProcessingTimerPanel>(), Disposable {
 
+    /** Callback fired on every stats change (including timer ticks). */
+    var onStatsChanged: Runnable? = null
+
     private val spinner = AsyncProcessIcon("AgentProcessing")
     private val doneIcon = JBLabel(AllIcons.Actions.Checked)
     private val timerLabel = JBLabel("")
@@ -205,6 +208,7 @@ internal class ProcessingTimerPanel(
             modeSession -> refreshSessionMode()
         }
         revalidate(); repaint()
+        onStatsChanged?.run()
     }
 
     private fun refreshTurnMode() {
@@ -268,6 +272,34 @@ internal class ProcessingTimerPanel(
                 requestsLabel.isVisible = false
             }
         }
+    }
+
+    /**
+     * Returns an immutable snapshot of all session statistics for external consumers
+     * (e.g., the Session tab's detailed stats view). Includes current-turn data when running.
+     */
+    fun getSessionSnapshot(): SessionStatsSnapshot {
+        val totalMs = sessionTotalTimeMs + if (isRunning) (System.currentTimeMillis() - startedAt) else 0
+        val totalTools = sessionTotalToolCalls + if (isRunning) toolCallCount else 0
+        val totalAdded = sessionTotalAddedLines + if (isRunning) addedLineCount else 0
+        val totalRemoved = sessionTotalRemovedLines + if (isRunning) removedLineCount else 0
+        val totalInput = sessionTotalInputTokens + if (isRunning) turnInputTokens else 0
+        val totalOutput = sessionTotalOutputTokens + if (isRunning) turnOutputTokens else 0
+        val totalCost = sessionTotalCostUsd + if (isRunning) (turnCostUsd ?: 0.0) else 0.0
+        val totalTurns = sessionTurnCount + if (isRunning) 1 else 0
+        return SessionStatsSnapshot(
+            isRunning = isRunning,
+            turnElapsedSec = if (isRunning) (System.currentTimeMillis() - startedAt) / 1000 else 0,
+            sessionTotalTimeSec = totalMs / 1000,
+            sessionTurnCount = totalTurns,
+            sessionToolCalls = totalTools,
+            sessionLinesAdded = totalAdded,
+            sessionLinesRemoved = totalRemoved,
+            sessionInputTokens = totalInput,
+            sessionOutputTokens = totalOutput,
+            sessionCostUsd = totalCost,
+            multiplierMode = supportsMultiplier(),
+        )
     }
 
     private fun updateLabel() {

@@ -38,8 +38,8 @@ class UsageGraphPanel : JBPanel<UsageGraphPanel>() {
         isOpaque = false
         val h = JBUI.scale(28)
         preferredSize = Dimension(JBUI.scale(120), h)
-        minimumSize = preferredSize
-        maximumSize = Dimension(JBUI.scale(120), h)
+        minimumSize = Dimension(0, JBUI.scale(16))
+        maximumSize = Dimension(Integer.MAX_VALUE, h)
         border = JBUI.Borders.empty(1, JBUI.scale(2))
     }
 
