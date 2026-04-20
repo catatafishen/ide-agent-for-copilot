@@ -201,12 +201,18 @@ public final class TurnMiner {
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, wing, drawerId);
         for (TripleExtractor.ExtractedTriple extracted : triples) {
             try {
+                // Extract evidence only from the triple's object text, not the full
+                // exchange. The full exchange evidence is stored on the drawer and
+                // reachable via sourceDrawer — storing it on every triple wastes space
+                // and produces noisy KG queries (stack traces, unrelated file paths).
+                String tripleEvidence = EvidenceExtractor.extractAsJson(extracted.object());
+
                 KgTriple triple = KgTriple.builder()
                     .subject(extracted.subject())
                     .predicate(extracted.predicate())
                     .object(extracted.object())
                     .sourceDrawer(extracted.sourceDrawerId())
-                    .evidence(evidenceJson)
+                    .evidence(tripleEvidence)
                     .build();
                 kg.addTriple(triple);
             } catch (Exception e) {

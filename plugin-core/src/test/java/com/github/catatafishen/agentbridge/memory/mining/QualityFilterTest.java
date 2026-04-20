@@ -119,4 +119,38 @@ class QualityFilterTest {
             "continue working on the feature implementation",
             "I will refactor the authentication module to use dependency injection."));
     }
+
+    // --- Max combined length ---
+
+    @Test
+    void exceedsMaxCombinedLength_fails() {
+        String longPrompt = "How should we structure the project?";
+        String longResponse = "x".repeat(4000);
+        assertFalse(filter.passes(longPrompt, longResponse));
+    }
+
+    @Test
+    void withinMaxCombinedLength_passes() {
+        String prompt = "How should we structure the authentication module?";
+        String response = "Use JWT tokens with refresh flow. " + "Details here. ".repeat(50);
+        assertTrue(filter.passes(prompt, response));
+    }
+
+    // --- Short prompt + long response ---
+
+    @Test
+    void shortPromptLongResponse_fails() {
+        String shortPrompt = "now";
+        String longResponse = "I will implement the full authentication module with JWT tokens " +
+            "and refresh token flow. " + "More details. ".repeat(150);
+        assertFalse(filter.passes(shortPrompt, longResponse));
+    }
+
+    @Test
+    void longPromptLongResponse_passes() {
+        String prompt = "How should we implement the authentication?";
+        String response = "Use JWT tokens with a refresh token flow and proper session management. " +
+            "Additional details. ".repeat(50);
+        assertTrue(filter.passes(prompt, response));
+    }
 }

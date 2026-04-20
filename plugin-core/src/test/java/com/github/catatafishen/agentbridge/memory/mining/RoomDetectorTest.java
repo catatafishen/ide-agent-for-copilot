@@ -41,9 +41,21 @@ class RoomDetectorTest {
     }
 
     @Test
-    void detectsWorkflowRoomForGit() {
+    void detectsWorkflowRoomForCiCd() {
         assertEquals(DrawerDocument.ROOM_WORKFLOW,
-            RoomDetector.detect("Create a branch, merge after lint and format pass in the CI pipeline"));
+            RoomDetector.detect("The CI pipeline runs lint and format before deploy to staging"));
+    }
+
+    @Test
+    void detectsTechnicalRoom() {
+        assertEquals(DrawerDocument.ROOM_TECHNICAL,
+            RoomDetector.detect("The architecture uses threading and concurrency for performance optimization"));
+    }
+
+    @Test
+    void detectsTechnicalRoomForProtocol() {
+        assertEquals(DrawerDocument.ROOM_TECHNICAL,
+            RoomDetector.detect("The protocol handles serialization and encoding for backward compatible migration"));
     }
 
     @Test
@@ -86,7 +98,14 @@ class RoomDetectorTest {
 
     @Test
     void shortTextWithOneKeyword() {
-        assertEquals(DrawerDocument.ROOM_WORKFLOW, RoomDetector.detect("run the gradle build"));
+        // Single keyword "gradle" scores 1, below MIN_CONFIDENCE → general
+        assertEquals(DrawerDocument.ROOM_GENERAL, RoomDetector.detect("run the gradle build"));
+    }
+
+    @Test
+    void workflowNeedsTwoKeywords() {
+        // "gradle" + "deploy" → score 2 = MIN_CONFIDENCE → workflow
+        assertEquals(DrawerDocument.ROOM_WORKFLOW, RoomDetector.detect("gradle deploy to staging"));
     }
 
     @Test

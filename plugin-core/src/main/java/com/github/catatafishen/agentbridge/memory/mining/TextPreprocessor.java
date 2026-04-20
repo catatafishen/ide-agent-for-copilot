@@ -44,6 +44,8 @@ public final class TextPreprocessor {
         result = result.replaceAll("https?://\\S+", "");
         // Remove blockquote markers
         result = result.replaceAll("(?m)^>+\\s*", "");
+        // Remove quick-reply tags: [quick-reply: ...]
+        result = result.replaceAll("\\[quick-reply:[^]]*]", "");
         // Normalize runs of horizontal whitespace (preserve newlines for splitting)
         result = result.replaceAll("[ \\t]+", " ");
         return result.strip();
