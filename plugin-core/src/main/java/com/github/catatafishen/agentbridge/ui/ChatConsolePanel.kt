@@ -133,6 +133,13 @@ class ChatConsolePanel(
         browser?.cefBrowser?.invalidate()
     }.apply { isRepeats = true }
 
+    // Throttled per-executeJs invalidation during streaming. The repaintTimer
+    // provides a 200ms safety net, but individual executeJs calls (tool chips,
+    // sub-agent updates, etc.) can bunch between timer ticks. This ensures a
+    // forced repaint within 50ms of any JS execution during streaming.
+    private var lastStreamingInvalidateMs = 0L
+    private val streamingInvalidateThrottleMs = 50L
+
     // ── Swing fallback ─────────────────────────────────────────────
     private val fallbackArea: JBTextArea?
 
@@ -1199,6 +1206,13 @@ class ChatConsolePanel(
             com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
                 .info("executeJs (ready): $short")
             browser?.cefBrowser?.executeJavaScript(js, "", 0)
+            if (repaintTimer.isRunning) {
+                val now = System.currentTimeMillis()
+                if (now - lastStreamingInvalidateMs >= streamingInvalidateThrottleMs) {
+                    lastStreamingInvalidateMs = now
+                    browser?.cefBrowser?.invalidate()
+                }
+            }
         } else {
             com.intellij.openapi.diagnostic.Logger.getInstance(ChatConsolePanel::class.java)
                 .info("executeJs (queued): $short")
