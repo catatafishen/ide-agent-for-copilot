@@ -25,6 +25,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.ReadonlyStatusHandler;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.psi.PsiDocumentManager;
@@ -110,6 +111,17 @@ public abstract class FileTool extends Tool {
             if (vf == null) return;
             PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
             if (psiFile == null) return;
+            // AbstractLayoutCodeProcessor.runProcessFile() calls ensureFilesWritable() internally.
+            // For non-project files this may show an "unlock file?" dialog — which is illegal
+            // inside a write action (causes "AWT events not allowed inside write action").
+            // Pre-resolve write access here, outside the write action, so the dialog (if any)
+            // is shown before we acquire the write lock.
+            ReadonlyStatusHandler.OperationStatus writeStatus =
+                ReadonlyStatusHandler.getInstance(project).ensureFilesWritable(Collections.singletonList(vf));
+            if (writeStatus.hasReadonlyFiles()) {
+                LOG.info("Deferred auto-format skipped (read-only): " + pathStr);
+                return;
+            }
             Document doc = psiFile.getViewProvider().getDocument();
             WriteCommandAction.runWriteCommandAction(project, "Auto-Format (Deferred)", null, () -> {
                 if (doc != null)
