@@ -285,7 +285,9 @@ const ChatController = {
                 c.textBubble = bubble;
             }
             (ctx.textBubble as any).appendStreamingText(text);
-            this._container()?.scrollIfNeeded();
+            // scrollIfNeeded() removed — text hasn't rendered yet (rAF pending),
+            // so scrollHeight is stale. The MutationObserver + ResizeObserver
+            // on ChatContainer already handle post-render auto-scroll.
         } catch (e: any) {
             console.error('[appendAgentText ERROR]', e.message, e.stack);
         }

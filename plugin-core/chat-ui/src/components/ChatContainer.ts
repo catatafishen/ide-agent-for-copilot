@@ -129,7 +129,12 @@ export default class ChatContainer extends HTMLElement {
     }
 
     private _setupCodeBlocks(): void {
-        this._messages.querySelectorAll('pre:not([data-copy-btn]):not(.streaming)').forEach(pre => {
+        this._messages.querySelectorAll('pre:not([data-copy-btn])').forEach(pre => {
+            // Skip pre elements inside streaming bubbles — innerHTML is
+            // rebuilt on every token, so injected buttons would be destroyed
+            // immediately, creating a MutationObserver → DOM churn loop that
+            // causes JCEF OSR tearing. Buttons are added after finalize().
+            if (pre.closest('message-bubble[streaming]')) return;
             (pre as HTMLElement).dataset.copyBtn = '1';
 
             // Language label from data-lang attribute on <code>
