@@ -26,6 +26,9 @@ import javax.swing.JComponent
  */
 class BillingManager {
 
+    /** Callback fired on every billing display refresh. */
+    var onBillingChanged: Runnable? = null
+
     val usageLabel: JBLabel = JBLabel("").apply {
         cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
         toolTipText = "Click to toggle session/monthly view"
@@ -208,7 +211,23 @@ class BillingManager {
                 costLabel.text = ""
             }
         }
+        onBillingChanged?.run()
     }
+
+    /**
+     * Returns an immutable snapshot of billing display state for external consumers.
+     * Includes local-session adjustments (estimated used, estimated remaining).
+     */
+    fun getBillingDisplayData(): BillingDisplayData = BillingDisplayData(
+        estimatedUsed = estimatedUsed(),
+        entitlement = lastBillingEntitlement,
+        unlimited = lastBillingUnlimited,
+        estimatedRemaining = lastBillingRemaining - localSessionPremiumRequests.toInt(),
+        overagePermitted = lastBillingOveragePermitted,
+        resetDate = lastBillingResetDate,
+        sessionRequests = localSessionRequests,
+        sessionPremiumRequests = localSessionPremiumRequests,
+    )
 
     private fun updateUsageGraph(used: Int, entitlement: Int, unlimited: Boolean, resetDate: String) {
         if (!::usageGraphPanel.isInitialized) return

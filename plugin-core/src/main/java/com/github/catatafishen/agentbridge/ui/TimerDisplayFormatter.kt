@@ -41,4 +41,34 @@ object TimerDisplayFormatter {
         inputTokens: Int,
         outputTokens: Int,
     ): Boolean = !isRunning && ((costUsd?.let { it > 0.0 } ?: false) || (inputTokens + outputTokens) > 0)
+
+    /**
+     * Formats a token count with SI-style suffixes: 0 → "0", 1234 → "1.2k", 1500000 → "1.5M".
+     */
+    fun formatTokenCount(tokens: Long): String = when {
+        tokens >= 1_000_000 -> "%.1fM".format(tokens / 1_000_000.0)
+        tokens >= 1_000 -> "%.1fk".format(tokens / 1_000.0)
+        else -> tokens.toString()
+    }
+
+    /**
+     * Formats a USD cost for display: "$0.00" for zero, 4 decimals for sub-cent values,
+     * 2 decimals otherwise.
+     */
+    fun formatCost(costUsd: Double): String = when {
+        costUsd <= 0.0 -> "\$0.00"
+        costUsd < 0.01 -> "\$${String.format("%.4f", costUsd).trimEnd('0').trimEnd('.')}"
+        else -> "\$${String.format("%.2f", costUsd)}"
+    }
+
+    /**
+     * Formats lines-changed as "+N / -M", showing only the non-zero parts.
+     * Returns empty string when both are zero.
+     */
+    fun formatLinesChanged(added: Int, removed: Int): String = when {
+        added > 0 && removed > 0 -> "+$added / -$removed"
+        added > 0 -> "+$added"
+        removed > 0 -> "-$removed"
+        else -> ""
+    }
 }

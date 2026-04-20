@@ -2,7 +2,9 @@ package com.github.catatafishen.agentbridge.ui;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TimerDisplayFormatterTest {
 
@@ -159,5 +161,86 @@ class TimerDisplayFormatterTest {
     @Test
     void hasDisplayableUsage_notRunning_negativeCostZeroTokens_false() {
         assertFalse(TimerDisplayFormatter.INSTANCE.hasDisplayableUsage(false, -0.01, 0, 0));
+    }
+
+    // ── formatTokenCount ────────────────────────────────────────────────
+
+    @Test
+    void formatTokenCount_zero() {
+        assertEquals("0", TimerDisplayFormatter.INSTANCE.formatTokenCount(0));
+    }
+
+    @Test
+    void formatTokenCount_below1k() {
+        assertEquals("999", TimerDisplayFormatter.INSTANCE.formatTokenCount(999));
+    }
+
+    @Test
+    void formatTokenCount_exactly1k() {
+        assertEquals("1.0k", TimerDisplayFormatter.INSTANCE.formatTokenCount(1000));
+    }
+
+    @Test
+    void formatTokenCount_fractionalK() {
+        assertEquals("1.2k", TimerDisplayFormatter.INSTANCE.formatTokenCount(1234));
+    }
+
+    @Test
+    void formatTokenCount_exactly1M() {
+        assertEquals("1.0M", TimerDisplayFormatter.INSTANCE.formatTokenCount(1_000_000));
+    }
+
+    @Test
+    void formatTokenCount_fractionalM() {
+        assertEquals("1.5M", TimerDisplayFormatter.INSTANCE.formatTokenCount(1_500_000));
+    }
+
+    // ── formatCost ──────────────────────────────────────────────────────
+
+    @Test
+    void formatCost_zero() {
+        assertEquals("$0.00", TimerDisplayFormatter.INSTANCE.formatCost(0.0));
+    }
+
+    @Test
+    void formatCost_negative() {
+        assertEquals("$0.00", TimerDisplayFormatter.INSTANCE.formatCost(-1.0));
+    }
+
+    @Test
+    void formatCost_subCent() {
+        assertEquals("$0.005", TimerDisplayFormatter.INSTANCE.formatCost(0.005));
+    }
+
+    @Test
+    void formatCost_normal() {
+        assertEquals("$1.23", TimerDisplayFormatter.INSTANCE.formatCost(1.23));
+    }
+
+    @Test
+    void formatCost_wholeDollar() {
+        assertEquals("$5.00", TimerDisplayFormatter.INSTANCE.formatCost(5.0));
+    }
+
+    // ── formatLinesChanged ──────────────────────────────────────────────
+
+    @Test
+    void formatLinesChanged_bothZero() {
+        assertEquals("", TimerDisplayFormatter.INSTANCE.formatLinesChanged(0, 0));
+    }
+
+    @Test
+    void formatLinesChanged_onlyAdded() {
+        assertEquals("+10", TimerDisplayFormatter.INSTANCE.formatLinesChanged(10, 0));
+    }
+
+    @Test
+    void formatLinesChanged_onlyRemoved() {
+        assertEquals("-5", TimerDisplayFormatter.INSTANCE.formatLinesChanged(0, 5));
+    }
+
+    @Test
+    void formatLinesChanged_bothNonZero() {
+        assertEquals("+42 / -7", TimerDisplayFormatter.INSTANCE.formatLinesChanged(42, 7));
     }
 }
