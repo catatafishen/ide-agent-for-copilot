@@ -1,5 +1,7 @@
 package com.github.catatafishen.agentbridge.ui
 
+import java.awt.Color
+
 /**
  * Pure formatting functions for timer and stats display in [ProcessingTimerPanel].
  * Extracted to enable unit testing without Swing dependencies.
@@ -71,4 +73,26 @@ object TimerDisplayFormatter {
         removed > 0 -> "-$removed"
         else -> ""
     }
+
+    /**
+     * Formats diff counts as colored HTML for use inside a `JLabel` with `<html>` support.
+     * Returns `"<html><font color='#HEX'>+N</font> <font color='#HEX'>-M</font></html>"`
+     * with green for additions and red for removals, or empty string when both are zero.
+     */
+    @JvmStatic
+    fun formatDiffCountHtml(added: Int, removed: Int, addedColor: Color, removedColor: Color): String {
+        if (added <= 0 && removed <= 0) return ""
+        val sb = StringBuilder("<html>")
+        if (added > 0) sb.append("<font color='").append(colorHex(addedColor)).append("'>+").append(added)
+            .append("</font>")
+        if (removed > 0) {
+            if (added > 0) sb.append(" ")
+            sb.append("<font color='").append(colorHex(removedColor)).append("'>\u2212").append(removed)
+                .append("</font>")
+        }
+        sb.append("</html>")
+        return sb.toString()
+    }
+
+    private fun colorHex(c: Color): String = "#%02x%02x%02x".format(c.red, c.green, c.blue)
 }
