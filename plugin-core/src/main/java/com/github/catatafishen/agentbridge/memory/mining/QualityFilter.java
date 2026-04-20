@@ -32,6 +32,26 @@ public final class QualityFilter {
         "^\\s*([{}\\[\\]]|\"[^\"]+\"\\s*:).*$"
     );
 
+    /**
+     * Maximum combined text length for a mineable exchange. Exchanges longer than
+     * this are typically full conversation dumps with tool output, not distilled
+     * knowledge. The threshold is generous enough to accommodate detailed technical
+     * explanations but filters out multi-page transcript dumps.
+     */
+    private static final int MAX_COMBINED_LENGTH = 4000;
+
+    /**
+     * Minimum prompt length (chars) when the response is very long. Short prompts
+     * like "continue" or "yes" paired with long responses are usually operational
+     * continuations, not knowledge-rich exchanges.
+     */
+    private static final int MIN_PROMPT_FOR_LONG_RESPONSE = 20;
+
+    /**
+     * Response length threshold for the short-prompt check.
+     */
+    private static final int LONG_RESPONSE_THRESHOLD = 2000;
+
     private final int minChunkLength;
 
     public QualityFilter(@NotNull Project project) {
@@ -59,7 +79,15 @@ public final class QualityFilter {
             return false;
         }
 
+        if (combined.length() > MAX_COMBINED_LENGTH) {
+            return false;
+        }
+
         if (isStatusMessage(promptText)) {
+            return false;
+        }
+
+        if (isShortPromptLongResponse(promptText, responseText)) {
             return false;
         }
 
@@ -73,6 +101,16 @@ public final class QualityFilter {
             }
         }
         return false;
+    }
+
+    /**
+     * Reject exchanges where the prompt is very short but the response is very long.
+     * These are typically "continue"/"yes" follow-ups that triggered a long operational
+     * response, not knowledge-rich Q&A exchanges.
+     */
+    private static boolean isShortPromptLongResponse(@NotNull String prompt, @NotNull String response) {
+        return prompt.strip().length() < MIN_PROMPT_FOR_LONG_RESPONSE
+            && response.length() > LONG_RESPONSE_THRESHOLD;
     }
 
     /**
