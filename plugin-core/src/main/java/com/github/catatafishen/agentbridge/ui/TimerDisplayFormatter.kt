@@ -1,6 +1,7 @@
 package com.github.catatafishen.agentbridge.ui
 
 import java.awt.Color
+import java.util.Locale
 
 /**
  * Pure formatting functions for timer and stats display in [ProcessingTimerPanel].
@@ -48,8 +49,8 @@ object TimerDisplayFormatter {
      * Formats a token count with SI-style suffixes: 0 → "0", 1234 → "1.2k", 1500000 → "1.5M".
      */
     fun formatTokenCount(tokens: Long): String = when {
-        tokens >= 1_000_000 -> "%.1fM".format(tokens / 1_000_000.0)
-        tokens >= 1_000 -> "%.1fk".format(tokens / 1_000.0)
+        tokens >= 1_000_000 -> String.format(Locale.ROOT, "%.1fM", tokens / 1_000_000.0)
+        tokens >= 1_000 -> String.format(Locale.ROOT, "%.1fk", tokens / 1_000.0)
         else -> tokens.toString()
     }
 
@@ -58,9 +59,9 @@ object TimerDisplayFormatter {
      * 2 decimals otherwise.
      */
     fun formatCost(costUsd: Double): String = when {
-        costUsd <= 0.0 -> "\$0.00"
-        costUsd < 0.01 -> "\$${String.format("%.4f", costUsd).trimEnd('0').trimEnd('.')}"
-        else -> "\$${String.format("%.2f", costUsd)}"
+        costUsd <= 0.0 -> $$"$0.00"
+        costUsd < 0.01 -> $$"$$${String.format(Locale.ROOT, "%.4f", costUsd).trimEnd('0').trimEnd('.')}"
+        else -> $$"$$${String.format(Locale.ROOT, "%.2f", costUsd)}"
     }
 
     /**
