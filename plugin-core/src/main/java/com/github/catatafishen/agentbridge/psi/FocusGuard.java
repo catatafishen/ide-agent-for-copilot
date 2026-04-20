@@ -10,7 +10,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.InputEvent;
 import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -25,49 +24,61 @@ import java.util.concurrent.atomic.AtomicReference;
  * restores focus — but during that window the user's in-flight keystrokes land in
  * the editor instead of the chat prompt.
  *
- * <p><b>The fix.</b> While a tool is running AND chat was focused at tool start, this
- * guard listens for {@code focusOwner} changes. When focus moves away to a component
- * that is NOT inside the chat tool window AND the change was not triggered by a user
- * input event (mouse click / key press), the guard synchronously requests focus back
- * to the originally focused chat component. Because the reclaim happens inside the
- * property-change dispatch — before any {@link java.awt.event.KeyEvent} is delivered
- * to the new component — typed characters can never leak into the editor.
+ * <p><b>The fix.</b> This guard uses a {@link java.beans.VetoableChangeListener} on
+ * the {@code focusOwner} property of {@link KeyboardFocusManager}. When a programmatic
+ * focus change attempts to move focus away from the chat tool window to a component in
+ * the <em>same</em> IDE main frame (editors, other tool windows), the guard throws a
+ * {@link java.beans.PropertyVetoException} — <b>preventing the focus change entirely</b>.
+ * Focus never leaves the chat component, so zero keystrokes can leak.
  *
- * <p><b>Reclaim fires at most once per tool call.</b> If {@code requestFocusInWindow()}
- * on the JCEF component resolves to a component that is not exactly {@code chatFocusOwner}
- * (possible when JCEF routes focus to a parent or sibling component internally), a second
- * invocation of this listener would also pass the checks and fire another reclaim,
- * creating a focus ping-pong that starves the EDT of mouse/paint events and freezes the
- * JCEF panel. The {@code hasReclaimed} flag ensures we call {@code requestFocusInWindow()}
- * at most once — subsequent focus changes are left to the existing 150ms restore alarm.
+ * <p><b>Targeted veto, not blanket.</b> The guard only vetoes focus changes to components
+ * in the same {@link Window} as the chat tool window (i.e., the IDE main frame). Focus
+ * changes to dialog windows, popups, completion lookups, and other separate windows are
+ * allowed through. This prevents interference with IDE plumbing that opens modal dialogs
+ * or popup menus during tool execution.
  *
  * <p><b>User-initiated focus changes are respected.</b> The guard inspects the AWT
- * event currently being dispatched; if it is a {@link InputEvent} (user click or
- * keystroke) the focus change is allowed through. This preserves the ability to
+ * event currently being dispatched; if it is a {@link java.awt.event.InputEvent} (user
+ * click or keystroke) the focus change is allowed through. This preserves the ability to
  * click away to an editor during a long-running tool (e.g. build).
+ *
+ * <p><b>Circuit breaker.</b> If the guard vetoes more than {@value #MAX_VETOES} focus
+ * changes in a single lifecycle, it disables itself to prevent unbounded veto storms
+ * from degrading IDE responsiveness. This is a safety net — under normal operation,
+ * a tool execution triggers at most 2-4 focus changes (editor open, tab creation).
  *
  * <p>Install via {@link #install(Project)} on the EDT; call {@link #uninstall()} in
  * the tool-call finally block. Both methods are idempotent and safe to call from any
  * thread — they self-dispatch to the EDT.
  */
-final class FocusGuard implements PropertyChangeListener {
+final class FocusGuard implements java.beans.VetoableChangeListener {
     private static final Logger LOG = Logger.getInstance(FocusGuard.class);
+
+    /**
+     * Maximum number of vetoes before the guard disables itself. Safety net against
+     * pathological scenarios where a component retries focus acquisition in a loop.
+     */
+    private static final int MAX_VETOES = 20;
 
     private final Project project;
     private final KeyboardFocusManager kfm;
     private final Component chatFocusOwner;
     /**
+     * The IDE main frame window containing the chat tool window. Focus changes to
+     * components in the same window are vetoed; changes to other windows (dialogs,
+     * popups) are allowed through.
+     */
+    private final Window chatWindow;
+    /**
      * Package-private so tests can simulate the uninstalled state without requiring the IDE platform.
      */
     volatile boolean uninstalled;
     /**
-     * Ensures {@code requestFocusInWindow()} is called at most once per tool call.
-     * Without this, a failed or mis-routed reclaim produces a new focus event that
-     * passes all the same checks, firing another reclaim and creating a focus storm
-     * that starves the EDT and freezes the JCEF panel.
+     * Tracks how many vetoes have fired in this guard's lifecycle. Once {@value #MAX_VETOES}
+     * is reached, the guard stops vetoing to prevent runaway storms.
      */
-    private final java.util.concurrent.atomic.AtomicBoolean hasReclaimed =
-        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicInteger vetoCount =
+        new java.util.concurrent.atomic.AtomicInteger(0);
 
     /**
      * Package-private for tests; use {@link #install(Project)} in production code.
@@ -76,6 +87,7 @@ final class FocusGuard implements PropertyChangeListener {
         this.project = project;
         this.kfm = kfm;
         this.chatFocusOwner = chatFocusOwner;
+        this.chatWindow = SwingUtilities.getWindowAncestor(chatFocusOwner);
     }
 
     /**
@@ -98,7 +110,7 @@ final class FocusGuard implements PropertyChangeListener {
                 if (owner == null) return;
                 if (!isInsideChatToolWindow(project, owner)) return;
                 FocusGuard guard = new FocusGuard(project, kfm, owner);
-                kfm.addPropertyChangeListener("focusOwner", guard);
+                kfm.addVetoableChangeListener("focusOwner", guard);
                 ref.set(guard);
             } catch (Exception e) {
                 LOG.debug("FocusGuard install failed", e);
@@ -144,7 +156,7 @@ final class FocusGuard implements PropertyChangeListener {
             if (uninstalled) return;
             uninstalled = true;
             try {
-                kfm.removePropertyChangeListener("focusOwner", this);
+                kfm.removeVetoableChangeListener("focusOwner", this);
             } catch (Exception e) {
                 LOG.debug("FocusGuard uninstall failed", e);
             }
@@ -173,7 +185,7 @@ final class FocusGuard implements PropertyChangeListener {
     }
 
     @Override
-    public void propertyChange(PropertyChangeEvent evt) {
+    public void vetoableChange(PropertyChangeEvent evt) throws java.beans.PropertyVetoException {
         if (uninstalled) return;
         if (project.isDisposed()) {
             uninstall();
@@ -187,6 +199,12 @@ final class FocusGuard implements PropertyChangeListener {
         // Allow focus changes inside the chat tool window (e.g. between JCEF and prompt,
         // or between chat-side components).
         if (isInsideChatToolWindow(project, newComp)) return;
+
+        // Only veto focus changes within the IDE main frame. Focus changes to dialog
+        // windows, popups, completion lookups, and other separate windows are allowed
+        // — they are legitimate IDE UI that the user or platform needs to interact with.
+        Window targetWindow = SwingUtilities.getWindowAncestor(newComp);
+        if (chatWindow != null && targetWindow != chatWindow) return;
 
         // Respect user-initiated focus moves: a click or keystroke that transferred focus
         // should not be fought by the guard. Programmatic focus changes (from navigate(),
@@ -204,23 +222,26 @@ final class FocusGuard implements PropertyChangeListener {
             // IdeEventQueue unavailable in some test contexts — rely on EventQueue check above.
         }
 
-        // Only reclaim once per tool call. If requestFocusInWindow() routes focus to
-        // a component that is neither chatFocusOwner nor inside the chat TW (possible
-        // with JCEF's internal focus delegation), a second invocation would also pass
-        // the checks above and call requestFocusInWindow() again, creating a focus
-        // ping-pong that freezes the JCEF panel. Let the 150ms alarm handle anything
-        // the single reclaim doesn't fully resolve.
-        if (!hasReclaimed.compareAndSet(false, true)) return;
-
-        // Programmatic focus steal detected — synchronously reclaim focus for the chat.
-        try {
-            chatFocusOwner.requestFocusInWindow();
-        } catch (Exception e) {
-            LOG.debug("FocusGuard requestFocus failed", e);
+        // Circuit breaker: stop vetoing after MAX_VETOES to prevent runaway storms.
+        // Inline the removal here (we're on EDT in this callback) rather than calling
+        // uninstall() which requires ApplicationManager, unavailable in some test contexts.
+        if (vetoCount.incrementAndGet() > MAX_VETOES) {
+            LOG.warn("FocusGuard circuit breaker: exceeded " + MAX_VETOES + " vetoes, disabling guard");
+            uninstalled = true;
+            try {
+                kfm.removeVetoableChangeListener("focusOwner", this);
+            } catch (Exception e) {
+                LOG.debug("FocusGuard circuit breaker removal failed", e);
+            }
+            return;
         }
+
+        // Veto the programmatic focus change — focus stays in the chat component.
+        throw new java.beans.PropertyVetoException(
+            "FocusGuard: vetoing programmatic focus steal from chat", evt);
     }
 
-    private static boolean isInsideChatToolWindow(Project project, Component comp) {
+    static boolean isInsideChatToolWindow(Project project, Component comp) {
         try {
             var twm = ToolWindowManager.getInstance(project);
             var tw = twm.getToolWindow("AgentBridge");

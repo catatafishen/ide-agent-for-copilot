@@ -5,31 +5,29 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import javax.swing.JPanel;
-import java.awt.Component;
-import java.awt.KeyboardFocusManager;
+import javax.swing.*;
+import java.awt.*;
 import java.beans.PropertyChangeEvent;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link FocusGuard}, focusing on the pure logic of {@link FocusGuard#propertyChange}.
+ * Unit tests for {@link FocusGuard}, focusing on the pure logic of {@link FocusGuard#vetoableChange}.
  *
- * <p><b>What these tests protect against:</b> the focus ping-pong storm that froze the JCEF panel.
- * When {@code requestFocusInWindow()} routes focus to an intermediate component that is not exactly
- * {@code chatFocusOwner}, the resulting focus event passes all guards and would trigger a second
- * {@code requestFocusInWindow()} call — an infinite feedback loop that saturates the EDT.
- * The {@code hasReclaimed} flag cuts this loop. These tests verify that invariant cannot regress.
+ * <p><b>What these tests protect against:</b> programmatic focus steals from the chat prompt
+ * during MCP tool execution. The guard uses a {@link java.beans.VetoableChangeListener} to
+ * <em>prevent</em> focus changes from happening (by throwing {@link java.beans.PropertyVetoException})
+ * rather than reactively reclaiming focus after the change. This eliminates transient focus loss
+ * and the ping-pong storms that plagued the previous {@code PropertyChangeListener} approach.
  *
  * <p>Tests run without the IntelliJ platform. IDE-dependent paths ({@code ToolWindowManager},
  * {@code IdeEventQueue}) throw in the test context and are caught by existing try-catches,
  * making {@code isInsideChatToolWindow} always return {@code false} — accurately modelling
  * focus moving to a component outside the chat tool window, which is the scenario that triggers
- * a reclaim.
+ * a veto.
  */
 class FocusGuardTest {
 
@@ -42,71 +40,102 @@ class FocusGuardTest {
         project = mock(Project.class);
         when(project.isDisposed()).thenReturn(false);
         chatOwner = mock(Component.class);
-        // KFM is passed to constructor only for uninstall(); tests don't call uninstall() so
-        // the real KFM is fine — we just need a non-null reference.
         guard = new FocusGuard(project, KeyboardFocusManager.getCurrentKeyboardFocusManager(), chatOwner);
     }
 
     /**
      * A focus event where focus moves from chatOwner to a JPanel outside the chat TW.
+     * The JPanel has no Window ancestor, so the chatWindow-matching check passes
+     * (both are null in test context — treated as same window).
      */
     private PropertyChangeEvent outsideEvent() {
         return new PropertyChangeEvent(new Object(), "focusOwner", chatOwner, new JPanel());
     }
 
-    // ── Core reclaim behaviour ────────────────────────────────────────────────────────────────────
+    // ── Core veto behaviour ──────────────────────────────────────────────────────────────────────
 
     @Test
-    void reclaimsFocusOnFirstProgrammaticFocusSteal() {
-        guard.propertyChange(outsideEvent());
-
-        verify(chatOwner, times(1)).requestFocusInWindow();
+    void vetoesProgrammaticFocusSteal() {
+        assertThrows(java.beans.PropertyVetoException.class, () ->
+            guard.vetoableChange(outsideEvent()));
     }
 
     @Test
-    void reclaimsOnlyOnce_preventsStorm() {
-        // REGRESSION GUARD: two consecutive programmatic focus steals MUST NOT call
-        // requestFocusInWindow() twice. That would create a focus ping-pong (EDT storm)
-        // that renders the JCEF panel completely unresponsive.
-        guard.propertyChange(outsideEvent());
-        guard.propertyChange(outsideEvent());
-
-        verify(chatOwner, times(1)).requestFocusInWindow();
+    void vetoesEveryProgrammaticSteal_noOneShotLimit() {
+        // Unlike the old PropertyChangeListener approach, the VetoableChangeListener
+        // vetoes EVERY programmatic focus steal — there is no one-shot hasReclaimed flag.
+        // This is safe because veto prevents focus from moving, so no ping-pong is possible.
+        assertThrows(java.beans.PropertyVetoException.class, () ->
+            guard.vetoableChange(outsideEvent()));
+        assertThrows(java.beans.PropertyVetoException.class, () ->
+            guard.vetoableChange(outsideEvent()));
+        assertThrows(java.beans.PropertyVetoException.class, () ->
+            guard.vetoableChange(outsideEvent()));
     }
 
-    // ── Pass-through cases (no reclaim expected) ─────────────────────────────────────────────────
+    // ── Circuit breaker ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void circuitBreakerDisablesAfterMaxVetoes() throws java.beans.PropertyVetoException {
+        // Fire MAX_VETOES (20) vetoes — all should throw
+        for (int i = 0; i < 20; i++) {
+            assertThrows(java.beans.PropertyVetoException.class, () ->
+                guard.vetoableChange(outsideEvent()));
+        }
+        // The 21st should NOT throw — circuit breaker tripped, guard is uninstalled
+        guard.vetoableChange(outsideEvent());
+        assertTrue(guard.uninstalled, "Guard should be uninstalled after circuit breaker trips");
+    }
+
+    // ── Pass-through cases (no veto expected) ────────────────────────────────────────────────────
 
     @Nested
-    class NoReclaim {
+    class NoVeto {
 
         @Test
-        void whenNewOwnerIsChatComponent() {
-            // Focus returns to the guarded component — no steal, no reclaim needed.
+        void whenNewOwnerIsChatComponent() throws java.beans.PropertyVetoException {
+            // Focus returns to the guarded component — no steal, no veto.
             PropertyChangeEvent evt = new PropertyChangeEvent(new Object(), "focusOwner", null, chatOwner);
-            guard.propertyChange(evt);
-
-            verify(chatOwner, never()).requestFocusInWindow();
+            guard.vetoableChange(evt);
+            // No exception = pass-through
         }
 
         @Test
-        void whenNewOwnerIsNull() {
+        void whenNewOwnerIsNull() throws java.beans.PropertyVetoException {
             // Null focus (e.g., window deactivated) — not instanceof Component, ignored.
             PropertyChangeEvent evt = new PropertyChangeEvent(new Object(), "focusOwner", chatOwner, null);
-            guard.propertyChange(evt);
-
-            verify(chatOwner, never()).requestFocusInWindow();
+            guard.vetoableChange(evt);
         }
 
         @Test
-        void whenGuardIsUninstalled() {
+        void whenGuardIsUninstalled() throws java.beans.PropertyVetoException {
             // After uninstall the guard is logically off — any lingering focus events must be no-ops.
-            // Simulate the uninstalled state directly (calling uninstall() itself requires
-            // ApplicationManager which is not available outside the platform).
             guard.uninstalled = true;
+            guard.vetoableChange(outsideEvent());
+        }
 
-            guard.propertyChange(outsideEvent());
+        @Test
+        void whenTargetIsInDifferentWindow() throws java.beans.PropertyVetoException {
+            // Focus to a component in a different Window (dialog, popup) — allowed through.
+            // Create a chatOwner that has a Window ancestor to distinguish from dialog target.
+            JFrame mainFrame = new JFrame("IDE Main");
+            JPanel chatPanel = new JPanel();
+            mainFrame.getContentPane().add(chatPanel);
 
-            verify(chatOwner, never()).requestFocusInWindow();
+            FocusGuard windowGuard = new FocusGuard(
+                project, KeyboardFocusManager.getCurrentKeyboardFocusManager(), chatPanel);
+
+            // Target in a different JFrame (simulating a dialog)
+            JFrame dialogFrame = new JFrame("Dialog");
+            JPanel dialogPanel = new JPanel();
+            dialogFrame.getContentPane().add(dialogPanel);
+
+            PropertyChangeEvent evt = new PropertyChangeEvent(
+                new Object(), "focusOwner", chatPanel, dialogPanel);
+            windowGuard.vetoableChange(evt);
+
+            mainFrame.dispose();
+            dialogFrame.dispose();
         }
     }
 }
