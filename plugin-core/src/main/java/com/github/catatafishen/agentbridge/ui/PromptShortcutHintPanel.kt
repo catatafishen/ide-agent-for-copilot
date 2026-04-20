@@ -92,8 +92,7 @@ class PromptShortcutHintPanel : JBPanel<JBPanel<*>>(BorderLayout()) {
         label: String
     ): JBLabel {
         val stroke = PromptShortcutAction.resolveKeystroke(actionId, fallbackStroke)
-        val keyText = KeyBadge.formatKeystroke(stroke)
-        row.add(KeyBadge(keyText))
+        KeyBadge.keystrokeTokens(stroke).forEach { row.add(KeyBadge(it)) }
         val lbl = JBLabel(label).apply {
             font = JBUI.Fonts.smallFont()
             foreground = UIUtil.getContextHelpForeground()

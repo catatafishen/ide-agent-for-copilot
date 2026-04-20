@@ -1,6 +1,5 @@
 package com.github.catatafishen.agentbridge.ui
 
-import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -37,32 +36,47 @@ class KeyBadge(text: String) : JBLabel(text) {
         val BACKGROUND: JBColor = JBColor(0xF0F0F0, 0x3C3F41)
         val BORDER: JBColor = JBColor(0xC8C8C8, 0x5E6060)
 
+        /** Formats a keystroke as a single string; prefer [keystrokeTokens] for badge rendering. */
+        fun formatKeystroke(stroke: KeyStroke): String = keystrokeTokens(stroke).joinToString("+")
+
         /**
-         * Formats a keystroke for display as a key-cap label.
-         *
-         * On macOS, [KeymapUtil.getKeystrokeText] already returns Unicode symbols (⌘, ⇧, ⌃, ⏎).
-         * On Windows/Linux, we build the label from the [KeyStroke] data directly: Enter → ↵,
-         * Shift → ⇧, Ctrl and Alt kept as text to match native platform conventions.
+         * Returns one string per individual key token so each can be rendered in its own badge.
+         * On macOS modifiers are returned as Unicode symbols (⌘, ⌃, ⌥, ⇧); on Windows/Linux
+         * Ctrl and Alt are returned as text while Shift uses ⇧.
          */
-        fun formatKeystroke(stroke: KeyStroke): String {
-            if (System.getProperty("os.name", "").lowercase(Locale.ROOT).startsWith("mac")) {
-                return KeymapUtil.getKeystrokeText(stroke)
-            }
+        fun keystrokeTokens(stroke: KeyStroke): List<String> {
+            val isMac = System.getProperty("os.name", "").lowercase(Locale.ROOT).startsWith("mac")
+            val tokens = mutableListOf<String>()
             val modifiers = stroke.modifiers
-            val sb = StringBuilder()
-            if (modifiers and InputEvent.CTRL_DOWN_MASK != 0) sb.append("Ctrl+")
-            if (modifiers and InputEvent.ALT_DOWN_MASK != 0) sb.append("Alt+")
-            if (modifiers and InputEvent.SHIFT_DOWN_MASK != 0) sb.append("⇧")
-            sb.append(
-                when (stroke.keyCode) {
-                    KeyEvent.VK_ENTER -> "↵"
-                    KeyEvent.VK_BACK_SPACE -> "⌫"
-                    KeyEvent.VK_ESCAPE -> "Esc"
-                    KeyEvent.VK_TAB -> "⇥"
-                    else -> KeyEvent.getKeyText(stroke.keyCode)
-                }
-            )
-            return sb.toString()
+            if (isMac) {
+                if (modifiers and InputEvent.CTRL_DOWN_MASK != 0) tokens.add("⌃")
+                if (modifiers and InputEvent.ALT_DOWN_MASK != 0) tokens.add("⌥")
+                if (modifiers and InputEvent.SHIFT_DOWN_MASK != 0) tokens.add("⇧")
+                if (modifiers and InputEvent.META_DOWN_MASK != 0) tokens.add("⌘")
+                tokens.add(
+                    when (stroke.keyCode) {
+                        KeyEvent.VK_ENTER -> "⏎"
+                        KeyEvent.VK_BACK_SPACE -> "⌫"
+                        KeyEvent.VK_ESCAPE -> "⎋"
+                        KeyEvent.VK_TAB -> "⇥"
+                        else -> KeyEvent.getKeyText(stroke.keyCode)
+                    }
+                )
+            } else {
+                if (modifiers and InputEvent.CTRL_DOWN_MASK != 0) tokens.add("Ctrl")
+                if (modifiers and InputEvent.ALT_DOWN_MASK != 0) tokens.add("Alt")
+                if (modifiers and InputEvent.SHIFT_DOWN_MASK != 0) tokens.add("⇧")
+                tokens.add(
+                    when (stroke.keyCode) {
+                        KeyEvent.VK_ENTER -> "↵"
+                        KeyEvent.VK_BACK_SPACE -> "⌫"
+                        KeyEvent.VK_ESCAPE -> "Esc"
+                        KeyEvent.VK_TAB -> "⇥"
+                        else -> KeyEvent.getKeyText(stroke.keyCode)
+                    }
+                )
+            }
+            return tokens
         }
     }
 }
