@@ -1,7 +1,6 @@
 package com.github.catatafishen.agentbridge.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.JBUI
@@ -110,7 +109,7 @@ class PromptShortcutHintPanel(private val onClose: () -> Unit) : JBPanel<JBPanel
         label: String
     ): JBLabel {
         val stroke = PromptShortcutAction.resolveKeystroke(actionId, fallbackStroke)
-        val keyText = KeymapUtil.getKeystrokeText(stroke)
+        val keyText = KeyBadge.formatKeystroke(stroke)
         row.add(KeyBadge(keyText))
         val lbl = JBLabel(label).apply {
             font = JBUI.Fonts.smallFont()
