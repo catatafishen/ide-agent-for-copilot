@@ -85,11 +85,20 @@ public final class RoomDetector {
         ));
 
         keywords.put(DrawerDocument.ROOM_WORKFLOW, List.of(
-            "build", "gradle", "maven", "npm", "deploy",
+            "gradle", "maven", "npm", "deploy",
             "ci", "cd", "pipeline", "release", "docker",
             "environment", "staging", "production", "lint",
-            "format", "script", "tool", "automation", "git",
-            "branch", "merge", "test runner"
+            "format", "script", "automation",
+            "test runner"
+        ));
+
+        keywords.put(DrawerDocument.ROOM_TECHNICAL, List.of(
+            "architecture", "design pattern", "refactor",
+            "performance", "optimization", "latency", "throughput",
+            "protocol", "encoding", "serialization", "parsing",
+            "threading", "concurrency", "synchronization",
+            "encryption", "authentication", "authorization",
+            "migration", "compatibility", "backward compatible"
         ));
 
         keywords.put(DrawerDocument.ROOM_DECISIONS, List.of(

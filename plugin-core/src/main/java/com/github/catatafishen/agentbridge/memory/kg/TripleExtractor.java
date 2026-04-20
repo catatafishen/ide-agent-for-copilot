@@ -45,11 +45,35 @@ public final class TripleExtractor {
         "do", "does", "did", "has", "have", "had",
         "not", "no", "so", "then", "also", "just", "only",
         "very", "really", "quite", "some", "any", "all",
-        "new", "old", "same", "other",
+        "new", "old", "same", "other", "both", "each", "every",
         "method", "function", "class", "file", "code",
         "data", "value", "object", "thing", "way",
-        "type", "part", "memory", "system", "one"
+        "type", "part", "memory", "system", "one",
+        "first", "next", "now", "here", "there",
+        "good", "right", "full", "clean", "current",
+        "change", "changes", "update", "case", "cases"
     );
+
+    /**
+     * Words that should not appear at the start of a triple object.
+     * Objects beginning with these are typically sentence fragments captured
+     * by the greedy regex, not meaningful entities (e.g., "the constant",
+     * "to retry until...", "a focus ping-pong storm").
+     */
+    private static final Set<String> LEADING_WEAK_WORDS = Set.of(
+        "a", "an", "the", "this", "that", "these", "those",
+        "to", "for", "from", "by", "with", "at", "on", "in", "of",
+        "it", "its", "they", "we", "i", "my", "our", "you", "your",
+        "some", "any", "all", "both", "each", "every",
+        "very", "really", "quite", "just", "only", "also",
+        "how", "what", "where", "when", "which", "who"
+    );
+
+    /**
+     * Characters that indicate the object contains markdown or UI artifacts
+     * rather than a clean entity name.
+     */
+    private static final Pattern ARTIFACT_CHARS = Pattern.compile("[|\\[\\]>{}]");
 
     private TripleExtractor() {
     }
@@ -145,14 +169,21 @@ public final class TripleExtractor {
 
     /**
      * Check whether an extracted object is specific enough to be useful in the KG.
-     * Rejects objects that are too short, too long (word count), or consist
-     * entirely of stopwords (e.g. "the memory", "a new method").
+     * Rejects objects that are too short, too long (word count), start with
+     * weak/generic words, contain markdown artifacts, or consist entirely of stopwords.
      */
     static boolean isQualityObject(@NotNull String object) {
         if (object.length() < MIN_OBJECT_LENGTH) return false;
 
+        // Reject objects containing markdown/UI artifacts
+        if (ARTIFACT_CHARS.matcher(object).find()) return false;
+
         String[] words = object.toLowerCase().split("[\\s-]+");
         if (words.length > MAX_OBJECT_WORDS) return false;
+
+        // Reject if the first word is a weak/generic word (article, preposition, pronoun)
+        String firstCleaned = words[0].replaceAll("[^a-z]", "");
+        if (!firstCleaned.isEmpty() && LEADING_WEAK_WORDS.contains(firstCleaned)) return false;
 
         // Reject if ALL words are stopwords
         for (String word : words) {
@@ -184,9 +215,9 @@ public final class TripleExtractor {
         Matcher matcher = rule.pattern.matcher(sentence);
         if (!matcher.find()) return null;
 
-        // Negation guard: check if the sentence contains negation before the match
+        // Negation guard: check only the prefix before the match position
         String prefix = sentence.substring(0, matcher.start());
-        if (hasNegation(prefix) || hasNegation(sentence)) return null;
+        if (hasNegation(prefix)) return null;
 
         String rawObject = matcher.group(rule.objectGroup).strip();
         String object = cleanObject(rawObject);
@@ -285,15 +316,16 @@ public final class TripleExtractor {
                 Pattern.CASE_INSENSITIVE),
             "uses", 1, 2));
 
-        // Usage without subject: "we use X", "using X"
+        // Usage without subject: require explicit "we" — bare "using X" is too greedy
+        // and matches operational statements like "using the clean rebuild"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |i )?(?:use|using)\\s+(.+?)" + end,
+            Pattern.compile("\\bwe use\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "uses", 0, 1));
 
-        // Preference: "prefer X", "always use X"
+        // Preference: "we prefer X", "we always use X" — require explicit "we"/"i"
         rules.add(new ExtractionRule(
-            Pattern.compile("(?:we |i )?(?:prefer|prefers|always use)\\s+(.+?)" + end,
+            Pattern.compile("(?:we |i )(?:prefer|prefers|always use)\\s+(.+?)" + end,
                 Pattern.CASE_INSENSITIVE),
             "prefers", 0, 1));
 
