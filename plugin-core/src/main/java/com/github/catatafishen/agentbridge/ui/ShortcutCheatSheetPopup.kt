@@ -1,6 +1,5 @@
 package com.github.catatafishen.agentbridge.ui
 
-import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
@@ -90,7 +89,7 @@ object ShortcutCheatSheetPopup {
 
     private fun buildRow(row: ShortcutRow): JPanel {
         val stroke = PromptShortcutAction.resolveKeystroke(row.actionId, row.fallback)
-        val keyText = KeymapUtil.getKeystrokeText(stroke)
+        val keyText = KeyBadge.formatKeystroke(stroke)
 
         val p = JPanel(BorderLayout(JBUI.scale(12), 0))
         p.isOpaque = false

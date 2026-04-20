@@ -14,7 +14,11 @@
       "codex.svg": "icons/codex.svg",
       "codex_dark.svg": "icons/codex_dark.svg",
       "opencode.svg": "icons/opencode.svg",
-      "opencode_dark.svg": "icons/opencode_dark.svg"
+      "opencode_dark.svg": "icons/opencode_dark.svg",
+      "power.svg": "icons/power.svg",
+      "power_dark.svg": "icons/power_dark.svg",
+      "send.svg": "icons/send.svg",
+      "send_dark.svg": "icons/send_dark.svg"
     }
   }
 }
