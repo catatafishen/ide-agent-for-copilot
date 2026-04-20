@@ -44,6 +44,26 @@ public final class NarrationFilter {
         // "Now let me also...", "Let me also..."
         Pattern.compile(
             "^(Now let me also|Let me also|I should also|I also need to)\\b",
+            Pattern.CASE_INSENSITIVE),
+        // Agent transition preambles: "Good.", "Perfect.", "Great.", "Done."
+        Pattern.compile(
+            "^(Good[.,!]|Perfect[.,!]|Great[.,!]|Done[.,!]|Excellent[.,!])\\s",
+            Pattern.CASE_INSENSITIVE),
+        // "Good, I have...", "Now I have the full picture"
+        Pattern.compile(
+            "^(Good, I|Now I have|Now I need to|Now I'll|Now make|Now fix|Now replace)\\b",
+            Pattern.CASE_INSENSITIVE),
+        // Summary/change-list preambles
+        Pattern.compile(
+            "^(Summary of changes|Three changes|Two changes|All \\d+ changes|Changes committed|Changes made)\\b",
+            Pattern.CASE_INSENSITIVE),
+        // Problem-solving narration
+        Pattern.compile(
+            "^(Need to fix|There's a name conflict|There's a type|The error is|The issue is|That didn't work)\\b",
+            Pattern.CASE_INSENSITIVE),
+        // Continuation narration
+        Pattern.compile(
+            "^(Moving on|Continuing with|Back to|On to the next|Let's move)\\b",
             Pattern.CASE_INSENSITIVE)
     );
 

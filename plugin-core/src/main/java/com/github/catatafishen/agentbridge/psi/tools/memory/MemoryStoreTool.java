@@ -63,7 +63,7 @@ public final class MemoryStoreTool extends Tool {
     public @NotNull JsonObject inputSchema() {
         return schema(
             Param.required("content", TYPE_STRING, "The memory content to store"),
-            Param.optional("room", TYPE_STRING, "Topic room: 'codebase', 'debugging', 'workflow', 'decisions', 'preferences'. Default: 'general'"),
+            Param.optional("room", TYPE_STRING, "Topic room: 'codebase', 'debugging', 'workflow', 'technical', 'decisions', 'preferences'. Default: 'general'"),
             Param.optional(PARAM_MEMORY_TYPE, TYPE_STRING, "Type: context, decision, problem, solution. Default: general")
         );
     }

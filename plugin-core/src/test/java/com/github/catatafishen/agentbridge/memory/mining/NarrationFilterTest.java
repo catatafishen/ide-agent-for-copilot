@@ -42,6 +42,37 @@ class NarrationFilterTest {
     }
 
     @Test
+    void isNarration_detectsTransitionPreambles() {
+        assertTrue(NarrationFilter.isNarration("Good, I have all the context now"));
+        assertTrue(NarrationFilter.isNarration("Good. Now I have the full picture"));
+        assertTrue(NarrationFilter.isNarration("Perfect. Let me implement that"));
+        assertTrue(NarrationFilter.isNarration("Done. Three changes committed"));
+        assertTrue(NarrationFilter.isNarration("Now I have the full picture"));
+        assertTrue(NarrationFilter.isNarration("Now I need to check the build"));
+    }
+
+    @Test
+    void isNarration_detectsSummaryPreambles() {
+        assertTrue(NarrationFilter.isNarration("Summary of changes:"));
+        assertTrue(NarrationFilter.isNarration("Three changes to make:"));
+        assertTrue(NarrationFilter.isNarration("All 5 changes look good"));
+    }
+
+    @Test
+    void isNarration_detectsProblemSolvingNarration() {
+        assertTrue(NarrationFilter.isNarration("Need to fix the import"));
+        assertTrue(NarrationFilter.isNarration("There's a name conflict with props"));
+        assertTrue(NarrationFilter.isNarration("The error is a type mismatch"));
+    }
+
+    @Test
+    void isNarration_detectsContinuationNarration() {
+        assertTrue(NarrationFilter.isNarration("Moving on to the next file"));
+        assertTrue(NarrationFilter.isNarration("Continuing with the implementation"));
+        assertTrue(NarrationFilter.isNarration("Back to the main issue"));
+    }
+
+    @Test
     void isNarration_preservesSubstantiveContent() {
         assertFalse(NarrationFilter.isNarration("The root cause was a race condition"));
         assertFalse(NarrationFilter.isNarration("We use JWT for authentication"));

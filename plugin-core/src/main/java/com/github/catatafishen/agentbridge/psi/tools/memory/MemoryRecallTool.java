@@ -64,7 +64,7 @@ public final class MemoryRecallTool extends Tool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(
-            Param.required("room", TYPE_STRING, "Room to recall from (e.g. 'codebase', 'debugging', 'workflow', 'decisions', 'preferences')"),
+            Param.required("room", TYPE_STRING, "Room to recall from (e.g. 'codebase', 'debugging', 'workflow', 'technical', 'decisions', 'preferences')"),
             Param.optional(PARAM_QUERY, TYPE_STRING, "Optional search query within the room"),
             Param.optional(PARAM_LIMIT, TYPE_INTEGER, "Max results (default: 5)")
         );

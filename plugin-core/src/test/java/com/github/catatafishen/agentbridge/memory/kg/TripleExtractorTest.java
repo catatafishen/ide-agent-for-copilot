@@ -80,10 +80,10 @@ class TripleExtractorTest {
 
     @Test
     void rootCausePattern() {
-        String text = "The root cause was the plugin classloader not being visible to DriverManager.";
+        String text = "The root cause was plugin classloader not being visible to DriverManager.";
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
 
-        assertContainsTriple(triples, "caused-by", "the plugin classloader not being visible to DriverManager");
+        assertContainsTriple(triples, "caused-by", "plugin classloader not being visible to DriverManager");
     }
 
     @Test
@@ -278,7 +278,10 @@ class TripleExtractorTest {
 
     @Test
     void rejectsAllStopwordObjects() {
-        // "the memory" — both words are stopwords → rejected
+        // These fail because ALL words are stopwords
+        assertFalse(TripleExtractor.isQualityObject("new method"));
+        assertFalse(TripleExtractor.isQualityObject("old system"));
+        // These also fail because they start with leading weak words
         assertFalse(TripleExtractor.isQualityObject("the memory"));
         assertFalse(TripleExtractor.isQualityObject("a new method"));
         assertFalse(TripleExtractor.isQualityObject("the old system"));
@@ -289,7 +292,29 @@ class TripleExtractorTest {
         assertTrue(TripleExtractor.isQualityObject("Gradle"));
         assertTrue(TripleExtractor.isQualityObject("safetensors model"));
         assertTrue(TripleExtractor.isQualityObject("write-ahead log"));
-        assertTrue(TripleExtractor.isQualityObject("the plugin classloader"));
+        assertTrue(TripleExtractor.isQualityObject("plugin classloader"));
+    }
+
+    @Test
+    void rejectsObjectsStartingWithArticle() {
+        assertFalse(TripleExtractor.isQualityObject("the constant"));
+        assertFalse(TripleExtractor.isQualityObject("the fallback"));
+        assertFalse(TripleExtractor.isQualityObject("a focus storm"));
+        assertFalse(TripleExtractor.isQualityObject("an existing triple"));
+    }
+
+    @Test
+    void rejectsObjectsStartingWithPreposition() {
+        assertFalse(TripleExtractor.isQualityObject("to retry until done"));
+        assertFalse(TripleExtractor.isQualityObject("for bubble wrapping"));
+        assertFalse(TripleExtractor.isQualityObject("from the output"));
+    }
+
+    @Test
+    void rejectsObjectsWithMarkdownArtifacts() {
+        assertFalse(TripleExtractor.isQualityObject("cases | Shelve for later]"));
+        assertFalse(TripleExtractor.isQualityObject("config [deprecated]"));
+        assertFalse(TripleExtractor.isQualityObject("value > threshold"));
     }
 
     @Test
@@ -376,6 +401,39 @@ class TripleExtractorTest {
         List<String> sentences = TripleExtractor.splitSentences("First.\n\n\nSecond.");
 
         assertEquals(2, sentences.size());
+    }
+
+    // ── Tightened uses-rule tests ────────────────────────────────────────
+
+    @Test
+    void bareUsingDoesNotMatch() {
+        // "using X" without "we" should NOT produce a triple
+        String text = "Let me try using the clean Gradle rebuild.";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        boolean hasUses = triples.stream().anyMatch(t -> t.predicate().equals("uses"));
+        assertFalse(hasUses, "Bare 'using' without 'we' should not produce a 'uses' triple: " + triples);
+    }
+
+    @Test
+    void weUseStillMatches() {
+        String text = "We use Lucene for vector search.";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        assertContainsTriple(triples, "uses", "Lucene");
+    }
+
+    @Test
+    void quickReplyTagsDoNotProduceTriples() {
+        String text = "We decided to use Gradle.\n[quick-reply: Start | Cancel]";
+        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
+
+        for (TripleExtractor.ExtractedTriple triple : triples) {
+            assertFalse(triple.object().contains("quick-reply"),
+                "Quick-reply tag leaked into triple: " + triple.object());
+            assertFalse(triple.object().contains("Cancel"),
+                "Quick-reply option leaked into triple: " + triple.object());
+        }
     }
 
     // ── Helper ────────────────────────────────────────────────────────────

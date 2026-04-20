@@ -63,6 +63,7 @@ public record DrawerDocument(
     public static final String ROOM_CODEBASE = "codebase";
     public static final String ROOM_DEBUGGING = "debugging";
     public static final String ROOM_WORKFLOW = "workflow";
+    public static final String ROOM_TECHNICAL = "technical";
     public static final String ROOM_DECISIONS = "decisions";
     public static final String ROOM_PREFERENCES = "preferences";
     public static final String ROOM_GENERAL = "general";
