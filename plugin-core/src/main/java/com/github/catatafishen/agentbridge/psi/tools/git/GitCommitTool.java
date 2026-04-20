@@ -7,6 +7,7 @@ import com.github.catatafishen.agentbridge.psi.review.AgentEditSession;
 import com.github.catatafishen.agentbridge.ui.renderers.GitCommitRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.io.OSAgnosticPathUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -213,7 +214,7 @@ public final class GitCommitTool extends GitTool {
     }
 
     private static @NotNull String toAbsolutePath(@NotNull String path, @Nullable String basePath) {
-        if (basePath == null || path.startsWith("/")) return path;
+        if (basePath == null || OSAgnosticPathUtil.isAbsolute(path)) return path;
         return basePath + "/" + path;
     }
 
