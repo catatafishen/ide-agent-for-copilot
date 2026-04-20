@@ -10,7 +10,7 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
-import java.util.Locale
+import java.util.*
 import javax.swing.KeyStroke
 
 class KeyBadge(text: String) : JBLabel(text) {

@@ -1,15 +1,13 @@
 package com.github.catatafishen.agentbridge.ui
 
-import com.intellij.icons.AllIcons
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import java.awt.*
+import java.awt.BorderLayout
+import java.awt.FlowLayout
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JPanel
@@ -69,7 +67,7 @@ class PromptShortcutHintPanel : JBPanel<JBPanel<*>>(BorderLayout()) {
         )
 
         inner.add(row1)
-        inner.add(Box.createVerticalStrut(JBUI.scale(2)))
+        inner.add(Box.createVerticalStrut(JBUI.scale(3)))
         inner.add(row2)
 
         add(inner, BorderLayout.CENTER)
@@ -81,7 +79,7 @@ class PromptShortcutHintPanel : JBPanel<JBPanel<*>>(BorderLayout()) {
     }
 
     private fun createRow(): JPanel {
-        val row = JPanel(FlowLayout(FlowLayout.CENTER, JBUI.scale(2), 0))
+        val row = JPanel(FlowLayout(FlowLayout.CENTER, JBUI.scale(4), 0))
         row.isOpaque = false
         row.alignmentX = CENTER_ALIGNMENT
         return row

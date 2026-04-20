@@ -968,20 +968,30 @@ class ChatToolWindowContent(
         inputContainer.isOpaque = false
         inputContainer.add(shortcutHintPanel) // index 0 = lowest z-order index = painted last = on top
         inputContainer.add(promptTextArea)    // index 1 = behind, visible through transparent shortcutHintPanel
+        // exitCheck defers to the next EDT cycle so getMousePosition(true) reflects the cursor's
+        // new location after the event. This correctly distinguishes "moved to child" (returns
+        // non-null → still hovered) from "left the container" (returns null → not hovered).
+        // The listener is also attached to promptTextArea because Swing only fires mouseExited on
+        // a parent when the cursor moves from the parent's own area to a child — not when the
+        // cursor exits a child directly to outside the parent. Without the child listener,
+        // fast movements leave isInputHovered stuck at true.
+        val exitCheckRun = Runnable {
+            SwingUtilities.invokeLater {
+                if (inputContainer.getMousePosition(true) == null) {
+                    isInputHovered = false
+                    updateShortcutHintVisibility()
+                }
+            }
+        }
         inputContainer.addMouseListener(object : java.awt.event.MouseAdapter() {
             override fun mouseEntered(e: java.awt.event.MouseEvent) {
                 isInputHovered = true
                 updateShortcutHintVisibility()
             }
-            override fun mouseExited(e: java.awt.event.MouseEvent) {
-                // Only mark as not-hovered when truly leaving the container.
-                // When moving to a child component, mouseExited fires but the cursor is still inside.
-                val p = e.point
-                if (p.x < 0 || p.y < 0 || p.x > inputContainer.width || p.y > inputContainer.height) {
-                    isInputHovered = false
-                    updateShortcutHintVisibility()
-                }
-            }
+            override fun mouseExited(e: java.awt.event.MouseEvent) = exitCheckRun.run()
+        })
+        promptTextArea.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseExited(e: java.awt.event.MouseEvent) = exitCheckRun.run()
         })
 
         row.add(inputContainer, BorderLayout.CENTER)
