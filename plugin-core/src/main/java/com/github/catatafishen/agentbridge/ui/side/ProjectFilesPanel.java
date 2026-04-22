@@ -8,9 +8,7 @@ import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -51,10 +49,15 @@ final class ProjectFilesPanel extends JPanel {
     ProjectFilesPanel(@NotNull Project project) {
         super(new BorderLayout());
         this.project = project;
+        setOpaque(false);
 
         tree.setRootVisible(false);
         tree.setShowsRootHandles(true);
         tree.setCellRenderer(new FileNodeRenderer());
+        // Let the parent's background show through so dark mode doesn't
+        // paint a gray rectangle behind the file rows.
+        tree.setOpaque(false);
+        tree.setBackground(new Color(0, 0, 0, 0));
         tree.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -67,9 +70,9 @@ final class ProjectFilesPanel extends JPanel {
             }
         });
 
-        JBScrollPane scrollPane = new JBScrollPane(tree);
-        scrollPane.setBorder(JBUI.Borders.empty());
-        add(scrollPane, BorderLayout.CENTER);
+        // No internal scroll pane: the tree expands to its preferred height so the
+        // outer SessionStatsPanel scroll pane scrolls the whole side panel as one.
+        add(tree, BorderLayout.CENTER);
         refresh();
     }
 
@@ -306,14 +309,18 @@ final class ProjectFilesPanel extends JPanel {
     }
 
     private static final class FileNodeRenderer extends DefaultTreeCellRenderer {
+        FileNodeRenderer() {
+            // DefaultTreeCellRenderer.paint() fills the cell with this color even when
+            // setOpaque(false). Null it out so the tree (and parent) background shows through.
+            setBackgroundNonSelectionColor(null);
+        }
+
         @Override
         public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
                                                       boolean expanded, boolean leaf, int row,
                                                       boolean hasFocus) {
             Component c = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
             if (!sel) {
-                // DefaultTreeCellRenderer can paint a non-transparent background in dark themes;
-                // clear it so the tree background shows through on non-selected rows.
                 setOpaque(false);
                 if (c instanceof JLabel label) {
                     label.setOpaque(false);
