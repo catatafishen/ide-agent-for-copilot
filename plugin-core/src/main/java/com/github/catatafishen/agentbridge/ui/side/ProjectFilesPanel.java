@@ -316,6 +316,14 @@ final class ProjectFilesPanel extends JPanel {
         }
 
         @Override
+        public void updateUI() {
+            super.updateUI();
+            // L&F change can reset backgroundNonSelectionColor; re-apply the null so that
+            // the transparent background survives theme switches.
+            setBackgroundNonSelectionColor(null);
+        }
+
+        @Override
         public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
                                                       boolean expanded, boolean leaf, int row,
                                                       boolean hasFocus) {
