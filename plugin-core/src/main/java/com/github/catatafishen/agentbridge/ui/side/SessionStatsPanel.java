@@ -12,10 +12,12 @@ import com.github.catatafishen.agentbridge.ui.UsageGraphPanel;
 import com.github.catatafishen.agentbridge.ui.renderers.ToolRenderers;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
+import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
+import javax.swing.ScrollPaneConstants;
 import java.awt.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -201,7 +203,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         // scroll pane (below) handles scrolling for the entire side panel.
         filesPanel = new ProjectFilesPanel(project);
 
-        JPanel wrapper = new JPanel();
+        JPanel wrapper = new ScrollablePanel();
         wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
         wrapper.setOpaque(false);
         // Each child sticks to its preferred height; together they grow the
@@ -211,15 +213,12 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         wrapper.add(content);
         wrapper.add(filesPanel);
 
-        com.intellij.ui.components.JBScrollPane scrollPane =
-            new com.intellij.ui.components.JBScrollPane(wrapper);
+        JBScrollPane scrollPane = new JBScrollPane(wrapper);
         scrollPane.setBorder(JBUI.Borders.empty());
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
-        scrollPane.setHorizontalScrollBarPolicy(
-            javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        scrollPane.setVerticalScrollBarPolicy(
-            javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
         add(scrollPane, BorderLayout.CENTER);
 
@@ -451,6 +450,38 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
             }
         } else {
             resetsRow.setVisible(false);
+        }
+    }
+
+    /**
+     * A {@link JPanel} that implements {@link Scrollable} so that the containing
+     * {@link JBScrollPane} tracks the viewport width and never shows a horizontal
+     * scrollbar even when a child (e.g. the file tree) has a wide preferred width.
+     */
+    private static final class ScrollablePanel extends JPanel implements Scrollable {
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return visibleRect.height;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
         }
     }
 }
