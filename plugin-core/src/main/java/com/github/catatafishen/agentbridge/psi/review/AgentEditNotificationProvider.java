@@ -105,9 +105,6 @@ public final class AgentEditNotificationProvider implements EditorNotificationPr
 
     static @NotNull String formatBannerText(int fileIndex, int fileTotal, int changeCount) {
         StringBuilder sb = new StringBuilder("Review pending: ");
-        if (fileTotal > 0 || changeCount > 0) {
-            // keep the short summary on the same line for the human-facing editor banner
-        }
         if (fileTotal > 0) {
             sb.append("File ").append(Math.max(fileIndex, 1)).append('/').append(fileTotal);
         }

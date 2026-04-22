@@ -160,9 +160,9 @@ public final class GitCommitTool extends GitTool {
                     if (!trimmed.isEmpty()) paths.add(trimmed);
                 }
                 if (!paths.isEmpty()) {
-                    var session = com.github.catatafishen.agentbridge.psi.PlatformApiCompat
+                    var pruneSession = com.github.catatafishen.agentbridge.psi.PlatformApiCompat
                         .getService(project, com.github.catatafishen.agentbridge.psi.review.AgentEditSession.class);
-                    if (session != null) session.removeApprovedForCommit(paths);
+                    if (pruneSession != null) pruneSession.removeApprovedForCommit(paths);
                 }
             }
         } catch (Throwable ignored) {
