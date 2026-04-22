@@ -67,8 +67,6 @@ public final class GitTagTool extends GitTool {
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String repoParam = args.has(PARAM_REPO) ? args.get(PARAM_REPO).getAsString() : null;
-        String ambiError = requireUnambiguousRepo(repoParam, "git_tag");
-        if (ambiError != null) return ambiError;
         String root = resolveRepoRootOrError(repoParam);
         if (root.startsWith("Error")) return root;
 
@@ -93,6 +91,9 @@ public final class GitTagTool extends GitTool {
                 yield runGitIn(root, cmdArgs.toArray(String[]::new));
             }
             case "create" -> {
+                String ambiError = requireUnambiguousRepo(repoParam, "git_tag create");
+                if (ambiError != null) yield ambiError;
+
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'create'";
 
@@ -124,6 +125,9 @@ public final class GitTagTool extends GitTool {
                 yield runGitIn(root, cmdArgs.toArray(String[]::new));
             }
             case "delete" -> {
+                String ambiError = requireUnambiguousRepo(repoParam, "git_tag delete");
+                if (ambiError != null) yield ambiError;
+
                 String name = requireName(args);
                 if (name == null) yield "Error: 'name' parameter is required for 'delete'";
                 yield runGitIn(root, "tag", "-d", name);

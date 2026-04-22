@@ -552,18 +552,11 @@ public final class PlatformApiCompat {
         return runIdeGitCommandWithRepo(project, repo, args);
     }
 
-    /**
-     * Runs a Git command using the repo rooted at {@code rootPath}.
-     * Falls back to {@link #runIdeGitCommand} if no repo is found at that path.
-     */
     public static @Nullable String runIdeGitCommandIn(
         @NotNull Project project, @NotNull String rootPath, @NotNull String[] args) {
         if (args.length == 0) return null;
         git4idea.repo.GitRepository repo = getRepositoryForRoot(project, rootPath);
-        if (repo == null) {
-            repo = getRepository(project);
-            if (repo == null) return null;
-        }
+        if (repo == null) return null;
         return runIdeGitCommandWithRepo(project, repo, args);
     }
 
@@ -643,9 +636,11 @@ public final class PlatformApiCompat {
         return ideCheckout(project, null, branchName);
     }
 
-    /** Root-aware variant of {@link #ideCheckout(Project, String)}. */
+    /**
+     * Root-aware variant of {@link #ideCheckout(Project, String)}.
+     */
     public static @Nullable String ideCheckout(
-            @NotNull Project project, @Nullable String rootPath, @NotNull String branchName) {
+        @NotNull Project project, @Nullable String rootPath, @NotNull String branchName) {
         git4idea.repo.GitRepository repo = rootPath != null
             ? getRepositoryForRoot(project, rootPath)
             : getRepository(project);
@@ -668,10 +663,12 @@ public final class PlatformApiCompat {
         return ideCheckoutNewBranch(project, null, branchName, base);
     }
 
-    /** Root-aware variant of {@link #ideCheckoutNewBranch(Project, String, String)}. */
+    /**
+     * Root-aware variant of {@link #ideCheckoutNewBranch(Project, String, String)}.
+     */
     public static @Nullable String ideCheckoutNewBranch(
-            @NotNull Project project, @Nullable String rootPath,
-            @NotNull String branchName, @Nullable String base) {
+        @NotNull Project project, @Nullable String rootPath,
+        @NotNull String branchName, @Nullable String base) {
         git4idea.repo.GitRepository repo = rootPath != null
             ? getRepositoryForRoot(project, rootPath)
             : getRepository(project);
@@ -701,10 +698,12 @@ public final class PlatformApiCompat {
         return ideDeleteBranch(project, null, branchName, force);
     }
 
-    /** Root-aware variant of {@link #ideDeleteBranch(Project, String, boolean)}. */
+    /**
+     * Root-aware variant of {@link #ideDeleteBranch(Project, String, boolean)}.
+     */
     public static @Nullable String ideDeleteBranch(
-            @NotNull Project project, @Nullable String rootPath,
-            @NotNull String branchName, boolean force) {
+        @NotNull Project project, @Nullable String rootPath,
+        @NotNull String branchName, boolean force) {
         git4idea.repo.GitRepository repo = rootPath != null
             ? getRepositoryForRoot(project, rootPath)
             : getRepository(project);

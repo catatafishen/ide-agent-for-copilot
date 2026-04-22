@@ -424,6 +424,16 @@ public abstract class GitTool extends Tool {
     }
 
     /**
+     * Records a completed explicit fetch so the auto-fetch throttle skips the next window.
+     * Call this after a successful explicit {@code git fetch} to prevent a redundant
+     * auto-fetch within the next {@value #FETCH_THROTTLE_MS} ms.
+     */
+    protected void markFetchCompleted(@NotNull String rootDir) {
+        lastFetchTimes.computeIfAbsent(rootDir, k -> new AtomicLong(0))
+            .set(System.currentTimeMillis());
+    }
+
+    /**
      * Checks if a branch/ref argument references a remote and fetches if stale.
      *
      * @param ref the branch or ref name from tool arguments

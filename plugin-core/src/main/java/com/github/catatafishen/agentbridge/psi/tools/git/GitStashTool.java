@@ -64,8 +64,6 @@ public final class GitStashTool extends GitTool {
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String repoParam = args.has(PARAM_REPO) ? args.get(PARAM_REPO).getAsString() : null;
-        String ambiError = requireUnambiguousRepo(repoParam, "git_stash");
-        if (ambiError != null) return ambiError;
         String root = resolveRepoRootOrError(repoParam);
         if (root.startsWith("Error")) return root;
 
@@ -76,6 +74,9 @@ public final class GitStashTool extends GitTool {
         return switch (action) {
             case "list" -> runGitIn(root, CMD_STASH, "list");
             case "push", "save" -> {
+                String ambiError = requireUnambiguousRepo(repoParam, "git_stash push");
+                if (ambiError != null) yield ambiError;
+
                 List<String> cmdArgs = new ArrayList<>();
                 cmdArgs.add(CMD_STASH);
                 cmdArgs.add("push");
@@ -92,6 +93,9 @@ public final class GitStashTool extends GitTool {
                 yield runGitIn(root, cmdArgs.toArray(String[]::new));
             }
             case "pop" -> {
+                String ambiError = requireUnambiguousRepo(repoParam, "git_stash pop");
+                if (ambiError != null) yield ambiError;
+
                 String reviewError = AgentEditSession.getInstance(project)
                     .awaitReviewCompletion("stash pop");
                 if (reviewError != null) yield reviewError;
@@ -103,6 +107,9 @@ public final class GitStashTool extends GitTool {
                 yield result;
             }
             case ACTION_APPLY -> {
+                String ambiError = requireUnambiguousRepo(repoParam, "git_stash apply");
+                if (ambiError != null) yield ambiError;
+
                 String reviewError = AgentEditSession.getInstance(project)
                     .awaitReviewCompletion("stash apply");
                 if (reviewError != null) yield reviewError;
@@ -114,6 +121,9 @@ public final class GitStashTool extends GitTool {
                 yield result;
             }
             case "drop" -> {
+                String ambiError = requireUnambiguousRepo(repoParam, "git_stash drop");
+                if (ambiError != null) yield ambiError;
+
                 String index = stashRef(args);
                 yield index != null
                     ? runGitIn(root, CMD_STASH, "drop", index)

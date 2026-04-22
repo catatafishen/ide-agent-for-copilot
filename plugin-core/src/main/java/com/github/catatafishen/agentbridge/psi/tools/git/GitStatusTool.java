@@ -88,11 +88,19 @@ public final class GitStatusTool extends GitTool {
     }
 
     private String aggregateMultiRepoStatus(boolean verbose) throws Exception {
+        java.util.List<git4idea.repo.GitRepository> repos;
+        try {
+            repos = com.github.catatafishen.agentbridge.psi.PlatformApiCompat.getRepositories(project);
+        } catch (NoClassDefFoundError e) {
+            repos = java.util.Collections.emptyList();
+        }
+        String basePath = project.getBasePath();
         StringBuilder sb = new StringBuilder();
-        for (String root : listRepoRoots()) {
-            String relRoot = toRelativePath(root, project.getBasePath() != null ? project.getBasePath() : root);
+        for (git4idea.repo.GitRepository repo : repos) {
+            String absRoot = repo.getRoot().getPath();
+            String relRoot = toRelativePath(absRoot, basePath);
             sb.append("=== ").append(relRoot).append(" ===\n");
-            sb.append(statusForRoot(root, verbose)).append('\n');
+            sb.append(statusForRoot(absRoot, verbose)).append('\n');
         }
         return sb.toString().stripTrailing();
     }

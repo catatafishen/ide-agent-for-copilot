@@ -105,6 +105,7 @@ public final class GitFetchTool extends GitTool {
 
         String result = runGitIn(root, cmdArgs.toArray(String[]::new));
         String output = result.isBlank() ? "Fetch completed successfully." : result;
+        markFetchCompleted(root);
 
         return output + getBranchContextIn(root);
     }
