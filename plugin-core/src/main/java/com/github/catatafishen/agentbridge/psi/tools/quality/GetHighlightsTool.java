@@ -29,7 +29,7 @@ import java.util.concurrent.TimeoutException;
 public final class GetHighlightsTool extends QualityTool {
 
     private static final Logger LOG = Logger.getInstance(GetHighlightsTool.class);
-    static final String REVIEW_PENDING_AGENT_NOTE =
+    private static final String REVIEW_PENDING_AGENT_NOTE =
         "[REVIEW_PENDING] User review is still pending for this file. "
             + "Agent git commit/push/amend must wait for approval or rejection in the Review panel.";
 
