@@ -56,12 +56,19 @@ public final class GitRemoteTool extends GitTool {
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String repoParam = args.has(PARAM_REPO) ? args.get(PARAM_REPO).getAsString() : null;
-        String root = resolveRepoRootOrError(repoParam);
-        if (root.startsWith("Error")) return root;
 
         String action = args.has(PARAM_ACTION)
             ? args.get(PARAM_ACTION).getAsString()
             : "list";
+
+        // Write actions require an unambiguous repo
+        if (action.equals("add") || action.equals("remove") || action.equals("set_url")) {
+            String ambiError = requireUnambiguousRepo(repoParam, "git_remote " + action);
+            if (ambiError != null) return ambiError;
+        }
+
+        String root = resolveRepoRootOrError(repoParam);
+        if (root.startsWith("Error")) return root;
 
         return switch (action) {
             case "list" -> runGitIn(root, GIT_REMOTE, "-v");

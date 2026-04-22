@@ -64,18 +64,19 @@ public final class GitConfigTool extends GitTool {
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String repoParam = args.has(PARAM_REPO) ? args.get(PARAM_REPO).getAsString() : null;
-        String root = resolveRepoRootOrError(repoParam);
-        if (root.startsWith("Error")) return root;
 
         List<String> cmdArgs = new ArrayList<>();
         cmdArgs.add("config");
 
-        if (args.has(PARAM_GLOBAL) && args.get(PARAM_GLOBAL).getAsBoolean()) {
+        boolean isGlobal = args.has(PARAM_GLOBAL) && args.get(PARAM_GLOBAL).getAsBoolean();
+        if (isGlobal) {
             cmdArgs.add("--global");
         }
 
         if (args.has(PARAM_LIST) && args.get(PARAM_LIST).getAsBoolean()) {
             cmdArgs.add("--list");
+            String root = resolveRepoRootOrError(repoParam);
+            if (root.startsWith("Error")) return root;
             return runGitIn(root, cmdArgs.toArray(new String[0]));
         }
 
@@ -84,11 +85,23 @@ public final class GitConfigTool extends GitTool {
         }
 
         String key = args.get(PARAM_KEY).getAsString();
+        boolean isUnset = args.has(PARAM_UNSET) && args.get(PARAM_UNSET).getAsBoolean();
+        boolean isSet = args.has(PARAM_VALUE);
+        boolean isWrite = isUnset || isSet;
 
-        if (args.has(PARAM_UNSET) && args.get(PARAM_UNSET).getAsBoolean()) {
+        // Repo-scoped writes require an unambiguous repo target
+        if (!isGlobal && isWrite) {
+            String ambiError = requireUnambiguousRepo(repoParam, "git_config");
+            if (ambiError != null) return ambiError;
+        }
+
+        String root = resolveRepoRootOrError(repoParam);
+        if (root.startsWith("Error")) return root;
+
+        if (isUnset) {
             cmdArgs.add("--unset");
             cmdArgs.add(key);
-        } else if (args.has(PARAM_VALUE)) {
+        } else if (isSet) {
             cmdArgs.add(key);
             cmdArgs.add(args.get(PARAM_VALUE).getAsString());
         } else {

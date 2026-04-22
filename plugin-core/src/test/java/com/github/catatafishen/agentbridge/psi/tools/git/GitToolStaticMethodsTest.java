@@ -5,7 +5,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.regex.Matcher;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GitToolStaticMethodsTest {
 
@@ -160,6 +163,44 @@ class GitToolStaticMethodsTest {
     }
 
     // ── Pattern fields ──────────────────────────────────────
+
+// ── toRelativePath ──────────────────────────────────────
+
+    @Nested
+    class ToRelativePath {
+
+        @Test
+        void samePathReturnsDot() {
+            assertEquals(".", GitTool.toRelativePath("/project/root", "/project/root"));
+        }
+
+        @Test
+        void childPathReturnsRelative() {
+            assertEquals("backend", GitTool.toRelativePath("/project/root/backend", "/project/root"));
+        }
+
+        @Test
+        void deepChildReturnsFullRelative() {
+            assertEquals("a/b/c", GitTool.toRelativePath("/project/root/a/b/c", "/project/root"));
+        }
+
+        @Test
+        void nullBasePathReturnsAbsolute() {
+            assertEquals("/some/absolute/path", GitTool.toRelativePath("/some/absolute/path", null));
+        }
+
+        @Test
+        void pathOutsideBaseReturnsAbsolute() {
+            assertEquals("/other/repo", GitTool.toRelativePath("/other/repo", "/project/root"));
+        }
+
+        @Test
+        void pathWithCommonPrefixButNotChildReturnsAbsolute() {
+            // "/project/rootother" must NOT match base "/project/root"
+            assertEquals("/project/rootother",
+                GitTool.toRelativePath("/project/rootother", "/project/root"));
+        }
+    }
 
     @Nested
     class Patterns {
