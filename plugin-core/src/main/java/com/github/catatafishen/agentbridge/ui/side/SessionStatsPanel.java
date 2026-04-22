@@ -197,15 +197,31 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         content.add(billingGrid);
         content.add(createSectionHeader("Project files"));
 
-        // Project files tree fills remaining height
+        // Project files tree expands to its full preferred height; the outer
+        // scroll pane (below) handles scrolling for the entire side panel.
         filesPanel = new ProjectFilesPanel(project);
 
-        JPanel wrapper = new JPanel(new BorderLayout());
+        JPanel wrapper = new JPanel();
+        wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
         wrapper.setOpaque(false);
-        wrapper.add(content, BorderLayout.NORTH);
-        wrapper.add(filesPanel, BorderLayout.CENTER);
+        // Each child sticks to its preferred height; together they grow the
+        // wrapper beyond the viewport so the outer scroll pane can scroll it.
+        content.setAlignmentX(Component.LEFT_ALIGNMENT);
+        filesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        wrapper.add(content);
+        wrapper.add(filesPanel);
 
-        add(wrapper, BorderLayout.CENTER);
+        com.intellij.ui.components.JBScrollPane scrollPane =
+            new com.intellij.ui.components.JBScrollPane(wrapper);
+        scrollPane.setBorder(JBUI.Borders.empty());
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.setHorizontalScrollBarPolicy(
+            javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setVerticalScrollBarPolicy(
+            javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+
+        add(scrollPane, BorderLayout.CENTER);
 
         animationTimer = new Timer(33, e -> {
             long now = System.currentTimeMillis();
