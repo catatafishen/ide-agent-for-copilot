@@ -306,6 +306,122 @@ class ShellRedirectPlannerTest {
     }
 
     @Test
+    void gitLogWithPathFilter() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "log", "--", "README.md"));
+        assertNotNull(plan);
+        assertEquals("git_log", plan.toolName());
+        assertEquals("README.md", plan.args().get("path").getAsString());
+    }
+
+    @Test
+    void gitLogOnelineWithPath() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(
+            List.of("git", "log", "--oneline", "-n", "5", "--", "src/x.java"));
+        assertNotNull(plan);
+        assertEquals("oneline", plan.args().get("format").getAsString());
+        assertEquals(5, plan.args().get("max_count").getAsInt());
+        assertEquals("src/x.java", plan.args().get("path").getAsString());
+    }
+
+    @Test
+    void gitLogMultiplePathsFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "log", "--", "a.txt", "b.txt")));
+    }
+
+    // ─── git show ─────────────────────────────────────────────────────────
+
+    @Test
+    void gitShowBare() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "show"));
+        assertNotNull(plan);
+        assertEquals("git_show", plan.toolName());
+        assertNull(plan.args().get("ref"));
+    }
+
+    @Test
+    void gitShowWithRef() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "show", "abc123"));
+        assertNotNull(plan);
+        assertEquals("abc123", plan.args().get("ref").getAsString());
+    }
+
+    @Test
+    void gitShowStat() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "show", "--stat", "HEAD~1"));
+        assertNotNull(plan);
+        assertEquals(true, plan.args().get("stat_only").getAsBoolean());
+        assertEquals("HEAD~1", plan.args().get("ref").getAsString());
+    }
+
+    @Test
+    void gitShowUnknownFlagFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "show", "--name-only")));
+    }
+
+    @Test
+    void gitShowMultipleRefsFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "show", "abc", "def")));
+    }
+
+    // ─── git blame ────────────────────────────────────────────────────────
+
+    @Test
+    void gitBlameSimple() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "blame", "src/Foo.java"));
+        assertNotNull(plan);
+        assertEquals("git_blame", plan.toolName());
+        assertEquals("src/Foo.java", plan.args().get("path").getAsString());
+        assertNull(plan.args().get("line_start"));
+    }
+
+    @Test
+    void gitBlameWithLineRange() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(
+            List.of("git", "blame", "-L", "10,50", "src/Foo.java"));
+        assertNotNull(plan);
+        assertEquals(10, plan.args().get("line_start").getAsInt());
+        assertEquals(50, plan.args().get("line_end").getAsInt());
+        assertEquals("src/Foo.java", plan.args().get("path").getAsString());
+    }
+
+    @Test
+    void gitBlameWithLineRangeAttached() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(
+            List.of("git", "blame", "-L1,5", "x"));
+        assertNotNull(plan);
+        assertEquals(1, plan.args().get("line_start").getAsInt());
+        assertEquals(5, plan.args().get("line_end").getAsInt());
+    }
+
+    @Test
+    void gitBlameRegexRangeFallsThrough() {
+        // /regex/ form not supported.
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "blame", "-L", "/foo/", "x")));
+    }
+
+    @Test
+    void gitBlameInvertedRangeFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "blame", "-L", "50,10", "x")));
+    }
+
+    @Test
+    void gitBlameNoFileFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "blame")));
+    }
+
+    @Test
+    void gitBlameUnknownFlagFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "blame", "-w", "x")));
+    }
+
+    @Test
+    void gitBlameWithDoubleDash() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "blame", "--", "-tricky-name"));
+        assertNotNull(plan);
+        assertEquals("-tricky-name", plan.args().get("path").getAsString());
+    }
+
+    @Test
     void gitBranchBare() {
         RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "branch"));
         assertNotNull(plan);

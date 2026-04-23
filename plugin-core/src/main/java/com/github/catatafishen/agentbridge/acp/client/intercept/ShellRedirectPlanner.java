@@ -33,8 +33,10 @@ import java.util.Locale;
  *   <li>{@code rg [-F] [-i] [-g GLOB|--glob GLOB] PATTERN} → {@code search_text}</li>
  *   <li>{@code git status} → {@code git_status}</li>
  *   <li>{@code git diff [--staged] [--stat]} → {@code git_diff}</li>
- *   <li>{@code git log [--oneline] [-n N]} → {@code git_log}</li>
+ *   <li>{@code git log [--oneline] [-n N] [-- PATH]} → {@code git_log}</li>
  *   <li>{@code git branch} → {@code git_branch}</li>
+ *   <li>{@code git show [--stat] [REF]} → {@code git_show}</li>
+ *   <li>{@code git blame [-L start,end] FILE} → {@code git_blame}</li>
  * </ul>
  *
  * <p><b>Deliberately not intercepted</b> (see commit history for rationale):
@@ -340,6 +342,8 @@ public final class ShellRedirectPlanner {
             case "diff" -> planGitDiff(argv);
             case "log" -> planGitLog(argv);
             case "branch" -> argv.size() == 2 ? RedirectPlan.of("git_branch", new JsonObject()) : null;
+            case "show" -> planGitShow(argv);
+            case "blame" -> planGitBlame(argv);
             default -> null;
         };
     }
@@ -366,8 +370,21 @@ public final class ShellRedirectPlanner {
     private static @Nullable RedirectPlan planGitLog(@NotNull List<String> argv) {
         JsonObject args = new JsonObject();
         int i = 2;
+        boolean afterDoubleDash = false;
+        String path = null;
         while (i < argv.size()) {
             String tok = argv.get(i);
+            if (afterDoubleDash) {
+                if (path != null) return null; // only one path supported
+                path = tok;
+                i++;
+                continue;
+            }
+            if (tok.equals("--")) {
+                afterDoubleDash = true;
+                i++;
+                continue;
+            }
             if (tok.equals("--oneline")) {
                 args.addProperty("format", "oneline");
                 i++;
@@ -395,9 +412,107 @@ public final class ShellRedirectPlanner {
                 i++;
                 continue;
             }
-            return null; // unknown flag / commit ref / path filter
+            return null; // unknown flag / commit ref / bare path filter
         }
+        if (path != null) args.addProperty("path", path);
         return RedirectPlan.of("git_log", args);
+    }
+
+    /**
+     * {@code git show [--stat] [REF]} — read-only, maps cleanly to {@code git_show}.
+     * Refuses path filters ({@code -- FILE}) for now: agents asking for that pattern
+     * likely also want diff context tools the wrapper doesn't expose.
+     */
+    private static @Nullable RedirectPlan planGitShow(@NotNull List<String> argv) {
+        boolean statOnly = false;
+        String ref = null;
+        for (int i = 2; i < argv.size(); i++) {
+            String tok = argv.get(i);
+            if (tok.equals("--stat")) {
+                statOnly = true;
+                continue;
+            }
+            if (tok.startsWith("-")) return null; // unknown flag
+            if (ref != null) return null;          // multiple positional args
+            ref = tok;
+        }
+        JsonObject args = new JsonObject();
+        if (statOnly) args.addProperty("stat_only", true);
+        if (ref != null) args.addProperty("ref", ref);
+        return RedirectPlan.of("git_show", args);
+    }
+
+    /**
+     * {@code git blame [-L start,end] FILE} — read-only. Requires exactly one file path
+     * (positional or after {@code --}). The optional {@code -L} range is parsed if both
+     * start and end are integers; anything else falls through.
+     */
+    private static @Nullable RedirectPlan planGitBlame(@NotNull List<String> argv) {
+        Integer lineStart = null;
+        Integer lineEnd = null;
+        String path = null;
+        boolean afterDoubleDash = false;
+
+        int i = 2;
+        while (i < argv.size()) {
+            String tok = argv.get(i);
+            if (afterDoubleDash) {
+                if (path != null) return null;
+                path = tok;
+                i++;
+                continue;
+            }
+            if (tok.equals("--")) {
+                afterDoubleDash = true;
+                i++;
+                continue;
+            }
+            if (tok.equals("-L")) {
+                if (i + 1 >= argv.size()) return null;
+                int[] range = parseLineRange(argv.get(i + 1));
+                if (range == null) return null;
+                lineStart = range[0];
+                lineEnd = range[1];
+                i += 2;
+                continue;
+            }
+            if (tok.startsWith("-L") && tok.length() > 2) {
+                int[] range = parseLineRange(tok.substring(2));
+                if (range == null) return null;
+                lineStart = range[0];
+                lineEnd = range[1];
+                i++;
+                continue;
+            }
+            if (tok.startsWith("-") && tok.length() > 1) return null;
+            if (path != null) return null;
+            path = tok;
+            i++;
+        }
+
+        if (path == null) return null;
+
+        JsonObject args = new JsonObject();
+        args.addProperty("path", path);
+        if (lineStart != null) {
+            args.addProperty("line_start", lineStart);
+            args.addProperty("line_end", lineEnd);
+        }
+        return RedirectPlan.of("git_blame", args);
+    }
+
+    /**
+     * Parse a {@code -L} argument like {@code "10,50"}. Returns {@code null} if the value
+     * isn't two positive integers separated by a comma — git's other forms
+     * ({@code /regex/}, {@code +N}) aren't supported.
+     */
+    static int @Nullable [] parseLineRange(@NotNull String spec) {
+        int comma = spec.indexOf(',');
+        if (comma < 0) return null;
+        Integer a = parsePositiveInt(spec.substring(0, comma));
+        Integer b = parsePositiveInt(spec.substring(comma + 1));
+        if (a == null || b == null || b < a) return null;
+        return new int[]{a, b};
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────
