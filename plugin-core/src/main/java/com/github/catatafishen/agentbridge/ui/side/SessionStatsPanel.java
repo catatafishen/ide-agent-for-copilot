@@ -17,7 +17,6 @@ import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import javax.swing.ScrollPaneConstants;
 import java.awt.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -56,8 +55,9 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
     private final JLabel clientIconLabel = new JLabel();
     private final JLabel clientNameLabel = new JLabel();
 
-    // Current turn section
+    // Current turn section (also displays the most recent completed turn between turns)
     private final JLabel turnHeaderLabel = new JLabel("Active turn");
+    private final JLabel turnTimeValue = new JLabel();
     private final JLabel turnToolsValue = new JLabel();
     private final JLabel turnLinesValue = new JLabel();
     private final JLabel turnTokensRowLabel = new JLabel(LABEL_TOKENS);
@@ -89,8 +89,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
     private final JPanel usageRow;
     private final JPanel remainingRow;
     private final JPanel resetsRow;
-    private final JPanel billingHeader;
-    private final JLabel billingNoteLabel;
+    private final JPanel billingSection;
     private final ProjectFilesPanel filesPanel;
 
     public SessionStatsPanel(
@@ -121,7 +120,8 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         clientSection.add(createSectionHeader("Selected client"));
         clientSection.add(clientRow);
 
-        // Current turn section
+        // Current turn section — mirrors the Session grid layout (Time row first) so the
+        // two visually align. Stays visible after the turn ends, then re-labels as "Last turn".
         JPanel turnHeader = createSectionHeader(turnHeaderLabel);
 
         JPanel turnGrid = new JPanel(new GridBagLayout());
@@ -130,6 +130,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
             JBUI.scale(2), JBUI.scale(8), JBUI.scale(4), JBUI.scale(8)));
 
         int tRow = 0;
+        addStatRow(turnGrid, tRow++, "Time", turnTimeValue);
         addStatRow(turnGrid, tRow++, "Tool calls", turnToolsValue);
         addStatRow(turnGrid, tRow++, "Lines changed", turnLinesValue);
         turnTokensRow = addStatRowWithLabel(turnGrid, tRow++, turnTokensRowLabel, turnTokensValue);
@@ -157,12 +158,13 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         tokensRow = addStatRowWithLabel(statsGrid, row++, tokensRowLabel, tokensValue);
         costRow = addStatRowWithLabel(statsGrid, row, costRowLabel, costValue);
 
-        // Usage graph — thin full-width sparkline
+        // Usage graph — full-width sparkline rendered last in the Monthly quota section.
+        // 5x taller than the original 20px to make trends visually readable at a glance.
         JPanel graphSection = new JPanel(new BorderLayout());
         graphSection.setOpaque(false);
         graphSection.setBorder(BorderFactory.createEmptyBorder(
-            JBUI.scale(4), JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
-        int graphH = JBUI.scale(20);
+            JBUI.scale(6), JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
+        int graphH = JBUI.scale(100);
         usageGraphPanel.setPreferredSize(new Dimension(0, graphH));
         usageGraphPanel.setMinimumSize(new Dimension(0, graphH));
         usageGraphPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, graphH));
@@ -172,18 +174,25 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         JPanel billingGrid = new JPanel(new GridBagLayout());
         billingGrid.setOpaque(false);
         billingGrid.setBorder(BorderFactory.createEmptyBorder(
-            JBUI.scale(2), JBUI.scale(8), JBUI.scale(8), JBUI.scale(8)));
+            JBUI.scale(2), JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
 
-        billingHeader = createSectionHeader("Monthly quota");
-        billingNoteLabel = new JLabel("via gh CLI");
-        billingNoteLabel.setFont(smallFont);
-        billingNoteLabel.setForeground(dimColor);
-        billingNoteLabel.setBorder(BorderFactory.createEmptyBorder(0, JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
+        // Section header inlines the data-source note ("via gh CLI") next to the bold
+        // title — replacing the old standalone subtitle row that looked disconnected.
+        JPanel billingHeader = createSectionHeaderWithSuffix("Monthly quota", "via gh CLI");
 
         int brow = 0;
         usageRow = addStatRow(billingGrid, brow++, "Used", usageValue);
         remainingRow = addStatRow(billingGrid, brow++, "Remaining", remainingValue);
         resetsRow = addStatRow(billingGrid, brow, "Resets", resetsValue);
+
+        // Wrap the entire billing area in one section so we can hide all of it (including
+        // the now-tall graph) when no billing data is available — avoids leaving a 100px gap.
+        billingSection = new JPanel();
+        billingSection.setLayout(new BoxLayout(billingSection, BoxLayout.Y_AXIS));
+        billingSection.setOpaque(false);
+        billingSection.add(billingHeader);
+        billingSection.add(billingGrid);
+        billingSection.add(graphSection);
 
         // Assemble the stats content (pinned to the top)
         JPanel content = new JPanel();
@@ -193,10 +202,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         content.add(turnSection);
         content.add(createSectionHeader("Session"));
         content.add(statsGrid);
-        content.add(billingHeader);
-        content.add(billingNoteLabel);
-        content.add(graphSection);
-        content.add(billingGrid);
+        content.add(billingSection);
         content.add(createSectionHeader("Project files"));
 
         // Project files tree expands to its full preferred height; the outer
@@ -271,6 +277,20 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         return header;
     }
 
+    /**
+     * Section header with a non-bold dim suffix (e.g. data-source note) shown next to the
+     * bold title. Keeps the title's visual weight while inlining the supplemental info that
+     * would otherwise need its own subtitle row.
+     */
+    private JPanel createSectionHeaderWithSuffix(String title, String suffix) {
+        JPanel header = createSectionHeader(title);
+        JLabel suffixLabel = new JLabel(suffix);
+        suffixLabel.setFont(smallFont);
+        suffixLabel.setForeground(dimColor);
+        header.add(suffixLabel);
+        return header;
+    }
+
     private JPanel addStatRow(JPanel grid, int row, String labelText, JLabel value) {
         return addStatRowWithLabel(grid, row, new JLabel(labelText), value);
     }
@@ -321,15 +341,20 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
     }
 
     private void refreshTurnSection(SessionStatsSnapshot snap) {
-        if (!snap.isRunning()) {
+        // Show the section whenever there's any turn worth displaying — either an active
+        // turn or at least one completed turn in this session. Previously the section was
+        // hidden between turns, leaving users without a record of their last prompt's cost.
+        boolean hasTurn = snap.isRunning() || snap.getSessionTurnCount() > 0;
+        if (!hasTurn) {
             turnSection.setVisible(false);
             return;
         }
-
-        String elapsed = TimerDisplayFormatter.INSTANCE.formatElapsedTime(snap.getTurnElapsedSec());
-        turnHeaderLabel.setText("Active turn  " + elapsed);
         turnSection.setVisible(true);
+        turnHeaderLabel.setText(snap.isRunning() ? "Active turn" : "Last turn");
 
+        // Time as a labeled row (mirrors the Session section) instead of inline in the
+        // header — the two sections now align visually.
+        turnTimeValue.setText(TimerDisplayFormatter.INSTANCE.formatElapsedTime(snap.getTurnElapsedSec()));
         turnToolsValue.setText(String.valueOf(snap.getTurnToolCalls()));
 
         if (snap.getMultiplierMode()) {
@@ -416,8 +441,9 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
 
     private void refreshBilling(BillingDisplayData bill) {
         boolean hasBilling = bill.getEntitlement() > 0 || bill.getUnlimited();
-        billingHeader.setVisible(hasBilling);
-        billingNoteLabel.setVisible(hasBilling);
+        // Hide the entire section (header + grid + 100px graph) when no billing data —
+        // otherwise a tall empty graph leaves a visually broken gap in the side panel.
+        billingSection.setVisible(hasBilling);
 
         if (bill.getUnlimited()) {
             usageValue.setText("Unlimited");

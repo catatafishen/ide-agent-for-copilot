@@ -2164,6 +2164,15 @@ class ChatToolWindowContent(
                             lastStats.totalToolCalls, lastStats.totalLinesAdded,
                             lastStats.totalLinesRemoved, turnCount
                         )
+                        processingTimerPanel.restoreLastTurnStats(
+                            lastStats.durationMs / 1000,
+                            lastStats.inputTokens.toInt(),
+                            lastStats.outputTokens.toInt(),
+                            if (lastStats.costUsd > 0.0) lastStats.costUsd else null,
+                            lastStats.toolCallCount,
+                            lastStats.linesAdded,
+                            lastStats.linesRemoved
+                        )
                     }
                     persistedEntryCount = conversationReplayer.totalLoadedCount()
                 }
