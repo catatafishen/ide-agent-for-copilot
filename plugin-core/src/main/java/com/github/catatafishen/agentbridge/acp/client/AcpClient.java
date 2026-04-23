@@ -1106,11 +1106,41 @@ public abstract class AcpClient extends AbstractAgentClient {
             pb.environment().putAll(env);
         }
 
+        // Install the on-disk command shim and prepend its directory to PATH so
+        // every leaf command bash spawns inside the agent (cat, grep, git, …)
+        // resolves to our shim — which round-trips back to the IDE via /shim-exec.
+        // Falls open when shim install fails: the launch must still succeed.
+        installShimEnv(pb, mcpPort);
+
         LOG.info("Launching " + displayName() + ": " + String.join(" ", resolvedCommand));
         LOG.info("Environment size: " + pb.environment().size() + " variables");
         Process process = pb.start();
         AgentProcessRegistry.register(process);
         return process;
+    }
+
+    /**
+     * Prepend the shim directory to {@code PATH} on the given {@link ProcessBuilder}
+     * and inject the {@code AGENTBRIDGE_SHIM_PORT}/{@code AGENTBRIDGE_SHIM_TOKEN}
+     * env vars the shim script reads. No-op when shim install fails — the agent
+     * launch must always succeed even if interception is unavailable.
+     */
+    private void installShimEnv(@NotNull ProcessBuilder pb, int mcpPort) {
+        try {
+            com.github.catatafishen.agentbridge.shim.ShimManager.EnvSnapshot snap =
+                com.github.catatafishen.agentbridge.shim.ShimManager.getInstance(project).snapshot();
+            if (snap == null) return;
+            String shimDir = snap.shimDir().toString();
+            String currentPath = pb.environment().getOrDefault("PATH", "");
+            String newPath = currentPath.isEmpty() ? shimDir : shimDir + File.pathSeparator + currentPath;
+            pb.environment().put("PATH", newPath);
+            pb.environment().put("AGENTBRIDGE_SHIM_PORT", Integer.toString(mcpPort));
+            pb.environment().put("AGENTBRIDGE_SHIM_TOKEN", snap.token());
+            LOG.info("Shim env injected for " + displayName() + ": dir=" + shimDir
+                + " port=" + mcpPort + " commands=" + snap.commands());
+        } catch (Exception e) {
+            LOG.warn("Failed to install shim env for " + displayName() + " — continuing without interception", e);
+        }
     }
 
     // ─── Per-agent bubble color settings (application-level) ────────────────

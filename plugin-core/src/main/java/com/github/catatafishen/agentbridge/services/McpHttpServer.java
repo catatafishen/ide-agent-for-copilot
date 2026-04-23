@@ -94,6 +94,14 @@ public final class McpHttpServer implements Disposable, McpServerControl {
 
             httpServer.createContext("/health", this::handleHealth);
 
+            // /shim-exec — endpoint hit by the on-disk command shims that Copilot/Junie/
+            // OpenCode/Kiro inherit on PATH. See com.github.catatafishen.agentbridge.shim
+            // for the full design.
+            com.github.catatafishen.agentbridge.shim.ShimManager shimManager =
+                com.github.catatafishen.agentbridge.shim.ShimManager.getInstance(project);
+            httpServer.createContext("/shim-exec",
+                new com.github.catatafishen.agentbridge.shim.ShimController(project, shimManager.getToken()));
+
             if (activeTransportMode == TransportMode.SSE) {
                 sseTransport = new McpSseTransport(protocolHandler);
                 httpServer.createContext("/sse", sseTransport::handleSseConnect);
