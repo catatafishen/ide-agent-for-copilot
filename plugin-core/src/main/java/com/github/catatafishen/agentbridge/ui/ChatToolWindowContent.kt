@@ -1270,45 +1270,32 @@ class ChatToolWindowContent(
         }
     }
 
-    /**
-     * Send button inside the input box.
-     *
-     * - Idle: sends the prompt (enabled only when logged in).
-     * - Pending ask-user: submits the user's answer (same as idle path).
-     * - Agent running: opens a popup with Nudge / Queue / Stop and Send.
-     *
-     * Enter key handling is separate (keyboard shortcuts route to the same underlying functions)
-     * and is unchanged by this class.
-     */
     private inner class SendAction : AnAction(), com.intellij.openapi.actionSystem.ex.CustomComponentAction {
         private val sendIcon = com.intellij.openapi.util.IconLoader.getIcon(
             "/icons/send.svg", SendAction::class.java
         )
 
-        // Captured at createCustomComponent time so actionPerformed has a stable popup anchor.
-        // We can't rely on AnActionEvent.inputEvent (null when synthesized by the JButton listener)
-        // or presentation.getClientProperty(COMPONENT_KEY) (null because actionPerformed receives
-        // a freshly built Presentation, not the toolbar's annotated one).
+        // Captured at createCustomComponent time so showSendDropdown has a stable popup anchor.
         private var sendButton: JButton? = null
 
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
         override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
-            // Primary-styled button so the "Send" action reads as the dominant CTA in the
-            // input toolbar, matching JetBrains primary buttons (blue fill).
-            // The ActionToolbar's ActionButton renders as a flat icon which doesn't
-            // communicate "this is the main action" — the primary style fixes that.
-            val button = JButton(sendIcon)
+            // Primary-styled labeled button so the Send action reads as the dominant CTA.
+            // Icon on the left, "Send" text on the right — text is updated dynamically via
+            // updateCustomComponent when the agent is running ("More" with dropdown).
+            val button = JButton(presentation.text ?: "Send", sendIcon)
             button.putClientProperty("JButton.buttonType", "primary")
             button.isFocusable = false
-            button.margin = JBUI.insets(2, 6)
+            button.margin = JBUI.insets(2, 8)
             button.toolTipText = presentation.description
+            // Direct routing avoids the deprecated AnActionEvent.createFromAnAction.
             button.addActionListener {
-                val event = AnActionEvent.createFromAnAction(
-                    this, null, place,
-                    com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
-                )
-                actionPerformed(event)
+                if (!isSending || consolePanel.hasPendingAskUserRequest()) {
+                    onSendStopClicked()
+                } else {
+                    showSendDropdown(button)
+                }
             }
             sendButton = button
             return button
@@ -1317,6 +1304,7 @@ class ChatToolWindowContent(
         override fun updateCustomComponent(component: JComponent, presentation: Presentation) {
             (component as? JButton)?.let { btn ->
                 btn.isEnabled = presentation.isEnabled
+                btn.text = presentation.text
                 btn.toolTipText = presentation.description
             }
         }
@@ -1338,15 +1326,15 @@ class ChatToolWindowContent(
         }
 
         override fun actionPerformed(e: AnActionEvent) {
-            // Pending ask-user or idle: normal send/answer flow.
             if (!isSending || consolePanel.hasPendingAskUserRequest()) {
                 onSendStopClicked()
                 return
             }
-            // Agent is running: show nudge/queue/stop-and-send dropdown.
-            val component: Component = sendButton ?: return
-            val hasText = promptTextArea.text.trim().isNotEmpty()
+            showSendDropdown(sendButton ?: return)
+        }
 
+        private fun showSendDropdown(anchor: Component) {
+            val hasText = promptTextArea.text.trim().isNotEmpty()
             val group = DefaultActionGroup()
             group.add(object : AnAction("Nudge", "Send a nudge to the running agent", AllIcons.Actions.Forward) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -1377,10 +1365,11 @@ class ChatToolWindowContent(
 
             val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
                 .createActionGroupPopup(
-                    null, group, e.dataContext,
+                    null, group,
+                    com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project),
                     com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false
                 )
-            popup.showUnderneathOf(component)
+            popup.showUnderneathOf(anchor)
         }
     }
 
