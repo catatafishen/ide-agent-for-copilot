@@ -1,12 +1,14 @@
 package com.github.catatafishen.agentbridge.acp.client.intercept;
 
 import com.github.catatafishen.agentbridge.psi.PsiBridgeService;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,6 +34,10 @@ public final class AcpToolInterceptor {
 
     private static final Logger LOG = Logger.getInstance(AcpToolInterceptor.class);
     private static final String SYNTHETIC_TERMINAL_PREFIX = "intercept_";
+
+    // Repeated JSON property names — extracted to avoid duplicate-literal warnings.
+    private static final String FIELD_CONTENT = "content";
+    private static final String FIELD_COMMAND = "command";
 
     private final @Nullable Project project;
     private final Map<String, InterceptedTerminal> terminals = new ConcurrentHashMap<>();
@@ -74,7 +80,7 @@ public final class AcpToolInterceptor {
         }
 
         JsonObject response = new JsonObject();
-        response.addProperty("content", result);
+        response.addProperty(FIELD_CONTENT, result);
         return response;
     }
 
@@ -92,7 +98,7 @@ public final class AcpToolInterceptor {
     public @Nullable JsonObject interceptWrite(@NotNull JsonObject params) {
         JsonObject mcpArgs = new JsonObject();
         if (params.has("path")) mcpArgs.add("path", params.get("path"));
-        if (params.has("content")) mcpArgs.add("content", params.get("content"));
+        if (params.has(FIELD_CONTENT)) mcpArgs.add(FIELD_CONTENT, params.get(FIELD_CONTENT));
 
         String result = callMcp("write_file", mcpArgs);
         if (isMcpError(result)) {
@@ -104,40 +110,22 @@ public final class AcpToolInterceptor {
 
     // ─── terminal/create ──────────────────────────────────────────────────
 
-    /**
-     * Try to redirect a {@code terminal/create} request to an MCP tool.
-     *
-     * @return a synthetic {@code {terminalId}} response when the command was redirected
-     * (the result is buffered and served by {@link #output}/{@link #waitForExit}),
-     * or {@code null} when the command should run in a real terminal
-     */
     public @Nullable JsonObject tryInterceptTerminalCreate(@NotNull JsonObject params) {
-        String command = params.has("command") && params.get("command").isJsonPrimitive()
-            ? params.get("command").getAsString() : null;
-        if (command == null || command.isBlank()) return null;
+        List<String> argv = argvFromParams(params);
+        if (argv == null || argv.isEmpty()) return null;
 
-        // Build full argv: [command, ...args] then re-join for tokenization safety.
-        // Agents pass either {command: "git status"} or {command: "git", args: ["status"]}.
-        StringBuilder full = new StringBuilder(command);
-        if (params.has("args") && params.get("args").isJsonArray()) {
-            for (var el : params.getAsJsonArray("args")) {
-                if (el.isJsonPrimitive()) full.append(' ').append(el.getAsString());
-            }
-        }
+        RedirectPlan plan = ShellRedirectPlanner.plan(argv);
+        if (plan == null) return null;
 
-        List<String> tokens = ShellCommandSplitter.tokenize(full.toString());
-        if (tokens == null || tokens.isEmpty()) {
-            // Shell metacharacters present, or unbalanced quotes — too risky to redirect
-            return null;
-        }
-
-        String redirectResult = tryRedirect(tokens);
-        if (redirectResult == null) return null;
+        String raw = callMcp(plan.toolName(), plan.args());
+        boolean isError = isMcpError(raw);
+        String processed = isError ? raw : plan.postProcess().apply(raw);
+        int exitCode = isError ? 1 : plan.exitCodeFor().applyAsInt(processed);
 
         String terminalId = SYNTHETIC_TERMINAL_PREFIX + UUID.randomUUID().toString().substring(0, 12);
-        int exitCode = isMcpError(redirectResult) ? 1 : 0;
-        terminals.put(terminalId, new InterceptedTerminal(redirectResult, exitCode));
-        LOG.info("Intercepted terminal/create: '" + full + "' -> synthetic " + terminalId);
+        terminals.put(terminalId, new InterceptedTerminal(processed, exitCode));
+        LOG.info("Intercepted terminal/create: " + String.join(" ", argv) + " -> " + plan.toolName()
+            + " (synthetic " + terminalId + ", exit=" + exitCode + ")");
 
         JsonObject result = new JsonObject();
         result.addProperty("terminalId", terminalId);
@@ -145,58 +133,45 @@ public final class AcpToolInterceptor {
     }
 
     /**
-     * Resolve {@code argv} to an MCP tool result, or {@code null} if no safe mapping exists.
-     * Each redirect must be unambiguous — the tokens before the file/path/refspec arguments
-     * must exactly identify a single MCP tool.
+     * Build the argv list for an ACP {@code terminal/create} request.
+     *
+     * <p>When the agent passes an explicit {@code args} array we use it as-is — the
+     * arguments have already been split, so re-tokenizing through
+     * {@link ShellCommandSplitter} would corrupt quoted/space-containing values.
+     * We still refuse to redirect when the binary is a shell wrapper (where the args
+     * would be re-interpreted by the spawned shell).
+     *
+     * <p>When only {@code command} is present we fall back to the splitter, which
+     * also rejects shell metacharacters that would change semantics.
+     *
+     * @return argv-style tokens, or {@code null} when redirection is unsafe
      */
-    private @Nullable String tryRedirect(@NotNull List<String> argv) {
-        String head = argv.get(0).toLowerCase(Locale.ROOT);
+    private static @Nullable List<String> argvFromParams(@NotNull JsonObject params) {
+        String command = params.has(FIELD_COMMAND) && params.get(FIELD_COMMAND).isJsonPrimitive()
+            ? params.get(FIELD_COMMAND).getAsString() : null;
+        if (command == null || command.isBlank()) return null;
 
-        // Strip leading "/usr/bin/" or "./" style prefixes from the binary name
-        int slash = head.lastIndexOf('/');
-        if (slash >= 0 && slash + 1 < head.length()) head = head.substring(slash + 1);
-
-        return switch (head) {
-            case "cat", "head", "tail" -> redirectFileRead(argv, head);
-            // Git is well-defined; we only redirect the simplest read-only forms here. Mutating
-            // git operations (commit, push, rebase) are deliberately left to the visible terminal
-            // so the user sees them and the existing GitCommitTool review-gate behaviour is not
-            // bypassed for agent-issued commits.
-            case "git" -> redirectGit(argv);
-            default -> null;
-        };
-    }
-
-    private @Nullable String redirectFileRead(@NotNull List<String> argv, @NotNull String head) {
-        // Only redirect the simple `cat <file>` form. Any flag (-n, --number, -A, ...) means
-        // the agent wants formatting we don't replicate; let it run in the real terminal.
-        if (argv.size() != 2) return null;
-        String path = argv.get(1);
-        if (path.startsWith("-")) return null;
-
-        JsonObject mcpArgs = new JsonObject();
-        mcpArgs.addProperty("path", path);
-        if ("head".equals(head)) {
-            mcpArgs.addProperty("start_line", 1);
-            mcpArgs.addProperty("end_line", 10);
+        if (params.has("args") && params.get("args").isJsonArray()) {
+            if (looksLikeShellWrapper(command)) return null;
+            List<String> argv = new ArrayList<>();
+            argv.add(command);
+            for (JsonElement el : params.getAsJsonArray("args")) {
+                if (!el.isJsonPrimitive()) return null;
+                argv.add(el.getAsString());
+            }
+            return argv;
         }
-        // tail: without a default line count it would behave like cat; let it through to terminal
-        if ("tail".equals(head)) return null;
-        return callMcp("read_file", mcpArgs);
+
+        return ShellCommandSplitter.tokenize(command);
     }
 
-    private @Nullable String redirectGit(@NotNull List<String> argv) {
-        if (argv.size() < 2) return null;
-        String sub = argv.get(1).toLowerCase(Locale.ROOT);
-
-        // Read-only operations only — see comment in tryRedirect. Each entry must accept no
-        // extra positional args (or the args we forward must be safe for the matching MCP tool).
-        return switch (sub) {
-            case "status" -> callMcp("git_status", new JsonObject());
-            // git log / git diff / git show / git branch / git remote / git tag / git stash list
-            // could be added here once we have a clean argument-mapping helper. Holding off in this
-            // first pass to keep the surface area small and predictable.
-            default -> null;
+    private static boolean looksLikeShellWrapper(@NotNull String command) {
+        String base = command;
+        int slash = base.lastIndexOf('/');
+        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
+        return switch (base.toLowerCase(Locale.ROOT)) {
+            case "sh", "bash", "zsh", "ksh", "dash", "fish", "csh", "tcsh", "pwsh", "powershell" -> true;
+            default -> false;
         };
     }
 
