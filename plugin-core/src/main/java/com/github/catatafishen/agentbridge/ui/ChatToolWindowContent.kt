@@ -1541,11 +1541,15 @@ class ChatToolWindowContent(
         ) {
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
             override fun update(e: AnActionEvent) {
-                // The plugin no longer manages Claude credentials — there is no programmatic
-                // logout for Claude CLI. Hide the button so users aren't misled.
+                // The plugin no longer manages credentials for Claude or Codex — there is
+                // no programmatic logout for either CLI (Claude has no clean revoke command;
+                // Codex has no `codex logout` subcommand at all). Hide the button for both
+                // so users aren't misled into thinking it does anything.
                 // See docs/AUTH-HANDLING.md.
                 val agentId = agentManager.getActiveProfile().id
-                e.presentation.isEnabledAndVisible = agentId != com.github.catatafishen.agentbridge.agent.claude.ClaudeCliClient.PROFILE_ID
+                val isClaudeOrCodex = agentId == com.github.catatafishen.agentbridge.agent.claude.ClaudeCliClient.PROFILE_ID
+                    || agentId == com.github.catatafishen.agentbridge.agent.codex.CodexAppServerClient.PROFILE_ID
+                e.presentation.isEnabledAndVisible = !isClaudeOrCodex
             }
             override fun actionPerformed(e: AnActionEvent) {
                 LOG.info("Logout: disabling auto-connect and disconnecting")
