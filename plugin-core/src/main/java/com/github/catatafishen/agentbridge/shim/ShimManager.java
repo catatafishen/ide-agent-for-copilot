@@ -41,12 +41,12 @@ import java.util.stream.Stream;
  * processes that stumble upon the bound port: only a process spawned by us
  * inherits {@code AGENTBRIDGE_SHIM_TOKEN} and can authenticate.
  *
- * <p><b>Native vs script payload</b> — Windows has no POSIX shell available
- * by default, so we ship a tiny stripped Go binary cross-compiled for every
- * (os, arch) we support. On Linux/macOS the same Go binary is preferred (no
- * dependency on /bin/bash availability or curl on PATH), with the legacy
- * bash script as a development fallback when the Go binary isn't bundled
- * (e.g. local IDE-from-source runs that didn't run {@code build-shims.sh}).
+ * <p><b>Native vs script payload</b> — Unix gets the bundled bash script
+ * (~3 KB, depends only on bash + curl which are universally present). Windows
+ * gets a tiny stripped Go binary cross-compiled for amd64 (cmd.exe has no
+ * curl). Windows-on-ARM is not bundled — the shim simply doesn't install
+ * there and the agent runs unintercepted (the same behavior as before this
+ * feature).
  */
 @Service(Service.Level.PROJECT)
 public final class ShimManager implements Disposable {
@@ -140,23 +140,34 @@ public final class ShimManager implements Disposable {
     }
 
     /**
-     * Pick the best available payload for the current platform. Tries the native
-     * Go binary first (works everywhere including Windows); falls back to the
-     * bash script on Unix when the binary isn't bundled (dev convenience).
+     * Pick the best available payload for the current platform.
+     *
+     * <p>Strategy (size-conscious):
+     * <ul>
+     *   <li><b>Unix (Linux + macOS):</b> prefer the bundled bash script (~3 KB),
+     *       which depends only on bash + curl — both universally present on dev
+     *       machines. Fall back to the native Go binary when the script resource
+     *       is somehow missing.</li>
+     *   <li><b>Windows:</b> use the native Go binary — cmd.exe has no curl and
+     *       PowerShell startup is too slow per invocation.</li>
+     * </ul>
+     *
+     * <p>This keeps the plugin ZIP small: ~3 KB on Unix + ~2.3 MB Windows
+     * binary, instead of ~14 MB if we shipped a Go binary for every OS+arch.
      */
     private @Nullable Payload resolvePayload() throws IOException {
+        if (!SystemInfo.isWindows) {
+            byte[] scriptBytes = readResourceOrNull(SCRIPT_FALLBACK);
+            if (scriptBytes != null) {
+                return new Payload(scriptBytes, "", true, "bash-script");
+            }
+        }
         String key = currentPlatformKey();
         String suffix = SystemInfo.isWindows ? ".exe" : "";
         String nativeRes = NATIVE_BIN_ROOT + "/" + key + "/agentbridge-shim" + suffix;
         byte[] nativeBytes = readResourceOrNull(nativeRes);
         if (nativeBytes != null) {
             return new Payload(nativeBytes, suffix, true, "native:" + key);
-        }
-        if (!SystemInfo.isWindows) {
-            byte[] scriptBytes = readResourceOrNull(SCRIPT_FALLBACK);
-            if (scriptBytes != null) {
-                return new Payload(scriptBytes, "", true, "bash-script");
-            }
         }
         return null;
     }

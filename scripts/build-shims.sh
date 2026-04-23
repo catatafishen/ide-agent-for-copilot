@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Build the cross-platform shim binary for every (os, arch) we ship and place
-# the artifacts under plugin-core/src/main/resources/agentbridge/shim/bin/.
+# Build the shim binary for every (os, arch) we ship and place the artifacts
+# under plugin-core/src/main/resources/agentbridge/shim/bin/.
+#
+# Currently bundled targets: windows/amd64 only. Unix (Linux + macOS) uses the
+# bundled bash script (agentbridge-shim.sh, ~3 KB) which depends on curl —
+# universally present on dev machines. Adding a new target = add a line to the
+# `targets` array below and rerun.
 #
 # Run locally when the Go source under plugin-core/shim-src/ changes. The
 # resulting binaries are checked into the repository so contributors without
-# a Go toolchain can still build the plugin. CI re-runs this script and fails
-# the build when the committed binaries are stale.
+# a Go toolchain can still build the plugin.
 #
 # Requires: go >= 1.21. On a fresh box use:
 #   curl -sSL https://go.dev/dl/go1.23.4.linux-amd64.tar.gz | tar -xz -C ~/.local/
@@ -32,12 +36,7 @@ export CGO_ENABLED=0
 mkdir -p "$out_root"
 
 targets=(
-  "linux/amd64"
-  "linux/arm64"
-  "darwin/amd64"
-  "darwin/arm64"
   "windows/amd64"
-  "windows/arm64"
 )
 
 for tgt in "${targets[@]}"; do
