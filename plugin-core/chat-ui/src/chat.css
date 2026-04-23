@@ -925,6 +925,49 @@ table::-webkit-scrollbar-track {
     background: transparent;
 }
 
+/* Wrapper added by JS when a table is present — positions the "Open in editor" overlay */
+.table-wrap {
+    position: relative;
+}
+
+.table-open-btn {
+    position: absolute;
+    top: calc(var(--sp-4) + 2px);
+    right: var(--sp-2);
+    display: none;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.85em;
+    line-height: 1.4;
+    color: var(--fg-muted);
+    background: var(--bg);
+    border: 1px solid var(--tbl-border);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+    z-index: 1;
+}
+
+.table-open-btn svg {
+    flex-shrink: 0;
+}
+
+.table-wrap.table-overflow .table-open-btn {
+    display: inline-flex;
+}
+
+.table-wrap.table-overflow:hover .table-open-btn,
+.table-open-btn:focus-visible {
+    opacity: 1;
+}
+
+.table-open-btn:hover {
+    color: var(--fg);
+    border-color: var(--fg-muted);
+}
+
 th, td {
     border: none;
     border-bottom: 1px solid var(--tbl-border);
