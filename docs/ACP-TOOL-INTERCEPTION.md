@@ -205,9 +205,6 @@ interception in place these layers are largely (sometimes wholly) obsolete:
   badge entirely or (b) flip to a different visual (e.g. ↻ "redirected") to
   show the user we caught it.
 
-> **Process note:** none of the removals should land in this PR. They each
-> need a separate PR with a few sessions of telemetry / sandbox runs to
-> confirm the safety net was no longer doing real work.
 
 ### B. Expanding the interception surface
 

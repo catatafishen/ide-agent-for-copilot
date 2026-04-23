@@ -184,11 +184,6 @@ public final class KiroClient extends AcpClient {
     }
 
     @Override
-    protected boolean excludeBuiltInTools() {
-        return true;
-    }
-
-    @Override
     protected String resolveToolId(String protocolTitle) {
         return resolveToolIdStatic(protocolTitle);
     }

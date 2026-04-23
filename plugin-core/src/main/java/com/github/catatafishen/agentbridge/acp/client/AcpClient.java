@@ -86,7 +86,6 @@ public abstract class AcpClient extends AbstractAgentClient {
     private static final String VALUE_SELECTED = "selected";
     private static final String VALUE_ALLOW_ONCE = "allow_once";
     private static final String VALUE_DENY_ONCE = "deny_once";
-    private static final String VALUE_REJECT_ONCE = "reject_once";
     private static final String KEY_TOOL_CALL = "toolCall";
     private static final Set<String> ALLOWED_BUILT_IN_TOOLS = Set.of("web_fetch", "web_search", "task_complete");
 
@@ -1608,14 +1607,12 @@ public abstract class AcpClient extends AbstractAgentClient {
 
         JsonObject chosenOption;
 
-        if (!toolId.isEmpty() && isToolBlocked(protocolTitle, toolId)) {
-            chosenOption = handleBlockedTool(toolId, toolCallId, params);
-        } else if (isBuiltInTool(protocolTitle)) {
+        if (isBuiltInTool(protocolTitle)) {
             if (isAllowedBuiltInTool(toolId)) {
                 LOG.info(displayName() + ": auto-approving built-in web tool '" + toolId + "' — no MCP alternative exists");
             } else {
                 LOG.warn(displayName() + ": auto-approving built-in tool '" + toolId
-                    + "' — should use MCP tools instead");
+                    + "' — falling through to AcpToolInterceptor for redirection");
                 onBuiltInToolApproved(toolId, false);
             }
             chosenOption = findOptionByKind(params, VALUE_ALLOW_ONCE);
@@ -1633,25 +1630,6 @@ public abstract class AcpClient extends AbstractAgentClient {
         sendPermissionResponse(id, requestKey, chosenOption);
     }
 
-    private @Nullable JsonObject handleBlockedTool(String toolId, String toolCallId, @Nullable JsonObject params) {
-        String reason = "Tool '" + toolId + "' is blocked by the current agent profile (excludeAgentBuiltInTools=true).";
-        LOG.warn(displayName() + ": " + reason);
-
-        Consumer<SessionUpdate> consumer = updateConsumer;
-        if (consumer != null && !toolCallId.isEmpty()) {
-            consumer.accept(new SessionUpdate.ToolCallUpdate(
-                toolCallId,
-                SessionUpdate.ToolCallStatus.FAILED,
-                null,
-                "Auto-denied: " + reason,
-                null,
-                true,
-                reason
-            ));
-        }
-        return findDenyOption(params);
-    }
-
     private void sendPermissionResponse(JsonElement id, String requestKey, @Nullable JsonObject chosenOption) {
         String optionId = chosenOption != null && chosenOption.has(KEY_OPTION_ID)
             ? chosenOption.get(KEY_OPTION_ID).getAsString()
@@ -1660,25 +1638,6 @@ public abstract class AcpClient extends AbstractAgentClient {
         result.add(KEY_OUTCOME, buildPermissionOutcome(optionId, chosenOption));
         transport.sendResponse(id, result);
         pendingPermissionRequests.remove(requestKey);
-    }
-
-    /**
-     * Whether this agent should block all built-in (non-MCP) tool calls,
-     * forcing the model to use agentbridge tools exclusively.
-     * Override in subclasses that require exclusive agentbridge usage.
-     */
-    protected boolean excludeBuiltInTools() {
-        return false;
-    }
-
-    private boolean isToolBlocked(String protocolTitle, String toolId) {
-        if (!isBuiltInTool(protocolTitle)) {
-            return false;
-        }
-        if (excludeBuiltInTools()) {
-            return !ALLOWED_BUILT_IN_TOOLS.contains(toolId.toLowerCase());
-        }
-        return false;
     }
 
     static boolean isAllowedBuiltInTool(@NotNull String toolId) {
@@ -1761,18 +1720,6 @@ public abstract class AcpClient extends AbstractAgentClient {
         if (!options.isJsonArray()) return null;
         JsonArray arr = options.getAsJsonArray();
         return (!arr.isEmpty() && arr.get(0).isJsonObject()) ? arr.get(0).getAsJsonObject() : null;
-    }
-
-    /**
-     * Searches the permission request's options array for a deny/reject option.
-     * Different agents use different kind values: Copilot CLI sends {@code "reject_once"},
-     * while the ACP spec uses {@code "deny_once"}.
-     */
-    @Nullable
-    private static JsonObject findDenyOption(@Nullable JsonObject params) {
-        JsonObject option = findOptionByKind(params, VALUE_DENY_ONCE);
-        if (option != null) return option;
-        return findOptionByKind(params, VALUE_REJECT_ONCE);
     }
 
     protected void destroyProcess() {
