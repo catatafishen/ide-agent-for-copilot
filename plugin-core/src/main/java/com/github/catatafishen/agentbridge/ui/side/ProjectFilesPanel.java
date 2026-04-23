@@ -5,6 +5,7 @@ import com.github.catatafishen.agentbridge.services.ActiveAgentManager;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileTypeManager;
+import com.intellij.openapi.fileTypes.UnknownFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -147,6 +148,9 @@ final class ProjectFilesPanel extends JPanel {
 
     /**
      * Recursively lists files under the session directory, using relative paths as labels.
+     * Files with unrecognized file types (rendered with the generic "?" icon) are skipped
+     * — they're almost always noise (temp files, internal state) rather than content the
+     * user wants to open.
      */
     private static @NotNull List<FileNode> listSessionFiles(@NotNull File root, @NotNull File dir) {
         List<FileNode> results = new ArrayList<>();
@@ -155,12 +159,16 @@ final class ProjectFilesPanel extends JPanel {
         for (File child : children) {
             if (child.isDirectory()) {
                 results.addAll(listSessionFiles(root, child));
-            } else {
+            } else if (isRecognizedFileType(child.getName())) {
                 String rel = root.toURI().relativize(child.toURI()).getPath();
                 results.add(new FileNode(root.getAbsolutePath(), rel, rel, false));
             }
         }
         return results;
+    }
+
+    private static boolean isRecognizedFileType(@NotNull String fileName) {
+        return !(FileTypeManager.getInstance().getFileTypeByFileName(fileName) instanceof UnknownFileType);
     }
 
     /**
