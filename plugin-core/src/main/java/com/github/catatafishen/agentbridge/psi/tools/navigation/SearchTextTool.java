@@ -187,8 +187,17 @@ public final class SearchTextTool extends NavigationTool {
             UsageViewPresentation pres = new UsageViewPresentation();
             String tabText = "Search: " + query;
             pres.setTabText(tabText);
-            UsageViewManager.getInstance(project).showUsages(UsageTarget.EMPTY_ARRAY, usages, pres);
+            com.intellij.usages.UsageView view =
+                UsageViewManager.getInstance(project).showUsages(UsageTarget.EMPTY_ARRAY, usages, pres);
             AgentTabTracker.getInstance(project).trackTab("Find", tabText);
+            // Auto-expand all groups so the agent's results are immediately visible —
+            // by default the Find tool window collapses every file group, requiring an
+            // extra click before any usages are shown. expandAll() lives on UsageViewImpl,
+            // so cast cautiously and schedule on a later EDT pump because usage nodes are
+            // appended asynchronously after showUsages returns.
+            if (view instanceof com.intellij.usages.impl.UsageViewImpl impl) {
+                ApplicationManager.getApplication().invokeLater(impl::expandAll);
+            }
         });
     }
 

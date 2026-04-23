@@ -345,6 +345,12 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         header.add(titleRow);
         header.add(divider);
+        // Force the header to fill the full width of its BoxLayout.Y_AXIS parent so
+        // the FlowLayout-LEFT title row can anchor at the left edge. Without this,
+        // BoxLayout sizes the header to its (small) preferredSize and the default
+        // CENTER_ALIGNMENT centers it, making the title appear in the middle.
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, header.getPreferredSize().height));
         return header;
     }
 

@@ -148,10 +148,10 @@ chat-container {
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    /* No right padding so the vertical scrollbar sits flush against the
-       tool-window right edge. Bubbles already cap at max-width: 94%, which
-       gives them visible breathing room from the scrollbar lane. */
-    padding: var(--sp-4) 0 var(--sp-4) var(--sp-4);
+    /* Small right padding (sp-1 = 2px) so bubbles align with the input frame's
+       right edge. The scrollbar still sits inside this narrow lane — this is
+       the visual gap that previously made bubbles look offset from the input. */
+    padding: var(--sp-4) var(--sp-2) var(--sp-4) var(--sp-4);
     contain: paint;
 }
 
