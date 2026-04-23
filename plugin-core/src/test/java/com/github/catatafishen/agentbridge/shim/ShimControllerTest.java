@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -66,6 +67,42 @@ class ShimControllerTest {
         assertEquals(
             List.of("cat"),
             ShimController.parseArgv("brokenPair&argv=cat")
+        );
+    }
+
+    // ===== parseField =====
+
+    @Test
+    void parseFieldReturnsNullWhenAbsent() {
+        assertNull(ShimController.parseField("argv=cat&argv=foo", "cwd"));
+    }
+
+    @Test
+    void parseFieldReturnsNullForEmptyBody() {
+        assertNull(ShimController.parseField("", "cwd"));
+    }
+
+    @Test
+    void parseFieldDecodesValue() {
+        assertEquals(
+            "/home/user/my project",
+            ShimController.parseField("argv=ls&cwd=%2Fhome%2Fuser%2Fmy+project", "cwd")
+        );
+    }
+
+    @Test
+    void parseFieldReturnsFirstWhenDuplicated() {
+        assertEquals(
+            "/a",
+            ShimController.parseField("cwd=%2Fa&cwd=%2Fb", "cwd")
+        );
+    }
+
+    @Test
+    void parseFieldIgnoresMalformedPairs() {
+        assertEquals(
+            "/x",
+            ShimController.parseField("brokenPair&cwd=%2Fx", "cwd")
         );
     }
 }

@@ -54,11 +54,42 @@ public final class ShimManager implements Disposable {
     private static final Logger LOG = Logger.getInstance(ShimManager.class);
 
     /**
-     * Names that get a copy of the shim. Phase A: tools whose redirects exist
-     * in {@code ShellRedirectPlanner}. Extend in Phase D.
+     * Commands whose argv {@link ShellRedirectPlanner} can redirect to an MCP
+     * tool. Output comes from the IDE buffer / project model, so reads stay in
+     * sync with unsaved edits.
      */
-    public static final List<String> SHIMMED_COMMANDS =
+    public static final List<String> MCP_REDIRECTED_COMMANDS =
         List.of("cat", "head", "grep", "egrep", "fgrep", "rg", "git", "ls", "find", "rm");
+
+    /**
+     * Commands the agent commonly runs that we want to surface in a Run tool
+     * window tab so the user can watch them live (instead of executing
+     * invisibly inside the agent's hidden bash). Output is still returned to
+     * the agent verbatim. Mutating side effects happen in the real working
+     * directory of the agent's shell.
+     *
+     * <p>Excludes {@code bash}/{@code sh} (intercepting the agent's own PTY
+     * would break leaf-shim PATH inheritance) and {@code curl} (used by the
+     * shim script itself — would recurse).
+     */
+    public static final List<String> VISIBLE_FALLTHROUGH_COMMANDS =
+        List.of("npm", "yarn", "pnpm", "node",
+            "mvn", "gradle",
+            "docker", "kubectl", "podman",
+            "python", "python3", "pip", "pip3",
+            "go", "cargo", "rustc",
+            "make");
+
+    /**
+     * Names that get a copy of the shim payload installed under the shim dir.
+     * Union of the two whitelists above — the shim itself decides which
+     * routing the controller applies.
+     */
+    public static final List<String> SHIMMED_COMMANDS = Stream.concat(
+            MCP_REDIRECTED_COMMANDS.stream(),
+            VISIBLE_FALLTHROUGH_COMMANDS.stream())
+        .distinct()
+        .toList();
 
     /**
      * Directory inside resources that holds per-(os, arch) Go binaries.

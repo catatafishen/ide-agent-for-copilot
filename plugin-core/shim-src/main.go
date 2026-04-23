@@ -40,7 +40,7 @@ import (
 const (
 	exitFallthroughError = 127
 	dialTimeout          = 2 * time.Second
-	totalTimeout         = 30 * time.Second
+	totalTimeout         = 600 * time.Second
 )
 
 func main() {
@@ -104,20 +104,24 @@ func tryRedirect(cmdName string, args []string) (bool, int) {
 }
 
 // encodeArgvForm builds the application/x-www-form-urlencoded body
-// "argv=<cmd>&argv=<arg1>&argv=<arg2>…". Implements RFC 3986 percent-encoding
-// inline so we don't need net/url.
+// "argv=<cmd>&argv=<arg1>&argv=<arg2>…&cwd=<pwd>". Implements RFC 3986
+// percent-encoding inline so we don't need net/url.
 func encodeArgvForm(cmdName string, args []string) []byte {
 	var buf bytes.Buffer
-	writePair := func(v string) {
+	writePair := func(name, v string) {
 		if buf.Len() > 0 {
 			buf.WriteByte('&')
 		}
-		buf.WriteString("argv=")
+		buf.WriteString(name)
+		buf.WriteByte('=')
 		percentEncode(&buf, v)
 	}
-	writePair(cmdName)
+	writePair("argv", cmdName)
 	for _, a := range args {
-		writePair(a)
+		writePair("argv", a)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		writePair("cwd", cwd)
 	}
 	return buf.Bytes()
 }

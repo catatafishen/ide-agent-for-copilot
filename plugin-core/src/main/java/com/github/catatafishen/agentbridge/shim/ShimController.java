@@ -66,13 +66,15 @@ public final class ShimController implements HttpHandler {
                 exchange.sendResponseHeaders(413, -1);
                 return;
             }
-            List<String> argv = parseArgv(new String(body, StandardCharsets.UTF_8));
+            String form = new String(body, StandardCharsets.UTF_8);
+            List<String> argv = parseArgv(form);
             if (argv.isEmpty()) {
                 exchange.sendResponseHeaders(400, -1);
                 return;
             }
+            String cwd = parseField(form, "cwd");
 
-            ShimRedirector.Result result = new ShimRedirector(project).tryRedirect(argv);
+            ShimRedirector.Result result = new ShimRedirector(project).tryRedirect(argv, cwd);
             if (result == null) {
                 exchange.sendResponseHeaders(204, -1);
                 return;
@@ -96,6 +98,22 @@ public final class ShimController implements HttpHandler {
         } finally {
             exchange.close();
         }
+    }
+
+    /**
+     * Return the URL-decoded value of the first form field named {@code key},
+     * or {@code null} if absent. Used for scalar fields (e.g. {@code cwd}) that
+     * complement the repeated {@code argv} list.
+     */
+    static @org.jetbrains.annotations.Nullable String parseField(@NotNull String body, @NotNull String key) {
+        if (body.isEmpty()) return null;
+        for (String pair : body.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq < 0) continue;
+            if (!key.equals(pair.substring(0, eq))) continue;
+            return URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+        }
+        return null;
     }
 
     /**

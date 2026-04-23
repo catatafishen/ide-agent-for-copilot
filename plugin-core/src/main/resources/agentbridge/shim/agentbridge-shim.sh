@@ -67,13 +67,17 @@ if [ -z "$curl_bin" ]; then
 fi
 
 # Build the curl argv. --data-urlencode handles arbitrary bytes safely.
+# --max-time 600 covers visible-fallthrough commands (npm install, mvn build,
+# docker build…) that the controller may execute server-side and stream back.
+# MCP redirects always return in milliseconds.
 curl_args=(
     -sS
-    --max-time 30
+    --max-time 600
     -o -
     -w '\nHTTP=%{http_code}'
     -H "X-Shim-Token: $token"
     --data-urlencode "argv=$real_name"
+    --data-urlencode "cwd=$PWD"
 )
 for a in "$@"; do
     curl_args+=(--data-urlencode "argv=$a")
