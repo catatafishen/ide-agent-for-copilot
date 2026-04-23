@@ -443,10 +443,10 @@ class ShellRedirectPlannerTest {
 
     @Test
     void unknownBinaryFallsThrough() {
-        assertNull(ShellRedirectPlanner.plan(List.of("ls")));
-        assertNull(ShellRedirectPlanner.plan(List.of("find", ".", "-name", "*.kt")));
         assertNull(ShellRedirectPlanner.plan(List.of("tail", "x.log")));
         assertNull(ShellRedirectPlanner.plan(List.of("curl", "https://example.com")));
+        assertNull(ShellRedirectPlanner.plan(List.of("docker", "ps")));
+        assertNull(ShellRedirectPlanner.plan(List.of("npm", "install")));
     }
 
     @Test
@@ -485,5 +485,271 @@ class ShellRedirectPlannerTest {
         assertEquals("read_file", plan.toolName());
         assertEquals("hello", plan.postProcess().apply("hello"));
         assertEquals(0, plan.exitCodeFor().applyAsInt("anything"));
+    }
+
+    // ─── ls ───────────────────────────────────────────────────────────────
+
+    @Test
+    void lsBare() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("ls"));
+        assertNotNull(plan);
+        assertEquals("list_project_files", plan.toolName());
+        assertEquals(".", plan.args().get("directory").getAsString());
+    }
+
+    @Test
+    void lsWithDir() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("ls", "scripts"));
+        assertNotNull(plan);
+        assertEquals("list_project_files", plan.toolName());
+        assertEquals("scripts", plan.args().get("directory").getAsString());
+    }
+
+    @Test
+    void lsWithFlagFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("ls", "-la")));
+        assertNull(ShellRedirectPlanner.plan(List.of("ls", "-l", "scripts")));
+        assertNull(ShellRedirectPlanner.plan(List.of("ls", "-1")));
+    }
+
+    @Test
+    void lsTooManyArgsFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("ls", "a", "b")));
+    }
+
+    @Test
+    void stripListProjectFilesDecorationRemovesHeaderAndSuffix() {
+        String raw = "2 files:\nscripts/a.sh [Shell, 100, 1700000000000]\nscripts/b.sh [Shell, 200, 1700000000000]\n";
+        String stripped = ShellRedirectPlanner.stripListProjectFilesDecoration(raw);
+        assertEquals("scripts/a.sh\nscripts/b.sh\n", stripped);
+    }
+
+    @Test
+    void stripListProjectFilesDecorationLeavesEmptyResultUnchanged() {
+        String raw = "0 files\n";
+        // Should not crash; passthrough acceptable.
+        assertNotNull(ShellRedirectPlanner.stripListProjectFilesDecoration(raw));
+    }
+
+    // ─── find ─────────────────────────────────────────────────────────────
+
+    @Test
+    void findBasic() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("find", "scripts", "-name", "*.sh"));
+        assertNotNull(plan);
+        assertEquals("list_project_files", plan.toolName());
+        assertEquals("scripts", plan.args().get("directory").getAsString());
+        assertEquals("*.sh", plan.args().get("pattern").getAsString());
+    }
+
+    @Test
+    void findWithTypeF() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(
+            List.of("find", ".", "-name", "foo", "-type", "f"));
+        assertNotNull(plan);
+        assertEquals(".", plan.args().get("directory").getAsString());
+        assertEquals("foo", plan.args().get("pattern").getAsString());
+    }
+
+    @Test
+    void findInameAlias() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("find", ".", "-iname", "*.MD"));
+        assertNotNull(plan);
+        assertEquals("*.MD", plan.args().get("pattern").getAsString());
+    }
+
+    @Test
+    void findUnknownFlagFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("find", ".", "-mtime", "1")));
+        assertNull(ShellRedirectPlanner.plan(List.of("find", ".", "-name", "x", "-exec", "rm", "{}", ";")));
+        assertNull(ShellRedirectPlanner.plan(List.of("find", ".", "-type", "d")));
+    }
+
+    @Test
+    void findWithoutNameFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("find", "scripts")));
+    }
+
+    @Test
+    void findWithLeadingDashDirFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("find", "-name", "*.sh")));
+    }
+
+    // ─── rm ───────────────────────────────────────────────────────────────
+
+    @Test
+    void rmSimple() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("rm", "foo.txt"));
+        assertNotNull(plan);
+        assertEquals("delete_file", plan.toolName());
+        assertEquals("foo.txt", plan.args().get("path").getAsString());
+    }
+
+    @Test
+    void rmForce() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("rm", "-f", "foo.txt"));
+        assertNotNull(plan);
+        assertEquals("delete_file", plan.toolName());
+        assertEquals("foo.txt", plan.args().get("path").getAsString());
+    }
+
+    @Test
+    void rmDoubleDash() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("rm", "--", "-tricky.txt"));
+        assertNotNull(plan);
+        assertEquals("-tricky.txt", plan.args().get("path").getAsString());
+    }
+
+    @Test
+    void rmRecursiveFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "-r", "dir")));
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "-rf", "dir")));
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "-R", "dir")));
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "--recursive", "dir")));
+    }
+
+    @Test
+    void rmMultipleFilesFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "a", "b")));
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "-f", "a", "b")));
+    }
+
+    @Test
+    void rmNoArgFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("rm")));
+        assertNull(ShellRedirectPlanner.plan(List.of("rm", "-f")));
+    }
+
+    // ─── git remote ───────────────────────────────────────────────────────
+
+    @Test
+    void gitRemoteList() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "remote"));
+        assertNotNull(plan);
+        assertEquals("git_remote", plan.toolName());
+        assertEquals("list", plan.args().get("action").getAsString());
+    }
+
+    @Test
+    void gitRemoteVerbose() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "remote", "-v"));
+        assertNotNull(plan);
+        assertEquals("git_remote", plan.toolName());
+        RedirectPlan plan2 = ShellRedirectPlanner.plan(List.of("git", "remote", "--verbose"));
+        assertNotNull(plan2);
+    }
+
+    @Test
+    void gitRemoteAddFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "remote", "add", "origin", "url")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "remote", "remove", "origin")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "remote", "set-url", "origin", "url")));
+    }
+
+    // ─── git tag ──────────────────────────────────────────────────────────
+
+    @Test
+    void gitTagListBare() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "tag"));
+        assertNotNull(plan);
+        assertEquals("git_tag", plan.toolName());
+        assertEquals("list", plan.args().get("action").getAsString());
+    }
+
+    @Test
+    void gitTagListWithFlag() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "tag", "-l"));
+        assertNotNull(plan);
+        assertEquals("git_tag", plan.toolName());
+    }
+
+    @Test
+    void gitTagListWithPattern() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "tag", "-l", "v1.*"));
+        assertNotNull(plan);
+        assertEquals("v1.*", plan.args().get("pattern").getAsString());
+        RedirectPlan plan2 = ShellRedirectPlanner.plan(List.of("git", "tag", "--list", "v1.*"));
+        assertNotNull(plan2);
+        assertEquals("v1.*", plan2.args().get("pattern").getAsString());
+    }
+
+    @Test
+    void gitTagCreateOrDeleteFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "tag", "v1.0")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "tag", "-d", "v1.0")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "tag", "-a", "v1.0", "-m", "msg")));
+    }
+
+    // ─── git stash ────────────────────────────────────────────────────────
+
+    @Test
+    void gitStashList() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "stash", "list"));
+        assertNotNull(plan);
+        assertEquals("git_stash", plan.toolName());
+        assertEquals("list", plan.args().get("action").getAsString());
+    }
+
+    @Test
+    void gitStashOtherSubcommandsFallThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "stash")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "stash", "push")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "stash", "pop")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "stash", "drop")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "stash", "apply")));
+    }
+
+    // ─── git config ───────────────────────────────────────────────────────
+
+    @Test
+    void gitConfigGet() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "config", "--get", "user.email"));
+        assertNotNull(plan);
+        assertEquals("git_config", plan.toolName());
+        assertEquals("user.email", plan.args().get("key").getAsString());
+    }
+
+    @Test
+    void gitConfigPositionalGet() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "config", "user.email"));
+        assertNotNull(plan);
+        assertEquals("user.email", plan.args().get("key").getAsString());
+    }
+
+    @Test
+    void gitConfigList() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(List.of("git", "config", "-l"));
+        assertNotNull(plan);
+        assertEquals("git_config", plan.toolName());
+        assertTrue(plan.args().get("list").getAsBoolean());
+        RedirectPlan plan2 = ShellRedirectPlanner.plan(List.of("git", "config", "--list"));
+        assertNotNull(plan2);
+        assertTrue(plan2.args().get("list").getAsBoolean());
+    }
+
+    @Test
+    void gitConfigGlobal() {
+        RedirectPlan plan = ShellRedirectPlanner.plan(
+            List.of("git", "config", "--global", "--get", "user.name"));
+        assertNotNull(plan);
+        assertTrue(plan.args().get("global").getAsBoolean());
+        assertEquals("user.name", plan.args().get("key").getAsString());
+    }
+
+    @Test
+    void gitConfigSetFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "config", "user.email", "a@b")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "config", "--global", "user.email", "a@b")));
+    }
+
+    @Test
+    void gitConfigUnsetOrAddFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "config", "--unset", "user.email")));
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "config", "--add", "remote.origin.fetch", "+x")));
+    }
+
+    @Test
+    void gitConfigBareFallsThrough() {
+        assertNull(ShellRedirectPlanner.plan(List.of("git", "config")));
     }
 }

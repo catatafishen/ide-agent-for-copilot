@@ -58,7 +58,7 @@ public final class ShimManager implements Disposable {
      * in {@code ShellRedirectPlanner}. Extend in Phase D.
      */
     public static final List<String> SHIMMED_COMMANDS =
-        List.of("cat", "head", "grep", "egrep", "fgrep", "rg", "git");
+        List.of("cat", "head", "grep", "egrep", "fgrep", "rg", "git", "ls", "find", "rm");
 
     /**
      * Directory inside resources that holds per-(os, arch) Go binaries.

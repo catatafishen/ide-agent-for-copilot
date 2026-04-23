@@ -31,22 +31,29 @@ import java.util.Locale;
  *       (extended) for explicit semantics.</li>
  *   <li>{@code egrep} ≡ {@code grep -E}, {@code fgrep} ≡ {@code grep -F}</li>
  *   <li>{@code rg [-F] [-i] [-g GLOB|--glob GLOB] PATTERN} → {@code search_text}</li>
+ *   <li>{@code ls [DIR]} (no flags) → {@code list_project_files}</li>
+ *   <li>{@code find DIR -name PATTERN [-type f]} → {@code list_project_files}</li>
+ *   <li>{@code rm [-f] FILE} (single file, no recursion) → {@code delete_file}</li>
  *   <li>{@code git status} → {@code git_status}</li>
  *   <li>{@code git diff [--staged] [--stat]} → {@code git_diff}</li>
  *   <li>{@code git log [--oneline] [-n N] [-- PATH]} → {@code git_log}</li>
  *   <li>{@code git branch} → {@code git_branch}</li>
  *   <li>{@code git show [--stat] [REF]} → {@code git_show}</li>
  *   <li>{@code git blame [-L start,end] FILE} → {@code git_blame}</li>
+ *   <li>{@code git remote [-v]} (list-only) → {@code git_remote}</li>
+ *   <li>{@code git tag [-l [PATTERN]]} (list-only) → {@code git_tag}</li>
+ *   <li>{@code git stash list} → {@code git_stash}</li>
+ *   <li>{@code git config [--global] (--get KEY|KEY|--list)} (read-only) → {@code git_config}</li>
  * </ul>
  *
- * <p><b>Deliberately not intercepted</b> (see commit history for rationale):
+ * <p><b>Deliberately not intercepted</b>:
  * <ul>
- *   <li>{@code ls} — recursion semantics differ from {@code list_project_files}</li>
- *   <li>{@code find} — requires file-vs-directory disambiguation we cannot do without I/O</li>
  *   <li>{@code tail} — {@code read_file} truncates large files, breaking tail semantics</li>
  *   <li>Plain {@code grep} — BRE regex not equivalent to Java regex</li>
- *   <li>Mutating git operations — must remain visible so {@code GitCommitTool}'s review
- *       gate is not bypassed</li>
+ *   <li>{@code ls -l} / {@code ls -la} — long-format output we don't reproduce</li>
+ *   <li>{@code rm -r} — destructive enough that users should see it run in a real terminal</li>
+ *   <li>Mutating git operations (commit, push, reset, stash push, tag -d, …) — must remain
+ *       visible so {@code GitCommitTool}'s review gate is not bypassed</li>
  * </ul>
  */
 public final class ShellRedirectPlanner {
@@ -71,6 +78,9 @@ public final class ShellRedirectPlanner {
             case "fgrep" -> planGrep(argv, /* defaultRegex = */ false);
             case "rg" -> planRg(argv);
             case "git" -> planGit(argv);
+            case "ls" -> planLs(argv);
+            case "find" -> planFind(argv);
+            case "rm" -> planRm(argv);
             default -> null;
         };
     }
@@ -344,6 +354,10 @@ public final class ShellRedirectPlanner {
             case "branch" -> argv.size() == 2 ? RedirectPlan.of("git_branch", new JsonObject()) : null;
             case "show" -> planGitShow(argv);
             case "blame" -> planGitBlame(argv);
+            case "remote" -> planGitRemote(argv);
+            case "tag" -> planGitTag(argv);
+            case "stash" -> planGitStash(argv);
+            case "config" -> planGitConfig(argv);
             default -> null;
         };
     }
@@ -525,4 +539,248 @@ public final class ShellRedirectPlanner {
             return null;
         }
     }
+
+    // ─── ls ───────────────────────────────────────────────────────────────
+
+    /**
+     * Redirect bare {@code ls} or {@code ls DIR} (no flags) to {@code list_project_files}.
+     * Any flag (-l, -la, -a, -1, …) means the agent wants formatting we don't reproduce —
+     * fall through to the real binary.
+     */
+    private static @Nullable RedirectPlan planLs(@NotNull List<String> argv) {
+        String dir;
+        if (argv.size() == 1) {
+            dir = ".";
+        } else if (argv.size() == 2) {
+            String a = argv.get(1);
+            if (a.startsWith("-")) return null;
+            dir = a;
+        } else {
+            return null;
+        }
+        JsonObject args = new JsonObject();
+        args.addProperty("directory", dir);
+        return new RedirectPlan(
+            "list_project_files",
+            args,
+            ShellRedirectPlanner::stripListProjectFilesDecoration,
+            output -> 0);
+    }
+
+    // ─── find ─────────────────────────────────────────────────────────────
+
+    /**
+     * Redirect the canonical {@code find DIR -name PATTERN [-type f]} form to
+     * {@code list_project_files}. Anything else (operators, multi-test predicates,
+     * {@code -exec}, etc.) falls through.
+     */
+    private static @Nullable RedirectPlan planFind(@NotNull List<String> argv) {
+        if (argv.size() < 4) return null;
+        String dir = argv.get(1);
+        if (dir.startsWith("-")) return null;
+
+        String pattern = null;
+        int i = 2;
+        while (i < argv.size()) {
+            String tok = argv.get(i);
+            if (tok.equals("-name") || tok.equals("-iname")) {
+                if (i + 1 >= argv.size() || pattern != null) return null;
+                pattern = argv.get(i + 1);
+                i += 2;
+                continue;
+            }
+            if (tok.equals("-type")) {
+                // -type f is a no-op for us (list_project_files only returns files).
+                // -type d / -type l etc. would change semantics → fall through.
+                if (i + 1 >= argv.size() || !argv.get(i + 1).equals("f")) return null;
+                i += 2;
+                continue;
+            }
+            return null;
+        }
+        if (pattern == null) return null;
+
+        JsonObject args = new JsonObject();
+        args.addProperty("directory", dir);
+        args.addProperty("pattern", pattern);
+        return new RedirectPlan(
+            "list_project_files",
+            args,
+            ShellRedirectPlanner::stripListProjectFilesDecoration,
+            output -> 0);
+    }
+
+    /**
+     * The {@code list_project_files} MCP tool prefixes its output with {@code "N files:\n"}
+     * and adds {@code " [Type, size, mtime]"} after each path. Strip both so the result
+     * looks like {@code ls}/{@code find}: bare paths, one per line.
+     */
+    static @NotNull String stripListProjectFilesDecoration(@NotNull String raw) {
+        StringBuilder sb = new StringBuilder(raw.length());
+        boolean first = true;
+        for (String line : raw.split("\n", -1)) {
+            if (first) {
+                first = false;
+                if (line.matches("\\d+ files?:")) continue;
+                if (line.startsWith("No files")) return ""; // empty result
+            }
+            int bracket = line.lastIndexOf(" [");
+            String stripped = (bracket >= 0 && line.endsWith("]")) ? line.substring(0, bracket) : line;
+            if (stripped.isEmpty()) continue;
+            sb.append(stripped).append('\n');
+        }
+        return sb.toString();
+    }
+
+    // ─── rm ───────────────────────────────────────────────────────────────
+
+    /**
+     * Redirect {@code rm [-f] FILE} (single regular file) to {@code delete_file} so the
+     * IDE buffer stays in sync. Recursive ({@code -r}/{@code -R}) and multi-file forms
+     * fall through — we don't have an MCP tool for either, and recursive delete is
+     * destructive enough that users should see it run in a real terminal anyway.
+     */
+    private static @Nullable RedirectPlan planRm(@NotNull List<String> argv) {
+        String file = null;
+        for (int i = 1; i < argv.size(); i++) {
+            String tok = argv.get(i);
+            if (tok.equals("--")) {
+                // remainder are paths
+                if (i + 1 != argv.size() - 1) return null;
+                file = argv.get(i + 1);
+                break;
+            }
+            if (tok.equals("-f") || tok.equals("--force")) continue;
+            if (tok.startsWith("-")) return null; // -r, -i, -v, --recursive → fall through
+            if (file != null) return null; // multiple paths → fall through
+            file = tok;
+        }
+        if (file == null) return null;
+
+        JsonObject args = new JsonObject();
+        args.addProperty("path", file);
+        return new RedirectPlan(
+            "delete_file",
+            args,
+            raw -> "", // delete_file returns a status message; rm prints nothing on success
+            output -> 0);
+    }
+
+    // ─── git remote ──────────────────────────────────────────────────────
+
+    /**
+     * Redirect {@code git remote} or {@code git remote -v} (list-only) to {@code git_remote}.
+     * Any other action ({@code add}/{@code remove}/{@code set-url}/{@code get-url} with args)
+     * falls through to keep the visible-terminal contract for mutating ops.
+     */
+    private static @Nullable RedirectPlan planGitRemote(@NotNull List<String> argv) {
+        // size already >= 2 (head was "git remote")
+        if (argv.size() == 2) {
+            JsonObject args = new JsonObject();
+            args.addProperty("action", "list");
+            return RedirectPlan.of("git_remote", args);
+        }
+        if (argv.size() == 3 && (argv.get(2).equals("-v") || argv.get(2).equals("--verbose"))) {
+            JsonObject args = new JsonObject();
+            args.addProperty("action", "list");
+            return RedirectPlan.of("git_remote", args);
+        }
+        return null;
+    }
+
+    // ─── git tag ─────────────────────────────────────────────────────────
+
+    /**
+     * Redirect {@code git tag} (list) and {@code git tag -l [PATTERN]} to {@code git_tag}.
+     * Any tag-creation/deletion form (positional name, {@code -d}, {@code -a}, {@code -m})
+     * falls through.
+     */
+    private static @Nullable RedirectPlan planGitTag(@NotNull List<String> argv) {
+        // Bare `git tag` → list
+        if (argv.size() == 2) {
+            JsonObject args = new JsonObject();
+            args.addProperty("action", "list");
+            return RedirectPlan.of("git_tag", args);
+        }
+        String pattern = null;
+        int i = 2;
+        while (i < argv.size()) {
+            String tok = argv.get(i);
+            if (tok.equals("-l") || tok.equals("--list")) {
+                if (i + 1 < argv.size() && !argv.get(i + 1).startsWith("-")) {
+                    if (pattern != null) return null;
+                    pattern = argv.get(i + 1);
+                    i += 2;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+            return null; // -d, -a, -m, positional name, --sort=… → fall through
+        }
+        JsonObject args = new JsonObject();
+        args.addProperty("action", "list");
+        if (pattern != null) args.addProperty("pattern", pattern);
+        return RedirectPlan.of("git_tag", args);
+    }
+
+    // ─── git stash ───────────────────────────────────────────────────────
+
+    /**
+     * Redirect {@code git stash list} only. Other stash subcommands ({@code push},
+     * {@code pop}, {@code apply}, {@code drop}, {@code show}) are mutating or change
+     * working-tree state — fall through.
+     */
+    private static @Nullable RedirectPlan planGitStash(@NotNull List<String> argv) {
+        if (argv.size() == 3 && argv.get(2).equalsIgnoreCase("list")) {
+            JsonObject args = new JsonObject();
+            args.addProperty("action", "list");
+            return RedirectPlan.of("git_stash", args);
+        }
+        return null;
+    }
+
+    // ─── git config ──────────────────────────────────────────────────────
+
+    /**
+     * Redirect read-only {@code git config} forms to {@code git_config}:
+     * <ul>
+     *   <li>{@code git config --get KEY}</li>
+     *   <li>{@code git config KEY} (positional get)</li>
+     *   <li>{@code git config -l} / {@code --list}</li>
+     *   <li>{@code --global} accepted on any of the above</li>
+     * </ul>
+     * Any value-setting form ({@code git config KEY VALUE}, {@code --unset}, {@code --add},
+     * {@code --replace-all}) falls through so the user sees mutations in the terminal.
+     */
+    private static @Nullable RedirectPlan planGitConfig(@NotNull List<String> argv) {
+        boolean global = false;
+        boolean list = false;
+        String key = null;
+        int i = 2;
+        while (i < argv.size()) {
+            String tok = argv.get(i);
+            if (tok.equals("--global")) { global = true; i++; continue; }
+            if (tok.equals("-l") || tok.equals("--list")) { list = true; i++; continue; }
+            if (tok.equals("--get")) {
+                if (i + 1 >= argv.size() || key != null) return null;
+                key = argv.get(i + 1);
+                i += 2;
+                continue;
+            }
+            if (tok.startsWith("-")) return null; // unknown flag → fall through
+            // Bare positional: must be a single key (get form). Two positionals = set.
+            if (key != null) return null;
+            key = tok;
+            i++;
+        }
+        if (!list && key == null) return null;
+
+        JsonObject args = new JsonObject();
+        if (list) args.addProperty("list", true);
+        if (key != null) args.addProperty("key", key);
+        if (global) args.addProperty("global", true);
+        return RedirectPlan.of("git_config", args);
+    }
+
 }
