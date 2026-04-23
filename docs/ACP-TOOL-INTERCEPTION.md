@@ -4,10 +4,10 @@
 > equivalents **before** they execute. Two layers cooperate:
 >
 > 1. **ACP layer** — intercepts `fs/read_text_file` / `fs/write_text_file`
->    requests round-tripped over JSON-RPC.
+     > requests round-tripped over JSON-RPC.
 > 2. **PATH-shim layer** — intercepts shell commands (`cat`, `head`, `grep`,
->    `git …`) at the leaf-binary level by injecting a tiny shim onto `PATH`
->    in the agent subprocess.
+     > `git …`) at the leaf-binary level by injecting a tiny shim onto `PATH`
+     > in the agent subprocess.
 >
 > Two layers are needed because not every built-in tool round-trips through
 > ACP; Copilot CLI in particular runs `bash` via a long-lived node-pty session
@@ -24,16 +24,16 @@ For months we tried to make ACP agents stop using their built-in tools because
 those tools (a) read stale disk files instead of unsaved editor buffers and
 (b) bypass the IDE's VCS/undo plumbing. Every approach failed:
 
-| Mechanism | Result |
-|---|---|
-| `--excluded-tools` / `--available-tools` (Copilot) | Ignored in ACP mode — bug [copilot-cli#556](https://github.com/github/copilot-cli/issues/556). |
-| `excludedTools` in `session/new` (custom ACP extension) | Ignored by Copilot, OpenCode. Junie ≥ v888.212 honours it. |
-| `--deny-tool` (Copilot) | Ignored in ACP mode. |
-| Per-agent `tools:` frontmatter | Ignored in ACP mode. |
-| Permission denial (`DENIED_PERMISSION_KINDS`) | Only catches *write* tools — `view`, `grep`, `glob` auto-execute with no permission step. |
-| Reprimand: auto-approve + inject "[System notice]" into next prompt | Lets the wrong action happen first; only corrects future turns. |
-| Junie pre-launch `.junie/allowlist.json` | Works only for Junie ≥ v888.212. |
-| **ACP `terminal/create` interception** | **Worked in unit tests, dead in production** — see below. |
+| Mechanism                                                           | Result                                                                                         |
+|---------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| `--excluded-tools` / `--available-tools` (Copilot)                  | Ignored in ACP mode — bug [copilot-cli#556](https://github.com/github/copilot-cli/issues/556). |
+| `excludedTools` in `session/new` (custom ACP extension)             | Ignored by Copilot, OpenCode. Junie ≥ v888.212 honours it.                                     |
+| `--deny-tool` (Copilot)                                             | Ignored in ACP mode.                                                                           |
+| Per-agent `tools:` frontmatter                                      | Ignored in ACP mode.                                                                           |
+| Permission denial (`DENIED_PERMISSION_KINDS`)                       | Only catches *write* tools — `view`, `grep`, `glob` auto-execute with no permission step.      |
+| Reprimand: auto-approve + inject "[System notice]" into next prompt | Lets the wrong action happen first; only corrects future turns.                                |
+| Junie pre-launch `.junie/allowlist.json`                            | Works only for Junie ≥ v888.212.                                                               |
+| **ACP `terminal/create` interception**                              | **Worked in unit tests, dead in production** — see below.                                      |
 
 See [`docs/bugs/CLI-BUG-556-WORKAROUND.md`](bugs/CLI-BUG-556-WORKAROUND.md)
 and [`docs/JUNIE-TOOL-WORKAROUND.md`](JUNIE-TOOL-WORKAROUND.md) for the full
@@ -119,15 +119,15 @@ Two interception points cover all four agents:
 
 ## What gets intercepted
 
-| Trigger | Where | Redirected to | Win |
-|---|---|---|---|
-| ACP `fs/read_text_file` | `AcpToolInterceptor.interceptRead` | MCP `read_file` | Sees unsaved editor edits |
-| ACP `fs/write_text_file` | `AcpToolInterceptor.interceptWrite` | MCP `write_file` | Undo + auto-format + VCS sync |
-| `bash cat <file>` | shim → `/shim-exec` | MCP `read_file` | Editor buffer sync |
-| `bash head [-n N] <file>` | shim → `/shim-exec` | MCP `read_file` (lines 1..N, default 10) | Same |
-| `bash grep -F/-E <pat> [file]`, `egrep`, `fgrep` | shim → `/shim-exec` | MCP `search_text` | Regex + index, POSIX exit codes |
-| `bash rg <pat>` (with `-F`/`-i`/`--glob`) | shim → `/shim-exec` | MCP `search_text` | Same |
-| `bash git status` / `diff` / `log` / `branch` (read-only forms) | shim → `/shim-exec` | MCP `git_*` | Branch context, no shell parse |
+| Trigger                                                         | Where                               | Redirected to                            | Win                             |
+|-----------------------------------------------------------------|-------------------------------------|------------------------------------------|---------------------------------|
+| ACP `fs/read_text_file`                                         | `AcpToolInterceptor.interceptRead`  | MCP `read_file`                          | Sees unsaved editor edits       |
+| ACP `fs/write_text_file`                                        | `AcpToolInterceptor.interceptWrite` | MCP `write_file`                         | Undo + auto-format + VCS sync   |
+| `bash cat <file>`                                               | shim → `/shim-exec`                 | MCP `read_file`                          | Editor buffer sync              |
+| `bash head [-n N] <file>`                                       | shim → `/shim-exec`                 | MCP `read_file` (lines 1..N, default 10) | Same                            |
+| `bash grep -F/-E <pat> [file]`, `egrep`, `fgrep`                | shim → `/shim-exec`                 | MCP `search_text`                        | Regex + index, POSIX exit codes |
+| `bash rg <pat>` (with `-F`/`-i`/`--glob`)                       | shim → `/shim-exec`                 | MCP `search_text`                        | Same                            |
+| `bash git status` / `diff` / `log` / `branch` (read-only forms) | shim → `/shim-exec`                 | MCP `git_*`                              | Branch context, no shell parse  |
 
 The shim handler reuses the same `ShellRedirectPlanner` that previously powered
 the (now-deleted) ACP `terminal/create` path — including all 51 unit tests.
@@ -176,20 +176,23 @@ command live and kill it with the standard stop button.
 
 ## Files
 
-| Path | Role |
-|---|---|
-| `acp/client/intercept/AcpToolInterceptor.java` | Intercepts `fs/read_text_file` and `fs/write_text_file`. Returns `null` on MCP error so the default handler still runs. |
-| `acp/client/intercept/ShellRedirectPlanner.java` | Pure static classifier: `argv → RedirectPlan?`. All per-command flag parsing lives here. Project-free for testability. Reused by both the (historic) ACP path and the new shim. |
-| `acp/client/intercept/RedirectPlan.java` | Immutable record carrying tool name, args, post-processor, and exit-code function. |
-| `acp/client/intercept/ShellCommandSplitter.java` | Argv tokenizer rejecting unsafe metacharacters. Used by tests and as a defensive splitter when ACP only sends `command` (no `args[]`). |
-| `acp/client/intercept/VisibleProcessRunner.java` | Wraps `OSProcessHandler` + `ConsoleViewImpl` for ACP `terminal/create`. |
-| `acp/client/AcpTerminalHandler.java` | Always uses `VisibleProcessRunner` for unredirected `terminal/create`. |
-| `acp/client/AcpClient.java` | Holds the interceptor and calls `installShimEnv()` on every launched agent subprocess. |
-| `shim/ShimManager.java` | `@Service(PROJECT)`. Extracts the shim script under `<systemPath>/agentbridge/shims/<projectHash>/<command>` once per IDE start. Owns the auth token. |
-| `shim/ShimController.java` | `HttpHandler` for `/shim-exec`. Validates token, parses argv, delegates to `ShimRedirector`. |
-| `shim/ShimRedirector.java` | Bridges argv → `ShellRedirectPlanner` → `PsiBridgeService.callTool` → `Result(stdout, exitCode)` or `null` for passthrough. |
-| `services/McpHttpServer.java` | Registers `/shim-exec` next to `/health` on the existing loopback HTTP server. |
-| `resources/agentbridge/shim/agentbridge-shim.sh` | The shim itself. POSIX bash, builtins only, copies into the system path under each command name (cat, grep, …). Falls open on every error. |
+| Path                                                                | Role                                                                                                                                                                            |
+|---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `acp/client/intercept/AcpToolInterceptor.java`                      | Intercepts `fs/read_text_file` and `fs/write_text_file`. Returns `null` on MCP error so the default handler still runs.                                                         |
+| `acp/client/intercept/ShellRedirectPlanner.java`                    | Pure static classifier: `argv → RedirectPlan?`. All per-command flag parsing lives here. Project-free for testability. Reused by both the (historic) ACP path and the new shim. |
+| `acp/client/intercept/RedirectPlan.java`                            | Immutable record carrying tool name, args, post-processor, and exit-code function.                                                                                              |
+| `acp/client/intercept/ShellCommandSplitter.java`                    | Argv tokenizer rejecting unsafe metacharacters. Used by tests and as a defensive splitter when ACP only sends `command` (no `args[]`).                                          |
+| `acp/client/intercept/VisibleProcessRunner.java`                    | Wraps `OSProcessHandler` + `ConsoleViewImpl` for ACP `terminal/create`.                                                                                                         |
+| `acp/client/AcpTerminalHandler.java`                                | Always uses `VisibleProcessRunner` for unredirected `terminal/create`.                                                                                                          |
+| `acp/client/AcpClient.java`                                         | Holds the interceptor and calls `installShimEnv()` on every launched agent subprocess.                                                                                          |
+| `shim/ShimManager.java`                                             | `@Service(PROJECT)`. Extracts the shim script under `<systemPath>/agentbridge/shims/<projectHash>/<command>` once per IDE start. Owns the auth token.                           |
+| `shim/ShimController.java`                                          | `HttpHandler` for `/shim-exec`. Validates token, parses argv, delegates to `ShimRedirector`.                                                                                    |
+| `shim/ShimRedirector.java`                                          | Bridges argv → `ShellRedirectPlanner` → `PsiBridgeService.callTool` → `Result(stdout, exitCode)` or `null` for passthrough.                                                     |
+| `services/McpHttpServer.java`                                       | Registers `/shim-exec` next to `/health` on the existing loopback HTTP server.                                                                                                  |
+| `resources/agentbridge/shim/agentbridge-shim.sh`                    | POSIX bash fallback shim (Linux/macOS dev-time only). Builtins-only, copied per command name.                                                                                   |
+| `resources/agentbridge/shim/bin/<os>-<arch>/agentbridge-shim[.exe]` | Prebuilt cross-platform Go shim binary, six targets. Built reproducibly by `scripts/build-shims.sh`.                                                                            |
+| `shim-src/main.go`                                                  | Source for the Go shim. Same wire protocol as the bash version; CGO-free.                                                                                                       |
+| `scripts/build-shims.sh`                                            | Cross-compiles all six targets with `-trimpath -ldflags="-s -w"`.                                                                                                               |
 
 ## Tests
 
@@ -204,21 +207,35 @@ command live and kill it with the standard stop button.
 * 3 `ShimScriptE2eTest` cases (Linux/macOS) — runs the actual bash shim
   against an in-process HTTP server. Verifies HTTP 200 + `EXIT N\n<stdout>`,
   HTTP 204 passthrough to a fake binary on PATH, and missing-port skip.
-* All 68 intercept + shim + ACP client + terminal-handler tests pass.
+* 3 `ShimNativeBinaryE2eTest` cases (Linux x86_64) — same scenarios against
+  the bundled Go binary. Skipped silently when the binary isn't on the
+  classpath (dev worktrees that haven't run `scripts/build-shims.sh`).
+* 5 `main_test.go` cases (`plugin-core/shim-src/`) — Go-side unit tests for
+  EXIT-frame parsing, PATH stripping, and case-insensitive path comparison
+  on Windows.
+* 2 `ShimManagerPlatformKeyTest` cases — sanity checks on
+  `currentPlatformKey()` matching one of the six (os, arch) pairs we ship.
+* All 76 intercept + shim + ACP client + terminal-handler tests pass.
 
 ---
 
 ## Follow-ups
 
-### A. Cross-platform completion
+### A. Cross-platform completion ✅ shipped
 
-* **macOS** — same bash shim works. Needs codesign + notarize via the
-  JetBrains plugin signing identity in CI.
-* **Windows** — bash shim won't run there; need a real `bash.exe` /
-  `cmd.exe` / `pwsh.exe` shim. Plan: tiny Go program (`main.go` ~150 LOC),
-  cross-compiled per (OS, arch), Authenticode-signed.
+* **macOS** — bundled prebuilt Go binary (darwin-amd64, darwin-arm64). Codesign
+    + notarize via the JetBrains plugin signing identity in CI is still TODO.
+* **Linux** — bundled prebuilt Go binary (linux-amd64, linux-arm64).
+* **Windows** — bundled prebuilt Go binary (windows-amd64, windows-arm64) named
+  with the `.exe` suffix so `cmd.exe` and PowerShell can exec it. Authenticode
+  signing is still TODO.
 * **GraalVM rejected** — well-known false-positive flagging by Windows
-  Defender; binary size 10–15 MB vs 2 MB Go; cold-start 10–50 ms vs ~3 ms.
+  Defender (`Trojan:Win32/Wacatac` heuristic); binary size 10–15 MB vs ~5 MB Go;
+  cold-start 10–50 ms vs ~3 ms.
+* **Build** — `scripts/build-shims.sh` cross-compiles all six targets with
+  `CGO_ENABLED=0 -trimpath -ldflags="-s -w"`. The bash shim is retained as a
+  Linux/macOS dev-time fallback when the prebuilt binary isn't bundled (e.g.
+  developer worktrees that haven't run the build script).
 
 ### B. Expanding the interception surface
 
@@ -288,10 +305,10 @@ either gets the right answer transparently (MCP) or runs visibly in the IDE.
 * Branch: `feat/path-shim-bash` (this work). Original ACP-only attempt:
   `feat/acp-tool-interception-v2` (PR #319).
 * Related docs:
-  * [`docs/bugs/CLI-BUG-556-WORKAROUND.md`](bugs/CLI-BUG-556-WORKAROUND.md)
-  * [`docs/JUNIE-TOOL-WORKAROUND.md`](JUNIE-TOOL-WORKAROUND.md)
-  * [`docs/JUNIE-CLI-TOOL-FILTERING.md`](JUNIE-CLI-TOOL-FILTERING.md)
-  * [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — overall ACP/MCP layering
+    * [`docs/bugs/CLI-BUG-556-WORKAROUND.md`](bugs/CLI-BUG-556-WORKAROUND.md)
+    * [`docs/JUNIE-TOOL-WORKAROUND.md`](JUNIE-TOOL-WORKAROUND.md)
+    * [`docs/JUNIE-CLI-TOOL-FILTERING.md`](JUNIE-CLI-TOOL-FILTERING.md)
+    * [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — overall ACP/MCP layering
 * Upstream issues this sidesteps: copilot-cli
   [#556](https://github.com/github/copilot-cli/issues/556),
   [#1574](https://github.com/github/copilot-cli/issues/1574),
