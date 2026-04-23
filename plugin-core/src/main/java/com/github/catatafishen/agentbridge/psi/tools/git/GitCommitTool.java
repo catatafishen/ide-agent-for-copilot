@@ -232,6 +232,29 @@ public final class GitCommitTool extends GitTool {
         return basePath + "/" + path;
     }
 
+    private static final int PATH_LIST_LIMIT = 10;
+
+    /**
+     * Caps a newline-separated path list so the "nothing to commit" hint stays
+     * readable when a sub-directory like {@code .agent-work/} contains hundreds of
+     * gitignored files. Anything beyond {@value #PATH_LIST_LIMIT} entries is folded
+     * into a single "... and N more files" suffix.
+     */
+    private static String formatPathList(String rawNewlineSeparated) {
+        if (rawNewlineSeparated == null || rawNewlineSeparated.isEmpty()) return "";
+        String[] parts = rawNewlineSeparated.split("\n");
+        if (parts.length <= PATH_LIST_LIMIT) {
+            return String.join(", ", parts);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < PATH_LIST_LIMIT; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(parts[i]);
+        }
+        sb.append(", ... and ").append(parts.length - PATH_LIST_LIMIT).append(" more files");
+        return sb.toString();
+    }
+
     /**
      * Builds a detailed hint for the "nothing to commit" case, listing which paths are
      * unstaged/untracked/ignored so the agent knows exactly what to stage (or force-add).
@@ -253,13 +276,13 @@ public final class GitCommitTool extends GitTool {
 
         hint.append(" Changes exist but were not staged by --all:");
         if (hasUnstaged) {
-            hint.append("\n  Modified (not staged): ").append(unstaged.replace("\n", ", "));
+            hint.append("\n  Modified (not staged): ").append(formatPathList(unstaged));
         }
         if (hasUntracked) {
-            hint.append("\n  Untracked: ").append(untracked.replace("\n", ", "));
+            hint.append("\n  Untracked: ").append(formatPathList(untracked));
         }
         if (hasIgnored) {
-            hint.append("\n  Gitignored: ").append(ignored.replace("\n", ", "))
+            hint.append("\n  Gitignored: ").append(formatPathList(ignored))
                 .append("\n  (ignored files require explicit `git add -f <path>` — git_stage will not force-add them)");
         }
         hint.append("\nUse git_stage with an explicit path to include specific files, "

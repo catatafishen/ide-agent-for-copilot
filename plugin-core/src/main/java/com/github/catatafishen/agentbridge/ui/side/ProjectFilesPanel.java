@@ -367,10 +367,28 @@ final class ProjectFilesPanel extends JPanel {
                 setBackground(null);
                 setForeground(com.intellij.util.ui.UIUtil.getTreeForeground());
             }
-            if (value instanceof DefaultMutableTreeNode node && node.getUserObject() instanceof FileNode fn) {
-                setIcon(fn.icon());
-                setText(fn.label);
-                setToolTipText(fn.relativePath);
+            // Reset font + icon each call — JTree reuses a single renderer instance, so
+            // a section node painted right after a file node must not inherit its bold/dim
+            // styling, and vice versa.
+            setFont(tree.getFont());
+            if (value instanceof DefaultMutableTreeNode node) {
+                Object userObject = node.getUserObject();
+                if (userObject instanceof FileNode fn) {
+                    setIcon(fn.icon());
+                    setText(fn.label);
+                    setToolTipText(fn.relativePath);
+                } else if (userObject instanceof String label) {
+                    // Section header node (e.g. "Shared", "Copilot CLI"): render dim + bold
+                    // with no icon to match the SessionStatsPanel section-header style above.
+                    setIcon(null);
+                    setText(label);
+                    setToolTipText(null);
+                    setFont(tree.getFont().deriveFont(Font.BOLD));
+                    if (!sel) {
+                        setForeground(com.intellij.util.ui.JBUI.CurrentTheme
+                            .Label.disabledForeground());
+                    }
+                }
             }
             return this;
         }

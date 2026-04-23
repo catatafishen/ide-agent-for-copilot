@@ -274,11 +274,29 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
     private JPanel createSectionHeader(JLabel label) {
         label.setFont(smallFont.deriveFont(Font.BOLD));
         label.setForeground(dimColor);
-        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0));
+        JPanel titleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0));
+        titleRow.setOpaque(false);
+        titleRow.setBorder(BorderFactory.createEmptyBorder(
+            JBUI.scale(8), 0, JBUI.scale(2), 0));
+        titleRow.add(label);
+
+        // Hairline separator below the title visually unifies all section headers
+        // across the side panel (Selected client / Active turn / Session / Monthly quota
+        // / Project files) — the same divider treatment makes them read as a single
+        // family of headers regardless of which createSectionHeader variant produced them.
+        JSeparator divider = new JSeparator(SwingConstants.HORIZONTAL);
+        divider.setForeground(JBUI.CurrentTheme.ToolWindow.borderColor());
+        divider.setOpaque(false);
+        divider.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
         header.setOpaque(false);
         header.setBorder(BorderFactory.createEmptyBorder(
-            JBUI.scale(6), 0, JBUI.scale(2), 0));
-        header.add(label);
+            0, JBUI.scale(8), JBUI.scale(2), JBUI.scale(8)));
+        titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        header.add(titleRow);
+        header.add(divider);
         return header;
     }
 
@@ -292,7 +310,14 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         JLabel suffixLabel = new JLabel(suffix);
         suffixLabel.setFont(smallFont);
         suffixLabel.setForeground(dimColor);
-        header.add(suffixLabel);
+        // The header is now a vertical box (title row + divider). The first child
+        // is the title FlowLayout row — append the suffix label there so it appears
+        // inline next to the bold title (matching the original behaviour).
+        if (header.getComponentCount() > 0 && header.getComponent(0) instanceof JPanel titleRow) {
+            titleRow.add(suffixLabel);
+        } else {
+            header.add(suffixLabel);
+        }
         return header;
     }
 
