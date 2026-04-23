@@ -152,14 +152,6 @@ public final class ShimManager implements Disposable {
         return armed.get();
     }
 
-    /**
-     * Lazily extract the shim payload under one path per shimmed command name and
-     * return the directory. Subsequent calls return the cached path.
-     *
-     * <p>Returns {@code null} when extraction fails — the caller (env injection
-     * site in {@code AcpClient}) treats this as "skip the shim" so launches
-     * never break because of a shim install failure.
-     */
     public synchronized Path install() {
         if (shimDir != null) return shimDir;
         try {
@@ -179,6 +171,14 @@ public final class ShimManager implements Disposable {
                 Files.write(target, payload.bytes());
                 if (payload.executable()) makeExecutable(target);
             }
+
+            // Install a launcher wrapper next to the shims. It prepends our
+            // shim dir to PATH at exec-time and execs the real agent binary.
+            // We launch this wrapper instead of the agent directly so the
+            // agent's child processes inherit a PATH that has the shim dir
+            // first — without us having to mutate PATH in our own
+            // ProcessBuilder (which is unreliable in the IDE JVM).
+            installLauncherWrapper(dir);
 
             shimDir = dir;
             LOG.info("Installed " + SHIMMED_COMMANDS.size() + " command shims under "
@@ -286,6 +286,64 @@ public final class ShimManager implements Disposable {
         }
     }
 
+    /**
+     * The launcher wrapper filename. Lives next to the shim binaries inside
+     * the per-project shim dir.
+     */
+    private static @NotNull String launcherFilename() {
+        return SystemInfo.isWindows ? "agentbridge-launcher.cmd" : "agentbridge-launcher.sh";
+    }
+
+    /**
+     * Absolute path to the launcher wrapper for the current project, or
+     * {@code null} if the shim dir hasn't been installed yet.
+     */
+    public @Nullable Path getLauncherPath() {
+        Path dir = shimDir;
+        if (dir == null) return null;
+        return dir.resolve(launcherFilename());
+    }
+
+    /**
+     * Write the OS-appropriate launcher wrapper into the shim dir. The wrapper:
+     * <ul>
+     *   <li>prepends {@code $AGENTBRIDGE_SHIM_DIR} to {@code PATH} (the agent
+     *       process inherits the modified env automatically), then</li>
+     *   <li>{@code exec}s the original agent command with all its arguments.</li>
+     * </ul>
+     *
+     * <p>This indirection exists because {@code ProcessBuilder.environment()
+     * .put("PATH", ...)} is unreliable when called from the IntelliJ JVM —
+     * AGENTBRIDGE_* env vars set the same way DO propagate, but PATH
+     * mutations sometimes don't end up in the child's {@code /proc/PID/environ}.
+     * Setting PATH inside a real shell at exec-time bypasses whatever
+     * filtering is happening in the JVM-to-execve() boundary.
+     */
+    private void installLauncherWrapper(@NotNull Path dir) throws IOException {
+        Path launcher = dir.resolve(launcherFilename());
+        String content;
+        if (SystemInfo.isWindows) {
+            content = """
+                @echo off
+                REM AgentBridge launcher: prepend shim dir to PATH at exec-time.
+                if defined AGENTBRIDGE_SHIM_DIR set "PATH=%AGENTBRIDGE_SHIM_DIR%;%PATH%"
+                %*
+                """;
+        } else {
+            content = """
+                #!/bin/sh
+                # AgentBridge launcher: prepend shim dir to PATH at exec-time.
+                if [ -n "${AGENTBRIDGE_SHIM_DIR:-}" ]; then
+                  PATH="${AGENTBRIDGE_SHIM_DIR}:${PATH}"
+                  export PATH
+                fi
+                exec "$@"
+                """;
+        }
+        Files.writeString(launcher, content);
+        makeExecutable(launcher);
+    }
+
     @Override
     public void dispose() {
         Path dir = shimDir;
@@ -302,17 +360,16 @@ public final class ShimManager implements Disposable {
         }
     }
 
-    /**
-     * Returned by {@link #snapshot()} — convenience for the launch-time env injection
-     * to avoid two getters.
-     */
-    public record EnvSnapshot(@NotNull Path shimDir, @NotNull String token, @NotNull Set<String> commands) {
+    public record EnvSnapshot(@NotNull Path shimDir, @NotNull Path launcherPath,
+                              @NotNull String token, @NotNull Set<String> commands) {
     }
 
     public EnvSnapshot snapshot() {
         Path dir = install();
         if (dir == null) return null;
-        return new EnvSnapshot(dir, token, Set.copyOf(SHIMMED_COMMANDS));
+        Path launcher = getLauncherPath();
+        if (launcher == null) return null;
+        return new EnvSnapshot(dir, launcher, token, Set.copyOf(SHIMMED_COMMANDS));
     }
 
     /**

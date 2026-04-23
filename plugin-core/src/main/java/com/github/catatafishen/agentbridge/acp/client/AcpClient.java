@@ -42,6 +42,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -1094,7 +1096,13 @@ public abstract class AcpClient extends AbstractAgentClient {
         // absolute path, the binary genuinely isn't installed.
         validateResolvedBinary(resolvedCommand.getFirst(), displayName());
 
-        ProcessBuilder pb = new ProcessBuilder(resolvedCommand);
+        // Wrap the resolved command in the shim launcher so the agent's
+        // child processes (bash → cat/grep/git/...) inherit a PATH that has
+        // our shim dir prepended at exec-time. See installShimEnv() for why
+        // we don't set PATH directly on the ProcessBuilder.
+        List<String> launchCommand = wrapInShimLauncher(resolvedCommand);
+
+        ProcessBuilder pb = new ProcessBuilder(launchCommand);
         pb.directory(new File(cwd));
         pb.redirectErrorStream(false);
 
@@ -1121,12 +1129,6 @@ public abstract class AcpClient extends AbstractAgentClient {
         return process;
     }
 
-    /**
-     * Prepend the shim directory to {@code PATH} on the given {@link ProcessBuilder}
-     * and inject the {@code AGENTBRIDGE_SHIM_PORT}/{@code AGENTBRIDGE_SHIM_TOKEN}
-     * env vars the shim script reads. No-op when shim install fails — the agent
-     * launch must always succeed even if interception is unavailable.
-     */
     private void installShimEnv(@NotNull ProcessBuilder pb, int mcpPort) {
         try {
             com.github.catatafishen.agentbridge.shim.ShimManager.EnvSnapshot snap =
@@ -1136,12 +1138,47 @@ public abstract class AcpClient extends AbstractAgentClient {
             String currentPath = pb.environment().getOrDefault("PATH", "");
             String newPath = currentPath.isEmpty() ? shimDir : shimDir + File.pathSeparator + currentPath;
             pb.environment().put("PATH", newPath);
+            // Set the shim dir as a dedicated env var the launcher wrapper
+            // reads. This is the actual mechanism that gets shim dir into
+            // the agent's PATH — direct ProcessBuilder PATH mutation is
+            // unreliable on the IDE JVM (AGENTBRIDGE_* vars propagate, but
+            // PATH changes sometimes don't make it into the child's
+            // /proc/PID/environ). The launcher wrapper does
+            // `PATH="$AGENTBRIDGE_SHIM_DIR:$PATH"; exec "$@"` at exec-time.
+            pb.environment().put("AGENTBRIDGE_SHIM_DIR", shimDir);
             pb.environment().put("AGENTBRIDGE_SHIM_PORT", Integer.toString(mcpPort));
             pb.environment().put("AGENTBRIDGE_SHIM_TOKEN", snap.token());
             LOG.info("Shim env injected for " + displayName() + ": dir=" + shimDir
                 + " port=" + mcpPort + " commands=" + snap.commands());
         } catch (Exception e) {
             LOG.warn("Failed to install shim env for " + displayName() + " — continuing without interception", e);
+        }
+    }
+
+    /**
+     * Prepend the shim launcher wrapper to the resolved command, so the
+     * agent process is launched as {@code launcher.sh agent --acp ...}.
+     * The launcher reads {@code $AGENTBRIDGE_SHIM_DIR} (set by
+     * {@link #installShimEnv}), prepends it to PATH, and execs the agent.
+     *
+     * <p>Falls open: if the shim isn't available (no snapshot, missing
+     * launcher file), returns the resolved command unchanged so the
+     * launch still succeeds without interception.
+     */
+    private @NotNull List<String> wrapInShimLauncher(@NotNull List<String> resolvedCommand) {
+        try {
+            com.github.catatafishen.agentbridge.shim.ShimManager.EnvSnapshot snap =
+                com.github.catatafishen.agentbridge.shim.ShimManager.getInstance(project).snapshot();
+            if (snap == null) return resolvedCommand;
+            Path launcher = snap.launcherPath();
+            if (!Files.isExecutable(launcher)) return resolvedCommand;
+            List<String> wrapped = new ArrayList<>(resolvedCommand.size() + 1);
+            wrapped.add(launcher.toString());
+            wrapped.addAll(resolvedCommand);
+            return wrapped;
+        } catch (Exception e) {
+            LOG.warn("Failed to wrap " + displayName() + " in shim launcher — running unintercepted", e);
+            return resolvedCommand;
         }
     }
 
