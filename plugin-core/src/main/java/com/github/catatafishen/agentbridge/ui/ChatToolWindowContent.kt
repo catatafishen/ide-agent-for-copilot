@@ -703,34 +703,11 @@ class ChatToolWindowContent(
         statusBanner = sb
         northStack.add(sb)
 
-        // Rounded border makes the chat area a distinct panel matching the side panel and input row,
-        // styled like the IDE's own tool-window frames.
-        // Custom border with 0 bottom inset: the rounded rect is drawn taller than the component so
-        // the bottom arc is clipped away, leaving only top, left, and right sides visible. This
-        // eliminates the 1px gap that RoundedLineBorder's bottom inset would otherwise create between
-        // the chat output and the input box.
-        responsePanelContainer.border = JBUI.Borders.compound(
-            JBUI.Borders.empty(4, 4, 0, 4),
-            object : javax.swing.border.AbstractBorder() {
-                override fun getBorderInsets(c: Component, insets: Insets): Insets {
-                    insets.set(1, 1, 0, 1)
-                    return insets
-                }
-
-                override fun paintBorder(c: Component, g: Graphics, x: Int, y: Int, width: Int, height: Int) {
-                    val g2 = g.create() as Graphics2D
-                    try {
-                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-                        g2.color = JBUI.CurrentTheme.ToolWindow.borderColor()
-                        val arc = JBUI.scale(8)
-                        // Extend height by arc so the bottom arc falls outside the clip and is not painted.
-                        g2.drawRoundRect(x, y, width - 1, height - 1 + arc, arc, arc)
-                    } finally {
-                        g2.dispose()
-                    }
-                }
-            }
-        )
+        // Edge-to-edge chat panel: no outer margin and no rounded frame so the JCEF
+        // browser fills the entire tool-window width and its scrollbar can sit flush
+        // against the right edge (chat-container's CSS drops right padding to match).
+        // The input frame below provides its own rounded styling for visual grouping.
+        responsePanelContainer.border = JBUI.Borders.empty()
 
         consolePanel.onStatusMessage = { type, message ->
             when (type) {
@@ -767,7 +744,12 @@ class ChatToolWindowContent(
                     val dividerX = insets.left + sideRailWidth()
                     if (dividerX > insets.left && dividerX < width - insets.right) {
                         g2.color = JBUI.CurrentTheme.ToolWindow.borderColor()
-                        g2.drawLine(dividerX, insets.top + JBUI.scale(2), dividerX, height - insets.bottom - JBUI.scale(2))
+                        g2.drawLine(
+                            dividerX,
+                            insets.top + JBUI.scale(2),
+                            dividerX,
+                            height - insets.bottom - JBUI.scale(2)
+                        )
                     }
                     // Use the component border color (typically ~#ADADAD light / #5A5D63 dark),
                     // which is more visible than the tool-window separator color.
@@ -792,11 +774,14 @@ class ChatToolWindowContent(
 
         val bottomSection = JBPanel<JBPanel<*>>(BorderLayout())
         bottomSection.isOpaque = false
-        // 12px side padding aligns the input-frame edges with the chat-message
-        // bubbles above (responsePanelContainer's 4px outer margin + chat-container's
-        // 8px CSS padding = 12px from the tool-window edge). 2px bottom keeps the
-        // frame close to the tool-window bottom without touching the IDE status bar.
-        bottomSection.border = JBUI.Borders.empty(0, 12, 2, 12)
+        // 8px left padding aligns the input-frame edge with the chat-message bubbles
+        // above (chat-container's 8px CSS left padding = 8px from the tool-window edge).
+        // The right side keeps an 8px gap too — the chat scrollbar sits flush against
+        // the tool-window right edge, but symmetric padding here prevents the input
+        // frame from overlapping that vertical scrollbar lane visually.
+        // 2px bottom keeps the frame close to the tool-window bottom without touching
+        // the IDE status bar.
+        bottomSection.border = JBUI.Borders.empty(0, 8, 2, 8)
         bottomSection.add(inputSection, BorderLayout.CENTER)
 
         // Drag-to-resize: the user drags the top border of inputSection to adjust the split.

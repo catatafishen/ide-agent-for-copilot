@@ -576,6 +576,43 @@ public class GitToolsTest extends BasePlatformTestCase {
             result.contains("Untracked") && result.contains("new-untracked.txt"));
     }
 
+    /**
+     * When a directory like {@code .agent-work/} contains hundreds of gitignored
+     * files, the "nothing to commit" hint must truncate the listing instead of
+     * dumping every path. Verifies the cap kicks in at PATH_LIST_LIMIT (10) entries
+     * and the overflow is summarised as "... and N more files".
+     */
+    public void testGitCommitHintTruncatesLongIgnoredList() throws Exception {
+        // Add an entry to .gitignore so we can create many tracked-as-ignored files.
+        Path gitignore = Path.of(basePath, ".gitignore");
+        String existing = Files.exists(gitignore) ? Files.readString(gitignore) : "";
+        Files.writeString(gitignore, existing + "\nignored-dir/\n");
+        // Stage and commit the .gitignore update so the dir creation that follows
+        // is the only "untracked + ignored" change in the working tree.
+        Path ignoredDir = Path.of(basePath, "ignored-dir");
+        Files.createDirectories(ignoredDir);
+        // 25 ignored files — well above the cap of 10.
+        for (int i = 0; i < 25; i++) {
+            Files.writeString(ignoredDir.resolve("file" + i + ".txt"), "ignored " + i + "\n");
+        }
+
+        GitCommitTool tool = new GitCommitTool(getProject());
+        String result = tool.execute(args("message", "test: must not be committed", "all", "false"));
+
+        assertNotNull(result);
+        assertTrue("Expected 'nothing to commit' error, got: " + result,
+            result.startsWith("Error: nothing to commit."));
+        // The truncation suffix must appear, naming exactly the overflow count (15 = 25 - 10).
+        assertTrue("Hint must truncate long lists with '... and N more files', got: " + result,
+            result.contains("... and 15 more files"));
+        // First entry must still appear (proves we kept the head, not just the tail).
+        assertTrue("First ignored entry must appear in the truncated head, got: " + result,
+            result.contains("ignored-dir/file0.txt"));
+        // The full list of 25 must NOT all appear — verify a late entry got dropped.
+        assertFalse("Late entry must have been truncated, got: " + result,
+            result.contains("ignored-dir/file24.txt"));
+    }
+
     // ── GitLogTool — additional format/filter tests ───────────────────────────────
 
     /**
