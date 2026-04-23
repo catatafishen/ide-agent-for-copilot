@@ -74,6 +74,12 @@ public final class ShimController implements HttpHandler {
             }
             String cwd = parseField(form, "cwd");
 
+            if (!ShimManager.getInstance(project).isArmed()) {
+                LOG.info("shim-exec passthrough (not armed): " + String.join(" ", argv));
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
             ShimRedirector.Result result = new ShimRedirector(project).tryRedirect(argv, cwd);
             if (result == null) {
                 exchange.sendResponseHeaders(204, -1);

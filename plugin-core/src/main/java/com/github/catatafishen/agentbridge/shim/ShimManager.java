@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 /**
@@ -104,6 +105,16 @@ public final class ShimManager implements Disposable {
     private final @NotNull Project project;
     private final @NotNull String token = UUID.randomUUID().toString().replace("-", "");
 
+    /**
+     * When {@code false} (the default), the shim controller returns 204
+     * (passthrough) for every request — the real binary runs in-process.
+     * Set to {@code true} by {@link #arm()} after the ACP client has
+     * completed initialization, so shim calls during agent startup
+     * (e.g. Copilot spawning {@code node} to bootstrap itself) are never
+     * intercepted.
+     */
+    private final AtomicBoolean armed = new AtomicBoolean(false);
+
     private volatile Path shimDir;
 
     public ShimManager(@NotNull Project project) {
@@ -112,6 +123,33 @@ public final class ShimManager implements Disposable {
 
     public static @NotNull ShimManager getInstance(@NotNull Project project) {
         return project.getService(ShimManager.class);
+    }
+
+    /**
+     * Arm the shim — after this call, shim requests are routed through
+     * {@link ShimRedirector} instead of passing through to the real binary.
+     * Called by {@code AcpClient} after successful initialization.
+     */
+    public void arm() {
+        armed.set(true);
+        LOG.info("Shim armed — intercepting commands");
+    }
+
+    /**
+     * Disarm the shim — all shim requests pass through to the real binary.
+     * Called by {@code AcpClient} at the start of {@code start()} and on
+     * {@code stop()}, so agent startup/shutdown commands are never intercepted.
+     */
+    public void disarm() {
+        armed.set(false);
+        LOG.info("Shim disarmed — passthrough mode");
+    }
+
+    /**
+     * @return {@code true} if the shim is armed and should intercept commands.
+     */
+    public boolean isArmed() {
+        return armed.get();
     }
 
     /**

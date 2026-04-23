@@ -185,6 +185,7 @@ public abstract class AcpClient extends AbstractAgentClient {
     public final void start() throws AgentStartException {
         try {
             LOG.info(displayName() + " starting...");
+            com.github.catatafishen.agentbridge.shim.ShimManager.getInstance(project).disarm();
             int mcpPort = resolveMcpPort();
             LOG.info(displayName() + " launching process (MCP port: " + mcpPort + ")");
             agentProcess = launchProcess(mcpPort);
@@ -204,6 +205,7 @@ public abstract class AcpClient extends AbstractAgentClient {
                 LOG.warn(displayName() + " initialization failed: " + e.getMessage(), e);
                 throw e;
             }
+            com.github.catatafishen.agentbridge.shim.ShimManager.getInstance(project).arm();
             LOG.info(displayName() + " initialized, authenticating");
             try {
                 authenticate();
@@ -291,6 +293,7 @@ public abstract class AcpClient extends AbstractAgentClient {
 
     @Override
     public final void stop() {
+        com.github.catatafishen.agentbridge.shim.ShimManager.getInstance(project).disarm();
         try {
             transport.stop();
         } catch (Exception e) {

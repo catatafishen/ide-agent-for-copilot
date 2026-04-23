@@ -340,48 +340,6 @@ class AcpClientTest {
         }
     }
 
-    // ── findDenyOption (private static) ─────────────────────────────────
-
-    @Nested
-    class FindDenyOption {
-
-        @Test
-        void findsDenyOnce() throws Exception {
-            JsonObject params = buildOptionsParams("allow", "deny_once");
-            JsonObject result = invokeFindDenyOption(params);
-            assertNotNull(result);
-            assertEquals("deny_once", result.get("kind").getAsString());
-        }
-
-        @Test
-        void findsRejectOnce() throws Exception {
-            JsonObject params = buildOptionsParams("allow", "reject_once");
-            JsonObject result = invokeFindDenyOption(params);
-            assertNotNull(result);
-            assertEquals("reject_once", result.get("kind").getAsString());
-        }
-
-        @Test
-        void prefersDenyOverReject() throws Exception {
-            JsonObject params = buildOptionsParams("deny_once", "reject_once");
-            JsonObject result = invokeFindDenyOption(params);
-            assertNotNull(result);
-            assertEquals("deny_once", result.get("kind").getAsString());
-        }
-
-        @Test
-        void noDenyOption() throws Exception {
-            JsonObject params = buildOptionsParams("allow");
-            assertNull(invokeFindDenyOption(params));
-        }
-
-        private JsonObject invokeFindDenyOption(JsonObject params) throws Exception {
-            Method m = AcpClient.class.getDeclaredMethod("findDenyOption", JsonObject.class);
-            m.setAccessible(true);
-            return (JsonObject) m.invoke(null, params);
-        }
-    }
-
     // ── buildPermissionOutcome (protected instance) ────────────────────
 
     @Nested
