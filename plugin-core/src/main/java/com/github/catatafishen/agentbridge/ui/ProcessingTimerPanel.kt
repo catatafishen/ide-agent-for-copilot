@@ -48,6 +48,11 @@ internal class ProcessingTimerPanel(
     private var turnInputTokens = 0
     private var turnOutputTokens = 0
     private var turnCostUsd: Double? = null
+
+    // Snapshot of the most recently completed turn — kept so the side-panel "Last turn" section
+    // can stay populated between turns. The per-turn mutable fields above are reset on the next
+    // start(); this field captures the final elapsed time at stop() so the display doesn't lose it.
+    private var lastTurnElapsedSec = 0L
     private var sessionTotalInputTokens = 0L
     private var sessionTotalOutputTokens = 0L
     private var sessionTotalCostUsd = 0.0
@@ -137,6 +142,7 @@ internal class ProcessingTimerPanel(
     fun stop() {
         ticker.stop()
         isRunning = false
+        lastTurnElapsedSec = (System.currentTimeMillis() - startedAt) / 1000
         sessionTotalTimeMs += System.currentTimeMillis() - startedAt
         sessionTotalToolCalls += toolCallCount
         sessionTotalAddedLines += addedLineCount
@@ -168,7 +174,16 @@ internal class ProcessingTimerPanel(
         sessionTotalInputTokens = 0L
         sessionTotalOutputTokens = 0L
         sessionTotalCostUsd = 0.0
+        // Also clear the "Last turn" snapshot so a fresh session shows no stale per-turn data.
+        toolCallCount = 0
+        addedLineCount = 0
+        removedLineCount = 0
+        turnInputTokens = 0
+        turnOutputTokens = 0
+        turnCostUsd = null
+        lastTurnElapsedSec = 0L
         displayMode = modeTurn
+        refreshDisplay()
     }
 
     fun restoreSessionStats(
@@ -184,6 +199,25 @@ internal class ProcessingTimerPanel(
         sessionTotalAddedLines = totalLinesAdded
         sessionTotalRemovedLines = totalLinesRemoved
         sessionTurnCount = turnCount
+        refreshDisplay()
+    }
+
+    /**
+     * Restores the most-recent-turn snapshot after a session reload, so the Session tab's
+     * "Last turn" section shows the user's last prompt cost/usage without waiting for the
+     * next turn. Distinct from [restoreSessionStats] which restores cumulative totals.
+     */
+    fun restoreLastTurnStats(
+        elapsedSec: Long, inputTokens: Int, outputTokens: Int, costUsd: Double?,
+        toolCalls: Int, linesAdded: Int, linesRemoved: Int
+    ) {
+        lastTurnElapsedSec = elapsedSec
+        turnInputTokens = inputTokens
+        turnOutputTokens = outputTokens
+        turnCostUsd = costUsd
+        toolCallCount = toolCalls
+        addedLineCount = linesAdded
+        removedLineCount = linesRemoved
         refreshDisplay()
     }
 
@@ -290,13 +324,13 @@ internal class ProcessingTimerPanel(
         val totalTurns = sessionTurnCount + if (isRunning) 1 else 0
         return SessionStatsSnapshot(
             isRunning = isRunning,
-            turnElapsedSec = if (isRunning) (System.currentTimeMillis() - startedAt) / 1000 else 0,
-            turnToolCalls = if (isRunning) toolCallCount else 0,
-            turnLinesAdded = if (isRunning) addedLineCount else 0,
-            turnLinesRemoved = if (isRunning) removedLineCount else 0,
-            turnInputTokens = if (isRunning) turnInputTokens else 0,
-            turnOutputTokens = if (isRunning) turnOutputTokens else 0,
-            turnCostUsd = if (isRunning) turnCostUsd else null,
+            turnElapsedSec = if (isRunning) (System.currentTimeMillis() - startedAt) / 1000 else lastTurnElapsedSec,
+            turnToolCalls = toolCallCount,
+            turnLinesAdded = addedLineCount,
+            turnLinesRemoved = removedLineCount,
+            turnInputTokens = turnInputTokens,
+            turnOutputTokens = turnOutputTokens,
+            turnCostUsd = turnCostUsd,
             sessionTotalTimeSec = totalMs / 1000,
             sessionTurnCount = totalTurns,
             sessionToolCalls = totalTools,
