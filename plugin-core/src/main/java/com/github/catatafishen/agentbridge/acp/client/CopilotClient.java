@@ -97,14 +97,14 @@ public final class CopilotClient extends AcpClient {
     private static final List<String> WEB_TOOLS = List.of("web_fetch", "web_search");
 
     /**
-     * Copilot CLI built-in tools to exclude via {@code --excluded-tools}.
-     * These overlap with (or duplicate) our agentbridge MCP tools and would confuse the model.
+     * Copilot CLI built-in tools that overlap with (or duplicate) our agentbridge MCP tools.
      * <p>
-     * NOTE: {@code --excluded-tools} is currently ignored in ACP mode (bug #556). The flag is
-     * passed anyway so it takes effect once the bug is fixed upstream.
+     * Passed as both {@code --deny-tool} (working permission denial in ACP mode today) and
+     * {@code --excluded-tools} (hides tools from the model entirely, currently ignored in ACP
+     * mode due to upstream bug #556 — takes effect once fixed).
      */
-    private static final String EXCLUDED_BUILTIN_TOOLS =
-        "view,edit,create,bash,glob,grep,task,report_intent";
+    private static final List<String> BUILTIN_TOOLS_TO_SUPPRESS =
+        List.of("view", "edit", "create", "bash", "glob", "grep", "task", "report_intent");
 
     /**
      * Tracks built-in tools that were auto-approved but should have used MCP alternatives.
@@ -181,9 +181,16 @@ public final class CopilotClient extends AcpClient {
         List<String> cmd = new java.util.ArrayList<>(List.of(
             AGENT_ID, "--acp", "--stdio",
             "--disable-builtin-mcps",
-            "--no-auto-update",
-            "--excluded-tools", EXCLUDED_BUILTIN_TOOLS
+            "--no-auto-update"
         ));
+        // Deny these tools at the permission level (works in ACP mode today).
+        // --excluded-tools would be cleaner (hides from model entirely) but is currently
+        // ignored in ACP mode — see upstream bug report copilot-cli#<N>.
+        cmd.add("--deny-tool");
+        cmd.addAll(BUILTIN_TOOLS_TO_SUPPRESS);
+        // Pass --excluded-tools too so they're hidden from the model once the bug is fixed.
+        cmd.add("--excluded-tools");
+        cmd.addAll(BUILTIN_TOOLS_TO_SUPPRESS);
         if (agentSlug != null && !agentSlug.isEmpty()) {
             cmd.add("--agent");
             cmd.add(agentSlug);
