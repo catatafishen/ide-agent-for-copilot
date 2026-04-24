@@ -1581,10 +1581,12 @@ public abstract class AcpClient extends AbstractAgentClient {
             chosenOption = handleBlockedTool(toolId, toolCallId, params);
         } else if (isBuiltInTool(protocolTitle)) {
             if (isAllowedBuiltInTool(toolId)) {
-                LOG.info(displayName() + ": auto-approving built-in web tool '" + toolId + "' — no MCP alternative exists");
+                LOG.info(displayName() + ": auto-approving built-in web tool '" + toolId + "'");
             } else {
-                LOG.warn(displayName() + ": auto-approving built-in tool '" + toolId
-                    + "' — should use MCP tools instead");
+                // Unexpected built-in: --deny-tool should have blocked these at the CLI level.
+                // Approve anyway but track it so a reprimand can be injected next turn.
+                LOG.warn(displayName() + ": unexpected built-in tool '" + toolId
+                    + "' reached permission handler — should have been blocked by --deny-tool");
                 onBuiltInToolApproved(toolId, false);
             }
             chosenOption = findOptionByKind(params, VALUE_ALLOW_ONCE);
@@ -1592,7 +1594,7 @@ public abstract class AcpClient extends AbstractAgentClient {
                 chosenOption = findFirstOption(params);
             }
         } else {
-            LOG.info(displayName() + ": auto-approving MCP tool '" + toolId + "' at ACP level (MCP server will check permissions)");
+            LOG.info(displayName() + ": auto-approving MCP tool '" + toolId + "'");
             chosenOption = findOptionByKind(params, VALUE_ALLOW_ONCE);
             if (chosenOption == null) {
                 chosenOption = findFirstOption(params);
@@ -1652,20 +1654,6 @@ public abstract class AcpClient extends AbstractAgentClient {
 
     static boolean isAllowedBuiltInTool(@NotNull String toolId) {
         return ALLOWED_BUILT_IN_TOOLS.contains(toolId.toLowerCase());
-    }
-
-    static boolean shouldAutoDenyBuiltInTool(@NotNull String toolId) {
-        if (isMcpResourceTool(toolId)) {
-            return false;
-        }
-        if (toolId.startsWith("agentbridge-")
-            || toolId.startsWith("agentbridge_")
-            || toolId.startsWith("Tool: agentbridge/")
-            || toolId.startsWith("Running: @agentbridge/")
-            || toolId.startsWith("@agentbridge/")) {
-            return false;
-        }
-        return !toolId.contains("/") && !toolId.contains("@") && !isAllowedBuiltInTool(toolId);
     }
 
     private static boolean isMcpResourceTool(@NotNull String toolId) {

@@ -19,12 +19,9 @@ class AcpPermissionPolicyTest {
     }
 
     @Test
-    void onlyNonWebBuiltInsAreAutoDenied() {
-        assertTrue(AcpClient.shouldAutoDenyBuiltInTool("edit"));
-        assertTrue(AcpClient.shouldAutoDenyBuiltInTool("view"));
-        assertTrue(AcpClient.shouldAutoDenyBuiltInTool("bash"));
-        assertFalse(AcpClient.shouldAutoDenyBuiltInTool("web_fetch"));
-        assertFalse(AcpClient.shouldAutoDenyBuiltInTool("web_search"));
-        assertFalse(AcpClient.shouldAutoDenyBuiltInTool("agentbridge-read_file"));
+    void editViewBashAreNotAllowedBuiltIns() {
+        assertFalse(AcpClient.isAllowedBuiltInTool("edit"));
+        assertFalse(AcpClient.isAllowedBuiltInTool("view"));
+        assertFalse(AcpClient.isAllowedBuiltInTool("bash"));
     }
 }
