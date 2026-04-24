@@ -649,6 +649,7 @@ class PromptOrchestrator(
         val autoDenied = update.autoDenied()
         val denialReason = update.denialReason()
         val arguments = update.arguments() // raw arguments from tool_call_update
+        val kind = update.kind()?.value() // tool kind from tool_call_update (may be null)
 
         // Store arguments for potential re-correlation
         if (arguments != null) {
@@ -686,7 +687,7 @@ class PromptOrchestrator(
                 result = result, description = description,
                 isSubAgent = isSubAgent, isInternal = isInternal,
                 autoDenied = autoDenied, denialReason = denialReason,
-                arguments = arguments, title = callType
+                arguments = arguments, title = callType, kind = kind
             )
         )
 
@@ -699,7 +700,7 @@ class PromptOrchestrator(
         val result: String?, val description: String?,
         val isSubAgent: Boolean, val isInternal: Boolean,
         val autoDenied: Boolean = false, val denialReason: String? = null,
-        val arguments: String? = null, val title: String? = null
+        val arguments: String? = null, val title: String? = null, val kind: String? = null
     )
 
     private fun updateToolCallUi(toolCallId: String, uiStatus: String, update: ToolCallUiUpdate) {
@@ -746,7 +747,8 @@ class PromptOrchestrator(
                     autoDenied = update.autoDenied,
                     denialReason = update.denialReason,
                     arguments = update.arguments,
-                    title = update.title
+                    title = update.title,
+                    kind = update.kind
                 )
             )
         }

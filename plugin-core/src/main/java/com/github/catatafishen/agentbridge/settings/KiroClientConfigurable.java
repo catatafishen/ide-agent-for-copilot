@@ -22,7 +22,7 @@ import java.awt.*;
 
 public final class KiroClientConfigurable implements Configurable {
 
-    public static final int DEFAULT_CONTEXT_LIMIT_CHARS = 600_000;
+    public static final int DEFAULT_CONTEXT_LIMIT_CHARS = 300_000;
 
     private static final String AGENT_ID = "kiro";
 
@@ -56,7 +56,7 @@ public final class KiroClientConfigurable implements Configurable {
             0, 2_000_000, 50_000));
         contextLimitSpinner.setToolTipText(
             "<html>Maximum characters of conversation history exported to Kiro's session file.<br>"
-                + "0 = unlimited. Reduce if Kiro reports context overflow. Default: 600 000.</html>");
+                + "0 = unlimited. Reduce if Kiro reports context overflow. Default: 300 000.</html>");
 
         HyperlinkLabel docsLink = new HyperlinkLabel("Kiro CLI documentation at kiro.dev/docs/cli/acp");
         docsLink.setHyperlinkTarget("https://kiro.dev/docs/cli/acp/");
