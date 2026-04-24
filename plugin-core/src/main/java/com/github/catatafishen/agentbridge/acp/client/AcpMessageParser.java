@@ -162,6 +162,11 @@ class AcpMessageParser {
             status = SessionUpdate.ToolCallStatus.fromString(params.get(KEY_STATUS).getAsString());
         }
 
+        SessionUpdate.ToolKind kind = null;
+        if (params.has("kind")) {
+            kind = SessionUpdate.ToolKind.fromString(params.get("kind").getAsString());
+        }
+
         String error = params.has("error") ? params.get("error").getAsString() : null;
         String description = params.has(KEY_DESCRIPTION) ? params.get(KEY_DESCRIPTION).getAsString() : null;
         String result = extractResultText(params);
@@ -172,7 +177,7 @@ class AcpMessageParser {
             arguments = params.get(KEY_RAW_INPUT).getAsJsonObject().toString();
         }
 
-        return new SessionUpdate.ToolCallUpdate(toolCallId, status, result, error, description, false, null, arguments);
+        return new SessionUpdate.ToolCallUpdate(toolCallId, status, result, error, description, false, null, arguments, kind);
     }
 
     private @Nullable String extractResultText(JsonObject params) {
