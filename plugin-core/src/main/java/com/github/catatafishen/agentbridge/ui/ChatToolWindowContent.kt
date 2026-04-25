@@ -90,9 +90,6 @@ class ChatToolWindowContent(
     private var restartSessionGroup: RestartSessionGroup? = null
     private lateinit var promptTextArea: EditorTextField
     private lateinit var shortcutHintPanel: PromptShortcutHintPanel
-    private lateinit var shortcutHintBar: JPanel
-    private lateinit var shortcutHintRightGroup: JPanel
-    private lateinit var modelToolbarComponent: JComponent
     private val queuedTexts = ArrayDeque<String>()
 
     @Volatile
@@ -965,43 +962,28 @@ class ChatToolWindowContent(
         innerInputToolbar.isReservePlaceAutoPopupIcon = false
         innerInputToolbar.component.isOpaque = false
 
-        // Right-side group: model selector + Send button. Uses BoxLayout(X_AXIS) instead of
-        // FlowLayout to prevent wrapping — FlowLayout wraps to a second row when the bar is
-        // very narrow, which pushes the send button below the visible area. BoxLayout clips
-        // instead of wrapping, and our visibility logic hides lower-priority components before
-        // any clipping occurs (send button always stays visible).
-        val rightGroup = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.X_AXIS)
-            isOpaque = false
-        }
-        modelToolbarComponent = modelToolbar.component
-        rightGroup.add(modelToolbar.component)
-        rightGroup.add(Box.createHorizontalStrut(JBUI.scale(2)))
-        rightGroup.add(innerInputToolbar.component)
+        // Right-side group: model selector and Send button. BorderLayout gives the send
+        // button (EAST) its preferred width always; the model selector (CENTER) clips
+        // naturally when space is tight, ensuring send is never pushed off-screen.
+        val rightGroup = JPanel(BorderLayout(JBUI.scale(2), 0)).apply { isOpaque = false }
+        rightGroup.add(modelToolbar.component, BorderLayout.CENTER)
+        rightGroup.add(innerInputToolbar.component, BorderLayout.EAST)
 
-        // Layout strategy: GridBagLayout with two cells.
-        //   cell 0: shortcutHintPanel    weightx=1.0  anchor=CENTER  fill=NONE
-        //   cell 1: rightGroup           weightx=0.0  anchor=EAST    fill=NONE
-        //
-        // GridBagLayout sizes the row to the tallest child's preferred height, then
-        // positions every cell's component using its anchor *within that row height*.
-        // Both CENTER and EAST anchors are vertically centered, so all three groups
-        // (hints, model toolbar, send button) land on the same horizontal midline
-        // regardless of their individual heights — solving the alignment problem that
-        // BorderLayout+FlowLayout and BoxLayout+alignmentY both failed to solve.
-        // weightx=1.0 on cell 0 absorbs all extra horizontal space, pushing the
-        // rightGroup hard against the right edge.
+        // GridBagLayout with two cells keeps all items vertically centred on the same
+        // horizontal midline regardless of their individual heights — a property that
+        // plain BorderLayout and BoxLayout with alignmentY both fail to provide.
+        //   cell 0: shortcutHintPanel  weightx=1.0  fill=HORIZONTAL  → clips from right when narrow
+        //   cell 1: rightGroup         weightx=0.0  fill=NONE         → gets preferred width; internally
+        //                                                                BorderLayout protects the send button
         val innerBar = JBPanel<JBPanel<*>>().apply {
             layout = GridBagLayout()
             isOpaque = false
             border = JBUI.Borders.empty(0, 1)
         }
-        shortcutHintBar = innerBar
-        shortcutHintRightGroup = rightGroup
         innerBar.add(shortcutHintPanel, GridBagConstraints().apply {
             gridx = 0; gridy = 0
             weightx = 1.0; weighty = 0.0
-            fill = GridBagConstraints.NONE
+            fill = GridBagConstraints.HORIZONTAL
             anchor = GridBagConstraints.CENTER
         })
         innerBar.add(rightGroup, GridBagConstraints().apply {
@@ -1010,15 +992,9 @@ class ChatToolWindowContent(
             fill = GridBagConstraints.NONE
             anchor = GridBagConstraints.EAST
         })
-        innerBar.addComponentListener(object : java.awt.event.ComponentAdapter() {
-            override fun componentResized(e: java.awt.event.ComponentEvent) {
-                updateShortcutHintVisibility()
-            }
-        })
         row.add(innerBar, BorderLayout.SOUTH)
 
         refreshShortcutHints()
-        updateShortcutHintVisibility()
 
         return row
     }
@@ -1142,7 +1118,6 @@ class ChatToolWindowContent(
     fun setShortcutHintsVisible() {
         if (!::shortcutHintPanel.isInitialized) return
         refreshShortcutHints()
-        updateShortcutHintVisibility()
     }
 
     /**
@@ -1193,47 +1168,7 @@ class ChatToolWindowContent(
             list += KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_UP, 0) to "Edit last"
         }
         shortcutHintPanel.setShortcuts(list)
-        updateShortcutHintVisibility()
-    }
-
-    private fun updateShortcutHintVisibility() {
-        if (!::shortcutHintPanel.isInitialized || !::shortcutHintBar.isInitialized
-            || !::shortcutHintRightGroup.isInitialized || !::modelToolbarComponent.isInitialized
-        ) {
-            return
-        }
-        val settingsVisible =
-            com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
-        val availableWidth = shortcutHintBar.width
-        if (availableWidth <= 0) return
-
-        // Compute widths from individual components so the thresholds are independent of
-        // current visibility state (avoiding stale measurements when this is called repeatedly).
-        val sendWidth = innerInputToolbar.component.preferredSize.width
-        val modelWidth = modelToolbarComponent.preferredSize.width
-        val strutWidth = JBUI.scale(2)  // Box.createHorizontalStrut between model and send
-        val fullRightWidth = modelWidth + strutWidth + sendWidth
-
-        // Priority: send button > model toolbar > shortcut hints.
-        // Model toolbar is hidden first; send button is always preserved.
-        val showModelToolbar = availableWidth >= fullRightWidth
-        val effectiveRightWidth = if (showModelToolbar) fullRightWidth else sendWidth
-        val showHints = settingsVisible &&
-            availableWidth >= effectiveRightWidth + JBUI.scale(8) + shortcutHintPanel.preferredSize.width
-
-        var changed = false
-        if (modelToolbarComponent.isVisible != showModelToolbar) {
-            modelToolbarComponent.isVisible = showModelToolbar
-            changed = true
-        }
-        if (shortcutHintPanel.isVisible != showHints) {
-            shortcutHintPanel.isVisible = showHints
-            changed = true
-        }
-        if (changed) {
-            shortcutHintBar.revalidate()
-            shortcutHintBar.repaint()
-        }
+        shortcutHintPanel.isVisible = ChatInputSettings.getInstance().isShowShortcutHints
     }
 
     private fun setSendingState(sending: Boolean) {
