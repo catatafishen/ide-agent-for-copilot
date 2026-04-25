@@ -1,50 +1,42 @@
 <component name="InspectionProjectProfileManager">
   <profile version="1.0">
-    <option name="myName" value="Project Default"/>
-
-    <!-- Grammar inspection - disabled for markdown (Grazie) -->
+    <option name="myName" value="Project Default" />
     <inspection_tool class="Annotator" enabled="true" level="ERROR" enabled_by_default="true">
-      <scope name="Markdown Files" level="INFORMATION" enabled="false"/>
-    </inspection_tool>
-    <inspection_tool class="MarkdownIncorrectlyNumberedListItem" enabled="true" level="WEAK WARNING"
-                     enabled_by_default="true">
-      <scope name="Markdown Files" level="INFORMATION" enabled="false"/>
-    </inspection_tool>
-
-    <!-- Markdown table formatting: false positives for well-formatted GFM alignment-padded tables -->
-    <inspection_tool class="MarkdownIncorrectTableFormatting" enabled="false" level="WEAK WARNING"
-                     enabled_by_default="false"/>
-
-    <!-- JSON standard: disabled for markdown files that contain JSON-like code blocks in prose -->
-    <inspection_tool class="JsonStandardCompliance" enabled="true" level="WARNING" enabled_by_default="true">
-      <scope name="Markdown Files" level="INFORMATION" enabled="false"/>
-    </inspection_tool>
-
-    <!-- CSS inspections: disabled for JCEF chat panel CSS/JS where selectors are applied
-         dynamically from JavaScript and are never referenced in HTML -->
-    <inspection_tool class="CssUnusedSymbol" enabled="true" level="WARNING" enabled_by_default="true">
-      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false"/>
+      <scope name="Markdown Files" level="INFORMATION" enabled="false" />
     </inspection_tool>
     <inspection_tool class="CssInvalidHtmlTagReference" enabled="true" level="WARNING" enabled_by_default="true">
-      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false"/>
+      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false" />
     </inspection_tool>
     <inspection_tool class="CssNonIntegerLengthInPixels" enabled="true" level="WEAK WARNING" enabled_by_default="true">
-      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false"/>
+      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false" />
     </inspection_tool>
-
-    <!-- JS inspections: disabled for generated/bundled JS build artifacts -->
+    <inspection_tool class="CssUnusedSymbol" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false" />
+    </inspection_tool>
     <inspection_tool class="ES6ConvertVarToLetConst" enabled="true" level="WEAK WARNING" enabled_by_default="true">
-      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false"/>
+      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="HttpUrlsUsage" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="JSIncompatibleTypesComparison" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false" />
     </inspection_tool>
     <inspection_tool class="JSValidateTypes" enabled="true" level="WARNING" enabled_by_default="true">
-      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false"/>
+      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false" />
     </inspection_tool>
-    <inspection_tool class="JSIncompatibleTypesComparison" enabled="true" level="WARNING" enabled_by_default="true">
-      <scope name="Generated Chat Web Files" level="INFORMATION" enabled="false"/>
+    <inspection_tool class="JsonStandardCompliance" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="Markdown Files" level="INFORMATION" enabled="false" />
     </inspection_tool>
-
-    <!-- HTTP links: false positives for test/example URLs and third-party generated code -->
-    <inspection_tool class="HttpUrlsUsage" enabled="false" level="WEAK WARNING" enabled_by_default="false"/>
-
+    <inspection_tool class="MarkdownIncorrectTableFormatting" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="MarkdownIncorrectlyNumberedListItem" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <scope name="Markdown Files" level="INFORMATION" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="MultiplatformPreviewAnnotationInFunctionWithParameters" enabled="true" level="ERROR" enabled_by_default="true">
+      <option name="composableFile" value="true" />
+      <option name="previewFile" value="true" />
+    </inspection_tool>
+    <inspection_tool class="MultiplatformPreviewMultipleParameterProviders" enabled="true" level="ERROR" enabled_by_default="true">
+      <option name="composableFile" value="true" />
+      <option name="previewFile" value="true" />
+    </inspection_tool>
   </profile>
 </component>

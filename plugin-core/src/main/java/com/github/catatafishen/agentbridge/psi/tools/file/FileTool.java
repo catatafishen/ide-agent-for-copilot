@@ -63,6 +63,21 @@ public abstract class FileTool extends Tool {
      */
     private static final int MAX_AUTO_FORMAT_FILES = 10;
 
+    /**
+     * Files larger than this threshold skip import optimization during deferred auto-format.
+     * OptimizeImportsProcessor resolves every symbol reference to determine unused imports —
+     * on large Kotlin files (e.g. 116 KB) this can block the EDT for 30+ seconds, causing
+     * cascading timeouts in write_file, run_command, and git_commit.
+     */
+    public static final long MAX_BYTES_FOR_OPTIMIZE_IMPORTS = 50 * 1024L;
+
+    /**
+     * Files larger than this threshold skip both optimize-imports and reformat during deferred
+     * auto-format. ReformatCodeProcessor on very large files can still block the EDT for
+     * 10–20 seconds — above this size it is safer to skip formatting entirely.
+     */
+    public static final long MAX_BYTES_FOR_REFORMAT = 100 * 1024L;
+
     private static final ConcurrentHashMap<Project, Set<String>> PENDING_AUTO_FORMAT =
         new ConcurrentHashMap<>();
 
@@ -149,12 +164,22 @@ public abstract class FileTool extends Tool {
 
     /**
      * Formats and optimizes imports for a single file inside a write action.
-     * Shared by both the EDT and non-EDT paths of {@link #flushPendingAutoFormat}.
+     *
+     * <p>Size-guarded: {@link OptimizeImportsProcessor} resolves every symbol in the file to
+     * detect unused imports — on large Kotlin files this can block the EDT for 30+ seconds.
+     * {@link ReformatCodeProcessor} is also expensive above ~100 KB. Files that exceed the
+     * configured thresholds are logged and skipped to prevent cascading tool timeouts.</p>
      */
     private static void formatSingleFile(Project project, String pathStr) {
         try {
             VirtualFile vf = ToolUtils.resolveVirtualFile(project, pathStr);
             if (vf == null) return;
+            long fileBytes = vf.getLength();
+            if (fileBytes > MAX_BYTES_FOR_REFORMAT) {
+                LOG.info("Deferred auto-format skipped (file too large for reformat: " + fileBytes + " bytes): " + pathStr);
+                return;
+            }
+            boolean runOptimizeImports = fileBytes <= MAX_BYTES_FOR_OPTIMIZE_IMPORTS;
             PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
             if (psiFile == null) return;
             // AbstractLayoutCodeProcessor.runProcessFile() calls ensureFilesWritable() internally.
@@ -172,12 +197,16 @@ public abstract class FileTool extends Tool {
             WriteCommandAction.runWriteCommandAction(project, "Auto-Format (Deferred)", null, () -> {
                 if (doc != null)
                     PsiDocumentManager.getInstance(project).commitDocument(doc);
-                new OptimizeImportsProcessor(project, psiFile).run();
+                if (runOptimizeImports) new OptimizeImportsProcessor(project, psiFile).run();
                 new ReformatCodeProcessor(psiFile, false).run();
                 if (doc != null)
                     PsiDocumentManager.getInstance(project).commitDocument(doc);
             });
-            LOG.info("Deferred auto-format: " + pathStr);
+            if (runOptimizeImports) {
+                LOG.info("Deferred auto-format (optimize-imports + reformat): " + pathStr);
+            } else {
+                LOG.info("Deferred auto-format (reformat only, large file " + fileBytes + " bytes): " + pathStr);
+            }
         } catch (Exception e) {
             LOG.warn("Deferred auto-format failed for " + pathStr + ": " + e.getMessage());
         }

@@ -2,11 +2,13 @@ package com.github.catatafishen.agentbridge.psi.tools.editing;
 
 import com.github.catatafishen.agentbridge.psi.ToolUtils;
 import com.github.catatafishen.agentbridge.psi.tools.Tool;
+import com.github.catatafishen.agentbridge.psi.tools.file.FileTool;
 import com.github.catatafishen.agentbridge.services.ToolRegistry;
 import com.google.gson.JsonObject;
 import com.intellij.codeInsight.actions.ReformatCodeProcessor;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
@@ -31,6 +33,8 @@ import java.util.List;
  */
 public abstract class EditingTool extends Tool {
 
+    private static final Logger LOG = Logger.getInstance(EditingTool.class);
+
     protected static final String PARAM_FILE = "file";
     protected static final String PARAM_SYMBOL = "symbol";
     protected static final String PARAM_LINE = "line";
@@ -50,17 +54,12 @@ public abstract class EditingTool extends Tool {
         return ToolRegistry.Category.REFACTOR;
     }
 
-    /**
-     * Reformats the file immediately and queues import optimization for end of turn.
-     *
-     * <p><b>Why split:</b> immediate reformatting normalizes indentation/layout so the file
-     * stays consistent between symbol edits. Import optimization is deferred via
-     * {@link com.github.catatafishen.agentbridge.psi.tools.file.FileTool#queueAutoFormat}
-     * so that imports added in an earlier edit are not stripped before a later edit
-     * in the same turn references them — matching the behaviour of {@code write_file} /
-     * {@code edit_text}.</p>
-     */
     protected void formatInline(VirtualFile vf) {
+        if (vf.getLength() > FileTool.MAX_BYTES_FOR_REFORMAT) {
+            LOG.info("Inline reformat skipped (file too large: " + vf.getLength() + " bytes): " + vf.getPath());
+            FileTool.queueAutoFormat(project, vf.getPath());
+            return;
+        }
         PsiFile psiFile = PsiManager.getInstance(project).findFile(vf);
         if (psiFile == null) return;
         WriteCommandAction.runWriteCommandAction(project, "Auto-Format (Symbol Edit)", null, () -> {
@@ -70,7 +69,7 @@ public abstract class EditingTool extends Tool {
         });
         // Defer import optimization to end of turn so imports added by earlier
         // edits in the same response are not stripped before later edits use them.
-        com.github.catatafishen.agentbridge.psi.tools.file.FileTool.queueAutoFormat(project, vf.getPath());
+        FileTool.queueAutoFormat(project, vf.getPath());
     }
 
     protected @Nullable SymbolLocation resolveSymbol(String pathStr, String symbolName, @Nullable Integer lineHint) {
