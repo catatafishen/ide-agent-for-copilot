@@ -4,10 +4,9 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import java.awt.Component
 import java.awt.FlowLayout
-import javax.swing.JComponent
-import javax.swing.JPanel
-import javax.swing.KeyStroke
+import javax.swing.*
 
 /**
  * Bottom-toolbar panel that lists the keyboard shortcuts relevant to the
@@ -23,12 +22,17 @@ import javax.swing.KeyStroke
  * label. Reads actual key bindings from the IntelliJ keymap so customized
  * shortcuts are reflected.
  *
+ * Uses [BoxLayout] (X_AXIS) so entries clip from the right when space is
+ * tight, rather than wrapping to a second row (which would change the panel
+ * height and push the editor up).
+ *
  * Visibility honours the *Show shortcut hints* toggle in
  * Settings → AgentBridge → Chat Input.
  */
-class PromptShortcutHintPanel : JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)) {
+class PromptShortcutHintPanel : JBPanel<JBPanel<*>>() {
 
     init {
+        layout = BoxLayout(this, BoxLayout.X_AXIS)
         isOpaque = false
         border = JBUI.Borders.empty()
     }
@@ -39,7 +43,8 @@ class PromptShortcutHintPanel : JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 
      */
     fun setShortcuts(shortcuts: List<Pair<KeyStroke, String>>) {
         removeAll()
-        for ((stroke, label) in shortcuts) {
+        shortcuts.forEachIndexed { i, (stroke, label) ->
+            if (i > 0) add(Box.createHorizontalStrut(JBUI.scale(8)))
             add(buildEntry(stroke, label))
         }
         revalidate()
@@ -50,6 +55,7 @@ class PromptShortcutHintPanel : JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 
         val cell = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
             isOpaque = false
             border = JBUI.Borders.empty()
+            alignmentY = Component.CENTER_ALIGNMENT
         }
         KeyBadge.keystrokeTokens(stroke).forEach { cell.add(KeyBadge(it)) }
         val text = JBLabel(label).apply {
