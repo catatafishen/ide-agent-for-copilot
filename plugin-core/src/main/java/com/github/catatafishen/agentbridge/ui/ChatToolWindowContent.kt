@@ -773,7 +773,7 @@ class ChatToolWindowContent(
         val bottomSection = JBPanel<JBPanel<*>>(BorderLayout())
         bottomSection.isOpaque = false
         // Keep the footer close to the tool window edges without adding dead space.
-        bottomSection.border = JBUI.Borders.empty(0, 8, 1, 8)
+        bottomSection.border = JBUI.Borders.empty(0, 8, 8, 8)
         bottomSection.add(inputSection, BorderLayout.CENTER)
 
         // Drag-to-resize: the user drags the top border of inputSection to adjust the split.
@@ -966,13 +966,9 @@ class ChatToolWindowContent(
         // Right-side group: model selector and Send button. BorderLayout gives the send
         // button (EAST) its preferred width always; the model selector (CENTER) clips
         // naturally when space is tight, ensuring send is never pushed off-screen.
-        // Fixed height caps the send-button toolbar (which can report a taller preferred height
-        // than the model-selector toolbar) so all three bottom-bar items share one visual baseline.
-        val rightGroup = object : JPanel(BorderLayout(JBUI.scale(2), 0)) {
-            override fun getPreferredSize() = Dimension(super.getPreferredSize().width, JBUI.scale(24))
-            override fun getMinimumSize() = Dimension(super.getMinimumSize().width, JBUI.scale(24))
-            override fun getMaximumSize() = Dimension(super.getMaximumSize().width, JBUI.scale(24))
-        }.apply { isOpaque = false }
+        // Both toolbars get the same height (rightGroup's natural height) via BorderLayout,
+        // and shortcutHintPanel uses fill=BOTH to stretch to the same row height.
+        val rightGroup = JPanel(BorderLayout(JBUI.scale(2), 0)).apply { isOpaque = false }
         rightGroup.add(modelToolbar.component, BorderLayout.CENTER)
         rightGroup.add(innerInputToolbar.component, BorderLayout.EAST)
 
