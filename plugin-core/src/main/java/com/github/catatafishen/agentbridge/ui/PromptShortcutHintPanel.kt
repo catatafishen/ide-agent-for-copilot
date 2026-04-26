@@ -52,7 +52,7 @@ class PromptShortcutHintPanel : JBPanel<JBPanel<*>>() {
     }
 
     private fun buildEntry(stroke: KeyStroke, label: String): JComponent {
-        val cell = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
+        val cell = JPanel(FlowLayout(FlowLayout.CENTER, JBUI.scale(2), 0)).apply {
             isOpaque = false
             border = JBUI.Borders.empty()
             alignmentY = Component.CENTER_ALIGNMENT
