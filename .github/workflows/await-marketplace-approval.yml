@@ -1,0 +1,106 @@
+name: Check Marketplace Approval
+
+on:
+  # Triggered immediately when the publish workflow finishes
+  workflow_run:
+    workflows: ["Publish to JetBrains Marketplace"]
+    types: [ completed ]
+  # Two cron schedules — gated by tag age so we only "act" on one:
+  #   • every 5 min while the review is < 4h old (typical fast review)
+  #   • every hour after that (long-tail review)
+  # Most runs no-op in ~5 seconds; the scheduling here is just about
+  # how often we *check*, not how long a runner stays alive.
+  schedule:
+    - cron: '*/5 * * * *'
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # How many hours of "fast" 5-min polling before we drop to hourly
+  FAST_POLL_HOURS: '4'
+
+jobs:
+  check:
+    name: Check if pending version is approved
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # to delete the marketplace-pending-* tag when approved
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df  # v2.18.0
+        with:
+          egress-policy: audit
+
+      - name: Check approval status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHEDULE: ${{ github.event.schedule }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # 1. Find a marketplace-pending-* tag (no checkout needed)
+          PENDING_REF=$(git ls-remote --tags \
+            "https://github.com/${{ github.repository }}.git" \
+            'refs/tags/marketplace-pending-*' \
+            | grep -v '\^{}' | tail -1)
+
+          if [ -z "$PENDING_REF" ]; then
+            echo "No pending marketplace review. Nothing to do."
+            exit 0
+          fi
+
+          TAG_SHA=$(echo "$PENDING_REF" | awk '{print $1}')
+          TAG_REF=$(echo "$PENDING_REF" | awk '{print $2}')
+          RELEASE_TAG="${TAG_REF#refs/tags/marketplace-pending-}"
+          VERSION="${RELEASE_TAG#v}"
+          echo "Pending review: $RELEASE_TAG (version $VERSION)"
+
+          # 2. Determine tag age (annotated tag → tagger.date via GitHub API).
+          #    Fall back to "now" if the tag isn't annotated (lightweight tag).
+          TAGGED_AT=$(gh api "repos/${{ github.repository }}/git/tags/$TAG_SHA" \
+            --jq '.tagger.date' 2>/dev/null || true)
+          if [ -n "$TAGGED_AT" ]; then
+            TAGGED_EPOCH=$(date -d "$TAGGED_AT" +%s)
+            NOW_EPOCH=$(date +%s)
+            AGE_HOURS=$(( (NOW_EPOCH - TAGGED_EPOCH) / 3600 ))
+            echo "Tag age: ${AGE_HOURS}h (tagged at $TAGGED_AT)"
+          else
+            AGE_HOURS=0
+            echo "Tag is lightweight (no tagger date) — assuming age 0h"
+          fi
+
+          # 3. Schedule gate: only act on the cron that matches the current age.
+          #    workflow_run + workflow_dispatch always act.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            if [ "$SCHEDULE" = '*/5 * * * *' ] && [ "$AGE_HOURS" -ge "$FAST_POLL_HOURS" ]; then
+              echo "5-min cron: review is ${AGE_HOURS}h old (≥ ${FAST_POLL_HOURS}h) — skipping, hourly cron will handle this."
+              exit 0
+            fi
+            if [ "$SCHEDULE" = '0 * * * *' ] && [ "$AGE_HOURS" -lt "$FAST_POLL_HOURS" ]; then
+              echo "Hourly cron: review is ${AGE_HOURS}h old (< ${FAST_POLL_HOURS}h) — skipping, 5-min cron is handling this."
+              exit 0
+            fi
+          fi
+
+          # 4. Check JetBrains API for approval
+          LIVE=$(curl -fsS --retry 3 \
+            "https://plugins.jetbrains.com/api/plugins/30415/updates?size=10" \
+            | jq -r '[.[] | select(.approve == true and .listed == true and .hidden == false)] | .[0].version // ""')
+
+          echo "Live approved version: ${LIVE:-<none>}"
+
+          if [ "$LIVE" = "$VERSION" ]; then
+            echo "✅ Version $VERSION is approved on the marketplace!"
+            gh api "repos/${{ github.repository }}/git/refs/tags/marketplace-pending-$RELEASE_TAG" -X DELETE
+            echo "Removed marketplace-pending-$RELEASE_TAG tag"
+
+            echo "### ✅ Version $VERSION approved on JetBrains Marketplace" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Plugin is live at https://plugins.jetbrains.com/plugin/30415-agentbridge" >> "$GITHUB_STEP_SUMMARY"
+            echo "Total review time: ${AGE_HOURS}h" >> "$GITHUB_STEP_SUMMARY"
+          else
+            NEXT_INTERVAL=$([ "$AGE_HOURS" -lt "$FAST_POLL_HOURS" ] && echo "5 min" || echo "1 hour")
+            echo "Version $VERSION not yet approved (review ${AGE_HOURS}h old). Next check in ~${NEXT_INTERVAL}."
+          fi
