@@ -21,6 +21,7 @@ import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import java.awt.*
@@ -962,38 +963,29 @@ class ChatToolWindowContent(
         innerInputToolbar.isReservePlaceAutoPopupIcon = false
         innerInputToolbar.component.isOpaque = false
 
-        // Right-side group: model selector and Send button. BorderLayout gives the send
-        // button (EAST) its preferred width always; the model selector (CENTER) absorbs
-        // any space reduction when the window is narrow.
-        val rightGroup = JPanel(BorderLayout(JBUI.scale(2), 0)).apply { isOpaque = false }
-        rightGroup.add(modelToolbar.component, BorderLayout.CENTER)
-        rightGroup.add(innerInputToolbar.component, BorderLayout.EAST)
+        shortcutHintPanel.alignmentY = Component.CENTER_ALIGNMENT
+        modelToolbar.component.alignmentY = Component.CENTER_ALIGNMENT
+        innerInputToolbar.component.alignmentY = Component.CENTER_ALIGNMENT
 
-        // GridBagLayout with two cells keeps all items vertically centred on the same
-        // horizontal midline regardless of their individual heights — a property that
-        // plain BorderLayout and BoxLayout with alignmentY both fail to provide.
-        //   cell 0: shortcutHintPanel  weightx=1.0  fill=HORIZONTAL  → shrinks first; ActionToolbar shows '>>' overflow
-        //   cell 1: rightGroup         weightx=0.0  fill=HORIZONTAL  → sized to cell; BorderLayout inside
-        //                                                                keeps send button (EAST) at preferred width
-        val innerBar = JBPanel<JBPanel<*>>().apply {
-            layout = GridBagLayout()
+        val footerContent = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
             border = JBUI.Borders.empty(0, 1)
+            add(shortcutHintPanel)
+            add(Box.createHorizontalGlue())
+            add(modelToolbar.component)
+            add(Box.createHorizontalStrut(JBUI.scale(2)))
+            add(innerInputToolbar.component)
         }
-        innerBar.add(shortcutHintPanel, GridBagConstraints().apply {
-            gridx = 0; gridy = 0
-            weightx = 1.0; weighty = 0.0
-            // HORIZONTAL fills the cell (lets panel shrink when narrow via its getMinimumSize=0).
-            // anchor=CENTER positions the panel at the vertical midpoint of the row.
-            fill = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.CENTER
-        })
-        innerBar.add(rightGroup, GridBagConstraints().apply {
-            gridx = 1; gridy = 0
-            weightx = 0.0; weighty = 0.0
-            fill = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.EAST
-        })
+        val innerBar = JBScrollPane(
+            footerContent,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER,
+        ).apply {
+            isOpaque = false
+            border = JBUI.Borders.empty()
+            viewport.isOpaque = false
+        }
         row.add(innerBar, BorderLayout.SOUTH)
 
         refreshShortcutHints()
