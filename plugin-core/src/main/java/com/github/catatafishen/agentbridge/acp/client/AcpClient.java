@@ -94,7 +94,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         .registerTypeAdapter(NewSessionResponse.class, new NewSessionResponseDeserializer())
         .registerTypeHierarchyAdapter(ContentBlock.class, new ContentBlockSerializer())
         .create();
-    protected final JsonRpcTransport transport = new JsonRpcTransport();
+    protected JsonRpcTransport transport = new JsonRpcTransport();
     protected final Project project;
     private final AcpFileSystemHandler fsHandler;
     private final AcpTerminalHandler terminalHandler;

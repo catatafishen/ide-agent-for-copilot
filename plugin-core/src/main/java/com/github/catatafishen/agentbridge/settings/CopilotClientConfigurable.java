@@ -1,12 +1,14 @@
 package com.github.catatafishen.agentbridge.settings;
 
 import com.github.catatafishen.agentbridge.acp.client.AcpClient;
+import com.github.catatafishen.agentbridge.services.ActiveAgentManager;
 import com.github.catatafishen.agentbridge.services.AgentProfileManager;
 import com.github.catatafishen.agentbridge.ui.ThemeColor;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.HyperlinkLabel;
+import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextField;
@@ -25,8 +27,10 @@ public final class CopilotClientConfigurable implements Configurable {
 
     private static final String AGENT_ID = "copilot";
 
-    @SuppressWarnings("unused")
-    public CopilotClientConfigurable(@NotNull Project ignoredProject) {
+    private final Project project;
+
+    public CopilotClientConfigurable(@NotNull Project project) {
+        this.project = project;
     }
 
     @Override
@@ -38,6 +42,7 @@ public final class CopilotClientConfigurable implements Configurable {
     private JBTextField binaryPathField;
     private @Nullable ThemeColorComboBox bubbleColorCombo;
     private BillingConfigurable billingConfigurable;
+    private @Nullable JBCheckBox remoteSessionCheckbox;
 
     @Override
     public @NotNull JComponent createComponent() {
@@ -65,6 +70,19 @@ public final class CopilotClientConfigurable implements Configurable {
         installNote.setForeground(UIUtil.getContextHelpForeground());
         installNote.setFont(JBUI.Fonts.smallFont());
 
+        remoteSessionCheckbox = new JBCheckBox("Enable remote control mode (--remote)");
+        remoteSessionCheckbox.setSelected(ActiveAgentManager.getInstance(project).isRemoteMode());
+        remoteSessionCheckbox.setToolTipText(
+            "Launches Copilot with --remote so a remote session can be established.");
+
+        JBLabel remoteWarning = new JBLabel(
+            "<html><b>⚠ Not currently usable in ACP mode.</b> Copilot in ACP mode (--acp --stdio) does not"
+                + " expose the session URL needed to connect remotely. Remote sessions only work in Copilot's"
+                + " interactive terminal mode. Enable this once Copilot supports remote URL delivery in ACP"
+                + " mode, or if you can find the session directly from github.com/copilot.</html>");
+        remoteWarning.setForeground(Color.RED);
+        remoteWarning.setFont(JBUI.Fonts.smallFont());
+
         JPanel configPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent("Status:", statusRow)
             .addComponent(installNote, 2)
@@ -74,6 +92,9 @@ public final class CopilotClientConfigurable implements Configurable {
             .addTooltip("Leave empty to auto-detect on PATH.")
             .addLabeledComponent("Bubble color:", bubbleColorCombo)
             .addTooltip("Choose a theme-aware accent color for message bubbles when using GitHub Copilot.")
+            .addSeparator(8)
+            .addComponent(remoteSessionCheckbox)
+            .addComponentToRightColumn(remoteWarning, 4)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         configPanel.setBorder(JBUI.Borders.empty(8));
@@ -102,6 +123,10 @@ public final class CopilotClientConfigurable implements Configurable {
             String key = tc != null ? tc.name() : null;
             if (!java.util.Objects.equals(key, AcpClient.loadAgentBubbleColorKey(AGENT_ID))) return true;
         }
+        if (remoteSessionCheckbox != null
+            && remoteSessionCheckbox.isSelected() != ActiveAgentManager.getInstance(project).isRemoteMode()) {
+            return true;
+        }
         return billingConfigurable != null && billingConfigurable.isModified();
     }
 
@@ -113,6 +138,9 @@ public final class CopilotClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             ThemeColor tc = bubbleColorCombo.getSelectedThemeColor();
             AcpClient.saveAgentBubbleColorKey(AGENT_ID, tc != null ? tc.name() : null);
+        }
+        if (remoteSessionCheckbox != null) {
+            ActiveAgentManager.getInstance(project).setRemoteMode(remoteSessionCheckbox.isSelected());
         }
         if (billingConfigurable != null) billingConfigurable.apply();
     }
@@ -126,6 +154,9 @@ public final class CopilotClientConfigurable implements Configurable {
         if (bubbleColorCombo != null) {
             bubbleColorCombo.setSelectedThemeColor(ThemeColor.fromKey(AcpClient.loadAgentBubbleColorKey(AGENT_ID)));
         }
+        if (remoteSessionCheckbox != null) {
+            remoteSessionCheckbox.setSelected(ActiveAgentManager.getInstance(project).isRemoteMode());
+        }
         if (billingConfigurable != null) billingConfigurable.reset();
     }
 
@@ -134,6 +165,7 @@ public final class CopilotClientConfigurable implements Configurable {
         statusLabel = null;
         binaryPathField = null;
         bubbleColorCombo = null;
+        remoteSessionCheckbox = null;
         if (billingConfigurable != null) {
             billingConfigurable.disposeUIResources();
             billingConfigurable = null;
@@ -145,13 +177,11 @@ public final class CopilotClientConfigurable implements Configurable {
         statusLabel.setText("Checking...");
         statusLabel.setForeground(UIUtil.getLabelForeground());
 
-        // Capture the live (possibly unsaved) field value on the EDT before going async
         String liveCustomPath = binaryPathField != null ? binaryPathField.getText().trim() : null;
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             AgentBinaryResolver resolver = new AcpClientBinaryResolver(AGENT_ID, AGENT_ID, "copilot-cli");
 
-            // If the user has typed a path but not yet saved, validate and check it immediately
             if (liveCustomPath != null && !liveCustomPath.isEmpty()) {
                 File file = new File(liveCustomPath);
                 if (!file.exists()) {
