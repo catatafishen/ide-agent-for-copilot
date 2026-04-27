@@ -210,3 +210,27 @@ jobs:
           git tag -f marketplace-latest "$TARGET_SHA"
           git push origin marketplace-latest --force
           echo "Updated marketplace-latest → $TARGET_SHA ($RELEASE_TAG)"
+
+      - name: Tag release as pending marketplace review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          # Remove any existing pending-review tags (handles retries cleanly)
+          gh api "repos/${{ github.repository }}/git/refs" --jq \
+            '.[] | select(.ref | startswith("refs/tags/marketplace-pending-")) | .ref' \
+            | while read -r REF; do
+                gh api "repos/${{ github.repository }}/git/$REF" -X DELETE
+                echo "Removed stale tag: $REF"
+              done
+
+          # Push an annotated pending-review tag (tagger.date lets the check
+          # workflow know how long the review has been in progress)
+          TARGET_SHA=$(git rev-list -n1 "$RELEASE_TAG")
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git tag -a "marketplace-pending-$RELEASE_TAG" "$TARGET_SHA" \
+            -m "Pending JetBrains Marketplace review for $RELEASE_TAG"
+          git push origin "marketplace-pending-$RELEASE_TAG"
+          echo "Tagged $RELEASE_TAG as pending marketplace review"
+
