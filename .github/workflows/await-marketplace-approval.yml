@@ -1,15 +1,18 @@
 name: Check Marketplace Approval
 
 on:
-  # Triggered immediately when the publish workflow finishes
-  workflow_run:
-    workflows: ["Publish to JetBrains Marketplace"]
-    types: [ completed ]
   # Two cron schedules — gated by tag age so we only "act" on one:
   #   • every 5 min while the review is < 4h old (typical fast review)
   #   • every hour after that (long-tail review)
   # Most runs no-op in ~5 seconds; the scheduling here is just about
   # how often we *check*, not how long a runner stays alive.
+  #
+  # Note: we deliberately do NOT use a workflow_run trigger off the
+  # publish workflow. workflow_run runs with elevated permissions and
+  # an attacker-controlled head_branch context, so static analyzers
+  # (zizmor) flag it as a dangerous trigger. The 5-min cron picks up
+  # a new pending tag within at most 5 minutes anyway, which is well
+  # below typical JetBrains review latency.
   schedule:
     - cron: '*/5 * * * *'
     - cron: '0 * * * *'
@@ -38,7 +41,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SCHEDULE: ${{ github.event.schedule }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           # 1. Find a marketplace-pending-* tag (no checkout needed)
           PENDING_REF=$(git ls-remote --tags \
@@ -72,8 +74,8 @@ jobs:
           fi
 
           # 3. Schedule gate: only act on the cron that matches the current age.
-          #    workflow_run + workflow_dispatch always act.
-          if [ "$EVENT_NAME" = "schedule" ]; then
+          #    workflow_dispatch always acts (SCHEDULE will be empty).
+          if [ -n "$SCHEDULE" ]; then
             if [ "$SCHEDULE" = '*/5 * * * *' ] && [ "$AGE_HOURS" -ge "$FAST_POLL_HOURS" ]; then
               echo "5-min cron: review is ${AGE_HOURS}h old (≥ ${FAST_POLL_HOURS}h) — skipping, hourly cron will handle this."
               exit 0
