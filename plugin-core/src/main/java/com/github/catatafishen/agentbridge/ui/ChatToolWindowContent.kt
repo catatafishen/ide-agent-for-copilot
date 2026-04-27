@@ -1167,8 +1167,7 @@ class ChatToolWindowContent(
             list += KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_UP, 0) to "Edit last"
         }
         shortcutHintPanel.setShortcuts(list)
-        shortcutHintPanel.isVisible =
-            com.github.catatafishen.agentbridge.settings.ChatInputSettings.getInstance().isShowShortcutHints
+        shortcutHintPanel.isVisible = ChatInputSettings.getInstance().isShowShortcutHints
     }
 
     private fun setSendingState(sending: Boolean) {
