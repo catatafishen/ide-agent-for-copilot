@@ -192,3 +192,33 @@ When the agent profile system refactoring removed `CopilotSettings`, the billing
 
 This ensures the feature continues to work and future changes won't break it silently.
 
+
+## Fuzz Testing
+
+The repo has Jazzer fuzz targets under `plugin-core/src/test/java/.../fuzz/` and
+`mcp-server/src/test/java/.../mcp/`. They are exercised three ways:
+
+| Where                                  | When                                  | Duration             | Persists corpus |
+|----------------------------------------|---------------------------------------|----------------------|-----------------|
+| `.github/workflows/fuzz.yml`           | Weekly + manual dispatch              | 120 s/target         | No (smoke test) |
+| `.github/workflows/cflite_pr.yml`      | Pull requests touching JVM/build code | 300 s total          | Via storage repo |
+| `.github/workflows/cflite_batch.yml`   | Every 6 h                             | 1800 s total         | Via storage repo |
+| `.github/workflows/cflite_cron.yml`    | Daily                                 | 600 s (corpus prune) | Via storage repo |
+| `.github/workflows/cflite_build.yml`   | Push to `master`                      | Build-only artifact  | n/a              |
+
+ClusterFuzzLite (`.clusterfuzzlite/`) reuses the OSS-Fuzz build script
+(`oss-fuzz/build.sh`) — both produce the same Jazzer wrapper layout in `$OUT/`.
+The OSS-Fuzz integration files are kept for future re-application once the
+project is more mature (the initial submission was deferred — too new at the time).
+
+### Enabling persisted corpus / coverage (recommended)
+
+Without a storage repo, ClusterFuzzLite still detects crashes but loses the
+corpus between runs. To enable persistence and affected-fuzzer detection on PRs:
+
+1. Create an empty repo `catatafishen/agentbridge-cflite-storage`.
+2. Generate a fine-grained PAT with **Contents: read & write** scoped to that
+   repo only. Add it to `agentbridge` as the `PERSONAL_ACCESS_TOKEN` secret.
+3. Uncomment the `storage-repo*` lines in all four `cflite_*.yml` workflows.
+
+See <https://google.github.io/clusterfuzzlite/running-clusterfuzzlite/github-actions/#storage-repo>.
