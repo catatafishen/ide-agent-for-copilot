@@ -15,11 +15,12 @@
 #
 ################################################################################
 #
-# OSS-Fuzz build script for AgentBridge (IntelliJ Copilot Plugin).
-# Called inside the Docker container by OSS-Fuzz infrastructure.
-# $SRC, $OUT, and $JAVA_HOME are set by the base image.
+# Shared build script for AgentBridge (IntelliJ Copilot Plugin) fuzz targets.
+# Used by both OSS-Fuzz (oss-fuzz/Dockerfile) and ClusterFuzzLite
+# (.clusterfuzzlite/Dockerfile). Called inside the Docker container by the
+# fuzzing infrastructure. $SRC, $OUT, and $JAVA_HOME are set by the base image.
 
-cd /src/agentbridge
+cd "$SRC/agentbridge"
 
 # Build all test classes (fuzz targets live in the test source sets).
 ./gradlew :plugin-core:testClasses :mcp-server:testClasses --no-daemon --quiet

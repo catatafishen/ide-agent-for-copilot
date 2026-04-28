@@ -13,6 +13,15 @@
 # limitations under the License.
 #
 ################################################################################
+#
+# ClusterFuzzLite Dockerfile for AgentBridge.
+#
+# Build context is the repository root (ClusterFuzzLite invokes
+# `docker build -f .clusterfuzzlite/Dockerfile <repo-root>`).
+#
+# Pinned by digest to satisfy supply-chain checks. Update via:
+#   docker pull gcr.io/oss-fuzz-base/base-builder-jvm
+#   docker inspect --format='{{index .RepoDigests 0}}' gcr.io/oss-fuzz-base/base-builder-jvm
 
 FROM gcr.io/oss-fuzz-base/base-builder-jvm@sha256:cb42140eb0e2cc7a89e9fd290993514637dea7e40fff796647dc68666ea6b337
 
@@ -31,7 +40,9 @@ RUN apt-get update \
 ENV JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64
 ENV PATH=$JAVA_HOME/bin:$PATH
 
-RUN git clone --depth 1 https://github.com/catatafishen/agentbridge.git $SRC/agentbridge
+COPY . $SRC/agentbridge
 WORKDIR $SRC/agentbridge
 
-COPY build.sh $SRC/
+# Reuse the shared OSS-Fuzz build script. Both integrations produce the same
+# Jazzer wrapper layout in $OUT, so a single script works for both.
+COPY oss-fuzz/build.sh $SRC/build.sh
