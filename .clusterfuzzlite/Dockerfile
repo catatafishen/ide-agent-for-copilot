@@ -35,10 +35,19 @@ RUN apt-get update \
     && echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" \
        > /etc/apt/sources.list.d/adoptium.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends temurin-21-jdk \
+    && apt-get install -y --no-install-recommends temurin-21-jdk unzip \
     && rm -rf /var/lib/apt/lists/*
 ENV JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64
 ENV PATH=$JAVA_HOME/bin:$PATH
+
+# Install Gradle 9.4.1 (matches gradle-wrapper.properties distributionUrl).
+# The wrapper JAR is not committed (intentionally removed in favour of a
+# system Gradle install), so we provision it here instead.
+RUN wget -q https://services.gradle.org/distributions/gradle-9.4.1-bin.zip -O /tmp/gradle.zip \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && rm /tmp/gradle.zip
+ENV GRADLE_HOME=/opt/gradle-9.4.1
+ENV PATH=$GRADLE_HOME/bin:$PATH
 
 COPY . $SRC/agentbridge
 WORKDIR $SRC/agentbridge

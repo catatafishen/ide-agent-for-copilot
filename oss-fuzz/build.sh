@@ -23,11 +23,11 @@
 cd "$SRC/agentbridge"
 
 # Build all test classes (fuzz targets live in the test source sets).
-./gradlew :plugin-core:testClasses :mcp-server:testClasses --no-daemon --quiet
+gradle :plugin-core:testClasses :mcp-server:testClasses --no-daemon --quiet
 
 # Resolve full test runtime classpaths (includes compiled classes + all dep JARs).
-CP_CORE=$(./gradlew :plugin-core:printFuzzClasspath --no-daemon -q | tail -1)
-CP_MCP=$(./gradlew :mcp-server:printFuzzClasspath --no-daemon -q | tail -1)
+CP_CORE=$(gradle :plugin-core:printFuzzClasspath --no-daemon -q | tail -1)
+CP_MCP=$(gradle :mcp-server:printFuzzClasspath --no-daemon -q | tail -1)
 
 # Copy every JAR from the classpath into $OUT/ and every class directory into
 # $OUT/classes/.  The jazzer_driver wrapper uses "$this_dir/*" (Java wildcard
