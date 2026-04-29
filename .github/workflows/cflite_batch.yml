@@ -37,7 +37,7 @@ jobs:
         with:
           language: jvm
           sanitizer: ${{ matrix.sanitizer }}
-          storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/catatafishen/agentbridge-cflite-storage.git
+          storage-repo: https://${{ secrets.CFLITE_STORAGE_REPO_TOKEN }}@github.com/catatafishen/agentbridge-cflite-storage.git
           storage-repo-branch: main
 
       - name: Run Fuzzers (${{ matrix.sanitizer }})
@@ -49,6 +49,6 @@ jobs:
           mode: 'batch'
           sanitizer: ${{ matrix.sanitizer }}
           output-sarif: true
-          storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/catatafishen/agentbridge-cflite-storage.git
+          storage-repo: https://${{ secrets.CFLITE_STORAGE_REPO_TOKEN }}@github.com/catatafishen/agentbridge-cflite-storage.git
           storage-repo-branch: main
           storage-repo-branch-coverage: gh-pages
