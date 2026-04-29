@@ -77,6 +77,10 @@ public final class ToolCallStatisticsService implements Disposable {
      *                          inert (connection == null) until the IDE is restarted.
      */
     public void initialize() {
+        if (project == null || project.getBasePath() == null) {
+            throw new IllegalStateException(
+                "Cannot initialize ToolCallStatisticsService: project has no base path");
+        }
         AgentBridgeStorageSettings storageSettings = AgentBridgeStorageSettings.getInstance();
         if (!storageSettings.isToolStatsEnabled()) {
             LOG.info("ToolCallStatisticsService: tool call statistics collection is disabled in settings — skipping init");
@@ -86,10 +90,6 @@ public final class ToolCallStatisticsService implements Disposable {
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException("SQLite JDBC driver not found on classpath", e);
-        }
-        if (project.getBasePath() == null) {
-            throw new IllegalStateException(
-                "Cannot initialize ToolCallStatisticsService: project has no base path");
         }
         try {
             Path dbDir = storageSettings.getProjectStorageDir(project);
