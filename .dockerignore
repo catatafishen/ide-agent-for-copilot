@@ -1,0 +1,22 @@
+# Keep ClusterFuzzLite docker build context lean. The Dockerfile uses
+# `COPY . $SRC/agentbridge`, so anything not excluded here is shipped into
+# the image.
+.git
+.gradle
+.idea
+.kotlin
+.agent-work
+.copilot
+build
+**/build
+**/out
+**/.gradle
+**/node_modules
+**/dist
+plugin-core/chat-ui/node_modules
+plugin-core/build
+mcp-server/build
+integration-tests/build
+ide_launch.log
+*.iml
+.DS_Store

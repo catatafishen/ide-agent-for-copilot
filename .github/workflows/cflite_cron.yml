@@ -1,0 +1,45 @@
+name: ClusterFuzzLite cron tasks
+
+on:
+  schedule:
+    - cron: '23 3 * * *'  # Daily at 03:23 UTC
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  Pruning:
+    name: ClusterFuzzLite Corpus Pruning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df  # v2.18.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build Fuzzers
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1  # v1
+        with:
+          language: jvm
+          # storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/catatafishen/agentbridge-cflite-storage.git
+          # storage-repo-branch: main
+
+      - name: Run Fuzzers (prune)
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1  # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 600
+          mode: 'prune'
+          # storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/catatafishen/agentbridge-cflite-storage.git
+          # storage-repo-branch: main
