@@ -335,6 +335,7 @@ class AcpConnectPanel(
         }
         profileCombo.alignmentX = LEFT_ALIGNMENT
         profileCombo.maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(32))
+        profileCombo.addActionListener { }
         return profileCombo
     }
 
