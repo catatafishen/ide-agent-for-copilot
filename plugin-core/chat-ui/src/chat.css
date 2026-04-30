@@ -1168,6 +1168,64 @@ hr {
     pointer-events: none;
 }
 
+/* ── Ask-user countdown ────────────────────────────────── */
+
+.ask-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    color: var(--fg-muted);
+    background: var(--think-a08);
+    transition: color 0.2s, background 0.2s;
+}
+
+.ask-countdown-label {
+    opacity: 0.8;
+}
+
+.ask-remaining {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    min-width: 3em;
+}
+
+.ask-extend {
+    margin-left: var(--sp-2);
+    padding: 2px 8px;
+    font-size: 0.9em;
+    background: transparent;
+    color: var(--user);
+    border: 1px solid var(--user);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.ask-extend:hover {
+    background: var(--user-a16);
+}
+
+.ask-countdown--warn {
+    color: #d49a00;
+    background: rgba(212, 154, 0, 0.12);
+}
+
+.ask-countdown--danger {
+    color: #d04545;
+    background: rgba(208, 69, 69, 0.16);
+}
+
+.ask-countdown--closed .ask-extend {
+    display: none;
+}
+
+.ask-countdown--closed {
+    opacity: 0.6;
+}
+
 /* ── Permission request ────────────────────────────────── */
 
 .perm-actions {

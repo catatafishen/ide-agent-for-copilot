@@ -152,12 +152,22 @@ interface ChatPanelApi : Disposable {
 
     /**
      * Show an ask-user bubble with quick-reply options. The user can also type a free-form response.
+     *
+     * The bubble renders a live countdown (driven by [deadlineEpochMs]) and an
+     * "I need more time" button. When the user clicks that button, [onExtend] is invoked;
+     * the new deadline it returns is pushed back to the JS countdown.
+     *
+     * If a previous ask-user request is still open, its [onSuperseded] is invoked so the
+     * tool that issued it can complete its waiter (typically with a "cancelled" terminal state).
      */
     fun showAskUserRequest(
         reqId: String,
         question: String,
         options: List<String>,
-        onRespond: (String) -> Unit
+        deadlineEpochMs: Long,
+        onRespond: (String) -> Unit,
+        onExtend: () -> Long,
+        onSuperseded: () -> Unit,
     )
 
     fun hasPendingAskUserRequest(): Boolean

@@ -121,10 +121,17 @@ class ChatConsolePanel(
     private var htmlPageFuture: java.util.concurrent.CompletableFuture<String>? = null
     private val pendingPermissionCallbacks =
         java.util.concurrent.ConcurrentHashMap<String, (PermissionResponse) -> Unit>()
-    private val pendingAskUserCallbacks = java.util.concurrent.ConcurrentHashMap<String, (String) -> Unit>()
+
+    private data class ActiveAskUser(
+        val reqId: String,
+        val onRespond: (String) -> Unit,
+        val onExtend: () -> Long,
+        val onSuperseded: () -> Unit,
+    )
 
     @Volatile
-    private var activeAskUserRequestId: String? = null
+    private var activeAskUser: ActiveAskUser? = null
+    private var extendAskUserBridgeJs = ""
 
     // CEF windowless frame rate — high during streaming and active user scroll, moderate when idle.
     // 10fps was too aggressive — caused stale-frame tearing during manual scroll.
@@ -279,6 +286,11 @@ class ChatConsolePanel(
             scrollEndedQuery.addHandler { endScrollFrameRateBoost(); null }
             Disposer.register(this, scrollEndedQuery)
             scrollEndedBridgeJs = scrollEndedQuery.inject("''")
+
+            val extendAskUserQuery = JBCefJSQuery.create(browser as com.intellij.ui.jcef.JBCefBrowserBase)
+            extendAskUserQuery.addHandler { reqId -> handleExtendAskUser(reqId); null }
+            Disposer.register(this, extendAskUserQuery)
+            extendAskUserBridgeJs = extendAskUserQuery.inject("reqId")
 
             setFrameRate(IDLE_FRAME_RATE)
 
@@ -1560,42 +1572,62 @@ class ChatConsolePanel(
         reqId: String,
         question: String,
         options: List<String>,
-        onRespond: (String) -> Unit
+        deadlineEpochMs: Long,
+        onRespond: (String) -> Unit,
+        onExtend: () -> Long,
+        onSuperseded: () -> Unit,
     ) {
-        clearPendingAskUserRequest(null)
-        pendingAskUserCallbacks[reqId] = onRespond
-        activeAskUserRequestId = reqId
+        // If a previous ask is still open, supersede it cleanly so its waiter unblocks.
+        activeAskUser?.let { prev ->
+            activeAskUser = null
+            disableQuickReplies()
+            // Fire callback off-EDT — onSuperseded typically completes a CompletableFuture;
+            // we don't want to do that under invokeLater chains that might re-enter the panel.
+            ApplicationManager.getApplication().executeOnPooledThread { prev.onSuperseded() }
+        }
+        activeAskUser = ActiveAskUser(reqId, onRespond, onExtend, onSuperseded)
 
         val safeId = escJs(reqId)
         val safeQuestion = escJs(question)
         val optionJson = options.joinToString(",") { "'${escJs(it)}'" }
         val turnId = currentTurnId.ifEmpty { "t${turnCounter++}".also { currentTurnId = it } }
-        executeJs("window.showAskUserRequest('$turnId','main','$safeId','$safeQuestion',[$optionJson]);")
+        executeJs(
+            "window.showAskUserRequest('$turnId','main','$safeId','$safeQuestion',[$optionJson],$deadlineEpochMs);"
+        )
         ChatWebServer.getInstance(project)?.pushNotification("Agent needs your input", question.take(100))
     }
 
-    override fun hasPendingAskUserRequest(): Boolean = activeAskUserRequestId != null
+    override fun hasPendingAskUserRequest(): Boolean = activeAskUser != null
 
     override fun consumePendingAskUserResponse(response: String): Boolean {
-        val reqId = activeAskUserRequestId ?: return false
         if (response.isBlank()) return false
-
-        val callback = pendingAskUserCallbacks.remove(reqId) ?: return false
-        activeAskUserRequestId = null
+        val active = activeAskUser ?: return false
+        activeAskUser = null
         disableQuickReplies()
+        // Tell JS to retire the countdown / extension button for this request.
+        executeJs("window.closeAskUserRequest && window.closeAskUserRequest('${escJs(active.reqId)}','answered');")
         addPromptEntry(response, null)
-        callback.invoke(response)
+        active.onRespond(response)
         return true
     }
 
     override fun clearPendingAskUserRequest(reqId: String?) {
-        val activeId = activeAskUserRequestId
-        if (reqId != null && activeId != null && reqId != activeId) return
-        if (activeId != null) {
-            pendingAskUserCallbacks.remove(activeId)
-        }
-        activeAskUserRequestId = null
+        val active = activeAskUser ?: return
+        if (reqId != null && reqId != active.reqId) return
+        activeAskUser = null
         disableQuickReplies()
+        executeJs("window.closeAskUserRequest && window.closeAskUserRequest('${escJs(active.reqId)}','cancelled');")
+        ApplicationManager.getApplication().executeOnPooledThread { active.onSuperseded() }
+    }
+
+    /** Called from the JS "I need more time" button via the [extendAskUserBridgeJs] bridge. */
+    private fun handleExtendAskUser(reqId: String) {
+        val active = activeAskUser ?: return
+        if (reqId != active.reqId) return
+        val newDeadline = active.onExtend()
+        executeJs(
+            "window.updateAskUserDeadline && window.updateAskUserDeadline('${escJs(active.reqId)}',$newDeadline);"
+        )
     }
 
     override fun showNudgeBubble(id: String, text: String) {
@@ -1906,7 +1938,8 @@ class ChatConsolePanel(
                 autoScrollDisabled: function() { $autoScrollDisabledBridgeJs },
                 autoScrollEnabled: function() { $autoScrollEnabledBridgeJs },
                 scrollStarted: function() { $scrollStartedBridgeJs },
-                scrollEnded: function() { $scrollEndedBridgeJs }
+                scrollEnded: function() { $scrollEndedBridgeJs },
+                extendAskUser: function(reqId) { $extendAskUserBridgeJs }
             };
         """.trimIndent()
         val css = loadResource("/chat/chat.css")

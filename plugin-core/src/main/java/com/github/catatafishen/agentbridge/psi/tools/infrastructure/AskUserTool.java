@@ -29,7 +29,7 @@ public final class AskUserTool extends InfrastructureTool {
 
     private static final String PARAM_QUESTION = "question";
     private static final String PARAM_OPTIONS = "options";
-    private static final int RESPONSE_TIMEOUT_SECONDS = 120;
+    private static final long RESPONSE_TIMEOUT_MS = 120_000L;
 
     public AskUserTool(Project project) {
         super(project);
@@ -91,18 +91,39 @@ public final class AskUserTool extends InfrastructureTool {
         notifyIfUnfocused(question);
 
         CompletableFuture<String> responseFuture = new CompletableFuture<>();
+        // Deadline is shared mutable state — written by the EDT extend handler, read by this pooled thread.
+        // System.currentTimeMillis() is used (not nanoTime) so JS and Java agree on the absolute deadline.
+        final long[] deadlineMs = {System.currentTimeMillis() + RESPONSE_TIMEOUT_MS};
         String reqId = UUID.randomUUID().toString();
+
         EdtUtil.invokeLater(() ->
-            panel.showAskUserRequest(reqId, question, options, response -> {
-                responseFuture.complete(response);
-                return kotlin.Unit.INSTANCE;
-            })
+            panel.showAskUserRequest(
+                reqId,
+                question,
+                options,
+                deadlineMs[0],
+                response -> {
+                    responseFuture.complete(response);
+                    return kotlin.Unit.INSTANCE;
+                },
+                () -> {
+                    // Backend always controls the extension amount — never trust the client.
+                    long newDeadline = System.currentTimeMillis() + RESPONSE_TIMEOUT_MS;
+                    deadlineMs[0] = newDeadline;
+                    return newDeadline;
+                },
+                () -> {
+                    // Superseded (a newer ask_user replaced this one) or panel cleared.
+                    if (!responseFuture.isDone()) {
+                        responseFuture.complete("__cancelled__");
+                    }
+                    return kotlin.Unit.INSTANCE;
+                }
+            )
         );
 
         try {
-            return responseFuture.get(RESPONSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            return "Error: user response timed out";
+            return awaitWithExtensibleDeadline(responseFuture, deadlineMs);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "Error: ask-user request interrupted";
@@ -110,6 +131,34 @@ public final class AskUserTool extends InfrastructureTool {
             return "Error: failed to read user response";
         } finally {
             EdtUtil.invokeLater(() -> panel.clearPendingAskUserRequest(reqId));
+        }
+    }
+
+    /**
+     * Wait for {@code future} to complete, retrying on TimeoutException so that deadline extensions
+     * made by the user via the "I need more time" button are picked up by the wait loop.
+     *
+     * @param deadlineMs single-element array used as a writable shared cell; index 0 holds the
+     *                   absolute epoch-millis deadline that the EDT extend handler updates.
+     */
+    private static @NotNull String awaitWithExtensibleDeadline(
+        @NotNull CompletableFuture<String> future,
+        long @NotNull [] deadlineMs
+    ) throws InterruptedException, ExecutionException {
+        while (true) {
+            long remaining = deadlineMs[0] - System.currentTimeMillis();
+            if (remaining <= 0) {
+                return "Error: user response timed out";
+            }
+            try {
+                String result = future.get(remaining, TimeUnit.MILLISECONDS);
+                if ("__cancelled__".equals(result)) {
+                    return "Error: ask-user request cancelled (superseded by another request)";
+                }
+                return result;
+            } catch (TimeoutException ignored) {
+                // Deadline may have been extended in flight — re-check the loop condition.
+            }
         }
     }
 
@@ -161,7 +210,7 @@ public final class AskUserTool extends InfrastructureTool {
         });
 
         try {
-            String answer = response.get(RESPONSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            String answer = response.get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             if (answer.isEmpty()) {
                 return "Error: user cancelled";
             }

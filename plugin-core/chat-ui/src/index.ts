@@ -48,8 +48,14 @@ globalThis.ChatController = ChatController;
 (globalThis as any).showPermissionRequest = (turnId: string, agentId: string, reqId: string, toolDisplayName: string, argsJson: string) => {
     ChatController.showPermissionRequest(turnId, agentId, reqId, toolDisplayName, argsJson);
 };
-(globalThis as any).showAskUserRequest = (turnId: string, agentId: string, reqId: string, question: string, options: string[]) => {
-    ChatController.showAskUserRequest(turnId, agentId, reqId, question, options);
+(globalThis as any).showAskUserRequest = (turnId: string, agentId: string, reqId: string, question: string, options: string[], deadlineEpochMs: number) => {
+    ChatController.showAskUserRequest(turnId, agentId, reqId, question, options, deadlineEpochMs);
+};
+(globalThis as any).updateAskUserDeadline = (reqId: string, deadlineEpochMs: number) => {
+    ChatController.updateAskUserDeadline(reqId, deadlineEpochMs);
+};
+(globalThis as any).closeAskUserRequest = (reqId: string, status: string) => {
+    ChatController.closeAskUserRequest(reqId, status);
 };
 
 // ── Global event handlers ─────────────────────────────
