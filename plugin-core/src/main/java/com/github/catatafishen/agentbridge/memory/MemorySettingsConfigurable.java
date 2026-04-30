@@ -59,10 +59,10 @@ public final class MemorySettingsConfigurable implements Configurable {
         gbc.gridy = 0;
         gbc.gridwidth = 2;
         JLabel desc = new JLabel(
-            "<html>Semantic memory powered by concepts from " +
+            "<html><body style='width: 420px'>Semantic memory powered by concepts from " +
                 "<a href=\"https://github.com/milla-jovovich/mempalace\">MemPalace</a>. " +
                 "Stores decisions, preferences, and milestones from conversations " +
-                "for cross-session recall.</html>");
+                "for cross-session recall.</body></html>");
         panel.add(desc, gbc);
 
         // ── Enabled ──
@@ -135,8 +135,8 @@ public final class MemorySettingsConfigurable implements Configurable {
 
         gbc.gridx = 1;
         JLabel backfillHint = new JLabel(
-            "<html><i>⚠ Can be slow if you have many sessions. " +
-                "Runs in the background.</i></html>");
+            "<html><body style='width: 280px'><i>⚠ Can be slow if you have many sessions. " +
+                "Runs in the background.</i></body></html>");
         backfillHint.setForeground(UIManager.getColor("Component.warningFocusColor"));
         panel.add(backfillHint, gbc);
 
@@ -177,8 +177,8 @@ public final class MemorySettingsConfigurable implements Configurable {
                 .listSessions(project.getBasePath()).size();
             if (sessionCount > 0) {
                 backfillStatusLabel.setText(
-                    "<html><b>" + sessionCount + " past sessions</b> available to mine. " +
-                        "Click below to populate memory from your conversation history.</html>");
+                    "<html><body style='width: 420px'><b>" + sessionCount + " past sessions</b> available to mine. " +
+                        "Click below to populate memory from your conversation history.</body></html>");
             } else {
                 backfillStatusLabel.setText("No past sessions found.");
             }
