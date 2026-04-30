@@ -3,8 +3,8 @@ package com.github.catatafishen.agentbridge.settings
 import com.github.catatafishen.agentbridge.acp.client.AcpClient
 import com.github.catatafishen.agentbridge.agent.codex.CodexAppServerClient
 import com.github.catatafishen.agentbridge.services.AgentProfileManager
-import com.github.catatafishen.agentbridge.ui.AuthTerminalHelperKt
 import com.github.catatafishen.agentbridge.ui.ThemeColor
+import com.github.catatafishen.agentbridge.ui.runAuthInEmbeddedTerminal
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.options.SearchableConfigurable
@@ -105,9 +105,8 @@ class CodexClientConfigurable(private val project: Project) :
         val customPath = AgentProfileManager.getInstance().loadBinaryPath(PROFILE_ID)
         val binary = if (!customPath.isNullOrEmpty()) customPath else "codex"
         val cmd = if (deviceAuth) "$binary login --device-auth" else "$binary login"
-        AuthTerminalHelperKt.runAuthInEmbeddedTerminal(project, cmd, "Codex Sign In") {
+        runAuthInEmbeddedTerminal(project, cmd, "Codex Sign In") {
             openExternalTerminal(cmd)
-            kotlin.Unit
         }
     }
 

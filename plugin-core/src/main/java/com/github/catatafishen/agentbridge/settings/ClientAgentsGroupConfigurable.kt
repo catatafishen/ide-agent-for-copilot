@@ -6,12 +6,7 @@ import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
-import com.intellij.ui.dsl.builder.AlignX
-import com.intellij.ui.dsl.builder.AlignY
-import com.intellij.ui.dsl.builder.RowLayout
-import com.intellij.ui.dsl.builder.bindIntValue
-import com.intellij.ui.dsl.builder.bindSelected
-import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.dsl.builder.*
 import com.intellij.util.ui.JBUI
 import javax.swing.UIManager
 
