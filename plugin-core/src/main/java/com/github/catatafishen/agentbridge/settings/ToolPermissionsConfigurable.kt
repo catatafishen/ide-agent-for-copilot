@@ -25,7 +25,7 @@ class ToolPermissionsConfigurable(private val project: Project) : SearchableConf
         return panel.component
     }
 
-    override fun isModified(): Boolean = permissionsPanel?.isModified == true
+    override fun isModified(): Boolean = permissionsPanel?.isModified() == true
     override fun apply() { permissionsPanel?.save() }
     override fun reset() { permissionsPanel?.reload() }
     override fun disposeUIResources() { permissionsPanel = null }

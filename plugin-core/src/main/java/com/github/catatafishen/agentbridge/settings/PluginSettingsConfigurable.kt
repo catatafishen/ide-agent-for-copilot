@@ -1,7 +1,9 @@
 package com.github.catatafishen.agentbridge.settings
 
 import com.github.catatafishen.agentbridge.BuildInfo
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.ui.dsl.builder.panel
 import javax.swing.JComponent
@@ -38,4 +40,17 @@ class PluginSettingsConfigurable @Suppress("unused") constructor(
     override fun isModified(): Boolean = false
     override fun apply() {}
     override fun reset() {}
+
+    companion object {
+        /**
+         * Opens this settings page programmatically. Defers to the next EDT cycle to avoid a
+         * BufferStrategy NPE when a modal dialog is shown during mouse-event processing.
+         */
+        @JvmStatic
+        fun open(project: Project) {
+            ApplicationManager.getApplication().invokeLater {
+                ShowSettingsUtil.getInstance().showSettingsDialog(project, PluginSettingsConfigurable::class.java)
+            }
+        }
+    }
 }

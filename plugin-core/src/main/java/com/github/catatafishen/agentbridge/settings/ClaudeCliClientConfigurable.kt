@@ -90,7 +90,7 @@ class ClaudeCliClientConfigurable(@Suppress("UNUSED_PARAMETER") project: Project
                 .align(AlignX.FILL)
                 .align(AlignY.FILL)
                 .resizableColumn()
-                .onIsModified { parseModels() != (profile()?.customCliModels ?: emptyList()) }
+                .onIsModified { parseModels() != (profile()?.customCliModels ?: emptyList<String>()) }
                 .onApply { profile()?.customCliModels = parseModels() }
                 .onReset {
                     customModelsArea.text =
