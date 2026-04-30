@@ -626,7 +626,7 @@ const ChatController = {
         this._container()?.scheduleScrollIfNeeded();
     },
 
-    showAskUserRequest(turnId: string, agentId: string, reqId: string, question: string, options: string[]): void {
+    showAskUserRequest(turnId: string, agentId: string, reqId: string, question: string, options: string[], deadlineEpochMs: number): void {
         this.disableQuickReplies();
         const ctx = this._ensureMsg(turnId, agentId);
         this._collapseThinkingFor(ctx);
@@ -638,6 +638,32 @@ const ChatController = {
             if (i > 0) bubble.appendChild(document.createElement('br'));
             bubble.appendChild(document.createTextNode(line));
         });
+
+        // Countdown row + "I need more time" extension button.
+        const countdownRow = document.createElement('div');
+        countdownRow.className = 'ask-countdown';
+        countdownRow.dataset.reqId = reqId;
+        countdownRow.dataset.deadlineMs = String(deadlineEpochMs);
+
+        const countdownLabel = document.createElement('span');
+        countdownLabel.className = 'ask-countdown-label';
+        countdownLabel.textContent = '⏱';
+        countdownRow.appendChild(countdownLabel);
+
+        const remainingSpan = document.createElement('span');
+        remainingSpan.className = 'ask-remaining';
+        countdownRow.appendChild(remainingSpan);
+
+        const extendBtn = document.createElement('button');
+        extendBtn.type = 'button';
+        extendBtn.className = 'ask-extend';
+        extendBtn.textContent = 'I need more time';
+        extendBtn.onclick = () => (globalThis as any)._bridge?.extendAskUser(reqId);
+        countdownRow.appendChild(extendBtn);
+
+        bubble.appendChild(document.createElement('br'));
+        bubble.appendChild(countdownRow);
+
         ctx.msg!.appendChild(bubble);
 
         if (options?.length) {
@@ -647,12 +673,76 @@ const ChatController = {
             ctx.msg!.appendChild(replies);
         }
 
+        this._startAskUserCountdown(reqId);
+
         this._container()?.scheduleScrollIfNeeded();
         const notificationWithActions = Notification as typeof Notification & { readonly maxActions?: number };
         const actions = options?.length
             ? options.slice(0, notificationWithActions.maxActions ?? 2).map(o => ({action: o, title: o}))
             : undefined;
         _showNotification('Agent is asking you something', question, actions?.length ? actions : undefined);
+    },
+
+    /**
+     * Backend reset the deadline (user clicked "I need more time" and Java extended it by 120s).
+     * Find the countdown row, write the new deadline; the existing interval picks it up next tick.
+     */
+    updateAskUserDeadline(reqId: string, deadlineEpochMs: number): void {
+        const row = document.querySelector<HTMLElement>(`.ask-countdown[data-req-id="${CSS.escape(reqId)}"]`);
+        if (!row) return;
+        row.dataset.deadlineMs = String(deadlineEpochMs);
+        row.classList.remove('ask-countdown--warn', 'ask-countdown--danger');
+        // Render once immediately so the user sees their click had effect (don't wait for next interval tick).
+        this._renderAskUserRemaining(row);
+    },
+
+    /**
+     * Backend has terminated the request (answered, timed out, or cancelled). Stop the interval,
+     * hide the extension button, and visually retire the countdown.
+     */
+    closeAskUserRequest(reqId: string, status: string): void {
+        const row = document.querySelector<HTMLElement>(`.ask-countdown[data-req-id="${CSS.escape(reqId)}"]`);
+        if (!row) return;
+        const intervalId = Number(row.dataset.intervalId ?? '0');
+        if (intervalId) clearInterval(intervalId);
+        row.dataset.intervalId = '';
+        row.classList.add('ask-countdown--closed');
+        const btn = row.querySelector<HTMLButtonElement>('.ask-extend');
+        if (btn) btn.style.display = 'none';
+        const remaining = row.querySelector<HTMLElement>('.ask-remaining');
+        if (remaining) {
+            if (status === 'answered') remaining.textContent = '';
+            else if (status === 'cancelled') remaining.textContent = '(cancelled)';
+            else if (status === 'timed_out') remaining.textContent = '(timed out)';
+        }
+    },
+
+    _startAskUserCountdown(reqId: string): void {
+        const row = document.querySelector<HTMLElement>(`.ask-countdown[data-req-id="${CSS.escape(reqId)}"]`);
+        if (!row) return;
+        this._renderAskUserRemaining(row);
+        const intervalId = globalThis.setInterval(() => {
+            const stillThere = document.querySelector<HTMLElement>(`.ask-countdown[data-req-id="${CSS.escape(reqId)}"]`);
+            if (!stillThere || stillThere.classList.contains('ask-countdown--closed')) {
+                clearInterval(intervalId);
+                return;
+            }
+            this._renderAskUserRemaining(stillThere);
+        }, 1000);
+        row.dataset.intervalId = String(intervalId);
+    },
+
+    _renderAskUserRemaining(row: HTMLElement): void {
+        const deadline = Number(row.dataset.deadlineMs ?? '0');
+        const remainMs = Math.max(0, deadline - Date.now());
+        const remainSec = Math.ceil(remainMs / 1000);
+        const span = row.querySelector<HTMLElement>('.ask-remaining');
+        if (!span) return;
+        const mm = Math.floor(remainSec / 60);
+        const ss = remainSec % 60;
+        span.textContent = `${mm}:${ss.toString().padStart(2, '0')}`;
+        row.classList.toggle('ask-countdown--danger', remainSec <= 10);
+        row.classList.toggle('ask-countdown--warn', remainSec > 10 && remainSec <= 30);
     },
 
     showQuickReplies(options: string[]): void {
