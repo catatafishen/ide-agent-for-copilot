@@ -28,7 +28,7 @@ class CustomMcpConfigurable(private val project: Project) :
     private val tableModel = ServerTableModel()
     private val table = JBTable(tableModel).apply {
         rowHeight = JBUI.scale(24)
-        selectionMode = ListSelectionModel.SINGLE_SELECTION
+        setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         columnModel.getColumn(COL_ENABLED).maxWidth = JBUI.scale(65)
         columnModel.getColumn(COL_ENABLED).minWidth = JBUI.scale(65)
         columnModel.getColumn(COL_NAME).preferredWidth = JBUI.scale(160)
