@@ -17,46 +17,46 @@ public class FindSuperMethodsToolTest extends BasePlatformTestCase {
 
     public void testFindsImplementedInterfaceMethod() {
         myFixture.addFileToProject("demo/SuperContract.java", """
-                package demo;
-                public interface SuperContract {
-                    String load(String id);
-                }
-                """);
+            package demo;
+            public interface SuperContract {
+                String load(String id);
+            }
+            """);
         PsiFile implementation = myFixture.addFileToProject("demo/SuperImpl.java", """
-                package demo;
-                public class SuperImpl implements SuperContract {
-                    @Override
-                    public String load(String id) {
-                        return id;
-                    }
+            package demo;
+            public class SuperImpl implements SuperContract {
+                @Override
+                public String load(String id) {
+                    return id;
                 }
-                """);
+            }
+            """);
 
         String result = tool.execute(args(
-                "file", implementation.getVirtualFile().getPath(),
-                "line", "4",
-                "column", "25"));
+            "file", implementation.getVirtualFile().getPath(),
+            "line", "4",
+            "column", "25"));
 
         assertTrue("Expected super method header, got: " + result,
-                result.contains("Super methods for load(String):"));
+            result.contains("Super methods for load(String):"));
         assertTrue("Expected interface method location, got: " + result,
-                result.contains("SuperContract.java:3"));
+            result.contains("SuperContract.java:3"));
         assertTrue("Expected interface label, got: " + result,
-                result.contains("interface demo.SuperContract"));
+            result.contains("interface demo.SuperContract"));
     }
 
     public void testNoSuperMethodsForStandaloneMethod() {
         PsiFile standalone = myFixture.addFileToProject("demo/StandaloneSuperMethod.java", """
-                package demo;
-                public class StandaloneSuperMethod {
-                    public void localOnly() {}
-                }
-                """);
+            package demo;
+            public class StandaloneSuperMethod {
+                public void localOnly() {}
+            }
+            """);
 
         String result = tool.execute(args(
-                "file", standalone.getVirtualFile().getPath(),
-                "line", "3",
-                "column", "25"));
+            "file", standalone.getVirtualFile().getPath(),
+            "line", "3",
+            "column", "25"));
 
         assertEquals("No super methods found for localOnly", result);
     }
@@ -65,9 +65,57 @@ public class FindSuperMethodsToolTest extends BasePlatformTestCase {
         String result = tool.execute(new JsonObject());
 
         assertTrue("Expected error prefix, got: " + result,
-                result.startsWith(ToolUtils.ERROR_PREFIX));
+            result.startsWith(ToolUtils.ERROR_PREFIX));
         assertTrue("Expected required params message, got: " + result,
-                result.contains("'file' and 'line' parameters are required"));
+            result.contains("'file' and 'line' parameters are required"));
+    }
+
+    public void testRequiresJavaPsiSupport() {
+        FindSuperMethodsTool nonJavaTool = new FindSuperMethodsTool(getProject(), false);
+        String result = nonJavaTool.execute(args(
+            "file", "demo/Any.java",
+            "line", "1"));
+
+        assertTrue("Expected error prefix, got: " + result,
+            result.startsWith(ToolUtils.ERROR_PREFIX));
+        assertTrue("Expected Java PSI support message, got: " + result,
+            result.contains("requires Java PSI support"));
+    }
+
+    public void testLineOutOfRangeReturnsError() {
+        PsiFile file = myFixture.addFileToProject("demo/ShortSuperMethod.java", """
+            package demo;
+            public class ShortSuperMethod {
+                public void localOnly() {}
+            }
+            """);
+
+        String result = tool.execute(args(
+            "file", file.getVirtualFile().getPath(),
+            "line", "99"));
+
+        assertTrue("Expected error prefix, got: " + result,
+            result.startsWith(ToolUtils.ERROR_PREFIX));
+        assertTrue("Expected line range error, got: " + result,
+            result.contains("Line out of range"));
+    }
+
+    public void testNoMethodAtPositionReturnsError() {
+        PsiFile file = myFixture.addFileToProject("demo/NoMethodAtPosition.java", """
+            package demo;
+            public class NoMethodAtPosition {
+                private String value;
+            }
+            """);
+
+        String result = tool.execute(args(
+            "file", file.getVirtualFile().getPath(),
+            "line", "1"));
+
+        assertTrue("Expected error prefix, got: " + result,
+            result.startsWith(ToolUtils.ERROR_PREFIX));
+        assertTrue("Expected no method message, got: " + result,
+            result.contains("No method found at position"));
     }
 
     private static JsonObject args(String... pairs) {
