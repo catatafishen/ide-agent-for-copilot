@@ -576,6 +576,139 @@ public final class ToolUtils {
         return null;
     }
 
+    public static boolean grepTargetsOnlyOutsideSourceRoots(@Nullable Project project, @NotNull String command) {
+        if (project == null) return false;
+        java.util.List<String> paths = extractGrepPaths(command);
+        if (paths.isEmpty()) return false;
+
+        String basePath = project.getBasePath();
+        java.nio.file.Path base = basePath != null ? java.nio.file.Path.of(basePath) : null;
+        com.intellij.openapi.roots.ProjectFileIndex index =
+            com.intellij.openapi.roots.ProjectFileIndex.getInstance(project);
+
+        for (String pathStr : paths) {
+            if (!isPathOutsideSourceRoots(pathStr, base, index)) return false;
+        }
+        return true;
+    }
+
+    private static boolean isPathOutsideSourceRoots(
+        @NotNull String pathStr,
+        @Nullable java.nio.file.Path base,
+        @NotNull com.intellij.openapi.roots.ProjectFileIndex index
+    ) {
+        java.nio.file.Path resolved = resolveCommandPath(pathStr, base);
+        if (resolved == null) return false;
+
+        VirtualFile vf = LocalFileSystem.getInstance().findFileByNioFile(resolved);
+        if (vf == null) {
+            // File doesn't exist (yet?). Allow only when clearly outside the project root.
+            return base == null || !resolved.startsWith(base);
+        }
+        return com.intellij.openapi.application.ReadAction.compute(() ->
+            !index.isInSource(vf) || index.isInGeneratedSources(vf));
+    }
+
+    @Nullable
+    private static java.nio.file.Path resolveCommandPath(@NotNull String pathStr, @Nullable java.nio.file.Path base) {
+        try {
+            String expanded = pathStr.startsWith("~")
+                ? System.getProperty("user.home") + pathStr.substring(1)
+                : pathStr;
+            java.nio.file.Path p = java.nio.file.Path.of(expanded);
+            java.nio.file.Path candidate = p.isAbsolute() || base == null ? p : base.resolve(p);
+            return candidate.normalize();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static java.util.List<String> extractGrepPaths(@NotNull String command) {
+        java.util.List<String> tokens = tokenizeShellCommand(command);
+        int idx = findGrepCommandIndex(tokens);
+        if (idx < 0) return java.util.List.of();
+        return collectPathArgs(tokens, idx + 1);
+    }
+
+    private static int findGrepCommandIndex(@NotNull java.util.List<String> tokens) {
+        for (int i = 0; i < tokens.size(); i++) {
+            String t = tokens.get(i);
+            if (t.equalsIgnoreCase("grep") || t.equalsIgnoreCase("rg")) return i;
+        }
+        return -1;
+    }
+
+    private static final java.util.Set<String> GREP_TWO_ARG_FLAGS = java.util.Set.of(
+        "-e", "-f", "--regexp", "--file",
+        "--include", "--exclude", "--exclude-dir", "--include-dir",
+        "-A", "-B", "-C", "--after-context", "--before-context", "--context",
+        "-m", "--max-count", "--max-depth", "-t", "-T", "--type", "--type-not",
+        "-g", "--glob", "--iglob"
+    );
+
+    private static final java.util.Set<String> GREP_PATTERN_FLAGS = java.util.Set.of(
+        "-e", "-f", "--regexp", "--file"
+    );
+
+    private static java.util.List<String> collectPathArgs(@NotNull java.util.List<String> tokens, int from) {
+        boolean patternConsumed = false;
+        boolean skipNext = false;
+        java.util.List<String> paths = new java.util.ArrayList<>();
+        for (int i = from; i < tokens.size(); i++) {
+            String t = tokens.get(i);
+            if (skipNext) {
+                skipNext = false;
+                continue;
+            }
+            if (t.startsWith("-") && !t.equals("-")) {
+                if (GREP_TWO_ARG_FLAGS.contains(t)) {
+                    if (GREP_PATTERN_FLAGS.contains(t)) patternConsumed = true;
+                    skipNext = true;
+                }
+            } else if (!patternConsumed) {
+                patternConsumed = true;
+            } else if (containsGlob(t)) {
+                return java.util.List.of();
+            } else {
+                paths.add(t);
+            }
+        }
+        return paths;
+    }
+
+    private static boolean containsGlob(@NotNull String s) {
+        return s.indexOf('*') >= 0 || s.indexOf('?') >= 0 || s.indexOf('[') >= 0;
+    }
+
+    /**
+     * Tokenize a shell command string respecting single and double quotes.
+     * Backslash escapes inside quotes are NOT handled — adequate for the simple paths we care about.
+     */
+    @NotNull
+    static java.util.List<String> tokenizeShellCommand(@NotNull String command) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        char quote = 0;
+        for (int i = 0; i < command.length(); i++) {
+            char c = command.charAt(i);
+            if (quote != 0) {
+                if (c == quote) quote = 0;
+                else cur.append(c);
+            } else if (c == '\'' || c == '"') {
+                quote = c;
+            } else if (Character.isWhitespace(c)) {
+                if (!cur.isEmpty()) {
+                    out.add(cur.toString());
+                    cur.setLength(0);
+                }
+            } else {
+                cur.append(c);
+            }
+        }
+        if (!cur.isEmpty()) out.add(cur.toString());
+        return out;
+    }
+
     private static boolean isGradleCompileCommand(String cmd) {
         boolean isGradleCmd = cmd.contains("gradlew") || cmd.matches(".*\\bgradle\\s.*");
         boolean hasCompileTask = cmd.matches(".*compile(test)?(kotlin|java).*");
@@ -685,8 +818,10 @@ public final class ToolUtils {
                     + "Use intellij_read_file to read live editor buffers instead.";
             case "sed" -> "Error: sed is not allowed via " + toolName + " (bypasses IntelliJ editor buffers). "
                 + "Use edit_text with old_str/new_str for file editing instead.";
-            case "grep" -> "Error: grep/rg commands are not allowed via " + toolName + " (searches stale disk files). "
-                + "Use search_text or search_symbols to search live editor buffers instead.";
+            case "grep" -> "Error: grep/rg on project source files is not allowed via " + toolName + " (searches "
+                + "stale disk files). Use search_text or search_symbols to search live editor buffers. "
+                + "Note: grep IS allowed when targeting paths outside source roots (e.g. log files, downloaded "
+                + "CI artifacts, build/ output) — pass an explicit file/dir argument to use it.";
             case "find" -> "Error: find commands are not allowed via " + toolName + ". "
                 + "Use list_project_files to find files instead.";
             case "compile" -> "Error: Gradle compile tasks are not allowed via " + toolName + ". "
