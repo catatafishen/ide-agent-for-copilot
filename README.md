@@ -28,20 +28,23 @@ or generating diffs in isolation.
 AgentBridge is built around a simple idea: if a full JetBrains IDE helps humans work in a
 fail-fast way, agents should be able to use that same IDE feedback loop too. Instead of asking
 an LLM to approximate refactorings, code intelligence, inspections, Git state, and project
-context from text alone, AgentBridge lets the agent call the deterministic IDE tools directly.
+context from text alone, AgentBridge lets the agent call deterministic IDE tools directly.
 
-See [Why AgentBridge?](docs/WHY-AGENTBRIDGE.md) for the longer reasoning behind this IDE-native
-approach and why I think it is worth exploring alongside lighter agent wrappers and harnesses.
+See [The Case for IDE-Native Coding Agents](docs/IDE-NATIVE-CODING-AGENTS.md) for the longer
+reasoning behind this IDE-native approach and why I think it is worth exploring alongside
+lighter agent wrappers and harnesses.
 
 ## Project status, collaborators, and reviews
 
 AgentBridge is starting to feel feature-ready. Most current work is tuning behavior, polishing
-workflows, and following what agent CLIs expose through ACP so new capabilities can be integrated
-when they become available.
+workflows, fixing rough edges, and following what agent CLIs expose through ACP so new capabilities
+can be integrated as they become available.
 
-I would be happy to have collaborators, especially for code review. A healthy practice for
-agent-authored changes is at least two pairs of human eyes; right now I mostly review changes
-alone after prompting Copilot to make them.
+I would be happy to have collaborators, especially for code review. I think a healthy practice for
+agent-authored changes is to have at least two pairs of human eyes on important changes; right now I
+mostly review the changes I asked Copilot to make. Just ping me if you would like to help.
+I am also glad there are now actionable issues reported on GitHub. That feedback helps me prioritize
+work and confirms that the effort I spend on this project is worthwhile.
 
 If you use the plugin and find it useful, an honest rating or review on the
 [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/30415-agentbridge) would help other
