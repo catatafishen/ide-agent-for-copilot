@@ -84,7 +84,11 @@ public final class RunCommandTool extends InfrastructureTool {
         if (!(toolCall instanceof com.google.gson.JsonObject jsonToolCall)) return null;
         String command = extractCommandFromToolCall(jsonToolCall);
         if (command == null) return null;
-        return ToolUtils.detectCommandAbuseType(command);
+        String abuse = ToolUtils.detectCommandAbuseType(command);
+        if ("grep".equals(abuse) && ToolUtils.grepTargetsOnlyOutsideSourceRoots(project, command)) {
+            return null;
+        }
+        return abuse;
     }
 
     private static @Nullable String extractCommandFromToolCall(com.google.gson.JsonObject toolCall) {
@@ -114,6 +118,9 @@ public final class RunCommandTool extends InfrastructureTool {
         String abuseType = ToolUtils.detectCommandAbuseType(command);
         if ("test".equals(abuseType)) {
             return new RunTestsTool(project).executeFromCommand(command);
+        }
+        if ("grep".equals(abuseType) && ToolUtils.grepTargetsOnlyOutsideSourceRoots(project, command)) {
+            abuseType = null;
         }
         if (abuseType != null) return ToolUtils.getCommandAbuseMessage(abuseType);
 

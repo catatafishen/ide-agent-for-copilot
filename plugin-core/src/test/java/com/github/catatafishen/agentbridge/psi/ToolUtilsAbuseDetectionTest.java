@@ -283,4 +283,106 @@ class ToolUtilsAbuseDetectionTest {
             assertEquals("test", ToolUtils.detectCommandAbuseType("NPX Jest"));
         }
     }
+
+    // ── Grep path extraction ─────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("grep path extraction")
+    class GrepPathExtraction {
+        @Test
+        void extractsSinglePath() {
+            assertEquals(
+                java.util.List.of("file.log"),
+                ToolUtils.extractGrepPaths("grep ERROR file.log"));
+        }
+
+        @Test
+        void extractsMultiplePaths() {
+            assertEquals(
+                java.util.List.of("a.log", "b.log"),
+                ToolUtils.extractGrepPaths("grep TODO a.log b.log"));
+        }
+
+        @Test
+        void skipsSingleArgFlags() {
+            assertEquals(
+                java.util.List.of("notes.md"),
+                ToolUtils.extractGrepPaths("grep -i -n PATTERN notes.md"));
+        }
+
+        @Test
+        void skipsTwoArgFlags() {
+            assertEquals(
+                java.util.List.of("file.txt"),
+                ToolUtils.extractGrepPaths("grep -A 3 -B 2 -e foo file.txt"));
+        }
+
+        @Test
+        void respectsQuotedPattern() {
+            assertEquals(
+                java.util.List.of("ci.log"),
+                ToolUtils.extractGrepPaths("grep \"some thing\" ci.log"));
+        }
+
+        @Test
+        void emptyWhenNoPaths() {
+            assertEquals(java.util.List.of(), ToolUtils.extractGrepPaths("grep -r PATTERN"));
+        }
+
+        @Test
+        void emptyWhenGlob() {
+            assertEquals(java.util.List.of(), ToolUtils.extractGrepPaths("grep PATTERN *.java"));
+        }
+
+        @Test
+        void emptyWhenNotGrep() {
+            assertEquals(java.util.List.of(), ToolUtils.extractGrepPaths("cat file.txt"));
+        }
+
+        @Test
+        void handlesRipgrep() {
+            assertEquals(
+                java.util.List.of("logs/build.log"),
+                ToolUtils.extractGrepPaths("rg --no-heading TODO logs/build.log"));
+        }
+
+        @Test
+        void handlesCommandPrefix() {
+            assertEquals(
+                java.util.List.of("file.log"),
+                ToolUtils.extractGrepPaths("sudo grep PATTERN file.log"));
+        }
+    }
+
+    // ── Shell tokenizer ──────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("shell tokenizer")
+    class ShellTokenizer {
+        @Test
+        void splitsOnWhitespace() {
+            assertEquals(
+                java.util.List.of("a", "b", "c"),
+                ToolUtils.tokenizeShellCommand("a  b\tc"));
+        }
+
+        @Test
+        void preservesDoubleQuoted() {
+            assertEquals(
+                java.util.List.of("grep", "hello world", "f"),
+                ToolUtils.tokenizeShellCommand("grep \"hello world\" f"));
+        }
+
+        @Test
+        void preservesSingleQuoted() {
+            assertEquals(
+                java.util.List.of("grep", "a b", "f"),
+                ToolUtils.tokenizeShellCommand("grep 'a b' f"));
+        }
+
+        @Test
+        void handlesEmpty() {
+            assertEquals(java.util.List.of(), ToolUtils.tokenizeShellCommand(""));
+        }
+    }
 }
