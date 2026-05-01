@@ -2,9 +2,8 @@ package com.github.catatafishen.agentbridge.psi.tools.navigation;
 
 import com.github.catatafishen.agentbridge.psi.ToolUtils;
 import com.google.gson.JsonObject;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.codeStyle.MinusculeMatcher;
 import com.intellij.psi.codeStyle.NameUtil;
@@ -15,6 +14,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -81,8 +81,13 @@ public final class FindFileTool extends NavigationTool {
         }
         int limit = readLimit(args);
         String scopeName = readScopeParam(args);
-        return ApplicationManager.getApplication().runReadAction(
-            (Computable<String>) () -> computeMatches(query, scopeName, limit));
+        // NonBlockingReadAction: iterating the filename index can hold the read lock for a long time
+        // on large projects. runReadAction() would block ALL write actions (EDT, indexing, daemon
+        // analysis) for the entire duration and cause "IDE not responding" freezes.
+        // executeSynchronously() yields to write actions when they need to run, then restarts the
+        // search (computeMatches creates fresh collections, so restart is safe).
+        return ReadAction.nonBlocking(() -> computeMatches(query, scopeName, limit))
+            .executeSynchronously();
     }
 
     private int readLimit(JsonObject args) {
@@ -99,13 +104,32 @@ public final class FindFileTool extends NavigationTool {
 
         GlobalSearchScope scope = resolveScope(scopeName);
         MatchPredicate predicate = MatchPredicate.create(query);
-        int collectLimit = Math.clamp(Math.multiplyExact(limit, 5), DEFAULT_LIMIT, MAX_LIMIT);
+        int collectFileLimit = Math.clamp(Math.multiplyExact(limit, 5), DEFAULT_LIMIT, MAX_LIMIT);
         Map<String, FileMatch> matchesByPath = new LinkedHashMap<>();
-        FilenameIndex.processAllFileNames(
-            name -> processFilename(name, basePath, scope, predicate, matchesByPath, collectLimit),
-            scope,
-            null
-        );
+
+        // Cap the names collected to keep the second-stage batched lookup bounded, even when the
+        // predicate is unusually permissive (e.g. a single-character query or a path-pattern, which
+        // matches every filename and relies on the per-file path filter inside addFileMatch).
+        int maxNames = Math.max(collectFileLimit * 4, 1_000);
+        Set<String> matchingNames = new LinkedHashSet<>();
+        FilenameIndex.processAllFileNames(name -> {
+            if (predicate.matchesName(name)) {
+                matchingNames.add(name);
+            }
+            return matchingNames.size() < maxNames;
+        }, scope, null);
+
+        if (!matchingNames.isEmpty()) {
+            // Single batched lookup. The previous one-name-at-a-time
+            // FilenameIndex.processFilesByNames(Set.of(name), ...) call inside the iterator was
+            // the freeze culprit on large projects: it issued thousands of index queries while
+            // holding the read lock, starving every write action (EDT, indexing, daemon).
+            FilenameIndex.processFilesByNames(matchingNames, false, scope, null, file -> {
+                if (matchesByPath.size() >= collectFileLimit) return false;
+                addFileMatch(file, basePath, scope, predicate, matchesByPath);
+                return matchesByPath.size() < collectFileLimit;
+            });
+        }
 
         if (matchesByPath.isEmpty()) return "No files found";
 
@@ -118,17 +142,6 @@ public final class FindFileTool extends NavigationTool {
             .map(FileMatch::format)
             .toList();
         return lines.size() + " files:\n" + String.join("\n", lines);
-    }
-
-    private boolean processFilename(String name, String basePath, GlobalSearchScope scope,
-                                    MatchPredicate predicate, Map<String, FileMatch> matchesByPath, int limit) {
-        if (!predicate.matchesName(name)) return true;
-
-        return FilenameIndex.processFilesByNames(Set.of(name), false, scope, null, file -> {
-            if (matchesByPath.size() >= limit) return false;
-            addFileMatch(file, basePath, scope, predicate, matchesByPath);
-            return matchesByPath.size() < limit;
-        });
     }
 
     private void addFileMatch(VirtualFile file, String basePath, GlobalSearchScope scope,
