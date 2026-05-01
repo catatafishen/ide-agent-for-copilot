@@ -3,6 +3,7 @@ package com.github.catatafishen.agentbridge.psi.tools.debug.session;
 import com.github.catatafishen.agentbridge.psi.tools.debug.DebugTool;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XDebuggerManager;
 import com.intellij.xdebugger.XSourcePosition;
@@ -64,8 +65,9 @@ public final class DebugSessionListTool extends DebugTool {
         if (s.getSuspendContext() == null) return "RUNNING";
         XSourcePosition pos = s.getCurrentPosition();
         if (pos == null) return "PAUSED";
-        String relPath = relativize(basePath, pos.getFile().getPath());
-        String location = relPath != null ? relPath : pos.getFile().getName();
+        VirtualFile file = pos.getFile();
+        String relPath = relativize(basePath, file.getPath());
+        String location = relPath != null ? relPath : file.getName();
         return "PAUSED at " + location + ':' + (pos.getLine() + 1);
     }
 }
