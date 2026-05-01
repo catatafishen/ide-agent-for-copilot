@@ -17,6 +17,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class DebugReadConsoleTool extends DebugTool {
 
+    private static final String PARAM_MAX_CHARS = "max_chars";
+
+
     public DebugReadConsoleTool(Project project) {
         super(project);
     }
@@ -49,14 +52,14 @@ public final class DebugReadConsoleTool extends DebugTool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(
-            Param.optional("max_chars", TYPE_INTEGER, "Maximum characters to return (default: 8000)")
+            Param.optional(PARAM_MAX_CHARS, TYPE_INTEGER, "Maximum characters to return (default: 8000)")
         );
     }
 
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         XDebugSession session = requireSession();
-        int maxChars = args.has("max_chars") ? args.get("max_chars").getAsInt() : 8000;
+        int maxChars = args.has(PARAM_MAX_CHARS) ? args.get(PARAM_MAX_CHARS).getAsInt() : 8000;
         String sessionName = session.getSessionName();
 
         // First try getConsoleView() directly from the session

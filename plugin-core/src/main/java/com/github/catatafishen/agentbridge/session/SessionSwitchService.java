@@ -91,6 +91,7 @@ public final class SessionSwitchService implements Disposable {
     private static final String JSONL_EXT = ".jsonl";
     private static final String WORKSPACE_PATHS_KEY = "workspacePaths";
     private static final String COPILOT_ID_PREFIX = "copilot";
+    private static final String UNKNOWN_BRANCH = "unknown";
     private static final String AGENT_WORK_DIR = ".agent-work";
     private static final String SESSION_STATE_DIR = "session-state";
     private static final String CLAUDE_RESUME_ID_FILE = "claude-resume-id.txt";
@@ -163,6 +164,9 @@ public final class SessionSwitchService implements Disposable {
         if (future.isDone()) return;
         try {
             future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("Interrupted while waiting for session export", e);
         } catch (TimeoutException e) {
             LOG.warn("Timed out waiting for session export (" + timeoutMs + " ms) — resumeSessionId may be stale");
         } catch (Exception e) {
@@ -202,7 +206,7 @@ public final class SessionSwitchService implements Disposable {
             case "kiro" -> exportToKiro(entries, basePath, toProfileId);
             case "junie" -> exportToJunie(entries, basePath, toProfileId);
             case "opencode" -> exportToOpenCode(entries, basePath);
-            case "copilot" -> exportToCopilot(entries, basePath, toProfileId);
+            case COPILOT_ID_PREFIX -> exportToCopilot(entries, basePath, toProfileId);
             default -> LOG.info("ACP client '" + toProfileId
                 + "' — no native export format; will resume via resumeSessionId");
         }
@@ -400,12 +404,12 @@ public final class SessionSwitchService implements Disposable {
      * or {@code "unknown"} for detached HEAD or unrecognised formats.
      */
     static String parseGitBranchFromHead(@Nullable String headContent) {
-        if (headContent == null || headContent.isBlank()) return "unknown";
+        if (headContent == null || headContent.isBlank()) return UNKNOWN_BRANCH;
         String trimmed = headContent.trim();
         if (trimmed.startsWith("ref: refs/heads/")) {
             return trimmed.substring("ref: refs/heads/".length());
         }
-        return "unknown";
+        return UNKNOWN_BRANCH;
     }
 
     /**
@@ -462,7 +466,7 @@ public final class SessionSwitchService implements Disposable {
         if (AgentProfileManager.KIRO_PROFILE_ID.equals(profileId)) return "kiro";
         if (AgentProfileManager.JUNIE_PROFILE_ID.equals(profileId)) return "junie";
         if (AgentProfileManager.OPENCODE_PROFILE_ID.equals(profileId)) return "opencode";
-        if (profileId.startsWith(COPILOT_ID_PREFIX)) return "copilot";
+        if (profileId.startsWith(COPILOT_ID_PREFIX)) return COPILOT_ID_PREFIX;
         return "generic";
     }
 
@@ -483,7 +487,7 @@ public final class SessionSwitchService implements Disposable {
      * Fields mirror what the CLI writes natively when creating a session.
      */
     private void writeWorkspaceYaml(@NotNull Path sessionDir, @NotNull String sessionId, @NotNull String basePath) throws IOException {
-        String branch = "unknown";
+        String branch = UNKNOWN_BRANCH;
         try {
             Path gitDir = Path.of(basePath, ".git");
             if (Files.isDirectory(gitDir)) {

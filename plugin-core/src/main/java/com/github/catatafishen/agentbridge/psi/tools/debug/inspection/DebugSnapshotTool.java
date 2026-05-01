@@ -8,6 +8,11 @@ import org.jetbrains.annotations.NotNull;
 
 public final class DebugSnapshotTool extends DebugTool {
 
+    private static final String PARAM_INCLUDE_SOURCE = "include_source";
+    private static final String PARAM_INCLUDE_VARIABLES = "include_variables";
+    private static final String PARAM_INCLUDE_STACK = "include_stack";
+
+
     public DebugSnapshotTool(Project project) {
         super(project);
     }
@@ -40,18 +45,18 @@ public final class DebugSnapshotTool extends DebugTool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(
-            Param.optional("include_source", TYPE_BOOLEAN, "Include source code context around current line (default: true)"),
-            Param.optional("include_variables", TYPE_BOOLEAN, "Include local variables in current frame (default: true)"),
-            Param.optional("include_stack", TYPE_BOOLEAN, "Include the call stack (default: true)")
+            Param.optional(PARAM_INCLUDE_SOURCE, TYPE_BOOLEAN, "Include source code context around current line (default: true)"),
+            Param.optional(PARAM_INCLUDE_VARIABLES, TYPE_BOOLEAN, "Include local variables in current frame (default: true)"),
+            Param.optional(PARAM_INCLUDE_STACK, TYPE_BOOLEAN, "Include the call stack (default: true)")
         );
     }
 
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         XDebugSession session = requirePausedSession();
-        boolean includeSource = !args.has("include_source") || args.get("include_source").getAsBoolean();
-        boolean includeVars = !args.has("include_variables") || args.get("include_variables").getAsBoolean();
-        boolean includeStack = !args.has("include_stack") || args.get("include_stack").getAsBoolean();
+        boolean includeSource = !args.has(PARAM_INCLUDE_SOURCE) || args.get(PARAM_INCLUDE_SOURCE).getAsBoolean();
+        boolean includeVars = !args.has(PARAM_INCLUDE_VARIABLES) || args.get(PARAM_INCLUDE_VARIABLES).getAsBoolean();
+        boolean includeStack = !args.has(PARAM_INCLUDE_STACK) || args.get(PARAM_INCLUDE_STACK).getAsBoolean();
         return buildSnapshot(session, includeSource, includeVars, includeStack);
     }
 }

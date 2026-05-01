@@ -84,6 +84,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AgentEditSession implements Disposable, PersistentStateComponent<AgentEditSession.PersistedState> {
 
     private static final Logger LOG = Logger.getInstance(AgentEditSession.class);
+    private static final String ERR_PREFIX = "Error: ";
 
     /**
      * Skip snapshotting files larger than 5 MB to avoid memory bloat.
@@ -886,7 +887,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
             String cancelMessage = pendingGateCancelMessage;
             if (cancelMessage != null) {
                 pendingGateCancelMessage = null;
-                return "Error: " + operation + " cancelled by user revert.\n" + cancelMessage;
+                return ERR_PREFIX + operation + " cancelled by user revert.\n" + cancelMessage;
             }
             flushBufferedRevertsToPendingNudge();
             return null;
@@ -948,7 +949,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
             String cancelMessage = pendingGateCancelMessage;
             if (cancelMessage != null) {
                 pendingGateCancelMessage = null;
-                return "Error: " + operation + " cancelled by user revert.\n" + cancelMessage;
+                return ERR_PREFIX + operation + " cancelled by user revert.\n" + cancelMessage;
             }
             flushBufferedRevertsToPendingNudge();
             return null;
@@ -1034,7 +1035,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
     }
 
     static @NotNull String formatReviewTimeoutError(@NotNull String operation, int fileCount) {
-        return "Error: " + fileCount + (fileCount == 1 ? " file has" : " files have")
+        return ERR_PREFIX + fileCount + (fileCount == 1 ? " file has" : " files have")
             + " not been approved or rejected by the user. '"
             + operation + "' cannot proceed until all pending agent edits are reviewed."
             + " The user must accept or revert the pending edits in the"

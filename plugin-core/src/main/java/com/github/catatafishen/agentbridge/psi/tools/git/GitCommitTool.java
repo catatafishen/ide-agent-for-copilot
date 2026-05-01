@@ -25,6 +25,8 @@ public final class GitCommitTool extends GitTool {
     private static final String PARAM_MESSAGE = "message";
     private static final String PARAM_AMEND = "amend";
     private static final String PARAM_AUTHOR = "author";
+    private static final String CRLF_SPLIT = "\\r?\\n";
+    private static final String NAME_ONLY = "--name-only";
 
     public GitCommitTool(Project project) {
         super(project);
@@ -109,7 +111,7 @@ public final class GitCommitTool extends GitTool {
 
         // Pre-commit check: verify there are staged changes (skip for amend — message-only amends are valid)
         if (!isAmend) {
-            String staged = runGitInQuiet(root, "diff", "--cached", "--name-only");
+            String staged = runGitInQuiet(root, "diff", "--cached", NAME_ONLY);
             if (staged != null && staged.isEmpty()) {
                 return buildNothingToCommitHint(root);
             }
@@ -156,10 +158,10 @@ public final class GitCommitTool extends GitTool {
         // Prune approved review rows for files that are now part of this commit.
         // Run on EDT-safe pool: AgentEditSession mutations + listeners are EDT-safe.
         try {
-            String committedNames = runGitInQuiet(root, "show", "--name-only", "--format=", "HEAD");
+            String committedNames = runGitInQuiet(root, "show", NAME_ONLY, "--format=", "HEAD");
             if (committedNames != null && !committedNames.isBlank()) {
                 java.util.List<String> paths = new java.util.ArrayList<>();
-                for (String line : committedNames.split("\\r?\\n")) {
+                for (String line : committedNames.split(CRLF_SPLIT)) {
                     String trimmed = line.trim();
                     if (!trimmed.isEmpty()) paths.add(trimmed);
                 }
@@ -208,7 +210,7 @@ public final class GitCommitTool extends GitTool {
         if (commitAll) {
             String status = runGitInQuiet(root, "status", "--porcelain");
             if (status != null) {
-                for (String line : status.split("\\r?\\n")) {
+                for (String line : status.split(CRLF_SPLIT)) {
                     if (line.length() < 4) continue;
                     // porcelain format: XY <path> or XY <orig> -> <path>
                     String filePart = line.substring(3);
@@ -218,9 +220,9 @@ public final class GitCommitTool extends GitTool {
                 }
             }
         } else {
-            String staged = runGitInQuiet(root, "diff", "--cached", "--name-only");
+            String staged = runGitInQuiet(root, "diff", "--cached", NAME_ONLY);
             if (staged != null) {
-                for (String line : staged.split("\\r?\\n")) {
+                for (String line : staged.split(CRLF_SPLIT)) {
                     String trimmed = line.trim();
                     if (!trimmed.isEmpty()) {
                         paths.add(toAbsolutePath(trimmed, basePath));
@@ -249,7 +251,7 @@ public final class GitCommitTool extends GitTool {
         // Split on \r?\n and trim each entry — git output on Windows uses CRLF, and a
         // raw "\n"-only split would leave stray \r characters in the rendered hint.
         java.util.List<String> parts = new java.util.ArrayList<>();
-        for (String line : rawNewlineSeparated.split("\\r?\\n")) {
+        for (String line : rawNewlineSeparated.split(CRLF_SPLIT)) {
             String trimmed = line.trim();
             if (!trimmed.isEmpty()) {
                 parts.add(trimmed);
@@ -273,7 +275,7 @@ public final class GitCommitTool extends GitTool {
      * unstaged/untracked/ignored so the agent knows exactly what to stage (or force-add).
      */
     private String buildNothingToCommitHint(String root) {
-        String unstaged = runGitInQuiet(root, "diff", "--name-only");
+        String unstaged = runGitInQuiet(root, "diff", NAME_ONLY);
         String untracked = runGitInQuiet(root, "ls-files", "--others", "--exclude-standard");
         String ignored = runGitInQuiet(root, "ls-files", "--others", "--ignored", "--exclude-standard");
 

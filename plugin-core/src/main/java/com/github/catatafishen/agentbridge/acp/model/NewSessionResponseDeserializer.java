@@ -25,9 +25,16 @@ import java.util.Map;
  */
 public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessionResponse> {
 
+    private static final String META_KEY = "_meta";
+    private static final String AVAILABLE_MODES_KEY = "availableModes";
+    private static final String COMMANDS_KEY = "commands";
+    private static final String CONFIG_OPTIONS_KEY = "configOptions";
+    private static final String AVAILABLE_MODELS_KEY = "availableModels";
+    private static final String DESCRIPTION_KEY = "description";
+
     @Override
     public NewSessionResponse deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext ctx)
-            throws JsonParseException {
+        throws JsonParseException {
         JsonObject obj = json.getAsJsonObject();
 
         String sessionId = getString(obj, "sessionId");
@@ -36,17 +43,17 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
         ModesResult modesResult = parseModesContainer(obj.get("modes"));
 
         List<NewSessionResponse.AvailableCommand> commands = null;
-        if (obj.has("commands") && obj.get("commands").isJsonArray()) {
+        if (obj.has(COMMANDS_KEY) && obj.get(COMMANDS_KEY).isJsonArray()) {
             commands = new ArrayList<>();
-            for (JsonElement e : obj.getAsJsonArray("commands")) {
+            for (JsonElement e : obj.getAsJsonArray(COMMANDS_KEY)) {
                 commands.add(ctx.deserialize(e, NewSessionResponse.AvailableCommand.class));
             }
         }
 
         List<NewSessionResponse.SessionConfigOption> configOptions = null;
-        if (obj.has("configOptions") && obj.get("configOptions").isJsonArray()) {
+        if (obj.has(CONFIG_OPTIONS_KEY) && obj.get(CONFIG_OPTIONS_KEY).isJsonArray()) {
             configOptions = new ArrayList<>();
-            for (JsonElement e : obj.getAsJsonArray("configOptions")) {
+            for (JsonElement e : obj.getAsJsonArray(CONFIG_OPTIONS_KEY)) {
                 if (e.isJsonObject()) {
                     configOptions.add(parseConfigOption(e.getAsJsonObject()));
                 }
@@ -64,8 +71,11 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
         );
     }
 
-    private record ModelsResult(@Nullable String currentId, @Nullable List<Model> models) {}
-    private record ModesResult(@Nullable String currentId, @Nullable List<NewSessionResponse.AvailableMode> modes) {}
+    private record ModelsResult(@Nullable String currentId, @Nullable List<Model> models) {
+    }
+
+    private record ModesResult(@Nullable String currentId, @Nullable List<NewSessionResponse.AvailableMode> modes) {
+    }
 
     @Nullable
     private static ModelsResult parseModelsContainer(@Nullable JsonElement element) {
@@ -80,14 +90,14 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
         if (!element.isJsonObject()) return null;
         JsonObject container = element.getAsJsonObject();
 
-        // Standard ACP format: { availableModels: [...], currentModelId: "..." }
-        if (container.has("availableModels") && container.get("availableModels").isJsonArray()) {
-            List<Model> models = parseModelArray(container.getAsJsonArray("availableModels"));
+        // Standard ACP format: object with availableModels array and optional currentModelId string
+        if (container.has(AVAILABLE_MODELS_KEY) && container.get(AVAILABLE_MODELS_KEY).isJsonArray()) {
+            List<Model> models = parseModelArray(container.getAsJsonArray(AVAILABLE_MODELS_KEY));
             String currentId = getString(container, "currentModelId");
             return new ModelsResult(currentId, models.isEmpty() ? null : models);
         }
 
-        // Legacy map format: { "model-id": {name, ...}, ... }
+        // Legacy map format: object mapping model-id keys to model descriptor objects
         List<Model> models = new ArrayList<>();
         for (Map.Entry<String, JsonElement> entry : container.entrySet()) {
             if (entry.getValue().isJsonObject()) {
@@ -113,9 +123,9 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
         if (id == null) id = getString(obj, "id");
         if (id == null) id = keyFallbackId;
         String name = getString(obj, "name");
-        String description = getString(obj, "description");
-        JsonObject meta = obj.has("_meta") && obj.get("_meta").isJsonObject()
-            ? obj.getAsJsonObject("_meta") : null;
+        String description = getString(obj, DESCRIPTION_KEY);
+        JsonObject meta = obj.has(META_KEY) && obj.get(META_KEY).isJsonObject()
+            ? obj.getAsJsonObject(META_KEY) : null;
         return new Model(id, name, description, meta);
     }
 
@@ -131,14 +141,14 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
         if (!element.isJsonObject()) return null;
         JsonObject container = element.getAsJsonObject();
 
-        // Standard ACP format: { availableModes: [...], currentModeId: "..." }
-        if (container.has("availableModes") && container.get("availableModes").isJsonArray()) {
-            List<NewSessionResponse.AvailableMode> modes = parseModeArray(container.getAsJsonArray("availableModes"));
+        // Standard ACP format: object with availableModes array and optional currentModeId string
+        if (container.has(AVAILABLE_MODES_KEY) && container.get(AVAILABLE_MODES_KEY).isJsonArray()) {
+            List<NewSessionResponse.AvailableMode> modes = parseModeArray(container.getAsJsonArray(AVAILABLE_MODES_KEY));
             String currentId = getString(container, "currentModeId");
             return new ModesResult(currentId, modes.isEmpty() ? null : modes);
         }
 
-        // Legacy map format: { "slug": "Display Name" } or { "slug": {name, description} }
+        // Legacy map format: object mapping slug keys to display name strings or mode descriptor objects
         List<NewSessionResponse.AvailableMode> modes = new ArrayList<>();
         for (Map.Entry<String, JsonElement> entry : container.entrySet()) {
             String key = entry.getKey();
@@ -148,7 +158,7 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
             } else if (value.isJsonObject()) {
                 JsonObject modeObj = value.getAsJsonObject();
                 String name = getString(modeObj, "name");
-                String desc = getString(modeObj, "description");
+                String desc = getString(modeObj, DESCRIPTION_KEY);
                 String slug = getString(modeObj, "id");
                 if (slug == null) slug = key;
                 modes.add(new NewSessionResponse.AvailableMode(slug, name != null ? name : key, desc));
@@ -164,7 +174,7 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
                 JsonObject obj = e.getAsJsonObject();
                 String slug = getString(obj, "id");
                 String name = getString(obj, "name");
-                String desc = getString(obj, "description");
+                String desc = getString(obj, DESCRIPTION_KEY);
                 modes.add(new NewSessionResponse.AvailableMode(slug, name != null ? name : slug, desc));
             }
         }
@@ -192,7 +202,7 @@ public class NewSessionResponseDeserializer implements JsonDeserializer<NewSessi
         String label = getString(obj, "label");
         if (label == null) label = getString(obj, "name");
         if (label == null) label = id != null ? id : "";
-        String description = getString(obj, "description");
+        String description = getString(obj, DESCRIPTION_KEY);
         String selectedValueId = getString(obj, "selectedValueId");
         if (selectedValueId == null) selectedValueId = getString(obj, "currentValue");
 

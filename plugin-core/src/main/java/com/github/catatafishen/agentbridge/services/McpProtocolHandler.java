@@ -495,12 +495,16 @@ public final class McpProtocolHandler {
             com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic.evaluate(
                 pps.peek(), toolName, sessionKey, java.time.Instant.now());
         String resultPrefix = "";
-        if (decision instanceof com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic.Block b) {
-            return buildToolResult(msg, b.message(), true);
+        if (decision instanceof com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic.Block(
+            var message
+        )) {
+            return buildToolResult(msg, message, true);
         }
-        if (decision instanceof com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic.AllowWithCancelNote a) {
-            pps.cancelAndClear(a.cancelled().id());
-            resultPrefix = a.note() + "\n\n";
+        if (decision instanceof com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic.AllowWithCancelNote(
+            var cancelled, var note
+        )) {
+            pps.cancelAndClear(cancelled.id());
+            resultPrefix = note + "\n\n";
         } else if (!com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic.POPUP_RESPOND_TOOL.equals(toolName)
             && pps.peek() != null) {
             // Same-session call within budget — count toward auto-cancel.

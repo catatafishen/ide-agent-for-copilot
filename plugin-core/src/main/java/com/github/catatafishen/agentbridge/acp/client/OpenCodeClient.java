@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /**
  * OpenCode ACP client.
@@ -167,7 +169,7 @@ public final class OpenCodeClient extends AcpClient {
         if (raw != null && raw.has("subagent_type")) {
             return raw.get("subagent_type").getAsString();
         }
-        return "general";
+        return GENERAL_AGENT;
     }
 
     @Override
@@ -227,7 +229,7 @@ public final class OpenCodeClient extends AcpClient {
     }
 
     @Override
-    protected String loadSession(String cwd, String sessionId) throws Exception {
+    protected String loadSession(String cwd, String sessionId) throws InterruptedException, ExecutionException, TimeoutException {
         String result = sendLoadSessionRequest("session/resume", cwd, sessionId);
         markSessionHistoryLoadedInternally();
         return result;

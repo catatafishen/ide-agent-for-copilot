@@ -50,6 +50,8 @@ import java.util.function.BiConsumer;
 @Service(Service.Level.PROJECT)
 public final class ToolChipRegistry {
     private static final Logger LOG = Logger.getInstance(ToolChipRegistry.class);
+    private static final String HASH_SUFFIX = " hash=";
+    private static final String FOR_SUFFIX = " for ";
 
     /**
      * Lifecycle states for a tool chip. Border is dashed until MCP handles the call, then solid.
@@ -136,7 +138,7 @@ public final class ToolChipRegistry {
         // The null-args special case above handles agents like Junie that send content:[] (null) in ACP.
 
         String baseHash = computeBaseHash(args);
-        LOG.info("ToolChipRegistry [ACP→Client]: tool=" + displayTitle + " hash=" + baseHash + " args=" + args);
+        LOG.info("ToolChipRegistry [ACP→Client]: tool=" + displayTitle + HASH_SUFFIX + baseHash + " args=" + args);
 
         // Look for a MCP-first chip (pluginRegistered=true, clientId=null) with this hash
         ChipEntry mcpFirst = findMcpFirstChip(baseHash);
@@ -195,7 +197,7 @@ public final class ToolChipRegistry {
 
     public synchronized void registerMcp(@NotNull String toolName, @NotNull JsonObject args, @Nullable String kind) {
         String baseHash = computeBaseHash(args);
-        LOG.info("ToolChipRegistry [MCP→Server]: tool=" + toolName + " hash=" + baseHash + " args=" + args);
+        LOG.info("ToolChipRegistry [MCP→Server]: tool=" + toolName + HASH_SUFFIX + baseHash + " args=" + args);
 
         // Find the newest unmatched client-side chip (newest = last in insertion order)
         ChipEntry target = findNewestUnmatchedClientChip(baseHash);
@@ -207,7 +209,7 @@ public final class ToolChipRegistry {
         }
 
         // MCP arrived first — store for when client-side arrives
-        LOG.info("ToolChipRegistry [MCP→Server]: MCP-first chip for tool=" + toolName + " hash=" + baseHash);
+        LOG.info("ToolChipRegistry [MCP→Server]: MCP-first chip for tool=" + toolName + HASH_SUFFIX + baseHash);
         ChipEntry entry = new ChipEntry(baseHash, toolName, null, true, toolName, System.currentTimeMillis());
         chips.put(baseHash, entry);
         // Fire RUNNING immediately so UI creates solid-border chip (MCP tools always get solid border)
@@ -278,7 +280,7 @@ public final class ToolChipRegistry {
             ChipEntry updated = mcpFirstByName.withClientId(clientId, toolName);
             chips.put(mcpFirstByName.chipId(), updated);
             clientToChip.put(clientId, mcpFirstByName.chipId());
-            LOG.debug("ToolChipRegistry: re-registered claimed MCP-first chip by name " + mcpFirstByName.chipId() + " for " + toolName);
+            LOG.debug("ToolChipRegistry: re-registered claimed MCP-first chip by name " + mcpFirstByName.chipId() + FOR_SUFFIX + toolName);
             return new ChipRegistration(mcpFirstByName.chipId(), ChipState.RUNNING);
         }
 
@@ -289,7 +291,7 @@ public final class ToolChipRegistry {
             ChipEntry updated = mcpFirst.withClientId(clientId, toolName);
             chips.put(mcpFirst.chipId(), updated);
             clientToChip.put(clientId, mcpFirst.chipId());
-            LOG.debug("ToolChipRegistry: re-registered claimed MCP-first chip by hash " + mcpFirst.chipId() + " for " + toolName);
+            LOG.debug("ToolChipRegistry: re-registered claimed MCP-first chip by hash " + mcpFirst.chipId() + FOR_SUFFIX + toolName);
             return new ChipRegistration(mcpFirst.chipId(), ChipState.RUNNING);
         }
 
@@ -299,7 +301,7 @@ public final class ToolChipRegistry {
         ChipEntry entry = new ChipEntry(newChipId, toolName, clientId, false, null, System.currentTimeMillis());
         chips.put(newChipId, entry);
         clientToChip.put(clientId, newChipId);
-        LOG.debug("ToolChipRegistry: re-registered with new args " + newChipId + " for " + toolName);
+        LOG.debug("ToolChipRegistry: re-registered with new args " + newChipId + FOR_SUFFIX + toolName);
         return new ChipRegistration(newChipId, ChipState.PENDING);
     }
 

@@ -93,18 +93,24 @@ class JsonRpcTransportTest {
 
     // ─── Helpers ──────────────────────────────────
 
-    /** Write a JSON-RPC line to the transport (simulating agent stdout). */
+    /**
+     * Write a JSON-RPC line to the transport (simulating agent stdout).
+     */
     private void feedLine(String json) throws IOException {
         feedToTransport.write((json + "\n").getBytes(StandardCharsets.UTF_8));
         feedToTransport.flush();
     }
 
-    /** Read the next line written by the transport (what it sent to agent stdin). */
+    /**
+     * Read the next line written by the transport (what it sent to agent stdin).
+     */
     private String readSentLine() throws IOException {
         return capturedReader.readLine();
     }
 
-    /** Read the next line written by the transport and parse it as JSON. */
+    /**
+     * Read the next line written by the transport and parse it as JSON.
+     */
     private JsonObject readSentJson() throws IOException {
         String line = readSentLine();
         assertNotNull(line, "Expected a sent line but got null (pipe closed?)");
@@ -115,6 +121,7 @@ class JsonRpcTransportTest {
         try {
             stream.close();
         } catch (IOException ignored) {
+            // best-effort close; errors during test teardown are not significant
         }
     }
 

@@ -89,6 +89,7 @@ final class EventLogCompactor {
                 try {
                     return Integer.parseInt(part.substring(5));
                 } catch (NumberFormatException ignored) {
+                    // non-numeric "from" parameter value; fall through and return 0
                 }
             }
         }

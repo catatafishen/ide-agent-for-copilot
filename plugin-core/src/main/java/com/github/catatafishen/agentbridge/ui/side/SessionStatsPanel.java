@@ -46,6 +46,8 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
     private static final String LABEL_PREMIUM_REQ = "Premium req";
     private static final String TOKENS_IN_OUT_SEP = " in / ";
     private static final String TOKENS_OUT_SUFFIX = " out";
+    private static final String LABEL_TOOL_CALLS = "Tool calls";
+    private static final String LABEL_LINES_CHANGED = "Lines changed";
 
     private final ProcessingTimerPanel timerPanel;
     private final BillingManager billing;
@@ -168,8 +170,8 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
 
         int tRow = 0;
         addStatRow(turnGrid, tRow++, "Time", turnTimeValue);
-        turnToolsRow = addStatRow(turnGrid, tRow++, "Tool calls", turnToolsValue);
-        turnLinesRow = addStatRow(turnGrid, tRow++, "Lines changed", turnLinesValue);
+        turnToolsRow = addStatRow(turnGrid, tRow++, LABEL_TOOL_CALLS, turnToolsValue);
+        turnLinesRow = addStatRow(turnGrid, tRow++, LABEL_LINES_CHANGED, turnLinesValue);
         turnTokensRow = addStatRowWithLabel(turnGrid, tRow++, turnTokensRowLabel, turnTokensValue);
         turnCostRow = addStatRowWithLabel(turnGrid, tRow, turnCostRowLabel, turnCostValue);
 
@@ -191,8 +193,8 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         int row = 0;
         addStatRow(statsGrid, row++, "Time", timeValue);
         turnsRow = addStatRow(statsGrid, row++, "Turns", turnsValue);
-        sessionToolsRow = addStatRow(statsGrid, row++, "Tool calls", toolsValue);
-        linesRow = addStatRow(statsGrid, row++, "Lines changed", linesValue);
+        sessionToolsRow = addStatRow(statsGrid, row++, LABEL_TOOL_CALLS, toolsValue);
+        linesRow = addStatRow(statsGrid, row++, LABEL_LINES_CHANGED, linesValue);
 
         tokensRow = addStatRowWithLabel(statsGrid, row++, tokensRowLabel, tokensValue);
         costRow = addStatRowWithLabel(statsGrid, row, costRowLabel, costValue);
@@ -207,8 +209,8 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         int dRow = 0;
         addStatRow(todayGrid, dRow++, "Time", todayTimeValue);
         addStatRow(todayGrid, dRow++, "Turns", todayTurnsValue);
-        todayToolsRow = addStatRow(todayGrid, dRow++, "Tool calls", todayToolsValue);
-        todayLinesRow = addStatRow(todayGrid, dRow++, "Lines changed", todayLinesValue);
+        todayToolsRow = addStatRow(todayGrid, dRow++, LABEL_TOOL_CALLS, todayToolsValue);
+        todayLinesRow = addStatRow(todayGrid, dRow++, LABEL_LINES_CHANGED, todayLinesValue);
         todayTokensRow = addStatRowWithLabel(todayGrid, dRow, todayTokensRowLabel, todayTokensValue);
 
         todaySection = new JPanel();

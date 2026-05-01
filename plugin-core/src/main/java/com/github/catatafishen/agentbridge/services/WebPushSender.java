@@ -49,6 +49,8 @@ public final class WebPushSender {
     private static final Logger LOG = Logger.getInstance(WebPushSender.class);
 
     private static final int RECORD_SIZE = 4096;
+    private static final String EC_CURVE = "secp256r1";
+    private static final String HMAC_ALG = "HmacSHA256";
     private static final Base64.Encoder B64URL = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder B64URL_DEC = Base64.getUrlDecoder();
 
@@ -198,7 +200,7 @@ public final class WebPushSender {
 
         // Generate ephemeral sender key pair
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC");
-        kpg.initialize(new ECGenParameterSpec("secp256r1"), new SecureRandom());
+        kpg.initialize(new ECGenParameterSpec(EC_CURVE), new SecureRandom());
         KeyPair senderKeys = kpg.generateKeyPair();
         byte[] senderPublicKeyBytes = encodePublicKeyUncompressed((ECPublicKey) senderKeys.getPublic());
         ECPublicKey uaPublicKey = decodePublicKey(uaPublicKeyBytes);
@@ -209,10 +211,9 @@ public final class WebPushSender {
         ka.doPhase(uaPublicKey, true);
         byte[] ecdhSecret = ka.generateSecret();
 
-        // RFC 8291 key derivation
-        //   PRK_key = HMAC-SHA-256(auth_secret, ecdh_secret)
-        //   key_info = "WebPush: info\0" || uaPublicKey || senderPublicKey
-        //   IKM = HKDF-Expand(PRK_key, key_info || 0x01, 32)
+        // RFC 8291 key derivation: derive PRK_key from auth_secret and ecdh_secret via HMAC-SHA-256,
+        // build key_info from the WebPush info label, uaPublicKey, and senderPublicKey,
+        // then compute IKM via HKDF-Expand using key_info with an appended 0x01 byte.
         byte[] prkKey = hmacSha256(authSecret, ecdhSecret);
         byte[] keyInfo = concat(
             "WebPush: info\0".getBytes(StandardCharsets.US_ASCII),
@@ -234,7 +235,7 @@ public final class WebPushSender {
         cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(cek, "AES"), new GCMParameterSpec(128, nonce));
         byte[] ciphertext = cipher.doFinal(padded);
 
-        // Build aes128gcm content body: salt(16) || rs(4) || keyid_len(1) || sender_public_key(65) || ciphertext
+        // Build aes128gcm content body: 16 bytes salt, 4 bytes record size, 1 byte key-id length, 65 bytes sender public key, then ciphertext
         ByteBuffer body = ByteBuffer.allocate(16 + 4 + 1 + 65 + ciphertext.length);
         body.put(salt);
         body.putInt(RECORD_SIZE);
@@ -294,14 +295,14 @@ public final class WebPushSender {
     // ── Static helpers ────────────────────────────────────────────────────────
 
     private static byte[] hmacSha256(byte[] key, byte[] data) throws Exception {
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(key, "HmacSHA256"));
+        Mac mac = Mac.getInstance(HMAC_ALG);
+        mac.init(new SecretKeySpec(key, HMAC_ALG));
         return mac.doFinal(data);
     }
 
     private static byte[] hkdfExpand(byte[] prk, byte[] info, int length) throws Exception {
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(prk, "HmacSHA256"));
+        Mac mac = Mac.getInstance(HMAC_ALG);
+        mac.init(new SecretKeySpec(prk, HMAC_ALG));
         mac.update(info);
         byte[] t = mac.doFinal();
         return Arrays.copyOf(t, length);
@@ -353,7 +354,7 @@ public final class WebPushSender {
      */
     public static KeyPair generateVapidKeyPair() throws Exception {
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC");
-        kpg.initialize(new ECGenParameterSpec("secp256r1"), new SecureRandom());
+        kpg.initialize(new ECGenParameterSpec(EC_CURVE), new SecureRandom());
         return kpg.generateKeyPair();
     }
 
@@ -381,7 +382,7 @@ public final class WebPushSender {
             BigInteger s = new BigInteger(1, privBytes);
             KeyFactory kf = KeyFactory.getInstance("EC");
             AlgorithmParameters ap = AlgorithmParameters.getInstance("EC");
-            ap.init(new ECGenParameterSpec("secp256r1"));
+            ap.init(new ECGenParameterSpec(EC_CURVE));
             ECParameterSpec spec = ap.getParameterSpec(ECParameterSpec.class);
             ECPrivateKey privateKey = (ECPrivateKey) kf.generatePrivate(new ECPrivateKeySpec(s, spec));
             return new KeyPair(publicKey, privateKey);

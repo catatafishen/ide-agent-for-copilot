@@ -24,6 +24,7 @@ public final class MemorySearchTool extends Tool {
 
     private static final String PARAM_MEMORY_TYPE = "memory_type";
     private static final String PARAM_LIMIT = "limit";
+    private static final String PARAM_STATE = "state";
 
     MemorySearchTool(Project project) {
         super(project);
@@ -69,7 +70,7 @@ public final class MemorySearchTool extends Tool {
             Param.optional("wing", TYPE_STRING, "Filter by palace wing (project name)"),
             Param.optional("room", TYPE_STRING, "Filter by room (topic category)"),
             Param.optional(PARAM_MEMORY_TYPE, TYPE_STRING, "Filter by type: context, decision, problem, solution"),
-            Param.optional("state", TYPE_STRING, "Filter by verification state: verified, unverified, stale"),
+            Param.optional(PARAM_STATE, TYPE_STRING, "Filter by verification state: verified, unverified, stale"),
             Param.optional(PARAM_LIMIT, TYPE_INTEGER, "Max results to return (default: 10)")
         );
     }
@@ -80,7 +81,7 @@ public final class MemorySearchTool extends Tool {
         String wing = args.has("wing") ? args.get("wing").getAsString() : null;
         String room = args.has("room") ? args.get("room").getAsString() : null;
         String memoryType = args.has(PARAM_MEMORY_TYPE) ? args.get(PARAM_MEMORY_TYPE).getAsString() : null;
-        String stateFilter = args.has("state") ? args.get("state").getAsString() : null;
+        String stateFilter = args.has(PARAM_STATE) ? args.get(PARAM_STATE).getAsString() : null;
         int limit = args.has(PARAM_LIMIT) ? args.get(PARAM_LIMIT).getAsInt() : 10;
 
         MemoryService memoryService = MemoryService.getInstance(project);

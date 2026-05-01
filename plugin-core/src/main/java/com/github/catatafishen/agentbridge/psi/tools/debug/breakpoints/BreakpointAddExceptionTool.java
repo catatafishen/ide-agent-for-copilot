@@ -17,6 +17,9 @@ import java.util.stream.Collectors;
 
 public final class BreakpointAddExceptionTool extends DebugTool {
 
+    private static final String PARAM_ENABLED = "enabled";
+
+
     public BreakpointAddExceptionTool(Project project) {
         super(project);
     }
@@ -50,7 +53,7 @@ public final class BreakpointAddExceptionTool extends DebugTool {
     public @NotNull JsonObject inputSchema() {
         return schema(
             Param.required("exception_class", TYPE_STRING, "Fully qualified exception class name (e.g., java.lang.IllegalStateException), or '*' for any exception"),
-            Param.optional("enabled", TYPE_BOOLEAN, "Whether the breakpoint is enabled (default: true)")
+            Param.optional(PARAM_ENABLED, TYPE_BOOLEAN, "Whether the breakpoint is enabled (default: true)")
         );
     }
 
@@ -58,7 +61,7 @@ public final class BreakpointAddExceptionTool extends DebugTool {
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String exceptionClass = args.get("exception_class").getAsString();
-        boolean enabled = !args.has("enabled") || args.get("enabled").getAsBoolean();
+        boolean enabled = !args.has(PARAM_ENABLED) || args.get(PARAM_ENABLED).getAsBoolean();
 
         XBreakpointManager mgr = XDebuggerManager.getInstance(project).getBreakpointManager();
 

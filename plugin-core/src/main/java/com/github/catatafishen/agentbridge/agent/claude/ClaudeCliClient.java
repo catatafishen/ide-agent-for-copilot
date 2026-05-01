@@ -245,7 +245,7 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
 
     static List<Model> buildKnownModels() {
         Object[][] rows = {
-            // { alias, displayName }
+            // columns: alias, displayName
             {"default", "Default (recommended)"},
             {"sonnet", "Sonnet (latest, daily coding)"},
             {"opus", "Opus (latest, complex reasoning)"},
@@ -481,7 +481,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
         }
     }
 
-    /** Best-effort termination + join — silently swallows further interruption. */
+    /**
+     * Best-effort termination + join — silently swallows further interruption.
+     */
     private static void cleanupSubprocess(@Nullable Process proc, @Nullable Thread stderrThread) {
         if (proc != null && proc.isAlive()) {
             proc.destroy();
@@ -513,7 +515,9 @@ public final class ClaudeCliClient extends AbstractClaudeAgentClient {
      * runtime signal only. See {@code docs/AUTH-HANDLING.md}.
      */
     private static final class ClaudeAuthRequiredException extends RuntimeException {
-        ClaudeAuthRequiredException(@NotNull String message) { super(message); }
+        ClaudeAuthRequiredException(@NotNull String message) {
+            super(message);
+        }
     }
 
     /**

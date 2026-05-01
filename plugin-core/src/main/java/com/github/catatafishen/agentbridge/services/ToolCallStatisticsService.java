@@ -45,6 +45,7 @@ import java.util.Set;
 public final class ToolCallStatisticsService implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(ToolCallStatisticsService.class);
+    private static final String DUPLICATE_COLUMN = "duplicate column";
     private static final String DB_FILENAME = "tool-stats.db";
     private static final Set<String> DEFAULT_BRANCH_NAMES = Set.of("main", "master");
 
@@ -207,7 +208,7 @@ public final class ToolCallStatisticsService implements Disposable {
             stmt.execute("ALTER TABLE tool_calls ADD COLUMN error_message TEXT");
             LOG.info("Migrated tool_calls table: added error_message column");
         } catch (SQLException e) {
-            if (e.getMessage() == null || !e.getMessage().contains("duplicate column")) {
+            if (e.getMessage() == null || !e.getMessage().contains(DUPLICATE_COLUMN)) {
                 LOG.warn("Unexpected error migrating tool_calls schema (error_message column)", e);
             }
             // else: duplicate column — expected for databases that have already been migrated
@@ -219,7 +220,7 @@ public final class ToolCallStatisticsService implements Disposable {
             stmt.execute("ALTER TABLE tool_calls ADD COLUMN display_name TEXT");
             LOG.info("Migrated tool_calls table: added display_name column");
         } catch (SQLException e) {
-            if (e.getMessage() == null || !e.getMessage().contains("duplicate column")) {
+            if (e.getMessage() == null || !e.getMessage().contains(DUPLICATE_COLUMN)) {
                 LOG.warn("Unexpected error migrating tool_calls schema (display_name column)", e);
             }
             // else: duplicate column — expected for databases that have already been migrated
@@ -231,7 +232,7 @@ public final class ToolCallStatisticsService implements Disposable {
             stmt.execute("ALTER TABLE turn_stats ADD COLUMN commit_hashes TEXT");
             LOG.info("Migrated turn_stats table: added commit_hashes column");
         } catch (SQLException e) {
-            if (e.getMessage() == null || !e.getMessage().contains("duplicate column")) {
+            if (e.getMessage() == null || !e.getMessage().contains(DUPLICATE_COLUMN)) {
                 LOG.warn("Unexpected error migrating turn_stats schema (commit_hashes column)", e);
             }
             // else: duplicate column — expected for databases that have already been migrated

@@ -17,6 +17,9 @@ import java.util.concurrent.CompletableFuture;
 
 public final class DebugEvaluateTool extends DebugTool {
 
+    private static final String PARAM_FRAME_INDEX = "frame_index";
+
+
     public DebugEvaluateTool(Project project) {
         super(project);
     }
@@ -50,7 +53,7 @@ public final class DebugEvaluateTool extends DebugTool {
     public @NotNull JsonObject inputSchema() {
         return schema(
             Param.required("expression", TYPE_STRING, "Expression to evaluate in the current debug context"),
-            Param.optional("frame_index", TYPE_INTEGER, "Stack frame to evaluate in (default: 0 = current frame)")
+            Param.optional(PARAM_FRAME_INDEX, TYPE_INTEGER, "Stack frame to evaluate in (default: 0 = current frame)")
         );
     }
 
@@ -58,7 +61,7 @@ public final class DebugEvaluateTool extends DebugTool {
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         XDebugSession session = requirePausedSession();
         String expression = args.get("expression").getAsString();
-        int frameIndex = args.has("frame_index") ? args.get("frame_index").getAsInt() : 0;
+        int frameIndex = args.has(PARAM_FRAME_INDEX) ? args.get(PARAM_FRAME_INDEX).getAsInt() : 0;
 
         XSuspendContext ctx = session.getSuspendContext();
         XExecutionStack stack = ctx.getActiveExecutionStack();

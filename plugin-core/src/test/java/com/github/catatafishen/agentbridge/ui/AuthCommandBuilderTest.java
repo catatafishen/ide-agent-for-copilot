@@ -6,7 +6,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Comprehensive tests for {@link AuthCommandBuilder} — a Kotlin {@code object}
@@ -77,8 +81,8 @@ class AuthCommandBuilderTest {
     @Test
     void parseDeviceCode_lineWithCodeOnly_returnsCodeAndNullUrl() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Enter code: ABCD-1234", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Enter code: ABCD-1234", null, null);
         assertEquals("ABCD-1234", result.getCode());
         assertNull(result.getUrl());
     }
@@ -86,9 +90,9 @@ class AuthCommandBuilderTest {
     @Test
     void parseDeviceCode_lineWithUrlOnly_returnsNullCodeAndUrl() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Open https://github.com/login/device to continue",
-                        null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Open https://github.com/login/device to continue",
+                null, null);
         assertNull(result.getCode());
         assertEquals("https://github.com/login/device", result.getUrl());
     }
@@ -96,9 +100,9 @@ class AuthCommandBuilderTest {
     @Test
     void parseDeviceCode_lineWithBothCodeAndUrl_returnsBoth() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Use ABCD-1234 at https://github.com/login/device",
-                        null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Use ABCD-1234 at https://github.com/login/device",
+                null, null);
         assertEquals("ABCD-1234", result.getCode());
         assertEquals("https://github.com/login/device", result.getUrl());
     }
@@ -106,9 +110,9 @@ class AuthCommandBuilderTest {
     @Test
     void parseDeviceCode_lineWithNeither_returnsExistingValues() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Waiting for authorization...",
-                        "PREV-CODE", "https://example.com/device");
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Waiting for authorization...",
+                "PREV-CODE", "https://example.com/device");
         assertEquals("PREV-CODE", result.getCode());
         assertEquals("https://example.com/device", result.getUrl());
     }
@@ -116,8 +120,8 @@ class AuthCommandBuilderTest {
     @Test
     void parseDeviceCode_lineWithNeither_existingBothNull_returnsBothNull() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Some random output", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Some random output", null, null);
         assertNull(result.getCode());
         assertNull(result.getUrl());
     }
@@ -126,16 +130,16 @@ class AuthCommandBuilderTest {
     void parseDeviceCode_accumulationAcrossLines_codeFirst() {
         // First line has code only
         AuthCommandBuilder.ParseResult first =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Your code is AB12-CD34", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Your code is AB12-CD34", null, null);
         assertEquals("AB12-CD34", first.getCode());
         assertNull(first.getUrl());
 
         // Second line has URL only — accumulate with existing code
         AuthCommandBuilder.ParseResult second =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Visit https://github.com/login/device",
-                        first.getCode(), first.getUrl());
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Visit https://github.com/login/device",
+                first.getCode(), first.getUrl());
         assertEquals("AB12-CD34", second.getCode());
         assertEquals("https://github.com/login/device", second.getUrl());
     }
@@ -144,26 +148,26 @@ class AuthCommandBuilderTest {
     void parseDeviceCode_accumulationAcrossLines_urlFirst() {
         // First line has URL only
         AuthCommandBuilder.ParseResult first =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Go to https://github.com/login/device", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Go to https://github.com/login/device", null, null);
         assertNull(first.getCode());
         assertEquals("https://github.com/login/device", first.getUrl());
 
         // Second line has code only — accumulate with existing URL
         AuthCommandBuilder.ParseResult second =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Enter code WXYZ-9876",
-                        first.getCode(), first.getUrl());
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Enter code WXYZ-9876",
+                first.getCode(), first.getUrl());
         assertEquals("WXYZ-9876", second.getCode());
         assertEquals("https://github.com/login/device", second.getUrl());
     }
 
     @Test
     void parseDeviceCode_codePatternEightCharGroups() {
-        // 8-character groups are accepted by the regex [A-Z0-9]{4,8}
+        // 8-character groups are accepted by the device code regex (allows groups of 4 to 8 uppercase alphanumeric chars)
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Code: ABCD1234-EFGH5678", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Code: ABCD1234-EFGH5678", null, null);
         assertEquals("ABCD1234-EFGH5678", result.getCode());
     }
 
@@ -171,50 +175,50 @@ class AuthCommandBuilderTest {
     void parseDeviceCode_codePatternFourCharGroups() {
         // Minimum 4-character groups
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Code: ABCD-EF12", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Code: ABCD-EF12", null, null);
         assertEquals("ABCD-EF12", result.getCode());
     }
 
     @Test
     void parseDeviceCode_newCodeOverridesExisting() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "New code: ZZZZ-9999", "AAAA-1111", null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "New code: ZZZZ-9999", "AAAA-1111", null);
         assertEquals("ZZZZ-9999", result.getCode());
     }
 
     @Test
     void parseDeviceCode_newUrlOverridesExisting() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Open https://github.com/login/device/new",
-                        null, "https://old.example.com/device");
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Open https://github.com/login/device/new",
+                null, "https://old.example.com/device");
         assertEquals("https://github.com/login/device/new", result.getUrl());
     }
 
     @Test
     void parseDeviceCode_urlWithHttpScheme() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Go to http://localhost/device", null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Go to http://localhost/device", null, null);
         assertEquals("http://localhost/device", result.getUrl());
     }
 
     @Test
     void parseDeviceCode_urlWithSubpath() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "Visit https://github.com/login/device/callback",
-                        null, null);
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "Visit https://github.com/login/device/callback",
+                null, null);
         assertEquals("https://github.com/login/device/callback", result.getUrl());
     }
 
     @Test
     void parseDeviceCode_emptyLine_returnsExistingValues() {
         AuthCommandBuilder.ParseResult result =
-                AuthCommandBuilder.INSTANCE.parseDeviceCode(
-                        "", "CODE-HERE", "https://url.com/device");
+            AuthCommandBuilder.INSTANCE.parseDeviceCode(
+                "", "CODE-HERE", "https://url.com/device");
         assertEquals("CODE-HERE", result.getCode());
         assertEquals("https://url.com/device", result.getUrl());
     }
@@ -224,7 +228,7 @@ class AuthCommandBuilderTest {
     @Test
     void parseResult_getters() {
         AuthCommandBuilder.ParseResult pr =
-                new AuthCommandBuilder.ParseResult("CODE-1234", "https://url.com/device");
+            new AuthCommandBuilder.ParseResult("CODE-1234", "https://url.com/device");
         assertEquals("CODE-1234", pr.getCode());
         assertEquals("https://url.com/device", pr.getUrl());
     }
@@ -232,7 +236,7 @@ class AuthCommandBuilderTest {
     @Test
     void parseResult_bothNull() {
         AuthCommandBuilder.ParseResult pr =
-                new AuthCommandBuilder.ParseResult(null, null);
+            new AuthCommandBuilder.ParseResult(null, null);
         assertNull(pr.getCode());
         assertNull(pr.getUrl());
     }
@@ -240,9 +244,9 @@ class AuthCommandBuilderTest {
     @Test
     void parseResult_equality() {
         AuthCommandBuilder.ParseResult a =
-                new AuthCommandBuilder.ParseResult("A", "B");
+            new AuthCommandBuilder.ParseResult("A", "B");
         AuthCommandBuilder.ParseResult b =
-                new AuthCommandBuilder.ParseResult("A", "B");
+            new AuthCommandBuilder.ParseResult("A", "B");
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
     }
@@ -250,16 +254,16 @@ class AuthCommandBuilderTest {
     @Test
     void parseResult_inequality() {
         AuthCommandBuilder.ParseResult a =
-                new AuthCommandBuilder.ParseResult("A", "B");
+            new AuthCommandBuilder.ParseResult("A", "B");
         AuthCommandBuilder.ParseResult b =
-                new AuthCommandBuilder.ParseResult("X", "Y");
+            new AuthCommandBuilder.ParseResult("X", "Y");
         assertNotEquals(a, b);
     }
 
     @Test
     void parseResult_toString_containsValues() {
         AuthCommandBuilder.ParseResult pr =
-                new AuthCommandBuilder.ParseResult("CODE", "URL");
+            new AuthCommandBuilder.ParseResult("CODE", "URL");
         String str = pr.toString();
         assertTrue(str.contains("CODE"));
         assertTrue(str.contains("URL"));
@@ -270,7 +274,7 @@ class AuthCommandBuilderTest {
     @Test
     void buildCommandWithEnvironment_emptyMap_returnsCommandUnchanged() {
         String result = AuthCommandBuilder.INSTANCE.buildCommandWithEnvironment(
-                "copilot auth", Collections.emptyMap());
+            "copilot auth", Collections.emptyMap());
         assertEquals("copilot auth", result);
     }
 
@@ -284,7 +288,7 @@ class AuthCommandBuilderTest {
 
         Map<String, String> env = Collections.singletonMap("TOKEN", "abc123");
         String result = AuthCommandBuilder.INSTANCE.buildCommandWithEnvironment(
-                "copilot auth", env);
+            "copilot auth", env);
         assertEquals("export TOKEN='abc123'; copilot auth", result);
     }
 
@@ -301,7 +305,7 @@ class AuthCommandBuilderTest {
         env.put("KEY2", "val2");
 
         String result = AuthCommandBuilder.INSTANCE.buildCommandWithEnvironment(
-                "my-command", env);
+            "my-command", env);
         assertEquals("export KEY1='val1'; export KEY2='val2'; my-command", result);
     }
 

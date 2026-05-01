@@ -30,6 +30,7 @@ public final class CopilotClientExporter {
     private static final String RESULT_KEY = "result";
     private static final String INTERACTION_ID_KEY = "interactionId";
     private static final String TURN_ID_KEY = "turnId";
+    private static final String EVT_TURN_START = "assistant.turn_start";
 
     private CopilotClientExporter() {
     }
@@ -89,7 +90,7 @@ public final class CopilotClientExporter {
                 if (!inTurn) {
                     interactionId = UUID.randomUUID().toString();
                     turnId = UUID.randomUUID().toString();
-                    sb.append(chain.emit("assistant.turn_start", turnStartData(turnId, interactionId))).append('\n');
+                    sb.append(chain.emit(EVT_TURN_START, turnStartData(turnId, interactionId))).append('\n');
                     inTurn = true;
                 }
                 writeThinkingEntry(thinking, sb, chain);
@@ -97,7 +98,7 @@ public final class CopilotClientExporter {
                 if (!inTurn) {
                     interactionId = UUID.randomUUID().toString();
                     turnId = UUID.randomUUID().toString();
-                    sb.append(chain.emit("assistant.turn_start", turnStartData(turnId, interactionId))).append('\n');
+                    sb.append(chain.emit(EVT_TURN_START, turnStartData(turnId, interactionId))).append('\n');
                     inTurn = true;
                 }
                 writeTextEntry(text, sb, chain, interactionId);
@@ -105,7 +106,7 @@ public final class CopilotClientExporter {
                 if (!inTurn) {
                     interactionId = UUID.randomUUID().toString();
                     turnId = UUID.randomUUID().toString();
-                    sb.append(chain.emit("assistant.turn_start", turnStartData(turnId, interactionId))).append('\n');
+                    sb.append(chain.emit(EVT_TURN_START, turnStartData(turnId, interactionId))).append('\n');
                     inTurn = true;
                 }
                 writeToolCallEntry(toolCall, sb, chain, interactionId);
@@ -113,7 +114,7 @@ public final class CopilotClientExporter {
                 if (!inTurn) {
                     interactionId = UUID.randomUUID().toString();
                     turnId = UUID.randomUUID().toString();
-                    sb.append(chain.emit("assistant.turn_start", turnStartData(turnId, interactionId))).append('\n');
+                    sb.append(chain.emit(EVT_TURN_START, turnStartData(turnId, interactionId))).append('\n');
                     inTurn = true;
                 }
                 writeSubAgentEntry(subAgent, sb, chain);
@@ -167,6 +168,7 @@ public final class CopilotClientExporter {
                 try {
                     return Instant.parse(ts);
                 } catch (Exception ignored) {
+                    // skip entries with unparseable timestamps; continue searching for a valid one
                 }
             }
         }

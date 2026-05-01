@@ -171,6 +171,7 @@ public final class CopilotClientImporter {
                 }
 
                 default -> {
+                    // unrecognized entry types are intentionally ignored
                 }
             }
         }

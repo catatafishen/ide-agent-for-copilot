@@ -151,8 +151,8 @@ public sealed interface SessionUpdate
         public String text() {
             StringBuilder sb = new StringBuilder();
             for (ContentBlock block : content) {
-                if (block instanceof ContentBlock.Text t) sb.append(t.text());
-                else if (block instanceof ContentBlock.Thinking t) sb.append(t.thinking());
+                if (block instanceof ContentBlock.Text(var text)) sb.append(text);
+                else if (block instanceof ContentBlock.Thinking(var thinking)) sb.append(thinking);
             }
             return sb.toString();
         }
@@ -168,8 +168,8 @@ public sealed interface SessionUpdate
         public String text() {
             StringBuilder sb = new StringBuilder();
             for (ContentBlock block : content) {
-                if (block instanceof ContentBlock.Text t) sb.append(t.text());
-                else if (block instanceof ContentBlock.Thinking t) sb.append(t.thinking());
+                if (block instanceof ContentBlock.Text(var text)) sb.append(text);
+                else if (block instanceof ContentBlock.Thinking(var thinking)) sb.append(thinking);
             }
             return sb.toString();
         }
@@ -184,7 +184,7 @@ public sealed interface SessionUpdate
         public String text() {
             StringBuilder sb = new StringBuilder();
             for (ContentBlock block : content) {
-                if (block instanceof ContentBlock.Text t) sb.append(t.text());
+                if (block instanceof ContentBlock.Text(var text)) sb.append(text);
             }
             return sb.toString();
         }
