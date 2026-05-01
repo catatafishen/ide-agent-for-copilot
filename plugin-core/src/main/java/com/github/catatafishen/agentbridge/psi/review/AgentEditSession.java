@@ -917,6 +917,10 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
      * @param scopedPaths absolute paths of files to check
      * @return error string if blocked or timed out, {@code null} if clear
      */
+    // S2222: caller-owned lock contract — this method intentionally releases the
+    // PSI sync lock for the wait and re-acquires it before returning so the
+    // caller (which acquired it) keeps holding it on return.
+    @SuppressWarnings("java:S2222")
     public @Nullable String awaitReviewForPaths(
         @NotNull String operation,
         @NotNull Collection<String> scopedPaths) {

@@ -106,6 +106,10 @@ interface NotificationMessage {
 }
 
 self.addEventListener('message', (e) => {
+    // Only accept messages from clients on the same origin as the SW.
+    // The SW is registered with the page's origin, so any cross-origin sender
+    // would be a misconfiguration or attack — drop those messages defensively.
+    if (e.origin && e.origin !== self.location.origin) return;
     const data = e.data as NotificationMessage | undefined;
     if (data?.type === 'SHOW_NOTIFICATION') {
         const opts: NotificationOptions = {

@@ -151,7 +151,8 @@ public class ReadFileTool extends FileTool {
         }
 
         if (totalLines > MAX_READ_LINES) {
-            String truncated = String.join("\n", Arrays.copyOfRange(lines, 0, MAX_READ_LINES));
+            int end = Math.min(MAX_READ_LINES, lines.length);
+            String truncated = String.join("\n", Arrays.copyOfRange(lines, 0, end));
             sb.append("[Showing first ").append(MAX_READ_LINES)
                 .append(" lines. Use start_line/end_line to read specific sections.]\n");
             sb.append(truncated);

@@ -7,6 +7,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
 import com.intellij.xdebugger.XDebuggerManager;
 import com.intellij.xdebugger.XExpression;
+import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.breakpoints.SuspendPolicy;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
 import com.intellij.xdebugger.breakpoints.XBreakpointManager;
@@ -87,11 +88,14 @@ public final class BreakpointListTool extends DebugTool {
 
     @NotNull
     private String breakpointLocation(@NotNull XBreakpoint<?> bp, @Nullable String basePath) {
-        if (bp instanceof XLineBreakpoint<?> lbp && lbp.getSourcePosition() != null) {
-            String fullPath = lbp.getSourcePosition().getFile().getPath();
-            String relPath = relativize(basePath, fullPath);
-            String location = relPath != null ? relPath : lbp.getSourcePosition().getFile().getName();
-            return location + ':' + (lbp.getLine() + 1);
+        if (bp instanceof XLineBreakpoint<?> lbp) {
+            XSourcePosition pos = lbp.getSourcePosition();
+            if (pos != null) {
+                String fullPath = pos.getFile().getPath();
+                String relPath = relativize(basePath, fullPath);
+                String location = relPath != null ? relPath : pos.getFile().getName();
+                return location + ':' + (lbp.getLine() + 1);
+            }
         }
         return bp.getType().getTitle();
     }
