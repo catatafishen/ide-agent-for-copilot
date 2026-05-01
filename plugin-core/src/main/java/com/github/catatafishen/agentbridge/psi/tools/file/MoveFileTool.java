@@ -36,13 +36,6 @@ public final class MoveFileTool extends FileTool {
     }
 
     @Override
-    public @NotNull String description() {
-        return "Move a file to a different directory using IntelliJ's refactoring engine when PSI is available. " +
-            "Language-aware IDE move handlers update imports, package declarations, and references where supported. " +
-            "Falls back to a plain VFS move only for files/directories the IDE cannot represent as PSI.";
-    }
-
-    @Override
     public @NotNull String permissionTemplate() {
         return "Move {path} -> {destination}";
     }
@@ -53,6 +46,13 @@ public final class MoveFileTool extends FileTool {
             Param.required("path", TYPE_STRING, "Path to the file to move (absolute or project-relative)"),
             Param.required(PARAM_DESTINATION, TYPE_STRING, "Destination directory path (absolute or project-relative)")
         );
+    }
+
+    @Override
+    public @NotNull String description() {
+        return "Move a file to a different directory using IntelliJ's refactoring engine when PSI is available. " +
+            "Language-aware IDE move handlers update imports, package declarations, and references where supported. " +
+            "Falls back to a plain VFS move only for files/directories the IDE cannot represent as PSI.";
     }
 
     @Override

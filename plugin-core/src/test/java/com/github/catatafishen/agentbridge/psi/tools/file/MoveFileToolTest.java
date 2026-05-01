@@ -170,6 +170,31 @@ public class MoveFileToolTest extends BasePlatformTestCase {
             result.contains("tomove.txt"));
     }
 
+    public void testMoveDirectoryFallsBackToPlainVfs() throws Exception {
+        VirtualFile srcDir = createTestDirectory("source-dir");
+        VirtualFile destDir = createTestDirectory("parent-dest");
+
+        String result = executeSync(
+            args("path", srcDir.getPath(), "destination", destDir.getPath()));
+
+        assertTrue("Expected plain VFS fallback message, got: " + result,
+            result.contains("using plain VFS move"));
+        assertNotNull("Moved directory should exist under destination",
+            destDir.findChild("source-dir"));
+    }
+
+    public void testMoveWithMissingDestination() throws Exception {
+        VirtualFile srcVf = createTestFile("missing-dest-source.txt", "content");
+        String missingDestination = tempDir.resolve("missing-dest").toString();
+
+        String result = tool.execute(args("path", srcVf.getPath(), "destination", missingDestination));
+
+        assertTrue("Expected error prefix, got: " + result,
+            result.startsWith(ToolUtils.ERROR_PREFIX));
+        assertTrue("Expected destination error, got: " + result,
+            result.contains("Destination directory not found"));
+    }
+
     /**
      * Omitting the "path" parameter should return an error about the missing required parameters.
      * The tool returns synchronously before any VFS access, so direct EDT invocation is safe.
