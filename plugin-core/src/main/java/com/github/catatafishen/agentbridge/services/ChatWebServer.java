@@ -1734,7 +1734,10 @@ public final class ChatWebServer implements Disposable {
         void close() {
             // Best-effort: if the queue is full the consumer is already lagging or closed;
             // dropping the signal is acceptable since the connection is being torn down anyway.
-            queue.offer(CLOSE_SIGNAL);
+            boolean accepted = queue.offer(CLOSE_SIGNAL);
+            if (!accepted) {
+                LOG.debug("SSE close signal dropped — queue full, consumer already lagging");
+            }
         }
     }
 }
