@@ -491,7 +491,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         turnToolsValue.setText(String.valueOf(turnTools));
         // Hide zero-value rows to reduce visual noise — a row of "0"s conveys no signal.
         turnToolsRow.setVisible(turnTools > 0);
-        long turnLines = snap.getTurnLinesAdded() + snap.getTurnLinesRemoved();
+        long turnLines = (long) snap.getTurnLinesAdded() + snap.getTurnLinesRemoved();
         turnLinesRow.setVisible(turnLines > 0);
 
         if (snap.getMultiplierMode()) {
@@ -500,7 +500,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
             turnTokensRow.setVisible(true);
             turnCostRow.setVisible(false);
         } else {
-            long turnTok = snap.getTurnInputTokens() + snap.getTurnOutputTokens();
+            long turnTok = (long) snap.getTurnInputTokens() + snap.getTurnOutputTokens();
             Double turnCost = snap.getTurnCostUsd();
             boolean hasTurnUsage = turnTok > 0 || (turnCost != null && turnCost > 0.0);
             if (hasTurnUsage) {
@@ -529,7 +529,7 @@ public final class SessionStatsPanel extends JPanel implements Disposable {
         int sessionTools = snap.getSessionToolCalls();
         toolsValue.setText(String.valueOf(sessionTools));
         sessionToolsRow.setVisible(sessionTools > 0);
-        long sessionLines = snap.getSessionLinesAdded() + snap.getSessionLinesRemoved();
+        long sessionLines = (long) snap.getSessionLinesAdded() + snap.getSessionLinesRemoved();
         linesRow.setVisible(sessionLines > 0);
 
         if (snap.getMultiplierMode()) {

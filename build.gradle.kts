@@ -105,7 +105,21 @@ sonar {
             IgnoredIssue("ts_s3776_render", "typescript:S3776", "**/chat-ui/src/renderMarkdown.ts"),
             IgnoredIssue("ts_s3776_batch", "typescript:S3776", "**/chat-ui/src/BatchRenderer.ts"),
             IgnoredIssue("ts_s2004_app", "typescript:S2004", "**/chat-ui/src/web-app.ts")
-        )
+        ) + listOf(
+            // java:S3077 (volatile non-primitive). All these fields hold either an immutable
+            // value (String, Path) or a snapshot reference that is only ever wholesale
+            // reassigned — never mutated through the reference. volatile is the correct and
+            // minimal mechanism for safe publication; AtomicReference would add overhead
+            // without changing semantics.
+            "**/services/ChatWebServer.java",
+            "**/memory/MemoryService.java",
+            "**/memory/embedding/EmbeddingService.java",
+            "**/acp/client/AcpClient.java",
+            "**/acp/client/AcpTerminalHandler.java",
+            "**/services/ActiveAgentManager.java",
+            "**/session/SessionSwitchService.java",
+            "**/settings/ShellEnvironment.java"
+        ).mapIndexed { i, path -> IgnoredIssue("s3077_$i", "java:S3077", path) }
 
         property("sonar.issue.ignore.multicriteria", ignoredIssues.joinToString(",") { it.key })
         ignoredIssues.forEach {
