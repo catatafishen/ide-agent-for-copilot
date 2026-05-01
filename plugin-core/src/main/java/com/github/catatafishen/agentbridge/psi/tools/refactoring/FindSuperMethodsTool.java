@@ -39,34 +39,13 @@ public final class FindSuperMethodsTool extends RefactoringTool {
     }
 
     @Override
-    public @NotNull String id() {
-        return "find_super_methods";
-    }
-
-    @Override
-    public boolean requiresIndex() {
-        return true;
-    }
-
-    @Override
-    public @NotNull String displayName() {
-        return "Find Super Methods";
-    }
-
-    @Override
-    public @NotNull String description() {
-        return "Find parent methods that the method at a file position overrides or implements. " +
-            "Java-aware lookup returns the inheritance chain with file locations and containing class details.";
-    }
-
-    @Override
     public @NotNull Kind kind() {
         return Kind.READ;
     }
 
     @Override
-    public boolean isReadOnly() {
-        return true;
+    public @NotNull Object resultRenderer() {
+        return SearchResultRenderer.INSTANCE;
     }
 
     @Override
@@ -79,8 +58,29 @@ public final class FindSuperMethodsTool extends RefactoringTool {
     }
 
     @Override
-    public @NotNull Object resultRenderer() {
-        return SearchResultRenderer.INSTANCE;
+    public @NotNull String displayName() {
+        return "Find Super Methods";
+    }
+
+    @Override
+    public boolean requiresIndex() {
+        return true;
+    }
+
+    @Override
+    public @NotNull String id() {
+        return "find_super_methods";
+    }
+
+    @Override
+    public boolean isReadOnly() {
+        return true;
+    }
+
+    @Override
+    public @NotNull String description() {
+        return "Find parent methods that the method at a file position overrides or implements. " +
+            "Java-aware lookup returns the inheritance chain with file locations and containing class details.";
     }
 
     @Override
