@@ -1,6 +1,7 @@
-# Why AgentBridge?
+# The Case for IDE-Native Coding Agents
 
-AgentBridge is an experiment in keeping agentic coding close to the way many of us already work in a full IDE.
+AgentBridge is one concrete experiment in keeping agentic coding close to the way many of us already work in a
+full IDE.
 
 Historically, developers have often split into two broad camps. Some prefer lightweight editors because they are fast,
 flexible, and stay out of the way. Others prefer full IDEs like IntelliJ IDEA and the rest of the JetBrains family
@@ -156,3 +157,9 @@ more of its reasoning on the actual software change.
 That does not make the IDE-native approach universally better. It does make it worth trying, especially on projects
 where IntelliJ already understands a lot of the codebase and where fast feedback, safe refactoring, inspections, Git
 integration, and test tooling are part of the daily workflow.
+
+---
+
+**Disclosure:** This text is a collaboration between me, the AgentBridge maintainer, and GitHub Copilot. I provided the
+core argument, examples, opinions, and direction. Copilot helped turn those notes into a structured essay, tighten the
+language, and add external references. The viewpoint is mine; AI helped with editing and drafting.
